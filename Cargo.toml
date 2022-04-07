@@ -1,6 +1,8 @@
 [workspace]
 members = [
-  "kms_common",
-  "kms_client",
-  "kms_server",
+  "kmip",
+  "client",
+  "server",
+  "cli",
+  "utils"
 ]

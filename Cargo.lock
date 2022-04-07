@@ -4,9 +4,9 @@ version = 3
 
 [[package]]
 name = "abe_gpsw"
-version = "0.6.3"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55542b602aac92e127e495abf8560a1fb4b0708d6d64127e2acbed71acbf0811"
+checksum = "10fdc7436bf4e152479d7010c691090515f0771217ecd0d86f4202bf7f6e0025"
 dependencies = [
  "cosmian_bls12_381",
  "cosmian_crypto_base 0.5.2",
@@ -659,6 +659,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
+name = "assert_cmd"
+version = "2.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93ae1ddd39efd67689deb1979d80bad3bf7f2b09c6e6117c8d1f2443b5e2f83e"
+dependencies = [
+ "bstr",
+ "doc-comment",
+ "predicates",
+ "predicates-core",
+ "predicates-tree",
+ "wait-timeout",
+]
+
+[[package]]
 name = "async-trait"
 version = "0.1.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -874,6 +888,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba3569f383e8f1598449f1a423e72e99569137b47740b1da11ef19af3d5c3223"
+dependencies = [
+ "lazy_static",
+ "memchr",
+ "regex-automata",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -992,9 +1017,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.1.6"
+version = "3.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8c93436c21e4698bacadf42917db28b23017027a4deccb35dbe47a7e7840123"
+checksum = "71c47df61d9e16dc010b55dba1952a57d8c215dbb533fd13cdd13369aac73b1c"
 dependencies = [
  "atty",
  "bitflags",
@@ -1009,9 +1034,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "3.1.4"
+version = "3.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da95d038ede1a964ce99f49cbe27a7fb538d1da595e4b4f70b8c8f338d17bf16"
+checksum = "a3aab4734e083b809aaf5794e14e756d1c798d2c69c7f7de7a09a2f5214993c1"
 dependencies = [
  "heck 0.4.0",
  "proc-macro-error",
@@ -1184,21 +1209,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cosmian_kms_client"
-version = "0.1.0"
-dependencies = [
- "cosmian_kms_common",
- "hex",
- "http",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "cosmian_kms_common"
+name = "cosmian_kmip"
 version = "0.1.0"
 dependencies = [
  "bitflags",
@@ -1218,6 +1229,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_kms_client"
+version = "0.1.0"
+dependencies = [
+ "cosmian_kmip",
+ "hex",
+ "http",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
 name = "cosmian_kms_server"
 version = "2.0.0"
 dependencies = [
@@ -1231,11 +1256,11 @@ dependencies = [
  "async-trait",
  "bitflags",
  "chrono",
- "clap 3.1.6",
+ "clap 3.1.8",
  "cosmian_crypto_base 0.5.2",
- "cosmian_kms_common",
+ "cosmian_kmip",
+ "cosmian_kms_utils",
  "cosmian_mcfe",
- "cosmian_rust_lib",
  "env_logger",
  "eyre",
  "futures",
@@ -1262,30 +1287,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "cosmian_mcfe"
-version = "0.2.0"
-source = "git+https://github.com/Cosmian/DMCFE.git?branch=feature/add_mcfe#f400c2fd19c52dddd2903da12e7c9af421f3b2e5"
-dependencies = [
- "cosmian_crypto_base 0.1.0",
- "eyre",
- "num-bigint 0.4.3",
- "num-traits",
- "rand 0.8.5",
- "rand_distr",
- "rand_hc 0.3.1",
- "serde",
- "sha3 0.9.1",
-]
-
-[[package]]
-name = "cosmian_rust_lib"
+name = "cosmian_kms_utils"
 version = "0.1.0"
 dependencies = [
  "abe_gpsw",
  "bitflags",
  "chrono",
  "cosmian_crypto_base 0.5.2",
- "cosmian_kms_common",
+ "cosmian_kmip",
  "cosmian_mcfe",
  "eyre",
  "hex",
@@ -1303,6 +1312,22 @@ dependencies = [
  "tracing-log",
  "tracing-subscriber",
  "tracing-tree",
+]
+
+[[package]]
+name = "cosmian_mcfe"
+version = "0.2.0"
+source = "git+https://github.com/Cosmian/DMCFE.git?branch=feature/add_mcfe#f400c2fd19c52dddd2903da12e7c9af421f3b2e5"
+dependencies = [
+ "cosmian_crypto_base 0.1.0",
+ "eyre",
+ "num-bigint 0.4.3",
+ "num-traits",
+ "rand 0.8.5",
+ "rand_distr",
+ "rand_hc 0.3.1",
+ "serde",
+ "sha3 0.9.1",
 ]
 
 [[package]]
@@ -1481,6 +1506,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "difflib"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6184e33543162437515c2e2b48714794e37845ec9851711914eec9d308f6ebe8"
+
+[[package]]
 name = "digest"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1642,6 +1673,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "file_diff"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31a7a908b8f32538a2143e59a6e4e2508988832d5d4d6f7c156b3cbc762643a5"
+
+[[package]]
 name = "firestorm"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1657,6 +1694,15 @@ dependencies = [
  "crc32fast",
  "libc",
  "miniz_oxide",
+]
+
+[[package]]
+name = "float-cmp"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]
@@ -2270,6 +2316,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "kms_cli"
+version = "0.1.0"
+dependencies = [
+ "abe_gpsw",
+ "assert_cmd",
+ "clap 3.1.8",
+ "cosmian_kmip",
+ "cosmian_kms_client",
+ "cosmian_kms_server",
+ "cosmian_kms_utils",
+ "eyre",
+ "file_diff",
+ "futures",
+ "predicates",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio 1.16.1",
+]
+
+[[package]]
 name = "language-tags"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2587,6 +2655,12 @@ dependencies = [
  "minimal-lexical",
  "version_check",
 ]
+
+[[package]]
+name = "normalize-line-endings"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
 
 [[package]]
 name = "ntapi"
@@ -3057,6 +3131,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb9f9e6e233e5c4a35559a617bf40a4ec447db2e84c20b55a6f83167b7e57872"
 
 [[package]]
+name = "predicates"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5aab5be6e4732b473071984b3164dbbfb7a3674d30ea5ff44410b6bcd960c3c"
+dependencies = [
+ "difflib",
+ "float-cmp",
+ "itertools 0.10.3",
+ "normalize-line-endings",
+ "predicates-core",
+ "regex",
+]
+
+[[package]]
+name = "predicates-core"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da1c2388b1513e1b605fcec39a95e0a9e8ef088f71443ef37099fa9ae6673fcb"
+
+[[package]]
+name = "predicates-tree"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d86de6de25020a36c6d3643a86d9a6a9f552107c0559c60ea03551b5e16c032"
+dependencies = [
+ "predicates-core",
+ "termtree",
+]
+
+[[package]]
 name = "pretty"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3245,9 +3349,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.5.4"
+version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d07a8629359eb56f1e2fb1652bb04212c072a87ba68546a04065d525673ac461"
+checksum = "1a11647b6b25ff05a515cb92c365cec08801e83423a235b51e231e1808747286"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -4047,6 +4151,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "termtree"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "507e9898683b6c43a9aa55b64259b721b52ba226e0f3779137e50ad114a4c90b"
+
+[[package]]
 name = "textwrap"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4215,7 +4325,19 @@ dependencies = [
  "parking_lot",
  "pin-project-lite 0.2.8",
  "signal-hook-registry",
+ "tokio-macros",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b557f72f448c511a979e2564e55d74e6c4432fc96ff4f6241bc6bded342643b7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -4462,7 +4584,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7fa3f8f86d737271f2df442de1b9b51dafd838ffbee499825a8112cde4471bca"
 dependencies = [
- "clap 3.1.6",
+ "clap 3.1.8",
  "config-derive",
  "envy",
  "log",
@@ -4608,6 +4730,15 @@ name = "void"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
+
+[[package]]
+name = "wait-timeout"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f200f5b12eb75f8c1ed65abd4b2db8a6e1b138a20de009dacee265a2498f3f6"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "want"
