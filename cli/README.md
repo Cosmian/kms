@@ -1,4 +1,4 @@
-# KMS CLI
+# Cosmian KMS CLI
 
 Cosmian has designed a command line to use the KMS in order to manage keys, encrypt or decrypt data.
 

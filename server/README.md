@@ -1,4 +1,4 @@
-# KMS Server
+# Cosmian KMS Server
 
 ## Start with Authentication
 
