@@ -21,7 +21,7 @@ pub fn compare_abe_attributes(
             match access_policy_from_attributes(researched_attributes) {
                 Ok(researched_access_policy) => {
                     if researched_access_policy == access_policy {
-                        return Ok(true);
+                        return Ok(true)
                     }
                 }
                 Err(_) => {
@@ -44,7 +44,7 @@ pub fn compare_abe_attributes(
                             .iter()
                             .any(|attr| abe_attributes.contains(attr));
                         if does_match {
-                            return Ok(true);
+                            return Ok(true)
                         }
                     }
                 }

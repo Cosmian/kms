@@ -1,0 +1,20 @@
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+aes,+ssse3,+avx2,+fma,+sse2","-C","force-frame-pointers","-C","debuginfo=2","-C","force-unwind-tables"]
+
+[alias]
+
+# Check for formatting
+format = "fmt --all -- --check"
+
+# Build all features, all targets and all binaries
+build-all = "build --workspace --all-targets --all-features --bins"
+build-all-release = "build --release --workspace --all-targets --all-features --bins"
+
+# Run Clippy on all code paths
+clippy-all = "clippy --workspace --all-targets --all-features -- -D warnings"
+
+# Run coverage
+coverage = "tarpaulin --release -v -f -t 1800 --out Xml --ignore-tests --exclude-files resources/* apps/*"
+
+# Find unused dependencies
+deps = "udeps --workspace --all-targets --all-features --backend depinfo"

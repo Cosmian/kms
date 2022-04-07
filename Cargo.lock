@@ -1047,9 +1047,9 @@ dependencies = [
 
 [[package]]
 name = "config-derive"
-version = "0.2.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3802751e6b035cc12f2a25b5a00c72c98a7a21990bf058a460d3ac0497ec8cf"
+checksum = "3e7b41264f8af0d3bf3055074d717f93811f66cf7bba2b3b56960086494d6762"
 dependencies = [
  "heck 0.4.0",
  "proc-macro2",
@@ -1219,8 +1219,8 @@ dependencies = [
  "paperclip",
  "serde",
  "serde_json",
- "strum 0.24.0",
- "strum_macros 0.24.0",
+ "strum",
+ "strum_macros",
  "thiserror",
  "tracing",
  "tracing-log",
@@ -1276,8 +1276,6 @@ dependencies = [
  "serial_test",
  "sha3 0.10.0",
  "sqlx",
- "strum 0.23.0",
- "strum_macros 0.23.1",
  "tempfile",
  "thiserror",
  "torus_fhe",
@@ -1304,8 +1302,8 @@ dependencies = [
  "rand_hc 0.3.1",
  "serde",
  "serde_json",
- "strum 0.24.0",
- "strum_macros 0.24.0",
+ "strum",
+ "strum_macros",
  "thiserror",
  "torus_fhe",
  "tracing",
@@ -2902,8 +2900,8 @@ dependencies = [
  "proc-macro-error",
  "proc-macro2",
  "quote",
- "strum 0.24.0",
- "strum_macros 0.24.0",
+ "strum",
+ "strum_macros",
  "syn",
 ]
 
@@ -4056,28 +4054,9 @@ checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "strum"
-version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cae14b91c7d11c9a851d3fbc80a963198998c2a64eec840477fa92d8ce9b70bb"
-
-[[package]]
-name = "strum"
 version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e96acfc1b70604b8b2f1ffa4c57e59176c7dbb05d556c71ecd2f5498a1dee7f8"
-
-[[package]]
-name = "strum_macros"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bb0dc7ee9c15cea6199cde9a127fa16a4c5819af85395457ad72d68edc85a38"
-dependencies = [
- "heck 0.3.3",
- "proc-macro2",
- "quote",
- "rustversion",
- "syn",
-]
 
 [[package]]
 name = "strum_macros"
@@ -4580,9 +4559,9 @@ checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
 
 [[package]]
 name = "twelf"
-version = "0.2.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fa3f8f86d737271f2df442de1b9b51dafd838ffbee499825a8112cde4471bca"
+checksum = "9e9277f415aa00656a779f789fbc657c06db7e3018670704d398437414b7c116"
 dependencies = [
  "clap 3.1.8",
  "config-derive",

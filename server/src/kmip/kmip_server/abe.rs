@@ -60,7 +60,7 @@ where
         return Err(kms_error!(
             "ReKey: the format of the key must be an ABE master key"
         ))
-        .reason(ErrorReason::Feature_Not_Supported);
+        .reason(ErrorReason::Feature_Not_Supported)
     }
 
     // Determine the list of policy attributes which will be revoked (i.e. their value increased)

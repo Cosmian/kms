@@ -85,7 +85,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
         return Err(LibError::Error(
             "Expected an ABE User Decryption Key".to_owned(),
         ))
-        .reason(ErrorReason::Invalid_Object_Type);
+        .reason(ErrorReason::Invalid_Object_Type)
     }
     let (key_material, attributes) = key_block
         .key_value

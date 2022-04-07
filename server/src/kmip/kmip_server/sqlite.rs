@@ -215,7 +215,7 @@ where
             .reason(ErrorReason::Internal_Server_Error)?;
         let object = kmip_objects::Object::post_fix(db_object.object_type, db_object.object);
         let state = state_from_string(&row.get::<String, _>(1))?;
-        return Ok(Some((object, state)));
+        return Ok(Some((object, state)))
     }
 
     let row: Option<SqliteRow> = sqlx::query(
@@ -401,7 +401,7 @@ where
     let mut perms = fetch_permissions_(uid, userid, executor).await?;
     if perms.contains(&operation_type) {
         // permission is already setup
-        return Ok(());
+        return Ok(())
     }
     perms.push(operation_type);
 
@@ -446,7 +446,7 @@ where
             .bind(userid)
             .execute(executor)
             .await?;
-        return Ok(());
+        return Ok(())
     }
 
     // Serialize permissions

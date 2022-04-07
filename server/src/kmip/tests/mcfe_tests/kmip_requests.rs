@@ -6,8 +6,8 @@ use cosmian_kmip::kmip::{
         VendorAttributeReference,
     },
 };
-use cosmian_mcfe::lwe;
 use cosmian_kms_utils::crypto::mcfe::vendor_attributes_from_mcfe_setup;
+use cosmian_mcfe::lwe;
 
 use crate::result::KResult;
 

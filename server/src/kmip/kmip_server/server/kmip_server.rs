@@ -350,7 +350,7 @@ impl KmipServer for KMS {
             _ => None,
         };
         if wrapped.is_some() {
-            return Err(kms_error!("This server does not yet support wrapped keys"));
+            return Err(kms_error!("This server does not yet support wrapped keys"))
         }
 
         let replace_existing = if let Some(v) = request.replace_existing {
@@ -392,7 +392,7 @@ impl KmipServer for KMS {
             return Err(KmsError::ServerError(
                 "This server does not support protection masks".to_owned(),
             )
-            .reason(ErrorReason::Protection_Storage_Unavailable));
+            .reason(ErrorReason::Protection_Storage_Unavailable))
         }
         let object = match &request.object_type {
             ObjectType::SymmetricKey => self.create_symmetric_key(&request, owner).await?,
@@ -429,7 +429,7 @@ impl KmipServer for KMS {
             return Err(KmsError::ServerError(
                 "This server does not support protection masks".to_owned(),
             )
-            .reason(ErrorReason::Protection_Storage_Unavailable));
+            .reason(ErrorReason::Protection_Storage_Unavailable))
         }
         let sk_uid = Uuid::new_v4().to_string();
         let pk_uid = Uuid::new_v4().to_string();
@@ -678,12 +678,12 @@ impl KmipServer for KMS {
         for (uid, state) in objects {
             if state != StateEnumeration::Active {
                 debug!("Ignoring object: {uid} in state {state}");
-                continue;
+                continue
             }
             let gr = self.get(Get::from(&uid), owner).await?;
             if gr.object_type != request.attributes.object_type {
                 trace!("Skipping object with type: {}", gr.object_type);
-                continue;
+                continue
             }
             let attribute_found = contains_attributes(&request.attributes, &gr)?;
             if attribute_found {
@@ -730,7 +730,7 @@ impl KmipServer for KMS {
                         return Err(kms_error!(
                             "A compromise date must be supplied in case of compromised object"
                         ))
-                        .reason(ErrorReason::Invalid_Message);
+                        .reason(ErrorReason::Invalid_Message)
                     }
                     StateEnumeration::Compromised
                 }
@@ -807,7 +807,7 @@ impl KmipServer for KMS {
         if self.db.is_object_owned_by(uid, owner).await? {
             return Err(kms_error!(
                 "Object with uid `{uid}` is not owned by owner `{owner}`"
-            ));
+            ))
         }
 
         self.db
@@ -825,7 +825,7 @@ impl KmipServer for KMS {
         if self.db.is_object_owned_by(uid, owner).await? {
             return Err(kms_error!(
                 "Object with uid `{uid}` is not owned by owner `{owner}`"
-            ));
+            ))
         }
 
         self.db

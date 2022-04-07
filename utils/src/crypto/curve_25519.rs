@@ -96,7 +96,7 @@ pub fn generate_key_pair() -> LibResult<KeyPair> {
         return Err(
             LibError::Error("Failed to create a curve 25519 key pair".to_owned())
                 .reason(ErrorReason::Invalid_Message),
-        );
+        )
     }
     let public_key = to_curve_25519_256_public_key(&pk);
     let private_key = to_curve_25519_256_private_key(&sk);

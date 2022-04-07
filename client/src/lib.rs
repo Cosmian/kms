@@ -373,7 +373,7 @@ impl KmipRestClient {
                 .json::<TTLV>()
                 .await
                 .map_err(|e| KmsClientError::TtlvError(e.to_string()))?;
-            return from_ttlv(&ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()));
+            return from_ttlv(&ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()))
         }
 
         // process error

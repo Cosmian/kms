@@ -67,7 +67,7 @@ pub fn parse_public_key(bytes: &[u8]) -> KResult<Object> {
             bytes.len(),
             PUBLIC_KEY_LENGTH
         )
-        .reason(ErrorReason::Invalid_Message));
+        .reason(ErrorReason::Invalid_Message))
     }
     Ok(curve_25519::to_curve_25519_256_public_key(bytes))
 }
@@ -80,7 +80,7 @@ pub fn parse_private_key(bytes: &[u8]) -> KResult<Object> {
             bytes.len(),
             curve_25519::SECRET_KEY_LENGTH
         )
-        .reason(ErrorReason::Invalid_Message));
+        .reason(ErrorReason::Invalid_Message))
     }
     Ok(curve_25519::to_curve_25519_256_private_key(bytes))
 }

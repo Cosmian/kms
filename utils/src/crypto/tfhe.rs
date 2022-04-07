@@ -60,7 +60,7 @@ impl TryFrom<&VendorAttribute> for TFHEKeyCreateRequest {
             || &attribute.attribute_name != "tfhe_key_create_request"
         {
             return Err(lib_error!("the attributes in not a key create request"))
-                .reason(ErrorReason::Invalid_Attribute_Value);
+                .reason(ErrorReason::Invalid_Attribute_Value)
         }
         serde_json::from_slice::<TFHEKeyCreateRequest>(&attribute.attribute_value)
             .context("failed deserializing the Key Create Request")

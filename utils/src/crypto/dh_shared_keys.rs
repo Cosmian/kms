@@ -45,7 +45,7 @@ impl TryFrom<&VendorAttribute> for EnclaveSharedKeyCreateRequest {
             return Err(lib_error!(
                 "the attributes in not a shared key create request"
             ))
-            .reason(ErrorReason::Invalid_Attribute_Value);
+            .reason(ErrorReason::Invalid_Attribute_Value)
         }
         serde_json::from_slice::<EnclaveSharedKeyCreateRequest>(&attribute.attribute_value)
             .context("failed deserializing the Shared Key Create Request")

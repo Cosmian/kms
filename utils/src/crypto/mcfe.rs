@@ -307,7 +307,7 @@ impl TryFrom<&VendorAttribute> for FunctionalKeyCreateRequest {
             return Err(LibError::Error(
                 "the attributes in not a functional key create request".to_owned(),
             )
-            .reason(ErrorReason::Invalid_Attribute_Value));
+            .reason(ErrorReason::Invalid_Attribute_Value))
         }
         serde_json::from_slice(&attribute.attribute_value)
             .context("failed deserializing the Functional Key Create Request")

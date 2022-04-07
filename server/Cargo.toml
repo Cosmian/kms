@@ -45,12 +45,10 @@ sqlx = { version = "0.5", features = [
   "postgres",
   "sqlite"
 ] }
-strum = "0.23"
-strum_macros = "0.23"
 thiserror = "1.0.20"
 torus_fhe = { git = "http://gitlab.cosmian.com/other/tfhe.git" }
 tracing = "0.1"
-twelf = "0.2"
+twelf = "0.3.1"
 uuid = { version = "0.8", features = ["v4"] }
 
 [dev-dependencies]
