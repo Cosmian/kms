@@ -1,0 +1,5 @@
+target/
+.cargo_check/
+*nix
+*.swp
+TODO

@@ -1,0 +1,12 @@
+{
+    "policy": {
+        "level": {
+            "attributes": ["confidential", "secret", "top-secret"]
+        },
+        "department": {
+            "hierarchical": false,
+            "attributes": ["finance", "marketing", "operations"]
+        }
+    },
+    "max-rotations": 100
+}

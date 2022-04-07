@@ -1,0 +1,66 @@
+[config]
+default_to_workspace = false
+
+[tasks.ci-format]
+description = "Run Rustfmt on base code"
+category = "dev"
+script = "cargo format"
+
+[tasks.ci-clippy-all]
+description = "Run Clippy on base code"
+category = "dev"
+script = "cargo clippy-all"
+
+[tasks.ci-build]
+description = "Build all"
+category = "dev"
+script = '''
+#!/bin/bash
+set -ex
+cargo build --all-targets --all-features
+'''
+
+[tasks.ci-rust-tests]
+description = "Run Rust tests"
+category = "dev"
+script = '''
+#!/bin/bash
+set -ex
+cargo test --workspace --all-features -- --nocapture
+cargo test --bins -- --nocapture
+'''
+
+[tasks.ci]
+dependencies = [
+    "ci-format",
+    "ci-clippy-all",
+    "ci-build",
+    "ci-rust-tests",
+]
+
+#
+# Local tests
+#
+[tasks.rust-tests]
+env = { TEST_DB = "kms", TEST_USER = "kms", TEST_PASSWORD = "kms", TEST_HOST_AUTH_METHOD = "trust", TEST_HOST = "localhost" }
+script.pre = '''
+#!/bin/bash
+set -ex
+sudo docker stop postgre || true
+sudo docker stop mariadb || true
+sudo docker run -d --rm --network=host --name postgre -e POSTGRES_DB=$TEST_DB -e POSTGRES_USER=$TEST_USER -e POSTGRES_PASSWORD=$TEST_PASSWORD postgres:latest
+sudo docker run -d --rm --network=host --name mariadb -e MYSQL_DATABASE=$TEST_DB -e MYSQL_ROOT_PASSWORD=$TEST_PASSWORD mariadb:latest
+'''
+script.main = '''
+#!/bin/bash
+set -ex
+export KMS_POSTGRES_URL="postgres://$TEST_USER:$TEST_PASSWORD@$TEST_HOST/$TEST_DB"
+export KMS_MYSQL_URL="mysql://root:$TEST_PASSWORD@$TEST_HOST/$TEST_DB"
+cargo test --workspace --all-features -- --nocapture
+cargo test --bins -- --nocapture
+'''
+script.post = '''
+#!/bin/bash
+sudo docker stop postgre || true
+sudo docker stop mariadb || true
+'''

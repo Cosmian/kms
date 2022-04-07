@@ -1,0 +1,6 @@
+[workspace]
+members = [
+  "kms_common",
+  "kms_client",
+  "kms_server",
+]
