@@ -23,12 +23,15 @@ pub(crate) fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> 
     let bearer: Vec<&str> = authorization_content.splitn(2, ' ').collect();
     kms_ensure!(
         bearer.len() == 2 && bearer[0] == "Bearer",
-        "Bad authorization header content (bad bearer)"
+        KmsError::Unauthorized("Bad authorization header content (bad bearer)".to_owned())
     );
 
     let token: &str = bearer[1];
 
-    kms_ensure!(!token.is_empty(), "token is empty");
+    kms_ensure!(
+        !token.is_empty(),
+        KmsError::Unauthorized("token is empty".to_owned())
+    );
     tracing::trace!("token {}", &token);
 
     let authority = config::delegated_authority_domain()
@@ -59,6 +62,8 @@ pub(crate) fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> 
     let valid_jwt = alcoholic_jwt::validate(token, jwk, validations)
         .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {:?}", err)))?;
 
-    let payload = serde_json::from_value(valid_jwt.claims)?;
+    let payload = serde_json::from_value(valid_jwt.claims)
+        .map_err(|err| KmsError::Unauthorized(format!("JWT claims is malformed: {:?}", err)))?;
+
     Ok(payload)
 }

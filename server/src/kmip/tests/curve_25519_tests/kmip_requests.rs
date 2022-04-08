@@ -3,7 +3,7 @@
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyMaterial,
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{CreateKeyPair, ErrorReason, Get},
+    kmip_operations::{CreateKeyPair, Get},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType,
         RecommendedCurve,
@@ -66,8 +66,7 @@ pub fn parse_public_key(bytes: &[u8]) -> KResult<Object> {
             "Invalid public key len: {}, it should be: {} bytes",
             bytes.len(),
             PUBLIC_KEY_LENGTH
-        )
-        .reason(ErrorReason::Invalid_Message))
+        ))
     }
     Ok(curve_25519::to_curve_25519_256_public_key(bytes))
 }
@@ -79,8 +78,7 @@ pub fn parse_private_key(bytes: &[u8]) -> KResult<Object> {
             "Invalid private key len: {}, it should be: {} bytes",
             bytes.len(),
             curve_25519::SECRET_KEY_LENGTH
-        )
-        .reason(ErrorReason::Invalid_Message))
+        ))
     }
     Ok(curve_25519::to_curve_25519_256_private_key(bytes))
 }
@@ -97,7 +95,6 @@ pub fn extract_key_bytes(pk: &Object) -> KResult<Vec<u8>> {
     };
     let (key_material, _) = key_block.key_value.plaintext().ok_or_else(|| {
         KmsError::ServerError("The public key should be a plain text key value".to_owned())
-            .reason(ErrorReason::Invalid_Object_Type)
     })?;
     match key_material {
         KeyMaterial::TransparentECPublicKey {
@@ -106,7 +103,6 @@ pub fn extract_key_bytes(pk: &Object) -> KResult<Vec<u8>> {
         } => Ok(QString.clone()),
         _ => Err(KmsError::ServerError(
             "The provided object is not an Elliptic Curve Public Key".to_owned(),
-        )
-        .reason(ErrorReason::Invalid_Object_Type)),
+        )),
     }
 }

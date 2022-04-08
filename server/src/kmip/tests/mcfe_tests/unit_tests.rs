@@ -59,7 +59,7 @@ async fn test_secret_key_crud() -> KResult<()> {
 
     let uid = cr.unique_identifier;
     // check the generated id is an UUID
-    let uid_ = Uuid::parse_str(&uid).map_err(|e| KmsError::UnexpectedError(e.to_string()))?;
+    let uid_ = Uuid::parse_str(&uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
     assert_eq!(&uid, &uid_.to_string());
 
     // get object

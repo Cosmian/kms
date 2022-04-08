@@ -1,13 +1,11 @@
 use cosmian_kms_server::{
     config::{init_config, Config},
-    error::KmsError,
-    result::KResult,
     start_server,
 };
 use twelf::Layer;
 
 #[actix_web::main]
-async fn main() -> KResult<()> {
+async fn main() -> eyre::Result<()> {
     if option_env!("RUST_BACKTRACE").is_none() {
         std::env::set_var("RUST_BACKTRACE", "1");
     }
@@ -24,8 +22,7 @@ async fn main() -> KResult<()> {
     let matches = clap::Command::new("kms_server")
         .args(&Config::clap_args())
         .get_matches();
-    let conf = Config::with_layers(&[Layer::Env(Some("KMS_".to_string())), Layer::Clap(matches)])
-        .map_err(|e| KmsError::UnexpectedError(format!("config error: {}", e)))?;
+    let conf = Config::with_layers(&[Layer::Env(Some("KMS_".to_string())), Layer::Clap(matches)])?;
 
     init_config(&conf).await?;
 

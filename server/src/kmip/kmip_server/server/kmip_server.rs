@@ -5,7 +5,7 @@ use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{
         Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
-        Destroy, DestroyResponse, Encrypt, EncryptResponse, ErrorReason, Get, GetAttributes,
+        Destroy, DestroyResponse, Encrypt, EncryptResponse, Get, GetAttributes,
         GetAttributesResponse, GetResponse, Import, ImportResponse, Locate, LocateResponse,
         ReKeyKeyPair, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
@@ -22,8 +22,8 @@ use super::KMS;
 use crate::{
     error::KmsError,
     kmip::kmip_server::{abe::rekey_keypair_abe, server::implementation::contains_attributes},
-    kms_error,
-    result::{KResult, KResultHelper},
+    kms_bail,
+    result::KResult,
 };
 
 #[async_trait]
@@ -350,7 +350,9 @@ impl KmipServer for KMS {
             _ => None,
         };
         if wrapped.is_some() {
-            return Err(kms_error!("This server does not yet support wrapped keys"))
+            kms_bail!(KmsError::NotSupported(
+                "This server does not yet support wrapped keys".to_owned()
+            ));
         }
 
         let replace_existing = if let Some(v) = request.replace_existing {
@@ -389,20 +391,17 @@ impl KmipServer for KMS {
     async fn create(&self, request: Create, owner: &str) -> KResult<CreateResponse> {
         trace!("Create: {}", serde_json::to_string(&request)?);
         if request.protection_storage_masks.is_some() {
-            return Err(KmsError::ServerError(
-                "This server does not support protection masks".to_owned(),
-            )
-            .reason(ErrorReason::Protection_Storage_Unavailable))
+            kms_bail!(KmsError::NotSupportedPlaceholder())
         }
         let object = match &request.object_type {
             ObjectType::SymmetricKey => self.create_symmetric_key(&request, owner).await?,
             ObjectType::SecretData => self.create_secret_data(&request, owner).await?,
             &ObjectType::PrivateKey => self.create_private_key(&request, owner).await?,
             _ => {
-                return Err(kms_error!(
-                    "This server does not yet support creation of: {object_type}"
-                ))
-                .reason(ErrorReason::Feature_Not_Supported)
+                kms_bail!(KmsError::NotSupported(format!(
+                    "This server does not yet support creation of: {}",
+                    request.object_type
+                )))
             }
         };
         let uid = self.db.create(None, owner, &object).await?;
@@ -426,10 +425,7 @@ impl KmipServer for KMS {
             || request.private_protection_storage_masks.is_some()
             || request.public_protection_storage_masks.is_some()
         {
-            return Err(KmsError::ServerError(
-                "This server does not support protection masks".to_owned(),
-            )
-            .reason(ErrorReason::Protection_Storage_Unavailable))
+            kms_bail!(KmsError::NotSupportedPlaceholder())
         }
         let sk_uid = Uuid::new_v4().to_string();
         let pk_uid = Uuid::new_v4().to_string();
@@ -449,7 +445,7 @@ impl KmipServer for KMS {
         let mut pk_key_block = match &pk {
             Object::PublicKey { key_block } => key_block.clone(),
             _ => {
-                return Err(KmsError::ServerError(
+                kms_bail!(KmsError::InvalidRequest(
                     "Expected a KMIP Public Key".to_owned(),
                 ))
             }
@@ -458,11 +454,9 @@ impl KmipServer for KMS {
             KmsError::ServerError(
                 "This should never happen. It must be a plain text key value".to_owned(),
             )
-            .reason(ErrorReason::Internal_Server_Error)
         })?;
         let mut attr = attributes.clone().ok_or_else(|| {
             KmsError::ServerError("This should never happen. There should be attributes".to_owned())
-                .reason(ErrorReason::Internal_Server_Error)
         })?;
         attr.link = vec![Link {
             link_type: LinkType::PrivateKeyLink,
@@ -486,7 +480,7 @@ impl KmipServer for KMS {
         let mut sk_key_block = match &sk {
             Object::PrivateKey { key_block } => key_block.clone(),
             _ => {
-                return Err(KmsError::ServerError(
+                kms_bail!(KmsError::InvalidRequest(
                     "Expected a KMIP Private Key".to_owned(),
                 ))
             }
@@ -495,12 +489,10 @@ impl KmipServer for KMS {
             KmsError::ServerError(
                 "This should never happen. It must be a plain text key value".to_owned(),
             )
-            .reason(ErrorReason::Internal_Server_Error)
         })?;
         trace!("Create private key link OK");
         let mut attr = attributes.clone().ok_or_else(|| {
             KmsError::ServerError("This should never happen. There should be attributes".to_owned())
-                .reason(ErrorReason::Internal_Server_Error)
         })?;
         attr.link = vec![Link {
             link_type: LinkType::PublicKeyLink,
@@ -535,14 +527,14 @@ impl KmipServer for KMS {
         let uid = request
             .unique_identifier
             .as_ref()
-            .context("This KMIP server does not yet support place holder id")?;
+            .ok_or(KmsError::NotSupportedPlaceholder())?;
         trace!("retrieving KMIP Object with id: {uid}");
         let (object, _state) = self
             .db
             .retrieve(uid, owner, ObjectOperationTypes::Get)
             .await?
-            .with_context(|| format!("Object with uid: {uid} not found"))
-            .reason(ErrorReason::Item_Not_Found)?;
+            .ok_or_else(|| KmsError::ItemNotFound(format!("Object with uid: {uid} not found")))?;
+
         debug!("Retrieved Object: {} with id {uid}", &object.object_type());
         Ok(GetResponse {
             object_type: object.object_type(),
@@ -560,14 +552,15 @@ impl KmipServer for KMS {
         let uid = request
             .unique_identifier
             .as_ref()
-            .context("This server does not yet support place holder id")?;
+            .ok_or(KmsError::NotSupportedPlaceholder())?;
+
         trace!("retrieving attributes of KMIP Object with id: {uid}");
         let (object, _state) = self
             .db
             .retrieve(uid, owner, ObjectOperationTypes::Get)
             .await?
-            .with_context(|| format!("Object with uid: {uid} not found"))
-            .reason(ErrorReason::Item_Not_Found)?;
+            .ok_or_else(|| KmsError::ItemNotFound(format!("Object with uid: {uid} not found")))?;
+
         let object_type = object.object_type();
         let attributes = match object {
             Object::PrivateKey { key_block }
@@ -580,8 +573,9 @@ impl KmipServer for KMS {
             KeyValue::Wrapped(_) => None, // we do not handle these for now
             KeyValue::PlainText { attributes, .. } => attributes,
         })
-        .with_context(|| format!("No attributes found on object with: {uid}"))
-        .reason(ErrorReason::Attribute_Not_Found)?;
+        .ok_or_else(|| {
+            KmsError::ItemNotFound(format!("No attributes found on object with: {uid}"))
+        })?;
 
         let req_attributes = match &request.attribute_references {
             None => {
@@ -652,7 +646,7 @@ impl KmipServer for KMS {
         let uid = request
             .unique_identifier
             .as_ref()
-            .context("This server does not yet support place holder id")?;
+            .ok_or(KmsError::NotSupportedPlaceholder())?;
         self.encipher(uid, owner)
             .await?
             .encrypt(&request)
@@ -664,7 +658,7 @@ impl KmipServer for KMS {
         let uid = request
             .unique_identifier
             .as_ref()
-            .context("This server does not yet support place holder id")?;
+            .ok_or(KmsError::NotSupportedPlaceholder())?;
         self.decipher(uid, owner)
             .await?
             .decrypt(&request)
@@ -714,9 +708,9 @@ impl KmipServer for KMS {
 
     async fn revoke(&self, request: Revoke, owner: &str) -> KResult<RevokeResponse> {
         //TODO http://gitlab.cosmian.com/core/cosmian_server/-/issues/131  Reasons should be kept
-        let uid = request.unique_identifier.ok_or_else(|| {
-            KmsError::ServerError("This server does not yet support placeholder IDs".to_owned())
-        })?;
+        let uid = request
+            .unique_identifier
+            .ok_or(KmsError::NotSupportedPlaceholder())?;
         let state = match request.revocation_reason {
             RevocationReason::Enumeration(e) => match e {
                 RevocationReasonEnumeration::Unspecified
@@ -727,10 +721,10 @@ impl KmipServer for KMS {
                 RevocationReasonEnumeration::KeyCompromise
                 | RevocationReasonEnumeration::CACompromise => {
                     if request.compromise_occurrence_date.is_none() {
-                        return Err(kms_error!(
+                        kms_bail!(KmsError::InvalidRequest(
                             "A compromise date must be supplied in case of compromised object"
+                                .to_owned()
                         ))
-                        .reason(ErrorReason::Invalid_Message)
                     }
                     StateEnumeration::Compromised
                 }
@@ -754,42 +748,40 @@ impl KmipServer for KMS {
             .private_key_unique_identifier
             .as_ref()
             .ok_or_else(|| {
-                kms_error!(
+                KmsError::NotSupported(
                     "Rekey keypair: ID place holder is not yet supported an a key ID must be \
                      supplied"
+                        .to_string(),
                 )
             })?;
 
-        let attributes = request
-            .private_key_attributes
-            .as_ref()
-            .ok_or_else(|| {
-                KmsError::ServerError(
-                    "Rekey keypair: the private key attributes must be supplied".to_owned(),
-                )
-            })
-            .reason(ErrorReason::Invalid_Message)?;
+        let attributes = request.private_key_attributes.as_ref().ok_or_else(|| {
+            KmsError::InvalidRequest(
+                "Rekey keypair: the private key attributes must be supplied".to_owned(),
+            )
+        })?;
 
         match &attributes.cryptographic_algorithm {
             Some(CryptographicAlgorithm::ABE) => {
                 rekey_keypair_abe(self, private_key_unique_identifier, attributes, owner).await
             }
-            Some(other) => Err(kms_error!(
+            Some(other) => kms_bail!(KmsError::NotSupported(format!(
                 "The rekey of a key pair for algorithm: {:?} is not yet supported",
                 other
-            ))
-            .reason(ErrorReason::Operation_Not_Supported),
-            None => Err(kms_error!(
+            ))),
+            None => kms_bail!(KmsError::InvalidRequest(
                 "The cryptographic algorithm must be specified in the private key attributes for \
                  key pair creation"
+                    .to_string()
             )),
         }
     }
 
     async fn destroy(&self, request: Destroy, owner: &str) -> KResult<DestroyResponse> {
-        let uid = request.unique_identifier.ok_or_else(|| {
-            KmsError::ServerError("This server does not yet support placeholder IDs".to_owned())
-        })?;
+        let uid = request
+            .unique_identifier
+            .ok_or(KmsError::NotSupportedPlaceholder())?;
+
         self.db
             .update_state(&uid, owner, StateEnumeration::Destroyed)
             .await?;
@@ -799,15 +791,16 @@ impl KmipServer for KMS {
     }
 
     async fn insert_access(&self, access: &Access, owner: &str) -> KResult<()> {
-        let uid = access.unique_identifier.as_ref().ok_or_else(|| {
-            KmsError::ServerError("This server does not yet support placeholder IDs".to_owned())
-        })?;
+        let uid = access
+            .unique_identifier
+            .as_ref()
+            .ok_or(KmsError::NotSupportedPlaceholder())?;
 
         // check the object identified by its `uid` is really owned by `owner`
         if self.db.is_object_owned_by(uid, owner).await? {
-            return Err(kms_error!(
+            kms_bail!(KmsError::Unauthorized(format!(
                 "Object with uid `{uid}` is not owned by owner `{owner}`"
-            ))
+            )))
         }
 
         self.db
@@ -817,15 +810,16 @@ impl KmipServer for KMS {
     }
 
     async fn delete_access(&self, access: &Access, owner: &str) -> KResult<()> {
-        let uid = access.unique_identifier.as_ref().ok_or_else(|| {
-            KmsError::ServerError("This server does not yet support placeholder IDs".to_owned())
-        })?;
+        let uid = access
+            .unique_identifier
+            .as_ref()
+            .ok_or(KmsError::NotSupportedPlaceholder())?;
 
         // check the object identified by its `uid` is really owned by `owner`
         if self.db.is_object_owned_by(uid, owner).await? {
-            return Err(kms_error!(
+            kms_bail!(KmsError::Unauthorized(format!(
                 "Object with uid `{uid}` is not owned by owner `{owner}`"
-            ))
+            )))
         }
 
         self.db

@@ -4,9 +4,7 @@ use abe_gpsw::core::policy::Policy;
 use cosmian_kmip::kmip::{
     kmip_key_utils::WrappedSymmetricKey,
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{
-        Create, CreateKeyPair, ErrorReason, Get, Import, Locate, ReKeyKeyPairResponse,
-    },
+    kmip_operations::{Create, CreateKeyPair, Get, Import, Locate, ReKeyKeyPairResponse},
     kmip_types::{
         Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
     },
@@ -27,10 +25,7 @@ use cosmian_kms_utils::{
 use tracing::trace;
 
 use crate::{
-    error::KmsError,
-    kmip::kmip_server::server::kmip_server::KmipServer,
-    kms_error,
-    result::{KResult, KResultHelper},
+    error::KmsError, kmip::kmip_server::server::kmip_server::KmipServer, kms_bail, result::KResult,
 };
 
 /// `Re_key` an ABE master Key for the given attributes, which in ABE terms
@@ -47,20 +42,15 @@ where
     trace!("Internal rekey key pair ABE");
 
     // Verify the operation is performed for an ABE Master Key
-    let key_format_type = attributes
-        .key_format_type
-        .as_ref()
-        .ok_or_else(|| {
-            KmsError::ServerError(
-                "Unable to rekey an ABE key, the format type is not specified".to_owned(),
-            )
-        })
-        .reason(ErrorReason::Invalid_Attribute_Value)?;
+    let key_format_type = attributes.key_format_type.as_ref().ok_or_else(|| {
+        KmsError::InvalidRequest(
+            "Unable to rekey an ABE key, the format type is not specified".to_owned(),
+        )
+    })?;
     if key_format_type != &KeyFormatType::AbeMasterSecretKey {
-        return Err(kms_error!(
-            "ReKey: the format of the key must be an ABE master key"
+        kms_bail!(KmsError::NotSupported(
+            "ReKey: the format of the key must be an ABE master key".to_string()
         ))
-        .reason(ErrorReason::Feature_Not_Supported)
     }
 
     // Determine the list of policy attributes which will be revoked (i.e. their value increased)
@@ -86,9 +76,9 @@ where
     // Recover the policy from the private key
     let (master_private_key_bytes, private_key_attributes) =
         key_bytes_and_attributes_from_key_block(private_key.key_block()?, master_private_key_uid)?;
-    let mut private_key_attributes = private_key_attributes
-        .context("The ABE Master key should have attributes")
-        .reason(ErrorReason::Attribute_Not_Found)?;
+    let mut private_key_attributes = private_key_attributes.ok_or_else(|| {
+        KmsError::InvalidRequest("The ABE Master key should have attributes".to_owned())
+    })?;
     let mut policy = policy_from_attributes(&private_key_attributes)?;
 
     // Increment the Attributes values in the Policy
@@ -243,9 +233,12 @@ where
     let access_policy = access_policy_from_attributes(create_attributes)?;
 
     // Recover private key
-    let master_private_key_uid = create_attributes.get_parent_id().context(
-        "there should be a reference to the master private key in the creation attributes",
-    )?;
+    let master_private_key_uid = create_attributes.get_parent_id().ok_or_else(|| {
+        KmsError::InvalidRequest(
+            "there should be a reference to the master private key in the creation attributes"
+                .to_string(),
+        )
+    })?;
     let gr_private_key = kmip_server
         .get(Get::from(master_private_key_uid.clone()), owner)
         .await?;
@@ -259,8 +252,7 @@ where
 
     // recover the current policy from the key attributes
     let policy = policy_from_attributes(&master_private_key_attributes.ok_or_else(|| {
-        KmsError::InvalidKmipObject(
-            ErrorReason::Attribute_Not_Found,
+        KmsError::InvalidRequest(
             "the master private key does not have attributes with the Policy".to_string(),
         )
     })?)?;
@@ -289,8 +281,11 @@ where
         .private_key_attributes
         .as_ref()
         .or(create_key_pair_request.common_attributes.as_ref())
-        .context("Missing private attributes in ABE Create Keypair request")
-        .reason(ErrorReason::Attribute_Not_Found)?;
+        .ok_or_else(|| {
+            KmsError::InvalidRequest(
+                "Missing private attributes in ABE Create Keypair request".to_string(),
+            )
+        })?;
     let private_key =
         create_user_decryption_key_(kmip_server, private_key_attributes, owner).await?;
 
@@ -299,11 +294,17 @@ where
         .public_key_attributes
         .as_ref()
         .or(create_key_pair_request.common_attributes.as_ref())
-        .context("Missing public attributes in ABE Create Keypair request")
-        .reason(ErrorReason::Attribute_Not_Found)?;
-    let master_public_key_uid = public_key_attributes.get_parent_id().context(
-        "the master public key id should be available in the public creation attributes",
-    )?;
+        .ok_or_else(|| {
+            KmsError::InvalidRequest(
+                "Missing public attributes in ABE Create Keypair request".to_string(),
+            )
+        })?;
+    let master_public_key_uid = public_key_attributes.get_parent_id().ok_or_else(|| {
+        KmsError::InvalidRequest(
+            "the master public key id should be available in the public creation attributes"
+                .to_string(),
+        )
+    })?;
     let gr_public_key = kmip_server
         .get(Get::from(master_public_key_uid), owner)
         .await?;

@@ -1,10 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use alcoholic_jwt::JWKS;
+use eyre::Context;
 use once_cell::sync::OnceCell;
 use tracing::{debug, info};
-
-use crate::{kms_bail, kms_error, result::KResult};
 
 static INSTANCE_CONFIG: OnceCell<SharedConfig> = OnceCell::new();
 
@@ -133,7 +132,7 @@ pub(crate) fn port() -> u16 {
         .port
 }
 
-pub async fn init_config(conf: &Config) -> KResult<()> {
+pub async fn init_config(conf: &Config) -> eyre::Result<()> {
     let delegated_authority_domain: Option<String> = conf
         .delegated_authority_domain
         .to_owned()
@@ -144,17 +143,17 @@ pub async fn init_config(conf: &Config) -> KResult<()> {
         Some(
             reqwest::get(jwks_uri)
                 .await
-                .map_err(|e| kms_error!("Unable to connect to retrieve JWKS: {:?}", e))?
+                .with_context(|| "Unable to connect to retrieve JWKS")?
                 .json::<JWKS>()
                 .await
-                .map_err(|e| kms_error!("Unable to get JWKS as a JSON: {:?}", e))?,
+                .with_context(|| "Unable to get JWKS as a JSON")?,
         )
     } else {
         None
     };
 
     if !conf.postgres_url.is_empty() && !conf.mysql_url.is_empty() {
-        kms_bail!("Postgres and MariaDB/MySQL URL are both set, can't decide which one to use");
+        eyre::bail!("Postgres and MariaDB/MySQL URL are both set, can't decide which one to use");
     }
 
     let db_params = if !conf.postgres_url.is_empty() {
