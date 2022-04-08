@@ -1,5 +1,5 @@
 use cosmian_kmip::{
-    error::KmsCommonError,
+    error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
 use thiserror::Error;
@@ -40,14 +40,14 @@ impl From<TtlvError> for KmsClientError {
     }
 }
 
-impl From<KmsCommonError> for KmsClientError {
-    fn from(e: KmsCommonError) -> Self {
+impl From<KmipError> for KmsClientError {
+    fn from(e: KmipError) -> Self {
         match e {
-            KmsCommonError::InvalidKmipValue(r, s) => KmsClientError::InvalidKmipValue(r, s),
-            KmsCommonError::InvalidKmipObject(r, s) => KmsClientError::InvalidKmipObject(r, s),
-            KmsCommonError::KmipNotSupported(r, s) => KmsClientError::KmipNotSupported(r, s),
-            KmsCommonError::NotSupported(s) => KmsClientError::NotSupported(s),
-            KmsCommonError::KmipError(r, s) => KmsClientError::KmipError(r, s),
+            KmipError::InvalidKmipValue(r, s) => KmsClientError::InvalidKmipValue(r, s),
+            KmipError::InvalidKmipObject(r, s) => KmsClientError::InvalidKmipObject(r, s),
+            KmipError::KmipNotSupported(r, s) => KmsClientError::KmipNotSupported(r, s),
+            KmipError::NotSupported(s) => KmsClientError::NotSupported(s),
+            KmipError::KmipError(r, s) => KmsClientError::KmipError(r, s),
         }
     }
 }

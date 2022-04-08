@@ -1,6 +1,6 @@
 use abe_gpsw::error::FormatErr;
 use cosmian_kmip::{
-    error::KmsCommonError,
+    error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
 use cosmian_kms_utils::error::LibError;
@@ -105,14 +105,14 @@ impl From<LibError> for KmsError {
     }
 }
 
-impl From<KmsCommonError> for KmsError {
-    fn from(e: KmsCommonError) -> Self {
+impl From<KmipError> for KmsError {
+    fn from(e: KmipError) -> Self {
         match e {
-            KmsCommonError::InvalidKmipValue(r, s) => KmsError::InvalidKmipValue(r, s),
-            KmsCommonError::InvalidKmipObject(r, s) => KmsError::InvalidKmipObject(r, s),
-            KmsCommonError::KmipNotSupported(r, s) => KmsError::KmipNotSupported(r, s),
-            KmsCommonError::NotSupported(s) => KmsError::NotSupported(s),
-            KmsCommonError::KmipError(r, s) => KmsError::KmipError(r, s),
+            KmipError::InvalidKmipValue(r, s) => KmsError::InvalidKmipValue(r, s),
+            KmipError::InvalidKmipObject(r, s) => KmsError::InvalidKmipObject(r, s),
+            KmipError::KmipNotSupported(r, s) => KmsError::KmipNotSupported(r, s),
+            KmipError::NotSupported(s) => KmsError::NotSupported(s),
+            KmipError::KmipError(r, s) => KmsError::KmipError(r, s),
         }
     }
 }

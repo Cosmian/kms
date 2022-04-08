@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::KmsCommonError,
+    error::KmipError,
     kmip::{kmip_operations::ErrorReason, kmip_types::Attributes},
 };
 
@@ -26,11 +26,11 @@ impl WrappedSymmetricKey {
 }
 
 impl TryFrom<&Vec<u8>> for WrappedSymmetricKey {
-    type Error = KmsCommonError;
+    type Error = KmipError;
 
-    fn try_from(wrapped_key_bytes: &Vec<u8>) -> Result<Self, KmsCommonError> {
+    fn try_from(wrapped_key_bytes: &Vec<u8>) -> Result<Self, KmipError> {
         serde_json::from_slice(wrapped_key_bytes).map_err(|_e| {
-            KmsCommonError::InvalidKmipValue(
+            KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
                 "failed deserializing to an WrappedSymmetricKey".to_string(),
             )

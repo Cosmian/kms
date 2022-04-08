@@ -1,5 +1,5 @@
 use cosmian_kmip::{
-    error::KmsCommonError,
+    error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
 use thiserror::Error;
@@ -71,14 +71,14 @@ impl From<serde_json::Error> for LibError {
     }
 }
 
-impl From<KmsCommonError> for LibError {
-    fn from(e: KmsCommonError) -> Self {
+impl From<KmipError> for LibError {
+    fn from(e: KmipError) -> Self {
         match e {
-            KmsCommonError::InvalidKmipValue(r, s) => LibError::InvalidKmipValue(r, s),
-            KmsCommonError::InvalidKmipObject(r, s) => LibError::InvalidKmipObject(r, s),
-            KmsCommonError::KmipNotSupported(_, _) => todo!(),
-            KmsCommonError::NotSupported(_) => todo!(),
-            KmsCommonError::KmipError(_, _) => todo!(),
+            KmipError::InvalidKmipValue(r, s) => LibError::InvalidKmipValue(r, s),
+            KmipError::InvalidKmipObject(r, s) => LibError::InvalidKmipObject(r, s),
+            KmipError::KmipNotSupported(_, _) => todo!(),
+            KmipError::NotSupported(_) => todo!(),
+            KmipError::KmipError(_, _) => todo!(),
         }
     }
 }
