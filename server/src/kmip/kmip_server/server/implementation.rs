@@ -35,18 +35,17 @@ use cosmian_mcfe::lwe;
 use torus_fhe::{trlwe::TRLWEKey, HasGenerator};
 use tracing::{debug, trace};
 
-use super::KMS;
+use super::{
+    abe::{create_user_decryption_key, create_user_decryption_key_pair},
+    KMS,
+};
 #[cfg(feature = "pgsql")]
 use crate::kmip::kmip_server::pgsql::Pgsql;
 use crate::{
     config::{db_params, DbParams},
     error::KmsError,
     kmip::kmip_server::{
-        abe::{create_user_decryption_key, create_user_decryption_key_pair},
-        database::Database,
-        mysql::Sql,
-        pgsql::Pgsql,
-        server::kmip_server::KmipServer,
+        database::Database, mysql::Sql, pgsql::Pgsql, server::kmip_server::KmipServer,
         sqlite::SqlitePool,
     },
     kms_bail,

@@ -18,13 +18,8 @@ use cosmian_kmip::kmip::{
 use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
-use super::KMS;
-use crate::{
-    error::KmsError,
-    kmip::kmip_server::{abe::rekey_keypair_abe, server::implementation::contains_attributes},
-    kms_bail,
-    result::KResult,
-};
+use super::{abe::rekey_keypair_abe, implementation::contains_attributes, KMS};
+use crate::{error::KmsError, kms_bail, result::KResult};
 
 #[async_trait]
 pub trait KmipServer {
