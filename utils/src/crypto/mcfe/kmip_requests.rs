@@ -6,13 +6,12 @@ use cosmian_kmip::kmip::{
         VendorAttributeReference,
     },
 };
-use cosmian_kms_utils::crypto::mcfe::vendor_attributes_from_mcfe_setup;
 use cosmian_mcfe::lwe;
 
-use crate::result::KResult;
+use crate::{crypto::mcfe::operation::vendor_attributes_from_mcfe_setup, result::LibResult};
 
 /// Build a `CreateRequest` for an LWE Secret Key
-pub fn lwe_secret_key_create_request(setup: &lwe::Setup) -> KResult<Create> {
+pub fn lwe_secret_key_create_request(setup: &lwe::Setup) -> LibResult<Create> {
     Ok(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {

@@ -5,7 +5,10 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Get, GetAttributes},
 };
 use cosmian_kms_utils::crypto::mcfe::{
-    mcfe_secret_key_from_key_block, mcfe_setup_from_attributes, secret_key_from_lwe_secret_key,
+    kmip_requests::{lwe_secret_key_create_request, lwe_setup_attribute_reference},
+    operation::{
+        mcfe_secret_key_from_key_block, mcfe_setup_from_attributes, secret_key_from_lwe_secret_key,
+    },
 };
 use cosmian_mcfe::lwe;
 use num_bigint::BigUint;
@@ -14,12 +17,7 @@ use uuid::Uuid;
 use crate::{
     config::init_config,
     error::KmsError,
-    kmip::{
-        kmip_server::{server::kmip_server::KmipServer, KMSServer},
-        tests::mcfe_tests::kmip_requests::{
-            lwe_secret_key_create_request, lwe_setup_attribute_reference,
-        },
-    },
+    kmip::kmip_server::{server::kmip_server::KmipServer, KMSServer},
     kms_bail,
     result::KResult,
 };

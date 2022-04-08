@@ -1,8 +1,10 @@
 use cosmian_kmip::kmip::kmip_operations::{Decrypt, Encrypt};
-use cosmian_kms_utils::crypto::fpe::{AlphabetCharacters, FpeText};
 use tracing::debug;
 
-use crate::result::KResult;
+use crate::{
+    crypto::fpe::operation::{AlphabetCharacters, FpeText},
+    result::LibResult,
+};
 
 /// Build an FPE Encryption Request to encrypt the provided `data`. Serialize
 /// the alphabet used in FPE in the `data` to encrypt
@@ -11,7 +13,7 @@ pub fn fpe_build_encryption_request(
     tweak: Vec<u8>,
     alphabet_characters: AlphabetCharacters,
     input: &str,
-) -> KResult<Encrypt> {
+) -> LibResult<Encrypt> {
     let alphabet_and_data = FpeText {
         alphabet_characters,
         input: input.to_string(),

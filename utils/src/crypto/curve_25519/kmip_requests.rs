@@ -9,9 +9,16 @@ use cosmian_kmip::kmip::{
         RecommendedCurve,
     },
 };
-use cosmian_kms_utils::crypto::curve_25519::{self, PUBLIC_KEY_LENGTH, Q_LENGTH_BITS};
 
-use crate::{error::KmsError, kms_error, result::KResult};
+use crate::{
+    crypto::curve_25519::operation::{
+        to_curve_25519_256_private_key, to_curve_25519_256_public_key, PUBLIC_KEY_LENGTH,
+        Q_LENGTH_BITS, SECRET_KEY_LENGTH,
+    },
+    error::LibError,
+    lib_error,
+    result::LibResult,
+};
 
 /// Build a `CreateKeyPairRequest` for a curve 25519 key pair
 pub fn create_key_pair_request() -> CreateKeyPair {
@@ -60,48 +67,44 @@ pub fn get_public_key_request(uid: &str) -> Get {
 }
 
 /// parse bytes as a curve 25519 public key
-pub fn parse_public_key(bytes: &[u8]) -> KResult<Object> {
+pub fn parse_public_key(bytes: &[u8]) -> LibResult<Object> {
     if bytes.len() != PUBLIC_KEY_LENGTH {
-        return Err(kms_error!(
+        return Err(lib_error!(
             "Invalid public key len: {}, it should be: {} bytes",
             bytes.len(),
             PUBLIC_KEY_LENGTH
         ))
     }
-    Ok(curve_25519::to_curve_25519_256_public_key(bytes))
+    Ok(to_curve_25519_256_public_key(bytes))
 }
 
 /// parse bytes as a curve 25519 private key
-pub fn parse_private_key(bytes: &[u8]) -> KResult<Object> {
-    if bytes.len() != curve_25519::SECRET_KEY_LENGTH {
-        return Err(kms_error!(
+pub fn parse_private_key(bytes: &[u8]) -> LibResult<Object> {
+    if bytes.len() != SECRET_KEY_LENGTH {
+        return Err(lib_error!(
             "Invalid private key len: {}, it should be: {} bytes",
             bytes.len(),
-            curve_25519::SECRET_KEY_LENGTH
+            SECRET_KEY_LENGTH
         ))
     }
-    Ok(curve_25519::to_curve_25519_256_private_key(bytes))
+    Ok(to_curve_25519_256_private_key(bytes))
 }
 
 #[allow(non_snake_case)]
-pub fn extract_key_bytes(pk: &Object) -> KResult<Vec<u8>> {
+pub fn extract_key_bytes(pk: &Object) -> LibResult<Vec<u8>> {
     let key_block = match pk {
         Object::PublicKey { key_block } => key_block.clone(),
-        _ => {
-            return Err(KmsError::ServerError(
-                "Expected a KMIP Public Key".to_owned(),
-            ))
-        }
+        _ => return Err(LibError::Error("Expected a KMIP Public Key".to_owned())),
     };
     let (key_material, _) = key_block.key_value.plaintext().ok_or_else(|| {
-        KmsError::ServerError("The public key should be a plain text key value".to_owned())
+        LibError::Error("The public key should be a plain text key value".to_owned())
     })?;
     match key_material {
         KeyMaterial::TransparentECPublicKey {
             recommended_curve: _,
             q_string: QString,
         } => Ok(QString.clone()),
-        _ => Err(KmsError::ServerError(
+        _ => Err(LibError::Error(
             "The provided object is not an Elliptic Curve Public Key".to_owned(),
         )),
     }

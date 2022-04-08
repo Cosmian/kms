@@ -1280,6 +1280,9 @@ dependencies = [
  "thiserror",
  "torus_fhe",
  "tracing",
+ "tracing-log",
+ "tracing-subscriber",
+ "tracing-tree",
  "twelf",
  "uuid",
 ]

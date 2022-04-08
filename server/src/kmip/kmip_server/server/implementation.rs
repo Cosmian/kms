@@ -19,9 +19,9 @@ use cosmian_kms_utils::{
             secret_key::wrapped_secret_key,
         },
         aes::{create_aes_symmetric_key, AesGcmCipher},
-        curve_25519::{self},
-        fpe::FpeCipher,
-        mcfe::{
+        curve_25519::operation::generate_key_pair,
+        fpe::operation::FpeCipher,
+        mcfe::operation::{
             mcfe_master_key_from_key_block, mcfe_setup_from_attributes,
             secret_data_from_lwe_functional_key, secret_key_from_lwe_master_secret_key,
             secret_key_from_lwe_secret_key, setup_from_secret_key, DMcfeDeCipher, DMcfeEnCipher,
@@ -426,9 +426,7 @@ impl KMS {
                         .cryptographic_domain_parameters
                         .unwrap_or_default();
                     match dp.recommended_curve.unwrap_or_default() {
-                        RecommendedCurve::CURVE25519 => {
-                            curve_25519::generate_key_pair().map_err(Into::into)
-                        }
+                        RecommendedCurve::CURVE25519 => generate_key_pair().map_err(Into::into),
                         other => kms_bail!(KmsError::NotSupported(format!(
                             "Generation of Key Pair for curve: {:?}, is not supported",
                             other
