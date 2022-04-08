@@ -482,10 +482,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use cosmian_kmip::{
-        kmip::{access::ObjectOperationTypes, kmip_types::StateEnumeration},
-        log_utils::log_init,
-    };
+    use cosmian_kmip::kmip::{access::ObjectOperationTypes, kmip_types::StateEnumeration};
     use cosmian_kms_utils::crypto::aes::create_aes_symmetric_key;
     use tempfile::tempdir;
     use uuid::Uuid;
@@ -493,6 +490,7 @@ mod tests {
     use crate::{
         kmip::kmip_server::{database::Database, sqlite::SqlitePool},
         kms_bail,
+        log_utils::log_init,
         result::KResult,
     };
 

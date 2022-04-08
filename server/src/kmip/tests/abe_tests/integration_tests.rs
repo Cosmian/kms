@@ -15,12 +15,13 @@ use cosmian_kms_utils::crypto::abe::kmip_requests::{
 use crate::{
     config::{init_config, Config},
     kmip::tests::test_utils,
+    log_utils,
     result::{KResult, KResultHelper},
 };
 
 #[actix_web::test]
 async fn integration_tests() -> KResult<()> {
-    cosmian_kmip::log_utils::log_init("cosmian_kms_server=trace");
+    log_utils::log_init("cosmian_kms_server=trace");
 
     let config = Config {
         delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),

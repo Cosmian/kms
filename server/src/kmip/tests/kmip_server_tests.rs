@@ -1,17 +1,14 @@
 use std::{convert::TryFrom, sync::Arc};
 
-use cosmian_kmip::{
-    kmip::{
-        access::ObjectOperationTypes,
-        kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::Import,
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
-            KeyWrapType, LinkType, LinkedObjectIdentifier, StateEnumeration, WrappingMethod,
-        },
+use cosmian_kmip::kmip::{
+    access::ObjectOperationTypes,
+    kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::Import,
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType, KeyWrapType,
+        LinkType, LinkedObjectIdentifier, StateEnumeration, WrappingMethod,
     },
-    log_utils::log_init,
 };
 use cosmian_kms_utils::crypto::{curve_25519, mcfe::secret_key_from_lwe_secret_key};
 use cosmian_mcfe::lwe;
@@ -29,6 +26,7 @@ use crate::{
         },
         tests::curve_25519_tests,
     },
+    log_utils::log_init,
     result::KResult,
 };
 
