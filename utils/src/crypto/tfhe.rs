@@ -1,10 +1,13 @@
 use std::convert::TryFrom;
 
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::Object,
-    kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse, ErrorReason},
-    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, VendorAttribute},
+use cosmian_kmip::{
+    error::KmipError,
+    kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse, ErrorReason},
+        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, VendorAttribute},
+    },
 };
 use rand_core::SeedableRng;
 use serde::{Deserialize, Serialize};
@@ -14,12 +17,7 @@ use torus_fhe::{
     typenum::{U1023, U512},
 };
 
-use crate::{
-    error::LibError,
-    lib_error,
-    result::{LibResult, LibResultHelper},
-    DeCipher, EnCipher,
-};
+use crate::{DeCipher, EnCipher};
 
 type N = U512;
 //*** LUT Parameters
@@ -39,49 +37,69 @@ pub struct TFHEKeyCreateRequest {
 
 /// Create `VendorAttribute` to set in a `CreateRequest`
 impl TryFrom<&TFHEKeyCreateRequest> for VendorAttribute {
-    type Error = LibError;
+    type Error = KmipError;
 
-    fn try_from(request: &TFHEKeyCreateRequest) -> LibResult<Self> {
+    fn try_from(request: &TFHEKeyCreateRequest) -> Result<Self, KmipError> {
         Ok(VendorAttribute {
             vendor_identification: "cosmian".to_owned(),
             attribute_name: "tfhe_key_create_request".to_owned(),
-            attribute_value: serde_json::to_vec(&request)
-                .context("failed serializing the key setup value")
-                .reason(ErrorReason::Invalid_Attribute_Value)?,
+            attribute_value: serde_json::to_vec(&request).map_err(|_| {
+                KmipError::InvalidKmipObject(
+                    ErrorReason::Invalid_Attribute_Value,
+                    "failed serializing the key setup value".to_string(),
+                )
+            })?,
         })
     }
 }
 
 impl TryFrom<&VendorAttribute> for TFHEKeyCreateRequest {
-    type Error = LibError;
+    type Error = KmipError;
 
-    fn try_from(attribute: &VendorAttribute) -> LibResult<Self> {
+    fn try_from(attribute: &VendorAttribute) -> Result<Self, KmipError> {
         if &attribute.vendor_identification != "cosmian"
             || &attribute.attribute_name != "tfhe_key_create_request"
         {
-            return Err(lib_error!("the attributes in not a key create request"))
-                .reason(ErrorReason::Invalid_Attribute_Value)
+            return Err(KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Attribute_Value,
+                "the attributes in not a key create request".to_string(),
+            ))
         }
-        serde_json::from_slice::<TFHEKeyCreateRequest>(&attribute.attribute_value)
-            .context("failed deserializing the Key Create Request")
-            .reason(ErrorReason::Invalid_Attribute_Value)
+        serde_json::from_slice::<TFHEKeyCreateRequest>(&attribute.attribute_value).map_err(|_| {
+            KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Attribute_Value,
+                "failed deserializing the Key Create Request".to_string(),
+            )
+        })
     }
 }
 
 impl TryFrom<&Attributes> for TFHEKeyCreateRequest {
-    type Error = LibError;
+    type Error = KmipError;
 
-    fn try_from(attributes: &Attributes) -> LibResult<Self> {
-        let vdr = attributes.vendor_attributes.as_ref().context(
-            "the attributes do not contain any vendor attribute, hence no shared key setup data",
-        )?;
+    fn try_from(attributes: &Attributes) -> Result<Self, KmipError> {
+        let vdr = attributes.vendor_attributes.as_ref().ok_or_else(|| {
+            KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Attribute_Value,
+                "the attributes do not contain any vendor attribute, hence no shared key setup
+                 data"
+                    .to_string(),
+            )
+        })?;
+
         let va = vdr
             .iter()
             .find(|att| {
                 &att.attribute_name == "tfhe_key_create_request"
                     && &att.vendor_identification == "cosmian"
             })
-            .context("this attribute response does not contain a Shared Key Create Request")?;
+            .ok_or_else(|| {
+                KmipError::InvalidKmipObject(
+                    ErrorReason::Invalid_Attribute_Value,
+                    "this attribute response does not contain a Shared Key Create Request"
+                        .to_string(),
+                )
+            })?;
         TFHEKeyCreateRequest::try_from(va)
     }
 }
@@ -93,11 +111,12 @@ pub struct Cipher {
 }
 
 impl Cipher {
-    pub fn instantiate(uid: impl Into<String>, shared_key: &Object) -> LibResult<Self> {
+    pub fn instantiate(uid: impl Into<String>, shared_key: &Object) -> Result<Self, KmipError> {
         let key_block = match shared_key {
             Object::SymmetricKey { key_block } => key_block.clone(),
             _ => {
-                return Err(LibError::Error(
+                return Err(KmipError::InvalidKmipObject(
+                    ErrorReason::Invalid_Message,
                     "Expected a LWE Secret Key in a KMIP Symmetric Key".to_owned(),
                 ))
             }
@@ -114,15 +133,19 @@ impl Cipher {
 }
 
 impl EnCipher for Cipher {
-    fn encrypt(&self, request: &Encrypt) -> LibResult<EncryptResponse> {
+    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipError> {
         let enc_code = match &request.data {
             None => None,
             Some(d) => {
                 let shared_key = self.shared_key.to_vec()?;
-                let shared_key = serde_json::from_slice(&shared_key)?;
+                let shared_key = serde_json::from_slice(&shared_key).map_err(|e| {
+                    KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string())
+                })?;
 
                 let mut vec = T32RLWEPoly::<D>::default();
-                let d: Vec<u32> = serde_json::from_slice(d)?;
+                let d: Vec<u32> = serde_json::from_slice(d).map_err(|e| {
+                    KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string())
+                })?;
                 for (dest, val) in vec.iter_mut().zip(d) {
                     *dest = T32::encode(val);
                 }
@@ -130,7 +153,9 @@ impl EnCipher for Cipher {
                 let mut res =
                     T32RLWESample::<N, D>::gen_from(&mut rng, &shared_key, self.noise_deviation);
                 res += vec;
-                Some(serde_json::to_vec(&res)?)
+                Some(serde_json::to_vec(&res).map_err(|e| {
+                    KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string())
+                })?)
             }
         };
         Ok(EncryptResponse {
@@ -144,22 +169,28 @@ impl EnCipher for Cipher {
 }
 
 impl DeCipher for Cipher {
-    fn decrypt(&self, request: &Decrypt) -> LibResult<DecryptResponse> {
+    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, KmipError> {
         let messages_bytes = match &request.data {
             None => None,
             Some(d) => {
                 let shared_key = self.shared_key.to_vec()?;
-                let shared_key = serde_json::from_slice(&shared_key)?;
-                let d: T32RLWESample<N, D> = serde_json::from_slice(d)
-                    .context("FHE: failed deserializing the messages to encrypt")
-                    .reason(ErrorReason::Invalid_Message)?;
+                let shared_key = serde_json::from_slice(&shared_key).map_err(|e| {
+                    KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string())
+                })?;
+                let d: T32RLWESample<N, D> = serde_json::from_slice(d).map_err(|_| {
+                    KmipError::KmipError(
+                        ErrorReason::Invalid_Message,
+                        "FHE: failed deserializing the messages to encrypt".to_string(),
+                    )
+                })?;
 
                 let decrypted: Vec<u32> = d.decrypt(&shared_key).iter().copied().collect();
-                Some(
-                    serde_json::to_vec(&decrypted)
-                        .context("DMCFE: failed serializing the messages")
-                        .reason(ErrorReason::Invalid_Message)?,
-                )
+                Some(serde_json::to_vec(&decrypted).map_err(|_| {
+                    KmipError::KmipError(
+                        ErrorReason::Invalid_Message,
+                        "DMCFE: failed serializing the messages".to_string(),
+                    )
+                })?)
             }
         };
         Ok(DecryptResponse {

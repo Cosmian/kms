@@ -1,12 +1,15 @@
 use abe_gpsw::core::policy::{AccessPolicy, Attribute, Policy};
-use cosmian_kmip::kmip::{
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{
-        Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Import, Locate, ReKeyKeyPair, Revoke,
-    },
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-        RevocationReason,
+use cosmian_kmip::{
+    error::KmipError,
+    kmip::{
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{
+            Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Import, Locate, ReKeyKeyPair, Revoke,
+        },
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, RevocationReason,
+        },
     },
 };
 use serde::{Deserialize, Serialize};
@@ -14,10 +17,8 @@ use serde::{Deserialize, Serialize};
 use super::attributes::{
     access_policy_as_vendor_attribute, attributes_as_vendor_attribute, policy_as_vendor_attribute,
 };
-use crate::{error::LibError, result::LibResult};
-
 /// Build a `CreateKeyPair` request for an ABE Master Key
-pub fn build_create_master_keypair_request(policy: &Policy) -> LibResult<CreateKeyPair> {
+pub fn build_create_master_keypair_request(policy: &Policy) -> Result<CreateKeyPair, KmipError> {
     Ok(CreateKeyPair {
         common_attributes: Some(Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
@@ -34,7 +35,7 @@ pub fn build_create_user_decryption_key_pair_request(
     access_policy: &AccessPolicy,
     abe_master_private_key_id: &str,
     abe_master_public_key_id: &str,
-) -> LibResult<CreateKeyPair> {
+) -> Result<CreateKeyPair, KmipError> {
     Ok(CreateKeyPair {
         private_key_attributes: Some(Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
@@ -68,7 +69,7 @@ pub fn build_create_user_decryption_key_pair_request(
 pub fn build_create_user_decryption_private_key_request(
     access_policy: &AccessPolicy,
     abe_master_private_key_id: &str,
-) -> LibResult<Create> {
+) -> Result<Create, KmipError> {
     Ok(Create {
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
@@ -95,7 +96,7 @@ pub fn build_import_private_key_request(
     private_key: Object,
     unique_identifier: Option<String>,
     replace_existing: bool,
-) -> LibResult<Import> {
+) -> Result<Import, KmipError> {
     let mut attributes = private_key.key_block()?.key_value.attributes()?.clone();
     attributes.set_object_type(ObjectType::PrivateKey);
     Ok(Import {
@@ -115,7 +116,7 @@ pub fn build_import_public_key_request(
     public_key: Object,
     unique_identifier: Option<String>,
     replace_existing: bool,
-) -> LibResult<Import> {
+) -> Result<Import, KmipError> {
     Ok(Import {
         unique_identifier: unique_identifier.unwrap_or_else(|| "".to_owned()),
         object_type: ObjectType::PublicKey,
@@ -127,7 +128,9 @@ pub fn build_import_public_key_request(
 }
 
 /// Build a `Locate` request to locate an ABE Symmetric Key
-pub fn build_locate_symmetric_key_request(access_policy: &AccessPolicy) -> LibResult<Locate> {
+pub fn build_locate_symmetric_key_request(
+    access_policy: &AccessPolicy,
+) -> Result<Locate, KmipError> {
     Ok(Locate {
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -144,7 +147,7 @@ pub fn build_locate_symmetric_key_request(access_policy: &AccessPolicy) -> LibRe
 pub fn build_revoke_user_decryption_key_request(
     unique_identifier: &str,
     revocation_reason: RevocationReason,
-) -> LibResult<Revoke> {
+) -> Result<Revoke, KmipError> {
     Ok(Revoke {
         unique_identifier: Some(unique_identifier.to_string()),
         revocation_reason,
@@ -153,7 +156,7 @@ pub fn build_revoke_user_decryption_key_request(
 }
 
 /// Build a `Revoke` request to locate an ABE User Decryption Key
-pub fn build_destroy_key_request(unique_identifier: &str) -> LibResult<Destroy> {
+pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, KmipError> {
     Ok(Destroy {
         unique_identifier: Some(unique_identifier.to_string()),
     })
@@ -167,7 +170,7 @@ pub fn build_destroy_key_request(unique_identifier: &str) -> LibResult<Destroy> 
 pub fn build_rekey_keypair_request(
     master_private_key_unique_identifier: &str,
     abe_policy_attributes: Vec<abe_gpsw::core::policy::Attribute>,
-) -> LibResult<ReKeyKeyPair> {
+) -> Result<ReKeyKeyPair, KmipError> {
     Ok(ReKeyKeyPair {
         private_key_unique_identifier: Some(master_private_key_unique_identifier.to_string()),
         private_key_attributes: Some(Attributes {
@@ -196,7 +199,7 @@ pub fn build_hybrid_encryption_request(
     policy_attributes: Vec<Attribute>,
     resource_uid: Vec<u8>,
     data: Vec<u8>,
-) -> LibResult<Encrypt> {
+) -> Result<Encrypt, serde_json::Error> {
     let data = DataToEncrypt {
         policy_attributes,
         data,
@@ -204,9 +207,7 @@ pub fn build_hybrid_encryption_request(
     Ok(Encrypt {
         unique_identifier: Some(public_key_identifier.to_owned()),
         cryptographic_parameters: None,
-        data: Some(serde_json::to_vec(&data).map_err(|_| {
-            LibError::UnexpectedError("unexpected error serializing data to JSON".to_string())
-        })?),
+        data: Some(serde_json::to_vec(&data)?),
         iv_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,

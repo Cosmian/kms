@@ -1,16 +1,13 @@
 use std::convert::TryFrom;
 
-use cosmian_kmip::kmip::{
-    kmip_operations::ErrorReason,
-    kmip_types::{Attributes, VendorAttribute},
+use cosmian_kmip::{
+    error::KmipError,
+    kmip::{
+        kmip_operations::ErrorReason,
+        kmip_types::{Attributes, VendorAttribute},
+    },
 };
 use serde::{Deserialize, Serialize};
-
-use crate::{
-    error::LibError,
-    lib_error,
-    result::{LibResult, LibResultHelper},
-};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EnclaveSharedKeyCreateRequest {
@@ -22,51 +19,72 @@ pub struct EnclaveSharedKeyCreateRequest {
 /// Create enclave `VendorAttribute` to set in a `CreateRequest` for a DH shared
 /// Key
 impl TryFrom<&EnclaveSharedKeyCreateRequest> for VendorAttribute {
-    type Error = LibError;
+    type Error = KmipError;
 
-    fn try_from(request: &EnclaveSharedKeyCreateRequest) -> LibResult<Self> {
+    fn try_from(request: &EnclaveSharedKeyCreateRequest) -> Result<Self, KmipError> {
         Ok(VendorAttribute {
             vendor_identification: "cosmian".to_owned(),
             attribute_name: "enclave_shared_key_create_request".to_owned(),
-            attribute_value: serde_json::to_vec(&request)
-                .context("failed serializing the shared key setup value")
-                .reason(ErrorReason::Invalid_Attribute_Value)?,
+            attribute_value: serde_json::to_vec(&request).map_err(|_| {
+                KmipError::InvalidKmipObject(
+                    ErrorReason::Invalid_Attribute_Value,
+                    "failed serializing the shared key setup value".to_string(),
+                )
+            })?,
         })
     }
 }
 
 impl TryFrom<&VendorAttribute> for EnclaveSharedKeyCreateRequest {
-    type Error = LibError;
+    type Error = KmipError;
 
-    fn try_from(attribute: &VendorAttribute) -> LibResult<Self> {
+    fn try_from(attribute: &VendorAttribute) -> Result<Self, KmipError> {
         if &attribute.vendor_identification != "cosmian"
             || &attribute.attribute_name != "enclave_shared_key_create_request"
         {
-            return Err(lib_error!(
-                "the attributes in not a shared key create request"
+            return Err(KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Attribute_Value,
+                "the attributes in not a shared key create request".to_string(),
             ))
-            .reason(ErrorReason::Invalid_Attribute_Value)
         }
-        serde_json::from_slice::<EnclaveSharedKeyCreateRequest>(&attribute.attribute_value)
-            .context("failed deserializing the Shared Key Create Request")
-            .reason(ErrorReason::Invalid_Attribute_Value)
+        serde_json::from_slice::<EnclaveSharedKeyCreateRequest>(&attribute.attribute_value).map_err(
+            |_| {
+                KmipError::InvalidKmipObject(
+                    ErrorReason::Invalid_Attribute_Value,
+                    "failed deserializing the Shared Key Create Request".to_string(),
+                )
+            },
+        )
     }
 }
 
 impl TryFrom<&Attributes> for EnclaveSharedKeyCreateRequest {
-    type Error = LibError;
+    type Error = KmipError;
 
-    fn try_from(attributes: &Attributes) -> LibResult<Self> {
-        let vdr = attributes.vendor_attributes.as_ref().context(
-            "the attributes do not contain any vendor attribute, hence no shared key setup data",
-        )?;
+    fn try_from(attributes: &Attributes) -> Result<Self, KmipError> {
+        let vdr = attributes.vendor_attributes.as_ref().ok_or_else(|| {
+            KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Attribute_Value,
+                "the attributes do not contain any vendor attribute, hence no shared key setup \
+                 data"
+                    .to_string(),
+            )
+        })?;
+
         let va = vdr
             .iter()
             .find(|att| {
                 &att.attribute_name == "enclave_shared_key_create_request"
                     && &att.vendor_identification == "cosmian"
             })
-            .context("this attribute response does not contain a Shared Key Create Request")?;
+            .ok_or_else(|| {
+                KmipError::InvalidKmipObject(
+                    ErrorReason::Invalid_Attribute_Value,
+                    "the attributes do not contain any vendor attribute, hence no shared key \
+                     setup data"
+                        .to_string(),
+                )
+            })?;
         EnclaveSharedKeyCreateRequest::try_from(va)
     }
 }

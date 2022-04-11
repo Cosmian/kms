@@ -1,16 +1,19 @@
 use cosmian_crypto_base::sodium_bindings;
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::ErrorReason,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicDomainParameters, CryptographicParameters,
-        CryptographicUsageMask, KeyFormatType, RecommendedCurve,
+use cosmian_kmip::{
+    error::KmipError,
+    kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::ErrorReason,
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
+            CryptographicParameters, CryptographicUsageMask, KeyFormatType, RecommendedCurve,
+        },
     },
 };
 use num_bigint::BigUint;
 
-use crate::{error::LibError, result::LibResult, KeyPair};
+use crate::KeyPair;
 
 pub const SECRET_KEY_LENGTH: usize = sodium_bindings::crypto_box_SECRETKEYBYTES as usize;
 pub const PUBLIC_KEY_LENGTH: usize = sodium_bindings::crypto_box_PUBLICKEYBYTES as usize;
@@ -89,14 +92,14 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8]) -> Object {
 }
 
 /// Generate a key CURVE 25519 Key Pair
-pub fn generate_key_pair() -> LibResult<KeyPair> {
+pub fn generate_key_pair() -> Result<KeyPair, KmipError> {
     let mut pk = [0_u8; PUBLIC_KEY_LENGTH];
     let mut sk = [0_u8; SECRET_KEY_LENGTH];
     if unsafe { sodium_bindings::crypto_kx_keypair(pk.as_mut_ptr(), sk.as_mut_ptr()) } != 0 {
-        return Err(
-            LibError::Error("Failed to create a curve 25519 key pair".to_owned())
-                .reason(ErrorReason::Invalid_Message),
-        )
+        return Err(KmipError::InvalidKmipObject(
+            ErrorReason::Invalid_Message,
+            "Failed to create a curve 25519 key pair".to_owned(),
+        ))
     }
     let public_key = to_curve_25519_256_public_key(&pk);
     let private_key = to_curve_25519_256_private_key(&sk);

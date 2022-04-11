@@ -1,17 +1,20 @@
-use cosmian_kmip::kmip::{
-    kmip_objects::ObjectType,
-    kmip_operations::Create,
-    kmip_types::{
-        AttributeReference, Attributes, CryptographicAlgorithm, KeyFormatType,
-        VendorAttributeReference,
+use cosmian_kmip::{
+    error::KmipError,
+    kmip::{
+        kmip_objects::ObjectType,
+        kmip_operations::Create,
+        kmip_types::{
+            AttributeReference, Attributes, CryptographicAlgorithm, KeyFormatType,
+            VendorAttributeReference,
+        },
     },
 };
 use cosmian_mcfe::lwe;
 
-use crate::{crypto::mcfe::operation::vendor_attributes_from_mcfe_setup, result::LibResult};
+use crate::crypto::mcfe::operation::vendor_attributes_from_mcfe_setup;
 
 /// Build a `CreateRequest` for an LWE Secret Key
-pub fn lwe_secret_key_create_request(setup: &lwe::Setup) -> LibResult<Create> {
+pub fn lwe_secret_key_create_request(setup: &lwe::Setup) -> Result<Create, KmipError> {
     Ok(Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {

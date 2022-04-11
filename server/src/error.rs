@@ -3,7 +3,6 @@ use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
-use cosmian_kms_utils::error::LibError;
 use thiserror::Error;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
@@ -89,29 +88,11 @@ impl From<FormatErr> for KmsError {
 impl From<KmipError> for KmsError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(_, s) => KmsError::InvalidRequest(s),
-            KmipError::InvalidKmipObject(_, s) => KmsError::InvalidRequest(s),
-            KmipError::KmipNotSupported(_, s) => KmsError::InvalidRequest(s),
-            KmipError::NotSupported(s) => KmsError::NotSupported(s), //TODO
+            KmipError::InvalidKmipValue(r, s) => KmsError::KmipError(r, s),
+            KmipError::InvalidKmipObject(r, s) => KmsError::KmipError(r, s),
+            KmipError::KmipNotSupported(_, s) => KmsError::NotSupported(s),
+            KmipError::NotSupported(s) => KmsError::NotSupported(s),
             KmipError::KmipError(r, s) => KmsError::KmipError(r, s),
-        }
-    }
-}
-
-impl From<LibError> for KmsError {
-    fn from(e: LibError) -> Self {
-        // TODO: rework that after liberror been reworked
-        match e {
-            LibError::TtlvError(s) => KmsError::InvalidRequest(s), //TODO
-            LibError::RequestFailed(s) => KmsError::InvalidRequest(s),
-            LibError::ResponseFailed(s) => KmsError::InvalidRequest(s),
-            LibError::UnexpectedError(s) => KmsError::InvalidRequest(s),
-            LibError::InvalidKmipValue(_, s) => KmsError::InvalidRequest(s),
-            LibError::InvalidKmipObject(_, s) => KmsError::InvalidRequest(s),
-            LibError::CryptographicError(_, s) => KmsError::InvalidRequest(s),
-            LibError::InvalidRequest(s) => KmsError::InvalidRequest(s),
-            LibError::Error(s) => KmsError::NotSupported(s),
-            LibError::KmipError(_, s) => KmsError::InvalidRequest(s),
         }
     }
 }

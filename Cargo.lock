@@ -1297,7 +1297,6 @@ dependencies = [
  "cosmian_crypto_base 0.5.2",
  "cosmian_kmip",
  "cosmian_mcfe",
- "eyre",
  "hex",
  "http",
  "num-bigint 0.4.3",
