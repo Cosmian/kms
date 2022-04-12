@@ -9,7 +9,7 @@ use super::kmip_types::Attributes;
 use crate::{
     error::KmipError,
     kmip::{
-        kmip_data_structures::KeyBlock,
+        kmip_data_structures::{KeyBlock, KeyValue},
         kmip_operations::ErrorReason,
         kmip_types::{
             CertificateRequestType, CertificateType, OpaqueDataType, SecretDataType, SplitKeyMethod,
@@ -159,11 +159,11 @@ impl Object {
     pub fn attributes(&self) -> Result<Option<&Attributes>, KmipError> {
         let key_block = self.key_block()?;
         match &key_block.key_value {
-            super::kmip_data_structures::KeyValue::PlainText {
+            KeyValue::PlainText {
                 key_material: _,
                 attributes,
             } => Ok(attributes.as_ref()),
-            super::kmip_data_structures::KeyValue::Wrapped(_) => Err(KmipError::InvalidKmipObject(
+            KeyValue::Wrapped(_) => Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Object_Type,
                 "This object is wrapped and the attributes cannot be accessed".to_string(),
             )),
@@ -175,11 +175,11 @@ impl Object {
     pub fn attributes_mut(&mut self) -> Result<Option<&mut Attributes>, KmipError> {
         let key_block = self.key_block_mut()?;
         match &mut key_block.key_value {
-            super::kmip_data_structures::KeyValue::PlainText {
+            KeyValue::PlainText {
                 key_material: _,
                 attributes,
             } => Ok(attributes.as_mut()),
-            super::kmip_data_structures::KeyValue::Wrapped(_) => Err(KmipError::InvalidKmipObject(
+            KeyValue::Wrapped(_) => Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Object_Type,
                 "This object is wrapped and the attributes cannot be accessed".to_string(),
             )),

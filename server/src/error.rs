@@ -12,7 +12,7 @@ pub enum KmsError {
     #[error("Not Supported route: {0}")]
     RouteNotFound(String),
 
-    // When a user requests soemthing not supported by the server
+    // When a user requests something not supported by the server
     #[error("Not Supported: {0}")]
     NotSupported(String),
 

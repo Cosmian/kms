@@ -78,7 +78,7 @@ pub fn mcfe_master_key_from_key_block(
     if sk.key_format_type != KeyFormatType::McfeMasterSecretKey {
         return Err(KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
-            "222 this Secret Key does not contain an (D)MCFE Key".to_string(),
+            "this Secret Key does not contain an (D)MCFE Key".to_string(),
         ))
     }
 
@@ -130,7 +130,7 @@ pub fn mcfe_functional_key_from_key_block(
     if sk.key_format_type != KeyFormatType::McfeFunctionalKey {
         return Err(KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
-            "333 this Secret Key does not contain an (D)MCFE Key".to_string(),
+            "this Secret Key does not contain an (D)MCFE Key".to_string(),
         ))
     }
 
@@ -184,7 +184,7 @@ pub fn mcfe_secret_key_from_key_block(
     {
         return Err(KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
-            "1111 this Secret Key does not contain an (D)MCFE Key".to_string(),
+            "this Secret Key does not contain an (D)MCFE Key".to_string(),
         ))
     }
 
