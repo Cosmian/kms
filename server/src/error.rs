@@ -36,7 +36,7 @@ pub enum KmsError {
     #[error("{0}: {1}")]
     KmipError(ErrorReason, String),
 
-    // Any errors related to a bad bahaviour of the DB but not related to the user input
+    // Any errors related to a bad behaviour of the DB but not related to the user input
     #[error("Database Error: {0}")]
     DatabaseError(String),
 
