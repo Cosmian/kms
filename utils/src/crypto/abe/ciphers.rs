@@ -184,7 +184,7 @@ impl DeCipher for AbeHybridDecipher {
         if encrypted_header_size + 4 >= encrypted_data.len() {
             return Err(KmipError::KmipError(
                 ErrorReason::Invalid_Message,
-                "Bad or corrupted encrypted files".to_string(),
+                "Bad or corrupted encrypted data".to_string(),
             ))
         }
 
