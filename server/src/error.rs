@@ -18,7 +18,7 @@ pub enum KmsError {
 
     // When a user requests with place holder id arg.
     #[error("This KMIP server does not yet support place holder id")]
-    NotSupportedPlaceholder(),
+    UnsupportedPlaceholder,
 
     // When a user requests with protection masks arg.
     #[error("This KMIP server does not yet support protection masks")]
