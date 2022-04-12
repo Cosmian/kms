@@ -6,10 +6,12 @@ use cosmian_kmip::kmip::{
     kmip_operations::Create,
     kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
 };
-use cosmian_kms_utils::crypto::fpe::AlphabetCharacters;
+use cosmian_kms_utils::crypto::fpe::{
+    kmip_requests::{fpe_build_decryption_request, fpe_build_encryption_request},
+    operation::AlphabetCharacters,
+};
 use tracing::debug;
 
-use super::kmip_requests::{fpe_build_decryption_request, fpe_build_encryption_request};
 use crate::{
     config::init_config,
     kmip::kmip_server::{server::kmip_server::KmipServer, KMSServer},

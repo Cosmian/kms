@@ -47,7 +47,7 @@ async fn test_abe_keys() -> KResult<()> {
     debug!("  -> response {:?}", cr);
     let sk_uid = cr.private_key_unique_identifier;
     // check the generated id is an UUID
-    let sk_uid_ = Uuid::parse_str(&sk_uid).map_err(|e| KmsError::UnexpectedError(e.to_string()))?;
+    let sk_uid_ = Uuid::parse_str(&sk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
     assert_eq!(&sk_uid, &sk_uid_.to_string());
 
     // get Private Key
@@ -133,7 +133,7 @@ async fn test_abe_keys() -> KResult<()> {
     let usk_uid = cr.private_key_unique_identifier;
     // check the generated id is an UUID
     let usk_uid_ =
-        Uuid::parse_str(&usk_uid).map_err(|e| KmsError::UnexpectedError(e.to_string()))?;
+        Uuid::parse_str(&usk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
     assert_eq!(&usk_uid, &usk_uid_.to_string());
 
     // get object
@@ -157,7 +157,7 @@ async fn test_abe_keys() -> KResult<()> {
     let usk_uid = cr.unique_identifier;
     // check the generated id is an UUID
     let usk_uid_ =
-        Uuid::parse_str(&usk_uid).map_err(|e| KmsError::UnexpectedError(e.to_string()))?;
+        Uuid::parse_str(&usk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
     assert_eq!(&usk_uid, &usk_uid_.to_string());
 
     // get object

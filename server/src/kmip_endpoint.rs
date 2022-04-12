@@ -19,6 +19,7 @@ use tracing::{debug, error, warn};
 use crate::{
     error::KmsError,
     kmip::kmip_server::{server::kmip_server::KmipServer, KMSServer},
+    kms_bail,
     middlewares::auth::AuthClaim,
     result::KResult,
 };
@@ -41,8 +42,16 @@ impl actix_web::error::ResponseError for KmsError {
 
     fn status_code(&self) -> StatusCode {
         match self {
-            &(Self::InvalidRequest(_) | Self::NotSupported(_)) => StatusCode::BAD_REQUEST,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::RouteNotFound(_) => StatusCode::NOT_FOUND,
+            Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            Self::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::KmipError(..) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::NotSupported(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::UnsupportedProtectionMasks => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::UnsupportedPlaceholder => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::InvalidRequest(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -115,7 +124,7 @@ pub async fn kmip(
             let resp = kms_client.destroy(req, &owner).await?;
             to_ttlv(&resp)?
         }
-        x => return Err(KmsError::NotSupported(format!("Operation: {}", x))),
+        x => kms_bail!(KmsError::RouteNotFound(format!("Operation: {x}"))),
     };
     Ok(Json(ttlv_resp))
 }

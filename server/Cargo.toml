@@ -24,7 +24,7 @@ cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils" }
 cosmian_mcfe = { git = "https://github.com/Cosmian/DMCFE.git", branch = "feature/add_mcfe" }
 env_logger = "0.9"
-# for error conversions only
+# eyre is used to handle errors related to the server binary
 eyre = "0.6"
 futures = "0.3"
 hex = { version = "0.4", features = ["serde"] }
@@ -45,9 +45,14 @@ sqlx = { version = "0.5", features = [
   "postgres",
   "sqlite"
 ] }
+# thiserror is used to handle errors propagated through HTTP response 
+# to set a proper http status code
 thiserror = "1.0.20"
 torus_fhe = { git = "http://gitlab.cosmian.com/other/tfhe.git" }
 tracing = "0.1"
+tracing-log = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-tree = "0.2"
 twelf = "0.3.1"
 uuid = { version = "0.8", features = ["v4"] }
 

@@ -10,25 +10,32 @@ use cosmian_crypto_base::{
         Key as _, Nonce as _,
     },
 };
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse, ErrorReason},
-    kmip_types::{Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
+use cosmian_kmip::{
+    error::KmipError,
+    kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse, ErrorReason},
+        kmip_types::{Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
+    },
 };
 
-use crate::{error::LibError, result::LibResult, DeCipher, EnCipher};
+use crate::{DeCipher, EnCipher};
 
 /// Generate AES symmetric key for FPE usage: AES-256 bits key
 /// `cryptographic_length` is a value in bytes
-pub fn create_aes_symmetric_key(cryptographic_length: Option<usize>) -> LibResult<Object> {
+pub fn create_aes_symmetric_key(cryptographic_length: Option<usize>) -> Result<Object, KmipError> {
     let aes_key_len = cryptographic_length.unwrap_or(KEY_LENGTH);
     // Generate symmetric key
     let mut symmetric_key = vec![0_u8; aes_key_len];
     let symmetric_key_len = i32::try_from(symmetric_key.len()).map_err(|_e| {
-        LibError::CryptographicError("AES".to_string(), "Invalid key len".to_string())
+        KmipError::InvalidKmipValue(
+            ErrorReason::Invalid_Message,
+            "AES: Invalid key len".to_string(),
+        )
     })?;
-    gen_bytes(&mut symmetric_key[..])?;
+    gen_bytes(&mut symmetric_key[..])
+        .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
 
     Ok(Object::SymmetricKey {
         key_block: KeyBlock {
@@ -57,10 +64,15 @@ pub struct AesGcmCipher {
 }
 
 impl AesGcmCipher {
-    pub fn instantiate(uid: &str, symmetric_key: &Object) -> LibResult<AesGcmCipher> {
+    pub fn instantiate(uid: &str, symmetric_key: &Object) -> Result<AesGcmCipher, KmipError> {
         let key_block = match symmetric_key {
             Object::SymmetricKey { key_block } => key_block.clone(),
-            _ => return Err(LibError::Error("Expected a KMIP Symmetric Key".to_owned())),
+            _ => {
+                return Err(KmipError::InvalidKmipObject(
+                    ErrorReason::Invalid_Message,
+                    "Expected a KMIP Symmetric Key".to_owned(),
+                ))
+            }
         };
         Ok(AesGcmCipher {
             key_uid: uid.into(),
@@ -70,7 +82,7 @@ impl AesGcmCipher {
 }
 
 impl EnCipher for AesGcmCipher {
-    fn encrypt(&self, request: &Encrypt) -> LibResult<EncryptResponse> {
+    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipError> {
         let uid = request
             .authenticated_encryption_additional_data
             .clone()
@@ -100,11 +112,13 @@ impl EnCipher for AesGcmCipher {
         // recover key
         let key_bytes = &self.symmetric_key_key_block.key_bytes()?;
         let key = Key::try_from_slice(key_bytes.as_slice())
-            .map_err(|e| LibError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
+            .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
 
         // supplied Nonce or fresh
         let nonce = match request.iv_counter_nonce.as_ref() {
-            Some(v) => Nonce::try_from_slice(v)?,
+            Some(v) => Nonce::try_from_slice(v).map_err(|e| {
+                KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string())
+            })?,
             None => {
                 let mut cs_rng = CsRng::default();
                 cs_rng.generate_nonce()
@@ -127,7 +141,8 @@ impl EnCipher for AesGcmCipher {
             &mut data,
             &nonce,
             if ad.is_empty() { None } else { Some(&ad) },
-        )?;
+        )
+        .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
 
         Ok(EncryptResponse {
             unique_identifier: self.key_uid.clone(),
@@ -140,7 +155,7 @@ impl EnCipher for AesGcmCipher {
 }
 
 impl DeCipher for AesGcmCipher {
-    fn decrypt(&self, request: &Decrypt) -> LibResult<DecryptResponse> {
+    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, KmipError> {
         let uid = request
             .authenticated_encryption_additional_data
             .clone()
@@ -166,7 +181,7 @@ impl DeCipher for AesGcmCipher {
         // recover key
         let key_bytes = &self.symmetric_key_key_block.key_bytes()?;
         let key: Key = aes_256_gcm_pure::Key::try_from_slice(key_bytes.as_slice())
-            .map_err(|e| LibError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
+            .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
 
         //recover tag
         let tag = request
@@ -176,12 +191,13 @@ impl DeCipher for AesGcmCipher {
 
         //recover Nonce
         let nonce_bytes = request.iv_counter_nonce.clone().ok_or_else(|| {
-            LibError::KmipError(
+            KmipError::KmipError(
                 ErrorReason::Cryptographic_Failure,
                 "the nonce is mandatory for AES GCM".to_string(),
             )
         })?;
-        let nonce = aes_256_gcm_pure::Nonce::try_from_slice(nonce_bytes.as_slice())?;
+        let nonce = aes_256_gcm_pure::Nonce::try_from_slice(nonce_bytes.as_slice())
+            .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
 
         // Additional data
         let mut ad = uid;
@@ -199,7 +215,8 @@ impl DeCipher for AesGcmCipher {
             &tag,
             &nonce,
             if ad.is_empty() { None } else { Some(&ad) },
-        )?;
+        )
+        .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
 
         Ok(DecryptResponse {
             unique_identifier: self.key_uid.clone(),

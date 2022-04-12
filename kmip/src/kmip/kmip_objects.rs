@@ -7,9 +7,9 @@ use strum_macros::{Display, EnumString};
 
 use super::kmip_types::Attributes;
 use crate::{
-    error::KmsCommonError,
+    error::KmipError,
     kmip::{
-        kmip_data_structures::KeyBlock,
+        kmip_data_structures::{KeyBlock, KeyValue},
         kmip_operations::ErrorReason,
         kmip_types::{
             CertificateRequestType, CertificateType, OpaqueDataType, SecretDataType, SplitKeyMethod,
@@ -137,7 +137,7 @@ impl Object {
 
     /// Returns the `KeyBlock` of that object if any,
     /// an error otherwise
-    pub fn key_block(&self) -> Result<&KeyBlock, KmsCommonError> {
+    pub fn key_block(&self) -> Result<&KeyBlock, KmipError> {
         Ok(match self {
             Object::PublicKey { key_block }
             | Object::PrivateKey { key_block }
@@ -146,7 +146,7 @@ impl Object {
             | Object::SymmetricKey { key_block }
             | Object::SplitKey { key_block, .. } => key_block,
             _ => {
-                return Err(KmsCommonError::InvalidKmipObject(
+                return Err(KmipError::InvalidKmipObject(
                     ErrorReason::Invalid_Object_Type,
                     "This object does not have a key block".to_string(),
                 ))
@@ -156,43 +156,39 @@ impl Object {
 
     /// Returns the `Attributes` of that object if any,
     /// an error otherwise
-    pub fn attributes(&self) -> Result<Option<&Attributes>, KmsCommonError> {
+    pub fn attributes(&self) -> Result<Option<&Attributes>, KmipError> {
         let key_block = self.key_block()?;
         match &key_block.key_value {
-            super::kmip_data_structures::KeyValue::PlainText {
+            KeyValue::PlainText {
                 key_material: _,
                 attributes,
             } => Ok(attributes.as_ref()),
-            super::kmip_data_structures::KeyValue::Wrapped(_) => {
-                Err(KmsCommonError::InvalidKmipObject(
-                    ErrorReason::Invalid_Object_Type,
-                    "This object is wrapped and the attributes cannot be accessed".to_string(),
-                ))
-            }
+            KeyValue::Wrapped(_) => Err(KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Object_Type,
+                "This object is wrapped and the attributes cannot be accessed".to_string(),
+            )),
         }
     }
 
     /// Returns the `Attributes` of that object if any,
     /// an error otherwise
-    pub fn attributes_mut(&mut self) -> Result<Option<&mut Attributes>, KmsCommonError> {
+    pub fn attributes_mut(&mut self) -> Result<Option<&mut Attributes>, KmipError> {
         let key_block = self.key_block_mut()?;
         match &mut key_block.key_value {
-            super::kmip_data_structures::KeyValue::PlainText {
+            KeyValue::PlainText {
                 key_material: _,
                 attributes,
             } => Ok(attributes.as_mut()),
-            super::kmip_data_structures::KeyValue::Wrapped(_) => {
-                Err(KmsCommonError::InvalidKmipObject(
-                    ErrorReason::Invalid_Object_Type,
-                    "This object is wrapped and the attributes cannot be accessed".to_string(),
-                ))
-            }
+            KeyValue::Wrapped(_) => Err(KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Object_Type,
+                "This object is wrapped and the attributes cannot be accessed".to_string(),
+            )),
         }
     }
 
     /// Returns the `KeyBlock` of that object if any,
     /// an error otherwise
-    pub fn key_block_mut(&mut self) -> Result<&mut KeyBlock, KmsCommonError> {
+    pub fn key_block_mut(&mut self) -> Result<&mut KeyBlock, KmipError> {
         Ok(match self {
             Object::PublicKey { key_block }
             | Object::PrivateKey { key_block }
@@ -201,7 +197,7 @@ impl Object {
             | Object::SymmetricKey { key_block }
             | Object::SplitKey { key_block, .. } => key_block,
             _ => {
-                return Err(KmsCommonError::InvalidKmipObject(
+                return Err(KmipError::InvalidKmipObject(
                     ErrorReason::Invalid_Object_Type,
                     "This object does not have a key block".to_string(),
                 ))
@@ -237,11 +233,11 @@ impl Object {
 }
 
 impl TryFrom<&[u8]> for Object {
-    type Error = KmsCommonError;
+    type Error = KmipError;
 
-    fn try_from(object_bytes: &[u8]) -> Result<Self, KmsCommonError> {
+    fn try_from(object_bytes: &[u8]) -> Result<Self, KmipError> {
         serde_json::from_slice(object_bytes).map_err(|_e| {
-            KmsCommonError::InvalidKmipValue(
+            KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
                 "failed deserializing to an Object".to_string(),
             )
@@ -250,11 +246,11 @@ impl TryFrom<&[u8]> for Object {
 }
 
 impl TryInto<Vec<u8>> for Object {
-    type Error = KmsCommonError;
+    type Error = KmipError;
 
-    fn try_into(self) -> Result<Vec<u8>, KmsCommonError> {
+    fn try_into(self) -> Result<Vec<u8>, KmipError> {
         serde_json::to_vec(&self).map_err(|_e| {
-            KmsCommonError::InvalidKmipObject(
+            KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Attribute_Value,
                 "failed serializing Object to bytes".to_string(),
             )

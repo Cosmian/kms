@@ -18,9 +18,6 @@ variables:
 stages:
   - prebuild
   - build
-  - deploy
-  - deploy_manual
-  - packaging
 
 #
 # Prebuild
@@ -55,39 +52,6 @@ test_db_mariadb_connect:
     - mysql -h "$MYSQL_HOST" -uroot -pkms -e "DROP DATABASE IF EXISTS kms"
     - mysql -h "$MYSQL_HOST" -uroot -pkms -e "CREATE DATABASE kms"
 
-rust_toolchain_bump:
-  stage: prebuild
-  image: alpine:3.11
-  before_script:
-    - apk add --update curl
-  script:
-    - curl --request POST --form token=$CI_CC_TOKEN --form ref=master --form "variables[DEPLOY]=\"auto\"" http://gitlab.cosmian.com/api/v4/projects/10/trigger/pipeline
-  only:
-    refs:
-      - develop
-    changes:
-      - rust-toolchain
-    # Otherwise, triggered every time in scheduled pipelines (https://gitlab.com/gitlab-org/gitlab-foss/issues/58961)
-    variables:
-      - $CI_PIPELINE_SOURCE == "push"
-
-rustfmt:
-  stage: prebuild
-  cache: {}
-  before_script:
-    - source /root/bashrc
-  script:
-    - cargo format
-
-# shellcheck:
-#  stage: prebuild
-#  image: koalaman/shellcheck-alpine:v0.7.1
-#  before_script:
-#    - shellcheck -V
-#  script:
-#    - shellcheck scripts/**.sh
-#    - shellcheck tests/**.sh
-
 # Security check
 cargo_audit:
   stage: prebuild
@@ -97,19 +61,21 @@ cargo_audit:
   script:
     - cargo audit
   allow_failure: true
-  only:
-    refs:
-      - tags
-      - main
-      - develop
-    variables:
-      - $DEPLOY
 
 #
 # Coverage
 #
-.base_coverage: &base_coverage
+coverage:
   stage: prebuild
+  artifacts:
+    paths:
+      - cobertura.xml
+    expire_in: 3 mos
+  retry: 1
+  allow_failure: true
+  only:
+    refs:
+      - main
   cache:
     key: "${CI_COMMIT_REF_SLUG}"
     policy: pull
@@ -125,31 +91,10 @@ cargo_audit:
     - sccache -s
   coverage: /^\d+.\d+% coverage/
 
-coverage_manual:
-  <<: *base_coverage
-  only:
-    variables:
-      - $DEPLOY == null
-  when: manual
-
-coverage_nightly:
-  <<: *base_coverage
-  artifacts:
-    paths:
-      - cobertura.xml
-    expire_in: 3 mos
-  retry: 1
-  allow_failure: true
-  only:
-    refs:
-      - develop
-    variables:
-      - $DEPLOY
-
 #
-# Build base
+# Build and tests everything on demand
 #
-.base_compile: &base_compile
+compile: 
   stage: build
   cache:
     key: "${CI_COMMIT_REF_SLUG}"
@@ -162,54 +107,18 @@ coverage_nightly:
     - export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
     - cargo clippy -V
     - sccache -s
+  script:
+    - cat /proc/meminfo
+    - /usr/bin/time -v cargo make ci
+    - sccache -s
   artifacts:
     paths:
       - target/release/kms
     expire_in: 3 mos
 
-
-
-
 #
-# Build and tests everything on demand
+# Check for unused deps
 #
-run_tests:
-  <<: *base_compile
-  except: [tags, main, develop, merge_requests]
-  script:
-    - cat /proc/meminfo
-    - /usr/bin/time -v cargo make ci
-    - sccache -s
-  when: manual
-  artifacts: {}
-
-#
-# Clippy
-#
-.base_clippy: &base_clippy
-  stage: build
-  cache:
-    key: "${CI_COMMIT_REF_SLUG}"
-    paths:
-      - $CARGO_HOME
-      - $SCCACHE_DIR
-  before_script:
-    - source /root/bashrc
-    - cargo clippy -V
-    - sccache -s
-  script:
-    - cargo format
-    - cargo clippy-all
-    - sccache -s
-
-clippy_all_mr:
-  <<: *base_clippy
-  only: [tags, main, develop, merge_requests]
-
-clippy_all:
-  <<: *base_clippy
-  except: [tags, main, develop, merge_requests]
-
 unused_deps:
   stage: build
   cache:
@@ -222,149 +131,17 @@ unused_deps:
     - source /root/bashrc
     - cargo udeps -V
     - sccache -s
-  only: [tags, main, develop]
   allow_failure: false
   script:
     - cargo deps
     - sccache -s
 
-
-
-#
-# Rust next versions
-#
-.rust_next: &rust_next
+docker_kms_server:
   stage: build
-  cache:
-    key: "${CI_COMMIT_REF_SLUG}"
-    policy: pull
-    paths:
-      - $CARGO_HOME
-      - .cache/sccache
-  before_script:
-    - source /root/bashrc
-    - sccache -s
-  allow_failure: true
-  only:
-    refs:
-      - develop
-    variables:
-      - $DEPLOY
-
-rust-latest:
-  script:
-    - rustup toolchain install stable --no-self-update
-    - rustup override set stable
-    - rustc -V
-    - cargo -V
-    - cargo rustc --release --all-targets --all-features
-    - sccache -s
-  <<: *rust_next
-
-rust-nightly:
-  script:
-    - rustup toolchain install nightly --no-self-update
-    - rustup override set nightly
-    - rustc -V
-    - cargo -V
-    - cargo rustc --release --all-targets --all-features
-    - sccache -s
-  <<: *rust_next
-
-
-build_test_kms:
-  stage: build
-  cache:
-    key: "${CI_COMMIT_REF_SLUG}"
-    paths:
-      - $CARGO_HOME
-      - $SCCACHE_DIR
-  before_script:
-    - source /root/bashrc
-    - export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
-    - cargo clippy -V
-    - sccache -s
-    - cat /proc/meminfo
-  script:
-    - /usr/bin/time -v cargo make ci
+  tags: [shell]
   only: [tags, main, develop, merge_requests]
-
-
-
-
-# documentation:
-#  stage: deploy
-#  image: gitlab.cosmian.com:5000/core/docker_doc_ci_image:latest
-#  script:
-#    - cp scripts/doc_build.sh .
-#    - bash ./doc_build.sh
-#    - curl --request POST --form token=$CI_DOC_TOKEN --form ref=main --form "variables[DOC_BRANCH]=$CI_COMMIT_REF_NAME" --form "variables[DOC_TAG]=${CI_COMMIT_TAG:-develop}" http://gitlab.cosmian.com/api/v4/projects/11/trigger/pipeline
-#    # KMS book
-#    - pushd documentation/scripts
-#    - ./build_pdf.sh ../user_guide
-#  only: [tags, main, develop]
-#  artifacts:
-#    paths:
-#      - doc_build
-#      - documentation/user_guide/user_guide.pdf
-#    expire_in: 3 mos
-
-#documentation:
-#  stage: build
-#  image: gitlab.cosmian.com:5000/core/docker_doc_ci_image:latest
-#  script:
-#   - cp scripts/doc_build.sh .
-#   - bash ./doc_build.sh
-#    # KMS book
-#    - pushd documentation/scripts
-#    - ./build_pdf.sh ../user_guide
-#  only: [merge_requests]
-
-coverage:
-  stage: deploy
-  image: alpine:3.11
-  before_script:
-    - apk add --update curl
   script:
-    - >
-      if [[ -f cobertura.xml ]]; then
-        curl --request POST --form token=$CI_COV_TOKEN --form ref=master http://gitlab.cosmian.com/api/v4/projects/12/trigger/pipeline
-      fi
-  dependencies:
-    - coverage_nightly
-  only:
-    refs:
-      - develop
-    variables:
-      - $DEPLOY
-
-#
-# Packaging
-#
-delivery:
-  stage: packaging
-  image: alpine:3.11
-  before_script:
-    - apk add --update curl
-  script:
-    - curl --request POST --form token=$CI_CC_TOKEN --form ref=master --form "variables[CS_TAG]=$CI_COMMIT_TAG" http://gitlab.cosmian.com/api/v4/projects/10/trigger/pipeline
-    - curl --request POST --form token=$CI_DS_TOKEN --form ref=master --form "variables[CS_TAG]=$CI_COMMIT_TAG" http://gitlab.cosmian.com/api/v4/projects/20/trigger/pipeline
-    # Create release page
-    - >
-      curl --request POST --header "PRIVATE-TOKEN: $PRIVATE_TOKEN" --data name=$CI_COMMIT_TAG --data tag_name=$CI_COMMIT_TAG --data description="Cosmian Server release" http://gitlab.cosmian.com/api/v4/projects/4/releases
-  only:
-    refs:
-      - tags
-    # Otherwise, triggered every time in scheduled pipelines (https://gitlab.com/gitlab-org/gitlab-foss/issues/58961)
-    variables:
-      - $CI_PIPELINE_SOURCE == "push"
-
-# docker_kms_server:
-#  stage: build
-#  tags: [shell]
-#  only: [tags, main, develop, merge_requests]
-#  script:
-#    - docker build . -t cosmian/kms_server
+    - docker build . -t cosmian/kms_server
 #    - docker save cosmian/kms_server | pigz > cosmian_kms_server.tar.gz
 #  artifacts:
 #    paths:

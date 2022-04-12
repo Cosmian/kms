@@ -1,3 +1,4 @@
+pub(crate) mod abe;
 pub(crate) mod implementation;
 pub mod kmip_server;
 

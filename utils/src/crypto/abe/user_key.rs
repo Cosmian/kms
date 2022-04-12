@@ -4,19 +4,19 @@ use abe_gpsw::core::{
     policy::{AccessPolicy, Policy},
     Engine,
 };
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::ErrorReason,
-    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
+use cosmian_kmip::{
+    error::KmipError,
+    kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::ErrorReason,
+        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
+    },
 };
 use tracing::trace;
 
-use crate::{
-    crypto::abe::attributes::{access_policy_from_attributes, upsert_access_policy_in_attributes},
-    error::LibError,
-    lib_error,
-    result::{LibResult, LibResultHelper},
+use crate::crypto::abe::attributes::{
+    access_policy_from_attributes, upsert_access_policy_in_attributes,
 };
 
 /// Create a User Decryption Key Object from the passed master private key bytes,
@@ -28,20 +28,29 @@ pub fn create_user_decryption_key_object(
     policy: &Policy,
     access_policy: &AccessPolicy,
     attributes: Option<&Attributes>,
-) -> LibResult<Object> {
+) -> Result<Object, KmipError> {
     //
     // Generate a fresh user decryption key
     //
     let engine = Engine::<Gpsw<Bls12_381>>::new();
     let master_private_key =
-        <Gpsw<Bls12_381> as AbeScheme>::MasterPrivateKey::from_bytes(master_private_key_bytes)?;
-    let uk = engine.generate_user_key(policy, &master_private_key, access_policy)?;
+        <Gpsw<Bls12_381> as AbeScheme>::MasterPrivateKey::from_bytes(master_private_key_bytes)
+            .map_err(|e| {
+                KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
+            })?;
+    let uk = engine
+        .generate_user_key(policy, &master_private_key, access_policy)
+        .map_err(|e| {
+            KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
+        })?;
     trace!(
         "Created user decryption key {} with access policy: {:?}",
         &uk,
         &access_policy
     );
-    let user_decryption_key_bytes = uk.as_bytes()?;
+    let user_decryption_key_bytes = uk.as_bytes().map_err(|e| {
+        KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
+    })?;
     let user_decryption_key_len = user_decryption_key_bytes.len();
 
     let mut attributes = attributes
@@ -73,38 +82,45 @@ pub fn create_user_decryption_key_object(
 /// see `abe_create_user_decryption_key_object` for the reverse operation
 pub(crate) fn unwrap_user_decryption_key_object(
     user_decryption_key: &Object,
-) -> LibResult<(Vec<u8>, AccessPolicy, Attributes)> {
+) -> Result<(Vec<u8>, AccessPolicy, Attributes), KmipError> {
     let key_block = match &user_decryption_key {
         Object::PrivateKey { key_block } => key_block.clone(),
         _ => {
-            return Err(LibError::Error("Expected a KMIP Private Key".to_owned()))
-                .reason(ErrorReason::Invalid_Object_Type)
+            return Err(KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Object_Type,
+                "Expected a KMIP Private Key".to_owned(),
+            ))
         }
     };
     if key_block.key_format_type != KeyFormatType::AbeUserDecryptionKey {
-        return Err(LibError::Error(
+        return Err(KmipError::InvalidKmipObject(
+            ErrorReason::Invalid_Object_Type,
             "Expected an ABE User Decryption Key".to_owned(),
         ))
-        .reason(ErrorReason::Invalid_Object_Type)
     }
-    let (key_material, attributes) = key_block
-        .key_value
-        .plaintext()
-        .ok_or_else(|| LibError::Error("invalid Plain Text".to_owned()))?;
+    let (key_material, attributes) = key_block.key_value.plaintext().ok_or_else(|| {
+        KmipError::InvalidKmipObject(
+            ErrorReason::Invalid_Object_Type,
+            "Invalid plain text".to_owned(),
+        )
+    })?;
     let bytes = match key_material {
         KeyMaterial::ByteString(b) => b.clone(),
         x => {
-            return Err(lib_error!(
-                "Invalid Key Material for the ABE User Decryption Key: {:?}",
-                x
+            return Err(KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Object_Type,
+                format!("Invalid Key Material for the ABE User Decryption Key: {x:?}"),
             ))
-            .reason(ErrorReason::Invalid_Object_Type)
         }
     };
     let attributes = attributes
         .as_ref()
-        .context("The ABE Master private key should have attributes")
-        .reason(ErrorReason::Attribute_Not_Found)?
+        .ok_or_else(|| {
+            KmipError::InvalidKmipValue(
+                ErrorReason::Attribute_Not_Found,
+                "The ABE Master private key should have attributes".to_owned(),
+            )
+        })?
         .clone();
     let access_policy = access_policy_from_attributes(&attributes)?;
     Ok((bytes, access_policy, attributes))

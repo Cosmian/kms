@@ -8,18 +8,18 @@ use cosmian_kmip::kmip::{
         Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
     },
 };
-use cosmian_kms_utils::crypto::curve_25519;
+use cosmian_kms_utils::crypto::curve_25519::{
+    kmip_requests::{
+        create_key_pair_request, extract_key_bytes, get_private_key_request,
+        get_public_key_request, parse_public_key,
+    },
+    operation,
+};
 
 use crate::{
     config::init_config,
     error::KmsError,
-    kmip::{
-        kmip_server::{server::kmip_server::KmipServer, KMSServer},
-        tests::curve_25519_tests::{
-            self,
-            kmip_requests::{create_key_pair_request, get_private_key_request},
-        },
-    },
+    kmip::kmip_server::{server::kmip_server::KmipServer, KMSServer},
     result::KResult,
 };
 
@@ -58,10 +58,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         sk_key_block.cryptographic_algorithm,
         CryptographicAlgorithm::EC,
     );
-    assert_eq!(
-        sk_key_block.cryptographic_length,
-        curve_25519::Q_LENGTH_BITS,
-    );
+    assert_eq!(sk_key_block.cryptographic_length, operation::Q_LENGTH_BITS,);
     assert_eq!(
         sk_key_block.key_format_type,
         KeyFormatType::TransparentECPrivateKey
@@ -89,9 +86,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // check public key
     let pk_response = kms
         .get(
-            curve_25519_tests::kmip_requests::get_public_key_request(
-                &response.public_key_unique_identifier,
-            ),
+            get_public_key_request(&response.public_key_unique_identifier),
             owner,
         )
         .await?;
@@ -108,10 +103,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         pk_key_block.cryptographic_algorithm,
         CryptographicAlgorithm::EC,
     );
-    assert_eq!(
-        pk_key_block.cryptographic_length,
-        curve_25519::Q_LENGTH_BITS,
-    );
+    assert_eq!(pk_key_block.cryptographic_length, operation::Q_LENGTH_BITS,);
     assert_eq!(
         pk_key_block.key_format_type,
         KeyFormatType::TransparentECPublicKey
@@ -136,8 +128,8 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         LinkedObjectIdentifier::TextString(response.private_key_unique_identifier)
     );
     // test import of public key
-    let pk_bytes = curve_25519_tests::kmip_requests::extract_key_bytes(pk)?;
-    let pk = curve_25519_tests::kmip_requests::parse_public_key(&pk_bytes)?;
+    let pk_bytes = extract_key_bytes(pk)?;
+    let pk = parse_public_key(&pk_bytes)?;
     let request = Import {
         unique_identifier: "".to_string(),
         object_type: ObjectType::PublicKey,
@@ -149,7 +141,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let new_uid = kms.import(request, owner).await?.unique_identifier;
     // update
 
-    let pk = curve_25519_tests::kmip_requests::parse_public_key(&pk_bytes)?;
+    let pk = parse_public_key(&pk_bytes)?;
     let request = Import {
         unique_identifier: new_uid.clone(),
         object_type: ObjectType::PublicKey,

@@ -7,14 +7,14 @@ mod middlewares;
 pub mod result;
 
 use std::sync::Arc;
+pub mod log_utils;
 
 use actix_web::{middleware::Condition, web::Data, App, HttpServer};
 use config::{hostname, jwks, port};
 use kmip::kmip_server::KMSServer;
 use middlewares::auth::Auth;
-use result::KResult;
 
-pub async fn start_server() -> KResult<()> {
+pub async fn start_server() -> eyre::Result<()> {
     let kms_server = Arc::new(KMSServer::instantiate().await?);
 
     HttpServer::new(move || {

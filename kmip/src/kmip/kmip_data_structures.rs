@@ -6,7 +6,7 @@ use serde::{ser::SerializeStruct, Deserialize, Serialize};
 use tracing::trace;
 
 use crate::{
-    error::KmsCommonError,
+    error::KmipError,
     kmip::{
         kmip_key_utils::WrappedSymmetricKey,
         kmip_operations::ErrorReason,
@@ -36,9 +36,9 @@ pub struct KeyBlock {
 }
 
 impl KeyBlock {
-    pub fn to_vec(&self) -> Result<Vec<u8>, KmsCommonError> {
+    pub fn to_vec(&self) -> Result<Vec<u8>, KmipError> {
         let (key_material, _) = self.key_value.plaintext().ok_or_else(|| {
-            KmsCommonError::InvalidKmipValue(
+            KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
                 "invalid Plain Text".to_string(),
             )
@@ -46,7 +46,7 @@ impl KeyBlock {
         match key_material {
             KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
             other => {
-                return Err(KmsCommonError::InvalidKmipValue(
+                return Err(KmipError::InvalidKmipValue(
                     ErrorReason::Invalid_Message,
                     format!("Invalid key material type for a symmetric key: {:?}", other),
                 ))
@@ -55,13 +55,13 @@ impl KeyBlock {
     }
 
     /// Extract the Key bytes from the given `KeyBlock`
-    pub fn key_bytes(&self) -> Result<Vec<u8>, KmsCommonError> {
+    pub fn key_bytes(&self) -> Result<Vec<u8>, KmipError> {
         match &self.key_value {
             KeyValue::PlainText { key_material, .. } => {
                 let key = match key_material {
                     KeyMaterial::ByteString(v) => Ok(v.clone()),
                     KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
-                    other => Err(KmsCommonError::InvalidKmipValue(
+                    other => Err(KmipError::InvalidKmipValue(
                         ErrorReason::Invalid_Data_Type,
                         format!("The key has an invalid key material: {:?}", other),
                     )),
@@ -76,7 +76,7 @@ impl KeyBlock {
     pub fn key_bytes_and_attributes(
         &self,
         uid: &str,
-    ) -> Result<(Vec<u8>, Option<Attributes>), KmsCommonError> {
+    ) -> Result<(Vec<u8>, Option<Attributes>), KmipError> {
         match &self.key_value {
             KeyValue::PlainText {
                 key_material,
@@ -85,7 +85,7 @@ impl KeyBlock {
                 let key = match key_material {
                     KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
                     KeyMaterial::ByteString(v) => Ok(v.clone()),
-                    other => Err(KmsCommonError::InvalidKmipValue(
+                    other => Err(KmipError::InvalidKmipValue(
                         ErrorReason::Invalid_Data_Type,
                         format!(
                             "The key at uid: {} has an invalid key material: {:?}",
@@ -143,14 +143,14 @@ impl KeyBlock {
         iv_counter_nonce: Option<Vec<u8>>,
         key_format_type: KeyFormatType,
         wrapped_key_attributes: &Attributes,
-    ) -> Result<KeyBlock, KmsCommonError> {
+    ) -> Result<KeyBlock, KmipError> {
         trace!("array_to_wrapped_key_block: {}", wrapped_key.len());
         let key_value = serde_json::to_vec(&WrappedSymmetricKey {
             attributes: wrapped_key_attributes.clone(),
             wrapped_symmetric_key: wrapped_key.to_vec(),
         })
         .map_err(|e| {
-            KmsCommonError::InvalidKmipObject(ErrorReason::Invalid_Attribute_Value, e.to_string())
+            KmipError::InvalidKmipObject(ErrorReason::Invalid_Attribute_Value, e.to_string())
         })?;
         let key_wrapping_data = KeyWrappingData {
             wrapping_method: WrappingMethod::Encrypt,
@@ -196,15 +196,15 @@ pub enum KeyValue {
 }
 
 impl KeyValue {
-    pub fn attributes(&self) -> Result<&Attributes, KmsCommonError> {
+    pub fn attributes(&self) -> Result<&Attributes, KmipError> {
         match self {
             KeyValue::PlainText { attributes, .. } => attributes.as_ref().ok_or_else(|| {
-                KmsCommonError::InvalidKmipValue(
+                KmipError::InvalidKmipValue(
                     ErrorReason::Invalid_Attribute_Value,
                     "key is missing its attributes".to_string(),
                 )
             }),
-            KeyValue::Wrapped(_) => Err(KmsCommonError::KmipNotSupported(
+            KeyValue::Wrapped(_) => Err(KmipError::KmipNotSupported(
                 ErrorReason::Feature_Not_Supported,
                 "key is wrapped and this is not yet supported".to_string(),
             )),
@@ -222,12 +222,12 @@ impl KeyValue {
         }
     }
 
-    pub fn raw_bytes(&self) -> Result<Vec<u8>, KmsCommonError> {
+    pub fn raw_bytes(&self) -> Result<Vec<u8>, KmipError> {
         match &self {
             KeyValue::PlainText { key_material, .. } => {
                 let key = match key_material {
                     KeyMaterial::ByteString(v) => Ok(v.clone()),
-                    other => Err(KmsCommonError::KmipNotSupported(
+                    other => Err(KmipError::KmipNotSupported(
                         ErrorReason::Invalid_Data_Type,
                         format!("The key has an invalid key material: {:?}", other),
                     )),

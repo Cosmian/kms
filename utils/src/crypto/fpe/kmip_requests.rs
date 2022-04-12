@@ -1,8 +1,10 @@
-use cosmian_kmip::kmip::kmip_operations::{Decrypt, Encrypt};
-use cosmian_kms_utils::crypto::fpe::{AlphabetCharacters, FpeText};
+use cosmian_kmip::{
+    error::KmipError,
+    kmip::kmip_operations::{Decrypt, Encrypt, ErrorReason},
+};
 use tracing::debug;
 
-use crate::result::KResult;
+use crate::crypto::fpe::operation::{AlphabetCharacters, FpeText};
 
 /// Build an FPE Encryption Request to encrypt the provided `data`. Serialize
 /// the alphabet used in FPE in the `data` to encrypt
@@ -11,12 +13,13 @@ pub fn fpe_build_encryption_request(
     tweak: Vec<u8>,
     alphabet_characters: AlphabetCharacters,
     input: &str,
-) -> KResult<Encrypt> {
+) -> Result<Encrypt, KmipError> {
     let alphabet_and_data = FpeText {
         alphabet_characters,
         input: input.to_string(),
     };
-    let alphabet_and_data_serialized = serde_json::to_vec(&alphabet_and_data)?;
+    let alphabet_and_data_serialized = serde_json::to_vec(&alphabet_and_data)
+        .map_err(|e| KmipError::InvalidKmipObject(ErrorReason::Invalid_Message, e.to_string()))?;
     debug!("data serialized: {:?}", alphabet_and_data_serialized);
     Ok(Encrypt {
         unique_identifier: Some(aes_uid.to_owned()),

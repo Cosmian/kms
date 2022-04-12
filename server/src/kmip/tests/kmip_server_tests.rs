@@ -1,19 +1,16 @@
 use std::{convert::TryFrom, sync::Arc};
 
-use cosmian_kmip::{
-    kmip::{
-        access::ObjectOperationTypes,
-        kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::Import,
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType,
-            KeyWrapType, LinkType, LinkedObjectIdentifier, StateEnumeration, WrappingMethod,
-        },
+use cosmian_kmip::kmip::{
+    access::ObjectOperationTypes,
+    kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::Import,
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicParameters, KeyFormatType, KeyWrapType,
+        LinkType, LinkedObjectIdentifier, StateEnumeration, WrappingMethod,
     },
-    log_utils::log_init,
 };
-use cosmian_kms_utils::crypto::{curve_25519, mcfe::secret_key_from_lwe_secret_key};
+use cosmian_kms_utils::crypto::{curve_25519, mcfe::operation::secret_key_from_lwe_secret_key};
 use cosmian_mcfe::lwe;
 use num_bigint::BigUint;
 use tempfile::tempdir;
@@ -23,12 +20,10 @@ use uuid::Uuid;
 use crate::{
     config::init_config,
     error::KmsError,
-    kmip::{
-        kmip_server::{
-            database::Database, server::kmip_server::KmipServer, sqlite::SqlitePool, KMSServer,
-        },
-        tests::curve_25519_tests,
+    kmip::kmip_server::{
+        database::Database, server::kmip_server::KmipServer, sqlite::SqlitePool, KMSServer,
     },
+    log_utils::log_init,
     result::KResult,
 };
 
@@ -337,13 +332,13 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = curve_25519_tests::kmip_requests::create_key_pair_request();
+    let request = curve_25519::kmip_requests::create_key_pair_request();
     let response = kms.create_key_pair(request, owner).await?;
     // check that the private and public key exist
     // check secret key
     let sk_response = kms
         .get(
-            curve_25519_tests::kmip_requests::get_private_key_request(
+            curve_25519::kmip_requests::get_private_key_request(
                 &response.private_key_unique_identifier,
             ),
             owner,
@@ -364,7 +359,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     );
     assert_eq!(
         sk_key_block.cryptographic_length,
-        curve_25519::Q_LENGTH_BITS,
+        curve_25519::operation::Q_LENGTH_BITS,
     );
     assert_eq!(
         sk_key_block.key_format_type,
@@ -383,7 +378,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // check public key
     let pk_response = kms
         .get(
-            curve_25519_tests::kmip_requests::get_public_key_request(
+            curve_25519::kmip_requests::get_public_key_request(
                 &response.public_key_unique_identifier,
             ),
             owner,
@@ -404,7 +399,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     );
     assert_eq!(
         pk_key_block.cryptographic_length,
-        curve_25519::Q_LENGTH_BITS,
+        curve_25519::operation::Q_LENGTH_BITS,
     );
     assert_eq!(
         pk_key_block.key_format_type,
@@ -420,8 +415,8 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         LinkedObjectIdentifier::TextString(response.private_key_unique_identifier)
     );
     // test import of public key
-    let pk_bytes = curve_25519_tests::kmip_requests::extract_key_bytes(pk)?;
-    let pk = curve_25519_tests::kmip_requests::parse_public_key(&pk_bytes)?;
+    let pk_bytes = curve_25519::kmip_requests::extract_key_bytes(pk)?;
+    let pk = curve_25519::kmip_requests::parse_public_key(&pk_bytes)?;
     let request = Import {
         unique_identifier: "".to_string(),
         object_type: ObjectType::PublicKey,
@@ -433,7 +428,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let new_uid = kms.import(request, owner).await?.unique_identifier;
     // update
 
-    let pk = curve_25519_tests::kmip_requests::parse_public_key(&pk_bytes)?;
+    let pk = curve_25519::kmip_requests::parse_public_key(&pk_bytes)?;
     let request = Import {
         unique_identifier: new_uid.clone(),
         object_type: ObjectType::PublicKey,
@@ -507,13 +502,13 @@ async fn test_database_user_tenant() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = curve_25519_tests::kmip_requests::create_key_pair_request();
+    let request = curve_25519::kmip_requests::create_key_pair_request();
     let response = kms.create_key_pair(request, owner).await?;
 
     // check that we can get the private and public key
     // check secret key
     kms.get(
-        curve_25519_tests::kmip_requests::get_private_key_request(
+        curve_25519::kmip_requests::get_private_key_request(
             &response.private_key_unique_identifier,
         ),
         owner,
@@ -522,9 +517,7 @@ async fn test_database_user_tenant() -> KResult<()> {
 
     // check public key
     kms.get(
-        curve_25519_tests::kmip_requests::get_public_key_request(
-            &response.public_key_unique_identifier,
-        ),
+        curve_25519::kmip_requests::get_public_key_request(&response.public_key_unique_identifier),
         owner,
     )
     .await?;
@@ -534,7 +527,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     // check public key
     let sk_response = kms
         .get(
-            curve_25519_tests::kmip_requests::get_private_key_request(
+            curve_25519::kmip_requests::get_private_key_request(
                 &response.private_key_unique_identifier,
             ),
             &owner,
@@ -544,7 +537,7 @@ async fn test_database_user_tenant() -> KResult<()> {
 
     let pk_response = kms
         .get(
-            curve_25519_tests::kmip_requests::get_public_key_request(
+            curve_25519::kmip_requests::get_public_key_request(
                 &response.public_key_unique_identifier,
             ),
             &owner,

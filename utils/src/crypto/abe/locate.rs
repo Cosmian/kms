@@ -1,9 +1,6 @@
-use cosmian_kmip::kmip::kmip_types::Attributes;
+use cosmian_kmip::{error::KmipError, kmip::kmip_types::Attributes};
 
-use crate::{
-    crypto::abe::attributes::{access_policy_from_attributes, attributes_from_attributes},
-    result::LibResult,
-};
+use crate::crypto::abe::attributes::{access_policy_from_attributes, attributes_from_attributes};
 
 /// 2 types of KMIP attributes comparison: (it depends if
 /// `researched_attributes` contains "`abe_attributes`" vendor attributes) first:
@@ -15,7 +12,7 @@ use crate::{
 pub fn compare_abe_attributes(
     attributes: &Attributes,
     researched_attributes: &Attributes,
-) -> LibResult<bool> {
+) -> Result<bool, KmipError> {
     match access_policy_from_attributes(attributes) {
         Ok(access_policy) => {
             match access_policy_from_attributes(researched_attributes) {

@@ -3,7 +3,7 @@ use thiserror::Error;
 use crate::kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError};
 
 #[derive(Error, Debug)]
-pub enum KmsCommonError {
+pub enum KmipError {
     #[error("Invalid KMIP value: {0}: {1}")]
     InvalidKmipValue(ErrorReason, String),
 
@@ -20,18 +20,18 @@ pub enum KmsCommonError {
     KmipError(ErrorReason, String),
 }
 
-impl KmsCommonError {
+impl KmipError {
     #[must_use]
     pub fn reason(&self, reason: ErrorReason) -> Self {
         match self {
-            KmsCommonError::KmipError(_r, e) => KmsCommonError::KmipError(reason, e.clone()),
-            e => KmsCommonError::KmipError(reason, e.to_string()),
+            KmipError::KmipError(_r, e) => KmipError::KmipError(reason, e.clone()),
+            e => KmipError::KmipError(reason, e.to_string()),
         }
     }
 }
 
-impl From<TtlvError> for KmsCommonError {
+impl From<TtlvError> for KmipError {
     fn from(e: TtlvError) -> Self {
-        KmsCommonError::KmipError(ErrorReason::Codec_Error, e.to_string())
+        KmipError::KmipError(ErrorReason::Codec_Error, e.to_string())
     }
 }
