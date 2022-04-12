@@ -90,10 +90,10 @@ impl EnCipher for AbeHybridCipher {
                     "Missing data to encrypt".to_string(),
                 )
             })?)
-            .map_err(|_| {
+            .map_err(|e| {
                 KmipError::InvalidKmipValue(
                     ErrorReason::Invalid_Message,
-                    "Missing data to encrypt".to_string(),
+                    format!("Deserialisation failed {e}"),
                 )
             })?;
 
@@ -174,7 +174,7 @@ impl DeCipher for AbeHybridDecipher {
         let encrypted_data = request.data.as_ref().ok_or_else(|| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Message,
-                "The decryption request should have encrypted data".to_string(),
+                "The decryption request should contain encrypted data".to_string(),
             )
         })?;
         let mut header_length_bytes = [0_u8; 4];

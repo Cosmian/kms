@@ -386,7 +386,7 @@ impl KmipServer for KMS {
     async fn create(&self, request: Create, owner: &str) -> KResult<CreateResponse> {
         trace!("Create: {}", serde_json::to_string(&request)?);
         if request.protection_storage_masks.is_some() {
-            kms_bail!(KmsError::NotSupportedPlaceholder())
+            kms_bail!(KmsError::UnsupportedPlaceholder)
         }
         let object = match &request.object_type {
             ObjectType::SymmetricKey => self.create_symmetric_key(&request, owner).await?,
@@ -420,7 +420,7 @@ impl KmipServer for KMS {
             || request.private_protection_storage_masks.is_some()
             || request.public_protection_storage_masks.is_some()
         {
-            kms_bail!(KmsError::NotSupportedPlaceholder())
+            kms_bail!(KmsError::UnsupportedPlaceholder)
         }
         let sk_uid = Uuid::new_v4().to_string();
         let pk_uid = Uuid::new_v4().to_string();
@@ -522,7 +522,7 @@ impl KmipServer for KMS {
         let uid = request
             .unique_identifier
             .as_ref()
-            .ok_or(KmsError::NotSupportedPlaceholder())?;
+            .ok_or(KmsError::UnsupportedPlaceholder)?;
         trace!("retrieving KMIP Object with id: {uid}");
         let (object, _state) = self
             .db
@@ -547,7 +547,7 @@ impl KmipServer for KMS {
         let uid = request
             .unique_identifier
             .as_ref()
-            .ok_or(KmsError::NotSupportedPlaceholder())?;
+            .ok_or(KmsError::UnsupportedPlaceholder)?;
 
         trace!("retrieving attributes of KMIP Object with id: {uid}");
         let (object, _state) = self
@@ -641,7 +641,7 @@ impl KmipServer for KMS {
         let uid = request
             .unique_identifier
             .as_ref()
-            .ok_or(KmsError::NotSupportedPlaceholder())?;
+            .ok_or(KmsError::UnsupportedPlaceholder)?;
         self.encipher(uid, owner)
             .await?
             .encrypt(&request)
@@ -653,7 +653,7 @@ impl KmipServer for KMS {
         let uid = request
             .unique_identifier
             .as_ref()
-            .ok_or(KmsError::NotSupportedPlaceholder())?;
+            .ok_or(KmsError::UnsupportedPlaceholder)?;
         self.decipher(uid, owner)
             .await?
             .decrypt(&request)
@@ -705,7 +705,7 @@ impl KmipServer for KMS {
         //TODO http://gitlab.cosmian.com/core/cosmian_server/-/issues/131  Reasons should be kept
         let uid = request
             .unique_identifier
-            .ok_or(KmsError::NotSupportedPlaceholder())?;
+            .ok_or(KmsError::UnsupportedPlaceholder)?;
         let state = match request.revocation_reason {
             RevocationReason::Enumeration(e) => match e {
                 RevocationReasonEnumeration::Unspecified
@@ -775,7 +775,7 @@ impl KmipServer for KMS {
     async fn destroy(&self, request: Destroy, owner: &str) -> KResult<DestroyResponse> {
         let uid = request
             .unique_identifier
-            .ok_or(KmsError::NotSupportedPlaceholder())?;
+            .ok_or(KmsError::UnsupportedPlaceholder)?;
 
         self.db
             .update_state(&uid, owner, StateEnumeration::Destroyed)
@@ -789,7 +789,7 @@ impl KmipServer for KMS {
         let uid = access
             .unique_identifier
             .as_ref()
-            .ok_or(KmsError::NotSupportedPlaceholder())?;
+            .ok_or(KmsError::UnsupportedPlaceholder)?;
 
         // check the object identified by its `uid` is really owned by `owner`
         if self.db.is_object_owned_by(uid, owner).await? {
@@ -808,7 +808,7 @@ impl KmipServer for KMS {
         let uid = access
             .unique_identifier
             .as_ref()
-            .ok_or(KmsError::NotSupportedPlaceholder())?;
+            .ok_or(KmsError::UnsupportedPlaceholder)?;
 
         // check the object identified by its `uid` is really owned by `owner`
         if self.db.is_object_owned_by(uid, owner).await? {

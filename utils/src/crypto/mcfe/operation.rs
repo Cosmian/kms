@@ -94,26 +94,28 @@ pub fn mcfe_master_key_from_key_block(
             ErrorReason::Key_Wrap_Type_Not_Supported,
             "unwrapping an LWE Master Secret Key is not yet supported".to_string(),
         )),
-        KeyValue::PlainText { key_material, .. } => serde_json::from_slice::<
-            cosmian_mcfe::lwe::MasterSecretKey,
-        >(match key_material {
-            KeyMaterial::ByteString(v) => v.as_slice(),
-            other => {
-                return Err(KmipError::InvalidKmipObject(
+        KeyValue::PlainText { key_material, .. } => {
+            let key = match key_material {
+                KeyMaterial::ByteString(v) => v.as_slice(),
+                other => {
+                    return Err(KmipError::InvalidKmipObject(
+                        ErrorReason::Invalid_Data_Type,
+                        format!(
+                            "Invalid key material for an LWE master secret key: {:?}",
+                            other
+                        ),
+                    ))
+                }
+            };
+
+            serde_json::from_slice::<cosmian_mcfe::lwe::MasterSecretKey>(key).map_err(|_| {
+                KmipError::InvalidKmipObject(
                     ErrorReason::Invalid_Data_Type,
-                    format!(
-                        "Invalid key material for an LWE master secret key: {:?}",
-                        other
-                    ),
-                ))
-            }
-        })
-        .map_err(|_| {
-            KmipError::InvalidKmipObject(
-                ErrorReason::Invalid_Data_Type,
-                "failed deserializing the LWE Master Secret Key from the Key Material".to_string(),
-            )
-        }),
+                    "failed deserializing the LWE Master Secret Key from the Key Material"
+                        .to_string(),
+                )
+            })
+        }
     }
 }
 
@@ -146,26 +148,29 @@ pub fn mcfe_functional_key_from_key_block(
             ErrorReason::Key_Wrap_Type_Not_Supported,
             "unwrapping a LWE Functional Key is not yet support".to_owned(),
         )),
-        KeyValue::PlainText { key_material, .. } => serde_json::from_slice::<
-            cosmian_mcfe::lwe::FunctionalKey,
-        >(match key_material {
-            KeyMaterial::ByteString(v) => v.as_slice(),
-            other => {
-                return Err(KmipError::InvalidKmipObject(
-                    ErrorReason::Invalid_Object_Type,
+        KeyValue::PlainText { key_material, .. } => {
+            let key = match key_material {
+                KeyMaterial::ByteString(v) => v.as_slice(),
+                other => {
+                    return Err(KmipError::InvalidKmipObject(
+                        ErrorReason::Invalid_Object_Type,
+                        format!(
+                            "Invalid key material for an LWE functional key: {:?}",
+                            other
+                        ),
+                    ))
+                }
+            };
+
+            serde_json::from_slice::<cosmian_mcfe::lwe::FunctionalKey>(key).map_err(|e| {
+                KmipError::InvalidKmipValue(
+                    ErrorReason::Invalid_Attribute_Value,
                     format!(
-                        "Invalid key material for an LWE functional key: {:?}",
-                        other
+                        "failed deserializing the LWE Functional Key from the Key Material {e}"
                     ),
-                ))
-            }
-        })
-        .map_err(|e| {
-            KmipError::InvalidKmipValue(
-                ErrorReason::Invalid_Attribute_Value,
-                format!("failed deserializing the LWE Functional Key from the Key Material {e}"),
-            )
-        }),
+                )
+            })
+        }
     }
 }
 
@@ -201,7 +206,7 @@ pub fn mcfe_secret_key_from_key_block(
             "unwrapping a LWE Functional Key is not yet support".to_owned(),
         )),
         KeyValue::PlainText { key_material, .. } => {
-            serde_json::from_slice::<cosmian_mcfe::lwe::SecretKey>(match key_material {
+            let key = match key_material {
                 KeyMaterial::ByteString(v) => v.as_slice(),
                 other => {
                     return Err(KmipError::InvalidKmipObject(
@@ -212,8 +217,9 @@ pub fn mcfe_secret_key_from_key_block(
                         ),
                     ))
                 }
-            })
-            .map_err(|e| {
+            };
+
+            serde_json::from_slice::<cosmian_mcfe::lwe::SecretKey>(key).map_err(|e| {
                 KmipError::InvalidKmipValue(
                     ErrorReason::Invalid_Attribute_Value,
                     format!("failed deserializing the LWE Secret Key from the Key Material {e}"),

@@ -267,8 +267,8 @@ impl KMS {
                                 (N, D) => TRLWEKey::<N, D>::gen(),
                                 _ => {
                                     kms_bail!(KmsError::InvalidRequest(format!(
-                                        "no rule to process vector_size {request.vector_size}, d \
-                                         {request.d}"
+                                        "no rule to process vector_size {}, d {}",
+                                        request.vector_size, request.d
                                     )))
                                 }
                             }

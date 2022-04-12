@@ -111,17 +111,12 @@ impl TryFrom<&KeyBlock> for ABESymmetricKey {
     type Error = KmipError;
 
     fn try_from(sk: &KeyBlock) -> Result<Self, Self::Error> {
-        if sk.cryptographic_algorithm != CryptographicAlgorithm::ABE {
+        if sk.cryptographic_algorithm != CryptographicAlgorithm::ABE
+            || sk.key_format_type != KeyFormatType::AbeSymmetricKey
+        {
             return Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Data_Type,
                 "this Secret Key does not contain an ABE key".to_string(),
-            ))
-        }
-
-        if sk.key_format_type != KeyFormatType::AbeSymmetricKey {
-            return Err(KmipError::InvalidKmipObject(
-                ErrorReason::Invalid_Data_Type,
-                "this Secret Key does not contain an ABE Key".to_string(),
             ))
         }
 

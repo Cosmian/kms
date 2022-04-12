@@ -635,7 +635,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
 
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("Bad or corrupted encrypted files"));
+        .stderr(predicate::str::contains("Bad or corrupted encrypted data"));
 
     Ok(())
 }

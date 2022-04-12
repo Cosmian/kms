@@ -109,9 +109,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
         x => {
             return Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Object_Type,
-                format!(
-                    "Invalid Key Material for the ABE User Decryption Key: {x:?}"
-                ),
+                format!("Invalid Key Material for the ABE User Decryption Key: {x:?}"),
             ))
         }
     };
