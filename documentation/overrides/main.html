@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block content %}
+
+<div class="md-content" data-md-component="content">
+    <article class="md-content__inner md-typeset">{% if not "cosmian" in page.abs_url %} {% endif %} {% if "developer_documentation" in page.abs_url %}
+        <a class="md-content__button md-icon" download href="/branch_or_tag/cosmian_server_developer_documentation/Cosmian_Server_Developer_Documentation.pdf">
+            <svg style="height: 1.2rem; width: 1.2rem; " viewBox="0 0 384 512 " xmlns="http://www.w3.org/2000/svg ">
+        <path d="M224 136V0H24C10.7 0 0 10.7 0 24v464c0 13.3 10.7 24 24 24h336c13.3 0 24-10.7 24-24V160H248c-13.2 0-24-10.8-24-24zm76.45 211.36l-96.42 95.7c-6.65 6.61-17.39 6.61-24.04 0l-96.42-95.7C73.42 337.29 80.54 320 94.82 320H160v-80c0-8.84 7.16-16
+            16-16h32c8.84 0 16 7.16 16 16v80h65.18c14.28 0 21.4 17.29 11.27 27.36zM377 105L279.1 7c-4.5-4.5-10.6-7-17-7H256v128h128v-6.1c0-6.3-2.5-12.4-7-16.9z "></path>
+    </svg>
+        </a>{% endif %} {% if "installation_guide" in page.abs_url %}
+        <a class="md-content__button md-icon" download href="/branch_or_tag/cosmian_server_installation_guide/Cosmian_Server_Installation_Guide.pdf">
+            <svg style="height: 1.2rem; width: 1.2rem; " viewBox="0 0 384 512 " xmlns="http://www.w3.org/2000/svg ">
+        <path d="M224 136V0H24C10.7 0 0 10.7 0 24v464c0 13.3 10.7 24 24 24h336c13.3 0 24-10.7 24-24V160H248c-13.2 0-24-10.8-24-24zm76.45 211.36l-96.42 95.7c-6.65 6.61-17.39 6.61-24.04 0l-96.42-95.7C73.42 337.29 80.54 320 94.82 320H160v-80c0-8.84 7.16-16
+            16-16h32c8.84 0 16 7.16 16 16v80h65.18c14.28 0 21.4 17.29 11.27 27.36zM377 105L279.1 7c-4.5-4.5-10.6-7-17-7H256v128h128v-6.1c0-6.3-2.5-12.4-7-16.9z "></path>
+    </svg>
+        </a>{% endif %}{% if "user_guide" in page.abs_url %}
+        <a class="md-content__button md-icon" download href="/branch_or_tag/cosmian_user_guide/Cosmian_User_Guide.pdf">
+            <svg style="height: 1.2rem; width: 1.2rem; " viewBox="0 0 384 512 " xmlns="http://www.w3.org/2000/svg ">
+        <path d="M224 136V0H24C10.7 0 0 10.7 0 24v464c0 13.3 10.7 24 24 24h336c13.3 0 24-10.7 24-24V160H248c-13.2 0-24-10.8-24-24zm76.45 211.36l-96.42 95.7c-6.65 6.61-17.39 6.61-24.04 0l-96.42-95.7C73.42 337.29 80.54 320 94.82 320H160v-80c0-8.84 7.16-16
+            16-16h32c8.84 0 16 7.16 16 16v80h65.18c14.28 0 21.4 17.29 11.27 27.36zM377 105L279.1 7c-4.5-4.5-10.6-7-17-7H256v128h128v-6.1c0-6.3-2.5-12.4-7-16.9z "></path>
+    </svg>
+        </a>{% endif %} {% if page.edit_url %}
+        <a href="{{ page.edit_url }}" title="{{ lang.t('edit.link.title') }}" class="md-content__button md-icon">
+            {% include ".icons/material/pencil.svg" %}
+          </a> {% endif %} {% if not "\x3ch1" in page.content %}
+        <h1>{{ page.title | d(config.site_name, true)}}</h1>
+        {% endif %} {{ page.content }} {% if page and page.meta %} {% if page.meta.git_revision_date_localized or page.meta.revision_date %} {% include "partials/source-date.html" %} {% endif %} {% endif %} {% endblock %} {% block disqus %} {% include "partials/integrations/disqus.html"
+        %} {% endblock %}
+    </article>
+</div>

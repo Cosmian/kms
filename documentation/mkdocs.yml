@@ -1,0 +1,44 @@
+site_name: Cosmian User Guide
+site_url: http://gitlab.cosmian.com:81/
+copyright: © Copyright 2018-2021 Cosmian. All rights reserved
+dev_addr: '0.0.0.0:8003'
+theme:
+  name: 'material'
+  language: 'en'
+  favicon: 'favicon.png'
+  logo: 'favicon.png'
+  custom_dir: overrides
+  features:
+    - content.tabs.link
+markdown_extensions:
+  - tables
+  - smarty
+  - abbr
+  - admonition
+  - toc:
+      permalink: true
+      baselevel: 2
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji
+  - pymdownx.details
+  - pymdownx.arithmatex
+  - pymdownx.tasklist
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - attr_list
+  - markdown_katex:
+      no_inline_svg: True
+      insert_fonts_css: True
+      macro-file: docs/src/macros.tex
+plugins:
+  - search
+  - kroki
+extra_css:
+  - css/extra.css
+extra_javascript:
+  - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML
+  - https://unpkg.com/mermaid@8.7.0/dist/mermaid.min.js
+nav:
+  - Cosmian KMS: index.md

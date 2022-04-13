@@ -1,0 +1,23 @@
+@page {
+    size: a4 portrait;
+    margin: 20mm 10mm 20mm 10mm;
+    font-size: 80%;
+    font-family: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    white-space: pre;
+    color: grey;
+    @top-left {
+        content: url("../favicon.png");
+    }
+    @top-center {
+        content: string(chapter);
+    }
+    @bottom-center {
+        content: '© Copyright 2018-2021 Cosmian. All rights reserved';
+    }
+    @bottom-right {
+        content: 'Page ' counter(__pgnum__);
+    }
+    @bottom-left {
+        content: 'Version draft';
+    }
+}
