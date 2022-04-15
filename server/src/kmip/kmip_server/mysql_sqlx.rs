@@ -510,6 +510,7 @@ mod tests {
 
     #[actix_rt::test]
     #[serial(mysql)]
+    #[ignore]
     pub async fn test_crud() -> KResult<()> {
         let mysql_url = std::option_env!("KMS_MYSQL_URL")
             .ok_or_else(|| kms_error!("No MySQL database configured"))?;
@@ -610,6 +611,7 @@ mod tests {
 
     #[actix_rt::test]
     #[serial(mysql)]
+    #[ignore]
     pub async fn test_upsert() -> KResult<()> {
         let mysql_url = std::option_env!("KMS_MYSQL_URL")
             .ok_or_else(|| kms_error!("No MySQL database configured"))?;
@@ -682,6 +684,7 @@ mod tests {
 
     #[actix_rt::test]
     #[serial(mysql)]
+    #[ignore]
     pub async fn test_tx_and_list() -> KResult<()> {
         let mysql_url = std::option_env!("KMS_MYSQL_URL")
             .ok_or_else(|| kms_error!("No MySQL database configured"))?;
@@ -748,6 +751,7 @@ mod tests {
 
     #[actix_rt::test]
     #[serial(mysql)]
+    #[ignore]
     pub async fn test_owner() -> KResult<()> {
         let mysql_url = std::option_env!("KMS_MYSQL_URL")
             .ok_or_else(|| kms_error!("No MySQL database configured"))?;
@@ -898,6 +902,7 @@ mod tests {
 
     #[actix_rt::test]
     #[serial(mysql)]
+    #[ignore]
     pub async fn test_permissions() -> KResult<()> {
         let userid = "foo@example.org";
         let userid2 = "bar@example.org";
