@@ -1,12 +1,12 @@
-site_name: Cosmian User Guide
+site_name: Cosmian KMS v2.0 User Guide
 site_url: http://gitlab.cosmian.com:81/
 copyright: © Copyright 2018-2021 Cosmian. All rights reserved
-dev_addr: '0.0.0.0:8003'
+dev_addr: "localhost:8003"
 theme:
-  name: 'material'
-  language: 'en'
-  favicon: 'favicon.png'
-  logo: 'favicon.png'
+  name: "material"
+  language: "en"
+  favicon: "favicon.png"
+  logo: "favicon.png"
   custom_dir: overrides
   features:
     - content.tabs.link
@@ -41,4 +41,11 @@ extra_javascript:
   - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML
   - https://unpkg.com/mermaid@8.7.0/dist/mermaid.min.js
 nav:
-  - Cosmian KMS: index.md
+  - Home: index.md
+  - KMIP 2.1:
+      - Home: kmip_2_1/index.md
+      - Objects: kmip_2_1/objects.md
+      - Attributes: kmip_2_1/attributes.md
+      - Operations: kmip_2_1/operations.md
+  - Authentication: authentication.md
+  - Deployment: deployment.md

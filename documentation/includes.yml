@@ -3,15 +3,15 @@ title: Cosmian KMS
 subtitle: Key Management System
 citation_package: biblatex
 # bibliography:
-  # - biblio.bib
-  # - ../pandoc/cryptobib/crypto.bib
+# - biblio.bib
+# - ../pandoc/cryptobib/crypto.bib
 csl: https://raw.githubusercontent.com/citation-style-language/styles/master/ieee.csl
-version: Version 2.0.0
+version: Version 1.2
 author: |
-    Date: 08/04/2022 \linebreak Authors:
-    \linebreak \quad Bruno Grieder \quad CTO
-    \linebreak \quad Thibaud Genty \quad Lead Developer
-    \linebreak \quad Emmanuel Coste \quad Lead Developer
+  Date: 08/04/2022 \linebreak Authors:
+  \linebreak \quad Bruno Grieder \quad CTO
+  \linebreak \quad Thibaud Genty \quad Lead Developer
+  \linebreak \quad Emmanuel Coste \quad Lead Developer
 titlepage: true
 titlepage-rule-height: 0
 title-meta: packaged_doc_title
@@ -29,7 +29,7 @@ header-left: ./pandoc/favicon.png
 header-includes:
   - \setcounter{page}{0} # So that the titlepage is the zeroth page
 pandoc-latex-admonition:
-# order is important
+  # order is important
   - color: firebrick
     classes: [admonition, danger]
   - color: darkturquoise
@@ -41,3 +41,4 @@ pandoc-latex-admonition:
   - color: orange
     classes: [admonition, warning]
 ---
+
