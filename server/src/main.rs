@@ -13,7 +13,7 @@ async fn main() -> eyre::Result<()> {
     if option_env!("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
-            "debug, actix_web=debug,hyper=info,reqwest=info,sqlx::query=error",
+            "debug, actix_web=debug,hyper=info,reqwest=info,sqlx::query=error,mysql=debug",
         );
     }
 

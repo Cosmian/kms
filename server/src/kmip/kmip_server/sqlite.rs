@@ -42,10 +42,10 @@ impl SqlitePool {
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS objects (
-                id STRING PRIMARY KEY UNIQUE,
+                id VARCHAR(40) PRIMARY KEY UNIQUE,
                 object BLOB,
-                state STRING,
-                owner STRING
+                state VARCHAR(32),
+                owner VARCHAR(255)
             )",
         )
         .execute(&pool)
@@ -53,8 +53,8 @@ impl SqlitePool {
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS read_access (
-                id STRING,
-                userid STRING,
+                id VARCHAR(40),
+                userid VARCHAR(255),
                 permissions BLOB,
                 UNIQUE(id,userid)
             )",

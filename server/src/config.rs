@@ -19,6 +19,9 @@ pub struct Config {
     #[serde(default = "default_mysql_url")]
     pub mysql_url: String,
 
+    #[serde(default = "default_user_cert_path")]
+    pub user_cert_path: String,
+
     #[serde(default = "default_port")]
     pub port: u16,
 
@@ -38,6 +41,8 @@ impl Default for Config {
                 .map(|v| v.to_string()),
             postgres_url: "".to_string(),
             mysql_url: "".to_string(),
+            user_cert_path: std::option_env!("KMS_USER_CERT_PATH")
+                .map_or("".to_string(), |p| p.to_string()),
             port: 9998,
             root_dir: "/tmp".to_string(),
             hostname: "0.0.0.0".to_string(),
@@ -50,6 +55,10 @@ fn default_postgres_url() -> String {
 }
 
 fn default_mysql_url() -> String {
+    String::from("")
+}
+
+fn default_user_cert_path() -> String {
     String::from("")
 }
 
@@ -72,7 +81,7 @@ pub enum DbParams {
     // contain the postgres connection URL
     Postgres(String),
     // contain the mysql connection URL
-    Mysql(String),
+    Mysql(String, PathBuf),
 }
 
 #[derive(Clone, Debug)]
@@ -159,7 +168,10 @@ pub async fn init_config(conf: &Config) -> eyre::Result<()> {
     let db_params = if !conf.postgres_url.is_empty() {
         DbParams::Postgres(conf.postgres_url.to_owned())
     } else if !conf.mysql_url.is_empty() {
-        DbParams::Mysql(conf.mysql_url.to_owned())
+        DbParams::Mysql(
+            conf.mysql_url.to_owned(),
+            PathBuf::from(&conf.user_cert_path),
+        )
     } else {
         DbParams::Sqlite(Path::new(&conf.root_dir).canonicalize()?.join("kms.db"))
     };
