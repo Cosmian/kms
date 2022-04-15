@@ -27,6 +27,7 @@ pub async fn init() {
         root_dir: "/tmp".to_string(),
         hostname: "0.0.0.0".to_string(),
         mysql_url: "".to_string(),
+        user_cert_path: "".to_string(),
     };
     init_config(&config).await.unwrap();
 

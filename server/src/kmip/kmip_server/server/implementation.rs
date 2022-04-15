@@ -39,8 +39,6 @@ use super::{
     abe::{create_user_decryption_key, create_user_decryption_key_pair},
     KMS,
 };
-#[cfg(feature = "pgsql")]
-use crate::kmip::kmip_server::pgsql::Pgsql;
 use crate::{
     config::{db_params, DbParams},
     error::KmsError,
@@ -57,7 +55,7 @@ impl KMS {
         let db: Box<dyn Database + Sync + Send> = match db_params() {
             DbParams::Sqlite(db_path) => Box::new(SqlitePool::instantiate(&db_path).await?),
             DbParams::Postgres(url) => Box::new(Pgsql::instantiate(&url).await?),
-            DbParams::Mysql(url) => Box::new(Sql::instantiate(&url).await?),
+            DbParams::Mysql(url, user_cert) => Box::new(Sql::instantiate(&url, user_cert).await?),
         };
 
         Ok(KMS { db })

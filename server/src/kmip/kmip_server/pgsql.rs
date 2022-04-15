@@ -38,10 +38,10 @@ impl Pgsql {
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS objects (
-                id TEXT PRIMARY KEY UNIQUE,
+                id VARCHAR(40) PRIMARY KEY UNIQUE,
                 object json NOT NULL,
-                state TEXT,
-                owner TEXT
+                state VARCHAR(32),
+                owner VARCHAR(255)
             )",
         )
         .execute(&pool)
@@ -49,8 +49,8 @@ impl Pgsql {
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS read_access (
-                id TEXT,
-                userid TEXT,
+                id VARCHAR(40),
+                userid VARCHAR(255),
                 permissions json NOT NULL,
                 UNIQUE (id, userid)
             )",

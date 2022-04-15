@@ -46,21 +46,46 @@ env = { TEST_DB = "kms", TEST_USER = "kms", TEST_PASSWORD = "kms", TEST_HOST_AUT
 script.pre = '''
 #!/bin/bash
 set -ex
+
+ssl_version=`apt show libssl-dev 2>/dev/null | grep Version | cut -d : -f 2 | tr -d " " | cut -d. -f 1`
+data_path="data"
+if [ $ssl_version -eq 3 ] ; then
+    data_path="data-ssl3"
+fi
+
+echo `apt list libssl-dev`
+echo $data_path
+
 sudo docker stop postgre || true
-sudo docker stop mariadb || true
+# sudo docker stop mariadb || true
+sudo docker stop my-edb || true
 sudo docker run -d --rm --network=host --name postgre -e POSTGRES_DB=$TEST_DB -e POSTGRES_USER=$TEST_USER -e POSTGRES_PASSWORD=$TEST_PASSWORD postgres:latest
-sudo docker run -d --rm --network=host --name mariadb -e MYSQL_DATABASE=$TEST_DB -e MYSQL_ROOT_PASSWORD=$TEST_PASSWORD mariadb:latest
+
+# MySQL connector using `sqlx` crate
+# sudo docker run -d --rm --network=host --name mariadb -e MYSQL_DATABASE=$TEST_DB -e MYSQL_ROOT_PASSWORD=$TEST_PASSWORD mariadb:latest
+
+# MySQL connector using `mysql` crate (for EdgelessDB usage)
+sudo docker run -d --rm --name my-edb -p3306:3306 -p8080:8080 -e OE_SIMULATION=1 -t ghcr.io/edgelesssys/edgelessdb-sgx-1gb
+# inject manifest into EdgelessDB
+sleep 20
+pushd "$data_path"
+curl -k --data-binary @manifest.json https://localhost:8080/manifest
+popd
 '''
 script.main = '''
 #!/bin/bash
 set -ex
 export KMS_POSTGRES_URL="postgres://$TEST_USER:$TEST_PASSWORD@$TEST_HOST/$TEST_DB"
-export KMS_MYSQL_URL="mysql://root:$TEST_PASSWORD@$TEST_HOST/$TEST_DB"
+# export KMS_MYSQL_URL="mysql://root:$TEST_PASSWORD@$TEST_HOST/$TEST_DB"
+export KMS_MYSQL_URL="mysql://root@$TEST_HOST/$TEST_DB"
+export KMS_USER_CERT_PATH="$(pwd)/$data_path/cert.p12"
+
 cargo test --workspace --all-features -- --nocapture
 cargo test --bins -- --nocapture
 '''
 script.post = '''
 #!/bin/bash
 sudo docker stop postgre || true
-sudo docker stop mariadb || true
+# sudo docker stop mariadb || true
+sudo docker stop my-edb || true
 '''

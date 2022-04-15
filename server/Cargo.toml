@@ -38,6 +38,9 @@ reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha3 = "0.10"
+# do not use version > 20, `funty` sub-dependencies is incompatible with 
+# some of our crypto crates' sub-dependencies
+mysql = "20"
 sqlx = { version = "0.5", features = [
   "json",
   "runtime-actix-native-tls",
