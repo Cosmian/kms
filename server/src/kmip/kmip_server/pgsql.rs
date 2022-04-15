@@ -15,9 +15,12 @@ use sqlx::{
 use tracing::trace;
 use uuid::Uuid;
 
-use super::database::{state_from_string, DBObject, Database};
+use super::{
+    database::{state_from_string, DBObject, Database},
+    PGSQL_QUERIES,
+};
 use crate::{
-    kms_bail,
+    kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
 
@@ -37,23 +40,17 @@ impl Pgsql {
             .await?;
 
         sqlx::query(
-            "CREATE TABLE IF NOT EXISTS objects (
-                id VARCHAR(40) PRIMARY KEY UNIQUE,
-                object json NOT NULL,
-                state VARCHAR(32),
-                owner VARCHAR(255)
-            )",
+            PGSQL_QUERIES
+                .get("create-table-objects")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         )
         .execute(&pool)
         .await?;
 
         sqlx::query(
-            "CREATE TABLE IF NOT EXISTS read_access (
-                id VARCHAR(40),
-                userid VARCHAR(255),
-                permissions json NOT NULL,
-                UNIQUE (id, userid)
-            )",
+            PGSQL_QUERIES
+                .get("create-table-read_access")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         )
         .execute(&pool)
         .await?;
@@ -64,12 +61,12 @@ impl Pgsql {
     #[cfg(test)]
     pub async fn clean_database(&self) {
         // Erase `objects` table
-        sqlx::query("TRUNCATE objects CASCADE")
+        sqlx::query(PGSQL_QUERIES.get("clean-table-objects").unwrap())
             .execute(&self.pool)
             .await
             .expect("cannot truncate objects table");
         // Erase `read_access` table
-        sqlx::query("TRUNCATE read_access CASCADE")
+        sqlx::query(PGSQL_QUERIES.get("clean-table-read_access").unwrap())
             .execute(&self.pool)
             .await
             .expect("cannot truncate read_access table");
@@ -97,13 +94,17 @@ where
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
-    sqlx::query("INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4)")
-        .bind(uid.clone())
-        .bind(json)
-        .bind(StateEnumeration::Active.to_string())
-        .bind(owner)
-        .execute(executor)
-        .await?;
+    sqlx::query(
+        PGSQL_QUERIES
+            .get("insert-row-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid.clone())
+    .bind(json)
+    .bind(StateEnumeration::Active.to_string())
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(uid)
 }
 
@@ -116,12 +117,15 @@ async fn retrieve_<'e, E>(
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
-    let row: Option<PgRow> =
-        sqlx::query("SELECT object, state FROM objects WHERE id=$1 AND owner=$2")
-            .bind(uid)
-            .bind(owner_or_userid)
-            .fetch_optional(executor)
-            .await?;
+    let row: Option<PgRow> = sqlx::query(
+        PGSQL_QUERIES
+            .get("select-row-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .bind(owner_or_userid)
+    .fetch_optional(executor)
+    .await?;
 
     if let Some(row) = row {
         let json = row.get::<Value, _>(0);
@@ -134,9 +138,9 @@ where
     }
 
     let row: Option<PgRow> = sqlx::query(
-        "SELECT objects.object, objects.state, read_access.permissions 
-        FROM objects, read_access 
-        WHERE objects.id=$1 AND read_access.id=$1 AND read_access.userid=$2",
+        PGSQL_QUERIES
+            .get("select-row-objects-join-read_access")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
     .bind(owner_or_userid)
@@ -180,12 +184,16 @@ where
     })
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
-    sqlx::query("UPDATE objects SET object=$1 WHERE id=$2 AND owner=$3")
-        .bind(json)
-        .bind(uid)
-        .bind(owner)
-        .execute(executor)
-        .await?;
+    sqlx::query(
+        PGSQL_QUERIES
+            .get("update-rows-objects-with-object")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(json)
+    .bind(uid)
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(())
 }
 
@@ -198,12 +206,16 @@ async fn update_state_<'e, E>(
 where
     E: Executor<'e, Database = Postgres>,
 {
-    sqlx::query("UPDATE objects SET state=$1 WHERE id=$2 AND owner=$3")
-        .bind(state.to_string())
-        .bind(uid)
-        .bind(owner)
-        .execute(executor)
-        .await?;
+    sqlx::query(
+        PGSQL_QUERIES
+            .get("update-rows-objects-with-state")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(state.to_string())
+    .bind(uid)
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(())
 }
 
@@ -211,11 +223,15 @@ async fn delete_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<()>
 where
     E: Executor<'e, Database = Postgres>,
 {
-    sqlx::query("DELETE FROM objects WHERE id=$1 AND owner=$2")
-        .bind(uid)
-        .bind(owner)
-        .execute(executor)
-        .await?;
+    sqlx::query(
+        PGSQL_QUERIES
+            .get("delete-rows-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(())
 }
 
@@ -236,10 +252,9 @@ where
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
     sqlx::query(
-        "INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4)
-        ON CONFLICT(id)
-        DO UPDATE SET object=$2, state=$3
-        WHERE objects.owner=$4",
+        PGSQL_QUERIES
+            .get("upsert-row-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
     .bind(json)
@@ -257,10 +272,14 @@ async fn list_<'e, E>(
 where
     E: Executor<'e, Database = Postgres>,
 {
-    let list = sqlx::query("SELECT id, state FROM objects WHERE owner=$1")
-        .bind(owner)
-        .fetch_all(executor)
-        .await?;
+    let list = sqlx::query(
+        PGSQL_QUERIES
+            .get("select-row-objects-where-owner")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(owner)
+    .fetch_all(executor)
+    .await?;
     let mut ids: Vec<(String, StateEnumeration)> = Vec::with_capacity(list.len());
     for row in list {
         ids.push((
@@ -280,9 +299,9 @@ where
     E: Executor<'e, Database = Postgres>,
 {
     let row: Option<PgRow> = sqlx::query(
-        "SELECT permissions 
-        FROM read_access 
-        WHERE id=$1 AND userid=$2",
+        PGSQL_QUERIES
+            .get("select-row-read_access")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
     .bind(userid)
@@ -322,10 +341,9 @@ where
 
     // Upsert the DB
     sqlx::query(
-        "INSERT INTO read_access (id, userid, permissions) VALUES ($1, $2, $3)
-        ON CONFLICT(id, userid)
-        DO UPDATE SET permissions=$3
-        WHERE read_access.id=$1 AND read_access.userid=$2",
+        PGSQL_QUERIES
+            .get("upsert-row-read_access")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
     .bind(userid)
@@ -351,11 +369,15 @@ where
 
     // No remaining permissions, delete the row
     if perms.is_empty() {
-        sqlx::query("DELETE FROM read_access WHERE id=$1 AND userid=$2")
-            .bind(uid)
-            .bind(userid)
-            .execute(executor)
-            .await?;
+        sqlx::query(
+            PGSQL_QUERIES
+                .get("delete-rows-read_access")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(uid)
+        .bind(userid)
+        .execute(executor)
+        .await?;
         return Ok(())
     }
 
@@ -366,8 +388,9 @@ where
 
     // Update the DB
     sqlx::query(
-        "UPDATE read_access SET permissions=$3 
-        WHERE id=$1 AND userid=$2",
+        PGSQL_QUERIES
+            .get("update-rows-read_access-with-permission")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
     .bind(userid)
@@ -382,11 +405,15 @@ async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KRes
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
-    let row: Option<PgRow> = sqlx::query("SELECT 1 FROM objects WHERE id=$1 AND owner=$2")
-        .bind(uid)
-        .bind(owner)
-        .fetch_optional(executor)
-        .await?;
+    let row: Option<PgRow> = sqlx::query(
+        PGSQL_QUERIES
+            .get("has-row-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .bind(owner)
+    .fetch_optional(executor)
+    .await?;
     Ok(row.is_some())
 }
 

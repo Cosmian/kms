@@ -15,6 +15,7 @@ use uuid::Uuid;
 use super::database::{state_from_string, DBObject, Database};
 use crate::{
     error::KmsError,
+    kmip::kmip_server::MYSQL_QUERIES,
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
@@ -41,23 +42,15 @@ impl Sql {
         let mut conn = pool.get_conn()?;
 
         conn.query_drop(
-            "CREATE TABLE IF NOT EXISTS objects (
-                id VARCHAR(40) PRIMARY KEY,
-                object json NOT NULL,
-                state VARCHAR(32),
-                owner VARCHAR(255)
-            )",
+            MYSQL_QUERIES
+                .get("create-table-objects")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         )?;
-
         conn.query_drop(
-            "CREATE TABLE IF NOT EXISTS read_access (
-                id VARCHAR(40),
-                userid VARCHAR(255),
-                permissions json NOT NULL,
-                UNIQUE (id, userid)
-            )",
+            MYSQL_QUERIES
+                .get("create-table-read_access")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         )?;
-
         Ok(Sql { pool })
     }
 
@@ -69,10 +62,11 @@ impl Sql {
             .expect("cannot get connection from pool");
 
         // Erase `objects` table
-        conn.query_drop("DELETE FROM objects")
+        conn.query_drop(MYSQL_QUERIES.get("clean-table-objects").unwrap())
             .expect("cannot truncate objects table");
+
         // Erase `read_access` table
-        conn.query_drop("DELETE FROM read_access")
+        conn.query_drop(MYSQL_QUERIES.get("clean-table-read_access").unwrap())
             .expect("cannot truncate read_access table");
     }
 
@@ -98,7 +92,9 @@ async fn create_(
 
     let mut conn = executor.get_conn()?;
     conn.exec_drop(
-        "INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?)",
+        MYSQL_QUERIES
+            .get("insert-row-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         (
             uid.clone(),
             json,
@@ -118,7 +114,9 @@ async fn retrieve_(
     let mut conn = executor.get_conn()?;
 
     let row: Option<Row> = conn.exec_first(
-        "SELECT object, state FROM objects WHERE id=? AND owner=?",
+        MYSQL_QUERIES
+            .get("select-row-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         (uid, owner_or_userid),
     )?;
 
@@ -138,9 +136,9 @@ async fn retrieve_(
     }
 
     let row: Option<Row> = conn.exec_first(
-        "SELECT objects.object, objects.state, read_access.permissions
-        FROM objects, read_access
-        WHERE objects.id=? AND read_access.id=? AND read_access.userid=?",
+        MYSQL_QUERIES
+            .get("select-row-objects-join-read_access")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         (uid, uid, owner_or_userid),
     )?;
 
@@ -188,7 +186,9 @@ async fn update_object_(
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
     conn.exec_drop(
-        "UPDATE objects SET object=? WHERE id=? AND owner=?",
+        MYSQL_QUERIES
+            .get("update-rows-objects-with-object")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         (json, uid, owner),
     )?;
     Ok(())
@@ -203,7 +203,9 @@ async fn update_state_(
     let mut conn = executor.get_conn()?;
 
     conn.exec_drop(
-        "UPDATE objects SET state=? WHERE id=? AND owner=?",
+        MYSQL_QUERIES
+            .get("update-rows-objects-with-state")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         (state.to_string(), uid, owner),
     )?;
     Ok(())
@@ -212,7 +214,12 @@ async fn update_state_(
 async fn delete_(uid: &str, owner: &str, executor: &Pool) -> KResult<()> {
     let mut conn = executor.get_conn()?;
 
-    conn.exec_drop("DELETE FROM objects WHERE id=? AND owner=?", (uid, owner))?;
+    conn.exec_drop(
+        MYSQL_QUERIES
+            .get("delete-rows-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        (uid, owner),
+    )?;
     Ok(())
 }
 
@@ -233,10 +240,9 @@ async fn upsert_(
     .reason(ErrorReason::Internal_Server_Error)?;
 
     conn.exec_drop(
-        "INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-            object = IF(objects.owner=?, VALUES(object), object),
-            state = IF(objects.owner=?, VALUES(state), state)",
+        MYSQL_QUERIES
+            .get("upsert-row-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         (uid, json, state.to_string(), owner, owner, owner),
     )?;
     Ok(())
@@ -245,7 +251,12 @@ async fn upsert_(
 async fn list_(executor: &Pool, owner: &str) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>> {
     let mut conn = executor.get_conn()?;
 
-    let list = conn.exec_iter("SELECT id, state FROM objects WHERE owner=?", (owner,))?;
+    let list = conn.exec_iter(
+        MYSQL_QUERIES
+            .get("select-row-objects-where-owner")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        (owner,),
+    )?;
     // let mut ids: Vec<(String, StateEnumeration)> = Vec::with_capacity(list.len());
     let mut ids: Vec<(String, StateEnumeration)> = Vec::new();
     for row in list {
@@ -270,9 +281,9 @@ async fn fetch_permissions_(
     let mut conn = executor.get_conn()?;
 
     let row: Option<Row> = conn.exec_first(
-        "SELECT permissions
-        FROM read_access
-        WHERE id=? AND userid=?",
+        MYSQL_QUERIES
+            .get("select-row-read_access")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         (uid, userid),
     )?;
 
@@ -310,10 +321,9 @@ async fn insert_access_(
 
     // Upsert the DB
     conn.exec_drop(
-        "INSERT INTO read_access (id, userid, permissions) VALUES (?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-        permissions = IF((id=VALUES(id)) AND (userid=VALUES(userid)), VALUES(permissions), \
-         permissions)",
+        MYSQL_QUERIES
+            .get("upsert-row-read_access")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         (uid, userid, json),
     )?;
     trace!("Insert read access right in DB: {uid} / {userid}");
@@ -335,7 +345,9 @@ async fn delete_access_(
     // No remaining permissions, delete the row
     if perms.is_empty() {
         conn.exec_drop(
-            "DELETE FROM read_access WHERE id=? AND userid=?",
+            MYSQL_QUERIES
+                .get("delete-rows-read_access")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
             (uid, userid),
         )?;
         return Ok(())
@@ -348,8 +360,9 @@ async fn delete_access_(
 
     // Update the DB
     conn.exec_drop(
-        "UPDATE read_access SET permissions=?
-        WHERE id=? AND userid=?",
+        MYSQL_QUERIES
+            .get("update-rows-read_access-with-permission")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         (json, uid, userid),
     )?;
     trace!("Deleted in DB: {uid} / {userid}");
@@ -359,8 +372,12 @@ async fn delete_access_(
 async fn is_object_owned_by_(uid: &str, owner: &str, executor: &Pool) -> KResult<bool> {
     let mut conn = executor.get_conn()?;
 
-    let row: Option<Row> =
-        conn.exec_first("SELECT 1 FROM objects WHERE id=? AND owner=?", (uid, owner))?;
+    let row: Option<Row> = conn.exec_first(
+        MYSQL_QUERIES
+            .get("has-row-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        (uid, owner),
+    )?;
 
     Ok(row.is_some())
 }

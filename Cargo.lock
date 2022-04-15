@@ -1297,6 +1297,7 @@ dependencies = [
  "futures",
  "hex",
  "http",
+ "lazy_static",
  "mysql",
  "num-bigint 0.4.3",
  "once_cell",
