@@ -27,7 +27,7 @@ pip install pydoc-markdown git+https://github.com/twardoch/mkdocs-combine.git mk
 From the root of the project, run
 
 ```bash
-cd documentation/user_guide
+cd documentation/
 mkdocs serve
 ```
 
