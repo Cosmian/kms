@@ -41,11 +41,9 @@ use super::{
 };
 use crate::{
     config::{db_params, DbParams},
+    core::crud::KmipServer,
+    database::{mysql::Sql, pgsql::Pgsql, sqlite::SqlitePool, Database},
     error::KmsError,
-    kmip::kmip_server::{
-        database::Database, mysql::Sql, pgsql::Pgsql, server::kmip_server::KmipServer,
-        sqlite::SqlitePool,
-    },
     kms_bail,
     result::KResult,
 };

@@ -14,9 +14,8 @@ use sqlx::{
 use tracing::{debug, trace};
 use uuid::Uuid;
 
-use super::database::{state_from_string, Database};
 use crate::{
-    kmip::kmip_server::{database::DBObject, SQLITE_QUERIES},
+    database::{state_from_string, DBObject, Database, SQLITE_QUERIES},
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
@@ -510,12 +509,8 @@ mod tests {
     use tempfile::tempdir;
     use uuid::Uuid;
 
-    use crate::{
-        kmip::kmip_server::{database::Database, sqlite::SqlitePool},
-        kms_bail,
-        log_utils::log_init,
-        result::KResult,
-    };
+    use super::SqlitePool;
+    use crate::{database::Database, kms_bail, log_utils::log_init, result::KResult};
 
     #[actix_rt::test]
     pub async fn test_owner() -> KResult<()> {

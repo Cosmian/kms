@@ -24,9 +24,7 @@ use cosmian_kms_utils::{
 };
 use tracing::trace;
 
-use crate::{
-    error::KmsError, kmip::kmip_server::server::kmip_server::KmipServer, kms_bail, result::KResult,
-};
+use crate::{core::crud::KmipServer, error::KmsError, kms_bail, result::KResult};
 
 /// `Re_key` an ABE master Key for the given attributes, which in ABE terms
 /// is to "revoke" the list of given attributes by increasing their value

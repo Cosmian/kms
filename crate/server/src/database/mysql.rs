@@ -12,10 +12,10 @@ use serde_json::Value;
 use tracing::{debug, trace};
 use uuid::Uuid;
 
-use super::database::{state_from_string, DBObject, Database};
+use super::{state_from_string, DBObject, Database};
 use crate::{
+    database::MYSQL_QUERIES,
     error::KmsError,
-    kmip::kmip_server::MYSQL_QUERIES,
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
@@ -62,12 +62,20 @@ impl Sql {
             .expect("cannot get connection from pool");
 
         // Erase `objects` table
-        conn.query_drop(MYSQL_QUERIES.get("clean-table-objects").unwrap())
-            .expect("cannot truncate objects table");
+        conn.query_drop(
+            MYSQL_QUERIES
+                .get("clean-table-objects")
+                .expect("SQL query can't be found"),
+        )
+        .expect("cannot truncate objects table");
 
         // Erase `read_access` table
-        conn.query_drop(MYSQL_QUERIES.get("clean-table-read_access").unwrap())
-            .expect("cannot truncate read_access table");
+        conn.query_drop(
+            MYSQL_QUERIES
+                .get("clean-table-read_access")
+                .expect("SQL query can't be found"),
+        )
+        .expect("cannot truncate read_access table");
     }
 
     #[cfg(test)]
@@ -489,7 +497,7 @@ mod tests {
 
     use super::Sql;
     use crate::{
-        kmip::kmip_server::database::Database,
+        database::Database,
         kms_bail,
         result::{KResult, KResultHelper},
     };

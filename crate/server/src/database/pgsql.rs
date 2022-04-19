@@ -9,72 +9,72 @@ use cosmian_kmip::kmip::{
 };
 use serde_json::Value;
 use sqlx::{
-    mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow},
-    ConnectOptions, Executor, MySql, Pool, Row,
+    postgres::{PgConnectOptions, PgPoolOptions, PgRow},
+    ConnectOptions, Executor, Pool, Postgres, Row,
 };
 use tracing::trace;
 use uuid::Uuid;
 
-use super::database::{state_from_string, DBObject, Database};
+use super::{state_from_string, DBObject, Database, PGSQL_QUERIES};
 use crate::{
-    kms_bail,
+    kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
 
-/// The MySQL connector is also compatible to connect a MariaDB
-/// see: https://mariadb.com/kb/en/mariadb-vs-mysql-compatibility/
-pub(crate) struct Sql {
-    pool: Pool<MySql>,
+pub(crate) struct Pgsql {
+    pool: Pool<Postgres>,
 }
 
-impl Sql {
-    pub async fn instantiate(connection_url: &str) -> KResult<Sql> {
-        let mut options = MySqlConnectOptions::from_str(connection_url)?;
+impl Pgsql {
+    pub async fn instantiate(connection_url: &str) -> KResult<Pgsql> {
+        let mut options = PgConnectOptions::from_str(connection_url)?;
         // disable logging of each query
         options.disable_statement_logging();
 
-        let pool = MySqlPoolOptions::new()
+        let pool = PgPoolOptions::new()
             .max_connections(5)
             .connect_with(options)
             .await?;
 
         sqlx::query(
-            "CREATE TABLE IF NOT EXISTS objects (
-                id VARCHAR(40) PRIMARY KEY,
-                object json NOT NULL,
-                state VARCHAR(32),
-                owner VARCHAR(255)
-            )",
+            PGSQL_QUERIES
+                .get("create-table-objects")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         )
         .execute(&pool)
         .await?;
 
         sqlx::query(
-            "CREATE TABLE IF NOT EXISTS read_access (
-                id VARCHAR(40),
-                userid VARCHAR(255),
-                permissions json NOT NULL,
-                UNIQUE (id, userid)
-            )",
+            PGSQL_QUERIES
+                .get("create-table-read_access")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         )
         .execute(&pool)
         .await?;
 
-        Ok(Sql { pool })
+        Ok(Pgsql { pool })
     }
 
     #[cfg(test)]
     pub async fn clean_database(&self) {
         // Erase `objects` table
-        sqlx::query("TRUNCATE objects")
-            .execute(&self.pool)
-            .await
-            .expect("cannot truncate objects table");
+        sqlx::query(
+            PGSQL_QUERIES
+                .get("clean-table-objects")
+                .expect("SQL query can't be found"),
+        )
+        .execute(&self.pool)
+        .await
+        .expect("cannot truncate objects table");
         // Erase `read_access` table
-        sqlx::query("TRUNCATE read_access")
-            .execute(&self.pool)
-            .await
-            .expect("cannot truncate read_access table");
+        sqlx::query(
+            PGSQL_QUERIES
+                .get("clean-table-read_access")
+                .expect("SQL query can't be found"),
+        )
+        .execute(&self.pool)
+        .await
+        .expect("cannot truncate read_access table");
     }
 
     #[cfg(test)]
@@ -90,7 +90,7 @@ async fn create_<'e, E>(
     executor: E,
 ) -> KResult<UniqueIdentifier>
 where
-    E: Executor<'e, Database = MySql>,
+    E: Executor<'e, Database = Postgres>,
 {
     let json = serde_json::to_value(&DBObject {
         object_type: object.object_type(),
@@ -99,13 +99,17 @@ where
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
-    sqlx::query("INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?)")
-        .bind(uid.clone())
-        .bind(json)
-        .bind(StateEnumeration::Active.to_string())
-        .bind(owner)
-        .execute(executor)
-        .await?;
+    sqlx::query(
+        PGSQL_QUERIES
+            .get("insert-row-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid.clone())
+    .bind(json)
+    .bind(StateEnumeration::Active.to_string())
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(uid)
 }
 
@@ -116,14 +120,17 @@ async fn retrieve_<'e, E>(
     executor: E,
 ) -> KResult<Option<(kmip_objects::Object, StateEnumeration)>>
 where
-    E: Executor<'e, Database = MySql> + Copy,
+    E: Executor<'e, Database = Postgres> + Copy,
 {
-    let row: Option<MySqlRow> =
-        sqlx::query("SELECT object, state FROM objects WHERE id=? AND owner=?")
-            .bind(uid)
-            .bind(owner_or_userid)
-            .fetch_optional(executor)
-            .await?;
+    let row: Option<PgRow> = sqlx::query(
+        PGSQL_QUERIES
+            .get("select-row-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .bind(owner_or_userid)
+    .fetch_optional(executor)
+    .await?;
 
     if let Some(row) = row {
         let json = row.get::<Value, _>(0);
@@ -135,12 +142,11 @@ where
         return Ok(Some((object, state)))
     }
 
-    let row: Option<MySqlRow> = sqlx::query(
-        "SELECT objects.object, objects.state, read_access.permissions
-        FROM objects, read_access
-        WHERE objects.id=? AND read_access.id=? AND read_access.userid=?",
+    let row: Option<PgRow> = sqlx::query(
+        PGSQL_QUERIES
+            .get("select-row-objects-join-read_access")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
-    .bind(uid)
     .bind(uid)
     .bind(owner_or_userid)
     .fetch_optional(executor)
@@ -175,7 +181,7 @@ async fn update_object_<'e, E>(
     executor: E,
 ) -> KResult<()>
 where
-    E: Executor<'e, Database = MySql>,
+    E: Executor<'e, Database = Postgres>,
 {
     let json = serde_json::to_value(&DBObject {
         object_type: object.object_type(),
@@ -183,12 +189,16 @@ where
     })
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
-    sqlx::query("UPDATE objects SET object=? WHERE id=? AND owner=?")
-        .bind(json)
-        .bind(uid)
-        .bind(owner)
-        .execute(executor)
-        .await?;
+    sqlx::query(
+        PGSQL_QUERIES
+            .get("update-rows-objects-with-object")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(json)
+    .bind(uid)
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(())
 }
 
@@ -199,26 +209,34 @@ async fn update_state_<'e, E>(
     executor: E,
 ) -> KResult<()>
 where
-    E: Executor<'e, Database = MySql>,
+    E: Executor<'e, Database = Postgres>,
 {
-    sqlx::query("UPDATE objects SET state=? WHERE id=? AND owner=?")
-        .bind(state.to_string())
-        .bind(uid)
-        .bind(owner)
-        .execute(executor)
-        .await?;
+    sqlx::query(
+        PGSQL_QUERIES
+            .get("update-rows-objects-with-state")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(state.to_string())
+    .bind(uid)
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(())
 }
 
 async fn delete_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<()>
 where
-    E: Executor<'e, Database = MySql>,
+    E: Executor<'e, Database = Postgres>,
 {
-    sqlx::query("DELETE FROM objects WHERE id=? AND owner=?")
-        .bind(uid)
-        .bind(owner)
-        .execute(executor)
-        .await?;
+    sqlx::query(
+        PGSQL_QUERIES
+            .get("delete-rows-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(())
 }
 
@@ -230,7 +248,7 @@ async fn upsert_<'e, E>(
     executor: E,
 ) -> KResult<()>
 where
-    E: Executor<'e, Database = MySql>,
+    E: Executor<'e, Database = Postgres>,
 {
     let json = serde_json::to_value(&DBObject {
         object_type: object.object_type(),
@@ -239,16 +257,13 @@ where
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
     sqlx::query(
-        "INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-            object = IF(objects.owner=?, VALUES(object), object),
-            state = IF(objects.owner=?, VALUES(state), state)",
+        PGSQL_QUERIES
+            .get("upsert-row-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
-    .bind(json.clone())
+    .bind(json)
     .bind(state.to_string())
-    .bind(owner)
-    .bind(owner)
     .bind(owner)
     .execute(executor)
     .await?;
@@ -260,12 +275,16 @@ async fn list_<'e, E>(
     owner: &str,
 ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>>
 where
-    E: Executor<'e, Database = MySql>,
+    E: Executor<'e, Database = Postgres>,
 {
-    let list = sqlx::query("SELECT id, state FROM objects WHERE owner=?")
-        .bind(owner)
-        .fetch_all(executor)
-        .await?;
+    let list = sqlx::query(
+        PGSQL_QUERIES
+            .get("select-row-objects-where-owner")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(owner)
+    .fetch_all(executor)
+    .await?;
     let mut ids: Vec<(String, StateEnumeration)> = Vec::with_capacity(list.len());
     for row in list {
         ids.push((
@@ -282,12 +301,12 @@ async fn fetch_permissions_<'e, E>(
     executor: E,
 ) -> KResult<Vec<ObjectOperationTypes>>
 where
-    E: Executor<'e, Database = MySql>,
+    E: Executor<'e, Database = Postgres>,
 {
-    let row: Option<MySqlRow> = sqlx::query(
-        "SELECT permissions
-        FROM read_access
-        WHERE id=? AND userid=?",
+    let row: Option<PgRow> = sqlx::query(
+        PGSQL_QUERIES
+            .get("select-row-read_access")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
     .bind(userid)
@@ -310,7 +329,7 @@ async fn insert_access_<'e, E>(
     executor: E,
 ) -> KResult<()>
 where
-    E: Executor<'e, Database = MySql> + Copy,
+    E: Executor<'e, Database = Postgres> + Copy,
 {
     // Retrieve existing permissions if any
     let mut perms = fetch_permissions_(uid, userid, executor).await?;
@@ -327,10 +346,9 @@ where
 
     // Upsert the DB
     sqlx::query(
-        "INSERT INTO read_access (id, userid, permissions) VALUES (?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-        permissions = IF((id=VALUES(id)) AND (userid=VALUES(userid)), VALUES(permissions), \
-         permissions)",
+        PGSQL_QUERIES
+            .get("upsert-row-read_access")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
     .bind(userid)
@@ -348,7 +366,7 @@ async fn delete_access_<'e, E>(
     executor: E,
 ) -> KResult<()>
 where
-    E: Executor<'e, Database = MySql> + Copy,
+    E: Executor<'e, Database = Postgres> + Copy,
 {
     // Retrieve existing permissions if any
     let mut perms = fetch_permissions_(uid, userid, executor).await?;
@@ -356,11 +374,15 @@ where
 
     // No remaining permissions, delete the row
     if perms.is_empty() {
-        sqlx::query("DELETE FROM read_access WHERE id=? AND userid=?")
-            .bind(uid)
-            .bind(userid)
-            .execute(executor)
-            .await?;
+        sqlx::query(
+            PGSQL_QUERIES
+                .get("delete-rows-read_access")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(uid)
+        .bind(userid)
+        .execute(executor)
+        .await?;
         return Ok(())
     }
 
@@ -371,12 +393,13 @@ where
 
     // Update the DB
     sqlx::query(
-        "UPDATE read_access SET permissions=?
-        WHERE id=? AND userid=?",
+        PGSQL_QUERIES
+            .get("update-rows-read_access-with-permission")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
-    .bind(json)
     .bind(uid)
     .bind(userid)
+    .bind(json)
     .execute(executor)
     .await?;
     trace!("Deleted in DB: {uid} / {userid}");
@@ -385,19 +408,22 @@ where
 
 async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<bool>
 where
-    E: Executor<'e, Database = MySql> + Copy,
+    E: Executor<'e, Database = Postgres> + Copy,
 {
-    let row: Option<MySqlRow> = sqlx::query("SELECT 1 FROM objects WHERE id=? AND owner=?")
-        .bind(uid)
-        .bind(owner)
-        .fetch_optional(executor)
-        .await?;
-
+    let row: Option<PgRow> = sqlx::query(
+        PGSQL_QUERIES
+            .get("has-row-objects")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .bind(owner)
+    .fetch_optional(executor)
+    .await?;
     Ok(row.is_some())
 }
 
 #[async_trait]
-impl Database for Sql {
+impl Database for Pgsql {
     async fn create(
         &self,
         uid: Option<String>,
@@ -490,7 +516,10 @@ impl Database for Sql {
     }
 }
 
-// Run these tests using: `cargo make rust-tests`
+// Run these tests using:
+//
+// KMS_POSTGRES_URL=postgresql://kms:kms@127.0.0.1:5432/kms cargo t -- kmip::kmip_server::pgsql::tests --nocapture
+//
 #[cfg(test)]
 mod tests {
     use cosmian_kmip::kmip::{
@@ -501,26 +530,29 @@ mod tests {
     use serial_test::serial;
     use uuid::Uuid;
 
-    use super::Sql;
+    use super::Pgsql;
     use crate::{
-        kmip::kmip_server::database::Database,
+        database::Database,
         kms_bail, kms_error,
         result::{KResult, KResultHelper},
     };
 
+    // Run this test using:
+    //
+    // KMS_POSTGRES_URL=postgresql://kms:kms@127.0.0.1:5432/kms cargo t -- kmip::kmip_server::pgsql::tests::test_crud --exact --nocapture
+    //
     #[actix_rt::test]
-    #[serial(mysql)]
-    #[ignore]
+    #[serial(pgsql)]
     pub async fn test_crud() -> KResult<()> {
-        let mysql_url = std::option_env!("KMS_MYSQL_URL")
-            .ok_or_else(|| kms_error!("No MySQL database configured"))?;
-        let mysql = Sql::instantiate(mysql_url).await?;
-        mysql.clean_database().await;
+        let postgres_url = std::option_env!("KMS_POSTGRES_URL")
+            .ok_or_else(|| kms_error!("No PostgreSQL database configured"))?;
+        let pg = Pgsql::instantiate(postgres_url).await?;
+        pg.clean_database().await;
 
         let owner = "eyJhbGciOiJSUzI1Ni";
 
         // test non existent row (with very high probability)
-        if mysql
+        if pg
             .retrieve(
                 &Uuid::new_v4().to_string(),
                 owner,
@@ -536,15 +568,10 @@ mod tests {
         let mut symmetric_key = create_aes_symmetric_key(None)?;
         let uid = Uuid::new_v4().to_string();
 
-        let uid_ = mysql
-            .create(Some(uid.clone()), owner, &symmetric_key)
-            .await?;
+        let uid_ = pg.create(Some(uid.clone()), owner, &symmetric_key).await?;
         assert_eq!(&uid, &uid_);
 
-        match mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get)
-            .await?
-        {
+        match pg.retrieve(&uid, owner, ObjectOperationTypes::Get).await? {
             Some((obj_, state_)) => {
                 assert_eq!(StateEnumeration::Active, state_);
                 assert_eq!(&symmetric_key, &obj_);
@@ -560,12 +587,9 @@ mod tests {
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
         }];
 
-        mysql.update_object(&uid, owner, &symmetric_key).await?;
+        pg.update_object(&uid, owner, &symmetric_key).await?;
 
-        match mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get)
-            .await?
-        {
+        match pg.retrieve(&uid, owner, ObjectOperationTypes::Get).await? {
             Some((obj_, state_)) => {
                 assert_eq!(StateEnumeration::Active, state_);
                 assert_eq!(
@@ -581,14 +605,10 @@ mod tests {
             None => kms_bail!("There should be an object"),
         }
 
-        mysql
-            .update_state(&uid, owner, StateEnumeration::Deactivated)
+        pg.update_state(&uid, owner, StateEnumeration::Deactivated)
             .await?;
 
-        match mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get)
-            .await?
-        {
+        match pg.retrieve(&uid, owner, ObjectOperationTypes::Get).await? {
             Some((obj_, state_)) => {
                 assert_eq!(StateEnumeration::Deactivated, state_);
                 assert_eq!(&symmetric_key, &obj_);
@@ -596,9 +616,9 @@ mod tests {
             None => kms_bail!("There should be an object"),
         }
 
-        mysql.delete(&uid, owner).await?;
+        pg.delete(&uid, owner).await?;
 
-        if mysql
+        if pg
             .retrieve(&uid, owner, ObjectOperationTypes::Get)
             .await?
             .is_some()
@@ -609,28 +629,27 @@ mod tests {
         Ok(())
     }
 
+    // Run this test using:
+    //
+    // KMS_POSTGRES_URL=postgresql://kms:kms@127.0.0.1:5432/kms cargo t -- kmip::kmip_server::pgsql::tests::test_upsert --exact --nocapture
+    //
     #[actix_rt::test]
-    #[serial(mysql)]
-    #[ignore]
+    #[serial(pgsql)]
     pub async fn test_upsert() -> KResult<()> {
-        let mysql_url = std::option_env!("KMS_MYSQL_URL")
-            .ok_or_else(|| kms_error!("No MySQL database configured"))?;
-        let mysql = Sql::instantiate(mysql_url).await?;
-        mysql.clean_database().await;
+        let postgres_url = std::option_env!("KMS_POSTGRES_URL")
+            .ok_or_else(|| kms_error!("No PostgreSQL database configured"))?;
+        let pg = Pgsql::instantiate(postgres_url).await?;
+        pg.clean_database().await;
 
         let owner = "eyJhbGciOiJSUzI1Ni";
 
         let mut symmetric_key = create_aes_symmetric_key(None)?;
         let uid = Uuid::new_v4().to_string();
 
-        mysql
-            .upsert(&uid, owner, &symmetric_key, StateEnumeration::Active)
+        pg.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active)
             .await?;
 
-        match mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get)
-            .await?
-        {
+        match pg.retrieve(&uid, owner, ObjectOperationTypes::Get).await? {
             Some((obj_, state_)) => {
                 assert_eq!(StateEnumeration::Active, state_);
                 assert_eq!(&symmetric_key, &obj_);
@@ -646,14 +665,10 @@ mod tests {
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
         }];
 
-        mysql
-            .upsert(&uid, owner, &symmetric_key, StateEnumeration::PreActive)
+        pg.upsert(&uid, owner, &symmetric_key, StateEnumeration::PreActive)
             .await?;
 
-        match mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get)
-            .await?
-        {
+        match pg.retrieve(&uid, owner, ObjectOperationTypes::Get).await? {
             Some((obj_, state_)) => {
                 assert_eq!(StateEnumeration::PreActive, state_);
                 assert_eq!(
@@ -669,9 +684,9 @@ mod tests {
             None => kms_bail!("There should be an object"),
         }
 
-        mysql.delete(&uid, owner).await?;
+        pg.delete(&uid, owner).await?;
 
-        if mysql
+        if pg
             .retrieve(&uid, owner, ObjectOperationTypes::Get)
             .await?
             .is_some()
@@ -682,14 +697,17 @@ mod tests {
         Ok(())
     }
 
+    // Run this test using:
+    //
+    // KMS_POSTGRES_URL=postgresql://kms:kms@127.0.0.1:5432/kms cargo t -- kmip::kmip_server::pgsql::tests::test_tx_and_list --exact --nocapture
+    //
     #[actix_rt::test]
-    #[serial(mysql)]
-    #[ignore]
+    #[serial(pgsql)]
     pub async fn test_tx_and_list() -> KResult<()> {
-        let mysql_url = std::option_env!("KMS_MYSQL_URL")
-            .ok_or_else(|| kms_error!("No MySQL database configured"))?;
-        let mysql = Sql::instantiate(mysql_url).await?;
-        mysql.clean_database().await;
+        let postgres_url = std::option_env!("KMS_POSTGRES_URL")
+            .ok_or_else(|| kms_error!("No PostgreSQL database configured"))?;
+        let pg = Pgsql::instantiate(postgres_url).await?;
+        pg.clean_database().await;
 
         let owner = "eyJhbGciOiJSUzI1Ni";
 
@@ -699,7 +717,7 @@ mod tests {
         let symmetric_key_2 = create_aes_symmetric_key(None)?;
         let uid_2 = Uuid::new_v4().to_string();
 
-        let ids = mysql
+        let ids = pg
             .create_objects(
                 owner,
                 &[
@@ -712,7 +730,7 @@ mod tests {
         assert_eq!(&uid_1, &ids[0]);
         assert_eq!(&uid_2, &ids[1]);
 
-        let list = mysql.list(owner).await?;
+        let list = pg.list(owner).await?;
         match list.iter().find(|(id, _state)| id == &uid_1) {
             Some((uid_, state_)) => {
                 assert_eq!(&uid_1, uid_);
@@ -728,17 +746,17 @@ mod tests {
             None => todo!(),
         }
 
-        mysql.delete(&uid_1, owner).await?;
-        mysql.delete(&uid_2, owner).await?;
+        pg.delete(&uid_1, owner).await?;
+        pg.delete(&uid_2, owner).await?;
 
-        if mysql
+        if pg
             .retrieve(&uid_1, owner, ObjectOperationTypes::Get)
             .await?
             .is_some()
         {
             kms_bail!("The object 1 should have been deleted");
         }
-        if mysql
+        if pg
             .retrieve(&uid_2, owner, ObjectOperationTypes::Get)
             .await?
             .is_some()
@@ -749,14 +767,17 @@ mod tests {
         Ok(())
     }
 
+    // Run this test using:
+    //
+    // KMS_POSTGRES_URL=postgresql://kms:kms@127.0.0.1:5432/kms cargo t -- kmip::kmip_server::pgsql::tests::test_owner --exact --nocapture
+    //
     #[actix_rt::test]
-    #[serial(mysql)]
-    #[ignore]
+    #[serial(pgsql)]
     pub async fn test_owner() -> KResult<()> {
-        let mysql_url = std::option_env!("KMS_MYSQL_URL")
-            .ok_or_else(|| kms_error!("No MySQL database configured"))?;
-        let mysql = Sql::instantiate(mysql_url).await?;
-        mysql.clean_database().await;
+        let postgres_url = std::option_env!("KMS_POSTGRES_URL")
+            .ok_or_else(|| kms_error!("No PostgreSQL database configured"))?;
+        let pg = Pgsql::instantiate(postgres_url).await?;
+        pg.clean_database().await;
 
         let owner = "eyJhbGciOiJSUzI1Ni";
         let userid = "foo@example.org";
@@ -767,7 +788,7 @@ mod tests {
         let uid = Uuid::new_v4().to_string();
 
         // test non existent row (with very high probability)
-        if mysql
+        if pg
             .retrieve(&uid, owner, ObjectOperationTypes::Get)
             .await?
             .is_some()
@@ -775,18 +796,14 @@ mod tests {
             kms_bail!("There should be no object");
         }
 
-        mysql
-            .upsert(&uid, owner, &symmetric_key, StateEnumeration::Active)
+        pg.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active)
             .await?;
 
-        assert!(mysql.is_object_owned_by(&uid, owner).await?);
+        assert!(pg.is_object_owned_by(&uid, owner).await?);
 
         // Retrieve object with valid owner with `Get` operation type - OK
 
-        match mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get)
-            .await?
-        {
+        match pg.retrieve(&uid, owner, ObjectOperationTypes::Get).await? {
             Some((obj, state)) => {
                 assert_eq!(StateEnumeration::Active, state);
                 assert_eq!(&symmetric_key, &obj);
@@ -796,7 +813,7 @@ mod tests {
 
         // Retrieve object with invalid owner with `Get` operation type - ko
 
-        if mysql
+        if pg
             .retrieve(&uid, invalid_owner, ObjectOperationTypes::Get)
             .await?
             .is_some()
@@ -806,13 +823,12 @@ mod tests {
 
         // Add authorized `userid` to `read_access` table
 
-        mysql
-            .insert_access(&uid, userid, ObjectOperationTypes::Get)
+        pg.insert_access(&uid, userid, ObjectOperationTypes::Get)
             .await?;
 
         // Retrieve object with authorized `userid` with `Create` operation type - ko
 
-        if mysql
+        if pg
             .retrieve(&uid, userid, ObjectOperationTypes::Create)
             .await
             .is_ok()
@@ -822,10 +838,7 @@ mod tests {
 
         // Retrieve object with authorized `userid` with `Get` operation type - OK
 
-        match mysql
-            .retrieve(&uid, userid, ObjectOperationTypes::Get)
-            .await?
-        {
+        match pg.retrieve(&uid, userid, ObjectOperationTypes::Get).await? {
             Some((obj, state)) => {
                 assert_eq!(StateEnumeration::Active, state);
                 assert_eq!(&symmetric_key, &obj);
@@ -835,19 +848,17 @@ mod tests {
 
         // Add authorized `userid2` to `read_access` table
 
-        mysql
-            .insert_access(&uid, userid2, ObjectOperationTypes::Get)
+        pg.insert_access(&uid, userid2, ObjectOperationTypes::Get)
             .await?;
 
         // Try to add same access again - OK
 
-        mysql
-            .insert_access(&uid, userid2, ObjectOperationTypes::Get)
+        pg.insert_access(&uid, userid2, ObjectOperationTypes::Get)
             .await?;
 
         // Retrieve object with authorized `userid2` with `Create` operation type - ko
 
-        if mysql
+        if pg
             .retrieve(&uid, userid2, ObjectOperationTypes::Create)
             .await
             .is_ok()
@@ -857,7 +868,7 @@ mod tests {
 
         // Retrieve object with authorized `userid` with `Get` operation type - OK
 
-        match mysql
+        match pg
             .retrieve(&uid, userid2, ObjectOperationTypes::Get)
             .await?
         {
@@ -870,10 +881,7 @@ mod tests {
 
         // Be sure we can still retrieve object with authorized `userid` with `Get` operation type - OK
 
-        match mysql
-            .retrieve(&uid, userid, ObjectOperationTypes::Get)
-            .await?
-        {
+        match pg.retrieve(&uid, userid, ObjectOperationTypes::Get).await? {
             Some((obj, state)) => {
                 assert_eq!(StateEnumeration::Active, state);
                 assert_eq!(&symmetric_key, &obj);
@@ -883,13 +891,12 @@ mod tests {
 
         // Remove `userid2` authorization
 
-        mysql
-            .delete_access(&uid, userid2, ObjectOperationTypes::Get)
+        pg.delete_access(&uid, userid2, ObjectOperationTypes::Get)
             .await?;
 
         // Retrieve object with `userid2` with `Get` operation type - ko
 
-        if mysql
+        if pg
             .retrieve(&uid, userid2, ObjectOperationTypes::Get)
             .await?
             .is_some()
@@ -901,68 +908,62 @@ mod tests {
     }
 
     #[actix_rt::test]
-    #[serial(mysql)]
-    #[ignore]
+    #[serial(pgsql)]
     pub async fn test_permissions() -> KResult<()> {
         let userid = "foo@example.org";
         let userid2 = "bar@example.org";
-        let mysql_url = std::option_env!("KMS_MYSQL_URL")
-            .ok_or_else(|| kms_error!("No MySQL database configured"))?;
-        let mysql = Sql::instantiate(mysql_url).await?;
-        mysql.clean_database().await;
+        let postgres_url = std::option_env!("KMS_POSTGRES_URL")
+            .ok_or_else(|| kms_error!("No PostgreSQL database configured"))?;
+        let pg = Pgsql::instantiate(postgres_url).await?;
+        pg.clean_database().await;
 
         let uid = Uuid::new_v4().to_string();
 
         // simple insert
-        mysql
-            .insert_access(&uid, userid, ObjectOperationTypes::Get)
+        pg.insert_access(&uid, userid, ObjectOperationTypes::Get)
             .await?;
 
-        let perms = mysql.perms(&uid, userid).await?;
+        let perms = pg.perms(&uid, userid).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
         // double insert, expect no duplicate
-        mysql
-            .insert_access(&uid, userid, ObjectOperationTypes::Get)
+        pg.insert_access(&uid, userid, ObjectOperationTypes::Get)
             .await?;
 
-        let perms = mysql.perms(&uid, userid).await?;
+        let perms = pg.perms(&uid, userid).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
         // insert other operation type
-        mysql
-            .insert_access(&uid, userid, ObjectOperationTypes::Encrypt)
+        pg.insert_access(&uid, userid, ObjectOperationTypes::Encrypt)
             .await?;
 
-        let perms = mysql.perms(&uid, userid).await?;
+        let perms = pg.perms(&uid, userid).await?;
         assert_eq!(
             perms,
             vec![ObjectOperationTypes::Get, ObjectOperationTypes::Encrypt]
         );
 
         // insert other `userid2`, check it is ok and it didn't change anything for `userid`
-        mysql
-            .insert_access(&uid, userid2, ObjectOperationTypes::Get)
+        pg.insert_access(&uid, userid2, ObjectOperationTypes::Get)
             .await?;
 
-        let perms = mysql.perms(&uid, userid2).await?;
+        let perms = pg.perms(&uid, userid2).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
-        let perms = mysql.perms(&uid, userid).await?;
+        let perms = pg.perms(&uid, userid).await?;
         assert_eq!(
             perms,
             vec![ObjectOperationTypes::Get, ObjectOperationTypes::Encrypt]
         );
 
         // remove `Get` access for `userid`
-        mysql
-            .delete_access(&uid, userid, ObjectOperationTypes::Get)
+        pg.delete_access(&uid, userid, ObjectOperationTypes::Get)
             .await?;
 
-        let perms = mysql.perms(&uid, userid2).await?;
+        let perms = pg.perms(&uid, userid2).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
-        let perms = mysql.perms(&uid, userid).await?;
+        let perms = pg.perms(&uid, userid).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Encrypt]);
 
         Ok(())

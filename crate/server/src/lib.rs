@@ -1,18 +1,21 @@
-mod auth;
 pub mod config;
+mod core;
+mod database;
 pub mod error;
-mod kmip;
-mod kmip_endpoint;
+
 mod middlewares;
 pub mod result;
+mod routes;
 
 use std::sync::Arc;
 pub mod log_utils;
 
 use actix_web::{middleware::Condition, web::Data, App, HttpServer};
 use config::{hostname, jwks, port};
-use kmip::kmip_server::KMSServer;
+use database::KMSServer;
 use middlewares::auth::Auth;
+
+use crate::routes::endpoint;
 
 pub async fn start_server() -> eyre::Result<()> {
     let kms_server = Arc::new(KMSServer::instantiate().await?);
@@ -21,9 +24,9 @@ pub async fn start_server() -> eyre::Result<()> {
         App::new()
             .wrap(Condition::new(jwks().is_some(), Auth))
             .app_data(Data::new(kms_server.clone()))
-            .service(kmip_endpoint::kmip)
-            .service(kmip_endpoint::access_insert)
-            .service(kmip_endpoint::access_delete)
+            .service(endpoint::kmip)
+            .service(endpoint::access_insert)
+            .service(endpoint::access_delete)
     })
     .bind(format!("{}:{}", hostname(), port()))?
     .run()

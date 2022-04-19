@@ -100,7 +100,7 @@ coverage:
 #
 # Build and tests everything on demand
 #
-compile: 
+compile_and_test: 
   stage: build
   cache:
     key: "${CI_COMMIT_REF_SLUG}"
