@@ -1,8 +1,5 @@
-use std::collections::HashMap;
-
 use lazy_static::lazy_static;
-
-use crate::kmip::kmip_server::rawsql::Loader;
+use rawsql::Loader;
 
 pub(crate) mod database;
 pub(crate) mod server;
@@ -16,23 +13,15 @@ pub(crate) mod mysql;
 #[allow(dead_code)]
 pub(crate) mod mysql_sqlx;
 
-pub(crate) mod rawsql;
-
-const PGSQL_FILE_QUERIES: &str = include_str!("query.pgsql");
-const MYSQL_FILE_QUERIES: &str = include_str!("query.sql");
-const SQLITE_FILE_QUERIES: &str = include_str!("query.sqlite");
+const PGSQL_FILE_QUERIES: &str = include_str!("query.sql");
+const MYSQL_FILE_QUERIES: &str = include_str!("query_mysql.sql");
+const SQLITE_FILE_QUERIES: &str = include_str!("query.sql");
 
 lazy_static! {
-    static ref PGSQL_QUERIES: HashMap<String, String> =
-        Loader::get_queries_from(PGSQL_FILE_QUERIES)
-            .expect("Can't parse the SQL file")
-            .queries;
-    static ref MYSQL_QUERIES: HashMap<String, String> =
-        Loader::get_queries_from(MYSQL_FILE_QUERIES)
-            .expect("Can't parse the SQL file")
-            .queries;
-    static ref SQLITE_QUERIES: HashMap<String, String> =
-        Loader::get_queries_from(SQLITE_FILE_QUERIES)
-            .expect("Can't parse the SQL file")
-            .queries;
+    static ref PGSQL_QUERIES: Loader =
+        Loader::get_queries_from(PGSQL_FILE_QUERIES).expect("Can't parse the SQL file");
+    static ref MYSQL_QUERIES: Loader =
+        Loader::get_queries_from(MYSQL_FILE_QUERIES).expect("Can't parse the SQL file");
+    static ref SQLITE_QUERIES: Loader =
+        Loader::get_queries_from(SQLITE_FILE_QUERIES).expect("Can't parse the SQL file");
 }

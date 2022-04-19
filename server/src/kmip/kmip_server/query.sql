@@ -21,46 +21,51 @@ DELETE FROM objects;
 DELETE FROM read_access;
 
 -- name: insert-row-objects
-INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?);
+INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4);
 
 -- name: select-row-objects
-SELECT object, state FROM objects WHERE id=? AND owner=?;
+SELECT object, state FROM objects WHERE id=$1 AND owner=$2;
 
 -- name: select-row-objects-where-owner
-SELECT id, state FROM objects WHERE owner=?;
+SELECT id, state FROM objects WHERE owner=$1;
 
 -- name: select-row-objects-join-read_access
-SELECT objects.object, objects.state, read_access.permissions
-        FROM objects, read_access
-        WHERE objects.id=? AND read_access.id=? AND read_access.userid=?;
+SELECT objects.object, objects.state, read_access.permissions 
+        FROM objects, read_access 
+        WHERE objects.id=$1 AND read_access.id=$1 AND read_access.userid=$2;
 
 -- name: update-rows-objects-with-object
-UPDATE objects SET object=? WHERE id=? AND owner=?;
+UPDATE objects SET object=$1 WHERE id=$2 AND owner=$3;
 
 -- name: update-rows-objects-with-state
-UPDATE objects SET state=? WHERE id=? AND owner=?;
+UPDATE objects SET state=$1 WHERE id=$2 AND owner=$3;
 
 -- name: delete-rows-objects
-DELETE FROM objects WHERE id=? AND owner=?;
+DELETE FROM objects WHERE id=$1 AND owner=$2;
 
 -- name: upsert-row-objects
-INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-            object = IF(objects.owner=?, VALUES(object), object),
-            state = IF(objects.owner=?, VALUES(state), state);
+INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4)
+        ON CONFLICT(id)
+        DO UPDATE SET object=$2, state=$3
+        WHERE objects.owner=$4;
 
 -- name: select-row-read_access
-SELECT permissions FROM read_access WHERE id=? AND userid=?;
+SELECT permissions 
+        FROM read_access 
+        WHERE id=$1 AND userid=$2;
 
 -- name: upsert-row-read_access
-INSERT INTO read_access (id, userid, permissions) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE permissions = IF((id=VALUES(id)) AND (userid=VALUES(userid)), VALUES(permissions), permissions);
+INSERT INTO read_access (id, userid, permissions) VALUES ($1, $2, $3)
+        ON CONFLICT(id, userid)
+        DO UPDATE SET permissions=$3
+        WHERE read_access.id=$1 AND read_access.userid=$2;
 
 -- name: delete-rows-read_access
-DELETE FROM read_access WHERE id=? AND userid=?;
+DELETE FROM read_access WHERE id=$1 AND userid=$2;
 
 -- name: has-row-objects
-SELECT 1 FROM objects WHERE id=? AND owner=?;
+SELECT 1 FROM objects WHERE id=$1 AND owner=$2;
 
 -- name: update-rows-read_access-with-permission
-UPDATE read_access SET permissions=?
-        WHERE id=? AND userid=?;
+UPDATE read_access SET permissions=$3 
+        WHERE id=$1 AND userid=$2;
