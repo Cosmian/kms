@@ -165,7 +165,7 @@ docker_build_and_push:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   script:
     - echo $IMAGE_TAG
-    - docker build . -t $IMAGE_TAG
+    - docker build . -t $CI_REGISTRY_IMAGE -t $IMAGE_TAG
     - docker push $IMAGE_TAG
 
 doc:
