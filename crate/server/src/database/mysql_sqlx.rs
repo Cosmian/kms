@@ -15,7 +15,7 @@ use sqlx::{
 use tracing::trace;
 use uuid::Uuid;
 
-use super::database::{state_from_string, DBObject, Database};
+use super::{state_from_string, DBObject, Database};
 use crate::{
     kms_bail,
     result::{KResult, KResultHelper},
@@ -51,7 +51,7 @@ impl Sql {
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS read_access (
-                id VARCHAR(255),
+                id VARCHAR(40),
                 userid VARCHAR(255),
                 permissions json NOT NULL,
                 UNIQUE (id, userid)
@@ -503,7 +503,7 @@ mod tests {
 
     use super::Sql;
     use crate::{
-        kmip::kmip_server::database::Database,
+        database::Database,
         kms_bail, kms_error,
         result::{KResult, KResultHelper},
     };

@@ -25,10 +25,10 @@ This guide can be follow to use EdgelessDB in simulation mode (without SGX): htt
 
 ## TL;DR
 
-Data has been generated and is available in `data` and `ðata_ssl3` folder such
+Data has been generated and is available in `data-ssl` and `data_ssl3` folder such
 as:
 
-- `data` is to use if you have a libssl<=2
+- `data-ssl` is to use if you have a libssl<=2
 - `data-ssl3` is to use if you have a libssl=3
 
 To re-create key material, perform the following:

@@ -15,7 +15,7 @@ variables:
   MYSQL_HOST: gitlab-runner-1.cosmian.com
 #  KMS_MYSQL_URL: mysql://root:$MYSQL_ROOT_PASSWORD@$MYSQL_HOST/$MYSQL_DB
   KMS_MYSQL_URL: mysql://root@$MYSQL_HOST/$MYSQL_DB
-  KMS_USER_CERT_PATH: ${CI_PROJECT_DIR}/data/cert.p12
+  KMS_USER_CERT_PATH: ${CI_PROJECT_DIR}/data/data-ssl/cert.p12
 
 stages:
   - prebuild
@@ -59,9 +59,9 @@ test_db_mariadb_connect:
 #    - mysql -h "$MYSQL_HOST" -uroot -pkms -e "SHOW DATABASES"
 #    - mysql -h "$MYSQL_HOST" -uroot -pkms -e "DROP DATABASE IF EXISTS kms"
 #    - mysql -h "$MYSQL_HOST" -uroot -pkms -e "CREATE DATABASE kms"
-    - mysql -h "$MYSQL_HOST" -uroot -e "SHOW DATABASES" --ssl-cert "${CI_PROJECT_DIR}/data/cert.pem" --ssl-key "${CI_PROJECT_DIR}/data/key.pem"
-    - mysql -h "$MYSQL_HOST" -uroot -e "DROP DATABASE IF EXISTS kms" --ssl-cert "${CI_PROJECT_DIR}/data/cert.pem" --ssl-key "${CI_PROJECT_DIR}/data/key.pem"
-    - mysql -h "$MYSQL_HOST" -uroot -e "CREATE DATABASE kms" --ssl-cert "${CI_PROJECT_DIR}/data/cert.pem" --ssl-key "${CI_PROJECT_DIR}/data/key.pem"
+    - mysql -h "$MYSQL_HOST" -uroot -e "SHOW DATABASES" --ssl-cert "${CI_PROJECT_DIR}/data/data-ssl/cert.pem" --ssl-key "${CI_PROJECT_DIR}/data/data-ssl/key.pem"
+    - mysql -h "$MYSQL_HOST" -uroot -e "DROP DATABASE IF EXISTS kms" --ssl-cert "${CI_PROJECT_DIR}/data/data-ssl/cert.pem" --ssl-key "${CI_PROJECT_DIR}/data/data-ssl/key.pem"
+    - mysql -h "$MYSQL_HOST" -uroot -e "CREATE DATABASE kms" --ssl-cert "${CI_PROJECT_DIR}/data/data-ssl/cert.pem" --ssl-key "${CI_PROJECT_DIR}/data/data-ssl/key.pem"
 
 # Security check
 cargo_audit:
@@ -105,7 +105,7 @@ coverage:
 #
 # Build and tests everything on demand
 #
-compile: 
+compile_and_test: 
   stage: build
   cache:
     key: "${CI_COMMIT_REF_SLUG}"
@@ -119,7 +119,7 @@ compile:
     - cargo clippy -V
     - sccache -s
     - echo "$KMS_USER_CERT_PATH"
-    - ls -alh /builds/core/kms/data/
+    - ls -alh /builds/core/kms/data/data-ssl
   script:
     - cat /proc/meminfo
     - /usr/bin/time -v cargo make ci

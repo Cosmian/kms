@@ -17,11 +17,8 @@ use http::{header, StatusCode};
 use tracing::{debug, error, warn};
 
 use crate::{
-    error::KmsError,
-    kmip::kmip_server::{server::kmip_server::KmipServer, KMSServer},
-    kms_bail,
-    middlewares::auth::AuthClaim,
-    result::KResult,
+    core::crud::KmipServer, database::KMSServer, error::KmsError, kms_bail,
+    middlewares::auth::AuthClaim, result::KResult,
 };
 
 impl actix_web::error::ResponseError for KmsError {
