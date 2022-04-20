@@ -21,6 +21,7 @@ stages:
   - prebuild
   - build
   - build_docker
+  - deploy
 
 #
 # Prebuild
@@ -28,6 +29,7 @@ stages:
 # Test Postgre connection and cleanup db
 test_db_postgre_connect:
   image: postgres
+  only: [branches, merge_requests]
   stage: prebuild
   script:
     # official way to provide password to psql: http://www.postgresql.org/docs/9.3/static/libpq-envars.html
@@ -46,6 +48,7 @@ test_db_postgre_connect:
 # Test Maria connection and cleanup db
 test_db_mariadb_connect:
   image: mariadb
+  only: [branches, merge_requests]
   stage: prebuild
   script:
     - echo $MYSQL_DB
@@ -61,6 +64,7 @@ test_db_mariadb_connect:
 # Security check
 cargo_audit:
   stage: prebuild
+  only: [branches, merge_requests]
   cache: {}
   before_script:
     - source /root/bashrc
@@ -102,6 +106,7 @@ coverage:
 #
 compile: 
   stage: build
+  only: [branches, merge_requests]
   cache:
     key: "${CI_COMMIT_REF_SLUG}"
     policy: pull
@@ -125,6 +130,7 @@ compile:
 #
 unused_deps:
   stage: build
+  only: [branches, merge_requests]
   cache:
     key: "${CI_COMMIT_REF_SLUG}"
     policy: pull
@@ -153,3 +159,13 @@ docker_build_and_push:
     - echo $IMAGE_TAG
     - docker build . -t $IMAGE_TAG
     - docker push $IMAGE_TAG
+
+doc:
+  image: gitlab.cosmian.com:5000/core/docker_doc_ci_image:latest
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
+  script:
+    - pushd documentation
+    - mkdocs build
+    - scp -r site cosmian@docs.cosmian.com:/home/cosmian/documentation_root/kms/$CI_COMMIT_TAG
