@@ -5,9 +5,9 @@ This document is the main documentation of the Cosmian Key Management System.
 
 The Cosmian Key Management System (KMS) is a high performance server application written in [Rust](https://www.rust-lang.org/) which provides a REST API to store and manage keys and secrets used with Cosmian cryptographic stacks.
 
-The Cosmian KMS server is offered on-premise (see [deployment](./deployment.md)) or as SaaS (create a free account on [console.cosmian.com ](https://console.cosmian.com)).
+The Cosmian KMS server is available [on-premise](./on_premise.md) or as [SaaS](./saas.md) (create a free account on [console.cosmian.com](https://console.cosmian.com)).
 
-The server is usually used in called using the [Cosmian Java Library](https://github.com/Cosmian/cosmian_java_lib)
+The server is usually queried by using the [Cosmian Java Library](https://github.com/Cosmian/cosmian_java_lib).
 
 ## KMIP 2.1 Support
 
