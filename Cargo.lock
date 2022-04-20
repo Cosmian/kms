@@ -1297,11 +1297,13 @@ dependencies = [
  "futures",
  "hex",
  "http",
+ "lazy_static",
  "mysql",
  "num-bigint 0.4.3",
  "once_cell",
  "rand_core 0.6.3",
  "rand_hc 0.3.1",
+ "rawsql",
  "reqwest",
  "serde",
  "serde_json",
@@ -3508,6 +3510,11 @@ checksum = "d51e9f596de227fda2ea6c84607f5558e196eeaf43c986b724ba4fb8fdf497e7"
 dependencies = [
  "rand_core 0.6.3",
 ]
+
+[[package]]
+name = "rawsql"
+version = "0.1.1"
+source = "git+https://github.com/manute/rawsql#77d69abce37696ba7afe2e46c85ba3b78cff4904"
 
 [[package]]
 name = "redox_syscall"

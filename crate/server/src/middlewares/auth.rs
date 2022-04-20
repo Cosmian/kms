@@ -16,7 +16,7 @@ use futures::{
 };
 use tracing::{debug, error};
 
-use crate::auth::decode_jwt_new;
+use super::jwt::decode_jwt_new;
 
 pub struct Auth;
 

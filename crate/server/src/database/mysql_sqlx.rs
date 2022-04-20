@@ -15,7 +15,7 @@ use sqlx::{
 use tracing::trace;
 use uuid::Uuid;
 
-use super::database::{state_from_string, DBObject, Database};
+use super::{state_from_string, DBObject, Database};
 use crate::{
     kms_bail,
     result::{KResult, KResultHelper},
@@ -51,7 +51,7 @@ impl Sql {
 
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS read_access (
-                id VARCHAR(255),
+                id VARCHAR(40),
                 userid VARCHAR(255),
                 permissions json NOT NULL,
                 UNIQUE (id, userid)
@@ -503,13 +503,14 @@ mod tests {
 
     use super::Sql;
     use crate::{
-        kmip::kmip_server::database::Database,
+        database::Database,
         kms_bail, kms_error,
         result::{KResult, KResultHelper},
     };
 
     #[actix_rt::test]
     #[serial(mysql)]
+    #[ignore]
     pub async fn test_crud() -> KResult<()> {
         let mysql_url = std::option_env!("KMS_MYSQL_URL")
             .ok_or_else(|| kms_error!("No MySQL database configured"))?;
@@ -610,6 +611,7 @@ mod tests {
 
     #[actix_rt::test]
     #[serial(mysql)]
+    #[ignore]
     pub async fn test_upsert() -> KResult<()> {
         let mysql_url = std::option_env!("KMS_MYSQL_URL")
             .ok_or_else(|| kms_error!("No MySQL database configured"))?;
@@ -682,6 +684,7 @@ mod tests {
 
     #[actix_rt::test]
     #[serial(mysql)]
+    #[ignore]
     pub async fn test_tx_and_list() -> KResult<()> {
         let mysql_url = std::option_env!("KMS_MYSQL_URL")
             .ok_or_else(|| kms_error!("No MySQL database configured"))?;
@@ -748,6 +751,7 @@ mod tests {
 
     #[actix_rt::test]
     #[serial(mysql)]
+    #[ignore]
     pub async fn test_owner() -> KResult<()> {
         let mysql_url = std::option_env!("KMS_MYSQL_URL")
             .ok_or_else(|| kms_error!("No MySQL database configured"))?;
@@ -898,6 +902,7 @@ mod tests {
 
     #[actix_rt::test]
     #[serial(mysql)]
+    #[ignore]
     pub async fn test_permissions() -> KResult<()> {
         let userid = "foo@example.org";
         let userid2 = "bar@example.org";

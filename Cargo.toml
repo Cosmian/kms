@@ -1,8 +1,8 @@
 [workspace]
 members = [
-  "kmip",
-  "client",
-  "server",
-  "cli",
-  "utils"
+  "crate/kmip",
+  "crate/client",
+  "crate/server",
+  "crate/cli",
+  "crate/utils"
 ]
