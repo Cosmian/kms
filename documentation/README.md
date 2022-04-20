@@ -2,6 +2,8 @@
 ##TL;DR;
 The main documentation for the KMS is in [docs/index.md](./docs/index.md)
 
+The documentation is deployed automatically on `docs.cosmian.com` when you add a new tag on this repo. However you need to adapt manually [the public documentation nav bar](http://gitlab.cosmian.com/core/public_documentation/-/blob/master/mkdocs.yml) to make it visible.
+
 ## TODO
 
 - add examples using Rust in the doc
