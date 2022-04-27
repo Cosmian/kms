@@ -6,12 +6,14 @@ version = "2.0.0"
 
 [features]
 dev = []
+demo_timeout = ["actix-rt"]
 
 [dependencies]
 abe_gpsw = { version = "0.6.5", features = ["interfaces"] }
 # for development
 # abe_gpsw = { path = "../../../../abe_gpsw", features = ["interfaces"] }
 actix-identity = "0.4"
+actix-rt = { version = "2.6", optional = true }
 actix-service = "2.0"
 actix-web = { version = "4.0", features = ["openssl"] }
 alcoholic_jwt = "1.0"
@@ -66,3 +68,6 @@ actix-rt = "2.6"
 actix-http = "3.0"
 tempfile = "3.1"
 serial_test = "0.6"
+
+[build-dependencies]
+chrono = "0.4"
