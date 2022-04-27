@@ -8,7 +8,7 @@ A valid access token is required to access the KMS REST API. The token must be c
 
 ## Query using SDK
 
-It's probably more convenient to query the KMS using a SDK due to the specifity of the KMIP format. Please, refer to [operations](kimp_2_1/../kmip_2_1/operations.md) to learn how to perform queries using a KMS client SDK.
+It's probably more convenient to query the KMS using a SDK due to the specifity of the KMIP format. Please, refer to [operations](kmip_2_1/operations.md) to learn how to perform queries using a KMS client SDK.
 
 ## Query using the KMS-CLI
 
@@ -19,6 +19,7 @@ Coming soon... ;)
 The server implements the [JSON Profile](https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/os/kmip-profiles-v2.1-os.html#_Toc32324415) of the KMIP 2.1 specifications.
 
 Direct REST request can be performed by using the HTTP POST method on the `/kmip/2_1` endpoint on the server.
+The parameters and the returned data of the query are a JSON containing TTLV serialized data.
 
 Examples in `bash` and `javascript` are provided below.
 

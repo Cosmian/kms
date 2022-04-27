@@ -1,8 +1,12 @@
 [workspace]
 members = [
-  "crate/kmip",
-  "crate/client",
-  "crate/server",
   "crate/cli",
+  "crate/client",
+  "crate/kmip",
+  "crate/server",
   "crate/utils"
 ]
+
+[profile.release]
+strip = true
+lto = true

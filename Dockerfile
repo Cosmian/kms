@@ -1,5 +1,6 @@
 FROM ubuntu:21.10 as builder
 
+ARG TIMEOUT
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /root
 
@@ -21,8 +22,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 COPY . /root/kms
 
 WORKDIR /root/kms
-RUN /root/.cargo/bin/cargo build --release && \
-    strip /root/kms/target/release/cosmian_kms_server
+RUN /root/.cargo/bin/cargo build --release ${TIMEOUT}
 
 #
 # KMS Server

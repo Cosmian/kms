@@ -35,6 +35,16 @@ For developping you can use `--features=dev` to tell the server to not verify th
 
 The KMS relies on a database using various kinds of connector. The database is made up of two tables: `objects` et `read_access`.
 
+## Timeout
+
+The KMS server's binary can be configured to stop running 3 months after date of compilation.
+
+This is done by using feature flag `demo_timeout`:
+
+```console
+cargo build --features demo_timeout
+```
+
 ## Database
 
 ### `objects` table

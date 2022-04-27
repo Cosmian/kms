@@ -2,7 +2,12 @@ use cosmian_kms_server::{
     config::{init_config, Config},
     start_server,
 };
+#[cfg(feature = "demo_timeout")]
+use tracing::warn;
 use twelf::Layer;
+
+#[cfg(feature = "demo_timeout")]
+mod expiry;
 
 #[actix_web::main]
 async fn main() -> eyre::Result<()> {
@@ -26,5 +31,15 @@ async fn main() -> eyre::Result<()> {
 
     init_config(&conf).await?;
 
-    start_server().await
+    #[cfg(feature = "demo_timeout")]
+    {
+        warn!("This is a demo version, the server will stop in 3 months");
+        let demo = actix_rt::spawn(expiry::demo_timeout());
+        futures::future::select(Box::pin(start_server()), demo).await;
+    }
+    #[cfg(not(feature = "demo_timeout"))]
+    {
+        start_server().await?;
+    }
+    Ok(())
 }
