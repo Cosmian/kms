@@ -25,7 +25,10 @@ These permissions are stored inside the KMS database.
 
 The permission system relies on the email address stored in the [JWT token used to authenticate](api.md#authentication) the user when accessing the API.
 
+## Endpoint
+
 The endpoint is `/access`. Following HTTP methods are available:
+
 - `DELETE` to remove a permission
 - `POST` to grant a permission
 
