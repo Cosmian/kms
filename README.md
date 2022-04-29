@@ -52,3 +52,40 @@ openssl pkcs12 -export -out cert.p12 -in cert.pem -inkey key.pem
 If it prompts for export password, just hit `Enter`.
 
 For simplified example, see: http://gitlab.cosmian.com/thibaud.genty/mysql_test
+
+## EdgelessDB for Gitlab CI
+
+An EdgelessDB is running on `gitlab-runner-1` so that CI can test MySQL connector against it.
+
+The database is using key material located on the home folder of the `gitlab-runner` user.
+
+### Start Docker container
+
+```console
+sudo docker run -d --rm --name my-edb -p3306:3306 -p8080:8080 -e OE_SIMULATION=1 -t ghcr.io/edgelesssys/edgelessdb-sgx-1gb
+```
+
+Note: the EdgelessDB is currently running in simulation mode (not using SGX enclave).
+
+### Upload manifest to setup key material
+
+```console
+cd /home/gitlab-runner/data
+curl -k --data-binary @manifest.json http://gitlab-runner-1.cosmian.com:8080/manifest
+```
+
+### Test it works
+
+```console
+cd /home/gitlab-runner/
+mysql -h127.0.0.1  -uroot -e "SHOW DATABASES"  --ssl-cert $(pwd)/data/cert.pem --ssl-key $(pwd)/data/key.pem
++--------------------+
+| Database           |
++--------------------+
+| $edgeless          |
+| information_schema |
+| kms                |
+| mysql              |
++--------------------+
+```
+
