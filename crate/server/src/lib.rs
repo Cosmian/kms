@@ -10,7 +10,11 @@ mod routes;
 use std::sync::Arc;
 pub mod log_utils;
 
-use actix_web::{middleware::Condition, web::Data, App, HttpServer};
+use actix_web::{
+    middleware::Condition,
+    web::{Data, JsonConfig, PayloadConfig},
+    App, HttpServer,
+};
 use config::{hostname, jwks, port};
 use database::KMSServer;
 use middlewares::auth::Auth;
@@ -24,6 +28,8 @@ pub async fn start_server() -> eyre::Result<()> {
         App::new()
             .wrap(Condition::new(jwks().is_some(), Auth))
             .app_data(Data::new(kms_server.clone()))
+            .app_data(PayloadConfig::new(10_000_000_000))
+            .app_data(JsonConfig::default().limit(10_000_000_000))
             .service(endpoint::kmip)
             .service(endpoint::access_insert)
             .service(endpoint::access_delete)
