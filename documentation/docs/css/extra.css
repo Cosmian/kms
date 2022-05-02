@@ -1,3 +1,51 @@
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400;1,500;1,600;1,700;1,800&display=swap");
+:root {
+  --md-primary-fg-color: #ff5f38;
+  --md-primary-fg-color--light: #ecb7b7;
+  --md-primary-fg-color--dark: #e3431a;
+  --md-accent-fg-color: #e3431a;
+  --indigo: #320099;
+}
+body {
+  font-family: "Open sans", Arial, Helvetica, sans-serif;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+*::selection {
+  background-color: var(--md-primary-fg-color);
+  color: white;
+}
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Montserrat", "Open sans", Arial, Helvetica, sans-serif;
+}
+
+.md-header {
+  background-color: var(--indigo);
+}
+.md-header__topic:first-child {
+  font-weight: 500;
+}
+
+.md-typeset code {
+  background-color: #f6f7fb;
+}
+.md-typeset code *::selection {
+    background-color: black;
+    color: white;
+  }
+.md-typeset code::selection {
+    background-color: black;
+    color: white;
+  }
+
+
+/* PDF style */
 @page {
     size: a4 portrait;
     margin: 20mm 10mm 20mm 10mm;
