@@ -45,6 +45,10 @@ This is done by using feature flag `demo_timeout`:
 cargo build --features demo_timeout
 ```
 
+## Tests
+
+The KMS server supports a payload size up to 10GB. Sending a larger payload will result in a 413 HTTP error.
+
 ## Database
 
 ### `objects` table
