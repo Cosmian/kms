@@ -1260,10 +1260,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_kms_cli"
+version = "0.1.1"
+dependencies = [
+ "abe_gpsw",
+ "assert_cmd",
+ "clap 3.1.8",
+ "cosmian_kmip",
+ "cosmian_kms_client",
+ "cosmian_kms_server",
+ "cosmian_kms_utils",
+ "eyre",
+ "file_diff",
+ "futures",
+ "predicates",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio 1.16.1",
+]
+
+[[package]]
 name = "cosmian_kms_client"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cosmian_kmip",
+ "cosmian_kms_utils",
  "hex",
  "http",
  "reqwest",
@@ -1275,7 +1298,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "abe_gpsw",
  "actix-http 3.0.0",
@@ -2371,28 +2394,6 @@ checksum = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"
 dependencies = [
  "winapi 0.2.8",
  "winapi-build",
-]
-
-[[package]]
-name = "kms_cli"
-version = "0.1.0"
-dependencies = [
- "abe_gpsw",
- "assert_cmd",
- "clap 3.1.8",
- "cosmian_kmip",
- "cosmian_kms_client",
- "cosmian_kms_server",
- "cosmian_kms_utils",
- "eyre",
- "file_diff",
- "futures",
- "predicates",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tokio 1.16.1",
 ]
 
 [[package]]

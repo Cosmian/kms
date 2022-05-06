@@ -1,18 +1,21 @@
 use clap::StructOpt;
-use kms_cli::actions::abe::entrypoint::AbeAction;
+use cosmian_kms_cli::{
+    actions::{abe::entrypoint::AbeAction, permission::entrypoint::PermissionAction},
+    config::CliConf,
+};
 
 #[derive(StructOpt, Debug)]
 #[structopt(
-    name = "kms-cli",
+    name = "cosmian_kms_cli",
     version = "0.1",
     about = "The Cosmian KMS command line"
 )]
 enum CliCommands {
     #[clap(subcommand)]
     Abe(AbeAction),
+    #[clap(subcommand)]
+    Permission(PermissionAction),
 }
-
-use kms_cli::config::CliConf;
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
@@ -21,6 +24,7 @@ async fn main() -> eyre::Result<()> {
 
     match opts {
         CliCommands::Abe(action) => action.process(&conf).await?,
+        CliCommands::Permission(action) => action.process(&conf).await?,
     };
 
     Ok(())

@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
-    access::{Access, ObjectOperationTypes},
     kmip_data_structures::KeyValue,
     kmip_objects::{Object, ObjectType},
     kmip_operations::{
@@ -14,6 +13,9 @@ use cosmian_kmip::kmip::{
         LinkedObjectIdentifier, RevocationReason, RevocationReasonEnumeration, StateEnumeration,
         Tag, UniqueIdentifier,
     },
+};
+use cosmian_kms_utils::types::{
+    Access, ObjectOperationTypes, ObjectOwnedResponse, ObjectSharedResponse, UserAccessResponse,
 };
 use tracing::{debug, trace, warn};
 use uuid::Uuid;
@@ -307,6 +309,19 @@ pub trait KmipServer {
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
     async fn delete_access(&self, access: &Access, owner: &str) -> KResult<()>;
+
+    /// Get all the access authorization for a given object
+    async fn list_accesses(
+        &self,
+        object_id: &UniqueIdentifier,
+        owner: &str,
+    ) -> KResult<Vec<UserAccessResponse>>;
+
+    /// Get all the objects owned by a given user (the owner)
+    async fn list_owned_objects(&self, owner: &str) -> KResult<Vec<ObjectOwnedResponse>>;
+
+    /// Get all the objects shared to a given user
+    async fn list_shared_objects(&self, owner: &str) -> KResult<Vec<ObjectSharedResponse>>;
 }
 
 /// Implement the KMIP Server Trait and dispatches the actual actions
@@ -661,7 +676,7 @@ impl KmipServer for KMS {
     }
 
     async fn locate(&self, request: Locate, owner: &str) -> KResult<LocateResponse> {
-        let objects = self.db.list(owner).await?;
+        let objects = self.db.list_owned_objects(owner).await?;
         trace!("Locate database contains {} objects", objects.len());
         let mut uids = Vec::<UniqueIdentifier>::new();
         for (uid, state) in objects {
@@ -785,6 +800,39 @@ impl KmipServer for KMS {
         })
     }
 
+    async fn list_accesses(
+        &self,
+        object_id: &UniqueIdentifier,
+        owner: &str,
+    ) -> KResult<Vec<UserAccessResponse>> {
+        // check the object identified by its `uid` is really owned by `owner`
+        // only the owner can list the permission of an object
+        if !self.db.is_object_owned_by(object_id, owner).await? {
+            kms_bail!(KmsError::Unauthorized(format!(
+                "Object with uid `{object_id}` is not owned by owner `{owner}`"
+            )))
+        }
+
+        let list = self.db.list_accesses(object_id).await?;
+        let ids = list.into_iter().map(UserAccessResponse::from).collect();
+
+        Ok(ids)
+    }
+
+    async fn list_owned_objects(&self, owner: &str) -> KResult<Vec<ObjectOwnedResponse>> {
+        let list = self.db.list_owned_objects(owner).await?;
+        let ids = list.into_iter().map(ObjectOwnedResponse::from).collect();
+
+        Ok(ids)
+    }
+
+    async fn list_shared_objects(&self, owner: &str) -> KResult<Vec<ObjectSharedResponse>> {
+        let list = self.db.list_shared_objects(owner).await?;
+        let ids = list.into_iter().map(ObjectSharedResponse::from).collect();
+
+        Ok(ids)
+    }
+
     async fn insert_access(&self, access: &Access, owner: &str) -> KResult<()> {
         let uid = access
             .unique_identifier
@@ -792,14 +840,22 @@ impl KmipServer for KMS {
             .ok_or(KmsError::UnsupportedPlaceholder)?;
 
         // check the object identified by its `uid` is really owned by `owner`
-        if self.db.is_object_owned_by(uid, owner).await? {
+        if !self.db.is_object_owned_by(uid, owner).await? {
             kms_bail!(KmsError::Unauthorized(format!(
                 "Object with uid `{uid}` is not owned by owner `{owner}`"
             )))
         }
 
+        // check if owner is trying to grant themself
+        if owner == access.user_id {
+            kms_bail!(KmsError::Unauthorized(
+                "You can't grant yourself, you have already all rights on your own objects"
+                    .to_string()
+            ))
+        }
+
         self.db
-            .insert_access(uid, &access.userid, access.operation_type)
+            .insert_access(uid, &access.user_id, access.operation_type)
             .await?;
         Ok(())
     }
@@ -811,14 +867,22 @@ impl KmipServer for KMS {
             .ok_or(KmsError::UnsupportedPlaceholder)?;
 
         // check the object identified by its `uid` is really owned by `owner`
-        if self.db.is_object_owned_by(uid, owner).await? {
+        if !self.db.is_object_owned_by(uid, owner).await? {
             kms_bail!(KmsError::Unauthorized(format!(
                 "Object with uid `{uid}` is not owned by owner `{owner}`"
             )))
         }
 
+        // check if owner is trying to grant themself
+        if owner == access.user_id {
+            kms_bail!(KmsError::Unauthorized(
+                "You can't revoke yourself, you shoud keep all rights on your own objects"
+                    .to_string()
+            ))
+        }
+
         self.db
-            .delete_access(uid, &access.userid, access.operation_type)
+            .delete_access(uid, &access.user_id, access.operation_type)
             .await?;
         Ok(())
     }

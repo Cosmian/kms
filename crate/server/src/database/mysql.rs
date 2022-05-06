@@ -2,11 +2,11 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
-    access::ObjectOperationTypes,
     kmip_objects::{self, Object},
     kmip_operations::ErrorReason,
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
+use cosmian_kms_utils::types::ObjectOperationTypes;
 use mysql::{prelude::*, Opts, OptsBuilder, Pool, Row, SslOpts};
 use serde_json::Value;
 use tracing::{debug, trace};
@@ -131,14 +131,14 @@ async fn retrieve_(
     if let Some(row) = row {
         let json = row
             .get::<Value, _>(0)
-            .ok_or_else(|| kms_error!("no value in field 0"))?;
+            .ok_or_else(|| kms_error!("no value in field 0 (object)"))?;
         let db_object: DBObject = serde_json::from_value(json)
             .context("failed deserializing the object")
             .reason(ErrorReason::Internal_Server_Error)?;
         let object = Object::post_fix(db_object.object_type, db_object.object);
         let state = state_from_string(
             &row.get::<String, _>(1)
-                .ok_or_else(|| kms_error!("no value in field 1"))?,
+                .ok_or_else(|| kms_error!("no value in field 1 (state)"))?,
         )?;
         return Ok(Some((object, state)))
     }
@@ -153,7 +153,7 @@ async fn retrieve_(
     row.map_or(Ok(None), |row| {
         let perms_raw = row
             .get::<Value, _>(2)
-            .ok_or_else(|| kms_error!("no value in field 2"))?;
+            .ok_or_else(|| kms_error!("no value in field 2 (permissions)"))?;
         let perms: Vec<ObjectOperationTypes> = serde_json::from_value(perms_raw)
             .context("failed deserializing the permissions")
             .reason(ErrorReason::Internal_Server_Error)?;
@@ -165,14 +165,14 @@ async fn retrieve_(
 
         let json = row
             .get::<Value, _>(0)
-            .ok_or_else(|| kms_error!("no value in field 0"))?;
+            .ok_or_else(|| kms_error!("no value in field 0 (object)"))?;
         let db_object: DBObject = serde_json::from_value(json)
             .context("failed deserializing the object")
             .reason(ErrorReason::Internal_Server_Error)?;
         let object = Object::post_fix(db_object.object_type, db_object.object);
         let state = state_from_string(
             &row.get::<String, _>(1)
-                .ok_or_else(|| kms_error!("no value in field 1"))?,
+                .ok_or_else(|| kms_error!("no value in field 1 (state)"))?,
         )?;
 
         Ok(Some((object, state)))
@@ -256,7 +256,10 @@ async fn upsert_(
     Ok(())
 }
 
-async fn list_(executor: &Pool, owner: &str) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>> {
+async fn list_owned_objects_(
+    owner: &str,
+    executor: &Pool,
+) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>> {
     let mut conn = executor.get_conn()?;
 
     let list = conn.exec_iter(
@@ -265,16 +268,84 @@ async fn list_(executor: &Pool, owner: &str) -> KResult<Vec<(UniqueIdentifier, S
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         (owner,),
     )?;
-    // let mut ids: Vec<(String, StateEnumeration)> = Vec::with_capacity(list.len());
-    let mut ids: Vec<(String, StateEnumeration)> = Vec::new();
+    let mut ids = Vec::new();
+
     for row in list {
         let row = row?;
         ids.push((
             row.get::<String, _>(0)
-                .ok_or_else(|| kms_error!("no value in field 0"))?,
+                .ok_or_else(|| kms_error!("no value in field 0 (object_id)"))?,
             state_from_string(
                 &row.get::<String, _>(1)
-                    .ok_or_else(|| kms_error!("no value in field 1"))?,
+                    .ok_or_else(|| kms_error!("no value in field 1 (state)"))?,
+            )?,
+        ));
+    }
+    Ok(ids)
+}
+
+async fn list_shared_objects_(
+    user: &str,
+    executor: &Pool,
+) -> KResult<
+    Vec<(
+        UniqueIdentifier,
+        String,
+        StateEnumeration,
+        Vec<ObjectOperationTypes>,
+    )>,
+> {
+    let mut conn = executor.get_conn()?;
+
+    let list = conn.exec_iter(
+        MYSQL_QUERIES
+            .get("select-rows-objects-shared")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        (user,),
+    )?;
+    let mut ids = Vec::new();
+    for row in list {
+        let row = row?;
+        ids.push((
+            row.get::<String, _>(0)
+                .ok_or_else(|| kms_error!("no value in field 0 (object_id)"))?,
+            row.get::<String, _>(1)
+                .ok_or_else(|| kms_error!("no value in field 1 (owner_id)"))?,
+            state_from_string(
+                &row.get::<String, _>(2)
+                    .ok_or_else(|| kms_error!("no value in field 2 (state)"))?,
+            )?,
+            serde_json::from_value(
+                row.get::<Value, _>(3)
+                    .ok_or_else(|| kms_error!("no value in field 3 (permissions)"))?,
+            )?,
+        ));
+    }
+    Ok(ids)
+}
+
+async fn list_accesses_(
+    executor: &Pool,
+    uid: &str,
+) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>> {
+    let mut conn = executor.get_conn()?;
+
+    let list = conn.exec_iter(
+        MYSQL_QUERIES
+            .get("select-rows-read_access-with-object-id")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        (uid,),
+    )?;
+
+    let mut ids = Vec::new();
+    for row in list {
+        let row = row?;
+        ids.push((
+            row.get::<String, _>(0)
+                .ok_or_else(|| kms_error!("no value in field 0 (user_id)"))?,
+            serde_json::from_value(
+                row.get::<Value, _>(1)
+                    .ok_or_else(|| kms_error!("no value in field 1 (permissions)"))?,
             )?,
         ));
     }
@@ -298,7 +369,7 @@ async fn fetch_permissions_(
     row.map_or(Ok(vec![]), |row| {
         let perms_raw = row
             .get::<Value, _>(0)
-            .ok_or_else(|| kms_error!("no value in field 0"))?;
+            .ok_or_else(|| kms_error!("no value in field 0 (permissions)"))?;
         let perms: Vec<ObjectOperationTypes> = serde_json::from_value(perms_raw)
             .context("failed deserializing the permissions")
             .reason(ErrorReason::Internal_Server_Error)?;
@@ -457,8 +528,29 @@ impl Database for Sql {
         delete_(uid, owner, &self.pool).await
     }
 
-    async fn list(&self, owner: &str) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>> {
-        list_(&self.pool, owner).await
+    async fn list_owned_objects(
+        &self,
+        owner: &str,
+    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>> {
+        list_owned_objects_(owner, &self.pool).await
+    }
+
+    async fn list_shared_objects(
+        &self,
+        owner: &str,
+    ) -> KResult<
+        Vec<(
+            UniqueIdentifier,
+            String,
+            StateEnumeration,
+            Vec<ObjectOperationTypes>,
+        )>,
+    > {
+        list_shared_objects_(owner, &self.pool).await
+    }
+
+    async fn list_accesses(&self, uid: &str) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>> {
+        list_accesses_(&self.pool, uid).await
     }
 
     async fn insert_access(
@@ -487,11 +579,10 @@ impl Database for Sql {
 // Run these tests using: `cargo make rust-tests`
 #[cfg(test)]
 mod tests {
-    use cosmian_kmip::kmip::{
-        access::ObjectOperationTypes,
-        kmip_types::{Link, LinkType, LinkedObjectIdentifier, StateEnumeration},
+    use cosmian_kmip::kmip::kmip_types::{
+        Link, LinkType, LinkedObjectIdentifier, StateEnumeration,
     };
-    use cosmian_kms_utils::crypto::aes::create_aes_symmetric_key;
+    use cosmian_kms_utils::{crypto::aes::create_aes_symmetric_key, types::ObjectOperationTypes};
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -701,7 +792,7 @@ mod tests {
         assert_eq!(&uid_1, &ids[0]);
         assert_eq!(&uid_2, &ids[1]);
 
-        let list = mysql.list(owner).await?;
+        let list = mysql.list_owned_objects(owner).await?;
         match list.iter().find(|(id, _state)| id == &uid_1) {
             Some((uid_, state_)) => {
                 assert_eq!(&uid_1, uid_);
@@ -833,6 +924,23 @@ mod tests {
             .insert_access(&uid, userid2, ObjectOperationTypes::Get)
             .await?;
 
+        let objects = mysql.list_owned_objects(owner).await?;
+        assert_eq!(objects, vec![(uid.clone(), StateEnumeration::Active)]);
+
+        let objects = mysql.list_owned_objects(userid2).await?;
+        assert_eq!(objects, vec![]);
+
+        let objects = mysql.list_shared_objects(userid2).await?;
+        assert_eq!(
+            objects,
+            vec![(
+                uid.clone(),
+                String::from(owner),
+                StateEnumeration::Active,
+                vec![ObjectOperationTypes::Get]
+            )]
+        );
+
         // Retrieve object with authorized `userid2` with `Create` operation type - ko
 
         if mysql
@@ -939,6 +1047,21 @@ mod tests {
         assert_eq!(
             perms,
             vec![ObjectOperationTypes::Get, ObjectOperationTypes::Encrypt]
+        );
+
+        let accesses = mysql.list_accesses(&uid).await?;
+        assert_eq!(
+            accesses,
+            vec![
+                (
+                    String::from("bar@example.org"),
+                    vec![ObjectOperationTypes::Get]
+                ),
+                (
+                    String::from("foo@example.org"),
+                    vec![ObjectOperationTypes::Get, ObjectOperationTypes::Encrypt]
+                )
+            ]
         );
 
         // remove `Get` access for `userid`

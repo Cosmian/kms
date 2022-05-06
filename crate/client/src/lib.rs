@@ -18,6 +18,9 @@ use cosmian_kmip::kmip::{
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
+use cosmian_kms_utils::types::{
+    Access, ObjectOwnedResponse, ObjectSharedResponse, SuccessResponse, UserAccessResponse,
+};
 use error::KmsClientError;
 use http::{HeaderMap, HeaderValue};
 use reqwest::{Client, ClientBuilder};
@@ -25,12 +28,12 @@ use serde::{Deserialize, Serialize};
 
 /// A struct implementing some of the 50+ operations a KMIP client should implement:
 /// https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip
-pub struct KmipRestClient {
+pub struct KmsRestClient {
     server_url: String,
     client: Client,
 }
 
-impl KmipRestClient {
+impl KmsRestClient {
     /// This operation requests the server to generate a new symmetric key or
     /// generate Secret Data as a Managed Cryptographic Object.
     /// The request contains information about the type of object being created,
@@ -323,35 +326,131 @@ impl KmipRestClient {
     pub async fn revoke(&self, request: Revoke) -> Result<RevokeResponse, KmsClientError> {
         self.post_ttlv::<Revoke, RevokeResponse>(&request).await
     }
+
+    /// This operation requests the server to add an access on an object to a user
+    /// The user could be unknown from the database.
+    /// The object uid must be known from the database.
+    /// If the user already has access, nothing is done. No error is returned.
+    /// The user (owner) can't grant access to himself/herself.
+    pub async fn add_access(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
+        self.post_no_ttlv(
+            &format!("/accesses/{}", access.unique_identifier.clone().unwrap()),
+            &access,
+        )
+        .await
+    }
+
+    /// This operation requests the server to revoke an access on an object to a user
+    /// The user could be unknown from the database.
+    /// The object uid must be known from the database.
+    /// If the user already has no access, nothing is done. No error is returned.
+    pub async fn remove_access(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
+        self.delete_no_ttlv(
+            &format!("/accesses/{}", &access.unique_identifier.clone().unwrap()),
+            &access,
+        )
+        .await
+    }
+
+    /// This operation requests the server to list all the granted access on a object
+    pub async fn list_access(&self, uid: &str) -> Result<Vec<UserAccessResponse>, KmsClientError> {
+        self.get_no_ttlv(&format!("/accesses/{}", uid), vec![])
+            .await
+    }
+
+    /// This operation requests the server to list all the objects owned by the current user.
+    pub async fn list_owned_objects(&self) -> Result<Vec<ObjectOwnedResponse>, KmsClientError> {
+        self.get_no_ttlv("/objects/owned", vec![]).await
+    }
+
+    /// This operation requests the server to list all the objects shared with the current user.
+    pub async fn list_shared_objects(&self) -> Result<Vec<ObjectSharedResponse>, KmsClientError> {
+        self.get_no_ttlv("/objects/shared", vec![]).await
+    }
 }
 
-impl KmipRestClient {
+impl KmsRestClient {
     /// Instantiate a new KMIP REST Client
     #[allow(dead_code)]
     pub fn instantiate(
         server_url: &str,
         bearer_token: &str,
-    ) -> Result<KmipRestClient, KmsClientError> {
+    ) -> Result<KmsRestClient, KmsClientError> {
         let server_url = match server_url.strip_suffix('/') {
             Some(s) => s.to_string(),
             None => server_url.to_string(),
-        } + "/kmip/2_1";
+        };
         let mut headers = HeaderMap::new();
         headers.insert(
             "Authorization",
-            HeaderValue::from_str(format!("Bearer {}", bearer_token).as_str())
-                .map_err(|e| KmsClientError::UnexpectedError(e.to_string()))?,
+            HeaderValue::from_str(format!("Bearer {}", bearer_token).as_str())?,
         );
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-        Ok(KmipRestClient {
+        Ok(KmsRestClient {
             client: ClientBuilder::new()
                 .connect_timeout(Duration::from_secs(5))
                 .tcp_keepalive(Duration::from_secs(30))
                 .default_headers(headers)
-                .build()
-                .map_err(|e| KmsClientError::UnexpectedError(e.to_string()))?,
+                .build()?,
             server_url,
         })
+    }
+
+    pub async fn get_no_ttlv<R>(
+        &self,
+        endpoint: &str,
+        data: Vec<(&str, &str)>,
+    ) -> Result<R, KmsClientError>
+    where
+        R: serde::de::DeserializeOwned + Sized + 'static,
+    {
+        let server_url = format!("{}{}", self.server_url, endpoint);
+        let response = self.client.get(server_url).query(&data).send().await?;
+
+        let status_code = response.status();
+        if status_code.is_success() {
+            return Ok(response.json::<R>().await?)
+        }
+
+        // process error
+        let p = response.text().await?;
+        Err(KmsClientError::RequestFailed(p))
+    }
+
+    pub async fn delete_no_ttlv<O, R>(&self, endpoint: &str, data: &O) -> Result<R, KmsClientError>
+    where
+        O: Serialize,
+        R: serde::de::DeserializeOwned + Sized + 'static,
+    {
+        let server_url = format!("{}{}", self.server_url, endpoint);
+        let response = self.client.delete(server_url).json(data).send().await?;
+
+        let status_code = response.status();
+        if status_code.is_success() {
+            return Ok(response.json::<R>().await?)
+        }
+
+        // process error
+        let p = response.text().await?;
+        Err(KmsClientError::RequestFailed(p))
+    }
+
+    pub async fn post_no_ttlv<O, R>(&self, endpoint: &str, data: &O) -> Result<R, KmsClientError>
+    where
+        O: Serialize,
+        R: serde::de::DeserializeOwned + Sized + 'static,
+    {
+        let server_url = format!("{}{}", self.server_url, endpoint);
+        let response = self.client.post(server_url).json(data).send().await?;
+
+        let status_code = response.status();
+        if status_code.is_success() {
+            return Ok(response.json::<R>().await?)
+        }
+
+        // process error
+        let p = response.text().await?;
+        Err(KmsClientError::RequestFailed(p))
     }
 
     pub async fn post_ttlv<O, R>(&self, kmip_request: &O) -> Result<R, KmsClientError>
@@ -361,26 +460,19 @@ impl KmipRestClient {
     {
         let response = self
             .client
-            .post(&self.server_url)
+            .post(self.server_url.to_owned() + "/kmip/2_1")
             .json(&to_ttlv(kmip_request)?)
             .send()
-            .await
-            .map_err(|e| KmsClientError::RequestFailed(e.to_string()))?;
+            .await?;
 
         let status_code = response.status();
         if status_code.is_success() {
-            let ttlv = response
-                .json::<TTLV>()
-                .await
-                .map_err(|e| KmsClientError::TtlvError(e.to_string()))?;
+            let ttlv = response.json::<TTLV>().await?;
             return from_ttlv(&ttlv).map_err(|e| KmsClientError::ResponseFailed(e.to_string()))
         }
 
         // process error
-        let p = response
-            .text()
-            .await
-            .map_err(|e| KmsClientError::RequestFailed(e.to_string()))?;
+        let p = response.text().await?;
         Err(KmsClientError::RequestFailed(p))
     }
 }

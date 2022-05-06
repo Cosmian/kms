@@ -31,8 +31,11 @@ pub async fn start_server() -> eyre::Result<()> {
             .app_data(PayloadConfig::new(10_000_000_000))
             .app_data(JsonConfig::default().limit(10_000_000_000))
             .service(endpoint::kmip)
-            .service(endpoint::access_insert)
-            .service(endpoint::access_delete)
+            .service(endpoint::list_owned_objects)
+            .service(endpoint::list_shared_objects)
+            .service(endpoint::list_accesses)
+            .service(endpoint::insert_access)
+            .service(endpoint::delete_access)
     })
     .bind(format!("{}:{}", hostname(), port()))?
     .run()

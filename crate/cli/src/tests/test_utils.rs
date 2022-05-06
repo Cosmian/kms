@@ -18,7 +18,7 @@ pub async fn start_test_server() {
 }
 
 /// Start a server for testing
-pub async fn init() {
+pub async fn init_test_server() {
     // Configure the serveur
     let config = Config {
         delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),

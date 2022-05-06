@@ -1,11 +1,11 @@
 [package]
-name = "kms_cli"
-version = "0.1.0"
+name = "cosmian_kms_cli"
+version = "0.1.1"
 edition = "2021"
 description = "CLI used to manage the Cosmian KMS."
 
 [[bin]]
-name = "kms-cli"
+name = "cosmian_kms_cli"
 path = "src/main.rs"
 
 [dependencies]

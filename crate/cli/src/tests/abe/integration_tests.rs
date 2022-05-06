@@ -3,48 +3,21 @@ use std::{fs, path::Path, process::Command};
 use assert_cmd::prelude::*;
 use file_diff::diff;
 use predicates::prelude::*;
-use regex::{Regex, RegexBuilder};
 
 use crate::{
     config::KMS_CLI_CONF_ENV,
     tests::{
-        test_utils::{init, ONCE},
+        test_utils::{init_test_server, ONCE},
+        utils::abe::{extract_private_key, extract_public_key, extract_user_key},
         PROG_NAME,
     },
 };
 
 const SUB_COMMAND: &str = "abe";
 
-/// Extract the key_uid (prefixed by a pattern) from a text
-fn extract_uid<'a>(text: &'a str, pattern: &'a str) -> Option<&'a str> {
-    let formatted = format!(r"^  {}: (?P<uid>[a-z0-9-]+)$", pattern);
-    let uid_regex: Regex = RegexBuilder::new(formatted.as_str())
-        .multi_line(true)
-        .build()
-        .unwrap();
-    uid_regex
-        .captures(text)
-        .and_then(|cap| cap.name("uid").map(|uid| uid.as_str()))
-}
-
-/// Extract the private key from a text.
-fn extract_private_key(text: &str) -> Option<&str> {
-    extract_uid(text, "Private key unique identifier")
-}
-
-/// Extract the public key from a text.
-fn extract_public_key(text: &str) -> Option<&str> {
-    extract_uid(text, "Public key unique identifier")
-}
-
-/// Extract the decryption user key from a text.
-fn extract_user_key(text: &str) -> Option<&str> {
-    extract_uid(text, "Decryption user key unique identifier")
-}
-
 #[tokio::test]
 pub async fn test_init() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
@@ -69,7 +42,7 @@ pub async fn test_init() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 pub async fn test_init_error() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
@@ -122,7 +95,7 @@ pub fn test_bad_conf() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 pub async fn test_new() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
@@ -148,7 +121,7 @@ pub async fn test_new() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 pub async fn test_new_error() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
@@ -188,7 +161,7 @@ pub async fn test_new_error() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 pub async fn test_revoke() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
@@ -230,7 +203,7 @@ pub async fn test_revoke() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 pub async fn test_revoke_error() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     // not exist
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -252,7 +225,7 @@ pub async fn test_revoke_error() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 pub async fn test_destroy() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
@@ -284,7 +257,7 @@ pub async fn test_destroy() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 pub async fn test_destroy_error() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     // not exist
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -297,7 +270,7 @@ pub async fn test_destroy_error() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 pub async fn test_rotate() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
@@ -326,7 +299,7 @@ pub async fn test_rotate() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 pub async fn test_rotate_error() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
@@ -368,7 +341,7 @@ pub async fn test_rotate_error() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     fs::remove_file("/tmp/plain.enc").ok();
     fs::remove_file("/tmp/plain.plain").ok();
@@ -444,7 +417,7 @@ pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
@@ -564,7 +537,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
-    ONCE.get_or_init(init).await;
+    ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");

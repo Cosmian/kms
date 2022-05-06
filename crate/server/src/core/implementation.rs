@@ -3,7 +3,6 @@
 use std::convert::TryFrom;
 
 use cosmian_kmip::kmip::{
-    access::ObjectOperationTypes,
     kmip_key_utils::WrappedSymmetricKey,
     kmip_objects::Object,
     kmip_operations::{Create, CreateKeyPair, Get, GetResponse},
@@ -29,6 +28,7 @@ use cosmian_kms_utils::{
         },
         tfhe::{self, TFHEKeyCreateRequest},
     },
+    types::ObjectOperationTypes,
     DeCipher, EnCipher, KeyPair,
 };
 use cosmian_mcfe::lwe;

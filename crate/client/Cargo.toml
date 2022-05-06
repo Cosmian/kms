@@ -2,10 +2,11 @@
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 name = "cosmian_kms_client"
-version = "0.1.0"
+version = "0.1.1"
 
 [dependencies]
 cosmian_kmip = { path = "../kmip" }
+cosmian_kms_utils = { path = "../utils" }
 hex = { version = "0.4", features = ["serde"] }
 http = "0.2"
 reqwest = { version = "0.11.10", features = ["json"] }
