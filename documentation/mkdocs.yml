@@ -10,6 +10,8 @@ theme:
   custom_dir: overrides
   features:
     - content.tabs.link
+extra:
+  homepage: https://docs.cosmian.com/
 markdown_extensions:
   - tables
   - smarty
@@ -40,6 +42,7 @@ extra_css:
 extra_javascript:
   - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML
   - https://unpkg.com/mermaid@8.7.0/dist/mermaid.min.js
+  - javascripts/extra.js
 nav:
   - Home: index.md
   - SaaS: saas.md

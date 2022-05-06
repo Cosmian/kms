@@ -190,4 +190,6 @@ doc:
   script:
     - pushd documentation
     - mkdocs build
+    # remove any previous KMS doc with same current tag
+    - ssh cosmian@docs.cosmian.com 'rm -fr /home/cosmian/documentation_root/kms/$CI_COMMIT_TAG'
     - scp -r site cosmian@docs.cosmian.com:/home/cosmian/documentation_root/kms/$CI_COMMIT_TAG
