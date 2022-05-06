@@ -64,3 +64,15 @@ SELECT 1 FROM objects WHERE id=? AND owner=?;
 -- name: update-rows-read_access-with-permission
 UPDATE read_access SET permissions=?
         WHERE id=? AND userid=?;
+
+-- name: select-rows-read_access-with-object-id
+SELECT userid, permissions 
+        FROM read_access 
+        WHERE id=?;
+
+-- name: select-rows-objects-shared
+SELECT objects.id, owner, state, permissions 
+        FROM objects 
+        INNER JOIN read_access 
+        ON objects.id = read_access.id 
+        WHERE read_access.userid=?;

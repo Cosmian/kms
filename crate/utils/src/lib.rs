@@ -8,6 +8,7 @@ use cosmian_kmip::{
 
 pub mod crypto;
 pub mod kmip_utils;
+pub mod types;
 
 pub trait EnCipher {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipError>;

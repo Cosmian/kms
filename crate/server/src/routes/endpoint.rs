@@ -1,17 +1,20 @@
 use std::sync::Arc;
 
 use actix_web::{
-    delete, post,
-    web::{Data, Json},
+    delete, get, post,
+    web::{Data, Json, Path},
     HttpMessage, HttpRequest, HttpResponse, HttpResponseBuilder,
 };
 use cosmian_kmip::kmip::{
-    access::{Access, ResponseSuccess},
     kmip_operations::{
         Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Get, GetAttributes, Import, Locate,
         ReKeyKeyPair, Revoke,
     },
+    kmip_types::UniqueIdentifier,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
+};
+use cosmian_kms_utils::types::{
+    Access, ObjectOwnedResponse, ObjectSharedResponse, SuccessResponse, UserAccessResponse,
 };
 use http::{header, StatusCode};
 use tracing::{debug, error, warn};
@@ -126,37 +129,83 @@ pub async fn kmip(
     Ok(Json(ttlv_resp))
 }
 
+/// List objects owned by the current user
+#[get("/objects/owned")]
+pub async fn list_owned_objects(
+    req: HttpRequest,
+    kms_client: Data<Arc<KMSServer>>,
+) -> KResult<Json<Vec<ObjectOwnedResponse>>> {
+    let owner = get_owner(req)?;
+    let list = kms_client.list_owned_objects(&owner).await?;
+
+    Ok(Json(list))
+}
+
+/// List objects owned by the current user
+#[get("/objects/shared")]
+pub async fn list_shared_objects(
+    req: HttpRequest,
+    kms_client: Data<Arc<KMSServer>>,
+) -> KResult<Json<Vec<ObjectSharedResponse>>> {
+    let owner = get_owner(req)?;
+    let list = kms_client.list_shared_objects(&owner).await?;
+
+    Ok(Json(list))
+}
+
+/// List access authorization for an object
+#[get("/accesses/{object_id}")]
+pub async fn list_accesses(
+    req: HttpRequest,
+    object_id: Path<(UniqueIdentifier,)>,
+    kms_client: Data<Arc<KMSServer>>,
+) -> KResult<Json<Vec<UserAccessResponse>>> {
+    let owner = get_owner(req)?;
+    let object_id = object_id.to_owned().0;
+    let list = kms_client.list_accesses(&object_id, &owner).await?;
+
+    Ok(Json(list))
+}
+
 /// Add an access authorization for an object, given a `userid`
-#[post("/access")]
-pub async fn access_insert(
+#[post("/accesses/{object_id}")]
+pub async fn insert_access(
     req: HttpRequest,
     access: Json<Access>,
     kms_client: Data<Arc<KMSServer>>,
-) -> KResult<Json<ResponseSuccess>> {
+) -> KResult<Json<SuccessResponse>> {
     let access = access.into_inner();
     let owner = get_owner(req)?;
 
     kms_client.insert_access(&access, &owner).await?;
+    debug!(
+        "Access granted on {:?} for {:?} to {}",
+        &access.unique_identifier, &access.operation_type, &access.user_id
+    );
 
-    Ok(Json(ResponseSuccess {
-        success: format!("Access for {} successfully added", access.userid),
+    Ok(Json(SuccessResponse {
+        success: format!("Access for {} successfully added", access.user_id),
     }))
 }
 
 /// Revoke an access authorization for an object, given a `userid`
-#[delete("/access")]
-pub async fn access_delete(
+#[delete("/accesses/{object_id}")]
+pub async fn delete_access(
     req: HttpRequest,
     access: Json<Access>,
     kms_client: Data<Arc<KMSServer>>,
-) -> KResult<Json<ResponseSuccess>> {
+) -> KResult<Json<SuccessResponse>> {
     let access = access.into_inner();
     let owner = get_owner(req)?;
 
     kms_client.delete_access(&access, &owner).await?;
+    debug!(
+        "Access revoke on {:?} for {:?} to {}",
+        &access.unique_identifier, &access.operation_type, &access.user_id
+    );
 
-    Ok(Json(ResponseSuccess {
-        success: format!("Access for {} successfully deleted", access.userid),
+    Ok(Json(SuccessResponse {
+        success: format!("Access for {} successfully deleted", access.user_id),
     }))
 }
 

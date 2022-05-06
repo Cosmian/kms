@@ -27,7 +27,7 @@ The permission system relies on the email address stored in the [JWT token used 
 
 ## Endpoint
 
-The endpoint is `/access`. Following HTTP methods are available:
+The endpoint is `/accesses/{object_id}`. Following HTTP methods are available:
 
 - `DELETE` to remove a permission
 - `POST` to grant a permission
@@ -40,4 +40,34 @@ The expecting data are serialized in JSON such as:
    "operation_type": "Get",
    "unique_identifier": "my-object-uuid"
 }
+```
+
+You can also list the accesses of an object using `/accesses/{object_id}` route with `GET` method. The output will be:
+
+```json
+[
+   ["user@exemple.com", ["Get", "Revoke"]],
+   ["user2@exemple.com", ["Create", "Revoke"]],
+   ...
+]
+```
+
+You can list the objects you own using  `/objects/owned` route with `GET` method. The output will be:
+
+```json
+[
+   ["object-id-1", "Active"],
+   ["object-id-2", "Active"],
+   ...
+]
+```
+
+You can list the objects someone shared with you using  `/objects/shared` route with `GET` method. The output will be:
+
+```json
+[
+   ["object-id-1", "user@example.com", "Active", ["Get", "Revoke"]],
+   ["object-id-2", "user@example.com", "Active", ["Revoke"]],
+   ...
+]
 ```

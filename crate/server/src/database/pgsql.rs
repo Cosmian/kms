@@ -2,11 +2,11 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
-    access::ObjectOperationTypes,
     kmip_objects::{self, Object},
     kmip_operations::ErrorReason,
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
+use cosmian_kms_utils::types::ObjectOperationTypes;
 use serde_json::Value;
 use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions, PgRow},
@@ -270,9 +270,9 @@ where
     Ok(())
 }
 
-async fn list_<'e, E>(
-    executor: E,
+async fn list_owned_objects_<'e, E>(
     owner: &str,
+    executor: E,
 ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>>
 where
     E: Executor<'e, Database = Postgres>,
@@ -290,6 +290,70 @@ where
         ids.push((
             row.get::<String, _>(0),
             state_from_string(&row.get::<String, _>(1))?,
+        ));
+    }
+    Ok(ids)
+}
+
+async fn list_shared_objects_<'e, E>(
+    user: &str,
+    executor: E,
+) -> KResult<
+    Vec<(
+        UniqueIdentifier,
+        String,
+        StateEnumeration,
+        Vec<ObjectOperationTypes>,
+    )>,
+>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    let list = sqlx::query(
+        PGSQL_QUERIES
+            .get("select-rows-objects-shared")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(user)
+    .fetch_all(executor)
+    .await?;
+    let mut ids: Vec<(
+        UniqueIdentifier,
+        String,
+        StateEnumeration,
+        Vec<ObjectOperationTypes>,
+    )> = Vec::with_capacity(list.len());
+    for row in list {
+        ids.push((
+            row.get::<String, _>(0),
+            row.get::<String, _>(1),
+            state_from_string(&row.get::<String, _>(2))?,
+            serde_json::from_value(row.get::<Value, _>(3))?,
+        ));
+    }
+    Ok(ids)
+}
+
+async fn list_accesses_<'e, E>(
+    uid: &str,
+    executor: E,
+) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    let list = sqlx::query(
+        PGSQL_QUERIES
+            .get("select-rows-read_access-with-object-id")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .fetch_all(executor)
+    .await?;
+    let mut ids: Vec<(String, Vec<ObjectOperationTypes>)> = Vec::with_capacity(list.len());
+    for row in list {
+        ids.push((
+            row.get::<String, _>(0),
+            serde_json::from_value(row.get::<Value, _>(1))?,
         ));
     }
     Ok(ids)
@@ -489,8 +553,29 @@ impl Database for Pgsql {
         delete_(uid, owner, &self.pool).await
     }
 
-    async fn list(&self, owner: &str) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>> {
-        list_(&self.pool, owner).await
+    async fn list_owned_objects(
+        &self,
+        owner: &str,
+    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>> {
+        list_owned_objects_(owner, &self.pool).await
+    }
+
+    async fn list_shared_objects(
+        &self,
+        owner: &str,
+    ) -> KResult<
+        Vec<(
+            UniqueIdentifier,
+            String,
+            StateEnumeration,
+            Vec<ObjectOperationTypes>,
+        )>,
+    > {
+        list_shared_objects_(owner, &self.pool).await
+    }
+
+    async fn list_accesses(&self, uid: &str) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>> {
+        list_accesses_(uid, &self.pool).await
     }
 
     async fn insert_access(
@@ -522,11 +607,10 @@ impl Database for Pgsql {
 //
 #[cfg(test)]
 mod tests {
-    use cosmian_kmip::kmip::{
-        access::ObjectOperationTypes,
-        kmip_types::{Link, LinkType, LinkedObjectIdentifier, StateEnumeration},
+    use cosmian_kmip::kmip::kmip_types::{
+        Link, LinkType, LinkedObjectIdentifier, StateEnumeration,
     };
-    use cosmian_kms_utils::crypto::aes::create_aes_symmetric_key;
+    use cosmian_kms_utils::{crypto::aes::create_aes_symmetric_key, types::ObjectOperationTypes};
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -730,7 +814,7 @@ mod tests {
         assert_eq!(&uid_1, &ids[0]);
         assert_eq!(&uid_2, &ids[1]);
 
-        let list = pg.list(owner).await?;
+        let list = pg.list_owned_objects(owner).await?;
         match list.iter().find(|(id, _state)| id == &uid_1) {
             Some((uid_, state_)) => {
                 assert_eq!(&uid_1, uid_);
@@ -856,6 +940,23 @@ mod tests {
         pg.insert_access(&uid, userid2, ObjectOperationTypes::Get)
             .await?;
 
+        let objects = pg.list_owned_objects(owner).await?;
+        assert_eq!(objects, vec![(uid.clone(), StateEnumeration::Active)]);
+
+        let objects = pg.list_owned_objects(userid2).await?;
+        assert_eq!(objects, vec![]);
+
+        let objects = pg.list_shared_objects(userid2).await?;
+        assert_eq!(
+            objects,
+            vec![(
+                uid.clone(),
+                String::from(owner),
+                StateEnumeration::Active,
+                vec![ObjectOperationTypes::Get]
+            )]
+        );
+
         // Retrieve object with authorized `userid2` with `Create` operation type - ko
 
         if pg
@@ -954,6 +1055,21 @@ mod tests {
         assert_eq!(
             perms,
             vec![ObjectOperationTypes::Get, ObjectOperationTypes::Encrypt]
+        );
+
+        let accesses = pg.list_accesses(&uid).await?;
+        assert_eq!(
+            accesses,
+            vec![
+                (
+                    String::from("bar@example.org"),
+                    vec![ObjectOperationTypes::Get]
+                ),
+                (
+                    String::from("foo@example.org"),
+                    vec![ObjectOperationTypes::Get, ObjectOperationTypes::Encrypt]
+                )
+            ]
         );
 
         // remove `Get` access for `userid`

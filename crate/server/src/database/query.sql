@@ -69,3 +69,15 @@ SELECT 1 FROM objects WHERE id=$1 AND owner=$2;
 -- name: update-rows-read_access-with-permission
 UPDATE read_access SET permissions=$3 
         WHERE id=$1 AND userid=$2;
+
+-- name: select-rows-read_access-with-object-id
+SELECT userid, permissions 
+        FROM read_access 
+        WHERE id=$1;
+
+-- name: select-rows-objects-shared
+SELECT objects.id, owner, state, permissions 
+        FROM objects 
+        INNER JOIN read_access 
+        ON objects.id = read_access.id 
+        WHERE read_access.userid=$1;

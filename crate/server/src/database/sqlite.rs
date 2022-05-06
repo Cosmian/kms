@@ -1,12 +1,13 @@
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
-    access::ObjectOperationTypes,
     kmip_objects,
     kmip_operations::ErrorReason,
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
+use cosmian_kms_utils::types::ObjectOperationTypes;
+use serde_json::Value;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
     ConnectOptions, Executor, Pool, Row, Sqlite,
@@ -29,12 +30,14 @@ impl SqlitePool {
     pub async fn instantiate(path: &Path) -> KResult<SqlitePool> {
         let mut options = SqliteConnectOptions::new()
             .filename(path)
+            // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
+            .busy_timeout(Duration::from_secs(120))
             .create_if_missing(true);
         // disable logging of each query
         options.disable_statement_logging();
 
         let pool = SqlitePoolOptions::new()
-            .max_connections(5)
+            .max_connections(1)
             .connect_with(options)
             .await?;
 
@@ -130,8 +133,29 @@ impl Database for SqlitePool {
         delete_(uid, owner, &self.pool).await
     }
 
-    async fn list(&self, owner: &str) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>> {
-        list_(owner, &self.pool).await
+    async fn list_owned_objects(
+        &self,
+        owner: &str,
+    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>> {
+        list_owned_objects_(owner, &self.pool).await
+    }
+
+    async fn list_shared_objects(
+        &self,
+        owner: &str,
+    ) -> KResult<
+        Vec<(
+            UniqueIdentifier,
+            String,
+            StateEnumeration,
+            Vec<ObjectOperationTypes>,
+        )>,
+    > {
+        list_shared_objects_(owner, &self.pool).await
+    }
+
+    async fn list_accesses(&self, uid: &str) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>> {
+        list_accesses_(uid, &self.pool).await
     }
 
     async fn insert_access(
@@ -349,13 +373,42 @@ where
     Ok(())
 }
 
-async fn list_<'e, E>(
+async fn list_accesses_<'e, E>(
+    uid: &str,
+    executor: E,
+) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    debug!("Uid = {}", uid);
+
+    let list = sqlx::query(
+        SQLITE_QUERIES
+            .get("select-rows-read_access-with-object-id")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .fetch_all(executor)
+    .await?;
+    let mut ids: Vec<(String, Vec<ObjectOperationTypes>)> = Vec::with_capacity(list.len());
+    for row in list {
+        ids.push((
+            row.get::<String, _>(0),
+            serde_json::from_value(row.get::<Value, _>(1))?,
+        ));
+    }
+    debug!("Listed {} rows", ids.len());
+    Ok(ids)
+}
+
+async fn list_owned_objects_<'e, E>(
     owner: &str,
     executor: E,
 ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>>
 where
     E: Executor<'e, Database = Sqlite>,
 {
+    debug!("Owner = {}", owner);
     let list = sqlx::query(
         SQLITE_QUERIES
             .get("select-row-objects-where-owner")
@@ -369,6 +422,47 @@ where
         ids.push((
             row.get::<String, _>(0),
             state_from_string(&row.get::<String, _>(1))?,
+        ));
+    }
+    debug!("Listed {} rows", ids.len());
+    Ok(ids)
+}
+
+async fn list_shared_objects_<'e, E>(
+    user: &str,
+    executor: E,
+) -> KResult<
+    Vec<(
+        UniqueIdentifier,
+        String,
+        StateEnumeration,
+        Vec<ObjectOperationTypes>,
+    )>,
+>
+where
+    E: Executor<'e, Database = Sqlite>,
+{
+    debug!("Owner = {}", user);
+    let list = sqlx::query(
+        SQLITE_QUERIES
+            .get("select-rows-objects-shared")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(user)
+    .fetch_all(executor)
+    .await?;
+    let mut ids: Vec<(
+        UniqueIdentifier,
+        String,
+        StateEnumeration,
+        Vec<ObjectOperationTypes>,
+    )> = Vec::with_capacity(list.len());
+    for row in list {
+        ids.push((
+            row.get::<String, _>(0),
+            row.get::<String, _>(1),
+            state_from_string(&row.get::<String, _>(2))?,
+            serde_json::from_slice(&row.get::<Vec<u8>, _>(3))?,
         ));
     }
     debug!("Listed {} rows", ids.len());
@@ -504,8 +598,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use cosmian_kmip::kmip::{access::ObjectOperationTypes, kmip_types::StateEnumeration};
-    use cosmian_kms_utils::crypto::aes::create_aes_symmetric_key;
+    use cosmian_kmip::kmip::kmip_types::StateEnumeration;
+    use cosmian_kms_utils::{crypto::aes::create_aes_symmetric_key, types::ObjectOperationTypes};
     use tempfile::tempdir;
     use uuid::Uuid;
 
@@ -589,6 +683,23 @@ mod tests {
 
         db.insert_access(&uid, userid2, ObjectOperationTypes::Get)
             .await?;
+
+        let objects = db.list_owned_objects(owner).await?;
+        assert_eq!(objects, vec![(uid.clone(), StateEnumeration::Active)]);
+
+        let objects = db.list_owned_objects(userid2).await?;
+        assert_eq!(objects, vec![]);
+
+        let objects = db.list_shared_objects(userid2).await?;
+        assert_eq!(
+            objects,
+            vec![(
+                uid.clone(),
+                String::from(owner),
+                StateEnumeration::Active,
+                vec![ObjectOperationTypes::Get]
+            )]
+        );
 
         // Retrieve object with authorized `userid2` with `Create` operation type - ko
 
@@ -690,6 +801,21 @@ mod tests {
         assert_eq!(
             perms,
             vec![ObjectOperationTypes::Get, ObjectOperationTypes::Encrypt]
+        );
+
+        let accesses = db.list_accesses(&uid).await?;
+        assert_eq!(
+            accesses,
+            vec![
+                (
+                    String::from("bar@example.org"),
+                    vec![ObjectOperationTypes::Get]
+                ),
+                (
+                    String::from("foo@example.org"),
+                    vec![ObjectOperationTypes::Get, ObjectOperationTypes::Encrypt]
+                )
+            ]
         );
 
         // remove `Get` access for `userid`

@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
-    access::ObjectOperationTypes,
     kmip_objects::{Object, ObjectType},
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
+use cosmian_kms_utils::types::ObjectOperationTypes;
 use lazy_static::lazy_static;
 use rawsql::Loader;
 use serde::{Deserialize, Serialize};
@@ -83,7 +83,24 @@ pub(crate) trait Database {
 
     async fn delete(&self, uid: &str, owner: &str) -> KResult<()>;
 
-    async fn list(&self, owner: &str) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>>;
+    async fn list_owned_objects(
+        &self,
+        owner: &str,
+    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>>;
+
+    async fn list_shared_objects(
+        &self,
+        owner: &str,
+    ) -> KResult<
+        Vec<(
+            UniqueIdentifier,
+            String,
+            StateEnumeration,
+            Vec<ObjectOperationTypes>,
+        )>,
+    >;
+
+    async fn list_accesses(&self, uid: &str) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>;
 
     /// Insert a `userid` to give `operation_type` access right for the object identified
     /// by its `uid` and belonging to `owner`

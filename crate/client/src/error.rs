@@ -2,6 +2,7 @@ use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
+use http::header::InvalidHeaderValue;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -37,6 +38,18 @@ pub enum KmsClientError {
 impl From<TtlvError> for KmsClientError {
     fn from(e: TtlvError) -> Self {
         KmsClientError::TtlvError(e.to_string())
+    }
+}
+
+impl From<InvalidHeaderValue> for KmsClientError {
+    fn from(e: InvalidHeaderValue) -> Self {
+        KmsClientError::UnexpectedError(e.to_string())
+    }
+}
+
+impl From<reqwest::Error> for KmsClientError {
+    fn from(e: reqwest::Error) -> Self {
+        KmsClientError::UnexpectedError(e.to_string())
     }
 }
 

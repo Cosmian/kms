@@ -1,6 +1,6 @@
 use std::{env, fs::File, io::BufReader};
 
-use cosmian_kms_client::KmipRestClient;
+use cosmian_kms_client::KmsRestClient;
 use eyre::Context;
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +20,7 @@ pub struct CliConf {
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
 
 impl CliConf {
-    pub fn load() -> eyre::Result<KmipRestClient> {
+    pub fn load() -> eyre::Result<KmsRestClient> {
         let cli_conf_filename =
             env::var(KMS_CLI_CONF_ENV).with_context(|| "Can't find KMS_CLI_CONF env variable")?;
 
@@ -36,13 +36,14 @@ impl CliConf {
 
         // Create a client to query the KMS
         let kms_connector =
-            KmipRestClient::instantiate(&conf.kms_server_url, &conf.kms_access_token)
-                .with_context(|| {
+            KmsRestClient::instantiate(&conf.kms_server_url, &conf.kms_access_token).with_context(
+                || {
                     format!(
                         "Can't build the query to connect to the kms server {}",
                         &conf.kms_server_url
                     )
-                })?;
+                },
+            )?;
 
         Ok(kms_connector)
     }

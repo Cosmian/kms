@@ -1,5 +1,5 @@
 use clap::StructOpt;
-use cosmian_kms_client::KmipRestClient;
+use cosmian_kms_client::KmsRestClient;
 
 use super::{
     decrypt::DecryptAction,
@@ -25,7 +25,7 @@ pub enum AbeAction {
 }
 
 impl AbeAction {
-    pub async fn process(&self, client_connector: &KmipRestClient) -> eyre::Result<()> {
+    pub async fn process(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         match self {
             AbeAction::Init(action) => action.run(client_connector).await?,
             AbeAction::Rotate(action) => action.run(client_connector).await?,

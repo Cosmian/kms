@@ -2,7 +2,7 @@ use std::{fs::File, io::prelude::*, path::PathBuf};
 
 use abe_gpsw::interfaces::policy::Attribute;
 use clap::StructOpt;
-use cosmian_kms_client::KmipRestClient;
+use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::abe::kmip_requests::build_hybrid_encryption_request;
 use eyre::Context;
 
@@ -33,7 +33,7 @@ pub struct EncryptAction {
 }
 
 impl EncryptAction {
-    pub async fn run(&self, client_connector: &KmipRestClient) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Parse the attributes
         let attributes = self
             .attributes

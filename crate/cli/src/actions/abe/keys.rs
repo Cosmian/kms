@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use abe_gpsw::core::policy::{AccessPolicy, Attribute};
 use clap::StructOpt;
-use cosmian_kms_client::{kmip::kmip_types::RevocationReason, KmipRestClient};
+use cosmian_kms_client::{kmip::kmip_types::RevocationReason, KmsRestClient};
 use cosmian_kms_utils::crypto::abe::kmip_requests::{
     build_create_master_keypair_request, build_create_user_decryption_private_key_request,
     build_destroy_key_request, build_rekey_keypair_request,
@@ -32,7 +32,7 @@ pub struct NewMasterKeyPairAction {
 }
 
 impl NewMasterKeyPairAction {
-    pub async fn run(&self, client_connector: &KmipRestClient) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Parse the json policy file
         let policy = super::policy::policy_from_file(&self.policy_file)?;
 
@@ -74,7 +74,7 @@ pub struct NewUserKeyAction {
 }
 
 impl NewUserKeyAction {
-    pub async fn run(&self, client_connector: &KmipRestClient) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Parse self.access_policy
         let policy = AccessPolicy::from_boolean_expression(&self.access_policy)
             .with_context(|| "Bad access policy definition")?;
@@ -118,7 +118,7 @@ pub struct RevokeUserKeyAction {
 }
 
 impl RevokeUserKeyAction {
-    pub async fn run(&self, client_connector: &KmipRestClient) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Create the kmip query
         let revoke_query = build_revoke_user_decryption_key_request(
             &self.user_key_id,
@@ -156,7 +156,7 @@ pub struct RotateAttributeAction {
 }
 
 impl RotateAttributeAction {
-    pub async fn run(&self, client_connector: &KmipRestClient) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Parse the attributes
         let attributes = self
             .attributes
@@ -192,7 +192,7 @@ pub struct DestroyUserKeyAction {
 }
 
 impl DestroyUserKeyAction {
-    pub async fn run(&self, client_connector: &KmipRestClient) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Create the kmip query
         let destroy_query = build_destroy_key_request(&self.user_key_id)?;
 

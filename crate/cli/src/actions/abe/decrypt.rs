@@ -1,7 +1,7 @@
 use std::{fs::File, io::prelude::*, path::PathBuf};
 
 use clap::StructOpt;
-use cosmian_kms_client::KmipRestClient;
+use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::abe::kmip_requests::build_decryption_request;
 use eyre::Context;
 
@@ -27,7 +27,7 @@ pub struct DecryptAction {
 }
 
 impl DecryptAction {
-    pub async fn run(&self, client_connector: &KmipRestClient) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Read the file to decrypt
         let filename = self
             .input_file
