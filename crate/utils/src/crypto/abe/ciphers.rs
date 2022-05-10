@@ -93,7 +93,7 @@ impl EnCipher for AbeHybridCipher {
             .map_err(|e| {
                 KmipError::InvalidKmipValue(
                     ErrorReason::Invalid_Message,
-                    format!("Deserialisation failed {e}"),
+                    format!("Deserialization failed {e}"),
                 )
             })?;
 

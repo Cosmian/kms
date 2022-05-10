@@ -22,7 +22,7 @@ use cosmian_kmip::{
 
 use crate::{DeCipher, EnCipher};
 
-/// Generate AES symmetric key for FPE usage: AES-256 bits key
+/// Generate AES symmetric key (default is a 256-bits key)
 /// `cryptographic_length` is a value in bytes
 pub fn create_aes_symmetric_key(cryptographic_length: Option<usize>) -> Result<Object, KmipError> {
     let aes_key_len = cryptographic_length.unwrap_or(KEY_LENGTH);

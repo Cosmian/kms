@@ -81,7 +81,6 @@ pub enum KeyFormatType {
     AbeMasterSecretKey = 0x8880_0008,
     AbeMasterPublicKey = 0x8880_0009,
     AbeUserDecryptionKey = 0x8880_000A,
-    AbeSymmetricKey = 0x8880_000B,
 }
 
 #[allow(non_camel_case_types)]
@@ -146,6 +145,7 @@ pub enum CryptographicAlgorithm {
     LWE = 0x8880_0001,
     TFHE = 0x8880_0002,
     ABE = 0x8880_0003,
+    FPE = 0x8880_0004,
 }
 
 /// The Cryptographic Domain Parameters attribute (4.14) is a structure that
