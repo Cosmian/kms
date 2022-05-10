@@ -5,17 +5,15 @@ use std::convert::TryFrom;
 use cosmian_kmip::kmip::{
     kmip_key_utils::WrappedSymmetricKey,
     kmip_objects::Object,
-    kmip_operations::{Create, CreateKeyPair, Get, GetResponse},
+    kmip_operations::{Create, CreateKeyPair, GetResponse},
     kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
 };
 use cosmian_kms_utils::{
     crypto::{
         abe::{
-            attributes::{access_policy_from_attributes, header_uid_from_attributes},
             ciphers::{AbeHybridCipher, AbeHybridDecipher},
             locate::compare_abe_attributes,
             master_keys::create_master_keypair,
-            secret_key::wrapped_secret_key,
         },
         aes::{create_aes_symmetric_key, AesGcmCipher},
         curve_25519::operation::generate_key_pair,
@@ -33,7 +31,7 @@ use cosmian_kms_utils::{
 };
 use cosmian_mcfe::lwe;
 use torus_fhe::{trlwe::TRLWEKey, HasGenerator};
-use tracing::{debug, trace};
+use tracing::trace;
 
 use super::{
     abe::{create_user_decryption_key, create_user_decryption_key_pair},
@@ -41,7 +39,6 @@ use super::{
 };
 use crate::{
     config::{db_params, DbParams},
-    core::crud::KmipServer,
     database::{mysql::Sql, pgsql::Pgsql, sqlite::SqlitePool, Database},
     error::KmsError,
     kms_bail,
@@ -71,13 +68,19 @@ impl KMS {
         match &object {
             Object::SymmetricKey { key_block } => {
                 match &key_block.key_format_type {
-                    KeyFormatType::AbeSymmetricKey => {
-                        Ok(Box::new(AesGcmCipher::instantiate(key_uid, &object)?)
-                            as Box<dyn EnCipher>)
-                    }
                     KeyFormatType::TransparentSymmetricKey => {
-                        Ok(Box::new(FpeCipher::instantiate(key_uid, &object)?)
-                            as Box<dyn EnCipher>)
+                        match &key_block.cryptographic_algorithm {
+                            CryptographicAlgorithm::AES => {
+                                Ok(Box::new(AesGcmCipher::instantiate(key_uid, &object)?))
+                            }
+                            CryptographicAlgorithm::FPE => {
+                                Ok(Box::new(FpeCipher::instantiate(key_uid, &object)?))
+                            }
+                            other => kms_bail!(KmsError::NotSupported(format!(
+                                "This server does not yet support encryption with transparent \
+                                 symmetric keys of cryptographic algorithm: {other:?}"
+                            ))),
+                        }
                     }
                     KeyFormatType::McfeSecretKey => {
                         // we need to recover the lwe::Setup parameter
@@ -149,11 +152,19 @@ impl KMS {
                 ))),
             },
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {
-                KeyFormatType::AbeSymmetricKey => {
-                    Ok(Box::new(AesGcmCipher::instantiate(object_uid, &object)?))
-                }
                 KeyFormatType::TransparentSymmetricKey => {
-                    Ok(Box::new(FpeCipher::instantiate(object_uid, &object)?))
+                    match &key_block.cryptographic_algorithm {
+                        CryptographicAlgorithm::AES => {
+                            Ok(Box::new(AesGcmCipher::instantiate(object_uid, &object)?))
+                        }
+                        CryptographicAlgorithm::FPE => {
+                            Ok(Box::new(FpeCipher::instantiate(object_uid, &object)?))
+                        }
+                        other => kms_bail!(KmsError::NotSupported(format!(
+                            "This server does not yet support decryption with transparent \
+                             symmetric keys of cryptographic algorithm: {other:?}"
+                        ))),
+                    }
                 }
                 KeyFormatType::TFHE => {
                     Ok(Box::new(tfhe::Cipher::instantiate(object_uid, &object)?))
@@ -173,7 +184,7 @@ impl KMS {
     pub(crate) async fn create_symmetric_key(
         &self,
         request: &Create,
-        owner: &str,
+        _owner: &str,
     ) -> KResult<Object> {
         let attributes = &request.attributes;
         match &attributes.cryptographic_algorithm {
@@ -182,33 +193,6 @@ impl KMS {
                     "Unable to create a symmetric key, the format type is not specified"
                         .to_string()
                 )),
-                Some(KeyFormatType::AbeSymmetricKey) => {
-                    debug!("Creating ABE symmetric key: {:?}", attributes);
-                    // AB encryption requires master public key.
-                    let abe_master_public_key_id = attributes.get_parent_id().ok_or_else(|| {
-                        KmsError::InvalidRequest(
-                            "the attributes must contain the reference to the ABE master public \
-                             key ID when creating a linked symmetric key"
-                                .to_string(),
-                        )
-                    })?;
-
-                    let public_key_response = self
-                        .get(
-                            Get {
-                                unique_identifier: Some(abe_master_public_key_id.to_string()),
-                                ..Get::default()
-                            },
-                            owner,
-                        )
-                        .await?;
-
-                    let access_policy = access_policy_from_attributes(attributes)?;
-                    let abe_header_uid = header_uid_from_attributes(attributes)?;
-
-                    wrapped_secret_key(&public_key_response, &access_policy, abe_header_uid)
-                        .map_err(Into::into)
-                }
                 Some(KeyFormatType::TransparentSymmetricKey) => {
                     create_aes_symmetric_key(attributes.cryptographic_length.map(|v| v as usize))
                         .map_err(Into::into)

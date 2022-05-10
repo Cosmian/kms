@@ -4,7 +4,7 @@ use cosmian_kmip::{
     kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{
-            Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Import, Locate, ReKeyKeyPair, Revoke,
+            Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Import, ReKeyKeyPair, Revoke,
         },
         kmip_types::{
             Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
@@ -127,22 +127,6 @@ pub fn build_import_public_key_request(
     })
 }
 
-/// Build a `Locate` request to locate an ABE Symmetric Key
-pub fn build_locate_symmetric_key_request(
-    access_policy: &AccessPolicy,
-) -> Result<Locate, KmipError> {
-    Ok(Locate {
-        attributes: Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            key_format_type: Some(KeyFormatType::AbeSymmetricKey),
-            object_type: ObjectType::SymmetricKey,
-            vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-            ..Attributes::new(ObjectType::SymmetricKey)
-        },
-        ..Locate::new(ObjectType::SymmetricKey)
-    })
-}
-
 /// Build a `Revoke` request to locate an ABE User Decryption Key
 pub fn build_revoke_user_decryption_key_request(
     unique_identifier: &str,
@@ -232,32 +216,3 @@ pub fn build_decryption_request(
         authenticated_encryption_tag: None,
     }
 }
-
-//TODO: BGR: this seems unused - must be revisited _ see issue #192
-// /// Build a `Create` request for a Symmetric Key
-// pub fn abe_build_create_symmetric_key_request(
-//     user_decryption_key_id: &str,
-//     access_policy: &AccessPolicy,
-//     abe_header_uid: &[u8],
-// ) -> KResult<Create> {
-//     Ok(Create {
-//         object_type: ObjectType::SymmetricKey,
-//         attributes: Attributes {
-//             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-//             key_format_type: Some(KeyFormatType::AbeSymmetricKey),
-//             object_type: ObjectType::SymmetricKey,
-//             vendor_attributes: Some(vec![
-//                 access_policy_as_vendor_attribute(access_policy)?,
-//                 abe_header_uid_to_vendor_attribute(abe_header_uid),
-//             ]),
-//             link: vec![Link {
-//                 link_type: LinkType::ParentLink,
-//                 linked_object_identifier: LinkedObjectIdentifier::TextString(
-//                     user_decryption_key_id.to_owned(),
-//                 ),
-//             }],
-//             ..Attributes::new(ObjectType::SymmetricKey)
-//         },
-//         protection_storage_masks: None,
-//     })
-// }

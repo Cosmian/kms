@@ -36,24 +36,6 @@ pub struct KeyBlock {
 }
 
 impl KeyBlock {
-    pub fn to_vec(&self) -> Result<Vec<u8>, KmipError> {
-        let (key_material, _) = self.key_value.plaintext().ok_or_else(|| {
-            KmipError::InvalidKmipValue(
-                ErrorReason::Invalid_Attribute_Value,
-                "invalid Plain Text".to_string(),
-            )
-        })?;
-        match key_material {
-            KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
-            other => {
-                return Err(KmipError::InvalidKmipValue(
-                    ErrorReason::Invalid_Message,
-                    format!("Invalid key material type for a symmetric key: {:?}", other),
-                ))
-            }
-        }
-    }
-
     /// Extract the Key bytes from the given `KeyBlock`
     pub fn key_bytes(&self) -> Result<Vec<u8>, KmipError> {
         match &self.key_value {
