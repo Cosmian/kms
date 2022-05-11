@@ -10,7 +10,7 @@ pub enum PermissionAction {
     Remove(RemovePermission),
     /// Add an access authorization for an object to a user
     Add(AddPermission),
-    /// List access authorization for an object
+    /// List granted access authorizations for an object
     List(ListPermissions),
     /// List objects owned by the current user
     Owned(ListOwnedObjects),

@@ -7,11 +7,16 @@ version = "2.0.1"
 [features]
 dev = []
 demo_timeout = ["actix-rt"]
+staging = []
 
 [dependencies]
 abe_gpsw = { version = "0.6.5", features = ["interfaces"] }
+# We use our own acme-lib. We have removed timeout set to ureq
+# For a reason we ignore right now, it fails inside the enclave if we set timeout
+acme-lib = { git = "https://github.com/Cosmian/acme-lib" }
 # for development
 # abe_gpsw = { path = "../../../../abe_gpsw", features = ["interfaces"] }
+actix-files = "0.6.0"
 actix-identity = "0.4"
 actix-rt = { version = "2.6", optional = true }
 actix-service = "2.0"
@@ -25,6 +30,7 @@ cosmian_crypto_base = { version = "0.5.2", features = ["libsodium"] }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils" }
 cosmian_mcfe = { git = "https://github.com/Cosmian/DMCFE.git", branch = "feature/add_mcfe" }
+dotenv = "0.15.0"
 env_logger = "0.9"
 # eyre is used to handle errors related to the server binary
 eyre = "0.6"
@@ -35,6 +41,7 @@ http = "0.2"
 lazy_static = "1.4"
 num-bigint = "0.4"
 once_cell = "1.9"
+openssl = { version = "0.10", features = ["vendored"] }
 rand_core = "0.6"
 rand_hc = "0.3"
 reqwest = { version = "0.11", features = ["json"] }
@@ -60,8 +67,8 @@ tracing = "0.1"
 tracing-log = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-tree = "0.2"
-twelf = "0.3.1"
-uuid = { version = "0.8", features = ["v4"] }
+twelf = { version = "0.4", default-features = false, features = ["env", "clap"] }
+uuid = { version = "1.0.0", features = ["v4"] }
 
 [dev-dependencies]
 actix-rt = "2.6"
