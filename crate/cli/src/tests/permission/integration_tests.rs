@@ -225,6 +225,7 @@ pub async fn test_list_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert().failure().stderr(predicate::str::contains(
         "Object with uid `bad_object_id` is not owned by owner `laetitia.langlois@cosmian.com`",
     ));
+
     Ok(())
 }
 

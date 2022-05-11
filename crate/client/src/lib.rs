@@ -386,8 +386,12 @@ impl KmsRestClient {
             HeaderValue::from_str(format!("Bearer {}", bearer_token).as_str())?,
         );
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+        let mut builder = ClientBuilder::new();
+        if cfg!(feature = "staging") {
+            builder = builder.danger_accept_invalid_certs(true);
+        }
         Ok(KmsRestClient {
-            client: ClientBuilder::new()
+            client: builder
                 .connect_timeout(Duration::from_secs(5))
                 .tcp_keepalive(Duration::from_secs(30))
                 .default_headers(headers)
@@ -414,6 +418,7 @@ impl KmsRestClient {
 
         // process error
         let p = response.text().await?;
+
         Err(KmsClientError::RequestFailed(p))
     }
 
@@ -432,6 +437,7 @@ impl KmsRestClient {
 
         // process error
         let p = response.text().await?;
+
         Err(KmsClientError::RequestFailed(p))
     }
 
@@ -450,6 +456,7 @@ impl KmsRestClient {
 
         // process error
         let p = response.text().await?;
+
         Err(KmsClientError::RequestFailed(p))
     }
 

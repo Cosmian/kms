@@ -73,8 +73,20 @@ impl From<std::io::Error> for KmsError {
     }
 }
 
+impl From<openssl::error::ErrorStack> for KmsError {
+    fn from(e: openssl::error::ErrorStack) -> Self {
+        KmsError::ServerError(e.to_string())
+    }
+}
+
 impl From<eyre::Report> for KmsError {
     fn from(e: eyre::Report) -> Self {
+        KmsError::ServerError(e.to_string())
+    }
+}
+
+impl From<acme_lib::Error> for KmsError {
+    fn from(e: acme_lib::Error) -> Self {
         KmsError::ServerError(e.to_string())
     }
 }

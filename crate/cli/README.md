@@ -54,6 +54,16 @@ For more details, run:
 kms_cli abe --help
 ```
 
+### Permissions
+
+You can perform the following operations concerning to the users-to-objects permissions.
+
+- `add` Add an access authorization for an object to a user
+- `list` List granted access authorizations for an object
+- `owned` List objects owned by the current user
+- `remove` Remove an access authorization for an object to a user
+- `shared` List objects shared for the current user
+
 ## Testing
 
 ```

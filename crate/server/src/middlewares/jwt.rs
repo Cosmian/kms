@@ -42,7 +42,7 @@ pub(crate) fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> 
     let validations = vec![
         alcoholic_jwt::Validation::Issuer(format!("https://{}/", authority)),
         alcoholic_jwt::Validation::SubjectPresent,
-        #[cfg(all(not(test), not(feature = "dev")))]
+        #[cfg(all(not(test), not(feature = "dev"), not(feature = "staging")))]
         alcoholic_jwt::Validation::NotExpired,
         /* Validate Audience would imply to keep track of all existing audiences.
          * It could be done via Auth0-API-call: https://manage.auth0.com/dashboard/us/dev-1mbsbmin/apis/management/explorer
