@@ -5,3 +5,5 @@ target/
 TODO.md
 data/html
 data/keys
+.env
+dotenv
