@@ -26,6 +26,8 @@ kms.manifest.sgx: kms.manifest
 		--key $(SGX_SIGNER_KEY) \
 		--manifest kms.manifest \
 		--output $@
+	cp $@ public_data/
+
 
 kms.sig: kms.manifest.sgx
 

@@ -1,6 +1,9 @@
 use clap::StructOpt;
 use cosmian_kms_cli::{
-    actions::{abe::entrypoint::AbeAction, permission::entrypoint::PermissionAction},
+    actions::{
+        abe::entrypoint::AbeAction, permission::entrypoint::PermissionAction,
+        sgx::entrypoint::SgxAction,
+    },
     config::CliConf,
 };
 
@@ -15,6 +18,7 @@ enum CliCommands {
     Abe(AbeAction),
     #[clap(subcommand)]
     Permission(PermissionAction),
+    Trust(SgxAction),
 }
 
 #[tokio::main]
@@ -25,6 +29,7 @@ async fn main() -> eyre::Result<()> {
     match opts {
         CliCommands::Abe(action) => action.process(&conf).await?,
         CliCommands::Permission(action) => action.process(&conf).await?,
+        CliCommands::Trust(action) => action.process(&conf).await?,
     };
 
     Ok(())

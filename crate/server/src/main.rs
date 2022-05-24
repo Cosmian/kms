@@ -59,6 +59,9 @@ async fn main() -> eyre::Result<()> {
         // Default (production & staging) version only enables the HTTPS server
         #[cfg(all(not(feature = "dev"), not(test)))]
         {
+            #[cfg(feature = "staging")]
+            info!("This is the staging environment version using HTTPS only");
+            #[cfg(not(feature = "staging"))]
             info!("This is the production environment version using HTTPS only");
             start_secure_kms_server().await?;
         }

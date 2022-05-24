@@ -8,7 +8,7 @@ Compile and strip your kms binary. Example:
 cargo build --release --features staging --bin cosmian_kms_server
 ```
 
-Prepare the `data` and `scripts` directory on the SGX server:
+Prepare the `data`, `public_data` and `scripts` directory on the SGX server:
 
 ```sh
 ./install.sh

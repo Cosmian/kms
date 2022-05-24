@@ -1,17 +1,18 @@
 #[cfg(all(not(feature = "dev"), not(test)))]
-use std::env;
-#[cfg(all(not(feature = "dev"), not(test)))]
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
 
 use alcoholic_jwt::JWKS;
 use eyre::Context;
+use libsgx::utils::is_running_inside_enclave;
 use once_cell::sync::OnceCell;
 use tracing::{debug, info};
 
-use crate::core::certbot::Certbot;
-#[cfg(all(not(feature = "dev"), not(test)))]
-use crate::error::KmsError;
+use crate::{core::certbot::Certbot, error::KmsError};
 
 static INSTANCE_CONFIG: OnceCell<SharedConfig> = OnceCell::new();
 
@@ -21,45 +22,48 @@ pub struct Config {
     /// Delegated authority domain coming from auth0
     pub delegated_authority_domain: Option<String>,
 
+    /// The url of the postgres database
     #[serde(default = "default_postgres_url")]
     pub postgres_url: String,
 
+    /// The url of the mysql database
     #[serde(default = "default_mysql_url")]
     pub mysql_url: String,
 
+    /// The path of the client certificate if key-file is the authentication method
     #[serde(default = "default_user_cert_path")]
     pub user_cert_path: String,
 
-    // For test/dev environment only. Unused in staging/prod.
-    #[serde(default = "default_port")]
-    pub port: u16,
-
+    /// The dir of the sqlite database
     #[serde(default = "default_root_dir")]
     pub root_dir: String,
 
-    // For test/dev environment only. Unused in staging/prod.
+    /// The server port
+    #[serde(default = "default_port")]
+    pub port: u16,
+
+    /// The server hostname
     #[serde(default = "default_hostname")]
     pub hostname: String,
 
-    // For staging/prod environment only. Unused in test/dev.
-    #[serde(default = "default_email")]
-    pub email: String,
+    /// The email used during the HTTPS certification process
+    pub email: Option<String>,
 
-    // For staging/prod environment only. Unused in test/dev.
+    /// The duration before the renew due date of the HTTPS cert
     #[serde(default = "default_days_threshold_before_renew")]
     pub days_threshold_before_renew: i64,
 
-    // For staging/prod environment only. Unused in test/dev.
-    #[serde(default = "default_keys_path")]
-    pub keys_path: String,
+    /// The location to store the HTTPS certificate and keys
+    pub keys_path: Option<PathBuf>,
 
-    // For staging/prod environment only. Unused in test/dev.
-    #[serde(default = "default_http_root_path")]
-    pub http_root_path: String,
+    /// The root dir used by the HTTP server during the HTTPS certification process
+    pub http_root_path: Option<PathBuf>,
 
-    // For staging/prod environment only. Unused in test/dev.
-    #[serde(default = "default_domain_name")]
-    pub domain_name: String,
+    /// The domain name of the HTTPS server
+    pub domain_name: Option<String>,
+
+    /// The path of the sgx manifest
+    pub manifest_path: Option<String>,
 }
 
 #[cfg(any(feature = "dev", test))]
@@ -75,33 +79,18 @@ impl Default for Config {
             port: default_port(),
             root_dir: default_root_dir(),
             hostname: default_hostname(),
-            email: default_email(),
+            email: None,
             days_threshold_before_renew: default_days_threshold_before_renew(),
-            keys_path: default_keys_path(),
-            http_root_path: default_http_root_path(),
-            domain_name: default_domain_name(),
+            keys_path: None,
+            http_root_path: None,
+            domain_name: None,
+            manifest_path: None,
         }
     }
 }
 
-fn default_domain_name() -> String {
-    String::from("")
-}
-
-fn default_email() -> String {
-    String::from("")
-}
-
 fn default_days_threshold_before_renew() -> i64 {
     15
-}
-
-fn default_keys_path() -> String {
-    String::from(".")
-}
-
-fn default_http_root_path() -> String {
-    String::from("/var/www/html/")
 }
 
 fn default_postgres_url() -> String {
@@ -128,6 +117,10 @@ fn default_hostname() -> String {
     String::from("0.0.0.0")
 }
 
+fn default_default_username() -> String {
+    String::from("admin")
+}
+
 #[derive(Clone, Debug)]
 pub enum DbParams {
     // contains the path to the db file
@@ -145,7 +138,10 @@ pub struct SharedConfig {
     pub db_params: DbParams,
     pub hostname: String,
     pub port: u16,
-    pub certbot: Option<Certbot>,
+    pub certbot: Arc<Mutex<Certbot>>,
+    pub manifest_path: Option<String>,
+    /// The username if Auth0 is disabled
+    pub default_username: String,
 }
 
 pub(crate) fn init(conf: SharedConfig) {
@@ -171,11 +167,29 @@ pub(crate) fn jwks() -> Option<JWKS> {
 }
 
 #[inline(always)]
+pub(crate) fn default_username() -> String {
+    INSTANCE_CONFIG
+        .get()
+        .expect("config must be initialised")
+        .default_username
+        .clone()
+}
+
+#[inline(always)]
 pub(crate) fn db_params() -> DbParams {
     INSTANCE_CONFIG
         .get()
         .expect("config must be initialised")
         .db_params
+        .clone()
+}
+
+#[inline(always)]
+pub(crate) fn manifest_path() -> Option<String> {
+    INSTANCE_CONFIG
+        .get()
+        .expect("config must be initialised")
+        .manifest_path
         .clone()
 }
 
@@ -197,12 +211,11 @@ pub(crate) fn port() -> u16 {
 }
 
 #[inline(always)]
-pub(crate) fn certbot() -> Option<Certbot> {
-    INSTANCE_CONFIG
+pub(crate) fn certbot() -> &'static Arc<Mutex<Certbot>> {
+    &INSTANCE_CONFIG
         .get()
         .expect("config must be initialised")
         .certbot
-        .clone()
 }
 
 pub async fn init_config(conf: &Config) -> eyre::Result<()> {
@@ -241,57 +254,87 @@ pub async fn init_config(conf: &Config) -> eyre::Result<()> {
     };
 
     #[cfg(any(feature = "dev", test))]
-    let certbot = None;
+    let certbot = Certbot::default();
+
+    let path = env::current_dir()?;
 
     #[cfg(all(not(feature = "dev"), not(test)))]
-    let certbot =
-        {
-            let path = env::current_dir()?;
+    let certbot = {
+        let email = conf
+            .email
+            .to_owned()
+            .ok_or_else(|| eyre::eyre!("Email can't be empty in staging/production environment"))?;
 
-            if conf.email == default_email() {
-                eyre::bail!("Email can't be empty in staging/production environment");
-            }
-            if conf.domain_name == default_domain_name() {
-                eyre::bail!("Domain name can't be empty in staging/production environment");
-            }
-            if conf.days_threshold_before_renew <= 1 {
-                eyre::bail!("The 'days_threshold_before_renew' should be larger than 1 day");
-            }
+        let domain_name = conf.domain_name.to_owned().ok_or_else(|| {
+            eyre::eyre!("Domain name can't be empty in staging/production environment")
+        })?;
 
-            let keys_path =
-                if Path::new(&conf.keys_path).is_absolute() {
-                    conf.keys_path.to_owned()
-                } else {
-                    String::from(path.join(&conf.keys_path).to_str().ok_or_else(|| {
-                        KmsError::ServerError("Can't manage `keys_path`".to_owned())
-                    })?)
-                };
+        if conf.days_threshold_before_renew <= 1 {
+            eyre::bail!("The 'days_threshold_before_renew' should be larger than 1 day");
+        }
 
-            if !Path::new(&keys_path).exists() {
-                eyre::bail!("Can't find '{}' as keys_path", conf.keys_path);
-            }
+        let keys_path = conf.keys_path.as_ref().ok_or_else(|| {
+            eyre::eyre!("keys_path can't be empty in staging/production environment")
+        })?;
 
-            let http_root_path = if Path::new(&conf.http_root_path).is_absolute() {
-                conf.http_root_path.to_owned()
+        let keys_path = if keys_path.is_absolute() {
+            keys_path.to_owned()
+        } else {
+            path.join(&keys_path)
+        };
+
+        if !Path::new(&keys_path).exists() {
+            eyre::bail!("Can't find '{:?}' as keys_path", keys_path);
+        }
+
+        let http_root_path = conf.http_root_path.as_ref().ok_or_else(|| {
+            eyre::eyre!("http_root_path can't be empty in staging/production environment")
+        })?;
+
+        let http_root_path = if http_root_path.is_absolute() {
+            http_root_path.to_owned()
+        } else {
+            path.join(&http_root_path)
+        };
+
+        if !Path::new(&http_root_path).exists() {
+            info!("Creating {:?}...", http_root_path);
+            fs::create_dir_all(&http_root_path)?;
+        }
+
+        Certbot::new(
+            conf.days_threshold_before_renew,
+            email,
+            domain_name,
+            http_root_path,
+            keys_path,
+        )
+    };
+
+    let manifest_path = if is_running_inside_enclave() {
+        let manifest_path = conf.manifest_path.clone().ok_or_else(|| {
+            KmsError::ServerError(
+                "`manifest_path` is mandatory when running inside the enclave".to_owned(),
+            )
+        })?;
+
+        let manifest_path =
+            if Path::new(&manifest_path).is_absolute() {
+                manifest_path
             } else {
-                String::from(path.join(&conf.http_root_path).to_str().ok_or_else(|| {
-                    KmsError::ServerError("Can't manage `http_root_path`".to_owned())
+                String::from(path.join(&manifest_path).to_str().ok_or_else(|| {
+                    KmsError::ServerError("Can't manage `manifest_path`".to_owned())
                 })?)
             };
 
-            if !Path::new(&http_root_path).exists() {
-                info!("Creating {http_root_path}...");
-                fs::create_dir_all(&http_root_path)?;
-            }
+        if !Path::new(&manifest_path).exists() {
+            eyre::bail!("Can't find '{}' as manifest_path", manifest_path);
+        }
 
-            Some(Certbot::new(
-                conf.days_threshold_before_renew,
-                conf.email.clone(),
-                conf.domain_name.clone(),
-                http_root_path,
-                keys_path,
-            ))
-        };
+        Some(manifest_path)
+    } else {
+        None
+    };
 
     let shared_conf = SharedConfig {
         jwks,
@@ -299,7 +342,9 @@ pub async fn init_config(conf: &Config) -> eyre::Result<()> {
         db_params,
         hostname: conf.hostname.to_owned(),
         port: conf.port,
-        certbot,
+        manifest_path,
+        certbot: Arc::new(Mutex::new(certbot)),
+        default_username: default_default_username(),
     };
     debug!("shared conf: {shared_conf:#?}");
 

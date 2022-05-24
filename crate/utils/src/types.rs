@@ -120,3 +120,8 @@ impl
 pub struct SuccessResponse {
     pub success: String,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QuoteParams {
+    pub nonce: String,
+}

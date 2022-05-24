@@ -23,11 +23,12 @@ loader.env.KMS_DOMAIN_NAME = "testsgx.cosmian.com"
 loader.env.KMS_DAYS_THRESHOLD_BEFORE_RENEW = "15"
 loader.env.KMS_KEYS_PATH = "data/"
 loader.env.KMS_HTTP_ROOT_PATH = "/tmp/html"
+loader.env.KMS_MANIFEST_PATH = "public_data/kms.manifest.sgx"
 loader.env.RUST_BACKTRACE="0"
 # loader.env.RUST_LOG="debug"
 
 sgx.nonpie_binary = true
-# sgx.remote_attestation = false
+sgx.remote_attestation = true
 sgx.enclave_size = "16G"
 sgx.thread_num = 256
 sgx.debug = false
@@ -93,4 +94,8 @@ sgx.trusted_files = [
 # Let's encrypt the private keys to prevent the host to know it
 sgx.protected_mrenclave_files = [
   "file:data/"
+]
+
+sgx.allowed_files = [
+  "file:public_data/kms.manifest.sgx"
 ]

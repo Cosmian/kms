@@ -1,4 +1,7 @@
-use std::{fmt, fs, path::Path};
+use std::{
+    fmt, fs,
+    path::{Path, PathBuf},
+};
 
 use acme_lib::{
     create_p384_key, persist::FilePersist, Account, Certificate, Directory, DirectoryUrl,
@@ -15,8 +18,8 @@ pub struct Certbot {
     pub days_threshold_before_renew: i64,
     pub email: String,
     pub domain: String,
-    pub http_root_path: String,
-    pub keys_path: String,
+    pub http_root_path: PathBuf,
+    pub keys_path: PathBuf,
     account: Option<Account<FilePersist>>,
     certificate: Option<Certificate>,
 }
@@ -36,13 +39,25 @@ impl fmt::Debug for Certbot {
     }
 }
 
+impl Default for Certbot {
+    fn default() -> Self {
+        Certbot::new(
+            15,
+            String::from(""),
+            String::from(""),
+            PathBuf::from(""),
+            PathBuf::from(""),
+        )
+    }
+}
+
 impl Certbot {
     pub fn new(
         days_threshold_before_renew: i64,
         email: String,
         domain: String,
-        http_root_path: String,
-        keys_path: String,
+        http_root_path: PathBuf,
+        keys_path: PathBuf,
     ) -> Certbot {
         Certbot {
             days_threshold_before_renew,
@@ -105,6 +120,14 @@ impl Certbot {
                 PKey::private_key_from_pem(certificate.private_key().as_bytes())?,
                 X509::stack_from_pem(certificate.certificate().as_bytes())?,
             ))
+        }
+        kms_bail!("Certificate can't be found...");
+    }
+
+    // Get the certificate as ACME objects
+    pub fn get_raw_cert(&self) -> KResult<(&str, &str)> {
+        if let Some(certificate) = &self.certificate {
+            return Ok((certificate.private_key(), certificate.certificate()))
         }
         kms_bail!("Certificate can't be found...");
     }
