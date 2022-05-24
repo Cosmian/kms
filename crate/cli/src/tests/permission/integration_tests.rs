@@ -7,7 +7,7 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     tests::{
         test_utils::{init_test_server, ONCE},
-        utils::abe::extract_private_key,
+        utils::extract_uids::extract_private_key,
         PROG_NAME,
     },
 };

@@ -35,3 +35,9 @@ impl From<TtlvError> for KmipError {
         KmipError::KmipError(ErrorReason::Codec_Error, e.to_string())
     }
 }
+
+impl From<serde_json::Error> for KmipError {
+    fn from(e: serde_json::Error) -> Self {
+        KmipError::KmipError(ErrorReason::Codec_Error, e.to_string())
+    }
+}
