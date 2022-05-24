@@ -1,4 +1,5 @@
 mod abe;
+mod cover_crypt;
 mod permission;
 pub(crate) mod utils;
 

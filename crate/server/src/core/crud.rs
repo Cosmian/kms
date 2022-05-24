@@ -23,7 +23,7 @@ use libsgx::quote::{get_quote, hash, prepare_report_data};
 use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
-use super::{abe::rekey_keypair_abe, implementation::contains_attributes, KMS};
+use super::{implementation::contains_attributes, KMS};
 use crate::{
     config::{certbot, manifest_path},
     error::KmsError,
@@ -701,7 +701,7 @@ impl KmipServer for KMS {
             .unique_identifier
             .as_ref()
             .ok_or(KmsError::UnsupportedPlaceholder)?;
-        self.encipher(uid, owner)
+        self.get_encipher(uid, owner)
             .await?
             .encrypt(&request)
             .map_err(Into::into)
@@ -713,7 +713,7 @@ impl KmipServer for KMS {
             .unique_identifier
             .as_ref()
             .ok_or(KmsError::UnsupportedPlaceholder)?;
-        self.decipher(uid, owner)
+        self.get_decipher(uid, owner)
             .await?
             .decrypt(&request)
             .map_err(Into::into)
@@ -817,7 +817,22 @@ impl KmipServer for KMS {
 
         match &attributes.cryptographic_algorithm {
             Some(CryptographicAlgorithm::ABE) => {
-                rekey_keypair_abe(self, private_key_unique_identifier, attributes, owner).await
+                super::abe::rekey_keypair_abe(
+                    self,
+                    private_key_unique_identifier,
+                    attributes,
+                    owner,
+                )
+                .await
+            }
+            Some(CryptographicAlgorithm::CoverCrypt) => {
+                super::cover_crypt::rekey_keypair_cover_crypt(
+                    self,
+                    private_key_unique_identifier,
+                    attributes,
+                    owner,
+                )
+                .await
             }
             Some(other) => kms_bail!(KmsError::NotSupported(format!(
                 "The rekey of a key pair for algorithm: {:?} is not yet supported",

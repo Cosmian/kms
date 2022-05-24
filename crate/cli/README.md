@@ -4,6 +4,7 @@ Cosmian has designed a command line to use the KMS in order to manage keys, encr
 
 This CLI supports several crypto-systems listed below:
 - [X] Attribute-Based Encryption
+- [X] Cover Crypt
 - [ ] To be continued....
 
 ## Compiling
@@ -31,7 +32,7 @@ KMS_CLI_CONF=kms.json kms_cli --help
 
 If the server is running without Auth0, you can let `kms_access_token` empty. Indeed, the server is running without authentication in a single-user mode.
 
-### Attribute Based Encryption
+### Attribute Based Encryption / Cover Crypt
 
 You can perform the following ABE operations by taking advantage of the KMS.
 
