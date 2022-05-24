@@ -202,5 +202,5 @@ doc-test:
     - pushd documentation
     - mkdocs build
     # remove any previous KMS doc with same current tag
-    - ssh cosmian@ui.test.sc.cosmian.com "rm -fr /var/www/documentation_root/kms/dev"
-    - scp -r site cosmian@ui.test.sc.cosmian.com:/var/www/documentation_root/kms/dev
+    - ssh cosmian@ui.test.sc.cosmian.com "rm -fr /var/www/documentation_root/kms/2.0.0"
+    - scp -r site cosmian@ui.test.sc.cosmian.com:/var/www/documentation_root/kms/2.0.0
