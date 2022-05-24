@@ -49,6 +49,9 @@ pub fn prepare_server(
             .service(endpoint::list_accesses)
             .service(endpoint::insert_access)
             .service(endpoint::delete_access)
+            .service(endpoint::get_quote)
+            .service(endpoint::get_certificate)
+            .service(endpoint::get_manifest)
     });
 
     Ok(match builder {
@@ -153,17 +156,20 @@ async fn start_https(cert: &Arc<Mutex<Certbot>>) -> eyre::Result<()> {
 
 pub async fn start_secure_kms_server() -> eyre::Result<()> {
     // Before starting any servers, check the status of our SSL certificates
-    let mut cert = certbot().ok_or_else(|| eyre::eyre!("Certbot is not configured"))?;
+    let cert = certbot();
 
     debug!("Initializing certbot");
     // Recover the previous certificate if exist
-    cert.init()?;
+    cert.lock().expect("can't lock certificate mutex").init()?;
 
     debug!("Checking certificates...");
-    let mut has_valid_cert = cert.check();
+    let mut has_valid_cert = cert.lock().expect("can't lock certificate mutex").check();
 
-    let http_root_path = cert.http_root_path.clone();
-    let cert = Arc::new(Mutex::new(cert));
+    let http_root_path = cert
+        .lock()
+        .expect("can't lock certificate mutex")
+        .http_root_path
+        .clone();
 
     if !has_valid_cert {
         info!("No valid certificate found!");
@@ -181,7 +187,7 @@ pub async fn start_secure_kms_server() -> eyre::Result<()> {
         let succeed = Arc::new(AtomicBool::new(false));
         let succeed_me = Arc::clone(&succeed);
         let srv = server.handle();
-        let cert_copy = Arc::clone(&cert);
+        let cert_copy = Arc::clone(cert);
 
         spawn(async move {
             // Generate the certificate in another thread
@@ -217,7 +223,7 @@ pub async fn start_secure_kms_server() -> eyre::Result<()> {
     if has_valid_cert {
         // Use it and start SSL Server
         info!("Certificate is valid");
-        start_https(&cert).await?
+        start_https(cert).await?
     } else {
         error!("Abort program, failed to get a valid certificate");
         eyre::bail!("Abort program, failed to get a valid certificate")

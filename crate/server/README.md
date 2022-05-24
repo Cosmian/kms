@@ -1,6 +1,34 @@
 # Cosmian KMS Server
 
-Note for the followings: the environment variables can be passed through a `.env` file at the location where you start the binary.
+The server configuration can be passed through the server using:
+- Environment variables
+- A dotenv `.env` file at the location where you start the binary 
+- Command line arguments
+  
+The list of parameters is:
+
+
+| Variable                        | Parameter                       | Default | dev          | staging/production |
+| ------------------------------- | ------------------------------- | ------- | ------------ | ------------------ |
+| KMS_DAYS_THRESHOLD_BEFORE_RENEW | `--days-threshold-before-renew` | 15      | ⛔            | 🔥                  |
+| KMS_DELEGATED_AUTHORITY_DOMAIN  | `--delegated-authority-domain`  |         | ✅            | ✅                  |
+| KMS_DOMAIN_NAME                 | `--domain-name`                 |         | ⛔            | 🔥                  |
+| KMS_EMAIL                       | `--email`                       |         | ⛔            | 🔥                  |
+| KMS_HOSTNAME                    | `--hostname`                    | 0.0.0.0 | ✅            | ⛔                  |
+| KMS_HTTP_ROOT_PATH              | `--http-root-path`              |         | ⛔            | 🔥                  |
+| KMS_KEYS_PATH                   | `--keys-path`                   |         | ⛔            | 🔥                  |
+| KMS_MANIFEST_PATH               | `--manifest-path`               |         | ✅ (SGX only) | ✅ (SGX only)       |
+| KMS_MYSQL_URL                   | `--mysql-url`                   |         | ✅            | ✅                  |
+| KMS_PORT                        | `--port`                        | 9998    | ✅            | ⛔                  |
+| KMS_POSTGRES_URL                | `--postgres-url`                |         | ✅            | ✅                  |
+| KMS_ROOT_DIR                    | `--root-dir`                    | /tmp    | ✅            | ✅                  |
+| KMS_USER_CERT_PATH              | `--user-cert-path`              |         | ✅            | ✅                  |
+
+__Caption__: 
+⛔ Unused
+✅ Available
+🔥 Mandatory
+
 
 ## Configure the authentication
 
@@ -11,8 +39,11 @@ Example of how to run for test authentication:
 $ KMS_DELEGATED_AUTHORITY_DOMAIN="dev-1mbsbmin.us.auth0.com" cargo run
 ```
 
-## Configure the SGDB
+This authentication enables the KMS to deal with several users with the same database. 
+If there is no `KMS_DELEGATED_AUTHORITY_DOMAIN` provided, the KMS disables the authentication. Only one user is allowed. 
+If so, `admin` will be the user id.
 
+## Configure the SGDB
 
 The KMS relies on a database using various kinds of connector to store all the user secrets. The database is made up of two tables: `objects` et `read_access`.
 
@@ -119,6 +150,8 @@ Currently, the `sqlx` crate is not able to authentify using a key-file, as reque
 That's why two implementations are available in the KMS Server.
 
 Follow this guide to use EdgelessDB in simulation mode (without SGX): https://docs.edgeless.systems/edgelessdb/#/getting-started/quickstart-simulation
+
+Use `KMS_USER_CERT_PATH` to give the client certificate to the KMS server. 
 
 ### TL;DR
 

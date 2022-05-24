@@ -1,3 +1,5 @@
+use std::fs::{self};
+
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyValue,
@@ -17,11 +19,17 @@ use cosmian_kmip::kmip::{
 use cosmian_kms_utils::types::{
     Access, ObjectOperationTypes, ObjectOwnedResponse, ObjectSharedResponse, UserAccessResponse,
 };
+use libsgx::quote::{get_quote, hash, prepare_report_data};
 use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
 use super::{abe::rekey_keypair_abe, implementation::contains_attributes, KMS};
-use crate::{error::KmsError, kms_bail, result::KResult};
+use crate::{
+    config::{certbot, manifest_path},
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
 #[async_trait]
 pub trait KmipServer {
@@ -322,12 +330,48 @@ pub trait KmipServer {
 
     /// Get all the objects shared to a given user
     async fn list_shared_objects(&self, owner: &str) -> KResult<Vec<ObjectSharedResponse>>;
+
+    /// Get the SGX quote of a KMS running inside the enclave
+    async fn get_quote(&self, nonce: &str) -> KResult<String>;
+
+    /// Get the certificate of a KMS running using HTTPS
+    async fn get_certificate(&self) -> KResult<String>;
+
+    /// Get the manifest of the KMS running inside the enclave
+    async fn get_manifest(&self) -> KResult<String>;
 }
 
 /// Implement the KMIP Server Trait and dispatches the actual actions
 /// to the implementation module or ciphers for encryption/decryption
 #[async_trait]
 impl KmipServer for KMS {
+    async fn get_certificate(&self) -> KResult<String> {
+        // Get the SSL cert
+        let cert = certbot().lock().expect("can't lock certificate mutex");
+        let (_, certificate) = cert.get_raw_cert()?;
+        Ok(certificate.to_string())
+    }
+
+    async fn get_manifest(&self) -> KResult<String> {
+        Ok(fs::read_to_string(manifest_path().ok_or_else(|| {
+            KmsError::ServerError(
+                "`manifest_path` is mandatory when running inside the enclave".to_owned(),
+            )
+        })?)?)
+    }
+
+    async fn get_quote(&self, nonce: &str) -> KResult<String> {
+        // Hash the user nonce, the cert and the hash of the manifest
+        let data = hash(&prepare_report_data(
+            self.get_manifest().await?.as_bytes(),
+            self.get_certificate().await?.as_bytes(),
+            nonce.as_bytes(),
+        ));
+
+        // get the quote
+        Ok(get_quote(&data)?)
+    }
+
     async fn import(&self, request: Import, owner: &str) -> KResult<ImportResponse> {
         let mut object = request.object;
 
