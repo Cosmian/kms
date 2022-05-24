@@ -7,6 +7,7 @@ use crate::{
     kmip::{kmip_operations::ErrorReason, kmip_types::Attributes},
 };
 
+// TODO(ECO): delete this struct when Attributes will be saved separately in database
 #[derive(Serialize, Deserialize)]
 pub struct WrappedSymmetricKey {
     pub(crate) attributes: Attributes,

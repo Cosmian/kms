@@ -3,3 +3,7 @@ target/
 *nix
 *.swp
 TODO.md
+data/html
+data/keys
+.env
+dotenv

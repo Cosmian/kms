@@ -7,7 +7,7 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     tests::{
         test_utils::{init_test_server, ONCE},
-        utils::abe::extract_private_key,
+        utils::extract_uids::extract_private_key,
         PROG_NAME,
     },
 };
@@ -225,6 +225,7 @@ pub async fn test_list_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert().failure().stderr(predicate::str::contains(
         "Object with uid `bad_object_id` is not owned by owner `laetitia.langlois@cosmian.com`",
     ));
+
     Ok(())
 }
 

@@ -1,4 +1,6 @@
 pub(crate) mod abe;
+pub(crate) mod certbot;
+pub(crate) mod cover_crypt;
 pub mod crud;
 pub(crate) mod implementation;
 

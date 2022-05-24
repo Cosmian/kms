@@ -11,7 +11,6 @@ pub const VENDOR_ID_COSMIAN: &str = "cosmian";
 pub const VENDOR_ATTR_ABE_ATTR: &str = "abe_attributes";
 pub const VENDOR_ATTR_ABE_POLICY: &str = "abe_policy";
 pub const VENDOR_ATTR_ABE_ACCESS_POLICY: &str = "abe_access_policy";
-pub const VENDOR_ATTR_ABE_HEADER_UID: &str = "abe_header_uid";
 pub const VENDOR_ATTR_ABE_MASTER_PRIV_KEY_ID: &str = "abe_master_private_key_id";
 pub const VENDOR_ATTR_ABE_MASTER_PUB_KEY_ID: &str = "abe_master_public_key_id";
 
@@ -195,37 +194,3 @@ pub fn master_public_key_id_from_attributes(attributes: &Attributes) -> Result<&
         ))
     }
 }
-
-/// This UID is used to build the asymmetric ABE Header object
-pub fn header_uid_to_vendor_attribute(uid: &[u8]) -> VendorAttribute {
-    VendorAttribute {
-        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-        attribute_name: VENDOR_ATTR_ABE_HEADER_UID.to_owned(),
-        attribute_value: uid.to_vec(),
-    }
-}
-
-pub fn header_uid_from_attributes(attributes: &Attributes) -> Result<&[u8], KmipError> {
-    if let Some(bytes) =
-        attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_ABE_HEADER_UID)
-    {
-        Ok(bytes)
-    } else {
-        Err(KmipError::InvalidKmipValue(
-            ErrorReason::Invalid_Attribute_Value,
-            "the attributes do not contain an ABE Header UID".to_string(),
-        ))
-    }
-}
-
-//TODO: BGR: this seems unused - must be revisited _ see issue #192
-// /// This UID is used to build the asymmetric ABE Header object
-// #[cfg(test)]
-// #[allow(deprecated)]
-// pub fn abe_header_uid_to_vendor_attribute(uid: &[u8]) -> VendorAttribute {
-//     VendorAttribute {
-//         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-//         attribute_name: VENDOR_ATTR_ABE_HEADER_UID.to_owned(),
-//         attribute_value: uid.to_vec(),
-//     }
-// }

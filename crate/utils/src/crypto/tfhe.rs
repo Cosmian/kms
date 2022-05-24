@@ -137,7 +137,7 @@ impl EnCipher for Cipher {
         let enc_code = match &request.data {
             None => None,
             Some(d) => {
-                let shared_key = self.shared_key.to_vec()?;
+                let shared_key = self.shared_key.key_bytes()?;
                 let shared_key = serde_json::from_slice(&shared_key).map_err(|e| {
                     KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string())
                 })?;
@@ -173,7 +173,7 @@ impl DeCipher for Cipher {
         let messages_bytes = match &request.data {
             None => None,
             Some(d) => {
-                let shared_key = self.shared_key.to_vec()?;
+                let shared_key = self.shared_key.key_bytes()?;
                 let shared_key = serde_json::from_slice(&shared_key).map_err(|e| {
                     KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string())
                 })?;

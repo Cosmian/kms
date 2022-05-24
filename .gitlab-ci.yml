@@ -112,7 +112,7 @@ cargo_audit:
 #
 # Build and tests everything on demand
 #
-compile_and_test: 
+compile_and_test:
   stage: build
   only: [branches, merge_requests]
   cache:
@@ -193,3 +193,14 @@ doc:
     # remove any previous KMS doc with same current tag
     - ssh cosmian@docs.cosmian.com "rm -fr /home/cosmian/documentation_root/kms/${CI_COMMIT_TAG}"
     - scp -r site cosmian@docs.cosmian.com:/home/cosmian/documentation_root/kms/"${CI_COMMIT_TAG}"
+
+doc-test:
+  image: gitlab.cosmian.com:5000/core/docker_doc_ci_image:latest
+  stage: deploy
+  only: [develop]
+  script:
+    - pushd documentation
+    - mkdocs build
+    # remove any previous KMS doc with same current tag
+    - ssh cosmian@ui.test.sc.cosmian.com "rm -fr /var/www/documentation_root/kms/2.0.0"
+    - scp -r site cosmian@ui.test.sc.cosmian.com:/var/www/documentation_root/kms/2.0.0

@@ -1,4 +1,5 @@
 use abe_gpsw::error::FormatErr;
+use actix_web::error::QueryPayloadError;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
@@ -44,6 +45,10 @@ pub enum KmsError {
     #[error("Unexpected server error: {0}")]
     ServerError(String),
 
+    // Any errors related to a bad bahaviour of the server concerning the SGX environment
+    #[error("Unexpected sgx error: {0}")]
+    SGXError(String),
+
     // Any actions of the user which is not allowed
     #[error("Access denied: {0}")]
     Unauthorized(String),
@@ -73,8 +78,20 @@ impl From<std::io::Error> for KmsError {
     }
 }
 
+impl From<openssl::error::ErrorStack> for KmsError {
+    fn from(e: openssl::error::ErrorStack) -> Self {
+        KmsError::ServerError(e.to_string())
+    }
+}
+
 impl From<eyre::Report> for KmsError {
     fn from(e: eyre::Report) -> Self {
+        KmsError::ServerError(e.to_string())
+    }
+}
+
+impl From<acme_lib::Error> for KmsError {
+    fn from(e: acme_lib::Error) -> Self {
         KmsError::ServerError(e.to_string())
     }
 }
@@ -87,6 +104,18 @@ impl From<serde_json::Error> for KmsError {
 
 impl From<FormatErr> for KmsError {
     fn from(e: FormatErr) -> Self {
+        KmsError::InvalidRequest(e.to_string())
+    }
+}
+
+impl From<libsgx::error::SgxError> for KmsError {
+    fn from(e: libsgx::error::SgxError) -> Self {
+        KmsError::SGXError(e.to_string())
+    }
+}
+
+impl From<QueryPayloadError> for KmsError {
+    fn from(e: QueryPayloadError) -> Self {
         KmsError::InvalidRequest(e.to_string())
     }
 }

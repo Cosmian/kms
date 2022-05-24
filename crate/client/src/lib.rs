@@ -19,7 +19,8 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_utils::types::{
-    Access, ObjectOwnedResponse, ObjectSharedResponse, SuccessResponse, UserAccessResponse,
+    Access, ObjectOwnedResponse, ObjectSharedResponse, QuoteParams, SuccessResponse,
+    UserAccessResponse,
 };
 use error::KmsClientError;
 use http::{HeaderMap, HeaderValue};
@@ -354,18 +355,39 @@ impl KmsRestClient {
 
     /// This operation requests the server to list all the granted access on a object
     pub async fn list_access(&self, uid: &str) -> Result<Vec<UserAccessResponse>, KmsClientError> {
-        self.get_no_ttlv(&format!("/accesses/{}", uid), vec![])
+        self.get_no_ttlv(&format!("/accesses/{}", uid), None::<&()>)
             .await
     }
 
     /// This operation requests the server to list all the objects owned by the current user.
     pub async fn list_owned_objects(&self) -> Result<Vec<ObjectOwnedResponse>, KmsClientError> {
-        self.get_no_ttlv("/objects/owned", vec![]).await
+        self.get_no_ttlv("/objects/owned", None::<&()>).await
     }
 
     /// This operation requests the server to list all the objects shared with the current user.
     pub async fn list_shared_objects(&self) -> Result<Vec<ObjectSharedResponse>, KmsClientError> {
-        self.get_no_ttlv("/objects/shared", vec![]).await
+        self.get_no_ttlv("/objects/shared", None::<&()>).await
+    }
+
+    /// This operation requests the server to get the sgx quote.
+    pub async fn get_quote(&self, nonce: &str) -> Result<String, KmsClientError> {
+        self.get_no_ttlv(
+            "/quote",
+            Some(&QuoteParams {
+                nonce: nonce.to_string(),
+            }),
+        )
+        .await
+    }
+
+    /// This operation requests the server to get the HTTPS certificate.
+    pub async fn get_certificate(&self) -> Result<String, KmsClientError> {
+        self.get_no_ttlv("/certificate", None::<&()>).await
+    }
+
+    /// This operation requests the server to get the sgx manifest.
+    pub async fn get_manifest(&self) -> Result<String, KmsClientError> {
+        self.get_no_ttlv("/manifest", None::<&()>).await
     }
 }
 
@@ -386,8 +408,12 @@ impl KmsRestClient {
             HeaderValue::from_str(format!("Bearer {}", bearer_token).as_str())?,
         );
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+        let mut builder = ClientBuilder::new();
+        if cfg!(feature = "staging") {
+            builder = builder.danger_accept_invalid_certs(true);
+        }
         Ok(KmsRestClient {
-            client: ClientBuilder::new()
+            client: builder
                 .connect_timeout(Duration::from_secs(5))
                 .tcp_keepalive(Duration::from_secs(30))
                 .default_headers(headers)
@@ -396,16 +422,20 @@ impl KmsRestClient {
         })
     }
 
-    pub async fn get_no_ttlv<R>(
+    pub async fn get_no_ttlv<R, O>(
         &self,
         endpoint: &str,
-        data: Vec<(&str, &str)>,
+        data: Option<&O>,
     ) -> Result<R, KmsClientError>
     where
         R: serde::de::DeserializeOwned + Sized + 'static,
+        O: Serialize,
     {
         let server_url = format!("{}{}", self.server_url, endpoint);
-        let response = self.client.get(server_url).query(&data).send().await?;
+        let response = match data {
+            Some(d) => self.client.get(server_url).query(d).send().await?,
+            None => self.client.get(server_url).send().await?,
+        };
 
         let status_code = response.status();
         if status_code.is_success() {
@@ -414,6 +444,7 @@ impl KmsRestClient {
 
         // process error
         let p = response.text().await?;
+
         Err(KmsClientError::RequestFailed(p))
     }
 
@@ -432,6 +463,7 @@ impl KmsRestClient {
 
         // process error
         let p = response.text().await?;
+
         Err(KmsClientError::RequestFailed(p))
     }
 
@@ -450,6 +482,7 @@ impl KmsRestClient {
 
         // process error
         let p = response.text().await?;
+
         Err(KmsClientError::RequestFailed(p))
     }
 
