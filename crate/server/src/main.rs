@@ -1,7 +1,7 @@
 use cosmian_kms_server::config::{init_config, Config};
-#[cfg(any(feature = "dev", test))]
+#[cfg(any(feature = "dev", test, feature = "demo_timeout"))]
 use cosmian_kms_server::start_kms_server;
-#[cfg(all(not(feature = "dev"), not(test)))]
+#[cfg(all(not(feature = "dev"), not(feature = "demo_timeout"), not(test)))]
 use cosmian_kms_server::start_secure_kms_server;
 use dotenv::dotenv;
 #[cfg(not(feature = "demo_timeout"))]
