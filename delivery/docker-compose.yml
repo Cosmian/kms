@@ -1,0 +1,21 @@
+version: "3.4"
+services:
+  db:
+    container_name: db
+    image: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=kms
+      - POSTGRES_DB=kms
+      - POSTGRES_PASSWORD=kms
+      - PGDATA=/tmp/postgres2
+  kms:
+    container_name: kms
+    image: kms:2.0.1
+    environment:
+      - KMS_POSTGRES_URL=postgres://kms:kms@db/kms
+    ports:
+      - "9998:9998"
+    depends_on:
+      - db
