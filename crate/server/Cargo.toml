@@ -14,8 +14,6 @@ abe_gpsw = { version = "0.6.9", features = ["interfaces"] }
 # We use our own acme-lib. We have removed timeout set to ureq
 # For a reason we ignore right now, it fails inside the enclave if we set timeout
 acme-lib = { git = "https://github.com/Cosmian/acme-lib" }
-# for development
-# abe_gpsw = { path = "../../../../abe_gpsw", features = ["interfaces"] }
 actix-files = "0.6.0"
 actix-identity = "0.4"
 actix-rt = { version = "2.6", optional = true }
@@ -27,10 +25,11 @@ base64 = "0.13"
 bitflags = "1.2"
 clap = { version = "3.1", features = ["derive"] }
 chrono = "0.4"
+cosmian_crypto_base = { version = "1.3.0", features = ["libsodium"] }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils" }
 cosmian_mcfe = { git = "https://github.com/Cosmian/DMCFE.git", branch = "feature/add_mcfe" }
-cover_crypt = "1.0.1"
+cover_crypt = "2.0.0"
 dotenv = "0.15.0"
 env_logger = "0.9"
 # eyre is used to handle errors related to the server binary
