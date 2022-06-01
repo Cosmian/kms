@@ -10,6 +10,7 @@ use cosmian_kmip::{
 };
 use cover_crypt::{
     self,
+    api::{PrivateKey, PublicKey},
     interfaces::statics::{
         decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_block, encrypt_hybrid_header,
     },
@@ -59,9 +60,8 @@ impl CoverCryptHybridCipher {
         })?)?;
 
         trace!(
-            "Instantiated hybrid CoverCrypt encipher for public key id: {}, policy: {:#?}",
-            public_key_uid,
-            &policy
+            "Instantiated hybrid CoverCrypt encipher for public key id: {public_key_uid}, policy: \
+             {policy:#?}"
         );
 
         Ok(CoverCryptHybridCipher {
@@ -93,7 +93,12 @@ impl EnCipher for CoverCryptHybridCipher {
                 )
             })?;
 
-        let public_key = serde_json::from_slice(&self.public_key_bytes)?;
+        let public_key = PublicKey::try_from_bytes(&self.public_key_bytes).map_err(|e| {
+            KmipError::KmipError(
+                ErrorReason::Codec_Error,
+                format!("cover crypt encipher: failed recovering the public key: {e}"),
+            )
+        })?;
 
         // The UID is NOT written in the header and needs to be re-supplied on block decryption
         let mut encrypted_header = encrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
@@ -117,8 +122,8 @@ impl EnCipher for CoverCryptHybridCipher {
                 KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
             })?;
 
-        let encrytped_header_len = encrypted_header.header_bytes.len();
-        let mut ciphertext = (encrytped_header_len as u32) //should not overflow
+        let encrypted_header_len = encrypted_header.header_bytes.len();
+        let mut ciphertext = (encrypted_header_len as u32) //should not overflow
             .to_be_bytes()
             .to_vec();
         ciphertext.append(&mut encrypted_header.header_bytes);
@@ -130,7 +135,7 @@ impl EnCipher for CoverCryptHybridCipher {
             &self.public_key_uid,
             data_to_encrypt.data.len(),
             ciphertext.len(),
-            encrytped_header_len,
+            encrypted_header_len,
             &data_to_encrypt.policy_attributes
         );
         Ok(EncryptResponse {
@@ -159,8 +164,8 @@ impl CoverCryptHybridDecipher {
             unwrap_user_decryption_key_object(user_decryption_key)?;
 
         debug!(
-            "Instantiated hybrid CoverCrypt decipher for user decryption key id: {}",
-            user_decryption_key_uid
+            "Instantiated hybrid CoverCrypt decipher for user decryption key id: \
+             {user_decryption_key_uid}"
         );
 
         Ok(CoverCryptHybridDecipher {
@@ -192,7 +197,13 @@ impl DeCipher for CoverCryptHybridDecipher {
         let encrypted_header_bytes = &encrypted_data[4..(4 + encrypted_header_size)];
         let encrypted_block = &encrypted_data[(4 + encrypted_header_size)..];
 
-        let user_decryption_key = serde_json::from_slice(&self.user_decryption_key_bytes)?;
+        let user_decryption_key = PrivateKey::try_from_bytes(&self.user_decryption_key_bytes)
+            .map_err(|e| {
+                KmipError::KmipError(
+                    ErrorReason::Codec_Error,
+                    format!("cover crypt decipher: failed recovering the user key: {e}"),
+                )
+            })?;
 
         let header_ = decrypt_hybrid_header::<X25519Crypto, Aes256GcmCrypto>(
             &user_decryption_key,

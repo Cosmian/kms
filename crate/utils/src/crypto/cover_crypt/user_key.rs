@@ -9,7 +9,7 @@ use cosmian_kmip::{
     },
 };
 use cover_crypt::{
-    api::CoverCrypt,
+    api::{CoverCrypt, PrivateKey},
     policies::{AccessPolicy, Policy},
 };
 use tracing::trace;
@@ -32,18 +32,24 @@ pub fn create_user_decryption_key_object(
     // Generate a fresh user decryption key
     //
     let engine = CoverCrypt::<X25519Crypto>::default();
-    let master_private_key = serde_json::from_slice(master_private_key_bytes)?;
+    let master_private_key = PrivateKey::try_from_bytes(master_private_key_bytes).map_err(|e| {
+        KmipError::KmipError(
+            ErrorReason::Codec_Error,
+            format!("cover crypt: failed deserializing the master private key: {e}"),
+        )
+    })?;
     let uk = engine
         .generate_user_private_key(&master_private_key, access_policy, policy)
         .map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
         })?;
-    trace!(
-        "Created user decryption key {:?} with access policy: {:?}",
-        &uk,
-        &access_policy
-    );
-    let user_decryption_key_bytes = serde_json::to_vec(&uk)?;
+    trace!("Created user decryption key {uk:?} with access policy: {access_policy:?}");
+    let user_decryption_key_bytes = uk.to_bytes().map_err(|e| {
+        KmipError::KmipError(
+            ErrorReason::Codec_Error,
+            format!("cover crypt: failed serializing the user key: {e}"),
+        )
+    })?;
     let user_decryption_key_len = user_decryption_key_bytes.len();
 
     let mut attributes = attributes

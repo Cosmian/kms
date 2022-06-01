@@ -13,7 +13,7 @@ use cosmian_kmip::{
     },
 };
 use cover_crypt::{
-    api::CoverCrypt,
+    api::{CoverCrypt, PublicKey},
     policies::{AccessPolicy, Attribute as PolicyAttribute},
 };
 use serde::{Deserialize, Serialize};
@@ -75,7 +75,12 @@ fn prepare_symmetric_key(
         public_key_response.object.key_block()?,
         &public_key_response.unique_identifier,
     )?;
-    let public_key = serde_json::from_slice(public_key_bytes.as_slice())?;
+    let public_key = PublicKey::try_from_bytes(public_key_bytes.as_slice()).map_err(|e| {
+        KmipError::KmipError(
+            ErrorReason::Codec_Error,
+            format!("cover crypt: failed deserializing the master public key: {e}"),
+        )
+    })?;
 
     let policy = policy_from_attributes(&public_key_attributes.ok_or_else(|| {
         KmipError::InvalidKmipObject(
@@ -99,8 +104,13 @@ fn prepare_symmetric_key(
     debug!("Generate symmetric key for CoverCrypt OK");
     Ok(CoverCryptSymmetricKey {
         uid: cover_crypt_header_uid.to_vec(),
-        symmetric_key: sk,
-        encrypted_symmetric_key: serde_json::to_vec(&sk_enc)?,
+        symmetric_key: sk.into(),
+        encrypted_symmetric_key: sk_enc.to_bytes().map_err(|e| {
+            KmipError::KmipError(
+                ErrorReason::Codec_Error,
+                format!("cover crypt: failed serializing the encapsulation: {e}"),
+            )
+        })?,
     })
 }
 
@@ -134,10 +144,7 @@ impl TryFrom<&KeyBlock> for CoverCryptSymmetricKey {
             other => {
                 return Err(KmipError::InvalidKmipObject(
                     ErrorReason::Invalid_Object_Type,
-                    format!(
-                        "Invalid key material for an CoverCrypt secret key: {:?}",
-                        other
-                    ),
+                    format!("Invalid key material for an CoverCrypt secret key: {other:?}"),
                 ))
             }
         })
