@@ -45,7 +45,12 @@ pub fn create_master_keypair(request: &CreateKeyPair) -> Result<KeyPair, KmipErr
         .private_key_attributes
         .as_ref()
         .or(request.common_attributes.as_ref());
-    let sk_bytes = serde_json::to_vec(&sk)?;
+    let sk_bytes = sk.to_bytes().map_err(|e| {
+        KmipError::KmipError(
+            ErrorReason::Codec_Error,
+            format!("cover crypt: failed serializing the master private key: {e}"),
+        )
+    })?;
     let private_key = create_master_private_key_object(&sk_bytes, &policy, private_key_attributes)?;
 
     // Public Key generation
@@ -54,7 +59,12 @@ pub fn create_master_keypair(request: &CreateKeyPair) -> Result<KeyPair, KmipErr
         .public_key_attributes
         .as_ref()
         .or(request.common_attributes.as_ref());
-    let pk_bytes = serde_json::to_vec(&pk)?;
+    let pk_bytes = pk.to_bytes().map_err(|e| {
+        KmipError::KmipError(
+            ErrorReason::Codec_Error,
+            format!("cover crypt: failed serializing the master public key: {e}"),
+        )
+    })?;
     let public_key = create_master_public_key_object(&pk_bytes, &policy, public_key_attributes)?;
 
     Ok(KeyPair((private_key, public_key)))
