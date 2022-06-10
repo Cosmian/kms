@@ -1,34 +1,33 @@
 # Cosmian KMS Server
 
+## Features
+
+The KMS server provides several features which can be enabled at compilation times. Enable/Disable these features will change the server configuration variables. 
+
+| Feature  | Description                                                                                                | Dev | Staging | Prod 🔥 |
+| -------- | ---------------------------------------------------------------------------------------------------------- | --- | ------- | ------ |
+| auth     | Enable authentication (via auth0). If disabled, multi-user is not supported                                | ✅   | ✅       | ✅      |
+| enclave  | Enable the ability to run inside an enclave                                                                |     | ✅       | ✅      |
+| https    | Enable https in the KMS in order to encrypt query between client and the KMS. If disabled, use http        |     | ✅       | ✅      |
+| insecure | Do not verify auth0 token expiration date and https ssl is auto-signed (to avoid to be banned by edgeless) | ✅   | ✅       |        |
+| timeout  | The binary won't start after a date chosen at compile-time                                                 |     |         |        |
+
+__Caption__: 
+✅ Enabled
+🔥 Default
+
+## Configuration
+
 The server configuration can be passed through the server using:
 - Environment variables
 - A dotenv `.env` file at the location where you start the binary 
 - Command line arguments
   
-The list of parameters is:
+The list of parameters, which depends on the compilated features, can be obtained by doing: 
 
-
-| Variable                        | Parameter                       | Default | dev          | staging/production |
-| ------------------------------- | ------------------------------- | ------- | ------------ | ------------------ |
-| KMS_DAYS_THRESHOLD_BEFORE_RENEW | `--days-threshold-before-renew` | 15      | ⛔            | 🔥                  |
-| KMS_DELEGATED_AUTHORITY_DOMAIN  | `--delegated-authority-domain`  |         | ✅            | ✅                  |
-| KMS_DOMAIN_NAME                 | `--domain-name`                 |         | ⛔            | 🔥                  |
-| KMS_EMAIL                       | `--email`                       |         | ⛔            | 🔥                  |
-| KMS_HOSTNAME                    | `--hostname`                    | 0.0.0.0 | ✅            | ⛔                  |
-| KMS_HTTP_ROOT_PATH              | `--http-root-path`              |         | ⛔            | 🔥                  |
-| KMS_KEYS_PATH                   | `--keys-path`                   |         | ⛔            | 🔥                  |
-| KMS_MANIFEST_PATH               | `--manifest-path`               |         | ✅ (SGX only) | ✅ (SGX only)       |
-| KMS_MYSQL_URL                   | `--mysql-url`                   |         | ✅            | ✅                  |
-| KMS_PORT                        | `--port`                        | 9998    | ✅            | ⛔                  |
-| KMS_POSTGRES_URL                | `--postgres-url`                |         | ✅            | ✅                  |
-| KMS_ROOT_DIR                    | `--root-dir`                    | /tmp    | ✅            | ✅                  |
-| KMS_USER_CERT_PATH              | `--user-cert-path`              |         | ✅            | ✅                  |
-
-__Caption__: 
-⛔ Unused
-✅ Available
-🔥 Mandatory
-
+```sh
+cosmian_kms_server -h
+```
 
 ## Configure the authentication
 
@@ -171,13 +170,13 @@ cargo make rust-tests
 
 ## Dev
 
-For development, you can use `--features=dev`. It will tell the server:
+For development, you can use `--features dev --no-default-features`. It will tell the server:
 - to not verify the expiration of OAuth2 tokens if `KMS_DELEGATED_AUTHORITY_DOMAIN` is set.
 - to use HTTP connection
 
 ## Staging
 
-For staging environment, you can use `--features=staging`. It will tell the server:
+For staging environment, you can use `--features=staging --no-default-features`. It will tell the server:
 - to not verify the expiration of OAuth2 tokens if `KMS_DELEGATED_AUTHORITY_DOMAIN` is set.
 - to use HTTPS connection with unsecure SSL certificates (it will play anyway all the process to get a valid certificates and starts a HTTPS server)
 
@@ -185,19 +184,17 @@ For staging environment, you can use `--features=staging`. It will tell the serv
 
 The KMS server's binary can be configured to stop running 3 months after date of compilation.
 
-This is done by using feature flag `demo_timeout`:
+This is done by using feature flag `timeout`:
 
 ```console
-cargo build --features demo_timeout
+cargo build --features timeout
 ```
 
-The demo version only uses HTTP. 
+You can combined any features with this current feature.
 
 ## Production / Running inside a Secure Enclave 
 
 > You can run the KMS on a non-sgx environment for production. In that case, the server will have the same behavior with a lower security level and with some routes disabled for the user.
-
-> You can run the KMS for testing or staging inside the enclave. You just have to run it as previously specified.
 
 At *Cosmian*, for production, the architecture and the security rely on secure enclaves. With no feature flag specified during the building process, the generated binary targets the production environment.
 

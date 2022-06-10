@@ -1,4 +1,4 @@
-use clap::StructOpt;
+use clap::{crate_description, crate_name, crate_version, StructOpt};
 use cosmian_kms_cli::{
     actions::{
         abe::entrypoint::AbeAction, cover_crypt::entrypoint::CoverCryptAction,
@@ -9,9 +9,9 @@ use cosmian_kms_cli::{
 
 #[derive(StructOpt, Debug)]
 #[structopt(
-    name = "cosmian_kms_cli",
-    version = "0.1",
-    about = "The Cosmian KMS command line"
+    name = crate_name!(),
+    version = crate_version!(),
+    about = crate_description!()
 )]
 enum CliCommands {
     #[clap(subcommand)]
