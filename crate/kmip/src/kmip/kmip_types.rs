@@ -88,7 +88,7 @@ pub enum KeyFormatType {
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Display, PartialEq, Apiv2Schema)]
 pub enum CryptographicAlgorithm {
     DES = 0x0000_0001,
     THREE_DES = 0x0000_0002,

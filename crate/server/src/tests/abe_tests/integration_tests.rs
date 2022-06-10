@@ -14,9 +14,9 @@ use cosmian_kms_utils::crypto::abe::kmip_requests::{
 
 use crate::{
     config::{init_config, Config},
-    kmip::tests::test_utils,
     log_utils,
     result::{KResult, KResultHelper},
+    tests::test_utils,
 };
 
 #[actix_web::test]

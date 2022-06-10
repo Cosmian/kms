@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::kmip_types::{StateEnumeration, UniqueIdentifier};
+use cosmian_kmip::kmip::kmip_types::{Attributes, StateEnumeration, UniqueIdentifier};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -71,13 +71,15 @@ impl From<(String, Vec<ObjectOperationTypes>)> for UserAccessResponse {
 pub struct ObjectOwnedResponse {
     pub object_id: UniqueIdentifier,
     pub state: StateEnumeration,
+    pub attributes: Attributes,
 }
 
-impl From<(String, StateEnumeration)> for ObjectOwnedResponse {
-    fn from(e: (String, StateEnumeration)) -> ObjectOwnedResponse {
+impl From<(String, StateEnumeration, Attributes)> for ObjectOwnedResponse {
+    fn from(e: (String, StateEnumeration, Attributes)) -> ObjectOwnedResponse {
         ObjectOwnedResponse {
             object_id: e.0,
             state: e.1,
+            attributes: e.2,
         }
     }
 }

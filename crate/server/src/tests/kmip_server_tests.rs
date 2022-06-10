@@ -1,8 +1,7 @@
 use std::{convert::TryFrom, sync::Arc};
 
 use cosmian_kmip::kmip::{
-    access::ObjectOperationTypes,
-    kmip_data_structures::{KeyBlock, KeyValue, KeyWrappingData},
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType},
     kmip_operations::Import,
     kmip_types::{
@@ -10,7 +9,10 @@ use cosmian_kmip::kmip::{
         LinkType, LinkedObjectIdentifier, StateEnumeration, WrappingMethod,
     },
 };
-use cosmian_kms_utils::crypto::{curve_25519, mcfe::operation::secret_key_from_lwe_secret_key};
+use cosmian_kms_utils::{
+    crypto::{curve_25519, mcfe::operation::secret_key_from_lwe_secret_key},
+    types::ObjectOperationTypes,
+};
 use cosmian_mcfe::lwe;
 use num_bigint::BigUint;
 use tempfile::tempdir;
@@ -19,12 +21,12 @@ use uuid::Uuid;
 
 use crate::{
     config::init_config,
+    core::crud::KmipServer,
+    database::{sqlite::SqlitePool, Database},
     error::KmsError,
-    kmip::kmip_server::{
-        database::Database, server::kmip_server::KmipServer, sqlite::SqlitePool, KMSServer,
-    },
     log_utils::log_init,
     result::KResult,
+    KMSServer,
 };
 
 #[actix_rt::test]
@@ -51,7 +53,7 @@ async fn test_crud() -> KResult<()> {
     //
     let uid = db.create(None, owner, &sk).await?;
     //
-    let list = db.list(owner).await?;
+    let list = db.find(None, None, owner).await?;
     assert_eq!(1, list.len());
     assert_eq!(uid, list[0].0);
     //
@@ -69,13 +71,7 @@ async fn test_crud() -> KResult<()> {
             ))
         }
     };
-    let (key_material, attributes) = key_block
-        .key_value
-        .plaintext()
-        .ok_or_else(|| KmsError::ServerError("invalid Plain Text Key Value created".to_owned()))?;
-    let attributes = attributes
-        .as_ref()
-        .expect("attributes should have been created");
+    let attributes = key_block.key_value.attributes()?;
 
     let req_key_block = match &req_sk.0 {
         Object::SymmetricKey { key_block } => key_block.clone(),
@@ -95,7 +91,7 @@ async fn test_crud() -> KResult<()> {
         &req_attr.cryptographic_parameters
     );
 
-    //update
+    // update
     let mut updated_key_block = key_block.clone();
     let update_attr = Attributes {
         cryptographic_parameters: Some(CryptographicParameters {
@@ -104,8 +100,8 @@ async fn test_crud() -> KResult<()> {
         }),
         ..attributes.clone()
     };
-    updated_key_block.key_value = KeyValue::PlainText {
-        key_material: key_material.clone(),
+    updated_key_block.key_value = KeyValue {
+        key_material: key_block.key_value.key_material.clone(),
         attributes: Some(update_attr),
     };
     db.update_object(
@@ -151,12 +147,12 @@ async fn test_crud() -> KResult<()> {
     assert_eq!(&sk2, &sk2_);
 
     // delete and list
-    assert_eq!(2, db.list(owner).await?.len());
+    assert_eq!(2, db.find(None, None, owner).await?.len());
     db.delete(&uid, owner).await?;
-    assert_eq!(1, db.list(owner).await?.len());
+    assert_eq!(1, db.find(None, None, owner).await?.len());
     db.delete(&uid_upsert, owner).await?;
-    assert_eq!(0, db.list(owner).await?.len());
-    //cleanup
+    assert_eq!(0, db.find(None, None, owner).await?.len());
+    // cleanup
     dir.close()?;
     Ok(())
 }
@@ -184,7 +180,7 @@ async fn test_crud_2() -> KResult<()> {
     //
     let uid = db.create(None, owner, &sk).await?;
     //
-    let list = db.list(owner).await?;
+    let list = db.find(None, None, owner).await?;
     assert_eq!(1, list.len());
     assert_eq!(uid, list[0].0);
     //
@@ -202,21 +198,7 @@ async fn test_crud_2() -> KResult<()> {
             ))
         }
     };
-    let (key_material, attributes) = match &key_block.key_value {
-        KeyValue::PlainText {
-            key_material,
-            attributes,
-            ..
-        } => (key_material, attributes),
-        _other => {
-            return Err(KmsError::ServerError(
-                "invalid Plain Text Key Value created".to_owned(),
-            ))
-        }
-    };
-    let attributes = attributes
-        .as_ref()
-        .expect("attributes should have been created");
+    let attributes = key_block.key_value.attributes()?;
 
     let req_key_block = match &req_sk {
         Object::SymmetricKey { key_block } => key_block.clone(),
@@ -226,16 +208,7 @@ async fn test_crud_2() -> KResult<()> {
             ))
         }
     };
-    let req_attr = match &req_key_block.key_value {
-        KeyValue::PlainText { attributes, .. } => attributes
-            .as_ref()
-            .expect("attributes should have been recovered"),
-        _other => {
-            return Err(KmsError::ServerError(
-                "invalid Key Value returned".to_owned(),
-            ))
-        }
-    };
+    let req_attr = req_key_block.key_value.attributes()?;
     assert_eq!(
         &attributes.cryptographic_algorithm.unwrap(),
         &req_attr.cryptographic_algorithm.unwrap()
@@ -254,8 +227,8 @@ async fn test_crud_2() -> KResult<()> {
         }),
         ..attributes.clone()
     };
-    updated_key_block.key_value = KeyValue::PlainText {
-        key_material: key_material.clone(),
+    updated_key_block.key_value = KeyValue {
+        key_material: key_block.key_value.key_material.clone(),
         attributes: Some(update_attr),
     };
     db.update_object(
@@ -276,16 +249,7 @@ async fn test_crud_2() -> KResult<()> {
         Object::SymmetricKey { key_block } => key_block,
         _other => return Err(KmsError::ServerError("invalid object returned".to_owned())),
     };
-    let req_attr_2 = match &req_key_block_2.key_value {
-        KeyValue::PlainText { attributes, .. } => attributes
-            .as_ref()
-            .expect("attributes should have been recovered"),
-        _other => {
-            return Err(KmsError::ServerError(
-                "invalid Key Value returned".to_owned(),
-            ))
-        }
-    };
+    let req_attr_2 = req_key_block_2.key_value.attributes()?;
     assert_eq!(
         &42u64,
         req_attr_2
@@ -310,12 +274,12 @@ async fn test_crud_2() -> KResult<()> {
     assert_eq!(&sk2, &sk2_);
 
     // delete and list
-    assert_eq!(2, db.list(owner).await?.len());
+    assert_eq!(2, db.find(None, None, owner).await?.len());
     db.delete(&uid, owner).await?;
-    assert_eq!(1, db.list(owner).await?.len());
+    assert_eq!(1, db.find(None, None, owner).await?.len());
     db.delete(&uid_upsert, owner).await?;
-    assert_eq!(0, db.list(owner).await?.len());
-    //cleanup
+    assert_eq!(0, db.find(None, None, owner).await?.len());
+    // cleanup
     dir.close()?;
     Ok(())
 }
@@ -405,7 +369,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         pk_key_block.key_format_type,
         KeyFormatType::TransparentECPublicKey
     );
-    //check link to secret key
+    // check link to secret key
     let attr = pk_key_block.key_value.attributes()?;
     assert_eq!(attr.link.len(), 1);
     let link = &attr.link[0];
@@ -457,11 +421,17 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 
     let wrapped_symmetric_key = [0_u8; 32];
     let aesgcm_nonce = [0_u8; 12];
+
+    let key_material = KeyMaterial::ByteString(wrapped_symmetric_key.to_vec());
+
     let symmetric_key = Object::SymmetricKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: KeyValue::Wrapped(wrapped_symmetric_key.to_vec()),
+            key_value: KeyValue {
+                key_material,
+                attributes: None,
+            },
             cryptographic_algorithm: CryptographicAlgorithm::AES,
             cryptographic_length: wrapped_symmetric_key.len() as i32,
             key_wrapping_data: Some(KeyWrappingData {

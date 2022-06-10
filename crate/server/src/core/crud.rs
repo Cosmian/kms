@@ -1,4 +1,4 @@
-use std::fs::{self};
+use std::fs;
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
@@ -11,24 +11,29 @@ use cosmian_kmip::kmip::{
         ReKeyKeyPair, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
     kmip_types::{
-        AttributeReference, Attributes, CryptographicAlgorithm, Link, LinkType,
+        AttributeReference, Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
         LinkedObjectIdentifier, RevocationReason, RevocationReasonEnumeration, StateEnumeration,
         Tag, UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::types::{
-    Access, ObjectOperationTypes, ObjectOwnedResponse, ObjectSharedResponse, UserAccessResponse,
+use cosmian_kms_utils::{
+    crypto::{
+        abe::locate::compare_abe_attributes, cover_crypt::locate::compare_cover_crypt_attributes,
+    },
+    types::{
+        Access, ObjectOperationTypes, ObjectOwnedResponse, ObjectSharedResponse, UserAccessResponse,
+    },
 };
 use libsgx::quote::{get_quote, hash, prepare_report_data};
 use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
-use super::{implementation::contains_attributes, KMS};
 use crate::{
     config::{certbot, manifest_path},
     error::KmsError,
     kms_bail,
     result::KResult,
+    KMS,
 };
 
 #[async_trait]
@@ -378,18 +383,13 @@ impl KmipServer for KMS {
         match &mut object {
             Object::PrivateKey { key_block }
             | Object::PublicKey { key_block }
-            | Object::SymmetricKey { key_block } => match &key_block.key_value {
-                KeyValue::PlainText { key_material, .. } => {
-                    // replace attributes
-                    key_block.key_value = KeyValue::PlainText {
-                        key_material: key_material.clone(),
-                        attributes: Some(request.attributes),
-                    };
-                }
-                KeyValue::Wrapped(wrapped_key) => {
-                    key_block.key_value = KeyValue::Wrapped(wrapped_key.clone())
-                }
-            },
+            | Object::SymmetricKey { key_block } => {
+                // replace attributes
+                key_block.key_value = KeyValue {
+                    key_material: key_block.key_value.key_material.clone(),
+                    attributes: Some(request.attributes),
+                };
+            }
             x => {
                 //TODO keep attributes as separate column in DB
                 warn!("Attributes are not yet supported for objects of type : {x}")
@@ -504,20 +504,13 @@ impl KmipServer for KMS {
                 ))
             }
         };
-        let (key_material, attributes) = pk_key_block.key_value.plaintext().ok_or_else(|| {
-            KmsError::ServerError(
-                "This should never happen. It must be a plain text key value".to_owned(),
-            )
-        })?;
-        let mut attr = attributes.clone().ok_or_else(|| {
-            KmsError::ServerError("This should never happen. There should be attributes".to_owned())
-        })?;
+        let mut attr = pk_key_block.key_value.attributes()?.clone();
         attr.link = vec![Link {
             link_type: LinkType::PrivateKeyLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(sk_uid.clone()),
         }];
-        pk_key_block.key_value = KeyValue::PlainText {
-            key_material: key_material.clone(),
+        pk_key_block.key_value = KeyValue {
+            key_material: pk_key_block.key_value.key_material.clone(),
             attributes: Some(attr),
         };
         let public_key = Object::PublicKey {
@@ -539,21 +532,14 @@ impl KmipServer for KMS {
                 ))
             }
         };
-        let (key_material, attributes) = sk_key_block.key_value.plaintext().ok_or_else(|| {
-            KmsError::ServerError(
-                "This should never happen. It must be a plain text key value".to_owned(),
-            )
-        })?;
         trace!("Create private key link OK");
-        let mut attr = attributes.clone().ok_or_else(|| {
-            KmsError::ServerError("This should never happen. There should be attributes".to_owned())
-        })?;
+        let mut attr = sk_key_block.key_value.attributes()?.clone();
         attr.link = vec![Link {
             link_type: LinkType::PublicKeyLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(pk_uid.clone()),
         }];
-        sk_key_block.key_value = KeyValue::PlainText {
-            key_material: key_material.clone(),
+        sk_key_block.key_value = KeyValue {
+            key_material: sk_key_block.key_value.key_material.clone(),
             attributes: Some(attr),
         };
         let private_key = Object::PrivateKey {
@@ -616,26 +602,13 @@ impl KmipServer for KMS {
             .ok_or_else(|| KmsError::ItemNotFound(format!("Object with uid: {uid} not found")))?;
 
         let object_type = object.object_type();
-        let attributes = match object {
-            Object::PrivateKey { key_block }
-            | Object::PublicKey { key_block }
-            | Object::PGPKey { key_block, .. }
-            | Object::SymmetricKey { key_block } => Some(key_block.key_value),
-            _ => None,
-        }
-        .and_then(|kv| match kv {
-            KeyValue::Wrapped(_) => None, // we do not handle these for now
-            KeyValue::PlainText { attributes, .. } => attributes,
-        })
-        .ok_or_else(|| {
-            KmsError::ItemNotFound(format!("No attributes found on object with: {uid}"))
-        })?;
+        let attributes = object.attributes()?;
 
         let req_attributes = match &request.attribute_references {
             None => {
                 return Ok(GetAttributesResponse {
                     unique_identifier: uid.clone(),
-                    attributes,
+                    attributes: attributes.clone(),
                 })
             }
             Some(attrs) => attrs,
@@ -683,7 +656,7 @@ impl KmipServer for KMS {
                 },
             }
         }
-        debug!("Retrieved Attributes for object {uid}: {:?}", res);
+        debug!("Retrieved Attributes for object {uid}: {res:?}");
         Ok(GetAttributesResponse {
             unique_identifier: uid.clone(),
             attributes: res,
@@ -720,41 +693,60 @@ impl KmipServer for KMS {
     }
 
     async fn locate(&self, request: Locate, owner: &str) -> KResult<LocateResponse> {
-        let objects = self.db.list_owned_objects(owner).await?;
-        trace!("Locate database contains {} objects", objects.len());
-        let mut uids = Vec::<UniqueIdentifier>::new();
-        for (uid, state) in objects {
-            if state != StateEnumeration::Active {
-                debug!("Ignoring object: {uid} in state {state}");
-                continue
+        let uids = match &request.attributes.cryptographic_algorithm {
+            Some(CryptographicAlgorithm::ABE) => match request.attributes.key_format_type {
+                None => kms_bail!(KmsError::InvalidRequest(
+                    "Unable to locate an ABE key, the format type is not specified".to_string()
+                )),
+                Some(KeyFormatType::AbeUserDecryptionKey) => {
+                    let uids_attrs = self
+                        .db
+                        .find(
+                            Some(&request.attributes),
+                            Some(StateEnumeration::Active),
+                            owner,
+                        )
+                        .await?;
+                    let mut uids = Vec::new();
+                    for (uid, _, attributes) in uids_attrs {
+                        if compare_abe_attributes(&attributes, &request.attributes)? {
+                            uids.push(uid);
+                        }
+                    }
+                    uids
+                }
+                Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
+                    "Unable to locate an ABE keypair for format: {other:?}"
+                ))),
+            },
+            Some(CryptographicAlgorithm::CoverCrypt) => {
+                let uids_attrs = self
+                    .db
+                    .find(
+                        Some(&request.attributes),
+                        Some(StateEnumeration::Active),
+                        owner,
+                    )
+                    .await?;
+                let mut uids = Vec::new();
+                for (uid, _, attributes) in uids_attrs {
+                    if compare_cover_crypt_attributes(&attributes, &request.attributes)? {
+                        uids.push(uid);
+                    }
+                }
+                uids
             }
-            let gr = self.get(Get::from(&uid), owner).await?;
-            if gr.object_type != request.attributes.object_type {
-                trace!("Skipping object with type: {}", gr.object_type);
-                continue
-            }
-            let attribute_found = contains_attributes(&request.attributes, &gr)?;
-            if attribute_found {
-                trace!("Adding object: {} {}", gr.object_type, gr.unique_identifier);
-                uids.push(gr.unique_identifier);
-            } else {
-                trace!(
-                    "Ignoring object: {} {}",
-                    gr.object_type,
-                    gr.unique_identifier
-                );
-            }
-        }
-
-        let unique_identifiers = if uids.is_empty() {
-            None
-        } else {
-            Some(uids.clone())
+            Some(other) => kms_bail!(KmsError::NotSupported(format!(
+                "The locate of an object for algorithm: {other:?} is not yet supported"
+            ))),
+            None => kms_bail!(KmsError::InvalidRequest(
+                "The cryptographic algorithm must be specified for object location".to_string()
+            )),
         };
 
         let response = LocateResponse {
             located_items: Some(uids.len() as i32),
-            unique_identifiers,
+            unique_identifiers: if uids.is_empty() { None } else { Some(uids) },
         };
 
         Ok(response)
@@ -879,16 +871,14 @@ impl KmipServer for KMS {
     }
 
     async fn list_owned_objects(&self, owner: &str) -> KResult<Vec<ObjectOwnedResponse>> {
-        let list = self.db.list_owned_objects(owner).await?;
+        let list = self.db.find(None, None, owner).await?;
         let ids = list.into_iter().map(ObjectOwnedResponse::from).collect();
-
         Ok(ids)
     }
 
     async fn list_shared_objects(&self, owner: &str) -> KResult<Vec<ObjectSharedResponse>> {
         let list = self.db.list_shared_objects(owner).await?;
         let ids = list.into_iter().map(ObjectSharedResponse::from).collect();
-
         Ok(ids)
     }
 

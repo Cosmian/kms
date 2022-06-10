@@ -404,6 +404,24 @@ pub struct GetAttributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attribute_references: Option<Vec<AttributeReference>>,
 }
+impl From<String> for GetAttributes {
+    fn from(uid: String) -> Self {
+        GetAttributes {
+            unique_identifier: Some(uid),
+            attribute_references: None,
+        }
+    }
+}
+impl From<&String> for GetAttributes {
+    fn from(uid: &String) -> Self {
+        Self::from(uid.clone())
+    }
+}
+impl From<&str> for GetAttributes {
+    fn from(uid: &str) -> Self {
+        Self::from(uid.to_owned())
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Apiv2Schema)]
 #[serde(rename_all = "PascalCase")]

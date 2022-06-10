@@ -1,21 +1,24 @@
 use std::sync::Arc;
 
-use cosmian_crypto_base::entropy::gen_bytes;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::Create,
     kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
 };
-use cosmian_kms_utils::crypto::fpe::{
-    kmip_requests::{fpe_build_decryption_request, fpe_build_encryption_request},
-    operation::AlphabetCharacters,
+use cosmian_kms_utils::{
+    cosmian_crypto_base::entropy::CsRng,
+    crypto::fpe::{
+        kmip_requests::{fpe_build_decryption_request, fpe_build_encryption_request},
+        operation::AlphabetCharacters,
+    },
 };
 use tracing::debug;
 
 use crate::{
     config::init_config,
-    kmip::kmip_server::{server::kmip_server::KmipServer, KMSServer},
+    core::crud::KmipServer,
     result::{KResult, KResultHelper},
+    KMSServer,
 };
 
 #[actix_rt::test]
@@ -31,14 +34,16 @@ async fn fpe_encryption() -> KResult<()> {
     let nonexistent_owner = "invalid_owner";
 
     // Generate FPE Tweak (client responsibility)
-    let mut tweak = vec![0_u8; 64];
-    gen_bytes(&mut tweak[..])?;
+    let tweak = {
+        let mut cs_rng = CsRng::new();
+        cs_rng.generate_random_bytes(64)
+    };
 
     // Create symmetric key
     let create_request = Create {
         object_type: ObjectType::SymmetricKey,
         attributes: Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::FPEFF1),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
             ..Attributes::new(ObjectType::SymmetricKey)
         },

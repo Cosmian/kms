@@ -80,8 +80,7 @@ impl EnCipher for AesGcmCipher {
         };
 
         // recover key
-        let key_bytes = &self.symmetric_key_key_block.key_bytes()?;
-        let key = Key::try_from(key_bytes.as_slice())
+        let key = Key::try_from(self.symmetric_key_key_block.as_bytes()?)
             .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
 
         // supplied Nonce or fresh
@@ -149,17 +148,16 @@ impl DeCipher for AesGcmCipher {
         };
 
         // recover key
-        let key_bytes = &self.symmetric_key_key_block.key_bytes()?;
-        let key: Key = aes_256_gcm_pure::Key::try_from(key_bytes.as_slice())
+        let key: Key = aes_256_gcm_pure::Key::try_from(self.symmetric_key_key_block.as_bytes()?)
             .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
 
-        //recover tag
+        // recover tag
         let tag = request
             .authenticated_encryption_tag
             .clone()
             .unwrap_or_default();
 
-        //recover Nonce
+        // recover Nonce
         let nonce_bytes = request.iv_counter_nonce.clone().ok_or_else(|| {
             KmipError::KmipError(
                 ErrorReason::Cryptographic_Failure,

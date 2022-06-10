@@ -79,20 +79,18 @@ fn create_master_private_key_object(
     policy: &Policy,
     attributes: Option<&Attributes>,
 ) -> Result<Object, KmipError> {
-    let mut attributes = attributes
-        .map(|att| {
-            let mut att = att.clone();
-            att.object_type = ObjectType::PrivateKey;
-            att
-        })
-        .unwrap_or_else(|| Attributes::new(ObjectType::PrivateKey));
+    let mut attributes = attributes.map_or(Attributes::new(ObjectType::PrivateKey), |att| {
+        let mut att = att.clone();
+        att.object_type = ObjectType::PrivateKey;
+        att
+    });
     upsert_policy_in_attributes(&mut attributes, policy)?;
     Ok(Object::PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: CryptographicAlgorithm::ABE,
             key_format_type: KeyFormatType::AbeMasterSecretKey,
             key_compression_type: None,
-            key_value: KeyValue::PlainText {
+            key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(key.to_vec()),
                 attributes: Some(attributes),
             },
@@ -111,20 +109,18 @@ fn create_master_public_key_object(
     policy: &Policy,
     attributes: Option<&Attributes>,
 ) -> Result<Object, KmipError> {
-    let mut attributes = attributes
-        .map(|att| {
-            let mut att = att.clone();
-            att.object_type = ObjectType::PublicKey;
-            att
-        })
-        .unwrap_or_else(|| Attributes::new(ObjectType::PublicKey));
+    let mut attributes = attributes.map_or(Attributes::new(ObjectType::PublicKey), |att| {
+        let mut att = att.clone();
+        att.object_type = ObjectType::PublicKey;
+        att
+    });
     upsert_policy_in_attributes(&mut attributes, policy)?;
     Ok(Object::PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: CryptographicAlgorithm::ABE,
             key_format_type: KeyFormatType::AbeMasterPublicKey,
             key_compression_type: None,
-            key_value: KeyValue::PlainText {
+            key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(key.to_vec()),
                 attributes: Some(attributes),
             },

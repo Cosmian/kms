@@ -65,7 +65,7 @@ pub fn create_user_decryption_key_object(
             cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
             key_format_type: KeyFormatType::CoverCryptSecretKey,
             key_compression_type: None,
-            key_value: KeyValue::PlainText {
+            key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
                 attributes: Some(attributes),
             },
@@ -97,13 +97,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
             "Expected an CoverCrypt User Decryption Key".to_owned(),
         ))
     }
-    let (key_material, attributes) = key_block.key_value.plaintext().ok_or_else(|| {
-        KmipError::InvalidKmipObject(
-            ErrorReason::Invalid_Object_Type,
-            "Invalid plain text".to_owned(),
-        )
-    })?;
-    let bytes = match key_material {
+    let bytes = match &key_block.key_value.key_material {
         KeyMaterial::ByteString(b) => b.clone(),
         x => {
             return Err(KmipError::InvalidKmipObject(
@@ -112,15 +106,12 @@ pub(crate) fn unwrap_user_decryption_key_object(
             ))
         }
     };
-    let attributes = attributes
-        .as_ref()
-        .ok_or_else(|| {
-            KmipError::InvalidKmipValue(
-                ErrorReason::Attribute_Not_Found,
-                "The CoverCrypt Master private key should have attributes".to_owned(),
-            )
-        })?
-        .clone();
-    let access_policy = access_policy_from_attributes(&attributes)?;
-    Ok((bytes, access_policy, attributes))
+    let attributes = key_block.key_value.attributes().map_err(|e| {
+        KmipError::InvalidKmipValue(
+            ErrorReason::Attribute_Not_Found,
+            format!("The CoverCrypt Master private key should have attributes: {e}"),
+        )
+    })?;
+    let access_policy = access_policy_from_attributes(attributes)?;
+    Ok((bytes, access_policy, attributes.clone()))
 }
