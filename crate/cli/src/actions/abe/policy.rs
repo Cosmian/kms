@@ -34,22 +34,25 @@ struct InputPolicyAxis {
 }
 
 pub fn policy_from_file(json_filename: &impl AsRef<Path>) -> eyre::Result<Policy> {
-    let file =
-        File::open(json_filename).with_context(|| "Can't read the policy json file".to_string())?;
+    let file = File::open(json_filename).with_context(|| "Can't read the policy json file")?;
 
     // Read the json
-    let raw_policy: InputPolicy = serde_json::from_reader(BufReader::new(file))
-        .with_context(|| "Policy JSON malformed".to_string())?;
+    let raw_policy: InputPolicy =
+        serde_json::from_reader(BufReader::new(file)).with_context(|| "Policy JSON malformed")?;
 
     // Build the policy
     let mut policy = Policy::new(raw_policy.max_rotations);
 
     // Build the policy axis
     for (name, axis) in &raw_policy.policy_axis {
-        let v: Vec<&str> = axis.attributes.iter().map(|x| x.as_ref()).collect();
+        let v = axis
+            .attributes
+            .iter()
+            .map(|x| x.as_ref())
+            .collect::<Vec<_>>();
         policy = policy
             .add_axis(name, &v, axis.hierarchical)
-            .with_context(|| format!("Can't initialize the policy axis {}", &name))?;
+            .with_context(|| format!("Can't initialize the policy axis {name}"))?;
     }
 
     Ok(policy)

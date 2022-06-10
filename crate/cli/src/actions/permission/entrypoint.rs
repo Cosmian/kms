@@ -129,9 +129,9 @@ impl ListPermissions {
     }
 }
 
-/// List the object of a user.
+/// List the object owned by a user.
 #[derive(StructOpt, Debug)]
-pub struct ListOwnedObjects {}
+pub struct ListOwnedObjects;
 
 impl ListOwnedObjects {
     pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
@@ -142,15 +142,18 @@ impl ListOwnedObjects {
 
         println!("The objects are:\n");
         for object in objects {
-            println!("[{}] {} - comments", object.state, object.object_id); // TODO (@T.G): replace comments by attributes.KeyFormatType 
+            println!(
+                "[{}] {} - {:?}",
+                object.state, object.object_id, object.attributes.key_format_type
+            );
         }
         Ok(())
     }
 }
 
-/// List the object of a user.
+/// List the shared objects of a user.
 #[derive(StructOpt, Debug)]
-pub struct ListSharedObjects {}
+pub struct ListSharedObjects;
 
 impl ListSharedObjects {
     pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {

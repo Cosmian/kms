@@ -105,13 +105,7 @@ pub fn extract_key_bytes(pk: &Object) -> Result<Vec<u8>, KmipError> {
             ))
         }
     };
-    let (key_material, _) = key_block.key_value.plaintext().ok_or_else(|| {
-        KmipError::InvalidKmipObject(
-            ErrorReason::Invalid_Object_Type,
-            "The public key should be a plain text key value".to_owned(),
-        )
-    })?;
-    match key_material {
+    match &key_block.key_value.key_material {
         KeyMaterial::TransparentECPublicKey {
             recommended_curve: _,
             q_string: QString,

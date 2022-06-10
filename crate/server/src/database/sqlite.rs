@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use cosmian_kmip::kmip::{
     kmip_objects,
     kmip_operations::ErrorReason,
-    kmip_types::{StateEnumeration, UniqueIdentifier},
+    kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_utils::types::ObjectOperationTypes;
 use serde_json::Value;
@@ -16,7 +16,11 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{
-    database::{state_from_string, DBObject, Database, SQLITE_QUERIES},
+    database::{
+        query_from_attributes, state_from_string, DBObject, Database, SqlitePlaceholder,
+        SQLITE_QUERIES,
+    },
+    error::KmsError,
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
@@ -82,7 +86,7 @@ impl Database for SqlitePool {
         owner: &str,
         objects: &[(Option<String>, kmip_objects::Object)],
     ) -> KResult<Vec<UniqueIdentifier>> {
-        let mut res: Vec<UniqueIdentifier> = vec![];
+        let mut res = vec![];
         let mut tx = self.pool.begin().await?;
         for (uid, object) in objects {
             match create_(uid.to_owned(), owner, object, &mut tx).await {
@@ -133,13 +137,6 @@ impl Database for SqlitePool {
         delete_(uid, owner, &self.pool).await
     }
 
-    async fn list_owned_objects(
-        &self,
-        owner: &str,
-    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>> {
-        list_owned_objects_(owner, &self.pool).await
-    }
-
     async fn list_shared_objects(
         &self,
         owner: &str,
@@ -179,6 +176,15 @@ impl Database for SqlitePool {
     async fn is_object_owned_by(&self, uid: &str, userid: &str) -> KResult<bool> {
         is_object_owned_by_(uid, userid, &self.pool).await
     }
+
+    async fn find(
+        &self,
+        researched_attributes: Option<&Attributes>,
+        state: Option<StateEnumeration>,
+        owner: &str,
+    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>> {
+        find_(researched_attributes, state, owner, &self.pool).await
+    }
 }
 
 async fn create_<'e, E>(
@@ -190,20 +196,22 @@ async fn create_<'e, E>(
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    let json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(&DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
+
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
+
     sqlx::query(
         SQLITE_QUERIES
             .get("insert-row-objects")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid.clone())
-    .bind(json)
+    .bind(object_json)
     .bind(StateEnumeration::Active.to_string())
     .bind(owner)
     .execute(executor)
@@ -282,18 +290,19 @@ async fn update_object_<'e, E>(
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    let json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(&DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
+
     sqlx::query(
         SQLITE_QUERIES
             .get("update-rows-objects-with-object")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
-    .bind(json)
+    .bind(object_json)
     .bind(uid)
     .bind(owner)
     .execute(executor)
@@ -352,19 +361,20 @@ async fn upsert_<'e, E>(
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    let json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(&DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
+
     sqlx::query(
         SQLITE_QUERIES
             .get("upsert-row-objects")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
-    .bind(json)
+    .bind(object_json)
     .bind(state.to_string())
     .bind(owner)
     .execute(executor)
@@ -395,33 +405,6 @@ where
         ids.push((
             row.get::<String, _>(0),
             serde_json::from_value(row.get::<Value, _>(1))?,
-        ));
-    }
-    debug!("Listed {} rows", ids.len());
-    Ok(ids)
-}
-
-async fn list_owned_objects_<'e, E>(
-    owner: &str,
-    executor: E,
-) -> KResult<Vec<(UniqueIdentifier, StateEnumeration)>>
-where
-    E: Executor<'e, Database = Sqlite>,
-{
-    debug!("Owner = {}", owner);
-    let list = sqlx::query(
-        SQLITE_QUERIES
-            .get("select-row-objects-where-owner")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(owner)
-    .fetch_all(executor)
-    .await?;
-    let mut ids: Vec<(String, StateEnumeration)> = Vec::with_capacity(list.len());
-    for row in list {
-        ids.push((
-            row.get::<String, _>(0),
-            state_from_string(&row.get::<String, _>(1))?,
         ));
     }
     debug!("Listed {} rows", ids.len());
@@ -596,9 +579,49 @@ where
     Ok(row.is_some())
 }
 
+async fn find_<'e, E>(
+    researched_attributes: Option<&Attributes>,
+    state: Option<StateEnumeration>,
+    owner: &str,
+    executor: E,
+) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>>
+where
+    E: Executor<'e, Database = Sqlite> + Copy,
+{
+    let query = query_from_attributes::<SqlitePlaceholder>(researched_attributes, state, owner)?;
+    debug!("query: {query}");
+
+    let query = sqlx::query(&query);
+    let list = query.fetch_all(executor).await?;
+
+    debug!("fetched uids list's size: {}", list.len());
+    let mut uids = Vec::with_capacity(list.len());
+    for row in list {
+        let raw = row.get::<Vec<u8>, _>(2);
+        let attrs: Attributes = serde_json::from_slice(&raw)
+            .context("failed deserializing attributes")
+            .map_err(|e| KmsError::DatabaseError(e.to_string()))?;
+
+        uids.push((
+            row.get::<String, _>(0),
+            state_from_string(&row.get::<String, _>(1))?,
+            attrs,
+        ));
+    }
+
+    debug!("List of uids: {uids:?}");
+    Ok(uids)
+}
+
 #[cfg(test)]
 mod tests {
-    use cosmian_kmip::kmip::kmip_types::StateEnumeration;
+    use cosmian_kmip::kmip::{
+        kmip_objects::ObjectType,
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
+            StateEnumeration,
+        },
+    };
     use cosmian_kms_utils::{crypto::aes::create_aes_symmetric_key, types::ObjectOperationTypes};
     use tempfile::tempdir;
     use uuid::Uuid;
@@ -684,11 +707,14 @@ mod tests {
         db.insert_access(&uid, userid2, ObjectOperationTypes::Get)
             .await?;
 
-        let objects = db.list_owned_objects(owner).await?;
-        assert_eq!(objects, vec![(uid.clone(), StateEnumeration::Active)]);
+        let objects = db.find(None, None, owner).await?;
+        assert_eq!(objects.len(), 1);
+        let (o_uid, o_state, _) = &objects[0];
+        assert_eq!(o_uid, &uid);
+        assert_eq!(o_state, &StateEnumeration::Active);
 
-        let objects = db.list_owned_objects(userid2).await?;
-        assert_eq!(objects, vec![]);
+        let objects = db.find(None, None, userid2).await?;
+        assert!(objects.is_empty());
 
         let objects = db.list_shared_objects(userid2).await?;
         assert_eq!(
@@ -827,6 +853,155 @@ mod tests {
 
         let perms = db.perms(&uid, userid).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Encrypt]);
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    pub async fn test_json_access() -> KResult<()> {
+        log_init("debug");
+        let owner = "eyJhbGciOiJSUzI1Ni";
+        let dir = tempdir()?;
+        let file_path = dir.path().join("test_sqlite.db");
+        if file_path.exists() {
+            std::fs::remove_file(&file_path).unwrap();
+        }
+
+        let db = SqlitePool::instantiate(&file_path).await?;
+
+        //
+
+        let symmetric_key = create_aes_symmetric_key(None)?;
+        let uid = Uuid::new_v4().to_string();
+
+        db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active)
+            .await?;
+
+        assert!(db.is_object_owned_by(&uid, owner).await?);
+
+        // Retrieve object with valid owner with `Get` operation type - OK
+
+        match db.retrieve(&uid, owner, ObjectOperationTypes::Get).await? {
+            Some((obj, state)) => {
+                assert_eq!(StateEnumeration::Active, state);
+                assert_eq!(&symmetric_key, &obj);
+            }
+            None => kms_bail!("There should be an object"),
+        }
+
+        // Find with crypto algo attribute
+
+        let researched_attributes = Some(Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            ..Attributes::new(ObjectType::SymmetricKey)
+        });
+        let found = db
+            .find(
+                researched_attributes.as_ref(),
+                Some(StateEnumeration::Active),
+                owner,
+            )
+            .await?;
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, uid);
+
+        // Find with crypto length attribute
+
+        let researched_attributes = Some(Attributes {
+            cryptographic_length: Some(symmetric_key.attributes()?.cryptographic_length.unwrap()),
+            ..Attributes::new(ObjectType::SymmetricKey)
+        });
+        let found = db
+            .find(
+                researched_attributes.as_ref(),
+                Some(StateEnumeration::Active),
+                owner,
+            )
+            .await?;
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, uid);
+
+        // Find with crypto attributes
+
+        let researched_attributes = Some(Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(symmetric_key.attributes()?.cryptographic_length.unwrap()),
+            ..Attributes::new(ObjectType::SymmetricKey)
+        });
+        let found = db
+            .find(
+                researched_attributes.as_ref(),
+                Some(StateEnumeration::Active),
+                owner,
+            )
+            .await?;
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, uid);
+
+        // Find with key format type attribute
+
+        let researched_attributes = Some(Attributes {
+            key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+            ..Attributes::new(ObjectType::SymmetricKey)
+        });
+        let found = db
+            .find(
+                researched_attributes.as_ref(),
+                Some(StateEnumeration::Active),
+                owner,
+            )
+            .await?;
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, uid);
+
+        // Find with all attributes
+
+        let researched_attributes = Some(Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(symmetric_key.attributes()?.cryptographic_length.unwrap()),
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
+            key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+            ..Attributes::new(ObjectType::SymmetricKey)
+        });
+        let found = db
+            .find(
+                researched_attributes.as_ref(),
+                Some(StateEnumeration::Active),
+                owner,
+            )
+            .await?;
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, uid);
+
+        // Find bad crypto algo
+
+        let researched_attributes = Some(Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
+            ..Attributes::new(ObjectType::SymmetricKey)
+        });
+        let found = db
+            .find(
+                researched_attributes.as_ref(),
+                Some(StateEnumeration::Active),
+                owner,
+            )
+            .await?;
+        assert!(found.is_empty());
+
+        // Find bad key format type
+
+        let researched_attributes = Some(Attributes {
+            key_format_type: Some(KeyFormatType::AbeUserDecryptionKey),
+            ..Attributes::new(ObjectType::SymmetricKey)
+        });
+        let found = db
+            .find(
+                researched_attributes.as_ref(),
+                Some(StateEnumeration::Active),
+                owner,
+            )
+            .await?;
+        assert!(found.is_empty());
 
         Ok(())
     }

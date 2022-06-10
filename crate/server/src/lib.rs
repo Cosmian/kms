@@ -1,22 +1,10 @@
-pub mod config;
-mod core;
-mod database;
-pub mod error;
-
-mod middlewares;
-pub mod result;
-mod routes;
-
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    time::Duration,
 };
-
-use tracing::{debug, error, info};
-
-use crate::core::{certbot::Certbot, KMS};
-pub mod log_utils;
-use std::time::Duration;
 
 use actix_files as fs;
 use actix_web::{
@@ -29,8 +17,25 @@ use config::{certbot, hostname, jwks, port};
 use database::KMSServer;
 use middlewares::auth::Auth;
 use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod};
+use tracing::{debug, error, info};
 
-use crate::routes::endpoint;
+use crate::{
+    core::{certbot::Certbot, KMS},
+    routes::endpoint,
+};
+
+mod core;
+mod database;
+mod middlewares;
+mod routes;
+
+#[cfg(test)]
+mod tests;
+
+pub mod config;
+pub mod error;
+pub mod log_utils;
+pub mod result;
 
 /// A factory to configure the server
 pub fn prepare_server(

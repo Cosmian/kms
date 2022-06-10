@@ -159,7 +159,7 @@ impl EnCipher for FpeCipher {
                 })?;
                 let (secret_key, _) =
                     key_bytes_and_attributes_from_key_block(&self.symmetric_key, &self.key_uid)?;
-                let ciphertext = fpe_text.encrypt(&secret_key, tweak)?;
+                let ciphertext = fpe_text.encrypt(secret_key, tweak)?;
                 let fpe_text_serialized = serde_json::to_vec(&FpeText {
                     alphabet_characters: fpe_text.alphabet_characters,
                     input: ciphertext,
@@ -197,7 +197,7 @@ impl DeCipher for FpeCipher {
                 let fpe_text: FpeText = serde_json::from_slice(data).map_err(|e| {
                     KmipError::InvalidKmipValue(ErrorReason::Invalid_Message, e.to_string())
                 })?;
-                let cleartext = fpe_text.decrypt(&secret_key, tweak)?;
+                let cleartext = fpe_text.decrypt(secret_key, tweak)?;
                 Some(cleartext.as_bytes().to_vec())
             }
         };

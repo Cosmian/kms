@@ -3,23 +3,29 @@ use std::sync::Arc;
 use abe_gpsw::core::policy::{ap, attr, Policy};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{Get, Import},
-    kmip_types::{Attributes, CryptographicAlgorithm},
+    kmip_operations::{Get, Import, Locate},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+    },
 };
-use cosmian_kms_utils::crypto::abe::kmip_requests::{
-    build_create_master_keypair_request, build_create_user_decryption_key_pair_request,
-    build_create_user_decryption_private_key_request, build_decryption_request,
-    build_hybrid_encryption_request,
+use cosmian_kms_utils::crypto::abe::{
+    attributes::access_policy_as_vendor_attribute,
+    kmip_requests::{
+        build_create_master_keypair_request, build_create_user_decryption_key_pair_request,
+        build_create_user_decryption_private_key_request, build_decryption_request,
+        build_hybrid_encryption_request,
+    },
 };
 use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
     config::init_config,
+    core::crud::KmipServer,
     error::KmsError,
-    kmip::kmip_server::{server::kmip_server::KmipServer, KMSServer},
     kms_bail,
     result::{KResult, KResultHelper},
+    KMSServer,
 };
 
 #[actix_rt::test]
@@ -345,6 +351,94 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         )
         .await;
     assert!(dr.is_err());
+
+    Ok(())
+}
+
+#[actix_rt::test]
+async fn test_abe_json_access() -> KResult<()> {
+    let config = crate::config::Config {
+        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
+        ..Default::default()
+    };
+    init_config(&config).await?;
+
+    let kms = Arc::new(KMSServer::instantiate().await?);
+    let owner = "eyJhbGciOiJSUzI1Ni";
+    //
+    let policy = Policy::new(10)
+        .add_axis("Department", &["MKG", "FIN", "HR"], false)?
+        .add_axis("Level", &["confidential", "secret"], true)?;
+
+    let secret_mkg_fin_access_policy =
+        (ap("Department", "MKG") | ap("Department", "FIN")) & ap("Level", "secret");
+
+    // Create ABE master key pair
+    let master_keypair = build_create_master_keypair_request(&policy)?;
+
+    // create Key Pair
+    let ckr = kms.create_key_pair(master_keypair, owner).await?;
+    let master_private_key_uid = &ckr.private_key_unique_identifier;
+
+    // define search criterias
+    let search_attrs = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
+        cryptographic_length: Some(5344),
+        key_format_type: Some(KeyFormatType::AbeUserDecryptionKey),
+        vendor_attributes: Some(vec![access_policy_as_vendor_attribute(
+            &secret_mkg_fin_access_policy,
+        )?]),
+        link: vec![Link {
+            link_type: LinkType::ParentLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(
+                master_private_key_uid.to_owned(),
+            ),
+        }],
+        ..Attributes::new(ObjectType::PrivateKey)
+    };
+
+    // locate request
+    let locate = Locate {
+        attributes: search_attrs.clone(),
+        ..Locate::new(ObjectType::PrivateKey)
+    };
+
+    // println!("Rq attrs: {:#?}", locate.attributes);
+
+    let locate_response = kms.locate(locate, owner).await?;
+    // println!("1 - {locate_response:#?}");
+
+    // we only have 1 master keypair, but 0 decryption keys as
+    // requested in `locate` request
+    assert_eq!(locate_response.located_items.unwrap(), 0);
+
+    // Create a decryption key
+    let cr = kms
+        .create(
+            build_create_user_decryption_private_key_request(
+                &secret_mkg_fin_access_policy,
+                master_private_key_uid,
+            )?,
+            owner,
+        )
+        .await?;
+    let secret_mkg_fin_user_key_id = &cr.unique_identifier;
+
+    // Redo search
+    let locate = Locate {
+        attributes: search_attrs.clone(),
+        ..Locate::new(ObjectType::PrivateKey)
+    };
+
+    let locate_response = kms.locate(locate, owner).await?;
+    // println!("2 - {locate_response:#?}");
+
+    // now we have 1 key
+    assert_eq!(locate_response.located_items.unwrap(), 1);
+    assert_eq!(
+        &locate_response.unique_identifiers.unwrap()[0],
+        secret_mkg_fin_user_key_id
+    );
 
     Ok(())
 }
