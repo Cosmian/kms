@@ -442,3 +442,132 @@ async fn test_abe_json_access() -> KResult<()> {
 
     Ok(())
 }
+
+#[actix_rt::test]
+async fn test_import_decrypt() -> KResult<()> {
+    let config = crate::config::Config {
+        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
+        ..Default::default()
+    };
+    init_config(&config).await?;
+
+    let kms = Arc::new(KMSServer::instantiate().await?);
+    let owner = "eyJhbGciOiJSUzI1Ni";
+
+    let policy = Policy::new(10)
+        .add_axis("Department", &["MKG", "FIN", "HR"], false)?
+        .add_axis("Level", &["confidential", "secret"], true)?;
+
+    // create Key Pair
+    let cr = kms
+        .create_key_pair(build_create_master_keypair_request(&policy)?, owner)
+        .await?;
+    debug!("  -> response {:?}", cr);
+    let sk_uid = cr.private_key_unique_identifier;
+    let pk_uid = cr.public_key_unique_identifier;
+
+    // check the generated id is an UUID
+    let sk_uid_ = Uuid::parse_str(&sk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
+    assert_eq!(&sk_uid, &sk_uid_.to_string());
+
+    // encrypt a resource MKG + confidential
+    let confidential_resource_uid = "the uid confidential".as_bytes().to_vec();
+    let confidential_mkg_data = "Confidential MKG Data".as_bytes();
+    let confidential_mkg_policy_attributes =
+        vec![attr("Level", "confidential"), attr("Department", "MKG")];
+    let er = kms
+        .encrypt(
+            build_hybrid_encryption_request(
+                &pk_uid,
+                confidential_mkg_policy_attributes.clone(),
+                confidential_resource_uid.clone(),
+                confidential_mkg_data.to_vec(),
+            )?,
+            owner,
+        )
+        .await?;
+    assert_eq!(&pk_uid, &er.unique_identifier);
+    let confidential_mkg_encrypted_data = er.data.context("There should be encrypted data")?;
+
+    // Create a user decryption key MKG | FIN + secret
+    let secret_mkg_fin_access_policy =
+        (ap("Department", "MKG") | ap("Department", "FIN")) & ap("Level", "secret");
+    let cr = kms
+        .create(
+            build_create_user_decryption_private_key_request(
+                &secret_mkg_fin_access_policy,
+                &sk_uid,
+            )?,
+            owner,
+        )
+        .await?;
+    let secret_mkg_fin_user_key = &cr.unique_identifier;
+
+    // Retrieve the user key...
+    let gr_sk = kms
+        .get(Get::from(secret_mkg_fin_user_key.as_str()), owner)
+        .await?;
+    assert_eq!(secret_mkg_fin_user_key, &gr_sk.unique_identifier);
+    assert_eq!(ObjectType::PrivateKey, gr_sk.object_type);
+
+    // ...and reimport it under custom uid (won't work)
+    let custom_sk_uid = "sk_custom_id_fail".to_string();
+    let request = Import {
+        unique_identifier: custom_sk_uid.clone(),
+        object_type: ObjectType::PrivateKey,
+        replace_existing: Some(false),
+        key_wrap_type: None,
+        // Bad attributes. Import will succeed, but
+        // researched attributes won't matched stored attributes
+        attributes: Attributes::new(ObjectType::PrivateKey),
+        object: gr_sk.object.clone(),
+    };
+    assert!(kms.import(request, owner).await.is_ok());
+    // decrypt resource MKG + confidential
+    let dr = kms
+        .decrypt(
+            build_decryption_request(
+                &custom_sk_uid,
+                confidential_resource_uid.clone(),
+                confidential_mkg_encrypted_data.clone(),
+            ),
+            owner,
+        )
+        .await;
+    // Decryption fails: it cannot find the key.
+    // When importing the key, attributes are not set correctly
+    // in the import request
+    assert!(dr.is_err());
+
+    // ...and reimport it under custom uid (will work)
+    let custom_sk_uid = "sk_custom_id_ok".to_string();
+    let request = Import {
+        unique_identifier: custom_sk_uid.clone(),
+        object_type: ObjectType::PrivateKey,
+        replace_existing: Some(false),
+        key_wrap_type: None,
+        // Okay! attributes are correctly set in the import request
+        // These attributes are matching the object's one
+        attributes: gr_sk.object.attributes()?.clone(),
+        object: gr_sk.object.clone(),
+    };
+    assert!(kms.import(request, owner).await.is_ok());
+    // decrypt resource MKG + confidential
+    let dr = kms
+        .decrypt(
+            build_decryption_request(
+                // secret_mkg_fin_user_key,
+                &custom_sk_uid,
+                confidential_resource_uid.clone(),
+                confidential_mkg_encrypted_data.clone(),
+            ),
+            owner,
+        )
+        .await?;
+    assert_eq!(
+        confidential_mkg_data,
+        &dr.data.context("There should be decrypted data")?
+    );
+
+    Ok(())
+}
