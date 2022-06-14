@@ -6,4 +6,6 @@ TODO.md
 data/html
 data/keys
 .env
-dotenv
+data/private
+data/public
+data/shared

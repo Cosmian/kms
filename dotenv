@@ -1,0 +1,7 @@
+KMS_DELEGATED_AUTHORITY_DOMAIN = "dev-1mbsbmin.us.auth0.com"
+KMS_SSL_EMAIL = "tech@cosmian.com"
+KMS_SSL_DOMAIN_NAME = "testsgx.cosmian.com"
+KMS_PUBLIC_PATH = "data/public"
+KMS_SHARED_PATH = "data/shared"
+KMS_PRIVATE_PATH = "data/private"
+KMS_MANIFEST_FILENAME = "kms.manifest"

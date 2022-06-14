@@ -1,5 +1,3 @@
-use std::fs;
-
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyValue,
@@ -24,17 +22,20 @@ use cosmian_kms_utils::{
         Access, ObjectOperationTypes, ObjectOwnedResponse, ObjectSharedResponse, UserAccessResponse,
     },
 };
-use libsgx::quote::{get_quote, hash, prepare_report_data};
 use tracing::{debug, trace, warn};
 use uuid::Uuid;
-
-use crate::{
-    config::{certbot, manifest_path},
-    error::KmsError,
-    kms_bail,
-    result::KResult,
-    KMS,
+#[cfg(feature = "enclave")]
+use {
+    libsgx::quote::{get_quote, hash, prepare_report_data},
+    std::fs,
 };
+
+use super::KMS;
+#[cfg(feature = "https")]
+use crate::certbot;
+#[cfg(feature = "enclave")]
+use crate::config::manifest_path;
+use crate::{error::KmsError, kms_bail, result::KResult};
 
 #[async_trait]
 pub trait KmipServer {
@@ -336,12 +337,15 @@ pub trait KmipServer {
     /// Get all the objects shared to a given user
     async fn list_shared_objects(&self, owner: &str) -> KResult<Vec<ObjectSharedResponse>>;
 
+    #[cfg(feature = "enclave")]
     /// Get the SGX quote of a KMS running inside the enclave
     async fn get_quote(&self, nonce: &str) -> KResult<String>;
 
+    #[cfg(feature = "https")]
     /// Get the certificate of a KMS running using HTTPS
     async fn get_certificate(&self) -> KResult<String>;
 
+    #[cfg(feature = "enclave")]
     /// Get the manifest of the KMS running inside the enclave
     async fn get_manifest(&self) -> KResult<String>;
 }
@@ -350,6 +354,7 @@ pub trait KmipServer {
 /// to the implementation module or ciphers for encryption/decryption
 #[async_trait]
 impl KmipServer for KMS {
+    #[cfg(feature = "https")]
     async fn get_certificate(&self) -> KResult<String> {
         // Get the SSL cert
         let cert = certbot().lock().expect("can't lock certificate mutex");
@@ -357,19 +362,20 @@ impl KmipServer for KMS {
         Ok(certificate.to_string())
     }
 
+    #[cfg(feature = "enclave")]
     async fn get_manifest(&self) -> KResult<String> {
-        Ok(fs::read_to_string(manifest_path().ok_or_else(|| {
-            KmsError::ServerError(
-                "`manifest_path` is mandatory when running inside the enclave".to_owned(),
-            )
-        })?)?)
+        Ok(fs::read_to_string(manifest_path())?)
     }
 
+    #[cfg(feature = "enclave")]
     async fn get_quote(&self, nonce: &str) -> KResult<String> {
         // Hash the user nonce, the cert and the hash of the manifest
         let data = hash(&prepare_report_data(
             self.get_manifest().await?.as_bytes(),
-            self.get_certificate().await?.as_bytes(),
+            #[cfg(feature = "https")]
+            Some(self.get_certificate().await?.as_bytes()),
+            #[cfg(not(feature = "https"))]
+            None,
             nonce.as_bytes(),
         ));
 

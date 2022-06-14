@@ -34,7 +34,7 @@ workflow:
 # Test Postgre connection and cleanup db
 test_db_postgre_connect:
   image: postgres
-  only: [branches, merge_requests]
+  only: [master, develop, merge_requests]
   stage: prebuild
   script:
     # official way to provide password to psql: http://www.postgresql.org/docs/9.3/static/libpq-envars.html
@@ -53,7 +53,7 @@ test_db_postgre_connect:
 # Test Maria connection and cleanup db
 test_db_mariadb_connect:
   image: mariadb
-  only: [branches, merge_requests]
+  only: [master, develop, merge_requests]
   stage: prebuild
   script:
     - echo $MYSQL_DB
@@ -69,7 +69,7 @@ test_db_mariadb_connect:
 # Security check
 cargo_audit:
   stage: prebuild
-  only: [branches, merge_requests]
+  only: [master, develop, merge_requests]
   cache: {}
   before_script:
     - source /root/bashrc
@@ -114,7 +114,7 @@ cargo_audit:
 #
 compile_and_test:
   stage: build
-  only: [branches, merge_requests]
+  only: [master, develop, merge_requests]
   cache:
     key: "${CI_COMMIT_REF_SLUG}"
     policy: pull
@@ -138,7 +138,7 @@ compile_and_test:
 #
 unused_deps:
   stage: build
-  only: [branches, merge_requests]
+  only: [master, develop, merge_requests]
   cache:
     key: "${CI_COMMIT_REF_SLUG}"
     policy: pull
