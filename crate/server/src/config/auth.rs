@@ -19,11 +19,7 @@ impl Default for AuthConfig {
 
 impl AuthConfig {
     pub async fn init(&self) -> eyre::Result<JWKS> {
-        let delegated_authority_domain: String = self
-            .delegated_authority_domain
-            .trim_end_matches('/')
-            .to_string();
-
+        let delegated_authority_domain = self.delegated_authority_domain.trim_end_matches('/');
         let jwks_uri = format!("https://{delegated_authority_domain}/.well-known/jwks.json");
 
         reqwest::get(jwks_uri)

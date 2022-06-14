@@ -21,7 +21,7 @@ impl Default for HTTPConfig {
 }
 
 impl HTTPConfig {
-    pub fn init(&self) -> eyre::Result<String> {
-        Ok(format!("{}:{}", self.hostname, self.port))
+    pub fn init(&self) -> String {
+        format!("{}:{}", self.hostname, self.port)
     }
 }

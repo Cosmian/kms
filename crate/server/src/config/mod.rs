@@ -202,7 +202,7 @@ pub async fn init_config(conf: &Config) -> eyre::Result<()> {
         #[cfg(feature = "auth")]
         delegated_authority_domain: conf.auth.delegated_authority_domain.to_owned(),
         db_params: conf.db.init()?,
-        kms_url: http_url.init()?,
+        kms_url: http_url.init(),
         #[cfg(feature = "enclave")]
         manifest_path: conf.enclave.init(&workspace)?,
         #[cfg(feature = "https")]

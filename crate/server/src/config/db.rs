@@ -23,7 +23,7 @@ pub struct DBConfig {
         long,
         env = "KMS_SQLITE_DIR",
         parse(from_os_str),
-        default_value = "/tmp"
+        default_value_os_t =  std::env::temp_dir()
     )]
     pub sqlite_dir: PathBuf,
 }
@@ -34,7 +34,7 @@ impl Default for DBConfig {
             postgres_url: None,
             mysql_url: None,
             user_cert_path: None,
-            sqlite_dir: PathBuf::from("/tmp"),
+            sqlite_dir: std::env::temp_dir(),
         }
     }
 }
@@ -47,17 +47,15 @@ impl DBConfig {
             );
         }
 
-        if self.postgres_url.is_some() {
-            return Ok(DbParams::Postgres(
-                self.postgres_url.as_ref().unwrap().to_string(),
-            ))
-        } else if self.mysql_url.is_some() {
-            return Ok(DbParams::Mysql(
-                self.mysql_url.as_ref().unwrap().to_string(),
+        if let Some(postgres_url) = &self.postgres_url {
+            Ok(DbParams::Postgres(postgres_url.to_string()))
+        } else if let Some(mysql_url) = &self.mysql_url {
+            Ok(DbParams::Mysql(
+                mysql_url.to_string(),
                 self.user_cert_path.clone(),
             ))
         } else {
-            return Ok(DbParams::Sqlite(
+            Ok(DbParams::Sqlite(
                 Path::new(&self.sqlite_dir).canonicalize()?.join("kms.db"),
             ))
         }

@@ -21,7 +21,7 @@ timeout = ["actix-rt"]
 # To run on a dev environment
 dev = ["auth", "insecure"]
 
-# Enable all but unsecurely (but timeout)
+# Enable all the feature even insecure but timeout
 # To run in a test environment using a real domain name and enclaves without the rest api limit of let's encrypt
 staging = ["auth", "insecure", "https", "enclave"]
 

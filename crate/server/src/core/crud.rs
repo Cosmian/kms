@@ -373,9 +373,9 @@ impl KmipServer for KMS {
         let data = hash(&prepare_report_data(
             self.get_manifest().await?.as_bytes(),
             #[cfg(feature = "https")]
-            self.get_certificate().await?.as_bytes(),
+            Some(self.get_certificate().await?.as_bytes()),
             #[cfg(not(feature = "https"))]
-            &[],
+            None,
             nonce.as_bytes(),
         ));
 
