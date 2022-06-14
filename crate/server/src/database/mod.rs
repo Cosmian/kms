@@ -15,6 +15,7 @@ use crate::{kms_bail, result::KResult};
 pub(crate) type KMSServer = crate::core::KMS;
 pub(crate) mod pgsql;
 pub(crate) mod sqlite;
+pub(crate) mod sqlite_cache;
 
 // the `sqlx` connector for MySQL is unable to connect
 // using key-file (instead of password) for EdgelessDB
