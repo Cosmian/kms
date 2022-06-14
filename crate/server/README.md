@@ -6,11 +6,11 @@ The KMS server provides several features which can be enabled at compilation tim
 
 | Feature  | Description                                                                                                | Dev | Staging | Prod 🔥 |
 | -------- | ---------------------------------------------------------------------------------------------------------- | --- | ------- | ------ |
-| auth     | Enable authentication (via auth0). If disabled, multi-user is not supported                                | ✅   | ✅       | ✅      |
+| auth     | Enable authentication. If disabled, multi-user is not supported                                | ✅   | ✅       | ✅      |
 | enclave  | Enable the ability to run inside an enclave                                                                |     | ✅       | ✅      |
-| https    | Enable https in the KMS in order to encrypt query between client and the KMS. If disabled, use http        |     | ✅       | ✅      |
-| insecure | Do not verify auth0 token expiration date and https ssl is auto-signed (to avoid to be banned by edgeless) | ✅   | ✅       |        |
-| timeout  | The binary won't start after a date chosen at compile-time                                                 |     |         |        |
+| https    | Enable https in the KMS in order to encrypt query between client and the KMS. If disabled, it uses http    |     | ✅       | ✅      |
+| insecure | Do not verify auth0 token expiration date and https ssl is self-signed (to avoid to be banned by letsencrypt) | ✅   | ✅       |        |
+| timeout  | The binary will stop (and won't be able to start again) after a period of time, starting from date of compilation |     |         |        |
 
 __Caption__: 
 ✅ Enabled
@@ -23,7 +23,7 @@ The server configuration can be passed through the server using:
 - A dotenv `.env` file at the location where you start the binary 
 - Command line arguments
   
-The list of parameters, which depends on the compilated features, can be obtained by doing: 
+The list of parameters, which depends on the compiled features, can be obtained by doing: 
 
 ```sh
 cosmian_kms_server -h
@@ -190,7 +190,7 @@ This is done by using feature flag `timeout`:
 cargo build --features timeout
 ```
 
-You can combined any features with this current feature.
+This feature can be combined with any other feature.
 
 ## Production / Running inside a Secure Enclave 
 

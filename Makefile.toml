@@ -17,12 +17,12 @@ category = "dev"
 script = '''
 #!/bin/bash
 set -ex
-cargo check --no-default-features
-cargo check --features insecure --no-default-features
-cargo check --features https --no-default-features
-cargo check --features auth --no-default-features
-cargo check --features timeout --no-default-features
-cargo check --features enclave --no-default-features
+cargo check --all-targets --no-default-features
+cargo check --all-targets --no-default-features --features insecure
+cargo check --all-targets --no-default-features --features https
+cargo check --all-targets --no-default-features --features auth
+cargo check --all-targets --no-default-features --features timeout
+cargo check --all-targets --no-default-features --features enclave
 cargo build --all-targets --all-features
 '''
 

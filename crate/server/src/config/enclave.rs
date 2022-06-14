@@ -23,13 +23,13 @@ impl Default for EnclaveConfig {
 impl EnclaveConfig {
     pub fn init(&self, workspace: &WorkspaceConfig) -> eyre::Result<PathBuf> {
         if !is_running_inside_enclave() {
-            eyre::bail!("You are not running inside an enclave".to_owned(),)
+            eyre::bail!("You are not running inside an enclave")
         }
 
         let manifest_path = workspace.public_path.join(&self.manifest_filename);
 
         if !Path::new(&manifest_path).exists() {
-            eyre::bail!("Can't find '{:?}' as manifest_path", manifest_path);
+            eyre::bail!("Can't find '{manifest_path:?}' as manifest_path");
         }
 
         Ok(manifest_path)
