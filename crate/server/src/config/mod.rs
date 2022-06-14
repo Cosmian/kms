@@ -75,9 +75,9 @@ impl fmt::Debug for Config {
 pub enum DbParams {
     // contains the path to the db file
     Sqlite(PathBuf),
-    // contain the postgres connection URL
+    // contains the postgres connection URL
     Postgres(String),
-    // contain the mysql connection URL
+    // contains the mysql connection URL
     Mysql(String, Option<PathBuf>),
 }
 

@@ -19,7 +19,7 @@ pub struct WorkspaceConfig {
     #[clap(long, env = "KMS_PRIVATE_PATH", parse(from_os_str))]
     pub private_path: PathBuf,
 
-    /// The folder to store temporay data (non-persistante data readable by noone but the current instance during the current execution)
+    /// The folder to store temporary data (non-persistent data readable by no-one but the current instance during the current execution)
     #[clap(long, env = "KMS_TMP_PATH", parse(from_os_str), default_value = "/tmp")]
     pub tmp_path: PathBuf,
 }

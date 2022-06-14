@@ -12,12 +12,12 @@ auth = []
 enclave = []
 # Enable https in the KMS in order to encrypt query between client and the KMS. If disabled, use http
 https = []
-# Do not verify auth0 token expiration date and https ssl is auto-signed (to avoid to be banned by edgeless)
+# Do not verify auth0 token expiration date and https ssl is auto-signed (to avoid to be banned by letsencrypt)
 insecure = []
 # The binary won't start after a date chosen at compile-time
 timeout = ["actix-rt"]
 
-# Disable https, disable edgeless, enable auth but unsecurely
+# Disable https, disable enclave, enable auth but unsecurely
 # To run on a dev environment
 dev = ["auth", "insecure"]
 
