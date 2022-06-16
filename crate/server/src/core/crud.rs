@@ -19,7 +19,8 @@ use cosmian_kms_utils::{
         abe::locate::compare_abe_attributes, cover_crypt::locate::compare_cover_crypt_attributes,
     },
     types::{
-        Access, ObjectOperationTypes, ObjectOwnedResponse, ObjectSharedResponse, UserAccessResponse,
+        Access, ExtraDatabaseParams, ObjectOperationTypes, ObjectOwnedResponse,
+        ObjectSharedResponse, UserAccessResponse,
     },
 };
 use tracing::{debug, trace, warn};
@@ -48,7 +49,12 @@ pub trait KmipServer {
     /// The response contains the Unique Identifier provided in the request or
     /// assigned by the server. The server SHALL copy the Unique Identifier
     /// returned by this operations into the ID Placeholder variable.
-    async fn import(&self, request: Import, owner: &str) -> KResult<ImportResponse>;
+    async fn import(
+        &self,
+        request: Import,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<ImportResponse>;
 
     /// This operation requests the server to generate a new symmetric key or
     /// generate Secret Data as a Managed Cryptographic Object.
@@ -58,7 +64,12 @@ pub trait KmipServer {
     /// contains the Unique Identifier of the created object. The server SHALL
     /// copy the Unique Identifier returned by this operation into the ID
     /// Placeholder variable.
-    async fn create(&self, request: Create, owner: &str) -> KResult<CreateResponse>;
+    async fn create(
+        &self,
+        request: Create,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<CreateResponse>;
 
     /// This operation requests the server to generate a new public/private key
     /// pair and register the two corresponding new Managed Cryptographic Object
@@ -79,6 +90,7 @@ pub trait KmipServer {
         &self,
         request: CreateKeyPair,
         owner: &str,
+        params: &Option<ExtraDatabaseParams>,
     ) -> KResult<CreateKeyPairResponse>;
 
     /// This operation requests that the server returns the Managed Object
@@ -102,7 +114,12 @@ pub trait KmipServer {
     /// corresponding public key (where relevant), and then using that
     /// public key’s PKCS#12 Certificate Link to get the base certificate, and
     /// then using each certificate’s Ce
-    async fn get(&self, request: Get, owner: &str) -> KResult<GetResponse>;
+    async fn get(
+        &self,
+        request: Get,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<GetResponse>;
 
     /// This operation requests one or more attributes associated with a Managed
     /// Object. The object is specified by its Unique Identifier, and the
@@ -118,6 +135,7 @@ pub trait KmipServer {
         &self,
         request: GetAttributes,
         owner: &str,
+        params: &Option<ExtraDatabaseParams>,
     ) -> KResult<GetAttributesResponse>;
 
     /// This operation requests the server to perform an encryption operation on
@@ -148,7 +166,12 @@ pub trait KmipServer {
     ///
     /// The success or failure of the operation is indicated by the Result
     /// Status (and if failure the Result Reason) in the response header.
-    async fn encrypt(&self, request: Encrypt, owner: &str) -> KResult<EncryptResponse>;
+    async fn encrypt(
+        &self,
+        request: Encrypt,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<EncryptResponse>;
 
     /// This operation requests the server to perform a decryption operation on
     /// the provided data using a Managed Cryptographic Object as the key
@@ -168,7 +191,12 @@ pub trait KmipServer {
     ///
     /// The success or failure of the operation is indicated by the Result
     /// Status (and if failure the Result Reason) in the response header.
-    async fn decrypt(&self, request: Decrypt, owner: &str) -> KResult<DecryptResponse>;
+    async fn decrypt(
+        &self,
+        request: Decrypt,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<DecryptResponse>;
 
     /// This operation requests that the server search for one or more Managed
     /// Objects, depending on the attributes specified in the request. All
@@ -260,7 +288,12 @@ pub trait KmipServer {
     /// server SHALL NOT return unique identifiers for objects that are archived
     /// unless the Storage Status Mask field includes the Archived Storage
     /// indicator.
-    async fn locate(&self, request: Locate, owner: &str) -> KResult<LocateResponse>;
+    async fn locate(
+        &self,
+        request: Locate,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<LocateResponse>;
 
     /// This operation requests the server to revoke a Managed Cryptographic
     /// Object or an Opaque Object. The request contains a reason for the
@@ -274,7 +307,12 @@ pub trait KmipServer {
     /// object. If the revocation reason is neither “key compromise” nor “CA
     /// compromise”, the object is placed into the “deactivated” state, and the
     /// Deactivation Date is set to the current date and time.
-    async fn revoke(&self, request: Revoke, owner: &str) -> KResult<RevokeResponse>;
+    async fn revoke(
+        &self,
+        request: Revoke,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<RevokeResponse>;
 
     // This request is used to generate a replacement key pair for an existing
     // public/private key pair.  It is analogous to the Create Key Pair operation,
@@ -305,6 +343,7 @@ pub trait KmipServer {
         &self,
         request: ReKeyKeyPair,
         owner: &str,
+        params: &Option<ExtraDatabaseParams>,
     ) -> KResult<ReKeyKeyPairResponse>;
 
     /// This operation is used to indicate to the server that the key material
@@ -312,30 +351,54 @@ pub trait KmipServer {
     /// inaccessible. The meta-data for the key material SHALL be retained by
     /// the server.  Objects SHALL only be destroyed if they are in either
     /// Pre-Active or Deactivated state.
-    async fn destroy(&self, request: Destroy, owner: &str) -> KResult<DestroyResponse>;
+    async fn destroy(
+        &self,
+        request: Destroy,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<DestroyResponse>;
 
     /// Insert an access authorization for a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    async fn insert_access(&self, access: &Access, owner: &str) -> KResult<()>;
+    async fn insert_access(
+        &self,
+        access: &Access,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<()>;
 
     /// Remove an access authorization for a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    async fn delete_access(&self, access: &Access, owner: &str) -> KResult<()>;
+    async fn delete_access(
+        &self,
+        access: &Access,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<()>;
 
     /// Get all the access authorization for a given object
     async fn list_accesses(
         &self,
         object_id: &UniqueIdentifier,
         owner: &str,
+        params: &Option<ExtraDatabaseParams>,
     ) -> KResult<Vec<UserAccessResponse>>;
 
     /// Get all the objects owned by a given user (the owner)
-    async fn list_owned_objects(&self, owner: &str) -> KResult<Vec<ObjectOwnedResponse>>;
+    async fn list_owned_objects(
+        &self,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<Vec<ObjectOwnedResponse>>;
 
     /// Get all the objects shared to a given user
-    async fn list_shared_objects(&self, owner: &str) -> KResult<Vec<ObjectSharedResponse>>;
+    async fn list_shared_objects(
+        &self,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<Vec<ObjectSharedResponse>>;
 
     #[cfg(feature = "enclave")]
     /// Get the SGX quote of a KMS running inside the enclave
@@ -383,7 +446,12 @@ impl KmipServer for KMS {
         Ok(get_quote(&data)?)
     }
 
-    async fn import(&self, request: Import, owner: &str) -> KResult<ImportResponse> {
+    async fn import(
+        &self,
+        request: Import,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<ImportResponse> {
         let mut object = request.object;
 
         match &mut object {
@@ -431,6 +499,7 @@ impl KmipServer for KMS {
                     owner,
                     &object,
                     StateEnumeration::Active,
+                    params,
                 )
                 .await?;
             request.unique_identifier
@@ -441,22 +510,27 @@ impl KmipServer for KMS {
             } else {
                 Some(request.unique_identifier)
             };
-            self.db.create(id, owner, &object).await?
+            self.db.create(id, owner, &object, params).await?
         };
         Ok(ImportResponse {
             unique_identifier: uid,
         })
     }
 
-    async fn create(&self, request: Create, owner: &str) -> KResult<CreateResponse> {
+    async fn create(
+        &self,
+        request: Create,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<CreateResponse> {
         trace!("Create: {}", serde_json::to_string(&request)?);
         if request.protection_storage_masks.is_some() {
             kms_bail!(KmsError::UnsupportedPlaceholder)
         }
         let object = match &request.object_type {
             ObjectType::SymmetricKey => self.create_symmetric_key(&request, owner).await?,
-            ObjectType::SecretData => self.create_secret_data(&request, owner).await?,
-            &ObjectType::PrivateKey => self.create_private_key(&request, owner).await?,
+            ObjectType::SecretData => self.create_secret_data(&request, owner, params).await?,
+            &ObjectType::PrivateKey => self.create_private_key(&request, owner, params).await?,
             _ => {
                 kms_bail!(KmsError::NotSupported(format!(
                     "This server does not yet support creation of: {}",
@@ -464,7 +538,7 @@ impl KmipServer for KMS {
                 )))
             }
         };
-        let uid = self.db.create(None, owner, &object).await?;
+        let uid = self.db.create(None, owner, &object, params).await?;
         debug!(
             "Created KMS Object of type {:?} with id {uid}",
             &object.object_type(),
@@ -479,6 +553,7 @@ impl KmipServer for KMS {
         &self,
         request: CreateKeyPair,
         owner: &str,
+        params: &Option<ExtraDatabaseParams>,
     ) -> KResult<CreateKeyPairResponse> {
         trace!("Create key pair: {}", serde_json::to_string(&request)?);
         if request.common_protection_storage_masks.is_some()
@@ -489,7 +564,7 @@ impl KmipServer for KMS {
         }
         let sk_uid = Uuid::new_v4().to_string();
         let pk_uid = Uuid::new_v4().to_string();
-        let (sk, pk) = self.create_key_pair_(&request, owner).await?.0;
+        let (sk, pk) = self.create_key_pair_(&request, owner, params).await?.0;
 
         // start a transaction
         // let mut conn = self.db.get_connection()?;
@@ -558,6 +633,7 @@ impl KmipServer for KMS {
                     (Some(sk_uid.clone()), private_key),
                     (Some(pk_uid.clone()), public_key),
                 ],
+                params,
             )
             .await?;
 
@@ -568,7 +644,12 @@ impl KmipServer for KMS {
         })
     }
 
-    async fn get(&self, request: Get, owner: &str) -> KResult<GetResponse> {
+    async fn get(
+        &self,
+        request: Get,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<GetResponse> {
         trace!("Get: {}", serde_json::to_string(&request)?);
         let uid = request
             .unique_identifier
@@ -577,7 +658,7 @@ impl KmipServer for KMS {
         trace!("retrieving KMIP Object with id: {uid}");
         let (object, _state) = self
             .db
-            .retrieve(uid, owner, ObjectOperationTypes::Get)
+            .retrieve(uid, owner, ObjectOperationTypes::Get, params)
             .await?
             .ok_or_else(|| KmsError::ItemNotFound(format!("Object with uid: {uid} not found")))?;
 
@@ -593,6 +674,7 @@ impl KmipServer for KMS {
         &self,
         request: GetAttributes,
         owner: &str,
+        params: &Option<ExtraDatabaseParams>,
     ) -> KResult<GetAttributesResponse> {
         trace!("Get attributes: {}", serde_json::to_string(&request)?);
         let uid = request
@@ -603,7 +685,7 @@ impl KmipServer for KMS {
         trace!("retrieving attributes of KMIP Object with id: {uid}");
         let (object, _state) = self
             .db
-            .retrieve(uid, owner, ObjectOperationTypes::Get)
+            .retrieve(uid, owner, ObjectOperationTypes::Get, params)
             .await?
             .ok_or_else(|| KmsError::ItemNotFound(format!("Object with uid: {uid} not found")))?;
 
@@ -669,7 +751,12 @@ impl KmipServer for KMS {
         })
     }
 
-    async fn encrypt(&self, request: Encrypt, owner: &str) -> KResult<EncryptResponse> {
+    async fn encrypt(
+        &self,
+        request: Encrypt,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<EncryptResponse> {
         // 1 - check correlation //TODO
         // 2b - if correlation pull encrypt oracle from cache
         // 2a - if no correlation, create encrypt oracle
@@ -680,25 +767,35 @@ impl KmipServer for KMS {
             .unique_identifier
             .as_ref()
             .ok_or(KmsError::UnsupportedPlaceholder)?;
-        self.get_encipher(uid, owner)
+        self.get_encipher(uid, owner, params)
             .await?
             .encrypt(&request)
             .map_err(Into::into)
     }
 
-    async fn decrypt(&self, request: Decrypt, owner: &str) -> KResult<DecryptResponse> {
+    async fn decrypt(
+        &self,
+        request: Decrypt,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<DecryptResponse> {
         trace!("Decrypt: {:?}", &request.unique_identifier);
         let uid = request
             .unique_identifier
             .as_ref()
             .ok_or(KmsError::UnsupportedPlaceholder)?;
-        self.get_decipher(uid, owner)
+        self.get_decipher(uid, owner, params)
             .await?
             .decrypt(&request)
             .map_err(Into::into)
     }
 
-    async fn locate(&self, request: Locate, owner: &str) -> KResult<LocateResponse> {
+    async fn locate(
+        &self,
+        request: Locate,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<LocateResponse> {
         let uids = match &request.attributes.cryptographic_algorithm {
             Some(CryptographicAlgorithm::ABE) => match request.attributes.key_format_type {
                 None => kms_bail!(KmsError::InvalidRequest(
@@ -711,6 +808,7 @@ impl KmipServer for KMS {
                             Some(&request.attributes),
                             Some(StateEnumeration::Active),
                             owner,
+                            params,
                         )
                         .await?;
                     let mut uids = Vec::new();
@@ -732,6 +830,7 @@ impl KmipServer for KMS {
                         Some(&request.attributes),
                         Some(StateEnumeration::Active),
                         owner,
+                        params,
                     )
                     .await?;
                 let mut uids = Vec::new();
@@ -758,7 +857,12 @@ impl KmipServer for KMS {
         Ok(response)
     }
 
-    async fn revoke(&self, request: Revoke, owner: &str) -> KResult<RevokeResponse> {
+    async fn revoke(
+        &self,
+        request: Revoke,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<RevokeResponse> {
         //TODO http://gitlab.cosmian.com/core/cosmian_server/-/issues/131  Reasons should be kept
         let uid = request
             .unique_identifier
@@ -783,7 +887,7 @@ impl KmipServer for KMS {
             },
             RevocationReason::TextString(_) => StateEnumeration::Deactivated,
         };
-        self.db.update_state(&uid, owner, state).await?;
+        self.db.update_state(&uid, owner, state, params).await?;
         Ok(RevokeResponse {
             unique_identifier: uid,
         })
@@ -793,6 +897,7 @@ impl KmipServer for KMS {
         &self,
         request: ReKeyKeyPair,
         owner: &str,
+        params: &Option<ExtraDatabaseParams>,
     ) -> KResult<ReKeyKeyPairResponse> {
         trace!("Internal rekey key pair");
 
@@ -820,6 +925,7 @@ impl KmipServer for KMS {
                     private_key_unique_identifier,
                     attributes,
                     owner,
+                    params,
                 )
                 .await
             }
@@ -829,6 +935,7 @@ impl KmipServer for KMS {
                     private_key_unique_identifier,
                     attributes,
                     owner,
+                    params,
                 )
                 .await
             }
@@ -844,13 +951,18 @@ impl KmipServer for KMS {
         }
     }
 
-    async fn destroy(&self, request: Destroy, owner: &str) -> KResult<DestroyResponse> {
+    async fn destroy(
+        &self,
+        request: Destroy,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<DestroyResponse> {
         let uid = request
             .unique_identifier
             .ok_or(KmsError::UnsupportedPlaceholder)?;
 
         self.db
-            .update_state(&uid, owner, StateEnumeration::Destroyed)
+            .update_state(&uid, owner, StateEnumeration::Destroyed, params)
             .await?;
         Ok(DestroyResponse {
             unique_identifier: uid,
@@ -861,41 +973,55 @@ impl KmipServer for KMS {
         &self,
         object_id: &UniqueIdentifier,
         owner: &str,
+        params: &Option<ExtraDatabaseParams>,
     ) -> KResult<Vec<UserAccessResponse>> {
         // check the object identified by its `uid` is really owned by `owner`
         // only the owner can list the permission of an object
-        if !self.db.is_object_owned_by(object_id, owner).await? {
+        if !self.db.is_object_owned_by(object_id, owner, params).await? {
             kms_bail!(KmsError::Unauthorized(format!(
                 "Object with uid `{object_id}` is not owned by owner `{owner}`"
             )))
         }
 
-        let list = self.db.list_accesses(object_id).await?;
+        let list = self.db.list_accesses(object_id, params).await?;
         let ids = list.into_iter().map(UserAccessResponse::from).collect();
 
         Ok(ids)
     }
 
-    async fn list_owned_objects(&self, owner: &str) -> KResult<Vec<ObjectOwnedResponse>> {
-        let list = self.db.find(None, None, owner).await?;
+    async fn list_owned_objects(
+        &self,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<Vec<ObjectOwnedResponse>> {
+        let list = self.db.find(None, None, owner, params).await?;
         let ids = list.into_iter().map(ObjectOwnedResponse::from).collect();
         Ok(ids)
     }
 
-    async fn list_shared_objects(&self, owner: &str) -> KResult<Vec<ObjectSharedResponse>> {
-        let list = self.db.list_shared_objects(owner).await?;
+    async fn list_shared_objects(
+        &self,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<Vec<ObjectSharedResponse>> {
+        let list = self.db.list_shared_objects(owner, params).await?;
         let ids = list.into_iter().map(ObjectSharedResponse::from).collect();
         Ok(ids)
     }
 
-    async fn insert_access(&self, access: &Access, owner: &str) -> KResult<()> {
+    async fn insert_access(
+        &self,
+        access: &Access,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<()> {
         let uid = access
             .unique_identifier
             .as_ref()
             .ok_or(KmsError::UnsupportedPlaceholder)?;
 
         // check the object identified by its `uid` is really owned by `owner`
-        if !self.db.is_object_owned_by(uid, owner).await? {
+        if !self.db.is_object_owned_by(uid, owner, params).await? {
             kms_bail!(KmsError::Unauthorized(format!(
                 "Object with uid `{uid}` is not owned by owner `{owner}`"
             )))
@@ -910,19 +1036,24 @@ impl KmipServer for KMS {
         }
 
         self.db
-            .insert_access(uid, &access.user_id, access.operation_type)
+            .insert_access(uid, &access.user_id, access.operation_type, params)
             .await?;
         Ok(())
     }
 
-    async fn delete_access(&self, access: &Access, owner: &str) -> KResult<()> {
+    async fn delete_access(
+        &self,
+        access: &Access,
+        owner: &str,
+        params: &Option<ExtraDatabaseParams>,
+    ) -> KResult<()> {
         let uid = access
             .unique_identifier
             .as_ref()
             .ok_or(KmsError::UnsupportedPlaceholder)?;
 
         // check the object identified by its `uid` is really owned by `owner`
-        if !self.db.is_object_owned_by(uid, owner).await? {
+        if !self.db.is_object_owned_by(uid, owner, params).await? {
             kms_bail!(KmsError::Unauthorized(format!(
                 "Object with uid `{uid}` is not owned by owner `{owner}`"
             )))
@@ -937,7 +1068,7 @@ impl KmipServer for KMS {
         }
 
         self.db
-            .delete_access(uid, &access.user_id, access.operation_type)
+            .delete_access(uid, &access.user_id, access.operation_type, params)
             .await?;
         Ok(())
     }
