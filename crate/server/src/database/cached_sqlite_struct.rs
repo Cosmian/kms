@@ -1,12 +1,24 @@
-use std::{collections::HashMap, time::SystemTime};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, RwLock,
+    },
+    time::SystemTime,
+};
 
 use sqlx::{Pool, Sqlite};
+
+use crate::{kms_bail, kms_error, result::KResult};
+
+//TODO: remove unwrap
 
 /// The item of the KMS sqlite cache
 pub struct KMSSqliteCacheItem {
     /// The handler to the sqlite
-    sqlite: Pool<Sqlite>,
+    sqlite: Arc<Pool<Sqlite>>,
     /// The date of the first insertion
+    #[allow(dead_code)]
     inserted_at: u64,
     /// The number of instances of the sqlite currently running
     in_used: u32,
@@ -20,15 +32,20 @@ pub struct KMSSqliteCacheItem {
     freeable_cache_index: usize,
 }
 
+/// Give the time sonce EPOCH in secs
+pub fn _now() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("Unable to get duration since epoch")
+        .as_secs()
+}
+
 impl KMSSqliteCacheItem {
     #[must_use]
     pub fn new(sqlite: Pool<Sqlite>, freeable_cache_index: usize) -> KMSSqliteCacheItem {
         KMSSqliteCacheItem {
-            sqlite,
-            inserted_at: SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .expect("Unable to get duration since epoch")
-                .as_secs(),
+            sqlite: Arc::new(sqlite),
+            inserted_at: _now(),
             in_used: 0,
             last_used_at: 0,
             closed: false,
@@ -41,147 +58,162 @@ impl KMSSqliteCacheItem {
 /// The KMS sqlite cache contaings all handlers to the opened and closed sqlite
 pub struct KMSSqliteCache {
     /// The item of the cache
-    sqlites: HashMap<u32, KMSSqliteCacheItem>,
+    sqlites: RwLock<HashMap<u32, KMSSqliteCacheItem>>,
     /// The list of unused sqlite that could be closed if needed
-    freeable_sqlites: FreeableSqliteCache,
+    freeable_sqlites: RwLock<FreeableSqliteCache>,
     /// The number of opened sqlite allowed
     max_size: usize,
     /// The number of currently opened sqlite
-    current_size: usize,
+    current_size: AtomicUsize,
 }
 
 impl KMSSqliteCache {
     #[must_use]
     pub fn new(size: usize) -> KMSSqliteCache {
         KMSSqliteCache {
-            sqlites: HashMap::with_capacity(size),
-            freeable_sqlites: FreeableSqliteCache::new(size),
+            sqlites: RwLock::new(HashMap::with_capacity(size)),
+            freeable_sqlites: RwLock::new(FreeableSqliteCache::new(size)),
             max_size: size,
-            current_size: 0,
+            current_size: AtomicUsize::new(0),
         }
     }
 
     /// Test if a sqlite connection is opened for a given id
     pub fn opened(&self, id: u32) -> bool {
-        if !self.sqlites.contains_key(&id) {
+        let sqlites = self.sqlites.read().unwrap();
+        if !sqlites.contains_key(&id) {
             return false
         }
 
-        !self.sqlites[&id].closed
+        !sqlites[&id].closed
+    }
+
+    /// Test if a sqlite connection exist in the cache
+    pub fn exists(&self, id: u32) -> bool {
+        self.sqlites.read().unwrap().contains_key(&id)
     }
 
     /// Get the sqlite handler and tag it as "used"
-    pub fn get(&mut self, id: u32) -> Result<Option<&Pool<Sqlite>>, &'static str> {
-        if !self.sqlites.contains_key(&id) {
-            return Ok(None)
-        }
+    pub fn get(&self, id: u32) -> KResult<Arc<Pool<Sqlite>>> {
+        let mut sqlites = self.sqlites.write().unwrap();
 
-        let item = self.sqlites.get_mut(&id).ok_or("Key is not in the cache")?;
+        let item = sqlites
+            .get_mut(&id)
+            .ok_or_else(|| kms_error!("Key is not in the cache"))?;
 
         if item.closed {
-            return Ok(None)
+            kms_bail!("Database is closed");
         }
 
         // Now, we can't close this connection until it is used.
         if item.in_used == 0 {
-            self.freeable_sqlites.uncache(item.freeable_cache_index)?;
+            self.freeable_sqlites
+                .write()
+                .unwrap()
+                .uncache(item.freeable_cache_index)?;
         }
 
         item.in_used += 1;
-        item.last_used_at = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("Unable to get duration since epoch")
-            .as_secs();
+        item.last_used_at = _now();
 
-        Ok(Some(&self.sqlites[&id].sqlite))
+        Ok(Arc::clone(&item.sqlite))
     }
 
     /// Say the cache that the sqlite handler is not used at the current moment
     /// The cache will let it opened until it needs that slot
-    pub fn release(&mut self, id: u32) -> Result<(), &'static str> {
-        let item = self.sqlites.get_mut(&id).ok_or("Key is not in the cache")?;
+    pub fn release(&self, id: u32) -> KResult<()> {
+        let mut sqlites = self.sqlites.write().unwrap();
+
+        let item = sqlites
+            .get_mut(&id)
+            .ok_or_else(|| kms_error!("Key is not in the cache"))?;
 
         if item.in_used == 0 {
-            return Err("Can't release twice a cache item")
+            kms_bail!("Can't release twice a cache item");
         }
 
         item.in_used -= 1;
 
         // Now, we can close this connection if we need it.
         if item.in_used == 0 {
-            self.freeable_sqlites.recache(item.freeable_cache_index)?;
+            self.freeable_sqlites
+                .write()
+                .unwrap()
+                .recache(item.freeable_cache_index)?;
         }
 
         Ok(())
     }
 
     /// Remove oldest sqlite handlers until reaching the max cache size allowed
-    async fn flush(&mut self) -> Result<(), &'static str> {
-        while self.max_size <= self.current_size {
-            let id = match self.freeable_sqlites.pop() {
+    async fn flush(&self) -> KResult<()> {
+        while self.max_size <= self.current_size.load(Ordering::Relaxed) {
+            let id = match self.freeable_sqlites.write().unwrap().pop() {
                 Ok(id) => id,
                 Err(_) => break, // nothing in the cache, just leave
             };
 
-            let item = self.sqlites.get_mut(&id).ok_or("Key is not in the cache")?;
+            let sq = {
+                let mut sqlites = self.sqlites.write().unwrap();
 
-            item.sqlite.close().await;
-            item.closed = true;
-            item.closed_at = SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .expect("Unable to get duration since epoch")
-                .as_secs();
+                let item = sqlites
+                    .get_mut(&id)
+                    .ok_or_else(|| kms_error!("Key is not in the cache"))?;
 
-            self.current_size -= 1;
+                item.closed = true;
+                item.closed_at = _now();
+                Arc::clone(&item.sqlite)
+            };
+            // We are force to design the code like that. We can't make an async call on a lock value
+            sq.close().await;
+
+            self.current_size.fetch_sub(1, Ordering::Relaxed);
         }
         Ok(())
     }
 
     /// Save a sqlite handler inside the cache for further use
     /// The handler is considered as used until it is release.
-    pub async fn save(&mut self, id: u32, value: Pool<Sqlite>) -> Result<(), &'static str> {
+    pub async fn save(&self, id: u32, pool: Pool<Sqlite>) -> KResult<()> {
         // Flush the cache if necessary
         self.flush().await?;
         // If nothing has been flush, allow to exceed max cache size
 
         // Deal if the case: the id is already known but the sqlite was closed
-        if self.sqlites.contains_key(&id) {
-            let item = self.sqlites.get_mut(&id).ok_or("Key is not in the cache")?;
+        let mut sqlites = self.sqlites.write().unwrap();
 
-            if !item.closed {
-                return Err("Sqlite is already saved and opened")
+        match sqlites.get_mut(&id) {
+            Some(item) => {
+                if !item.closed {
+                    kms_bail!("Sqlite is already saved and opened")
+                }
+
+                item.sqlite = Arc::new(pool);
+                item.closed = false;
+                item.in_used = 1;
+                item.last_used_at = _now();
             }
+            None => {
+                // Book a slot for it
+                let freeable_cache_id = self.freeable_sqlites.write().unwrap().push(id)?;
 
-            item.sqlite = value;
-            item.closed = false;
-            item.in_used = 1;
-            item.last_used_at = SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .expect("Unable to get duration since epoch")
-                .as_secs();
+                // Add it to the SqliteCache
+                let mut item = KMSSqliteCacheItem::new(pool, freeable_cache_id);
 
-            self.current_size += 1;
+                self.freeable_sqlites
+                    .write()
+                    .unwrap()
+                    .uncache(freeable_cache_id)?;
 
-            return Ok(())
-        }
+                // Make it usable (to avoid direct free after alloc in case of cache overflow)
+                item.in_used = 1;
+                item.last_used_at = _now();
 
-        // Book a slot for it
-        let freeable_cache_id = self.freeable_sqlites.push(id)?;
+                sqlites.insert(id, item);
+            }
+        };
 
-        // Add it to the SqliteCache
-        let mut item = KMSSqliteCacheItem::new(value, freeable_cache_id);
-
-        // Make it usable (to avoid direct free after alloc in case of cache overflow)
-        item.in_used = 1;
-        item.last_used_at = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("Unable to get duration since epoch")
-            .as_secs();
-        self.freeable_sqlites.uncache(freeable_cache_id)?;
-
-        self.sqlites.insert(id, item);
-
-        self.current_size += 1;
+        self.current_size.fetch_add(1, Ordering::Relaxed);
 
         Ok(())
     }
@@ -254,7 +286,7 @@ impl FreeableSqliteCache {
     }
 
     // Add an element at the end of the cache
-    pub fn push(&mut self, value: u32) -> Result<usize, &'static str> {
+    pub fn push(&mut self, value: u32) -> KResult<usize> {
         if self.length == 0 {
             self.head = self.size;
             self.entries.push(FSCEntry::singleton(value));
@@ -270,9 +302,9 @@ impl FreeableSqliteCache {
     }
 
     // Remove the first element from the cache and return its value
-    pub fn pop(&mut self) -> Result<u32, &'static str> {
+    pub fn pop(&mut self) -> KResult<u32> {
         if self.length == 0 {
-            return Err("Cache is empty")
+            kms_bail!("Cache is empty")
         }
 
         let prev_head = self.head;
@@ -294,13 +326,13 @@ impl FreeableSqliteCache {
     }
 
     // Remove the given index from the cache
-    pub fn uncache(&mut self, index: usize) -> Result<(), &'static str> {
+    pub fn uncache(&mut self, index: usize) -> KResult<()> {
         if index >= self.size {
-            return Err("Index is too large")
+            kms_bail!("Index is too large")
         }
 
         if !self.entries[index].chained {
-            return Err("Index has already been uncached")
+            kms_bail!("Index has already been uncached")
         }
 
         match (
@@ -329,13 +361,13 @@ impl FreeableSqliteCache {
     }
 
     // Recache the index at the last position of the cache
-    pub fn recache(&mut self, index: usize) -> Result<(), &'static str> {
+    pub fn recache(&mut self, index: usize) -> KResult<()> {
         if index >= self.size {
-            return Err("Index is too large")
+            kms_bail!("Index is too large")
         }
 
         if self.entries[index].chained {
-            return Err("Index is already cached")
+            kms_bail!("Index is already cached")
         }
 
         self.entries[index].chained = true;
@@ -358,7 +390,7 @@ impl FreeableSqliteCache {
 
 #[cfg(test)]
 mod tests {
-    use std::{str::FromStr, time::Duration};
+    use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
     use sqlx::{
         sqlite::{SqliteConnectOptions, SqlitePoolOptions},
@@ -576,21 +608,23 @@ mod tests {
 
     #[actix_rt::test]
     pub async fn test_sqlite_cache() {
-        let mut cache = KMSSqliteCache::new(2);
+        let cache = KMSSqliteCache::new(2);
 
         assert_eq!(cache.max_size, 2);
-        assert_eq!(cache.current_size, 0);
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 0);
 
         let sqlite = connect().await.expect("Can't create database");
         let sqlite2 = connect().await.expect("Can't create database");
         let sqlite3 = connect().await.expect("Can't create database");
 
         assert!(cache.save(1, sqlite).await.is_ok());
-        assert_eq!(cache.current_size, 1);
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 1);
         assert!(cache.save(2, sqlite2).await.is_ok());
-        assert_eq!(cache.current_size, 2); // flush should do nothing here
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 2); // flush should do nothing here
         assert!(cache.opened(1));
         assert!(cache.opened(2));
+
+        assert!(cache.exists(1));
 
         let sqlite2 = connect().await.expect("Can't create database");
         assert!(cache.save(2, sqlite2).await.is_err()); // double saved = failed
@@ -598,31 +632,34 @@ mod tests {
         assert!(cache.release(2).is_ok());
         assert!(cache.release(2).is_err()); // not twice
 
+        assert!(cache.exists(2));
         assert!(cache.opened(2)); // still opened
 
+        assert!(!cache.exists(3));
         assert!(cache.save(3, sqlite3).await.is_ok());
-        assert_eq!(cache.current_size, 2); // flush should do nothing here
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 2); // flush should do nothing here
         assert!(cache.opened(3)); // still opened
         assert!(!cache.opened(2)); // not opened anymore
+        assert!(cache.exists(2));
 
         let sqlite2 = connect().await.expect("Can't create database");
         assert!(cache.save(2, sqlite2).await.is_ok());
-        assert_eq!(cache.current_size, 3); // flush should do nothing here
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 3); // flush should do nothing here
         assert!(cache.opened(2));
 
-        assert!(cache.get(4).unwrap().is_none());
-        assert!(cache.get(1).unwrap().is_some()); // 2 uses of sqlite1
+        assert!(cache.get(4).is_err());
+        assert!(cache.get(1).is_ok()); // 2 uses of sqlite1
 
         let sqlite4 = connect().await.expect("Can't create database");
         assert!(cache.save(4, sqlite4).await.is_ok());
-        assert_eq!(cache.current_size, 4); // flush should do nothing here
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 4); // flush should do nothing here
         assert!(cache.opened(1));
 
         assert!(cache.release(1).is_ok()); // 1 uses of sqlite1
 
         let sqlite5 = connect().await.expect("Can't create database");
         assert!(cache.save(5, sqlite5).await.is_ok());
-        assert_eq!(cache.current_size, 5); // flush should do nothing here
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 5); // flush should do nothing here
         assert!(cache.opened(1));
 
         assert!(cache.release(1).is_ok()); // 0 uses of sqlite1
@@ -630,12 +667,11 @@ mod tests {
 
         let sqlite6 = connect().await.expect("Can't create database");
         assert!(cache.save(6, sqlite6).await.is_ok());
-        assert_eq!(cache.current_size, 5); // flush should do something here
+        assert_eq!(cache.current_size.load(Ordering::Relaxed), 5); // flush should do something here
         assert!(!cache.opened(1));
+        assert!(cache.exists(1));
 
-        assert!(cache.get(1).unwrap().is_none()); // get after close
-
-        // TODO: release when 2 gets
+        assert!(cache.get(1).is_err()); // get after close
     }
 
     async fn connect() -> std::result::Result<sqlx::Pool<sqlx::Sqlite>, sqlx::Error> {
@@ -651,8 +687,4 @@ mod tests {
             .connect_with(options)
             .await
     }
-}
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Ok(())
 }
