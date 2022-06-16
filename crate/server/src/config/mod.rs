@@ -47,8 +47,7 @@ pub struct Config {
     #[cfg_attr(feature = "https", clap(skip))]
     pub http: HTTPConfig,
 
-    #[cfg_attr(all(not(feature = "https"), not(feature = "enclave")), clap(skip))]
-    #[cfg_attr(any(feature = "https", feature = "enclave"), clap(flatten))]
+    #[clap(flatten)]
     pub workspace: WorkspaceConfig,
 }
 
@@ -65,7 +64,6 @@ impl fmt::Debug for Config {
         let x = x.field("http", &self.http);
         #[cfg(feature = "https")]
         let x = x.field("https", &self.https);
-        #[cfg(any(feature = "https", feature = "enclave"))]
         let x = x.field("workspace", &self.workspace);
         x.finish()
     }
@@ -73,8 +71,9 @@ impl fmt::Debug for Config {
 
 #[derive(Clone, Debug)]
 pub enum DbParams {
-    // contains the path to the db file
-    Sqlite(PathBuf),
+    // contains the dir of the db file (not the db file itself)
+    // If bool = true: cached sqlite is enable
+    Sqlite(PathBuf, bool),
     // contains the postgres connection URL
     Postgres(String),
     // contains the mysql connection URL
@@ -178,7 +177,6 @@ pub(crate) fn certbot() -> &'static Arc<Mutex<Certbot>> {
 pub async fn init_config(conf: &Config) -> eyre::Result<()> {
     info!("initialising with configuration: {conf:#?}");
 
-    #[cfg(any(feature = "https", feature = "enclave"))]
     let workspace = conf.workspace.init()?;
 
     // In case of HTTPS, we build the http_url by ourself
@@ -201,7 +199,7 @@ pub async fn init_config(conf: &Config) -> eyre::Result<()> {
         jwks: conf.auth.init().await?,
         #[cfg(feature = "auth")]
         delegated_authority_domain: conf.auth.delegated_authority_domain.to_owned(),
-        db_params: conf.db.init()?,
+        db_params: conf.db.init(&workspace)?,
         kms_url: http_url.init(),
         #[cfg(feature = "enclave")]
         manifest_path: conf.enclave.init(&workspace)?,

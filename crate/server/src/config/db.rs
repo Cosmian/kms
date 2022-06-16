@@ -1,10 +1,10 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::Args;
 
-use super::DbParams;
+use super::{workspace::WorkspaceConfig, DbParams};
 
-#[derive(Debug, Args, Clone)]
+#[derive(Debug, Args, Clone, Default)]
 pub struct DBConfig {
     /// The url of the postgres database
     #[clap(long, env = "KMS_POSTGRES_URL")]
@@ -18,33 +18,21 @@ pub struct DBConfig {
     #[clap(long, env = "KMS_USER_CERT_PATH", parse(from_os_str))]
     pub user_cert_path: Option<PathBuf>,
 
-    /// The dir of the sqlite database
-    #[clap(
-        long,
-        env = "KMS_SQLITE_DIR",
-        parse(from_os_str),
-        default_value_os_t =  std::env::temp_dir()
-    )]
-    pub sqlite_dir: PathBuf,
-}
-
-impl Default for DBConfig {
-    fn default() -> Self {
-        DBConfig {
-            postgres_url: None,
-            mysql_url: None,
-            user_cert_path: None,
-            sqlite_dir: std::env::temp_dir(),
-        }
-    }
+    /// Wether to use sqlcipher
+    #[clap(long, env = "KMS_SQLCIPHER")]
+    pub sqlcipher: bool,
 }
 
 impl DBConfig {
-    pub fn init(&self) -> eyre::Result<DbParams> {
+    pub fn init(&self, workspace: &WorkspaceConfig) -> eyre::Result<DbParams> {
         if self.postgres_url.is_some() && self.mysql_url.is_some() {
             eyre::bail!(
                 "Postgres and MariaDB/MySQL URL are both set, can't decide which one to use"
             );
+        }
+
+        if self.sqlcipher && (self.postgres_url.is_some() || self.mysql_url.is_some()) {
+            eyre::bail!("SQLCipher is incompatible with Postgres and MariaDB/MySQL URL");
         }
 
         if let Some(postgres_url) = &self.postgres_url {
@@ -56,7 +44,12 @@ impl DBConfig {
             ))
         } else {
             Ok(DbParams::Sqlite(
-                Path::new(&self.sqlite_dir).canonicalize()?.join("kms.db"),
+                if self.sqlcipher {
+                    workspace.public_path.clone()
+                } else {
+                    workspace.shared_path.clone()
+                },
+                self.sqlcipher,
             ))
         }
     }
