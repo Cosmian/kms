@@ -18,7 +18,7 @@ use super::{
 };
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Display, Debug)]
+#[derive(Copy, Clone, Display, Debug, PartialEq)]
 pub enum ErrorReason {
     Item_Not_Found = 0x0000_0001,
     Response_Too_Large = 0x0000_0002,

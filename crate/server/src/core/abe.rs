@@ -17,6 +17,7 @@ use cosmian_kms_utils::{
     kmip_utils::{
         key_bytes_and_attributes_from_key_block, public_key_unique_identifier_from_private_key,
     },
+    types::ExtraDatabaseParams,
     KeyPair,
 };
 use tracing::trace;
@@ -30,6 +31,7 @@ pub(crate) async fn rekey_keypair_abe<K>(
     master_private_key_uid: &str,
     attributes: &Attributes,
     owner: &str,
+    params: &Option<ExtraDatabaseParams>,
 ) -> KResult<ReKeyKeyPairResponse>
 where
     K: KmipServer,
@@ -54,14 +56,14 @@ where
 
     // Recover the master private key
     let private_key = kmip_server
-        .get(Get::from(master_private_key_uid), owner)
+        .get(Get::from(master_private_key_uid), owner, params)
         .await?
         .object;
 
     // Recover the Master Public Key
     let master_public_key_uid = public_key_unique_identifier_from_private_key(&private_key)?;
     let public_key = kmip_server
-        .get(Get::from(master_public_key_uid.clone()), owner)
+        .get(Get::from(master_public_key_uid.clone()), owner, params)
         .await?
         .object;
 
@@ -92,7 +94,7 @@ where
         attributes: private_key_attributes,
         object: private_key.clone(),
     };
-    let _import_response = kmip_server.import(import_request, owner).await?;
+    let _import_response = kmip_server.import(import_request, owner, params).await?;
 
     // Update Master Public Key Policy and re-import the key
     let mut public_key_attributes = public_key.key_block()?.key_value.attributes()?.clone();
@@ -107,7 +109,7 @@ where
         attributes: public_key_attributes,
         object: public_key,
     };
-    let _import_response = kmip_server.import(import_request, owner).await?;
+    let _import_response = kmip_server.import(import_request, owner, params).await?;
 
     // Search the user decryption keys that need to be refreshed
     let search_attributes = Attributes {
@@ -129,7 +131,7 @@ where
         attributes: search_attributes,
         ..Locate::new(ObjectType::PrivateKey)
     };
-    let locate_response = kmip_server.locate(locate_request, owner).await?;
+    let locate_response = kmip_server.locate(locate_request, owner, params).await?;
 
     // Refresh the User Decryption Key that were found
     if let Some(unique_identifiers) = &locate_response.unique_identifiers {
@@ -140,6 +142,7 @@ where
             &policy,
             unique_identifiers,
             owner,
+            params,
         )
         .await?
     }
@@ -156,6 +159,7 @@ async fn renew_all_user_decryption_keys<K>(
     policy: &Policy,
     user_decryption_key_unique_identifiers: &[String],
     owner: &str,
+    params: &Option<ExtraDatabaseParams>,
 ) -> KResult<()>
 where
     K: KmipServer,
@@ -163,7 +167,11 @@ where
     // Renew user decryption key previously found
     for user_decryption_key_unique_identifier in user_decryption_key_unique_identifiers {
         let get_response = kmip_server
-            .get(Get::from(user_decryption_key_unique_identifier), owner)
+            .get(
+                Get::from(user_decryption_key_unique_identifier),
+                owner,
+                params,
+            )
             .await?;
         let key_block = get_response.object.key_block()?;
         // Handle both plaintext and wrapped key
@@ -184,7 +192,7 @@ where
             attributes: current_key_attributes,
             object: new_user_decryption_key,
         };
-        let _import_response = kmip_server.import(import_request, owner).await?;
+        let _import_response = kmip_server.import(import_request, owner, params).await?;
     }
 
     Ok(())
@@ -198,17 +206,19 @@ pub(crate) async fn create_user_decryption_key<K>(
     kmip_server: &K,
     create_request: &Create,
     owner: &str,
+    params: &Option<ExtraDatabaseParams>,
 ) -> KResult<Object>
 where
     K: KmipServer,
 {
-    create_user_decryption_key_(kmip_server, &create_request.attributes, owner).await
+    create_user_decryption_key_(kmip_server, &create_request.attributes, owner, params).await
 }
 
 async fn create_user_decryption_key_<K>(
     kmip_server: &K,
     create_attributes: &Attributes,
     owner: &str,
+    params: &Option<ExtraDatabaseParams>,
 ) -> KResult<Object>
 where
     K: KmipServer,
@@ -224,7 +234,7 @@ where
         )
     })?;
     let gr_private_key = kmip_server
-        .get(Get::from(master_private_key_uid.clone()), owner)
+        .get(Get::from(master_private_key_uid.clone()), owner, params)
         .await?;
     let master_private_key = &gr_private_key.object;
 
@@ -257,6 +267,7 @@ pub(crate) async fn create_user_decryption_key_pair<K>(
     kmip_server: &K,
     create_key_pair_request: &CreateKeyPair,
     owner: &str,
+    params: &Option<ExtraDatabaseParams>,
 ) -> KResult<KeyPair>
 where
     K: KmipServer,
@@ -272,7 +283,7 @@ where
             )
         })?;
     let private_key =
-        create_user_decryption_key_(kmip_server, private_key_attributes, owner).await?;
+        create_user_decryption_key_(kmip_server, private_key_attributes, owner, params).await?;
 
     //Recover Public Key
     let public_key_attributes = create_key_pair_request
@@ -291,7 +302,7 @@ where
         )
     })?;
     let gr_public_key = kmip_server
-        .get(Get::from(master_public_key_uid), owner)
+        .get(Get::from(master_public_key_uid), owner, params)
         .await?;
 
     Ok(KeyPair((private_key, gr_public_key.object)))
