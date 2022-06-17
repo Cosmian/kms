@@ -8,10 +8,9 @@ use std::{
 };
 
 use sqlx::{Pool, Sqlite};
+use tracing::info;
 
 use crate::{kms_bail, kms_error, result::KResult};
-
-//TODO: remove unwrap
 
 /// The item of the KMS sqlite cache
 pub struct KMSSqliteCacheItem {
@@ -62,8 +61,18 @@ impl KMSSqliteCacheItem {
     }
 }
 
-// TODO: .expect("Unable to lock for write");
-/// The KMS sqlite cache contaings all handlers to the opened and closed sqlite
+/// The KMS sqlite cache contains all handlers to the opened and closed sqlite
+///
+/// The structure is designed to keep opened in memory a given max number of sqlite handlers
+/// However:
+/// - A item is never removed from the cache. The handler is just closed
+/// - The cache will never refuse a new sqlite handler insertion. It will flush the unused handler if adding a new one
+///   makes the cache exceed its max size but if all handlers are currently in used, he will accept the insertion. The
+///   clean up will occur during the next insertion.
+/// - The cache always removes the oldest unused items first. To do so, the cache contains a FreeableSqliteCache structure which is a linked list. The first item is the oldest, the last one the freshest. A new item is always push back and an item is always pop front. An item already in the list and now reused will be removed and pushed back to the end of the linked list.
+/// - A handler is considered as used after each `get` and won't be closed until it is not explicity `release`-ed by the caller. Several `get` are allowed. The `release` will take effect when the last one got is explicity `release`-ed.
+///
+/// The cache saves already decrypted sqlite handler. To verify that a user can `get` the handler, the key is checked at each access.
 pub struct KMSSqliteCache {
     /// The item of the cache
     sqlites: RwLock<HashMap<u128, KMSSqliteCacheItem>>,
@@ -88,7 +97,7 @@ impl KMSSqliteCache {
 
     /// Test if a sqlite connection is opened for a given id
     pub fn opened(&self, id: u128) -> bool {
-        let sqlites = self.sqlites.read().unwrap();
+        let sqlites = self.sqlites.read().expect("Unable to lock for read");
         if !sqlites.contains_key(&id) {
             return false
         }
@@ -98,12 +107,17 @@ impl KMSSqliteCache {
 
     /// Test if a sqlite connection exist in the cache
     pub fn exists(&self, id: u128) -> bool {
-        self.sqlites.read().unwrap().contains_key(&id)
+        self.sqlites
+            .read()
+            .expect("Unable to lock for read")
+            .contains_key(&id)
     }
 
     /// Get the sqlite handler and tag it as "used"
+    ///
+    /// The function will return an error if the database is closed or the key is not the right one
     pub fn get(&self, id: u128, key: &str) -> KResult<Arc<Pool<Sqlite>>> {
-        let mut sqlites = self.sqlites.write().unwrap();
+        let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
 
         let item = sqlites
             .get_mut(&id)
@@ -123,7 +137,7 @@ impl KMSSqliteCache {
         if item.in_used == 0 {
             self.freeable_sqlites
                 .write()
-                .unwrap()
+                .expect("Unable to lock for write")
                 .uncache(item.freeable_cache_index)?;
         }
 
@@ -135,8 +149,10 @@ impl KMSSqliteCache {
 
     /// Say the cache that the sqlite handler is not used at the current moment
     /// The cache will let it opened until it needs that slot
+    ///
+    /// The function will return an error if the database is not in the cache or already released
     pub fn release(&self, id: u128) -> KResult<()> {
-        let mut sqlites = self.sqlites.write().unwrap();
+        let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
 
         let item = sqlites
             .get_mut(&id)
@@ -152,23 +168,33 @@ impl KMSSqliteCache {
         if item.in_used == 0 {
             self.freeable_sqlites
                 .write()
-                .unwrap()
+                .expect("Unable to lock for write")
                 .recache(item.freeable_cache_index)?;
         }
 
         Ok(())
     }
 
-    /// Remove oldest sqlite handlers until reaching the max cache size allowed
+    /// Remove oldest sqlite handlers until reaching down the max cache size allowed
     async fn flush(&self) -> KResult<()> {
+        info!(
+            "CachedSQLCipher: cache size = {}",
+            self.current_size.load(Ordering::Relaxed)
+        );
+
         while self.max_size <= self.current_size.load(Ordering::Relaxed) {
-            let id = match self.freeable_sqlites.write().unwrap().pop() {
+            let id = match self
+                .freeable_sqlites
+                .write()
+                .expect("Unable to lock for write")
+                .pop()
+            {
                 Ok(id) => id,
                 Err(_) => break, // nothing in the cache, just leave
             };
 
             let sq = {
-                let mut sqlites = self.sqlites.write().unwrap();
+                let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
 
                 let item = sqlites
                     .get_mut(&id)
@@ -178,30 +204,40 @@ impl KMSSqliteCache {
                 item.closed_at = _now();
                 Arc::clone(&item.sqlite)
             };
-            // We are force to design the code like that. We can't make an async call on a lock value
+            // We are forced to design the code like that. We can't make an async call on a lock value
             sq.close().await;
 
             self.current_size.fetch_sub(1, Ordering::Relaxed);
         }
+
+        info!(
+            "CachedSQLCipher: cache size after flush = {}",
+            self.current_size.load(Ordering::Relaxed)
+        );
+
         Ok(())
     }
 
     /// Save a sqlite handler inside the cache for further use
-    /// The handler is considered as used until it is release.
+    /// The handler is considered as used until it is explicitly release.
+    ///
+    /// This function will call a `flush` if needed to close the oldest unused databases.
     pub async fn save(&self, id: u128, key: &str, pool: Pool<Sqlite>) -> KResult<()> {
         // Flush the cache if necessary
         self.flush().await?;
         // If nothing has been flush, allow to exceed max cache size
 
-        // Deal if the case: the id is already known but the sqlite was closed
-        let mut sqlites = self.sqlites.write().unwrap();
+        let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
 
         match sqlites.get_mut(&id) {
+            // Deal with the case: the id is already known but the sqlite was closed
             Some(item) => {
                 if !item.closed {
                     // Sqlite is already saved and opened
                     return Ok(())
                 }
+
+                info!("CachedSQLCipher: reopen group_id={id}");
 
                 item.sqlite = Arc::new(pool);
                 item.closed = false;
@@ -209,15 +245,21 @@ impl KMSSqliteCache {
                 item.last_used_at = _now();
             }
             None => {
+                info!("CachedSQLCipher: new group_id={id}");
+
                 // Book a slot for it
-                let freeable_cache_id = self.freeable_sqlites.write().unwrap().push(id)?;
+                let freeable_cache_id = self
+                    .freeable_sqlites
+                    .write()
+                    .expect("Unable to lock for write")
+                    .push(id)?;
 
                 // Add it to the SqliteCache
                 let mut item = KMSSqliteCacheItem::new(pool, key.to_string(), freeable_cache_id);
 
                 self.freeable_sqlites
                     .write()
-                    .unwrap()
+                    .expect("Unable to lock for write")
                     .uncache(freeable_cache_id)?;
 
                 // Make it usable (to avoid direct free after alloc in case of cache overflow)

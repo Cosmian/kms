@@ -14,7 +14,6 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     ConnectOptions, Pool, Sqlite,
 };
-use tracing::debug;
 
 use super::{
     cached_sqlite_struct::KMSSqliteCache,
@@ -33,19 +32,21 @@ pub(crate) struct CachedSqlCipher {
     cache: KMSSqliteCache,
 }
 
+// We allow 100 opened connection
+const KMS_SQLITECACHE_SIZE: usize = 100;
+
 impl CachedSqlCipher {
     /// Instantiate a new CachedSqlCipher
     /// and create the appropriate table(s) if need be
     pub async fn instantiate(path: &Path) -> KResult<CachedSqlCipher> {
         Ok(CachedSqlCipher {
             path: path.to_path_buf(),
-            cache: KMSSqliteCache::new(100), // TODO: unhardcode this value
+            cache: KMSSqliteCache::new(KMS_SQLITECACHE_SIZE),
         })
     }
 
     async fn instantiate_group_database(&self, group_id: u128, key: &str) -> KResult<Pool<Sqlite>> {
         let path = self.filename(group_id);
-        debug!("{}", format!("\"x'{key}'\""));
         let mut options = SqliteConnectOptions::new()
             .pragma("key", format!("\"x'{key}'\""))
             .pragma("journal_mode", "OFF")
@@ -105,16 +106,11 @@ impl CachedSqlCipher {
     }
 
     async fn pre_query(&self, group_id: u128, key: &str) -> KResult<Arc<Pool<Sqlite>>> {
-        debug!("{}", key);
-
         if !self.cache.exists(group_id) {
-            println!("Do no exist");
             let pool = self.instantiate_group_database(group_id, key).await?;
             CachedSqlCipher::create_tables(&pool).await?;
             self.cache.save(group_id, key, pool).await?;
         } else if !self.cache.opened(group_id) {
-            println!("no opened");
-
             let pool = self.instantiate_group_database(group_id, key).await?;
             self.cache.save(group_id, key, pool).await?;
         }

@@ -32,6 +32,12 @@ KMS_CLI_CONF=kms.json kms_cli --help
 
 If the server is running without Auth0, you can let `kms_access_token` empty. Indeed, the server is running without authentication in a single-user mode.
 
+If the server is running with cached sqlcipher as the KMS database, you also need to specify `kms_database_secret`. The first time, your organisation uses the KMS, you will run the following command to get the `kms_database_secret`. Save it because the KMS won't remember it.
+
+```
+KMS_CLI_CONF=kms.json kms_cli configure
+```
+
 ### Attribute Based Encryption / Cover Crypt
 
 You can perform the following ABE operations by taking advantage of the KMS.
