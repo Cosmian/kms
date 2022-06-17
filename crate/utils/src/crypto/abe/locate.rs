@@ -13,41 +13,23 @@ pub fn compare_abe_attributes(
     attributes: &Attributes,
     researched_attributes: &Attributes,
 ) -> Result<bool, KmipError> {
-    match access_policy_from_attributes(attributes) {
-        Ok(access_policy) => {
-            match access_policy_from_attributes(researched_attributes) {
-                Ok(researched_access_policy) => {
-                    if researched_access_policy == access_policy {
-                        return Ok(true)
-                    }
-                }
-                Err(_) => {
-                    let abe_attributes =
-                        attributes_from_attributes(researched_attributes).unwrap_or_default();
-                    let master_private_key_unique_identifier = match attributes.get_parent_id() {
-                        Some(id) => id,
-                        None => return Ok(false),
-                    };
-                    let researched_master_private_key_unique_identifier =
-                        match researched_attributes.get_parent_id() {
-                            Some(id) => id,
-                            None => return Ok(false),
-                        };
-                    if master_private_key_unique_identifier
-                        == researched_master_private_key_unique_identifier
-                    {
-                        let does_match = access_policy
-                            .attributes()
-                            .iter()
-                            .any(|attr| abe_attributes.contains(attr));
-                        if does_match {
-                            return Ok(true)
-                        }
-                    }
-                }
+    if let Ok(access_policy) = access_policy_from_attributes(attributes) {
+        if let Ok(researched_access_policy) = access_policy_from_attributes(researched_attributes) {
+            if researched_access_policy == access_policy {
+                return Ok(true)
             }
-            Ok(false)
+        } else {
+            let abe_attributes =
+                attributes_from_attributes(researched_attributes).unwrap_or_default();
+
+            if access_policy
+                .attributes()
+                .iter()
+                .any(|attr| abe_attributes.contains(attr))
+            {
+                return Ok(true)
+            }
         }
-        Err(_) => Ok(false),
     }
+    Ok(false)
 }

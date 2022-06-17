@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use actix_web::{
     delete, get, post,
-    web::{Data, Json, Path, Query},
-    HttpMessage, HttpRequest, HttpResponse, HttpResponseBuilder,
+    web::{Data, Json, Path},
+    HttpRequest, HttpResponse, HttpResponseBuilder,
 };
 use cosmian_kmip::kmip::{
     kmip_operations::{
@@ -14,16 +14,19 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_utils::types::{
-    Access, ObjectOwnedResponse, ObjectSharedResponse, QuoteParams, SuccessResponse,
-    UserAccessResponse,
+    Access, ObjectOwnedResponse, ObjectSharedResponse, SuccessResponse, UserAccessResponse,
 };
 use http::{header, StatusCode};
-use libsgx::utils::is_running_inside_enclave;
 use tracing::{debug, error, warn};
+#[cfg(feature = "auth")]
+use {crate::middlewares::auth::AuthClaim, actix_web::HttpMessage};
+#[cfg(feature = "enclave")]
+use {actix_web::web::Query, cosmian_kms_utils::types::QuoteParams};
 
+#[cfg(not(feature = "auth"))]
+use crate::config;
 use crate::{
-    config, core::crud::KmipServer, database::KMSServer, error::KmsError, kms_bail,
-    middlewares::auth::AuthClaim, result::KResult,
+    core::crud::KmipServer, database::KMSServer, error::KmsError, kms_bail, result::KResult,
 };
 
 impl actix_web::error::ResponseError for KmsError {
@@ -212,6 +215,7 @@ pub async fn delete_access(
     }))
 }
 
+#[cfg(feature = "enclave")]
 /// Get the quote of the server running inside an enclave
 #[get("/quote")]
 pub async fn get_quote(
@@ -219,16 +223,11 @@ pub async fn get_quote(
     kms_client: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
     debug!("Requesting the quote");
-    if is_running_inside_enclave() {
-        let params = Query::<QuoteParams>::from_query(req.query_string())?;
-        Ok(Json(kms_client.get_quote(&params.nonce).await?))
-    } else {
-        kms_bail!(KmsError::InvalidRequest(
-            "The KMS server is not running inside an enclave".to_string()
-        ));
-    }
+    let params = Query::<QuoteParams>::from_query(req.query_string())?;
+    Ok(Json(kms_client.get_quote(&params.nonce).await?))
 }
 
+#[cfg(feature = "https")]
 /// Get the quote of the server running inside an enclave
 #[get("/certificate")]
 pub async fn get_certificate(
@@ -239,6 +238,7 @@ pub async fn get_certificate(
     Ok(Json(kms_client.get_certificate().await?))
 }
 
+#[cfg(feature = "enclave")]
 /// Get the quote of the server running inside an enclave
 #[get("/manifest")]
 pub async fn get_manifest(
@@ -246,28 +246,20 @@ pub async fn get_manifest(
     kms_client: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
     debug!("Requesting the manifest");
-    if is_running_inside_enclave() {
-        Ok(Json(kms_client.get_manifest().await?))
-    } else {
-        kms_bail!(KmsError::InvalidRequest(
-            "The KMS server is not running inside an enclave".to_string()
-        ));
-    }
+    Ok(Json(kms_client.get_manifest().await?))
 }
 
+#[cfg(not(feature = "auth"))]
+fn get_owner(_req_http: HttpRequest) -> KResult<String> {
+    return Ok(config::default_username())
+}
+
+#[cfg(feature = "auth")]
 fn get_owner(req_http: HttpRequest) -> KResult<String> {
     match req_http.extensions().get::<AuthClaim>() {
         Some(claim) => Ok(claim.email.clone()),
-        None => {
-            // If the Auth0 is disabled, then return the default user
-            if config::jwks().is_none() {
-                Ok(config::default_username())
-            // Otherwise, we should have a user here. So raise!
-            } else {
-                Err(KmsError::Unauthorized(
-                    "No valid auth claim owner (email) from JWT".to_owned(),
-                ))
-            }
-        }
+        None => Err(KmsError::Unauthorized(
+            "No valid auth claim owner (email) from JWT".to_owned(),
+        )),
     }
 }

@@ -88,7 +88,7 @@ fn create_master_private_key_object(
             cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
             key_format_type: KeyFormatType::CoverCryptSecretKey,
             key_compression_type: None,
-            key_value: KeyValue::PlainText {
+            key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(key.to_vec()),
                 attributes: Some(attributes),
             },
@@ -120,7 +120,7 @@ fn create_master_public_key_object(
             cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
             key_format_type: KeyFormatType::CoverCryptPublicKey,
             key_compression_type: None,
-            key_value: KeyValue::PlainText {
+            key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(key.to_vec()),
                 attributes: Some(attributes),
             },

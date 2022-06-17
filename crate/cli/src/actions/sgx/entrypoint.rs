@@ -82,7 +82,7 @@ impl SgxAction {
         // Proceed the remote attestation
         let user_report_data = prepare_report_data(
             manifest.as_bytes(),
-            certificate.as_bytes(),
+            Some(certificate.as_bytes()),
             nonce.as_bytes(),
         );
 

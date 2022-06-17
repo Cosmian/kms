@@ -161,9 +161,12 @@ pub fn hash(quote: &[u8]) -> [u8; 32] {
 }
 
 /// Build the report data to use in the quote
-pub fn prepare_report_data(manifest: &[u8], certificate: &[u8], nonce: &[u8]) -> Vec<u8> {
+pub fn prepare_report_data(manifest: &[u8], certificate: Option<&[u8]>, nonce: &[u8]) -> Vec<u8> {
     let manifest_hash = hash(manifest);
-    [&manifest_hash, certificate, nonce].concat()
+    match certificate {
+        Some(a) => [&manifest_hash, a, nonce].concat(),
+        None => [&manifest_hash, nonce].concat(),
+    }
 }
 
 /// # Safety
@@ -262,7 +265,7 @@ mod tests {
     #[test]
     pub fn test_prepare_report_data() {
         assert_eq!(
-            prepare_report_data(&[3], &[2], &[1u8]),
+            prepare_report_data(&[3], Some(&[2]), &[1u8]),
             [
                 8, 79, 237, 8, 185, 120, 175, 77, 125, 25, 106, 116, 70, 168, 107, 88, 0, 158, 99,
                 107, 97, 29, 177, 98, 17, 182, 90, 154, 173, 255, 41, 197, 2, 1

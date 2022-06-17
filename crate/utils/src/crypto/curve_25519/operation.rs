@@ -27,7 +27,7 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8]) -> Object {
             cryptographic_algorithm: CryptographicAlgorithm::EC,
             key_format_type: KeyFormatType::TransparentECPublicKey,
             key_compression_type: None,
-            key_value: KeyValue::PlainText {
+            key_value: KeyValue {
                 key_material: KeyMaterial::TransparentECPublicKey {
                     recommended_curve: RecommendedCurve::CURVE25519,
                     q_string: bytes.to_vec(),
@@ -63,7 +63,7 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8]) -> Object {
             cryptographic_algorithm: CryptographicAlgorithm::EC,
             key_format_type: KeyFormatType::TransparentECPrivateKey,
             key_compression_type: None,
-            key_value: KeyValue::PlainText {
+            key_value: KeyValue {
                 key_material: KeyMaterial::TransparentECPrivateKey {
                     recommended_curve: RecommendedCurve::CURVE25519,
                     d: BigUint::from_bytes_be(bytes),

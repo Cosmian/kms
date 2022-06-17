@@ -3,11 +3,32 @@ authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 name = "cosmian_kms_server"
 version = "2.0.1"
+description = "Cosmian Key Management Service"
 
 [features]
-dev = []
-demo_timeout = ["actix-rt"]
-staging = []
+# Enable authentication (via auth0). If disabled, multi-user is not supported
+auth = []
+# Enable enclave mode
+enclave = []
+# Enable https in the KMS in order to encrypt query between client and the KMS. If disabled, use http
+https = []
+# Do not verify auth0 token expiration date and https ssl is auto-signed (to avoid to be banned by letsencrypt)
+insecure = []
+# The binary won't start after a date chosen at compile-time
+timeout = ["actix-rt"]
+
+# Disable https, disable enclave, enable auth but unsecurely
+# To run on a dev environment
+dev = ["auth", "insecure"]
+
+# Enable all the feature even insecure but timeout
+# To run in a test environment using a real domain name and enclaves without the rest api limit of let's encrypt
+staging = ["auth", "insecure", "https", "enclave"]
+
+# Enable all but timeout
+prod = ["auth", "https", "enclave"]
+default = ["prod"]
+
 
 [dependencies]
 abe_gpsw = { version = "0.6.9", features = ["interfaces"] }
@@ -23,7 +44,7 @@ alcoholic_jwt = "1.0"
 async-trait = "0.1"
 base64 = "0.13"
 bitflags = "1.2"
-clap = { version = "3.1", features = ["derive"] }
+clap = { version = "3.1", features = ["derive", "cargo", "env"] }
 chrono = "0.4"
 cosmian_crypto_base = { version = "1.3.0", features = ["libsodium"] }
 cosmian_kmip = { path = "../kmip" }
@@ -68,10 +89,6 @@ tracing = "0.1"
 tracing-log = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-tree = "0.2"
-twelf = { version = "0.4", default-features = false, features = [
-  "env",
-  "clap",
-] }
 uuid = { version = "1.0.0", features = ["v4"] }
 
 [dev-dependencies]

@@ -6,10 +6,10 @@ use cosmian_crypto_base::{
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial},
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{ErrorReason, GetResponse},
-        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
+        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, WrappingMethod},
     },
 };
 use cover_crypt::{
@@ -29,7 +29,7 @@ use crate::{
 // ------------------------------------------------------------------------------
 
 /// The whole Key Value structure is wrapped
-/// A reference to the CoverCrypt master public key is kept to access to policy later
+/// A reference to the CoverCrypt master public key is kept to access the policy later
 /// when locating symmetric keys
 pub fn wrapped_secret_key(
     public_key_response: &GetResponse,
@@ -41,19 +41,33 @@ pub fn wrapped_secret_key(
         &access_policy.attributes(),
         cover_crypt_header_uid,
     )?;
-    // Since KMIP 2.1 does not plan to locate wrapped key, we Serialize vendor
+    // Since KMIP 2.1 does not plan to locate wrapped key, we serialize vendor
     // attributes and symmetric key consecutively
     let wrapped_key_attributes = Attributes {
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
         ..Attributes::new(ObjectType::SymmetricKey)
     };
+
+    let cryptographic_length = sk.encrypted_symmetric_key.len() as i32;
+    let key_value = KeyValue {
+        key_material: KeyMaterial::ByteString(sk.encrypted_symmetric_key),
+        attributes: Some(wrapped_key_attributes),
+    };
+    let key_wrapping_data = KeyWrappingData {
+        wrapping_method: WrappingMethod::Encrypt,
+        iv_counter_nonce: None,
+        ..KeyWrappingData::default()
+    };
+
     Ok(Object::SymmetricKey {
-        key_block: KeyBlock::to_wrapped_key_block(
-            &sk.encrypted_symmetric_key,
-            None,
-            KeyFormatType::TransparentSymmetricKey,
-            &wrapped_key_attributes,
-        )?,
+        key_block: KeyBlock {
+            cryptographic_algorithm: CryptographicAlgorithm::AES,
+            key_format_type: KeyFormatType::TransparentSymmetricKey,
+            key_compression_type: None,
+            key_value,
+            cryptographic_length,
+            key_wrapping_data: Some(key_wrapping_data),
+        },
     })
 }
 
@@ -75,14 +89,14 @@ fn prepare_symmetric_key(
         public_key_response.object.key_block()?,
         &public_key_response.unique_identifier,
     )?;
-    let public_key = PublicKey::try_from_bytes(public_key_bytes.as_slice()).map_err(|e| {
+    let public_key = PublicKey::try_from_bytes(public_key_bytes).map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Codec_Error,
             format!("cover crypt: failed deserializing the master public key: {e}"),
         )
     })?;
 
-    let policy = policy_from_attributes(&public_key_attributes.ok_or_else(|| {
+    let policy = policy_from_attributes(public_key_attributes.ok_or_else(|| {
         KmipError::InvalidKmipObject(
             ErrorReason::Attribute_Not_Found,
             "the master public key does not have attributes with the Policy".to_string(),
@@ -133,13 +147,7 @@ impl TryFrom<&KeyBlock> for CoverCryptSymmetricKey {
                 "unwrapping an CoverCrypt Secret Key is not yet supported".to_string(),
             ))
         }
-        let (key_material, _) = sk.key_value.plaintext().ok_or_else(|| {
-            KmipError::InvalidKmipObject(
-                ErrorReason::Invalid_Object_Type,
-                "invalid Plain Text".to_owned(),
-            )
-        })?;
-        serde_json::from_slice::<CoverCryptSymmetricKey>(match key_material {
+        serde_json::from_slice::<CoverCryptSymmetricKey>(match &sk.key_value.key_material {
             KeyMaterial::TransparentSymmetricKey { key } => key,
             other => {
                 return Err(KmipError::InvalidKmipObject(

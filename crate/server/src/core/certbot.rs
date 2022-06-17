@@ -42,7 +42,6 @@ impl fmt::Debug for Certbot {
 impl Default for Certbot {
     fn default() -> Self {
         Certbot::new(
-            15,
             String::from(""),
             String::from(""),
             PathBuf::from(""),
@@ -53,14 +52,13 @@ impl Default for Certbot {
 
 impl Certbot {
     pub fn new(
-        days_threshold_before_renew: i64,
         email: String,
         domain: String,
         http_root_path: PathBuf,
         keys_path: PathBuf,
     ) -> Certbot {
         Certbot {
-            days_threshold_before_renew,
+            days_threshold_before_renew: 15,
             email,
             domain,
             http_root_path,
@@ -71,10 +69,10 @@ impl Certbot {
     }
 
     pub fn init(&mut self) -> KResult<()> {
-        #[cfg(any(feature = "staging", feature = "dev", test))]
+        #[cfg(feature = "insecure")]
         let url = DirectoryUrl::LetsEncryptStaging;
 
-        #[cfg(not(any(feature = "staging", feature = "dev", test)))]
+        #[cfg(not(feature = "insecure"))]
         let url = DirectoryUrl::LetsEncrypt;
 
         // Save/load keys and certificates to current dir.

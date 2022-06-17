@@ -33,7 +33,7 @@ pub fn create_fpe_ff1_symmetric_key(
             cryptographic_algorithm: CryptographicAlgorithm::FPEFF1,
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
-            key_value: KeyValue::PlainText {
+            key_value: KeyValue {
                 key_material: KeyMaterial::TransparentSymmetricKey { key: symmetric_key },
                 attributes: Some(Attributes {
                     cryptographic_algorithm: Some(CryptographicAlgorithm::FPEFF1),

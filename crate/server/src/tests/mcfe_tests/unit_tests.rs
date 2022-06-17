@@ -15,11 +15,8 @@ use num_bigint::BigUint;
 use uuid::Uuid;
 
 use crate::{
-    config::init_config,
-    error::KmsError,
-    kmip::kmip_server::{server::kmip_server::KmipServer, KMSServer},
-    kms_bail,
-    result::KResult,
+    config::init_config, core::crud::KmipServer, error::KmsError, kms_bail, result::KResult,
+    KMSServer,
 };
 
 #[actix_rt::test]

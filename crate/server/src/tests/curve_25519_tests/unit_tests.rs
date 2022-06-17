@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip::{
-    kmip_data_structures::KeyValue,
     kmip_objects::{Object, ObjectType},
     kmip_operations::Import,
     kmip_types::{
@@ -17,10 +16,7 @@ use cosmian_kms_utils::crypto::curve_25519::{
 };
 
 use crate::{
-    config::init_config,
-    error::KmsError,
-    kmip::kmip_server::{server::kmip_server::KmipServer, KMSServer},
-    result::KResult,
+    config::init_config, core::crud::KmipServer, error::KmsError, result::KResult, KMSServer,
 };
 
 #[actix_rt::test]
@@ -63,20 +59,10 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         sk_key_block.key_format_type,
         KeyFormatType::TransparentECPrivateKey
     );
-    //check link to public key
-    let attributes = match &sk_key_block.key_value {
-        KeyValue::PlainText { attributes, .. } => attributes,
-        _ => {
-            return Err(KmsError::ServerError(
-                "The private key should be a plain text key value".to_owned(),
-            ))
-        }
-    };
-    let attr = attributes.clone().ok_or_else(|| {
-        KmsError::ServerError("This should never happen. There should be attributes".to_owned())
-    })?;
-    assert_eq!(attr.link.len(), 1);
-    let link = &attr.link[0];
+    // check link to public key
+    let attributes = sk_key_block.key_value.attributes()?;
+    assert_eq!(attributes.link.len(), 1);
+    let link = &attributes.link[0];
     assert_eq!(link.link_type, LinkType::PublicKeyLink);
     assert_eq!(
         link.linked_object_identifier,
@@ -108,20 +94,10 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         pk_key_block.key_format_type,
         KeyFormatType::TransparentECPublicKey
     );
-    //check link to secret key
-    let attributes = match &pk_key_block.key_value {
-        KeyValue::PlainText { attributes, .. } => attributes,
-        _ => {
-            return Err(KmsError::ServerError(
-                "The public key should be a plain text key value".to_owned(),
-            ))
-        }
-    };
-    let attr = attributes.clone().ok_or_else(|| {
-        KmsError::ServerError("This should never happen. There should be attributes".to_owned())
-    })?;
-    assert_eq!(attr.link.len(), 1);
-    let link = &attr.link[0];
+    // check link to secret key
+    let attributes = pk_key_block.key_value.attributes()?;
+    assert_eq!(attributes.link.len(), 1);
+    let link = &attributes.link[0];
     assert_eq!(link.link_type, LinkType::PrivateKeyLink);
     assert_eq!(
         link.linked_object_identifier,

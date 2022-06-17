@@ -3,32 +3,40 @@ mod core;
 mod database;
 pub mod error;
 
+#[cfg(feature = "auth")]
 mod middlewares;
 pub mod result;
 mod routes;
 
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+use std::sync::Arc;
+
+#[cfg(feature = "auth")]
+use middlewares::auth::Auth;
+#[cfg(feature = "https")]
+use {
+    crate::core::certbot::Certbot,
+    actix_files as fs,
+    actix_web::rt::{spawn, time::sleep},
+    config::certbot,
+    openssl::ssl::{SslAcceptor, SslMethod},
+    std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
+    std::time::Duration,
+    tracing::{debug, error, info},
 };
 
-use tracing::{debug, error, info};
-
-use crate::core::{certbot::Certbot, KMS};
+use crate::core::KMS;
 pub mod log_utils;
-use std::time::Duration;
 
-use actix_files as fs;
 use actix_web::{
-    middleware::Condition,
-    rt::{spawn, time::sleep},
     web::{Data, JsonConfig, PayloadConfig},
     App, HttpServer,
 };
-use config::{certbot, hostname, jwks, port};
+use config::kms_url;
 use database::KMSServer;
-use middlewares::auth::Auth;
-use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod};
+use openssl::ssl::SslAcceptorBuilder;
 
 use crate::routes::endpoint;
 
@@ -38,8 +46,7 @@ pub fn prepare_server(
     builder: Option<SslAcceptorBuilder>,
 ) -> eyre::Result<actix_web::dev::Server> {
     let server = HttpServer::new(move || {
-        App::new()
-            .wrap(Condition::new(jwks().is_some(), Auth))
+        let app = App::new()
             .app_data(Data::new(kms_server.clone()))
             .app_data(PayloadConfig::new(10_000_000_000))
             .app_data(JsonConfig::default().limit(10_000_000_000))
@@ -48,18 +55,28 @@ pub fn prepare_server(
             .service(endpoint::list_shared_objects)
             .service(endpoint::list_accesses)
             .service(endpoint::insert_access)
-            .service(endpoint::delete_access)
-            .service(endpoint::get_quote)
-            .service(endpoint::get_certificate)
-            .service(endpoint::get_manifest)
+            .service(endpoint::delete_access);
+
+        #[cfg(feature = "auth")]
+        let app = app.wrap(Auth);
+
+        #[cfg(feature = "enclave")]
+        let app = app.service(endpoint::get_quote);
+        #[cfg(feature = "https")]
+        let app = app.service(endpoint::get_certificate);
+        #[cfg(feature = "enclave")]
+        let app = app.service(endpoint::get_manifest);
+
+        app
     });
 
     Ok(match builder {
-        Some(b) => server.bind_openssl("0.0.0.0:443", b)?.run(),
-        _ => server.bind(format!("{}:{}", hostname(), port()))?.run(),
+        Some(b) => server.bind_openssl(kms_url(), b)?.run(),
+        _ => server.bind(kms_url())?.run(),
     })
 }
 
+#[cfg(not(feature = "https"))]
 // Start the kms server
 pub async fn start_kms_server() -> eyre::Result<()> {
     let kms_server = Arc::new(KMSServer::instantiate().await?);
@@ -67,6 +84,7 @@ pub async fn start_kms_server() -> eyre::Result<()> {
     server.await.map_err(Into::into)
 }
 
+#[cfg(feature = "https")]
 /// Start and https server with the ability to renew its certificates
 async fn start_https(cert: &Arc<Mutex<Certbot>>) -> eyre::Result<()> {
     let kms_server = Arc::new(KMSServer::instantiate().await?);
@@ -154,7 +172,8 @@ async fn start_https(cert: &Arc<Mutex<Certbot>>) -> eyre::Result<()> {
     }
 }
 
-pub async fn start_secure_kms_server() -> eyre::Result<()> {
+#[cfg(feature = "https")]
+pub async fn start_kms_server() -> eyre::Result<()> {
     // Before starting any servers, check the status of our SSL certificates
     let cert = certbot();
 

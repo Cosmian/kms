@@ -9,7 +9,7 @@ use super::kmip_types::Attributes;
 use crate::{
     error::KmipError,
     kmip::{
-        kmip_data_structures::{KeyBlock, KeyValue},
+        kmip_data_structures::KeyBlock,
         kmip_operations::ErrorReason,
         kmip_types::{
             CertificateRequestType, CertificateType, OpaqueDataType, SecretDataType, SplitKeyMethod,
@@ -135,74 +135,46 @@ impl Object {
         }
     }
 
-    /// Returns the `KeyBlock` of that object if any,
-    /// an error otherwise
+    /// Returns the `KeyBlock` of that object if any, an error otherwise
     pub fn key_block(&self) -> Result<&KeyBlock, KmipError> {
-        Ok(match self {
+        match self {
             Object::PublicKey { key_block }
             | Object::PrivateKey { key_block }
             | Object::SecretData { key_block, .. }
             | Object::PGPKey { key_block, .. }
             | Object::SymmetricKey { key_block }
-            | Object::SplitKey { key_block, .. } => key_block,
-            _ => {
-                return Err(KmipError::InvalidKmipObject(
-                    ErrorReason::Invalid_Object_Type,
-                    "This object does not have a key block".to_string(),
-                ))
-            }
-        })
-    }
-
-    /// Returns the `Attributes` of that object if any,
-    /// an error otherwise
-    pub fn attributes(&self) -> Result<Option<&Attributes>, KmipError> {
-        let key_block = self.key_block()?;
-        match &key_block.key_value {
-            KeyValue::PlainText {
-                key_material: _,
-                attributes,
-            } => Ok(attributes.as_ref()),
-            KeyValue::Wrapped(_) => Err(KmipError::InvalidKmipObject(
+            | Object::SplitKey { key_block, .. } => Ok(key_block),
+            _ => Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Object_Type,
-                "This object is wrapped and the attributes cannot be accessed".to_string(),
+                "This object does not have a key block".to_string(),
             )),
         }
     }
 
-    /// Returns the `Attributes` of that object if any,
-    /// an error otherwise
-    pub fn attributes_mut(&mut self) -> Result<Option<&mut Attributes>, KmipError> {
-        let key_block = self.key_block_mut()?;
-        match &mut key_block.key_value {
-            KeyValue::PlainText {
-                key_material: _,
-                attributes,
-            } => Ok(attributes.as_mut()),
-            KeyValue::Wrapped(_) => Err(KmipError::InvalidKmipObject(
-                ErrorReason::Invalid_Object_Type,
-                "This object is wrapped and the attributes cannot be accessed".to_string(),
-            )),
-        }
+    /// Returns the `Attributes` of that object if any, an error otherwise
+    pub fn attributes(&self) -> Result<&Attributes, KmipError> {
+        self.key_block()?.key_value.attributes()
     }
 
-    /// Returns the `KeyBlock` of that object if any,
-    /// an error otherwise
+    /// Returns the `Attributes` of that object if any, an error otherwise
+    pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
+        self.key_block_mut()?.key_value.attributes_mut()
+    }
+
+    /// Returns the `KeyBlock` of that object if any, an error otherwise
     pub fn key_block_mut(&mut self) -> Result<&mut KeyBlock, KmipError> {
-        Ok(match self {
+        match self {
             Object::PublicKey { key_block }
             | Object::PrivateKey { key_block }
             | Object::SecretData { key_block, .. }
             | Object::PGPKey { key_block, .. }
             | Object::SymmetricKey { key_block }
-            | Object::SplitKey { key_block, .. } => key_block,
-            _ => {
-                return Err(KmipError::InvalidKmipObject(
-                    ErrorReason::Invalid_Object_Type,
-                    "This object does not have a key block".to_string(),
-                ))
-            }
-        })
+            | Object::SplitKey { key_block, .. } => Ok(key_block),
+            _ => Err(KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Object_Type,
+                "This object does not have a key block".to_string(),
+            )),
+        }
     }
 
     /// Deserialization is untagged and the `ObjectType` is not at
@@ -213,18 +185,21 @@ impl Object {
     pub fn post_fix(object_type: ObjectType, object: Object) -> Object {
         match object_type {
             ObjectType::SymmetricKey => match object {
-                Object::PrivateKey { key_block } => Object::SymmetricKey { key_block },
-                Object::PublicKey { key_block } => Object::SymmetricKey { key_block },
+                Object::PrivateKey { key_block } | Object::PublicKey { key_block } => {
+                    Object::SymmetricKey { key_block }
+                }
                 _ => object,
             },
             ObjectType::PublicKey => match object {
-                Object::SymmetricKey { key_block } => Object::PublicKey { key_block },
-                Object::PrivateKey { key_block } => Object::PublicKey { key_block },
+                Object::SymmetricKey { key_block } | Object::PrivateKey { key_block } => {
+                    Object::PublicKey { key_block }
+                }
                 _ => object,
             },
             ObjectType::PrivateKey => match object {
-                Object::SymmetricKey { key_block } => Object::PrivateKey { key_block },
-                Object::PublicKey { key_block } => Object::PrivateKey { key_block },
+                Object::SymmetricKey { key_block } | Object::PublicKey { key_block } => {
+                    Object::PrivateKey { key_block }
+                }
                 _ => object,
             },
             _ => object,
@@ -235,9 +210,9 @@ impl Object {
 impl TryFrom<&[u8]> for Object {
     type Error = KmipError;
 
-    fn try_from(object_bytes: &[u8]) -> Result<Self, KmipError> {
+    fn try_from(object_bytes: &[u8]) -> Result<Self, Self::Error> {
         serde_json::from_slice(object_bytes).map_err(|_e| {
-            KmipError::InvalidKmipValue(
+            Self::Error::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
                 "failed deserializing to an Object".to_string(),
             )
@@ -248,9 +223,9 @@ impl TryFrom<&[u8]> for Object {
 impl TryInto<Vec<u8>> for Object {
     type Error = KmipError;
 
-    fn try_into(self) -> Result<Vec<u8>, KmipError> {
+    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
         serde_json::to_vec(&self).map_err(|_e| {
-            KmipError::InvalidKmipObject(
+            Self::Error::InvalidKmipObject(
                 ErrorReason::Invalid_Attribute_Value,
                 "failed serializing Object to bytes".to_string(),
             )

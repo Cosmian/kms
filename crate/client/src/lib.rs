@@ -409,7 +409,7 @@ impl KmsRestClient {
         );
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
         let mut builder = ClientBuilder::new();
-        if cfg!(feature = "staging") {
+        if cfg!(feature = "insecure") {
             builder = builder.danger_accept_invalid_certs(true);
         }
         Ok(KmsRestClient {

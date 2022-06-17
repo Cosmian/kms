@@ -137,8 +137,8 @@ impl EnCipher for Cipher {
         let enc_code = match &request.data {
             None => None,
             Some(d) => {
-                let shared_key = self.shared_key.key_bytes()?;
-                let shared_key = serde_json::from_slice(&shared_key).map_err(|e| {
+                let shared_key = self.shared_key.as_bytes()?;
+                let shared_key = serde_json::from_slice(shared_key).map_err(|e| {
                     KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string())
                 })?;
 
@@ -173,8 +173,8 @@ impl DeCipher for Cipher {
         let messages_bytes = match &request.data {
             None => None,
             Some(d) => {
-                let shared_key = self.shared_key.key_bytes()?;
-                let shared_key = serde_json::from_slice(&shared_key).map_err(|e| {
+                let shared_key = self.shared_key.as_bytes()?;
+                let shared_key = serde_json::from_slice(shared_key).map_err(|e| {
                     KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string())
                 })?;
                 let d: T32RLWESample<N, D> = serde_json::from_slice(d).map_err(|_| {
@@ -210,7 +210,7 @@ pub fn array_to_key_block(
         cryptographic_algorithm: CryptographicAlgorithm::TFHE,
         key_format_type,
         key_compression_type: None,
-        key_value: KeyValue::PlainText {
+        key_value: KeyValue {
             key_material: KeyMaterial::ByteString(key.to_vec()),
             attributes: Some(attributes),
         },
