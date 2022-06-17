@@ -1,7 +1,7 @@
-use std::thread;
+use std::{fs, thread};
 
 use cosmian_kms_server::{
-    config::{auth::AuthConfig, init_config, Config},
+    config::{auth::AuthConfig, db::DBConfig, init_config, Config},
     start_kms_server,
 };
 use reqwest::ClientBuilder;
@@ -24,9 +24,23 @@ pub async fn init_test_server() {
         auth: AuthConfig {
             delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
         },
+        db: DBConfig {
+            sqlcipher: true,
+            ..Default::default()
+        },
         ..Default::default()
     };
     init_config(&config).await.unwrap();
+
+    // We mock the creation of a database by the server (to force the group_id and the key)
+    let db_test = config
+        .workspace
+        .public_path
+        .join("129779770570336941908439893874924049192.sqlite");
+    if db_test.exists() {
+        fs::remove_file(&db_test).expect("Can't remove the previous test database file");
+    }
+    fs::File::create(&db_test).expect("Can't create a fresh testdatabase file");
 
     // Start the server on a independent thread
     thread::spawn(start_test_server);

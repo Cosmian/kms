@@ -1,8 +1,9 @@
 use clap::{crate_description, crate_name, crate_version, StructOpt};
 use cosmian_kms_cli::{
     actions::{
-        abe::entrypoint::AbeAction, cover_crypt::entrypoint::CoverCryptAction,
-        permission::entrypoint::PermissionAction, sgx::entrypoint::SgxAction,
+        abe::entrypoint::AbeAction, configure::entrypoint::ConfigureAction,
+        cover_crypt::entrypoint::CoverCryptAction, permission::entrypoint::PermissionAction,
+        sgx::entrypoint::SgxAction,
     },
     config::CliConf,
 };
@@ -21,6 +22,7 @@ enum CliCommands {
     #[clap(subcommand)]
     Permission(PermissionAction),
     Trust(SgxAction),
+    Configure(ConfigureAction),
 }
 
 #[tokio::main]
@@ -33,6 +35,7 @@ async fn main() -> eyre::Result<()> {
         CliCommands::Cc(action) => action.process(&conf).await?,
         CliCommands::Permission(action) => action.process(&conf).await?,
         CliCommands::Trust(action) => action.process(&conf).await?,
+        CliCommands::Configure(action) => action.process(&conf).await?,
     };
 
     Ok(())

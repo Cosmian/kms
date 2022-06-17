@@ -8,7 +8,7 @@ use crate::{
     tests::{
         test_utils::{init_test_server, ONCE},
         utils::extract_uids::extract_private_key,
-        PROG_NAME,
+        CONF_PATH, PROG_NAME,
     },
 };
 
@@ -16,7 +16,7 @@ const SUB_COMMAND: &str = "permission";
 
 fn gen_object() -> String {
     let mut cmd = Command::cargo_bin(PROG_NAME).unwrap();
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg("abe").args(vec!["init"]);
     let success = cmd.assert().success();
     let output = success.get_output();
@@ -31,7 +31,7 @@ pub async fn test_add() -> Result<(), Box<dyn std::error::Error>> {
     let object_id = gen_object();
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "add",
         object_id.as_str(),
@@ -45,7 +45,7 @@ pub async fn test_add() -> Result<(), Box<dyn std::error::Error>> {
     ));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["list", object_id.as_str()]);
     cmd.assert()
         .success()
@@ -61,7 +61,7 @@ pub async fn test_add_error() -> Result<(), Box<dyn std::error::Error>> {
     // Bad operation
     let object_id = gen_object();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "add",
         object_id.as_str(),
@@ -76,7 +76,7 @@ pub async fn test_add_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // Bad object id
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "add",
         "bad-object-id",
@@ -91,7 +91,7 @@ pub async fn test_add_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // User_id = owner_id
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "add",
         object_id.as_str(),
@@ -113,7 +113,7 @@ pub async fn test_remove() -> Result<(), Box<dyn std::error::Error>> {
     let object_id = gen_object();
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "add",
         object_id.as_str(),
@@ -125,7 +125,7 @@ pub async fn test_remove() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert().success();
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "remove",
         object_id.as_str(),
@@ -139,7 +139,7 @@ pub async fn test_remove() -> Result<(), Box<dyn std::error::Error>> {
     ));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["list", object_id.as_str()]);
     cmd.assert()
         .success()
@@ -154,7 +154,7 @@ pub async fn test_remove_error() -> Result<(), Box<dyn std::error::Error>> {
     let object_id = gen_object();
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "add",
         object_id.as_str(),
@@ -168,7 +168,7 @@ pub async fn test_remove_error() -> Result<(), Box<dyn std::error::Error>> {
     // Bad operation
     let object_id = gen_object();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "remove",
         object_id.as_str(),
@@ -183,7 +183,7 @@ pub async fn test_remove_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // Bad object id
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "remove",
         "bad-object-id",
@@ -198,7 +198,7 @@ pub async fn test_remove_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // User_id = owner_id
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "remove",
         object_id.as_str(),
@@ -220,7 +220,7 @@ pub async fn test_list_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // Bad object_id
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["list", "bad_object_id"]);
     cmd.assert().failure().stderr(predicate::str::contains(
         "Object with uid `bad_object_id` is not owned by owner `laetitia.langlois@cosmian.com`",
@@ -236,7 +236,7 @@ pub async fn test_owned() -> Result<(), Box<dyn std::error::Error>> {
     let object_id = gen_object();
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
     cmd.assert()
         .success()
