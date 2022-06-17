@@ -17,6 +17,8 @@ use crate::{kms_bail, kms_error, result::KResult};
 pub struct KMSSqliteCacheItem {
     /// The handler to the sqlite
     sqlite: Arc<Pool<Sqlite>>,
+    /// They key of the sqlite
+    key: String,
     /// The date of the first insertion
     #[allow(dead_code)]
     inserted_at: u64,
@@ -42,9 +44,14 @@ pub fn _now() -> u64 {
 
 impl KMSSqliteCacheItem {
     #[must_use]
-    pub fn new(sqlite: Pool<Sqlite>, freeable_cache_index: usize) -> KMSSqliteCacheItem {
+    pub fn new(
+        sqlite: Pool<Sqlite>,
+        key: String,
+        freeable_cache_index: usize,
+    ) -> KMSSqliteCacheItem {
         KMSSqliteCacheItem {
             sqlite: Arc::new(sqlite),
+            key,
             inserted_at: _now(),
             in_used: 0,
             last_used_at: 0,
@@ -55,10 +62,11 @@ impl KMSSqliteCacheItem {
     }
 }
 
+// TODO: .expect("Unable to lock for write");
 /// The KMS sqlite cache contaings all handlers to the opened and closed sqlite
 pub struct KMSSqliteCache {
     /// The item of the cache
-    sqlites: RwLock<HashMap<u32, KMSSqliteCacheItem>>,
+    sqlites: RwLock<HashMap<u128, KMSSqliteCacheItem>>,
     /// The list of unused sqlite that could be closed if needed
     freeable_sqlites: RwLock<FreeableSqliteCache>,
     /// The number of opened sqlite allowed
@@ -79,7 +87,7 @@ impl KMSSqliteCache {
     }
 
     /// Test if a sqlite connection is opened for a given id
-    pub fn opened(&self, id: u32) -> bool {
+    pub fn opened(&self, id: u128) -> bool {
         let sqlites = self.sqlites.read().unwrap();
         if !sqlites.contains_key(&id) {
             return false
@@ -89,12 +97,12 @@ impl KMSSqliteCache {
     }
 
     /// Test if a sqlite connection exist in the cache
-    pub fn exists(&self, id: u32) -> bool {
+    pub fn exists(&self, id: u128) -> bool {
         self.sqlites.read().unwrap().contains_key(&id)
     }
 
     /// Get the sqlite handler and tag it as "used"
-    pub fn get(&self, id: u32) -> KResult<Arc<Pool<Sqlite>>> {
+    pub fn get(&self, id: u128, key: &str) -> KResult<Arc<Pool<Sqlite>>> {
         let mut sqlites = self.sqlites.write().unwrap();
 
         let item = sqlites
@@ -103,6 +111,12 @@ impl KMSSqliteCache {
 
         if item.closed {
             kms_bail!("Database is closed");
+        }
+
+        // We need to check if the key provided by the user is the same that was used to open the database
+        // If we do not, we can just send any password: the database is already opened anyway.
+        if key != item.key {
+            kms_bail!("Database secret is wrong");
         }
 
         // Now, we can't close this connection until it is used.
@@ -121,7 +135,7 @@ impl KMSSqliteCache {
 
     /// Say the cache that the sqlite handler is not used at the current moment
     /// The cache will let it opened until it needs that slot
-    pub fn release(&self, id: u32) -> KResult<()> {
+    pub fn release(&self, id: u128) -> KResult<()> {
         let mut sqlites = self.sqlites.write().unwrap();
 
         let item = sqlites
@@ -174,7 +188,7 @@ impl KMSSqliteCache {
 
     /// Save a sqlite handler inside the cache for further use
     /// The handler is considered as used until it is release.
-    pub async fn save(&self, id: u32, pool: Pool<Sqlite>) -> KResult<()> {
+    pub async fn save(&self, id: u128, key: &str, pool: Pool<Sqlite>) -> KResult<()> {
         // Flush the cache if necessary
         self.flush().await?;
         // If nothing has been flush, allow to exceed max cache size
@@ -185,7 +199,8 @@ impl KMSSqliteCache {
         match sqlites.get_mut(&id) {
             Some(item) => {
                 if !item.closed {
-                    kms_bail!("Sqlite is already saved and opened")
+                    // Sqlite is already saved and opened
+                    return Ok(())
                 }
 
                 item.sqlite = Arc::new(pool);
@@ -198,7 +213,7 @@ impl KMSSqliteCache {
                 let freeable_cache_id = self.freeable_sqlites.write().unwrap().push(id)?;
 
                 // Add it to the SqliteCache
-                let mut item = KMSSqliteCacheItem::new(pool, freeable_cache_id);
+                let mut item = KMSSqliteCacheItem::new(pool, key.to_string(), freeable_cache_id);
 
                 self.freeable_sqlites
                     .write()
@@ -229,7 +244,7 @@ pub enum FSCNeighborEntry {
 
 pub struct FSCEntry {
     /// The value to store
-    val: u32,
+    val: u128,
     /// The previous item
     prev: FSCNeighborEntry,
     /// The next item
@@ -240,7 +255,7 @@ pub struct FSCEntry {
 
 impl FSCEntry {
     /// Create an entry as a last item of a chain
-    pub fn last(value: u32, last_index: usize) -> FSCEntry {
+    pub fn last(value: u128, last_index: usize) -> FSCEntry {
         FSCEntry {
             val: value,
             prev: FSCNeighborEntry::Chained(last_index),
@@ -250,7 +265,7 @@ impl FSCEntry {
     }
 
     /// Create an entry as the first item of a new chain
-    pub fn singleton(value: u32) -> FSCEntry {
+    pub fn singleton(value: u128) -> FSCEntry {
         FSCEntry {
             val: value,
             prev: FSCNeighborEntry::Nil,
@@ -286,7 +301,7 @@ impl FreeableSqliteCache {
     }
 
     // Add an element at the end of the cache
-    pub fn push(&mut self, value: u32) -> KResult<usize> {
+    pub fn push(&mut self, value: u128) -> KResult<usize> {
         if self.length == 0 {
             self.head = self.size;
             self.entries.push(FSCEntry::singleton(value));
@@ -302,7 +317,7 @@ impl FreeableSqliteCache {
     }
 
     // Remove the first element from the cache and return its value
-    pub fn pop(&mut self) -> KResult<u32> {
+    pub fn pop(&mut self) -> KResult<u128> {
         if self.length == 0 {
             kms_bail!("Cache is empty")
         }
@@ -613,13 +628,15 @@ mod tests {
         assert_eq!(cache.max_size, 2);
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 0);
 
+        let password = "test";
+
         let sqlite = connect().await.expect("Can't create database");
         let sqlite2 = connect().await.expect("Can't create database");
         let sqlite3 = connect().await.expect("Can't create database");
 
-        assert!(cache.save(1, sqlite).await.is_ok());
+        assert!(cache.save(1, password, sqlite).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 1);
-        assert!(cache.save(2, sqlite2).await.is_ok());
+        assert!(cache.save(2, password, sqlite2).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 2); // flush should do nothing here
         assert!(cache.opened(1));
         assert!(cache.opened(2));
@@ -627,7 +644,7 @@ mod tests {
         assert!(cache.exists(1));
 
         let sqlite2 = connect().await.expect("Can't create database");
-        assert!(cache.save(2, sqlite2).await.is_err()); // double saved = failed
+        assert!(cache.save(2, password, sqlite2).await.is_ok()); // double saved = ok
 
         assert!(cache.release(2).is_ok());
         assert!(cache.release(2).is_err()); // not twice
@@ -636,29 +653,30 @@ mod tests {
         assert!(cache.opened(2)); // still opened
 
         assert!(!cache.exists(3));
-        assert!(cache.save(3, sqlite3).await.is_ok());
+        assert!(cache.save(3, password, sqlite3).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 2); // flush should do nothing here
         assert!(cache.opened(3)); // still opened
         assert!(!cache.opened(2)); // not opened anymore
         assert!(cache.exists(2));
 
         let sqlite2 = connect().await.expect("Can't create database");
-        assert!(cache.save(2, sqlite2).await.is_ok());
+        assert!(cache.save(2, password, sqlite2).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 3); // flush should do nothing here
         assert!(cache.opened(2));
 
-        assert!(cache.get(4).is_err());
-        assert!(cache.get(1).is_ok()); // 2 uses of sqlite1
+        assert!(cache.get(4, password).is_err());
+        assert!(cache.get(1, "bad_password").is_err()); // bad password
+        assert!(cache.get(1, password).is_ok()); // 2 uses of sqlite1
 
         let sqlite4 = connect().await.expect("Can't create database");
-        assert!(cache.save(4, sqlite4).await.is_ok());
+        assert!(cache.save(4, password, sqlite4).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 4); // flush should do nothing here
         assert!(cache.opened(1));
 
         assert!(cache.release(1).is_ok()); // 1 uses of sqlite1
 
         let sqlite5 = connect().await.expect("Can't create database");
-        assert!(cache.save(5, sqlite5).await.is_ok());
+        assert!(cache.save(5, password, sqlite5).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 5); // flush should do nothing here
         assert!(cache.opened(1));
 
@@ -666,12 +684,12 @@ mod tests {
         assert!(cache.opened(1));
 
         let sqlite6 = connect().await.expect("Can't create database");
-        assert!(cache.save(6, sqlite6).await.is_ok());
+        assert!(cache.save(6, password, sqlite6).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 5); // flush should do something here
         assert!(!cache.opened(1));
         assert!(cache.exists(1));
 
-        assert!(cache.get(1).is_err()); // get after close
+        assert!(cache.get(1, password).is_err()); // get after close
     }
 
     async fn connect() -> std::result::Result<sqlx::Pool<sqlx::Sqlite>, sqlx::Error> {

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
@@ -39,6 +41,9 @@ lazy_static! {
 
 #[async_trait]
 pub(crate) trait Database {
+    /// Return the filename of the database if supported
+    fn filename(&self, group_id: u128) -> PathBuf;
+
     /// Insert the given Object in the database.
     ///
     /// A new UUID will be created if none is supplier.

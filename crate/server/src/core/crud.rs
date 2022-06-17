@@ -1,3 +1,5 @@
+use std::fs;
+
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyValue,
@@ -23,20 +25,24 @@ use cosmian_kms_utils::{
         ObjectSharedResponse, UserAccessResponse,
     },
 };
+use hex::encode;
+#[cfg(feature = "enclave")]
+use libsgx::quote::{get_quote, hash, prepare_report_data};
+use openssl::rand::rand_bytes;
 use tracing::{debug, trace, warn};
 use uuid::Uuid;
-#[cfg(feature = "enclave")]
-use {
-    libsgx::quote::{get_quote, hash, prepare_report_data},
-    std::fs,
-};
 
 use super::KMS;
 #[cfg(feature = "https")]
 use crate::certbot;
 #[cfg(feature = "enclave")]
 use crate::config::manifest_path;
-use crate::{error::KmsError, kms_bail, result::KResult};
+use crate::{
+    config::{db_params, DbParams},
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
 #[async_trait]
 pub trait KmipServer {
@@ -411,6 +417,9 @@ pub trait KmipServer {
     #[cfg(feature = "enclave")]
     /// Get the manifest of the KMS running inside the enclave
     async fn get_manifest(&self) -> KResult<String>;
+
+    /// Add a new database for a new group_id
+    async fn add_new_database(&self) -> KResult<String>;
 }
 
 /// Implement the KMIP Server Trait and dispatches the actual actions
@@ -428,6 +437,46 @@ impl KmipServer for KMS {
     #[cfg(feature = "enclave")]
     async fn get_manifest(&self) -> KResult<String> {
         Ok(fs::read_to_string(manifest_path())?)
+    }
+
+    async fn add_new_database(&self) -> KResult<String> {
+        if let DbParams::Sqlite(_, encrypted) = db_params() {
+            if encrypted {
+                // Generate a new group id
+                let uid: u128 = loop {
+                    let uid = Uuid::new_v4().to_u128_le();
+                    let database = self.db.filename(uid);
+                    if !database.exists() {
+                        // Create an empty file (to book the group id)
+                        fs::File::create(database)?;
+                        break uid
+                    }
+                };
+
+                // Generate a new key
+                let mut key = [0; 32];
+                rand_bytes(&mut key).unwrap();
+
+                // Encode ExtraDatabaseParams
+                let params = ExtraDatabaseParams {
+                    group_id: uid,
+                    key: encode(key),
+                };
+
+                let token = base64::encode(serde_json::to_string(&params)?);
+
+                // Create a dummy query to initialize the database
+                // Note: if we don't proceed like that, the password will be set at the first query of the user
+                // which let him put the password he wants.
+                self.db.find(None, None, "", &Some(params)).await?;
+
+                return Ok(token)
+            }
+        }
+
+        kms_bail!(KmsError::InvalidRequest(
+            "This server does not allowed this operation".to_owned()
+        ));
     }
 
     #[cfg(feature = "enclave")]

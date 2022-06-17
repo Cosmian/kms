@@ -277,6 +277,16 @@ pub async fn get_manifest(
     Ok(Json(kms_client.get_manifest().await?))
 }
 
+/// Add a new group to the KMS = add a new database
+#[post("/register")]
+pub async fn add_new_database(
+    _req: HttpRequest,
+    kms_client: Data<Arc<KMSServer>>,
+) -> KResult<Json<String>> {
+    debug!("Requesting a new database creation");
+    Ok(Json(kms_client.add_new_database().await?))
+}
+
 #[cfg(not(feature = "auth"))]
 fn get_owner(_req_http: HttpRequest) -> KResult<String> {
     return Ok(config::default_username())
@@ -298,16 +308,16 @@ fn get_database_secrets(req_http: &HttpRequest) -> KResult<Option<ExtraDatabaseP
             if cached {
                 let secrets = req_http
                     .headers()
-                    .get("KMS_DATABASE_SECRET")
+                    .get("KmsDatabaseSecret")
                     .and_then(|h| h.to_str().ok().map(|h| h.to_string()))
                     .ok_or_else(|| {
                         KmsError::Unauthorized(
-                            "Missing KMS_DATABASE_SECRET header in the query".to_owned(),
+                            "Missing KmsDatabaseSecret header in the query".to_owned(),
                         )
                     })?;
 
                 let secrets = base64::decode(secrets).map_err(|_| {
-                    KmsError::Unauthorized("KMS_DATABASE_SECRET header can't be read".to_owned())
+                    KmsError::Unauthorized("KmsDatabaseSecret header can't be read".to_owned())
                 })?;
 
                 Some(

@@ -328,6 +328,12 @@ impl KmsRestClient {
         self.post_ttlv::<Revoke, RevokeResponse>(&request).await
     }
 
+    /// This operation requests the server to create a new database.
+    /// The returned secrets could be shared between several users.
+    pub async fn new_database(&self) -> Result<String, KmsClientError> {
+        self.post_no_ttlv("/register", None::<&()>).await
+    }
+
     /// This operation requests the server to add an access on an object to a user
     /// The user could be unknown from the database.
     /// The object uid must be known from the database.
@@ -336,7 +342,7 @@ impl KmsRestClient {
     pub async fn add_access(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
         self.post_no_ttlv(
             &format!("/accesses/{}", access.unique_identifier.clone().unwrap()),
-            &access,
+            Some(&access),
         )
         .await
     }
@@ -397,6 +403,7 @@ impl KmsRestClient {
     pub fn instantiate(
         server_url: &str,
         bearer_token: &str,
+        database_secret: &Option<String>,
     ) -> Result<KmsRestClient, KmsClientError> {
         let server_url = match server_url.strip_suffix('/') {
             Some(s) => s.to_string(),
@@ -407,6 +414,9 @@ impl KmsRestClient {
             "Authorization",
             HeaderValue::from_str(format!("Bearer {}", bearer_token).as_str())?,
         );
+        if let Some(database_secret) = database_secret {
+            headers.insert("KmsDatabaseSecret", HeaderValue::from_str(database_secret)?);
+        }
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
         let mut builder = ClientBuilder::new();
         if cfg!(feature = "insecure") {
@@ -465,13 +475,20 @@ impl KmsRestClient {
         Err(KmsClientError::RequestFailed(p))
     }
 
-    pub async fn post_no_ttlv<O, R>(&self, endpoint: &str, data: &O) -> Result<R, KmsClientError>
+    pub async fn post_no_ttlv<O, R>(
+        &self,
+        endpoint: &str,
+        data: Option<&O>,
+    ) -> Result<R, KmsClientError>
     where
         O: Serialize,
         R: serde::de::DeserializeOwned + Sized + 'static,
     {
         let server_url = format!("{}{}", self.server_url, endpoint);
-        let response = self.client.post(server_url).json(data).send().await?;
+        let response = match data {
+            Some(d) => self.client.post(server_url).json(d).send().await?,
+            None => self.client.post(server_url).send().await?,
+        };
 
         let status_code = response.status();
         if status_code.is_success() {

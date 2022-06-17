@@ -28,9 +28,9 @@ pub enum ObjectOperationTypes {
     Destroy,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 pub struct ExtraDatabaseParams {
-    pub group_id: u32,
+    pub group_id: u128,
     pub key: String,
 }
 

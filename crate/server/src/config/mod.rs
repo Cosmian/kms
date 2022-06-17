@@ -1,5 +1,5 @@
 pub mod auth;
-mod db;
+pub mod db;
 mod enclave;
 mod http;
 mod https;

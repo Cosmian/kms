@@ -1,4 +1,7 @@
-use std::{path::Path, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
@@ -72,6 +75,10 @@ impl SqlitePool {
 
 #[async_trait]
 impl Database for SqlitePool {
+    fn filename(&self, _group_id: u128) -> PathBuf {
+        PathBuf::from("")
+    }
+
     async fn create(
         &self,
         uid: Option<String>,
@@ -618,12 +625,10 @@ where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
     let query = query_from_attributes::<SqlitePlaceholder>(researched_attributes, state, owner)?;
-    debug!("query: {query}");
 
     let query = sqlx::query(&query);
     let list = query.fetch_all(executor).await?;
 
-    debug!("fetched uids list's size: {}", list.len());
     let mut uids = Vec::with_capacity(list.len());
     for row in list {
         let raw = row.get::<Vec<u8>, _>(2);
@@ -638,7 +643,6 @@ where
         ));
     }
 
-    debug!("List of uids: {uids:?}");
     Ok(uids)
 }
 

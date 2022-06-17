@@ -14,6 +14,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     ConnectOptions, Pool, Sqlite,
 };
+use tracing::debug;
 
 use super::{
     cached_sqlite_struct::KMSSqliteCache,
@@ -42,16 +43,15 @@ impl CachedSqlCipher {
         })
     }
 
-    async fn instantiate_group_database(&self, group_id: u32, key: &str) -> KResult<Pool<Sqlite>> {
-        let path = self.path.join(format!("{group_id}.sqlite"));
-
+    async fn instantiate_group_database(&self, group_id: u128, key: &str) -> KResult<Pool<Sqlite>> {
+        let path = self.filename(group_id);
+        debug!("{}", format!("\"x'{key}'\""));
         let mut options = SqliteConnectOptions::new()
-            .pragma("key", key.to_string())
+            .pragma("key", format!("\"x'{key}'\""))
             .pragma("journal_mode", "OFF")
             .filename(path)
             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
-            .busy_timeout(Duration::from_secs(120))
-            .create_if_missing(true);
+            .busy_timeout(Duration::from_secs(120));
         // disable logging of each query
         options.disable_statement_logging();
 
@@ -100,27 +100,35 @@ impl CachedSqlCipher {
         kms_bail!("Missing group_id/key for opening SQLCipher")
     }
 
-    fn post_query(&self, group_id: u32) -> KResult<()> {
-        // let cache = self.cache.lock().unwrap();
+    fn post_query(&self, group_id: u128) -> KResult<()> {
         self.cache.release(group_id)
     }
 
-    async fn pre_query(&self, group_id: u32, key: &str) -> KResult<Arc<Pool<Sqlite>>> {
+    async fn pre_query(&self, group_id: u128, key: &str) -> KResult<Arc<Pool<Sqlite>>> {
+        debug!("{}", key);
+
         if !self.cache.exists(group_id) {
+            println!("Do no exist");
             let pool = self.instantiate_group_database(group_id, key).await?;
             CachedSqlCipher::create_tables(&pool).await?;
-            self.cache.save(group_id, pool).await?;
+            self.cache.save(group_id, key, pool).await?;
         } else if !self.cache.opened(group_id) {
+            println!("no opened");
+
             let pool = self.instantiate_group_database(group_id, key).await?;
-            self.cache.save(group_id, pool).await?;
+            self.cache.save(group_id, key, pool).await?;
         }
 
-        self.cache.get(group_id)
+        self.cache.get(group_id, key)
     }
 }
 
 #[async_trait]
 impl Database for CachedSqlCipher {
+    fn filename(&self, group_id: u128) -> PathBuf {
+        self.path.join(format!("{group_id}.sqlite"))
+    }
+
     async fn create(
         &self,
         uid: Option<String>,

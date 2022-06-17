@@ -471,6 +471,10 @@ async fn find_(
 
 #[async_trait]
 impl Database for Sql {
+    fn filename(&self, _group_id: u128) -> PathBuf {
+        PathBuf::from("")
+    }
+
     async fn create(
         &self,
         uid: Option<String>,

@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{path::PathBuf, str::FromStr};
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
@@ -494,6 +494,10 @@ where
 
 #[async_trait]
 impl Database for Pgsql {
+    fn filename(&self, _group_id: u128) -> PathBuf {
+        PathBuf::from("")
+    }
+
     async fn create(
         &self,
         uid: Option<String>,
