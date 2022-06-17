@@ -179,7 +179,7 @@ docker_timeout_build_and_push:
     - echo "10.0.0.7     gitlab.cosmian.com" >> /etc/hosts
   script:
     - echo $IMAGE_TAG
-    - docker build . --build-arg TIMEOUT="--features demo_timeout" --network=host -t $IMAGE_TAG
+    - docker build . --build-arg TIMEOUT="--features timeout" --network=host -t $IMAGE_TAG
     - docker push $IMAGE_TAG
 
 doc:
