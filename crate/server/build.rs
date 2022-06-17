@@ -5,7 +5,7 @@ use chrono::{DateTime, Duration, Utc};
 const DEMO_TIMEOUT: i64 = 90; // 3 months in days
 
 fn main() {
-    if cfg!(feature = "demo_timeout") {
+    if cfg!(feature = "timeout") {
         let now = Utc::now();
         let three_months_later = now + Duration::days(DEMO_TIMEOUT);
         let start = DateTime::parse_from_rfc2822(&now.to_rfc2822()).unwrap();

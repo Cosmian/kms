@@ -52,7 +52,7 @@ impl CoverCryptHybridCipher {
         let (public_key_bytes, public_key_attributes) =
             key_bytes_and_attributes_from_key_block(public_key.key_block()?, public_key_uid)?;
 
-        let policy = policy_from_attributes(&public_key_attributes.ok_or_else(|| {
+        let policy = policy_from_attributes(public_key_attributes.ok_or_else(|| {
             KmipError::InvalidKmipObject(
                 ErrorReason::Attribute_Not_Found,
                 "the master public key does not have attributes with the Policy".to_string(),
@@ -66,7 +66,7 @@ impl CoverCryptHybridCipher {
 
         Ok(CoverCryptHybridCipher {
             public_key_uid: public_key_uid.into(),
-            public_key_bytes,
+            public_key_bytes: public_key_bytes.to_vec(),
             policy,
         })
     }

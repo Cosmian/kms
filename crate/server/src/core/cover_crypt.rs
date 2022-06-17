@@ -1,7 +1,4 @@
-use std::convert::TryFrom;
-
 use cosmian_kmip::kmip::{
-    kmip_key_utils::WrappedSymmetricKey,
     kmip_objects::{Object, ObjectType},
     kmip_operations::{
         Create, CreateKeyPair, ErrorReason, Get, Import, Locate, ReKeyKeyPairResponse,
@@ -74,11 +71,15 @@ where
         .object;
 
     // Recover the policy from the private key
-    let (master_private_key_bytes, private_key_attributes) =
-        key_bytes_and_attributes_from_key_block(private_key.key_block()?, master_private_key_uid)?;
-    let mut private_key_attributes = private_key_attributes.ok_or_else(|| {
-        KmsError::InvalidRequest("The CoverCrypt Master key should have attributes".to_owned())
-    })?;
+    let (master_private_key_bytes, private_key_attributes) = private_key
+        .key_block()?
+        .key_bytes_and_attributes(master_private_key_uid)?;
+    let master_private_key_bytes = master_private_key_bytes.to_vec();
+    let mut private_key_attributes = private_key_attributes
+        .ok_or_else(|| {
+            KmsError::InvalidRequest("The CoverCrypt Master key should have attributes".to_owned())
+        })?
+        .to_owned();
     let mut policy = policy_from_attributes(&private_key_attributes)?;
 
     // Increment the Attributes values in the Policy
@@ -90,7 +91,7 @@ where
             )
         })?
     }
-    trace!("The new policy is : {:#?}", &policy);
+    trace!("The new policy is : {policy:#?}");
 
     // Update Master Private Key Policy and re-import the key
     upsert_policy_in_attributes(&mut private_key_attributes, &policy)?;
@@ -100,7 +101,7 @@ where
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: private_key_attributes,
+        attributes: private_key_attributes.to_owned(),
         object: private_key,
     };
     let _import_response = kmip_server.import(import_request, owner).await?;
@@ -144,10 +145,7 @@ where
 
     // Refresh the User Decryption Key that were found
     if let Some(unique_identifiers) = &locate_response.unique_identifiers {
-        trace!(
-            "Rekeying the following user decryption keys: {:?}",
-            &unique_identifiers
-        );
+        trace!("Rekeying the following user decryption keys: {unique_identifiers:?}");
         renew_all_user_decryption_keys(
             kmip_server,
             &master_private_key_bytes,
@@ -181,14 +179,7 @@ where
             .await?;
         let key_block = get_response.object.key_block()?;
         // Handle both plaintext and wrapped key
-        let current_key_attributes = match &key_block.key_wrapping_data {
-            Some(_) => {
-                let wrapped_symmetric_key =
-                    WrappedSymmetricKey::try_from(&key_block.key_value.raw_bytes()?)?;
-                wrapped_symmetric_key.attributes()
-            }
-            None => key_block.key_value.attributes()?.clone(),
-        };
+        let current_key_attributes = key_block.key_value.attributes()?.clone();
         let current_access_policy = access_policy_from_attributes(&current_key_attributes)?;
         // Generate a fresh User Decryption Key
         let new_user_decryption_key = create_user_decryption_key_object(
@@ -256,7 +247,7 @@ where
         )?;
 
     // recover the current policy from the key attributes
-    let policy = policy_from_attributes(&master_private_key_attributes.ok_or_else(|| {
+    let policy = policy_from_attributes(master_private_key_attributes.ok_or_else(|| {
         KmsError::InvalidRequest(
             "the master private key does not have attributes with the Policy".to_string(),
         )
@@ -264,7 +255,7 @@ where
     trace!("Policy: {:?}", &policy);
 
     create_user_decryption_key_object(
-        &master_private_key_bytes,
+        master_private_key_bytes,
         &policy,
         &access_policy,
         Some(create_attributes),

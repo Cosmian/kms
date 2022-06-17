@@ -17,6 +17,12 @@ category = "dev"
 script = '''
 #!/bin/bash
 set -ex
+cargo check --all-targets --no-default-features
+cargo check --all-targets --no-default-features --features insecure
+cargo check --all-targets --no-default-features --features https
+cargo check --all-targets --no-default-features --features auth
+cargo check --all-targets --no-default-features --features timeout
+cargo check --all-targets --no-default-features --features enclave
 cargo build --all-targets --all-features
 '''
 
@@ -26,7 +32,7 @@ category = "dev"
 script = '''
 #!/bin/bash
 set -ex
-cargo test --workspace --all-features -- --nocapture
+cargo test --workspace --features dev --no-default-features -- --nocapture
 cargo test --bins -- --nocapture
 '''
 
@@ -79,8 +85,14 @@ export KMS_POSTGRES_URL="postgres://$TEST_USER:$TEST_PASSWORD@$TEST_HOST/$TEST_D
 # export KMS_MYSQL_URL="mysql://root:$TEST_PASSWORD@$TEST_HOST/$TEST_DB"
 export KMS_MYSQL_URL="mysql://root@$TEST_HOST/$TEST_DB"
 export KMS_USER_CERT_PATH="$(pwd)/$data_path/cert.p12"
+export KMS_DELEGATED_AUTHORITY_DOMAIN="dev-1mbsbmin.us.auth0.com"
+export KMS_PUBLIC_PATH="data/public"
+export KMS_SHARED_PATH="data/shared"
+export KMS_PRIVATE_PATH="data/private"
 
-cargo test --workspace --all-features -- --nocapture
+# TODO: add a test inside an enclave with --features=enclave
+# TODO: add a test on a server with a domain name with --features=https
+cargo test --workspace --features dev --no-default-features -- --nocapture
 cargo test --bins -- --nocapture
 '''
 script.post = '''

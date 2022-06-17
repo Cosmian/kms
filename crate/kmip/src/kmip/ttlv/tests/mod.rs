@@ -22,7 +22,7 @@ pub(crate) fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
 }
 
 pub(crate) fn aes_key_value(key_value: &[u8]) -> KeyValue {
-    KeyValue::PlainText {
+    KeyValue {
         key_material: aes_key_material(key_value),
         attributes: Some(Attributes::new(ObjectType::SymmetricKey)),
     }
@@ -440,8 +440,8 @@ fn test_des_aes_key() {
     //
     let json = serde_json::to_value(aes_key(key_bytes)).unwrap();
     let o: Object = serde_json::from_value(json).unwrap();
-    // Deserialization cannot make the difference between a SymmetricKey or a
-    // PrivateKey
+    // Deserialization cannot make the difference
+    // between a `SymmetricKey` or a `PrivateKey`
     assert_eq!(
         aes_key(key_bytes),
         Object::post_fix(ObjectType::SymmetricKey, o)
@@ -449,8 +449,8 @@ fn test_des_aes_key() {
     //
     let ttlv = aes_key_ttlv(key_bytes);
     let rec: Object = from_ttlv(&ttlv).unwrap();
-    // Deserialization cannot make the difference between a SymmetricKey or a
-    // PrivateKey
+    // Deserialization cannot make the difference
+    // between a `SymmetricKey` or a `PrivateKey`
     assert_eq!(
         aes_key(key_bytes),
         Object::post_fix(ObjectType::SymmetricKey, rec)
@@ -613,7 +613,7 @@ fn test_java_import_response() {
 fn test_byte_string_key_material() {
     log_init("info");
     let key_bytes: &[u8] = b"this_is_a_test";
-    let key_value = KeyValue::PlainText {
+    let key_value = KeyValue {
         key_material: KeyMaterial::ByteString(key_bytes.to_vec()),
         attributes: Some(Attributes::new(ObjectType::SymmetricKey)),
     };

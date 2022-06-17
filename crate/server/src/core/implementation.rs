@@ -3,10 +3,9 @@
 use std::convert::TryFrom;
 
 use cosmian_kmip::kmip::{
-    kmip_key_utils::WrappedSymmetricKey,
     kmip_objects::Object,
-    kmip_operations::{Create, CreateKeyPair, GetResponse},
-    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+    kmip_operations::{Create, CreateKeyPair},
+    kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
 };
 use cosmian_kms_utils::{
     crypto::{
@@ -74,8 +73,7 @@ impl KMS {
                             }
                             other => kms_bail!(KmsError::NotSupported(format!(
                                 "This server does not yet support symetric encryption with \
-                                 algorithm: {:?}",
-                                other
+                                 algorithm: {other:?}"
                             ))),
                         }
                     }
@@ -88,8 +86,7 @@ impl KMS {
                         Ok(Box::new(tfhe::Cipher::instantiate(key_uid, &object)?))
                     }
                     other => kms_bail!(KmsError::NotSupported(format!(
-                        "This server does not yet support encryption with keys of format: {}",
-                        other
+                        "This server does not yet support encryption with keys of format: {other}"
                     ))),
                 }
             }
@@ -102,8 +99,8 @@ impl KMS {
                     CoverCryptHybridCipher::instantiate(key_uid, &object)?,
                 ) as Box<dyn EnCipher>),
                 other => kms_bail!(KmsError::NotSupported(format!(
-                    "This server does not yet support encryption with public keys of format: {}",
-                    other
+                    "This server does not yet support encryption with public keys of format: \
+                     {other}"
                 ))),
             },
             other => kms_bail!(KmsError::NotSupported(format!(
@@ -137,8 +134,7 @@ impl KMS {
                         Ok(Box::new(DMcfeDeCipher::instantiate(object_uid, &object)?))
                     }
                     other => kms_bail!(KmsError::NotSupported(format!(
-                        "This server does not yet support decryption with keys of format: {}",
-                        other
+                        "This server does not yet support decryption with keys of format: {other}"
                     ))),
                 }
             }
@@ -150,8 +146,7 @@ impl KMS {
                     CoverCryptHybridDecipher::instantiate(object_uid, &object)?,
                 )),
                 other => kms_bail!(KmsError::NotSupported(format!(
-                    "This server does not yet support decryption with keys of format: {}",
-                    other
+                    "This server does not yet support decryption with keys of format: {other}"
                 ))),
             },
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {
@@ -164,9 +159,8 @@ impl KMS {
                             Ok(Box::new(AesGcmCipher::instantiate(object_uid, &object)?))
                         }
                         other => kms_bail!(KmsError::NotSupported(format!(
-                            "This server does not yet support symetric decryption with algorithm: \
-                             {:?}",
-                            other
+                            "This server does not yet support symmetric decryption with \
+                             algorithm: {other:?}"
                         ))),
                     }
                 }
@@ -174,8 +168,7 @@ impl KMS {
                     Ok(Box::new(tfhe::Cipher::instantiate(object_uid, &object)?))
                 }
                 other => kms_bail!(KmsError::NotSupported(format!(
-                    "This server does not yet support decryption with keys of format: {}",
-                    other
+                    "This server does not yet support decryption with keys of format: {other}"
                 ))),
             },
             other => kms_bail!(KmsError::NotSupported(format!(
@@ -206,8 +199,7 @@ impl KMS {
                         .map_err(Into::into)
                 }
                 Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
-                    "Unable to generate an ABE symmetric key for format: {}",
-                    other
+                    "Unable to generate a symmetric key for format: {other}"
                 ))),
             },
             Some(CryptographicAlgorithm::LWE) => match attributes.key_format_type {
@@ -230,8 +222,7 @@ impl KMS {
                         .map_err(Into::into)
                 }
                 Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
-                    "Unable to generate an LWE secret key for format: {}",
-                    other
+                    "Unable to generate an LWE secret key for format: {other}"
                 ))),
             },
             Some(CryptographicAlgorithm::TFHE) => match attributes.key_format_type {
@@ -273,13 +264,11 @@ impl KMS {
                     })
                 }
                 Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
-                    "Unable to generate an TFHE secret key for format: {}",
-                    other
+                    "Unable to generate an TFHE secret key for format: {other}"
                 ))),
             },
             Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                "The creation of secret key for algorithm: {:?} is not supported",
-                other
+                "The creation of secret key for algorithm: {other:?} is not supported"
             ))),
             None => kms_bail!(KmsError::InvalidRequest(
                 "The cryptographic algorithm must be specified for secret key creation".to_string()
@@ -339,14 +328,12 @@ impl KMS {
                     }
                 }
                 Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                    "Unable to generate an LWE secret key for format: {:?}",
-                    other
+                    "Unable to generate an LWE secret key for format: {other:?}"
                 ))),
             },
 
             Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                "The creation of secret data for algorithm: {:?} is not supported",
-                other
+                "The creation of secret data for algorithm: {other:?} is not supported"
             ))),
             None => kms_bail!(KmsError::InvalidRequest(
                 "The cryptographic algorithm must be specified for secret data creation"
@@ -372,16 +359,14 @@ impl KMS {
                     super::abe::create_user_decryption_key(self, create_request, owner).await
                 }
                 Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                    "Unable to generate an ABE private key for format: {:?}",
-                    other
+                    "Unable to generate an ABE private key for format: {other:?}"
                 ))),
             },
             Some(CryptographicAlgorithm::CoverCrypt) => {
                 super::cover_crypt::create_user_decryption_key(self, create_request, owner).await
             }
             Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                "The creation of a private key for algorithm: {:?} is not supported",
-                other
+                "The creation of a private key for algorithm: {other:?} is not supported"
             ))),
             None => kms_bail!(KmsError::InvalidRequest(
                 "The cryptographic algorithm must be specified for private key creation"
@@ -418,14 +403,12 @@ impl KMS {
                     match dp.recommended_curve.unwrap_or_default() {
                         RecommendedCurve::CURVE25519 => generate_key_pair().map_err(Into::into),
                         other => kms_bail!(KmsError::NotSupported(format!(
-                            "Generation of Key Pair for curve: {:?}, is not supported",
-                            other
+                            "Generation of Key Pair for curve: {other:?}, is not supported"
                         ))),
                     }
                 }
                 Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                    "Unable to generate an DH keypair for format: {}",
-                    other
+                    "Unable to generate an DH keypair for format: {other}"
                 ))),
             },
             Some(CryptographicAlgorithm::ABE) => match attributes.key_format_type {
@@ -440,8 +423,7 @@ impl KMS {
                     super::abe::create_user_decryption_key_pair(self, request, owner).await
                 }
                 Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                    "Unable to generate an ABE keypair for format: {:?}",
-                    other
+                    "Unable to generate an ABE keypair for format: {other:?}"
                 ))),
             },
             Some(CryptographicAlgorithm::CoverCrypt) => {
@@ -451,60 +433,11 @@ impl KMS {
                 // super::cover_crypt::create_user_decryption_key_pair(self, request, owner).await
             }
             Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                "The creation of a key pair for algorithm: {:?} is not supported",
-                other
+                "The creation of a key pair for algorithm: {other:?} is not supported"
             ))),
             None => kms_bail!(KmsError::InvalidRequest(
                 "The cryptographic algorithm must be specified for key pair creation".to_string()
             )),
         }
-    }
-}
-
-pub(crate) fn contains_attributes(
-    researched_attributes: &Attributes,
-    kmip_response: &GetResponse,
-) -> KResult<bool> {
-    let key_block = kmip_response.object.key_block()?;
-    let object_attributes = match &key_block.key_wrapping_data {
-        Some(_) => {
-            let wrapped_symmetric_key =
-                WrappedSymmetricKey::try_from(&key_block.key_value.raw_bytes()?)?;
-            wrapped_symmetric_key.attributes()
-        }
-        None => key_block.key_value.attributes()?.clone(),
-    };
-
-    match &researched_attributes.cryptographic_algorithm {
-        Some(CryptographicAlgorithm::ABE) => match researched_attributes.key_format_type {
-            None => kms_bail!(KmsError::InvalidRequest(
-                "Unable to locate an ABE key, the format type is not specified".to_string()
-            )),
-            Some(KeyFormatType::AbeUserDecryptionKey) => {
-                cosmian_kms_utils::crypto::abe::locate::compare_abe_attributes(
-                    &object_attributes,
-                    researched_attributes,
-                )
-                .map_err(Into::into)
-            }
-            Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
-                "Unable to locate a keypair for format: {:?}",
-                other
-            ))),
-        },
-        Some(CryptographicAlgorithm::CoverCrypt) => {
-            cosmian_kms_utils::crypto::cover_crypt::locate::compare_cover_crypt_attributes(
-                &object_attributes,
-                researched_attributes,
-            )
-            .map_err(Into::into)
-        }
-        Some(other) => kms_bail!(KmsError::NotSupported(format!(
-            "The locate of an object for algorithm: {:?} is not yet supported",
-            other
-        ))),
-        None => kms_bail!(KmsError::InvalidRequest(
-            "The cryptographic algorithm must be specified for object location".to_string()
-        )),
     }
 }

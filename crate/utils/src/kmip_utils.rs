@@ -1,7 +1,7 @@
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_data_structures::{KeyBlock, KeyMaterial},
         kmip_objects::{Object, ObjectType},
         kmip_operations::ErrorReason,
         kmip_types::{Attributes, LinkType, LinkedObjectIdentifier},
@@ -14,13 +14,7 @@ pub fn attributes_from_key_block(
     object_type: ObjectType,
     key_block: &KeyBlock,
 ) -> Result<Attributes, KmipError> {
-    let (_, attributes) = key_block.key_value.plaintext().ok_or_else(|| {
-        KmipError::InvalidKmipObject(
-            ErrorReason::Invalid_Attribute,
-            "The key does not contain attributes".to_string(),
-        )
-    })?;
-    let attributes = match attributes {
+    let attributes = match &key_block.key_value.attributes {
         Some(attrs) => {
             let mut a = attrs.clone();
             a.object_type = object_type;
@@ -46,31 +40,19 @@ pub fn attributes_from_object(
 }
 
 /// Extract the Key bytes from the given `KeyBlock`
-pub fn key_bytes_and_attributes_from_key_block(
-    key_block: &KeyBlock,
-    uid: &str,
-) -> Result<(Vec<u8>, Option<Attributes>), KmipError> {
-    match &key_block.key_value {
-        KeyValue::PlainText {
-            key_material,
-            attributes,
-        } => {
-            let key = match key_material {
-                KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
-                KeyMaterial::ByteString(v) => Ok(v.clone()),
-                other => Err(KmipError::InvalidKmipValue(
-                    ErrorReason::Invalid_Data_Type,
-                    format!(
-                        "The key at uid: {} has an invalid key material: {:?}",
-                        uid, other,
-                    ),
-                )),
-            };
-            let attributes = attributes.clone();
-            Ok((key?, attributes))
-        }
-        KeyValue::Wrapped(wrapped) => Ok((wrapped.clone(), None)),
-    }
+pub fn key_bytes_and_attributes_from_key_block<'a>(
+    key_block: &'a KeyBlock,
+    uid: &'a str,
+) -> Result<(&'a [u8], Option<&'a Attributes>), KmipError> {
+    let key = match &key_block.key_value.key_material {
+        KeyMaterial::TransparentSymmetricKey { key } => Ok(key),
+        KeyMaterial::ByteString(v) => Ok(v),
+        other => Err(KmipError::InvalidKmipValue(
+            ErrorReason::Invalid_Data_Type,
+            format!("The key at uid: {uid} has an invalid key material: {other:?}"),
+        )),
+    }?;
+    Ok((key, key_block.key_value.attributes.as_ref()))
 }
 
 /// Get public key uid from private key uid
@@ -86,6 +68,7 @@ pub fn public_key_unique_identifier_from_private_key(
             ))
         }
     };
+
     let mut attributes = key_block.key_value.attributes()?.clone();
     attributes.set_object_type(ObjectType::PublicKey);
     if attributes.link.len() != 1 {
@@ -94,25 +77,22 @@ pub fn public_key_unique_identifier_from_private_key(
             "Invalid public key. Should at least contain the link to private key".to_string(),
         ))
     }
-    let link = attributes.link[0].clone();
 
+    let link = attributes.link[0].clone();
     if link.link_type != LinkType::PublicKeyLink {
         return Err(KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Object_Type,
             "Private key MUST contain a public key link".to_string(),
         ))
     }
-    Ok(match link.linked_object_identifier {
-        LinkedObjectIdentifier::TextString(s) => s,
-        LinkedObjectIdentifier::Enumeration(_) => {
-            return Err(KmipError::NotSupported(
-                "Enumeration not yet supported".to_owned(),
-            ))
-        }
-        LinkedObjectIdentifier::Index(_) => {
-            return Err(KmipError::NotSupported(
-                "Index not yet supported".to_owned(),
-            ))
-        }
-    })
+
+    match link.linked_object_identifier {
+        LinkedObjectIdentifier::TextString(s) => Ok(s),
+        LinkedObjectIdentifier::Enumeration(_) => Err(KmipError::NotSupported(
+            "Enumeration not yet supported".to_owned(),
+        )),
+        LinkedObjectIdentifier::Index(_) => Err(KmipError::NotSupported(
+            "Index not yet supported".to_owned(),
+        )),
+    }
 }

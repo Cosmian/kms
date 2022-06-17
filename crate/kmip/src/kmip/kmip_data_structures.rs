@@ -3,12 +3,10 @@ use std::clone::Clone;
 use num_bigint::BigUint;
 use paperclip::actix::Apiv2Schema;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
-use tracing::trace;
 
 use crate::{
     error::KmipError,
     kmip::{
-        kmip_key_utils::WrappedSymmetricKey,
         kmip_operations::ErrorReason,
         kmip_types::{
             Attributes, CryptographicAlgorithm, EncodingOption, EncryptionKeyInformation,
@@ -36,50 +34,33 @@ pub struct KeyBlock {
 }
 
 impl KeyBlock {
-    /// Extract the Key bytes from the given `KeyBlock`
-    pub fn key_bytes(&self) -> Result<Vec<u8>, KmipError> {
-        match &self.key_value {
-            KeyValue::PlainText { key_material, .. } => {
-                let key = match key_material {
-                    KeyMaterial::ByteString(v) => Ok(v.clone()),
-                    KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
-                    other => Err(KmipError::InvalidKmipValue(
-                        ErrorReason::Invalid_Data_Type,
-                        format!("The key has an invalid key material: {:?}", other),
-                    )),
-                };
-                key
-            }
-            KeyValue::Wrapped(wrapped) => Ok(wrapped.clone()),
+    /// Give a slice view on its key bytes
+    /// Returns an error if there is no valid key material
+    pub fn as_bytes(&self) -> Result<&[u8], KmipError> {
+        match &self.key_value.key_material {
+            KeyMaterial::ByteString(v) => Ok(v),
+            KeyMaterial::TransparentSymmetricKey { key } => Ok(key),
+            other => Err(KmipError::InvalidKmipValue(
+                ErrorReason::Invalid_Data_Type,
+                format!("The key has an invalid key material: {other:?}"),
+            )),
         }
     }
 
     /// Extract the Key bytes from the given `KeyBlock`
+    /// and give an optional reference to `Attributes`
+    /// Returns an error if there is no valid key material
     pub fn key_bytes_and_attributes(
         &self,
         uid: &str,
-    ) -> Result<(Vec<u8>, Option<Attributes>), KmipError> {
-        match &self.key_value {
-            KeyValue::PlainText {
-                key_material,
-                attributes,
-            } => {
-                let key = match key_material {
-                    KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
-                    KeyMaterial::ByteString(v) => Ok(v.clone()),
-                    other => Err(KmipError::InvalidKmipValue(
-                        ErrorReason::Invalid_Data_Type,
-                        format!(
-                            "The key at uid: {} has an invalid key material: {:?}",
-                            uid, other
-                        ),
-                    )),
-                };
-                let attributes = attributes.clone();
-                Ok((key?, attributes))
-            }
-            KeyValue::Wrapped(wrapped) => Ok((wrapped.clone(), None)),
-        }
+    ) -> Result<(&[u8], Option<&Attributes>), KmipError> {
+        let key = self.as_bytes().map_err(|e| {
+            KmipError::InvalidKmipValue(
+                ErrorReason::Invalid_Data_Type,
+                format!("uid `{uid}` - {e}"),
+            )
+        })?;
+        Ok((key, self.key_value.attributes.as_ref()))
     }
 
     /// Extract `counter_iv_nonce` value from `KeyBlock`
@@ -101,53 +82,6 @@ impl KeyBlock {
             None => None,
         }
     }
-
-    /// Convert a raw-wrapped symmetric key into a KMIP-`KeyBlock` struct.
-    /// Remark/Warning:
-    ///     The key attributes are serialized into the `KeyValue` in order to be located later
-    ///
-    /// # Arguments
-    ///
-    /// * `wrapped_key`: key byte-array
-    /// * `iv_counter_nonce`: iv counter nonce
-    /// * `key_format_type`: KMIP `KeyFormatType`
-    /// * `wrapped_key_attributes`: the KMIP `Attributes
-    ///
-    /// # Returns
-    ///
-    /// * `key_block`: the new `KeyBlock` structure
-    ///
-    /// # Errors
-    ///
-    /// * serializing can fail
-    pub fn to_wrapped_key_block(
-        wrapped_key: &[u8],
-        iv_counter_nonce: Option<Vec<u8>>,
-        key_format_type: KeyFormatType,
-        wrapped_key_attributes: &Attributes,
-    ) -> Result<KeyBlock, KmipError> {
-        trace!("array_to_wrapped_key_block: {}", wrapped_key.len());
-        let key_value = serde_json::to_vec(&WrappedSymmetricKey {
-            attributes: wrapped_key_attributes.clone(),
-            wrapped_symmetric_key: wrapped_key.to_vec(),
-        })
-        .map_err(|e| {
-            KmipError::InvalidKmipObject(ErrorReason::Invalid_Attribute_Value, e.to_string())
-        })?;
-        let key_wrapping_data = KeyWrappingData {
-            wrapping_method: WrappingMethod::Encrypt,
-            iv_counter_nonce,
-            ..KeyWrappingData::default()
-        };
-        Ok(KeyBlock {
-            cryptographic_algorithm: CryptographicAlgorithm::AES,
-            key_format_type,
-            key_compression_type: None,
-            key_value: KeyValue::Wrapped(key_value),
-            cryptographic_length: wrapped_key.len() as i32,
-            key_wrapping_data: Some(key_wrapping_data),
-        })
-    }
 }
 
 /// The Key Value is used only inside a Key Block and is either a Byte String or
@@ -164,59 +98,40 @@ impl KeyBlock {
 /// structure, or the wrapped un-encoded value of the Byte String Key Material
 /// field.
 #[derive(Deserialize, Clone, Debug, PartialEq)]
-#[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
-pub enum KeyValue {
-    PlainText {
-        // may be a specialized key material
-        #[serde(rename = "KeyMaterial")]
-        key_material: KeyMaterial,
-        #[serde(rename = "Attributes", skip_serializing_if = "Option::is_none")]
-        attributes: Option<Attributes>,
-    },
-    Wrapped(Vec<u8>),
+pub struct KeyValue {
+    #[serde(rename = "KeyMaterial")]
+    pub key_material: KeyMaterial,
+    #[serde(rename = "Attributes", skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<Attributes>,
 }
 
 impl KeyValue {
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
-        match self {
-            KeyValue::PlainText { attributes, .. } => attributes.as_ref().ok_or_else(|| {
-                KmipError::InvalidKmipValue(
-                    ErrorReason::Invalid_Attribute_Value,
-                    "key is missing its attributes".to_string(),
-                )
-            }),
-            KeyValue::Wrapped(_) => Err(KmipError::KmipNotSupported(
-                ErrorReason::Feature_Not_Supported,
-                "key is wrapped and this is not yet supported".to_string(),
+        self.attributes.as_ref().ok_or_else(|| {
+            KmipError::InvalidKmipValue(
+                ErrorReason::Invalid_Attribute_Value,
+                "key is missing its attributes".to_string(),
+            )
+        })
+    }
+
+    pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
+        self.attributes.as_mut().ok_or_else(|| {
+            KmipError::InvalidKmipValue(
+                ErrorReason::Invalid_Attribute_Value,
+                "key is missing its mutable attributes".to_string(),
+            )
+        })
+    }
+
+    pub fn raw_bytes(&self) -> Result<&[u8], KmipError> {
+        match &self.key_material {
+            KeyMaterial::ByteString(v) => Ok(v),
+            other => Err(KmipError::KmipNotSupported(
+                ErrorReason::Invalid_Data_Type,
+                format!("The key has an invalid key material: {other:?}"),
             )),
-        }
-    }
-
-    #[must_use]
-    pub fn plaintext(&self) -> Option<(&KeyMaterial, &Option<Attributes>)> {
-        match self {
-            KeyValue::PlainText {
-                key_material,
-                attributes,
-            } => Some((key_material, attributes)),
-            _ => None,
-        }
-    }
-
-    pub fn raw_bytes(&self) -> Result<Vec<u8>, KmipError> {
-        match &self {
-            KeyValue::PlainText { key_material, .. } => {
-                let key = match key_material {
-                    KeyMaterial::ByteString(v) => Ok(v.clone()),
-                    other => Err(KmipError::KmipNotSupported(
-                        ErrorReason::Invalid_Data_Type,
-                        format!("The key has an invalid key material: {:?}", other),
-                    )),
-                };
-                key
-            }
-            KeyValue::Wrapped(wrapped) => Ok(wrapped.clone()),
         }
     }
 }
@@ -226,18 +141,10 @@ impl Serialize for KeyValue {
     where
         S: serde::Serializer,
     {
-        match self {
-            KeyValue::PlainText {
-                key_material,
-                attributes,
-            } => {
-                let mut st = serializer.serialize_struct("PlainText", 2)?;
-                st.serialize_field("KeyMaterial", key_material)?;
-                st.serialize_field("Attributes", attributes)?;
-                st.end()
-            }
-            KeyValue::Wrapped(bytes) => serializer.serialize_bytes(bytes),
-        }
+        let mut st = serializer.serialize_struct("KeyValue", 2)?;
+        st.serialize_field("KeyMaterial", &self.key_material)?;
+        st.serialize_field("Attributes", &self.attributes)?;
+        st.end()
     }
 }
 

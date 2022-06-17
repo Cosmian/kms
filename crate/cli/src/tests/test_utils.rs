@@ -1,7 +1,7 @@
 use std::thread;
 
 use cosmian_kms_server::{
-    config::{init_config, Config},
+    config::{auth::AuthConfig, init_config, Config},
     start_kms_server,
 };
 use reqwest::ClientBuilder;
@@ -21,7 +21,9 @@ pub async fn start_test_server() {
 pub async fn init_test_server() {
     // Configure the serveur
     let config = Config {
-        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
+        auth: AuthConfig {
+            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+        },
         ..Default::default()
     };
     init_config(&config).await.unwrap();

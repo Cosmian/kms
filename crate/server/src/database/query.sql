@@ -1,17 +1,17 @@
 -- name: create-table-objects
 CREATE TABLE IF NOT EXISTS objects (
-    id VARCHAR(40) PRIMARY KEY,
-    object json NOT NULL,
-    state VARCHAR(32),
-    owner VARCHAR(255)
+        id VARCHAR(40) PRIMARY KEY,
+        object json NOT NULL,
+        state VARCHAR(32),
+        owner VARCHAR(255)
 );
 
 -- name: create-table-read_access
 CREATE TABLE IF NOT EXISTS read_access (
-    id VARCHAR(40),
-    userid VARCHAR(255),
-    permissions json NOT NULL,
-    UNIQUE (id, userid)
+        id VARCHAR(40),
+        userid VARCHAR(255),
+        permissions json NOT NULL,
+        UNIQUE (id, userid)
 );
 
 -- name: clean-table-objects
@@ -25,9 +25,6 @@ INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4);
 
 -- name: select-row-objects
 SELECT object, state FROM objects WHERE id=$1 AND owner=$2;
-
--- name: select-row-objects-where-owner
-SELECT id, state FROM objects WHERE owner=$1;
 
 -- name: select-row-objects-join-read_access
 SELECT objects.object, objects.state, read_access.permissions 

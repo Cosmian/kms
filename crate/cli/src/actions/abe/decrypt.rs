@@ -33,8 +33,8 @@ impl DecryptAction {
             .input_file
             .file_name()
             .ok_or_else(|| eyre::eyre!("Could not get the name of the file to decrypt"))?;
-        let mut f = File::open(&self.input_file)
-            .with_context(|| "Can't read the file to decrypt".to_string())?;
+        let mut f =
+            File::open(&self.input_file).with_context(|| "Can't read the file to decrypt")?;
         let mut data = Vec::new();
         f.read_to_end(&mut data)
             .with_context(|| "Fail to read the file to decrypt")?;

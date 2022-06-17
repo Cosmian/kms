@@ -1,4 +1,5 @@
 pub(crate) mod abe;
+#[cfg(feature = "https")]
 pub(crate) mod certbot;
 pub(crate) mod cover_crypt;
 pub mod crud;

@@ -1,12 +1,7 @@
 use alcoholic_jwt::token_kid;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    config,
-    error::KmsError,
-    kms_ensure,
-    result::{KResult, KResultHelper},
-};
+use crate::{config, error::KmsError, kms_ensure, result::KResult};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserClaim {
@@ -34,15 +29,13 @@ pub(crate) fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> 
     );
     tracing::trace!("token {}", &token);
 
-    let authority = config::delegated_authority_domain()
-        .context("no authority: there should be no request to decode a JWT token")?;
-    let jwks =
-        config::jwks().context("no authority: there should be no request to decode a JWT token")?;
+    let authority = config::delegated_authority_domain();
+    let jwks = config::jwks();
 
     let validations = vec![
         alcoholic_jwt::Validation::Issuer(format!("https://{}/", authority)),
         alcoholic_jwt::Validation::SubjectPresent,
-        #[cfg(all(not(test), not(feature = "dev"), not(feature = "staging")))]
+        #[cfg(not(feature = "insecure"))]
         alcoholic_jwt::Validation::NotExpired,
         /* Validate Audience would imply to keep track of all existing audiences.
          * It could be done via Auth0-API-call: https://manage.auth0.com/dashboard/us/dev-1mbsbmin/apis/management/explorer

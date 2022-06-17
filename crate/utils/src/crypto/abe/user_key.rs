@@ -53,20 +53,18 @@ pub fn create_user_decryption_key_object(
     })?;
     let user_decryption_key_len = user_decryption_key_bytes.len();
 
-    let mut attributes = attributes
-        .map(|att| {
-            let mut att = att.clone();
-            att.object_type = ObjectType::PrivateKey;
-            att
-        })
-        .unwrap_or_else(|| Attributes::new(ObjectType::PrivateKey));
+    let mut attributes = attributes.map_or(Attributes::new(ObjectType::PrivateKey), |att| {
+        let mut att = att.clone();
+        att.object_type = ObjectType::PrivateKey;
+        att
+    });
     upsert_access_policy_in_attributes(&mut attributes, access_policy)?;
     Ok(Object::PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: CryptographicAlgorithm::ABE,
             key_format_type: KeyFormatType::AbeUserDecryptionKey,
             key_compression_type: None,
-            key_value: KeyValue::PlainText {
+            key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
                 attributes: Some(attributes),
             },
@@ -98,13 +96,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
             "Expected an ABE User Decryption Key".to_owned(),
         ))
     }
-    let (key_material, attributes) = key_block.key_value.plaintext().ok_or_else(|| {
-        KmipError::InvalidKmipObject(
-            ErrorReason::Invalid_Object_Type,
-            "Invalid plain text".to_owned(),
-        )
-    })?;
-    let bytes = match key_material {
+    let bytes = match &key_block.key_value.key_material {
         KeyMaterial::ByteString(b) => b.clone(),
         x => {
             return Err(KmipError::InvalidKmipObject(
@@ -113,9 +105,10 @@ pub(crate) fn unwrap_user_decryption_key_object(
             ))
         }
     };
-    let attributes = attributes
-        .as_ref()
-        .ok_or_else(|| {
+    let attributes = key_block
+        .key_value
+        .attributes()
+        .map_err(|_| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Attribute_Not_Found,
                 "The ABE Master private key should have attributes".to_owned(),

@@ -11,9 +11,7 @@ use actix_web::{
 use cosmian_kmip::kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{
-    kmip::kmip_server::KMSServer, kmip_endpoint, middlewares::auth::Auth, result::KResult,
-};
+use crate::{middlewares::auth::Auth, result::KResult, routes::endpoint, KMSServer};
 
 /// Test auth0 token (expired) -
 /// bnjjj: I know it's ugly but it's easy and sufficient for now
@@ -31,9 +29,9 @@ pub async fn test_app()
         App::new()
             .wrap(Auth)
             .app_data(Data::new(kms_server.clone()))
-            .service(kmip_endpoint::kmip)
-            .service(kmip_endpoint::access_insert)
-            .service(kmip_endpoint::access_delete),
+            .service(endpoint::kmip)
+            .service(endpoint::insert_access)
+            .service(endpoint::delete_access),
     )
     .await
 }
