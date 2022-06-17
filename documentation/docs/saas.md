@@ -18,7 +18,7 @@ The KMS enable you to check its trustworthiness. To do so, three routes are usef
 With these three routes, you can proceed a remote attestation on Microsoft Azure Service. Note that the report data of the quote is generated has follow:
 
 ```
-report_data = Sha256( Sha256(manifest) + nonce + certificate ))
+report_data = Sha256( Sha256(manifest) + nonce + certificate )
 ```
 
 Let's explain why:
@@ -28,3 +28,19 @@ Let's explain why:
 - The **manifest** assures you that the manifest you will read is the one the enclave is using and therefore *Cosmian* can't alter the hash of the trusted files.
 
 These three attributes enable you to fully verify the trustworthiness of the enclave we are running.
+
+## The database
+
+The database is encrypted and running inside the enclave. The key to decrypt the database are unknown by the KMS until the user sent it for each query, by adding the header: `KmsDatabaseSecret` following by the user secret token. 
+
+The key was firstly provided to the user by the KMS when the user registers a new `group`. A `group` has two properties:
+
+- The users belonging to the same group share the same key to decrypt the database. That is to say, the KMS splits the database into independant databases.
+- These same users can share KMS objects between each other.
+
+You can create a new group and getting the key by querying the KMS using `POST` method to the endpoint `/register`.
+
+*Cosmian* can't get the database keys at any points because of the three following properties:
+- the link between the KMS and the user is SSL-encrypted,
+- the memory of the KMS is located inside the enclave,
+- the ssl key material is located inside the enclave,
