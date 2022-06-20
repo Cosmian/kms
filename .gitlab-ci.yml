@@ -175,7 +175,6 @@ docker_timeout_build_and_push:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}_timeout
   script:
     - echo $IMAGE_TAG
-<<<<<<< HEAD
     - docker build . --build-arg FEATURES="--features timeout" --network=host -t $IMAGE_TAG
     - docker push $IMAGE_TAG
 
