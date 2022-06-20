@@ -418,10 +418,11 @@ impl KmsRestClient {
             headers.insert("KmsDatabaseSecret", HeaderValue::from_str(database_secret)?);
         }
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-        let mut builder = ClientBuilder::new();
-        if cfg!(feature = "insecure") {
-            builder = builder.danger_accept_invalid_certs(true);
-        }
+        let builder = ClientBuilder::new();
+
+        #[cfg(feature = "insecure")]
+        let builder = builder.danger_accept_invalid_certs(true);
+
         Ok(KmsRestClient {
             client: builder
                 .connect_timeout(Duration::from_secs(5))

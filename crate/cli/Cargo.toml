@@ -8,6 +8,10 @@ description = "CLI used to manage the Cosmian KMS."
 name = "cosmian_kms_cli"
 path = "src/main.rs"
 
+[features]
+insecure = ["cosmian_kms_client/insecure"]
+staging = ["insecure"]
+
 [dependencies]
 abe_gpsw = { version = "0.6.9", features = ["interfaces"] }
 base64 = "0.13"

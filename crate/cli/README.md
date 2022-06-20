@@ -13,6 +13,9 @@ This CLI supports several crypto-systems listed below:
 cargo run
 ```
 
+Features are:
+- `insecure` to allow self-signed ssl connection
+
 ## Usage
 
 First of all, you need to specify the `kms.json` with the `kms_server_url` and your `kms_access_token` such as:
