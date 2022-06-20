@@ -2,7 +2,10 @@ use std::{fs::File, io::prelude::*, path::PathBuf};
 
 use clap::StructOpt;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::abe::kmip_requests::build_decryption_request;
+use cosmian_kms_utils::crypto::{
+    abe::kmip_requests::build_decryption_request as abe_build_decryption_request,
+    cover_crypt::kmip_requests::build_decryption_request as cc_build_decryption_request,
+};
 use eyre::Context;
 
 /// Decrypts a file identified by its name and
@@ -27,7 +30,11 @@ pub struct DecryptAction {
 }
 
 impl DecryptAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+    pub async fn run(
+        &self,
+        client_connector: &KmsRestClient,
+        is_cover_crypt: bool,
+    ) -> eyre::Result<()> {
         // Read the file to decrypt
         let filename = self
             .input_file
@@ -40,11 +47,19 @@ impl DecryptAction {
             .with_context(|| "Fail to read the file to decrypt")?;
 
         // Create the kmip query
-        let decrypt_request = build_decryption_request(
-            &self.user_key_id,
-            self.resource_uid.as_bytes().to_vec(),
-            data,
-        );
+        let decrypt_request = if is_cover_crypt {
+            cc_build_decryption_request(
+                &self.user_key_id,
+                self.resource_uid.as_bytes().to_vec(),
+                data,
+            )
+        } else {
+            abe_build_decryption_request(
+                &self.user_key_id,
+                self.resource_uid.as_bytes().to_vec(),
+                data,
+            )
+        };
 
         // Query the KMS with your kmip data and get the key pair ids
         let decrypt_response = client_connector
