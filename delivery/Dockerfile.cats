@@ -43,4 +43,6 @@ RUN apt-get update \
 COPY --from=builder /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server
 COPY --from=builder /root/kms/target/release/cosmian_kms_cli /usr/bin/cosmian_kms_cli
 
+EXPOSE 9998
+
 ENTRYPOINT ["cosmian_kms_server"]
