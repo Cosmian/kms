@@ -381,6 +381,7 @@ mod tests {
     use crate::{database::Database, kms_bail, log_utils::log_init, result::KResult};
 
     #[actix_rt::test]
+    #[ignore]
     pub async fn test_owner() -> KResult<()> {
         log_init("info");
         let owner = "eyJhbGciOiJSUzI1Ni";
@@ -549,6 +550,7 @@ mod tests {
     }
 
     #[actix_rt::test]
+    #[ignore]
     pub async fn test_permissions() -> KResult<()> {
         log_init("info");
         let userid = "foo@example.org";
@@ -633,6 +635,7 @@ mod tests {
     }
 
     #[actix_rt::test]
+    #[ignore]
     pub async fn test_json_access() -> KResult<()> {
         log_init("debug");
         let owner = "eyJhbGciOiJSUzI1Ni";

@@ -268,7 +268,9 @@ pub async fn test_destroy_error() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// TODO: remove ignore when sqlcipher will supports json and operator `->`
 #[tokio::test]
+#[ignore]
 pub async fn test_rotate() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
