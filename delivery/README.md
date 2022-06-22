@@ -43,7 +43,7 @@ docker save kms:2.0.1 > kms.tar
 docker save postgres > postgres.tar
 ```
 
-## Package the delivry
+## Package the delivery
 
 ```
 zip -A delivery_`date +"%Y%m%d"`.zip kms.tar postgres.tar HOW-TO.md docker-compose.yml
