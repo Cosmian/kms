@@ -23,8 +23,8 @@ use cosmian_kms_utils::types::{
     UserAccessResponse,
 };
 use error::KmsClientError;
-use http::{HeaderMap, HeaderValue};
-use reqwest::{Client, ClientBuilder};
+use http::{HeaderMap, HeaderValue, StatusCode};
+use reqwest::{Client, ClientBuilder, Response};
 use serde::{Deserialize, Serialize};
 
 /// A struct implementing some of the 50+ operations a KMIP client should implement:
@@ -443,8 +443,7 @@ impl KmsRestClient {
         }
 
         // process error
-        let p = response.text().await?;
-
+        let p = handle_error(response).await?;
         Err(KmsClientError::RequestFailed(p))
     }
 
@@ -462,8 +461,7 @@ impl KmsRestClient {
         }
 
         // process error
-        let p = response.text().await?;
-
+        let p = handle_error(response).await?;
         Err(KmsClientError::RequestFailed(p))
     }
 
@@ -481,8 +479,7 @@ impl KmsRestClient {
         }
 
         // process error
-        let p = response.text().await?;
-
+        let p = handle_error(response).await?;
         Err(KmsClientError::RequestFailed(p))
     }
 
@@ -505,7 +502,7 @@ impl KmsRestClient {
         }
 
         // process error
-        let p = response.text().await?;
+        let p = handle_error(response).await?;
         Err(KmsClientError::RequestFailed(p))
     }
 }
@@ -514,4 +511,21 @@ impl KmsRestClient {
 pub struct ErrorPayload {
     pub error: String,
     pub messages: Option<Vec<String>>,
+}
+
+/// Some errors are returned by the Middleware without going through our own error manager.
+/// In that case, we make the error clearer here for the client.
+async fn handle_error(response: Response) -> Result<String, KmsClientError> {
+    let status = response.status();
+    let text = response.text().await?;
+
+    if !text.is_empty() {
+        Ok(text)
+    } else {
+        Ok(match status {
+            StatusCode::NOT_FOUND => "Server endpoint does not exist".to_string(),
+            StatusCode::UNAUTHORIZED => "Bad authorization token".to_string(),
+            _ => text,
+        })
+    }
 }

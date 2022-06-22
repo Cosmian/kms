@@ -127,6 +127,7 @@ impl KeyValue {
 
     pub fn raw_bytes(&self) -> Result<&[u8], KmipError> {
         match &self.key_material {
+            KeyMaterial::TransparentSymmetricKey { key } => Ok(key),
             KeyMaterial::ByteString(v) => Ok(v),
             other => Err(KmipError::KmipNotSupported(
                 ErrorReason::Invalid_Data_Type,
