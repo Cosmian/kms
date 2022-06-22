@@ -87,7 +87,7 @@ impl CachedSqlCipher {
         &self,
         uid: &str,
         userid: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectOperationTypes>> {
         use super::sqlite::fetch_permissions_;
 
@@ -130,7 +130,7 @@ impl Database for CachedSqlCipher {
         uid: Option<String>,
         owner: &str,
         object: &kmip_objects::Object,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -146,7 +146,7 @@ impl Database for CachedSqlCipher {
         &self,
         owner: &str,
         objects: &[(Option<String>, kmip_objects::Object)],
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -176,7 +176,7 @@ impl Database for CachedSqlCipher {
         uid: &str,
         owner: &str,
         operation_type: ObjectOperationTypes,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Option<(kmip_objects::Object, StateEnumeration)>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -193,7 +193,7 @@ impl Database for CachedSqlCipher {
         uid: &str,
         owner: &str,
         object: &kmip_objects::Object,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -210,7 +210,7 @@ impl Database for CachedSqlCipher {
         uid: &str,
         owner: &str,
         state: StateEnumeration,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -228,7 +228,7 @@ impl Database for CachedSqlCipher {
         owner: &str,
         object: &kmip_objects::Object,
         state: StateEnumeration,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -244,7 +244,7 @@ impl Database for CachedSqlCipher {
         &self,
         uid: &str,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -259,7 +259,7 @@ impl Database for CachedSqlCipher {
     async fn list_shared_objects(
         &self,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
         Vec<(
             UniqueIdentifier,
@@ -281,7 +281,7 @@ impl Database for CachedSqlCipher {
     async fn list_accesses(
         &self,
         uid: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -298,7 +298,7 @@ impl Database for CachedSqlCipher {
         uid: &str,
         userid: &str,
         operation_type: ObjectOperationTypes,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -315,7 +315,7 @@ impl Database for CachedSqlCipher {
         uid: &str,
         userid: &str,
         operation_type: ObjectOperationTypes,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -331,7 +331,7 @@ impl Database for CachedSqlCipher {
         &self,
         uid: &str,
         userid: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -348,7 +348,7 @@ impl Database for CachedSqlCipher {
         researched_attributes: Option<&Attributes>,
         state: Option<StateEnumeration>,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -395,10 +395,10 @@ mod tests {
         }
 
         let db = CachedSqlCipher::instantiate(&file_path).await?;
-        let params = Some(ExtraDatabaseParams {
+        let params = ExtraDatabaseParams {
             group_id: 0,
             key: String::from("password"),
-        });
+        };
 
         let symmetric_key = create_aes_symmetric_key(None)?;
         let uid = Uuid::new_v4().to_string();
@@ -408,16 +408,16 @@ mod tests {
             owner,
             &symmetric_key,
             StateEnumeration::Active,
-            &params,
+            Some(&params),
         )
         .await?;
 
-        assert!(db.is_object_owned_by(&uid, owner, &params).await?);
+        assert!(db.is_object_owned_by(&uid, owner, Some(&params)).await?);
 
         // Retrieve object with valid owner with `Get` operation type - OK
 
         match db
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, &params)
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, Some(&params))
             .await?
         {
             Some((obj, state)) => {
@@ -430,7 +430,12 @@ mod tests {
         // Retrieve object with invalid owner with `Get` operation type - ko
 
         if db
-            .retrieve(&uid, invalid_owner, ObjectOperationTypes::Get, &params)
+            .retrieve(
+                &uid,
+                invalid_owner,
+                ObjectOperationTypes::Get,
+                Some(&params),
+            )
             .await?
             .is_some()
         {
@@ -439,13 +444,13 @@ mod tests {
 
         // Add authorized `userid` to `read_access` table
 
-        db.insert_access(&uid, userid, ObjectOperationTypes::Get, &params)
+        db.insert_access(&uid, userid, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
         // Retrieve object with authorized `userid` with `Create` operation type - ko
 
         if db
-            .retrieve(&uid, userid, ObjectOperationTypes::Create, &params)
+            .retrieve(&uid, userid, ObjectOperationTypes::Create, Some(&params))
             .await
             .is_ok()
         {
@@ -455,7 +460,7 @@ mod tests {
         // Retrieve object with authorized `userid` with `Get` operation type - OK
 
         match db
-            .retrieve(&uid, userid, ObjectOperationTypes::Get, &params)
+            .retrieve(&uid, userid, ObjectOperationTypes::Get, Some(&params))
             .await?
         {
             Some((obj, state)) => {
@@ -467,24 +472,24 @@ mod tests {
 
         // Add authorized `userid2` to `read_access` table
 
-        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, &params)
+        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
         // Try to add same access again - OK
 
-        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, &params)
+        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
-        let objects = db.find(None, None, owner, &params).await?;
+        let objects = db.find(None, None, owner, Some(&params)).await?;
         assert_eq!(objects.len(), 1);
         let (o_uid, o_state, _) = &objects[0];
         assert_eq!(o_uid, &uid);
         assert_eq!(o_state, &StateEnumeration::Active);
 
-        let objects = db.find(None, None, userid2, &params).await?;
+        let objects = db.find(None, None, userid2, Some(&params)).await?;
         assert!(objects.is_empty());
 
-        let objects = db.list_shared_objects(userid2, &params).await?;
+        let objects = db.list_shared_objects(userid2, Some(&params)).await?;
         assert_eq!(
             objects,
             vec![(
@@ -498,7 +503,7 @@ mod tests {
         // Retrieve object with authorized `userid2` with `Create` operation type - ko
 
         if db
-            .retrieve(&uid, userid2, ObjectOperationTypes::Create, &params)
+            .retrieve(&uid, userid2, ObjectOperationTypes::Create, Some(&params))
             .await
             .is_ok()
         {
@@ -508,7 +513,7 @@ mod tests {
         // Retrieve object with authorized `userid` with `Get` operation type - OK
 
         match db
-            .retrieve(&uid, userid2, ObjectOperationTypes::Get, &params)
+            .retrieve(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
             .await?
         {
             Some((obj, state)) => {
@@ -521,7 +526,7 @@ mod tests {
         // Be sure we can still retrieve object with authorized `userid` with `Get` operation type - OK
 
         match db
-            .retrieve(&uid, userid, ObjectOperationTypes::Get, &params)
+            .retrieve(&uid, userid, ObjectOperationTypes::Get, Some(&params))
             .await?
         {
             Some((obj, state)) => {
@@ -533,13 +538,13 @@ mod tests {
 
         // Remove `userid2` authorization
 
-        db.delete_access(&uid, userid2, ObjectOperationTypes::Get, &params)
+        db.delete_access(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
         // Retrieve object with `userid2` with `Get` operation type - ko
 
         if db
-            .retrieve(&uid, userid2, ObjectOperationTypes::Get, &params)
+            .retrieve(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
             .await?
             .is_some()
         {
@@ -562,51 +567,51 @@ mod tests {
         }
 
         let db = CachedSqlCipher::instantiate(&file_path).await?;
-        let params = Some(ExtraDatabaseParams {
+        let params = ExtraDatabaseParams {
             group_id: 0,
             key: String::from("password"),
-        });
+        };
 
         let uid = Uuid::new_v4().to_string();
 
         // simple insert
-        db.insert_access(&uid, userid, ObjectOperationTypes::Get, &params)
+        db.insert_access(&uid, userid, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
-        let perms = db.perms(&uid, userid, &params).await?;
+        let perms = db.perms(&uid, userid, Some(&params)).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
         // double insert, expect no duplicate
-        db.insert_access(&uid, userid, ObjectOperationTypes::Get, &params)
+        db.insert_access(&uid, userid, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
-        let perms = db.perms(&uid, userid, &params).await?;
+        let perms = db.perms(&uid, userid, Some(&params)).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
         // insert other operation type
-        db.insert_access(&uid, userid, ObjectOperationTypes::Encrypt, &params)
+        db.insert_access(&uid, userid, ObjectOperationTypes::Encrypt, Some(&params))
             .await?;
 
-        let perms = db.perms(&uid, userid, &params).await?;
+        let perms = db.perms(&uid, userid, Some(&params)).await?;
         assert_eq!(
             perms,
             vec![ObjectOperationTypes::Get, ObjectOperationTypes::Encrypt]
         );
 
         // insert other `userid2`, check it is ok and it didn't change anything for `userid`
-        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, &params)
+        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
-        let perms = db.perms(&uid, userid2, &params).await?;
+        let perms = db.perms(&uid, userid2, Some(&params)).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
-        let perms = db.perms(&uid, userid, &params).await?;
+        let perms = db.perms(&uid, userid, Some(&params)).await?;
         assert_eq!(
             perms,
             vec![ObjectOperationTypes::Get, ObjectOperationTypes::Encrypt]
         );
 
-        let accesses = db.list_accesses(&uid, &params).await?;
+        let accesses = db.list_accesses(&uid, Some(&params)).await?;
         assert_eq!(
             accesses,
             vec![
@@ -622,13 +627,13 @@ mod tests {
         );
 
         // remove `Get` access for `userid`
-        db.delete_access(&uid, userid, ObjectOperationTypes::Get, &params)
+        db.delete_access(&uid, userid, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
-        let perms = db.perms(&uid, userid2, &params).await?;
+        let perms = db.perms(&uid, userid2, Some(&params)).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
-        let perms = db.perms(&uid, userid, &params).await?;
+        let perms = db.perms(&uid, userid, Some(&params)).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Encrypt]);
 
         Ok(())
@@ -646,10 +651,10 @@ mod tests {
         }
 
         let db = CachedSqlCipher::instantiate(&file_path).await?;
-        let params = Some(ExtraDatabaseParams {
+        let params = ExtraDatabaseParams {
             group_id: 0,
             key: String::from("password"),
-        });
+        };
 
         let symmetric_key = create_aes_symmetric_key(None)?;
         let uid = Uuid::new_v4().to_string();
@@ -659,16 +664,16 @@ mod tests {
             owner,
             &symmetric_key,
             StateEnumeration::Active,
-            &params,
+            Some(&params),
         )
         .await?;
 
-        assert!(db.is_object_owned_by(&uid, owner, &params).await?);
+        assert!(db.is_object_owned_by(&uid, owner, Some(&params)).await?);
 
         // Retrieve object with valid owner with `Get` operation type - OK
 
         match db
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, &params)
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, Some(&params))
             .await?
         {
             Some((obj, state)) => {
@@ -689,7 +694,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &params,
+                Some(&params),
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -706,7 +711,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &params,
+                Some(&params),
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -724,7 +729,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &params,
+                Some(&params),
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -741,7 +746,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &params,
+                Some(&params),
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -761,7 +766,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &params,
+                Some(&params),
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -778,7 +783,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &params,
+                Some(&params),
             )
             .await?;
         assert!(found.is_empty());
@@ -794,7 +799,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &params,
+                Some(&params),
             )
             .await?;
         assert!(found.is_empty());

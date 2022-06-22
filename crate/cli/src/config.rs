@@ -40,7 +40,7 @@ impl CliConf {
         let kms_connector = KmsRestClient::instantiate(
             &conf.kms_server_url,
             &conf.kms_access_token,
-            &conf.kms_database_secret,
+            conf.kms_database_secret.as_deref(),
         )
         .with_context(|| {
             format!(

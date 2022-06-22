@@ -403,7 +403,7 @@ impl KmsRestClient {
     pub fn instantiate(
         server_url: &str,
         bearer_token: &str,
-        database_secret: &Option<String>,
+        database_secret: Option<&str>,
     ) -> Result<KmsRestClient, KmsClientError> {
         let server_url = match server_url.strip_suffix('/') {
             Some(s) => s.to_string(),

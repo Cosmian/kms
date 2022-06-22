@@ -33,7 +33,7 @@ pub(crate) async fn rekey_keypair_cover_crypt<K>(
     master_private_key_uid: &str,
     attributes: &Attributes,
     owner: &str,
-    params: &Option<ExtraDatabaseParams>,
+    params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ReKeyKeyPairResponse>
 where
     K: KmipServer,
@@ -171,7 +171,7 @@ async fn renew_all_user_decryption_keys<K>(
     policy: &Policy,
     user_decryption_key_unique_identifiers: &[String],
     owner: &str,
-    params: &Option<ExtraDatabaseParams>,
+    params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()>
 where
     K: KmipServer,
@@ -218,7 +218,7 @@ pub(crate) async fn create_user_decryption_key<K>(
     kmip_server: &K,
     create_request: &Create,
     owner: &str,
-    params: &Option<ExtraDatabaseParams>,
+    params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object>
 where
     K: KmipServer,
@@ -230,7 +230,7 @@ async fn create_user_decryption_key_<K>(
     kmip_server: &K,
     create_attributes: &Attributes,
     owner: &str,
-    params: &Option<ExtraDatabaseParams>,
+    params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object>
 where
     K: KmipServer,
@@ -280,7 +280,7 @@ pub(crate) async fn create_user_decryption_key_pair<K>(
     kmip_server: &K,
     create_key_pair_request: &CreateKeyPair,
     owner: &str,
-    params: &Option<ExtraDatabaseParams>,
+    params: Option<&ExtraDatabaseParams>,
 ) -> KResult<KeyPair>
 where
     K: KmipServer,

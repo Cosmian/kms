@@ -84,63 +84,79 @@ pub async fn kmip(
     let ttlv_resp = match ttlv_req.tag.as_str() {
         "Create" => {
             let req = from_ttlv::<Create>(&ttlv_req)?;
-            let resp = kms_client.create(req, &owner, &database_params).await?;
+            let resp = kms_client
+                .create(req, &owner, database_params.as_ref())
+                .await?;
             to_ttlv(&resp)?
         }
         "CreateKeyPair" => {
             let req = from_ttlv::<CreateKeyPair>(&ttlv_req)?;
             let resp = kms_client
-                .create_key_pair(req, &owner, &database_params)
+                .create_key_pair(req, &owner, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
         "Decrypt" => {
             let req = from_ttlv::<Decrypt>(&ttlv_req)?;
-            let resp = kms_client.decrypt(req, &owner, &database_params).await?;
+            let resp = kms_client
+                .decrypt(req, &owner, database_params.as_ref())
+                .await?;
             to_ttlv(&resp)?
         }
         "Encrypt" => {
             let req = from_ttlv::<Encrypt>(&ttlv_req)?;
-            let resp = kms_client.encrypt(req, &owner, &database_params).await?;
+            let resp = kms_client
+                .encrypt(req, &owner, database_params.as_ref())
+                .await?;
             to_ttlv(&resp)?
         }
         "Get" => {
             let req = from_ttlv::<Get>(&ttlv_req)?;
-            let resp = kms_client.get(req, &owner, &database_params).await?;
+            let resp = kms_client
+                .get(req, &owner, database_params.as_ref())
+                .await?;
             to_ttlv(&resp)?
         }
         "GetAttributes" => {
             let req = from_ttlv::<GetAttributes>(&ttlv_req)?;
             let resp = kms_client
-                .get_attributes(req, &owner, &database_params)
+                .get_attributes(req, &owner, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
         "Import" => {
             let req = from_ttlv::<Import>(&ttlv_req)?;
-            let resp = kms_client.import(req, &owner, &database_params).await?;
+            let resp = kms_client
+                .import(req, &owner, database_params.as_ref())
+                .await?;
             to_ttlv(&resp)?
         }
         "Revoke" => {
             let req = from_ttlv::<Revoke>(&ttlv_req)?;
-            let resp = kms_client.revoke(req, &owner, &database_params).await?;
+            let resp = kms_client
+                .revoke(req, &owner, database_params.as_ref())
+                .await?;
             to_ttlv(&resp)?
         }
         "Locate" => {
             let req = from_ttlv::<Locate>(&ttlv_req)?;
-            let resp = kms_client.locate(req, &owner, &database_params).await?;
+            let resp = kms_client
+                .locate(req, &owner, database_params.as_ref())
+                .await?;
             to_ttlv(&resp)?
         }
         "ReKeyKeyPair" => {
             let req = from_ttlv::<ReKeyKeyPair>(&ttlv_req)?;
             let resp = kms_client
-                .rekey_keypair(req, &owner, &database_params)
+                .rekey_keypair(req, &owner, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
         "Destroy" => {
             let req = from_ttlv::<Destroy>(&ttlv_req)?;
-            let resp = kms_client.destroy(req, &owner, &database_params).await?;
+            let resp = kms_client
+                .destroy(req, &owner, database_params.as_ref())
+                .await?;
             to_ttlv(&resp)?
         }
         x => kms_bail!(KmsError::RouteNotFound(format!("Operation: {x}"))),
@@ -157,7 +173,7 @@ pub async fn list_owned_objects(
     let database_params = get_database_secrets(&req)?;
     let owner = get_owner(req)?;
     let list = kms_client
-        .list_owned_objects(&owner, &database_params)
+        .list_owned_objects(&owner, database_params.as_ref())
         .await?;
 
     Ok(Json(list))
@@ -172,7 +188,7 @@ pub async fn list_shared_objects(
     let database_params = get_database_secrets(&req)?;
     let owner = get_owner(req)?;
     let list = kms_client
-        .list_shared_objects(&owner, &database_params)
+        .list_shared_objects(&owner, database_params.as_ref())
         .await?;
 
     Ok(Json(list))
@@ -189,7 +205,7 @@ pub async fn list_accesses(
     let owner = get_owner(req)?;
     let object_id = object_id.to_owned().0;
     let list = kms_client
-        .list_accesses(&object_id, &owner, &database_params)
+        .list_accesses(&object_id, &owner, database_params.as_ref())
         .await?;
 
     Ok(Json(list))
@@ -207,7 +223,7 @@ pub async fn insert_access(
     let owner = get_owner(req)?;
 
     kms_client
-        .insert_access(&access, &owner, &database_params)
+        .insert_access(&access, &owner, database_params.as_ref())
         .await?;
     debug!(
         "Access granted on {:?} for {:?} to {}",
@@ -231,7 +247,7 @@ pub async fn delete_access(
     let owner = get_owner(req)?;
 
     kms_client
-        .delete_access(&access, &owner, &database_params)
+        .delete_access(&access, &owner, database_params.as_ref())
         .await?;
     debug!(
         "Access revoke on {:?} for {:?} to {}",
@@ -304,32 +320,26 @@ fn get_owner(req_http: HttpRequest) -> KResult<String> {
 
 fn get_database_secrets(req_http: &HttpRequest) -> KResult<Option<ExtraDatabaseParams>> {
     Ok(match db_params() {
-        DbParams::Sqlite(_, cached) => {
-            if cached {
-                let secrets = req_http
-                    .headers()
-                    .get("KmsDatabaseSecret")
-                    .and_then(|h| h.to_str().ok().map(|h| h.to_string()))
-                    .ok_or_else(|| {
-                        KmsError::Unauthorized(
-                            "Missing KmsDatabaseSecret header in the query".to_owned(),
-                        )
-                    })?;
-
-                let secrets = base64::decode(secrets).map_err(|_| {
-                    KmsError::Unauthorized("KmsDatabaseSecret header can't be read".to_owned())
+        DbParams::SqlCipher(_) => {
+            let secrets = req_http
+                .headers()
+                .get("KmsDatabaseSecret")
+                .and_then(|h| h.to_str().ok().map(|h| h.to_string()))
+                .ok_or_else(|| {
+                    KmsError::Unauthorized(
+                        "Missing KmsDatabaseSecret header in the query".to_owned(),
+                    )
                 })?;
 
-                Some(
-                    serde_json::from_slice::<ExtraDatabaseParams>(&secrets).map_err(|_| {
-                        KmsError::Unauthorized(
-                            "KMS_DATABASE_SECRET header can't be read".to_owned(),
-                        )
-                    })?,
-                )
-            } else {
-                None
-            }
+            let secrets = base64::decode(secrets).map_err(|_| {
+                KmsError::Unauthorized("KmsDatabaseSecret header can't be read".to_owned())
+            })?;
+
+            Some(
+                serde_json::from_slice::<ExtraDatabaseParams>(&secrets).map_err(|_| {
+                    KmsError::Unauthorized("KMS_DATABASE_SECRET header can't be read".to_owned())
+                })?,
+            )
         }
         _ => None,
     })

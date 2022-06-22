@@ -43,12 +43,9 @@ use crate::{
 impl KMS {
     pub async fn instantiate() -> KResult<KMS> {
         let db: Box<dyn Database + Sync + Send> = match db_params() {
-            DbParams::Sqlite(db_path, encrypted) => {
-                if encrypted {
-                    Box::new(CachedSqlCipher::instantiate(&db_path).await?)
-                } else {
-                    Box::new(SqlitePool::instantiate(&db_path.join("kms.db")).await?)
-                }
+            DbParams::SqlCipher(db_path) => Box::new(CachedSqlCipher::instantiate(&db_path).await?),
+            DbParams::Sqlite(db_path) => {
+                Box::new(SqlitePool::instantiate(&db_path.join("kms.db")).await?)
             }
             DbParams::Postgres(url) => Box::new(Pgsql::instantiate(&url).await?),
             DbParams::Mysql(url, user_cert) => Box::new(Sql::instantiate(&url, user_cert).await?),
@@ -61,7 +58,7 @@ impl KMS {
         &self,
         key_uid: &str,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn EnCipher>> {
         let (object, _state) = self
             .db
@@ -127,7 +124,7 @@ impl KMS {
         &self,
         object_uid: &str,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn DeCipher>> {
         let (object, _state) = self
             .db
@@ -294,7 +291,7 @@ impl KMS {
         &self,
         request: &Create,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Object> {
         let attributes = &request.attributes;
         match &attributes.cryptographic_algorithm {
@@ -362,7 +359,7 @@ impl KMS {
         &self,
         create_request: &Create,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Object> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;
@@ -398,7 +395,7 @@ impl KMS {
         &self,
         request: &CreateKeyPair,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<KeyPair> {
         trace!("Internal create key pair");
         let attributes = request

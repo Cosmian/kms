@@ -71,9 +71,10 @@ impl fmt::Debug for Config {
 
 #[derive(Clone, Debug)]
 pub enum DbParams {
-    // contains the dir of the db file (not the db file itself)
-    // If bool = true: cached sqlite is enable
-    Sqlite(PathBuf, bool),
+    // contains the dir of the sqlite db file (not the db file itself)
+    Sqlite(PathBuf),
+    // contains the dir of the sqlcipher db file (not the db file itself)
+    SqlCipher(PathBuf),
     // contains the postgres connection URL
     Postgres(String),
     // contains the mysql connection URL

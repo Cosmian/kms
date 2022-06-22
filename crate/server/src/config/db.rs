@@ -42,15 +42,10 @@ impl DBConfig {
                 mysql_url.to_string(),
                 self.user_cert_path.clone(),
             ))
+        } else if self.sqlcipher {
+            Ok(DbParams::SqlCipher(workspace.public_path.clone()))
         } else {
-            Ok(DbParams::Sqlite(
-                if self.sqlcipher {
-                    workspace.public_path.clone()
-                } else {
-                    workspace.shared_path.clone()
-                },
-                self.sqlcipher,
-            ))
+            Ok(DbParams::Sqlite(workspace.shared_path.clone()))
         }
     }
 }

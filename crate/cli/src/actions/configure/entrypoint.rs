@@ -16,8 +16,7 @@ impl ConfigureAction {
 
         println!(
             "New database configured. Use the following token (by adding it in your KMS_CLI_CONF) \
-             for further uses: {}",
-            token
+             for further uses: {token}"
         );
 
         println!(

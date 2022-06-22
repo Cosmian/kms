@@ -59,7 +59,7 @@ pub trait KmipServer {
         &self,
         request: Import,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ImportResponse>;
 
     /// This operation requests the server to generate a new symmetric key or
@@ -74,7 +74,7 @@ pub trait KmipServer {
         &self,
         request: Create,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<CreateResponse>;
 
     /// This operation requests the server to generate a new public/private key
@@ -96,7 +96,7 @@ pub trait KmipServer {
         &self,
         request: CreateKeyPair,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<CreateKeyPairResponse>;
 
     /// This operation requests that the server returns the Managed Object
@@ -124,7 +124,7 @@ pub trait KmipServer {
         &self,
         request: Get,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<GetResponse>;
 
     /// This operation requests one or more attributes associated with a Managed
@@ -141,7 +141,7 @@ pub trait KmipServer {
         &self,
         request: GetAttributes,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<GetAttributesResponse>;
 
     /// This operation requests the server to perform an encryption operation on
@@ -176,7 +176,7 @@ pub trait KmipServer {
         &self,
         request: Encrypt,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<EncryptResponse>;
 
     /// This operation requests the server to perform a decryption operation on
@@ -201,7 +201,7 @@ pub trait KmipServer {
         &self,
         request: Decrypt,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<DecryptResponse>;
 
     /// This operation requests that the server search for one or more Managed
@@ -298,7 +298,7 @@ pub trait KmipServer {
         &self,
         request: Locate,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<LocateResponse>;
 
     /// This operation requests the server to revoke a Managed Cryptographic
@@ -317,7 +317,7 @@ pub trait KmipServer {
         &self,
         request: Revoke,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<RevokeResponse>;
 
     // This request is used to generate a replacement key pair for an existing
@@ -349,7 +349,7 @@ pub trait KmipServer {
         &self,
         request: ReKeyKeyPair,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ReKeyKeyPairResponse>;
 
     /// This operation is used to indicate to the server that the key material
@@ -361,7 +361,7 @@ pub trait KmipServer {
         &self,
         request: Destroy,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<DestroyResponse>;
 
     /// Insert an access authorization for a user (identified by `access.userid`)
@@ -371,7 +371,7 @@ pub trait KmipServer {
         &self,
         access: &Access,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
     /// Remove an access authorization for a user (identified by `access.userid`)
@@ -381,7 +381,7 @@ pub trait KmipServer {
         &self,
         access: &Access,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
     /// Get all the access authorization for a given object
@@ -389,21 +389,21 @@ pub trait KmipServer {
         &self,
         object_id: &UniqueIdentifier,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UserAccessResponse>>;
 
     /// Get all the objects owned by a given user (the owner)
     async fn list_owned_objects(
         &self,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectOwnedResponse>>;
 
     /// Get all the objects shared to a given user
     async fn list_shared_objects(
         &self,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectSharedResponse>>;
 
     #[cfg(feature = "enclave")]
@@ -440,38 +440,36 @@ impl KmipServer for KMS {
     }
 
     async fn add_new_database(&self) -> KResult<String> {
-        if let DbParams::Sqlite(_, encrypted) = db_params() {
-            if encrypted {
-                // Generate a new group id
-                let uid: u128 = loop {
-                    let uid = Uuid::new_v4().to_u128_le();
-                    let database = self.db.filename(uid);
-                    if !database.exists() {
-                        // Create an empty file (to book the group id)
-                        fs::File::create(database)?;
-                        break uid
-                    }
-                };
+        if let DbParams::SqlCipher(_) = db_params() {
+            // Generate a new group id
+            let uid: u128 = loop {
+                let uid = Uuid::new_v4().to_u128_le();
+                let database = self.db.filename(uid);
+                if !database.exists() {
+                    // Create an empty file (to book the group id)
+                    fs::File::create(database)?;
+                    break uid
+                }
+            };
 
-                // Generate a new key
-                let mut key = [0; 32];
-                rand_bytes(&mut key).unwrap();
+            // Generate a new key
+            let mut key = [0; 32];
+            rand_bytes(&mut key)?;
 
-                // Encode ExtraDatabaseParams
-                let params = ExtraDatabaseParams {
-                    group_id: uid,
-                    key: encode(key),
-                };
+            // Encode ExtraDatabaseParams
+            let params = ExtraDatabaseParams {
+                group_id: uid,
+                key: encode(key),
+            };
 
-                let token = base64::encode(serde_json::to_string(&params)?);
+            let token = base64::encode(serde_json::to_string(&params)?);
 
-                // Create a dummy query to initialize the database
-                // Note: if we don't proceed like that, the password will be set at the first query of the user
-                // which let him put the password he wants.
-                self.db.find(None, None, "", &Some(params)).await?;
+            // Create a dummy query to initialize the database
+            // Note: if we don't proceed like that, the password will be set at the first query of the user
+            // which let him put the password he wants.
+            self.db.find(None, None, "", Some(&params)).await?;
 
-                return Ok(token)
-            }
+            return Ok(token)
         }
 
         kms_bail!(KmsError::InvalidRequest(
@@ -499,7 +497,7 @@ impl KmipServer for KMS {
         &self,
         request: Import,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ImportResponse> {
         let mut object = request.object;
 
@@ -570,7 +568,7 @@ impl KmipServer for KMS {
         &self,
         request: Create,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<CreateResponse> {
         trace!("Create: {}", serde_json::to_string(&request)?);
         if request.protection_storage_masks.is_some() {
@@ -579,7 +577,7 @@ impl KmipServer for KMS {
         let object = match &request.object_type {
             ObjectType::SymmetricKey => self.create_symmetric_key(&request, owner).await?,
             ObjectType::SecretData => self.create_secret_data(&request, owner, params).await?,
-            &ObjectType::PrivateKey => self.create_private_key(&request, owner, params).await?,
+            ObjectType::PrivateKey => self.create_private_key(&request, owner, params).await?,
             _ => {
                 kms_bail!(KmsError::NotSupported(format!(
                     "This server does not yet support creation of: {}",
@@ -602,7 +600,7 @@ impl KmipServer for KMS {
         &self,
         request: CreateKeyPair,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<CreateKeyPairResponse> {
         trace!("Create key pair: {}", serde_json::to_string(&request)?);
         if request.common_protection_storage_masks.is_some()
@@ -697,7 +695,7 @@ impl KmipServer for KMS {
         &self,
         request: Get,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<GetResponse> {
         trace!("Get: {}", serde_json::to_string(&request)?);
         let uid = request
@@ -723,7 +721,7 @@ impl KmipServer for KMS {
         &self,
         request: GetAttributes,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<GetAttributesResponse> {
         trace!("Get attributes: {}", serde_json::to_string(&request)?);
         let uid = request
@@ -804,7 +802,7 @@ impl KmipServer for KMS {
         &self,
         request: Encrypt,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<EncryptResponse> {
         // 1 - check correlation //TODO
         // 2b - if correlation pull encrypt oracle from cache
@@ -826,7 +824,7 @@ impl KmipServer for KMS {
         &self,
         request: Decrypt,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<DecryptResponse> {
         trace!("Decrypt: {:?}", &request.unique_identifier);
         let uid = request
@@ -843,7 +841,7 @@ impl KmipServer for KMS {
         &self,
         request: Locate,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<LocateResponse> {
         let uids = match &request.attributes.cryptographic_algorithm {
             Some(CryptographicAlgorithm::ABE) => match request.attributes.key_format_type {
@@ -910,7 +908,7 @@ impl KmipServer for KMS {
         &self,
         request: Revoke,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<RevokeResponse> {
         //TODO http://gitlab.cosmian.com/core/cosmian_server/-/issues/131  Reasons should be kept
         let uid = request
@@ -946,7 +944,7 @@ impl KmipServer for KMS {
         &self,
         request: ReKeyKeyPair,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ReKeyKeyPairResponse> {
         trace!("Internal rekey key pair");
 
@@ -1004,7 +1002,7 @@ impl KmipServer for KMS {
         &self,
         request: Destroy,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<DestroyResponse> {
         let uid = request
             .unique_identifier
@@ -1022,7 +1020,7 @@ impl KmipServer for KMS {
         &self,
         object_id: &UniqueIdentifier,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UserAccessResponse>> {
         // check the object identified by its `uid` is really owned by `owner`
         // only the owner can list the permission of an object
@@ -1041,7 +1039,7 @@ impl KmipServer for KMS {
     async fn list_owned_objects(
         &self,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectOwnedResponse>> {
         let list = self.db.find(None, None, owner, params).await?;
         let ids = list.into_iter().map(ObjectOwnedResponse::from).collect();
@@ -1051,7 +1049,7 @@ impl KmipServer for KMS {
     async fn list_shared_objects(
         &self,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectSharedResponse>> {
         let list = self.db.list_shared_objects(owner, params).await?;
         let ids = list.into_iter().map(ObjectSharedResponse::from).collect();
@@ -1062,7 +1060,7 @@ impl KmipServer for KMS {
         &self,
         access: &Access,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         let uid = access
             .unique_identifier
@@ -1094,7 +1092,7 @@ impl KmipServer for KMS {
         &self,
         access: &Access,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         let uid = access
             .unique_identifier

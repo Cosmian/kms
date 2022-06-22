@@ -34,7 +34,7 @@ sgx.nonpie_binary = true
 sgx.remote_attestation = true
 sgx.enclave_size = "16G"
 sgx.thread_num = 256
-sgx.debug = true
+sgx.debug = false
 
 sgx.isvprodid = 1
 sgx.isvsvn    = 10

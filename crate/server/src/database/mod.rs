@@ -54,7 +54,7 @@ pub(crate) trait Database {
         uid: Option<String>,
         owner: &str,
         object: &Object,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier>;
 
     /// Insert the provided Objects in the database in a transaction
@@ -66,7 +66,7 @@ pub(crate) trait Database {
         &self,
         owner: &str,
         objects: &[(Option<String>, Object)],
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>>;
 
     /// Retrieve an object from the database using `uid` and `owner`.
@@ -77,7 +77,7 @@ pub(crate) trait Database {
         uid: &str,
         owner: &str,
         query_read_access: ObjectOperationTypes,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Option<(Object, StateEnumeration)>>;
 
     async fn update_object(
@@ -85,7 +85,7 @@ pub(crate) trait Database {
         uid: &str,
         owner: &str,
         object: &Object,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
     async fn update_state(
@@ -93,7 +93,7 @@ pub(crate) trait Database {
         uid: &str,
         owner: &str,
         state: StateEnumeration,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
     /// upsert (update or create if not exsits)
@@ -103,20 +103,20 @@ pub(crate) trait Database {
         owner: &str,
         object: &Object,
         state: StateEnumeration,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
     async fn delete(
         &self,
         uid: &str,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
     async fn list_shared_objects(
         &self,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
         Vec<(
             UniqueIdentifier,
@@ -129,7 +129,7 @@ pub(crate) trait Database {
     async fn list_accesses(
         &self,
         uid: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>;
 
     /// Insert a `userid` to give `operation_type` access right for the object identified
@@ -139,7 +139,7 @@ pub(crate) trait Database {
         uid: &str,
         userid: &str,
         operation_type: ObjectOperationTypes,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
     /// Delete a `userid` to remove read access right for the object identified
@@ -149,7 +149,7 @@ pub(crate) trait Database {
         uid: &str,
         userid: &str,
         operation_type: ObjectOperationTypes,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
@@ -157,7 +157,7 @@ pub(crate) trait Database {
         &self,
         uid: &str,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool>;
 
     /// Return uid, state and attributes of the object identified by its owner,
@@ -167,7 +167,7 @@ pub(crate) trait Database {
         researched_attributes: Option<&Attributes>,
         state: Option<StateEnumeration>,
         owner: &str,
-        params: &Option<ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>>;
 }
 

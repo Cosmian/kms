@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc, RwLock,
@@ -31,6 +32,20 @@ pub struct KMSSqliteCacheItem {
     closed_at: u64,
     /// The index of the item inside the freeable cache
     freeable_cache_index: usize,
+}
+
+impl fmt::Debug for KMSSqliteCacheItem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("KMSSqliteCacheItem")
+            .field("group_ id", &self.key)
+            .field("inserted_at", &self.inserted_at)
+            .field("in_used", &self.in_used)
+            .field("last_used_at", &self.last_used_at)
+            .field("closed", &self.closed)
+            .field("closed_at", &self.closed_at)
+            .field("freeable_cache_index", &self.freeable_cache_index)
+            .finish()
+    }
 }
 
 /// Give the time sonce EPOCH in secs
@@ -202,6 +217,9 @@ impl KMSSqliteCache {
 
                 item.closed = true;
                 item.closed_at = _now();
+
+                info!("CachedSQLCipher: freeing = {item:?}");
+
                 Arc::clone(&item.sqlite)
             };
             // We are forced to design the code like that. We can't make an async call on a lock value

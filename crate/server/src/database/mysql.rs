@@ -480,7 +480,7 @@ impl Database for Sql {
         uid: Option<String>,
         owner: &str,
         object: &kmip_objects::Object,
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier> {
         create_(uid, owner, object, &self.pool).await
     }
@@ -489,7 +489,7 @@ impl Database for Sql {
         &self,
         owner: &str,
         objects: &[(Option<String>, kmip_objects::Object)],
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         let mut res = vec![];
         // let mut tx = self.pool.begin().await?;
@@ -511,7 +511,7 @@ impl Database for Sql {
         uid: &str,
         owner: &str,
         operation_type: ObjectOperationTypes,
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Option<(kmip_objects::Object, StateEnumeration)>> {
         retrieve_(uid, owner, operation_type, &self.pool).await
     }
@@ -521,7 +521,7 @@ impl Database for Sql {
         uid: &str,
         owner: &str,
         object: &kmip_objects::Object,
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         update_object_(uid, owner, object, &self.pool).await
     }
@@ -531,7 +531,7 @@ impl Database for Sql {
         uid: &str,
         owner: &str,
         state: StateEnumeration,
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         update_state_(uid, owner, state, &self.pool).await
     }
@@ -542,7 +542,7 @@ impl Database for Sql {
         owner: &str,
         object: &kmip_objects::Object,
         state: StateEnumeration,
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         upsert_(uid, owner, object, state, &self.pool).await
     }
@@ -551,7 +551,7 @@ impl Database for Sql {
         &self,
         uid: &str,
         owner: &str,
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         delete_(uid, owner, &self.pool).await
     }
@@ -559,7 +559,7 @@ impl Database for Sql {
     async fn list_shared_objects(
         &self,
         owner: &str,
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
         Vec<(
             UniqueIdentifier,
@@ -574,7 +574,7 @@ impl Database for Sql {
     async fn list_accesses(
         &self,
         uid: &str,
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>> {
         list_accesses_(&self.pool, uid).await
     }
@@ -584,7 +584,7 @@ impl Database for Sql {
         uid: &str,
         userid: &str,
         operation_type: ObjectOperationTypes,
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         insert_access_(uid, userid, operation_type, &self.pool).await
     }
@@ -594,7 +594,7 @@ impl Database for Sql {
         uid: &str,
         userid: &str,
         operation_type: ObjectOperationTypes,
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         delete_access_(uid, userid, operation_type, &self.pool).await
     }
@@ -603,7 +603,7 @@ impl Database for Sql {
         &self,
         uid: &str,
         owner: &str,
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
         is_object_owned_by_(uid, owner, &self.pool).await
     }
@@ -613,7 +613,7 @@ impl Database for Sql {
         researched_attributes: Option<&Attributes>,
         state: Option<StateEnumeration>,
         owner: &str,
-        _params: &Option<ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>> {
         find_(researched_attributes, state, owner, &self.pool).await
     }
@@ -652,7 +652,7 @@ mod tests {
                 &Uuid::new_v4().to_string(),
                 owner,
                 ObjectOperationTypes::Get,
-                &None,
+                None,
             )
             .await?
             .is_some()
@@ -664,11 +664,11 @@ mod tests {
         let mut symmetric_key = create_aes_symmetric_key(None)?;
         let uid = Uuid::new_v4().to_string();
         let uid_ = mysql
-            .create(Some(uid.clone()), owner, &symmetric_key, &None)
+            .create(Some(uid.clone()), owner, &symmetric_key, None)
             .await?;
         assert_eq!(&uid, &uid_);
         match mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
             .await?
         {
             Some((obj_, state_)) => {
@@ -685,11 +685,11 @@ mod tests {
         }];
 
         mysql
-            .update_object(&uid, owner, &symmetric_key, &None)
+            .update_object(&uid, owner, &symmetric_key, None)
             .await?;
 
         match mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
             .await?
         {
             Some((obj_, state_)) => {
@@ -703,11 +703,11 @@ mod tests {
         }
 
         mysql
-            .update_state(&uid, owner, StateEnumeration::Deactivated, &None)
+            .update_state(&uid, owner, StateEnumeration::Deactivated, None)
             .await?;
 
         match mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
             .await?
         {
             Some((obj_, state_)) => {
@@ -717,10 +717,10 @@ mod tests {
             None => kms_bail!("There should be an object"),
         }
 
-        mysql.delete(&uid, owner, &None).await?;
+        mysql.delete(&uid, owner, None).await?;
 
         if mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
             .await?
             .is_some()
         {
@@ -746,11 +746,11 @@ mod tests {
         let uid = Uuid::new_v4().to_string();
 
         mysql
-            .upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, &None)
+            .upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
             .await?;
 
         match mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
             .await?
         {
             Some((obj_, state_)) => {
@@ -772,12 +772,12 @@ mod tests {
                 owner,
                 &symmetric_key,
                 StateEnumeration::PreActive,
-                &None,
+                None,
             )
             .await?;
 
         match mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
             .await?
         {
             Some((obj_, state_)) => {
@@ -790,10 +790,10 @@ mod tests {
             None => kms_bail!("There should be an object"),
         }
 
-        mysql.delete(&uid, owner, &None).await?;
+        mysql.delete(&uid, owner, None).await?;
 
         if mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
             .await?
             .is_some()
         {
@@ -828,14 +828,14 @@ mod tests {
                     (Some(uid_1.clone()), symmetric_key_1.clone()),
                     (Some(uid_2.clone()), symmetric_key_2.clone()),
                 ],
-                &None,
+                None,
             )
             .await?;
 
         assert_eq!(&uid_1, &ids[0]);
         assert_eq!(&uid_2, &ids[1]);
 
-        let list = mysql.find(None, None, owner, &None).await?;
+        let list = mysql.find(None, None, owner, None).await?;
         match list.iter().find(|(id, _state, _attrs)| id == &uid_1) {
             Some((uid_, state_, _attrs)) => {
                 assert_eq!(&uid_1, uid_);
@@ -851,18 +851,18 @@ mod tests {
             None => todo!(),
         }
 
-        mysql.delete(&uid_1, owner, &None).await?;
-        mysql.delete(&uid_2, owner, &None).await?;
+        mysql.delete(&uid_1, owner, None).await?;
+        mysql.delete(&uid_2, owner, None).await?;
 
         if mysql
-            .retrieve(&uid_1, owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid_1, owner, ObjectOperationTypes::Get, None)
             .await?
             .is_some()
         {
             kms_bail!("The object 1 should have been deleted");
         }
         if mysql
-            .retrieve(&uid_2, owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid_2, owner, ObjectOperationTypes::Get, None)
             .await?
             .is_some()
         {
@@ -892,7 +892,7 @@ mod tests {
 
         // test non existent row (with very high probability)
         if mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
             .await?
             .is_some()
         {
@@ -900,15 +900,15 @@ mod tests {
         }
 
         mysql
-            .upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, &None)
+            .upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
             .await?;
 
-        assert!(mysql.is_object_owned_by(&uid, owner, &None).await?);
+        assert!(mysql.is_object_owned_by(&uid, owner, None).await?);
 
         // Retrieve object with valid owner with `Get` operation type - OK
 
         match mysql
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
             .await?
         {
             Some((obj, state)) => {
@@ -921,7 +921,7 @@ mod tests {
         // Retrieve object with invalid owner with `Get` operation type - ko
 
         if mysql
-            .retrieve(&uid, invalid_owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, invalid_owner, ObjectOperationTypes::Get, None)
             .await?
             .is_some()
         {
@@ -931,13 +931,13 @@ mod tests {
         // Add authorized `userid` to `read_access` table
 
         mysql
-            .insert_access(&uid, userid, ObjectOperationTypes::Get, &None)
+            .insert_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         // Retrieve object with authorized `userid` with `Create` operation type - ko
 
         if mysql
-            .retrieve(&uid, userid, ObjectOperationTypes::Create, &None)
+            .retrieve(&uid, userid, ObjectOperationTypes::Create, None)
             .await
             .is_ok()
         {
@@ -947,7 +947,7 @@ mod tests {
         // Retrieve object with authorized `userid` with `Get` operation type - OK
 
         match mysql
-            .retrieve(&uid, userid, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, userid, ObjectOperationTypes::Get, None)
             .await?
         {
             Some((obj, state)) => {
@@ -960,25 +960,25 @@ mod tests {
         // Add authorized `userid2` to `read_access` table
 
         mysql
-            .insert_access(&uid, userid2, ObjectOperationTypes::Get, &None)
+            .insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         // Try to add same access again - OK
 
         mysql
-            .insert_access(&uid, userid2, ObjectOperationTypes::Get, &None)
+            .insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
-        let objects = mysql.find(None, None, owner, &None).await?;
+        let objects = mysql.find(None, None, owner, None).await?;
         assert_eq!(objects.len(), 1);
         let (o_uid, o_state, _) = &objects[0];
         assert_eq!(o_uid, &uid);
         assert_eq!(o_state, &StateEnumeration::Active);
 
-        let objects = mysql.find(None, None, userid2, &None).await?;
+        let objects = mysql.find(None, None, userid2, None).await?;
         assert!(objects.is_empty());
 
-        let objects = mysql.list_shared_objects(userid2, &None).await?;
+        let objects = mysql.list_shared_objects(userid2, None).await?;
         assert_eq!(
             objects,
             vec![(
@@ -992,7 +992,7 @@ mod tests {
         // Retrieve object with authorized `userid2` with `Create` operation type - ko
 
         if mysql
-            .retrieve(&uid, userid2, ObjectOperationTypes::Create, &None)
+            .retrieve(&uid, userid2, ObjectOperationTypes::Create, None)
             .await
             .is_ok()
         {
@@ -1002,7 +1002,7 @@ mod tests {
         // Retrieve object with authorized `userid` with `Get` operation type - OK
 
         match mysql
-            .retrieve(&uid, userid2, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?
         {
             Some((obj, state)) => {
@@ -1015,7 +1015,7 @@ mod tests {
         // Be sure we can still retrieve object with authorized `userid` with `Get` operation type - OK
 
         match mysql
-            .retrieve(&uid, userid, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, userid, ObjectOperationTypes::Get, None)
             .await?
         {
             Some((obj, state)) => {
@@ -1028,13 +1028,13 @@ mod tests {
         // Remove `userid2` authorization
 
         mysql
-            .delete_access(&uid, userid2, ObjectOperationTypes::Get, &None)
+            .delete_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         // Retrieve object with `userid2` with `Get` operation type - ko
 
         if mysql
-            .retrieve(&uid, userid2, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?
             .is_some()
         {
@@ -1058,7 +1058,7 @@ mod tests {
 
         // simple insert
         mysql
-            .insert_access(&uid, userid, ObjectOperationTypes::Get, &None)
+            .insert_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = mysql.perms(&uid, userid).await?;
@@ -1066,7 +1066,7 @@ mod tests {
 
         // double insert, expect no duplicate
         mysql
-            .insert_access(&uid, userid, ObjectOperationTypes::Get, &None)
+            .insert_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = mysql.perms(&uid, userid).await?;
@@ -1074,7 +1074,7 @@ mod tests {
 
         // insert other operation type
         mysql
-            .insert_access(&uid, userid, ObjectOperationTypes::Encrypt, &None)
+            .insert_access(&uid, userid, ObjectOperationTypes::Encrypt, None)
             .await?;
 
         let perms = mysql.perms(&uid, userid).await?;
@@ -1085,7 +1085,7 @@ mod tests {
 
         // insert other `userid2`, check it is ok and it didn't change anything for `userid`
         mysql
-            .insert_access(&uid, userid2, ObjectOperationTypes::Get, &None)
+            .insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = mysql.perms(&uid, userid2).await?;
@@ -1097,7 +1097,7 @@ mod tests {
             vec![ObjectOperationTypes::Get, ObjectOperationTypes::Encrypt]
         );
 
-        let accesses = mysql.list_accesses(&uid, &None).await?;
+        let accesses = mysql.list_accesses(&uid, None).await?;
         assert_eq!(
             accesses,
             vec![
@@ -1114,7 +1114,7 @@ mod tests {
 
         // remove `Get` access for `userid`
         mysql
-            .delete_access(&uid, userid, ObjectOperationTypes::Get, &None)
+            .delete_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = mysql.perms(&uid, userid2).await?;
@@ -1143,15 +1143,15 @@ mod tests {
         let symmetric_key = create_aes_symmetric_key(None)?;
         let uid = Uuid::new_v4().to_string();
 
-        db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, &None)
+        db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
             .await?;
 
-        assert!(db.is_object_owned_by(&uid, owner, &None).await?);
+        assert!(db.is_object_owned_by(&uid, owner, None).await?);
 
         // Retrieve object with valid owner with `Get` operation type - OK
 
         match db
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, &None)
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
             .await?
         {
             Some((obj, state)) => {
@@ -1172,7 +1172,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &None,
+                None,
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -1189,7 +1189,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &None,
+                None,
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -1207,7 +1207,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &None,
+                None,
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -1224,7 +1224,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &None,
+                None,
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -1244,7 +1244,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &None,
+                None,
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -1261,7 +1261,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &None,
+                None,
             )
             .await?;
         assert!(found.is_empty());
@@ -1277,7 +1277,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
-                &None,
+                None,
             )
             .await?;
         assert!(found.is_empty());
