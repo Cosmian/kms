@@ -40,7 +40,7 @@ The key was firstly provided to the user by the KMS when the user registers a ne
 
 You can create a new group and getting the key by querying the KMS using `POST` method to the endpoint `/register`.
 
-*Cosmian* can't get the database keys at any points because of the three following properties:
+*Cosmian* can't get the database keys at any point because of the three following properties:
 - the link between the KMS and the user is SSL-encrypted,
 - the memory of the KMS is located inside the enclave,
 - the ssl key material is located inside the enclave,

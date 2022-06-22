@@ -22,7 +22,7 @@ impl ConfigureAction {
 
         println!(
             "You need to remember it. The KMS does not! If you loose it, your KMS database can't \
-             be recover"
+             be recovered"
         );
 
         Ok(())
