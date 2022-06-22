@@ -7,6 +7,7 @@ version = "0.1.1"
 [features]
 insecure = []
 
+
 [dependencies]
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils" }

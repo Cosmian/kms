@@ -118,7 +118,17 @@ The files you can manually verify are:
 ## Testing
 
 ```
-cargo test
+cargo build --features dev  --no-default-features --bin cosmian_kms_cli
+cargo test -p cosmian_kms_cli
 ```
 
 A kms server is started by the test. Make sure, you don't start another one by yourself.
+
+You can also test using a remote kms running inside an enclave. First, generate and start a docker as describe in [README.md](../../enclave/README.md).
+
+Then:
+
+```
+cargo build --features staging  --no-default-features --bin cosmian_kms_cli
+cargo test --features staging --no-default-features -p cosmian_kms_cli
+```

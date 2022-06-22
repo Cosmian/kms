@@ -34,6 +34,7 @@ tokio = { version = "1.0", features = ["full"] }
 
 [dev-dependencies]
 assert_cmd = "2.0"
+cosmian_kms_client = { path = "../client", features = ["insecure"], default-features = false  }
 cosmian_kms_server = { path = "../server", features = ["dev"], default-features = false }
 file_diff = "1.0.0"
 predicates = "2.1"

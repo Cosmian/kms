@@ -27,9 +27,9 @@ pub struct WorkspaceConfig {
 impl Default for WorkspaceConfig {
     fn default() -> Self {
         WorkspaceConfig {
-            public_path: PathBuf::from("."),
-            shared_path: PathBuf::from("."),
-            private_path: PathBuf::from("."),
+            public_path: PathBuf::from("/tmp"),
+            shared_path: PathBuf::from("/tmp"),
+            private_path: PathBuf::from("/tmp"),
             tmp_path: PathBuf::from("/tmp"),
         }
     }
