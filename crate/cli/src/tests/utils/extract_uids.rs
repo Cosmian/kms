@@ -27,7 +27,7 @@ pub fn extract_user_key(text: &str) -> Option<&str> {
     extract_uid(text, "Decryption user key unique identifier")
 }
 
-/// Extract the key_uid (prefixed by a pattern) from a text
+/// Extract the database secret from a text
 pub fn extract_database_secret(text: &str) -> Option<&str> {
     let formatted = r"for further uses: (?P<uid>[a-zA-Z0-9=]+)$".to_string();
     let uid_regex: Regex = RegexBuilder::new(formatted.as_str())

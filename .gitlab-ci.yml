@@ -82,31 +82,31 @@ cargo_audit:
 #
 # Coverage
 #
-coverage:
-  stage: prebuild
-  artifacts:
-    paths:
-      - cobertura.xml
-    expire_in: 3 mos
-  retry: 1
-  allow_failure: true
-  only:
-    refs:
-      - main
-  cache:
-    key: "${CI_COMMIT_REF_SLUG}"
-    policy: pull
-    paths:
-      - $CARGO_HOME
-      - $SCCACHE_DIR
-  before_script:
-    - source /root/bashrc
-    - sccache -s
-    - cargo tarpaulin --version
-  script:
-    - cargo coverage
-    - sccache -s
-  coverage: /^\d+.\d+% coverage/
+# coverage:
+#   stage: prebuild
+#   artifacts:
+#     paths:
+#       - cobertura.xml
+#     expire_in: 3 mos
+#   retry: 1
+#   allow_failure: true
+#   only:
+#     refs:
+#       - main
+#   cache:
+#     key: "${CI_COMMIT_REF_SLUG}"
+#     policy: pull
+#     paths:
+#       - $CARGO_HOME
+#       - $SCCACHE_DIR
+#   before_script:
+#     - source /root/bashrc
+#     - sccache -s
+#     - cargo tarpaulin --version
+#   script:
+#     - cargo coverage
+#     - sccache -s
+#   coverage: /^\d+.\d+% coverage/
 
 #
 # Build and tests everything on demand
@@ -154,7 +154,7 @@ unused_deps:
     - sccache -s
 
 #
-# Build a docker to test staging feature
+# Build a docker to test the staging feature
 #
 docker_staging_build_and_push:
   image: docker:19.03.15
