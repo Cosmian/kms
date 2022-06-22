@@ -22,7 +22,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 COPY . /root/kms
 
 WORKDIR /root/kms
-RUN /root/.cargo/bin/cargo build --release --features dev
+RUN /root/.cargo/bin/cargo build --release --no-default-features
 
 #
 # KMS Server
@@ -42,5 +42,7 @@ RUN apt-get update \
 
 COPY --from=builder /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server
 COPY --from=builder /root/kms/target/release/cosmian_kms_cli /usr/bin/cosmian_kms_cli
+
+EXPOSE 9998
 
 ENTRYPOINT ["cosmian_kms_server"]

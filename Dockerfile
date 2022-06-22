@@ -1,6 +1,6 @@
 FROM ubuntu:21.10 as builder
 
-ARG TIMEOUT
+ARG FEATURES
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /root
 
@@ -22,7 +22,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 COPY . /root/kms
 
 WORKDIR /root/kms
-RUN /root/.cargo/bin/cargo build --release ${TIMEOUT}
+RUN /root/.cargo/bin/cargo build --release ${FEATURES}
 
 #
 # KMS Server
@@ -41,5 +41,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server
+
+EXPOSE 9998
 
 ENTRYPOINT ["cosmian_kms_server"]

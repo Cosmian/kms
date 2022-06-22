@@ -1,14 +1,30 @@
 use std::path::PathBuf;
 
-use abe_gpsw::core::policy::{AccessPolicy, Attribute};
+use abe_gpsw::core::policy::{AccessPolicy as AbeAccessPolicy, Attribute as AbeAttribute};
 use clap::StructOpt;
 use cosmian_kms_client::{kmip::kmip_types::RevocationReason, KmsRestClient};
-use cosmian_kms_utils::crypto::abe::kmip_requests::{
-    build_create_master_keypair_request, build_create_user_decryption_private_key_request,
-    build_destroy_key_request, build_rekey_keypair_request,
-    build_revoke_user_decryption_key_request,
+use cosmian_kms_utils::crypto::{
+    abe::kmip_requests::{
+        build_create_master_keypair_request as abe_build_create_master_keypair_request,
+        build_create_user_decryption_private_key_request as abe_build_create_user_decryption_private_key_request,
+        build_destroy_key_request as abe_build_destroy_key_request,
+        build_rekey_keypair_request as abe_build_rekey_keypair_request,
+        build_revoke_user_decryption_key_request as abe_build_revoke_user_decryption_key_request,
+    },
+    cover_crypt::kmip_requests::{
+        build_create_master_keypair_request as cc_build_create_master_keypair_request,
+        build_create_user_decryption_private_key_request as cc_build_create_user_decryption_private_key_request,
+        build_destroy_key_request as cc_build_destroy_key_request,
+        build_rekey_keypair_request as cc_build_rekey_keypair_request,
+        build_revoke_user_decryption_key_request as cc_build_revoke_user_decryption_key_request,
+    },
+};
+use cover_crypt::policies::{
+    AccessPolicy as CoverCryptAccessPolicy, Attribute as CoverCryptAttribute,
 };
 use eyre::Context;
+
+use crate::actions::abe::policy::CLIPolicy;
 
 /// Create a new ABE master access key pair for a given policy.
 /// The master public key is used to encrypt the files and can be safely shared.
@@ -32,12 +48,19 @@ pub struct NewMasterKeyPairAction {
 }
 
 impl NewMasterKeyPairAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+    pub async fn run(
+        &self,
+        client_connector: &KmsRestClient,
+        is_cover_crypt: bool,
+    ) -> eyre::Result<()> {
         // Parse the json policy file
-        let policy = super::policy::policy_from_file(&self.policy_file)?;
+        let policy = super::policy::policy_from_file(&self.policy_file, is_cover_crypt)?;
 
         // Create the kmip query
-        let create_key_pair = build_create_master_keypair_request(&policy)?;
+        let create_key_pair = match policy {
+            CLIPolicy::CoverCrypt(p) => cc_build_create_master_keypair_request(&p)?,
+            CLIPolicy::Abe(p) => abe_build_create_master_keypair_request(&p)?,
+        };
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = client_connector
@@ -74,14 +97,25 @@ pub struct NewUserKeyAction {
 }
 
 impl NewUserKeyAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+    pub async fn run(
+        &self,
+        client_connector: &KmsRestClient,
+        is_cover_crypt: bool,
+    ) -> eyre::Result<()> {
         // Parse self.access_policy
-        let policy = AccessPolicy::from_boolean_expression(&self.access_policy)
-            .with_context(|| "Bad access policy definition")?;
 
         // Create the kmip query
-        let create_user_key =
-            build_create_user_decryption_private_key_request(&policy, &self.secret_key_id)?;
+        let create_user_key = if is_cover_crypt {
+            let policy = CoverCryptAccessPolicy::from_boolean_expression(&self.access_policy)
+                .with_context(|| "Bad access policy definition")?;
+
+            cc_build_create_user_decryption_private_key_request(&policy, &self.secret_key_id)?
+        } else {
+            let policy = AbeAccessPolicy::from_boolean_expression(&self.access_policy)
+                .with_context(|| "Bad access policy definition")?;
+
+            abe_build_create_user_decryption_private_key_request(&policy, &self.secret_key_id)?
+        };
 
         // Query the KMS with your kmip data
         let create_response = client_connector
@@ -118,12 +152,23 @@ pub struct RevokeUserKeyAction {
 }
 
 impl RevokeUserKeyAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+    pub async fn run(
+        &self,
+        client_connector: &KmsRestClient,
+        is_cover_crypt: bool,
+    ) -> eyre::Result<()> {
         // Create the kmip query
-        let revoke_query = build_revoke_user_decryption_key_request(
-            &self.user_key_id,
-            RevocationReason::TextString(self.revocation_reason.to_owned()),
-        )?;
+        let revoke_query = if is_cover_crypt {
+            cc_build_revoke_user_decryption_key_request(
+                &self.user_key_id,
+                RevocationReason::TextString(self.revocation_reason.to_owned()),
+            )?
+        } else {
+            abe_build_revoke_user_decryption_key_request(
+                &self.user_key_id,
+                RevocationReason::TextString(self.revocation_reason.to_owned()),
+            )?
+        };
 
         // Query the KMS with your kmip data
         let revoke_response = client_connector
@@ -156,16 +201,31 @@ pub struct RotateAttributeAction {
 }
 
 impl RotateAttributeAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
-        // Parse the attributes
-        let attributes = self
-            .attributes
-            .iter()
-            .map(|s| Attribute::try_from(s.as_str()).map_err(Into::into))
-            .collect::<eyre::Result<Vec<Attribute>>>()?;
+    pub async fn run(
+        &self,
+        client_connector: &KmsRestClient,
+        is_cover_crypt: bool,
+    ) -> eyre::Result<()> {
+        let rotate_query = if is_cover_crypt {
+            // Parse the attributes
+            let attributes = self
+                .attributes
+                .iter()
+                .map(|s| CoverCryptAttribute::try_from(s.as_str()).map_err(Into::into))
+                .collect::<eyre::Result<Vec<CoverCryptAttribute>>>()?;
 
-        // Create the kmip query
-        let rotate_query = build_rekey_keypair_request(&self.secret_key_id, attributes)?;
+            // Create the kmip query
+            cc_build_rekey_keypair_request(&self.secret_key_id, attributes)?
+        } else {
+            // Parse the attributes
+            let attributes = self
+                .attributes
+                .iter()
+                .map(|s| AbeAttribute::try_from(s.as_str()).map_err(Into::into))
+                .collect::<eyre::Result<Vec<AbeAttribute>>>()?;
+
+            abe_build_rekey_keypair_request(&self.secret_key_id, attributes)?
+        };
 
         // Query the KMS with your kmip data
         let rotate_response = client_connector
@@ -192,9 +252,17 @@ pub struct DestroyUserKeyAction {
 }
 
 impl DestroyUserKeyAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+    pub async fn run(
+        &self,
+        client_connector: &KmsRestClient,
+        is_cover_crypt: bool,
+    ) -> eyre::Result<()> {
         // Create the kmip query
-        let destroy_query = build_destroy_key_request(&self.user_key_id)?;
+        let destroy_query = if is_cover_crypt {
+            cc_build_destroy_key_request(&self.user_key_id)?
+        } else {
+            abe_build_destroy_key_request(&self.user_key_id)?
+        };
 
         // Query the KMS with your kmip data
         let destroy_response = client_connector

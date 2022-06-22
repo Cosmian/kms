@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use super::attributes::{
     access_policy_as_vendor_attribute, attributes_as_vendor_attribute, policy_as_vendor_attribute,
 };
+
 /// Build a `CreateKeyPair` request for an ABE Master Key
 pub fn build_create_master_keypair_request(policy: &Policy) -> Result<CreateKeyPair, KmipError> {
     Ok(CreateKeyPair {

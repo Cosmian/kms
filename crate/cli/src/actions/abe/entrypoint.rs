@@ -27,15 +27,15 @@ pub enum AbeAction {
 impl AbeAction {
     pub async fn process(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         match self {
-            AbeAction::Init(action) => action.run(client_connector).await?,
-            AbeAction::Rotate(action) => action.run(client_connector).await?,
-            AbeAction::New(action) => action.run(client_connector).await?,
+            AbeAction::Init(action) => action.run(client_connector, false).await?,
+            AbeAction::Rotate(action) => action.run(client_connector, false).await?,
+            AbeAction::New(action) => action.run(client_connector, false).await?,
             // For the time being, Revoke an user decryption key is not possible. We dismiss the action in the cli.
             // Uncomment the followings to activate that command.
             AbeAction::Revoke(_) => eyre::bail!("Revokation is not supported yet"), // action.run(client_connector).await?,
-            AbeAction::Destroy(action) => action.run(client_connector).await?,
-            AbeAction::Encrypt(action) => action.run(client_connector).await?,
-            AbeAction::Decrypt(action) => action.run(client_connector).await?,
+            AbeAction::Destroy(action) => action.run(client_connector, false).await?,
+            AbeAction::Encrypt(action) => action.run(client_connector, false).await?,
+            AbeAction::Decrypt(action) => action.run(client_connector, false).await?,
         };
 
         Ok(())

@@ -462,7 +462,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-p",
         extract_public_key(stdout).unwrap(),
-        "notexist",
+        "test_data/plain.txt",
     ]);
     cmd.assert()
         .failure()
