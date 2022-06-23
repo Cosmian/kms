@@ -22,7 +22,7 @@ use cosmian_kms_utils::{
         },
         tfhe::{self, TFHEKeyCreateRequest},
     },
-    types::ObjectOperationTypes,
+    types::{ExtraDatabaseParams, ObjectOperationTypes},
     DeCipher, EnCipher, KeyPair,
 };
 use cosmian_mcfe::lwe;
@@ -32,7 +32,9 @@ use tracing::trace;
 use super::KMS;
 use crate::{
     config::{db_params, DbParams},
-    database::{mysql::Sql, pgsql::Pgsql, sqlite::SqlitePool, Database},
+    database::{
+        cached_sqlcipher::CachedSqlCipher, mysql::Sql, pgsql::Pgsql, sqlite::SqlitePool, Database,
+    },
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -41,7 +43,10 @@ use crate::{
 impl KMS {
     pub async fn instantiate() -> KResult<KMS> {
         let db: Box<dyn Database + Sync + Send> = match db_params() {
-            DbParams::Sqlite(db_path) => Box::new(SqlitePool::instantiate(&db_path).await?),
+            DbParams::SqlCipher(db_path) => Box::new(CachedSqlCipher::instantiate(&db_path).await?),
+            DbParams::Sqlite(db_path) => {
+                Box::new(SqlitePool::instantiate(&db_path.join("kms.db")).await?)
+            }
             DbParams::Postgres(url) => Box::new(Pgsql::instantiate(&url).await?),
             DbParams::Mysql(url, user_cert) => Box::new(Sql::instantiate(&url, user_cert).await?),
         };
@@ -49,10 +54,15 @@ impl KMS {
         Ok(KMS { db })
     }
 
-    pub async fn get_encipher(&self, key_uid: &str, owner: &str) -> KResult<Box<dyn EnCipher>> {
+    pub async fn get_encipher(
+        &self,
+        key_uid: &str,
+        owner: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<Box<dyn EnCipher>> {
         let (object, _state) = self
             .db
-            .retrieve(key_uid, owner, ObjectOperationTypes::Encrypt)
+            .retrieve(key_uid, owner, ObjectOperationTypes::Encrypt, params)
             .await?
             .ok_or_else(|| {
                 KmsError::ItemNotFound(format!("Object with uid: {key_uid} not found"))
@@ -114,10 +124,11 @@ impl KMS {
         &self,
         object_uid: &str,
         owner: &str,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn DeCipher>> {
         let (object, _state) = self
             .db
-            .retrieve(object_uid, owner, ObjectOperationTypes::Decrypt)
+            .retrieve(object_uid, owner, ObjectOperationTypes::Decrypt, params)
             .await?
             .ok_or_else(|| {
                 KmsError::ItemNotFound(format!("Object with uid: {object_uid} not found"))
@@ -280,6 +291,7 @@ impl KMS {
         &self,
         request: &Create,
         owner: &str,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Object> {
         let attributes = &request.attributes;
         match &attributes.cryptographic_algorithm {
@@ -296,6 +308,7 @@ impl KMS {
                             &request.master_secret_key_uid,
                             owner,
                             ObjectOperationTypes::Create,
+                            params,
                         )
                         .await?
                         .ok_or_else(|| {
@@ -346,6 +359,7 @@ impl KMS {
         &self,
         create_request: &Create,
         owner: &str,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Object> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;
@@ -356,14 +370,16 @@ impl KMS {
                 )),
                 Some(KeyFormatType::AbeUserDecryptionKey) => {
                     trace!("Creating ABE user decryption key");
-                    super::abe::create_user_decryption_key(self, create_request, owner).await
+                    super::abe::create_user_decryption_key(self, create_request, owner, params)
+                        .await
                 }
                 Some(other) => kms_bail!(KmsError::NotSupported(format!(
                     "Unable to generate an ABE private key for format: {other:?}"
                 ))),
             },
             Some(CryptographicAlgorithm::CoverCrypt) => {
-                super::cover_crypt::create_user_decryption_key(self, create_request, owner).await
+                super::cover_crypt::create_user_decryption_key(self, create_request, owner, params)
+                    .await
             }
             Some(other) => kms_bail!(KmsError::NotSupported(format!(
                 "The creation of a private key for algorithm: {other:?} is not supported"
@@ -379,6 +395,7 @@ impl KMS {
         &self,
         request: &CreateKeyPair,
         owner: &str,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<KeyPair> {
         trace!("Internal create key pair");
         let attributes = request
@@ -420,7 +437,7 @@ impl KMS {
                         .map_err(Into::into)
                 }
                 Some(KeyFormatType::AbeUserDecryptionKey) => {
-                    super::abe::create_user_decryption_key_pair(self, request, owner).await
+                    super::abe::create_user_decryption_key_pair(self, request, owner, params).await
                 }
                 Some(other) => kms_bail!(KmsError::NotSupported(format!(
                     "Unable to generate an ABE keypair for format: {other:?}"

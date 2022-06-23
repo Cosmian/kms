@@ -18,7 +18,8 @@ kms.manifest: kms.manifest.template
 	gramine-manifest \
 		-Dlog_level=$(GRAMINE_LOG_LEVEL) \
 		-Darch_libdir=$(ARCH_LIBDIR) \
-		-Dentrypoint="./scripts"  \
+		-Dentrypoint_abs="$(PWD)/scripts"  \
+		-Dentrypoint="/scripts"  \
 		$< >$@
 
 kms.manifest.sgx: kms.manifest
@@ -27,7 +28,6 @@ kms.manifest.sgx: kms.manifest
 		--manifest kms.manifest \
 		--output $@
 	cp $@ public_data/
-
 
 kms.sig: kms.manifest.sgx
 

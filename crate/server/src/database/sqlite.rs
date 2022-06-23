@@ -1,4 +1,7 @@
-use std::{path::Path, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
@@ -6,7 +9,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::types::ObjectOperationTypes;
+use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
 use serde_json::Value;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
@@ -72,11 +75,16 @@ impl SqlitePool {
 
 #[async_trait]
 impl Database for SqlitePool {
+    fn filename(&self, _group_id: u128) -> PathBuf {
+        PathBuf::from("")
+    }
+
     async fn create(
         &self,
         uid: Option<String>,
         owner: &str,
         object: &kmip_objects::Object,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier> {
         create_(uid, owner, object, &self.pool).await
     }
@@ -85,6 +93,7 @@ impl Database for SqlitePool {
         &self,
         owner: &str,
         objects: &[(Option<String>, kmip_objects::Object)],
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         let mut res = vec![];
         let mut tx = self.pool.begin().await?;
@@ -106,6 +115,7 @@ impl Database for SqlitePool {
         uid: &str,
         owner: &str,
         operation_type: ObjectOperationTypes,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Option<(kmip_objects::Object, StateEnumeration)>> {
         retrieve_(uid, owner, operation_type, &self.pool).await
     }
@@ -115,11 +125,18 @@ impl Database for SqlitePool {
         uid: &str,
         owner: &str,
         object: &kmip_objects::Object,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         update_object_(uid, owner, object, &self.pool).await
     }
 
-    async fn update_state(&self, uid: &str, owner: &str, state: StateEnumeration) -> KResult<()> {
+    async fn update_state(
+        &self,
+        uid: &str,
+        owner: &str,
+        state: StateEnumeration,
+        _params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<()> {
         update_state_(uid, owner, state, &self.pool).await
     }
 
@@ -129,17 +146,24 @@ impl Database for SqlitePool {
         owner: &str,
         object: &kmip_objects::Object,
         state: StateEnumeration,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         upsert_(uid, owner, object, state, &self.pool).await
     }
 
-    async fn delete(&self, uid: &str, owner: &str) -> KResult<()> {
+    async fn delete(
+        &self,
+        uid: &str,
+        owner: &str,
+        _params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<()> {
         delete_(uid, owner, &self.pool).await
     }
 
     async fn list_shared_objects(
         &self,
         owner: &str,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
         Vec<(
             UniqueIdentifier,
@@ -151,7 +175,11 @@ impl Database for SqlitePool {
         list_shared_objects_(owner, &self.pool).await
     }
 
-    async fn list_accesses(&self, uid: &str) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>> {
+    async fn list_accesses(
+        &self,
+        uid: &str,
+        _params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>> {
         list_accesses_(uid, &self.pool).await
     }
 
@@ -160,6 +188,7 @@ impl Database for SqlitePool {
         uid: &str,
         userid: &str,
         operation_type: ObjectOperationTypes,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         insert_access_(uid, userid, operation_type, &self.pool).await
     }
@@ -169,11 +198,17 @@ impl Database for SqlitePool {
         uid: &str,
         userid: &str,
         operation_type: ObjectOperationTypes,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         delete_access_(uid, userid, operation_type, &self.pool).await
     }
 
-    async fn is_object_owned_by(&self, uid: &str, userid: &str) -> KResult<bool> {
+    async fn is_object_owned_by(
+        &self,
+        uid: &str,
+        userid: &str,
+        _params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<bool> {
         is_object_owned_by_(uid, userid, &self.pool).await
     }
 
@@ -182,12 +217,13 @@ impl Database for SqlitePool {
         researched_attributes: Option<&Attributes>,
         state: Option<StateEnumeration>,
         owner: &str,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>> {
         find_(researched_attributes, state, owner, &self.pool).await
     }
 }
 
-async fn create_<'e, E>(
+pub(crate) async fn create_<'e, E>(
     uid: Option<String>,
     owner: &str,
     object: &kmip_objects::Object,
@@ -220,7 +256,7 @@ where
     Ok(uid)
 }
 
-async fn retrieve_<'e, E>(
+pub(crate) async fn retrieve_<'e, E>(
     uid: &str,
     owner_or_userid: &str,
     operation_type: ObjectOperationTypes,
@@ -281,7 +317,7 @@ where
     })
 }
 
-async fn update_object_<'e, E>(
+pub(crate) async fn update_object_<'e, E>(
     uid: &str,
     owner: &str,
     object: &kmip_objects::Object,
@@ -311,7 +347,7 @@ where
     Ok(())
 }
 
-async fn update_state_<'e, E>(
+pub(crate) async fn update_state_<'e, E>(
     uid: &str,
     owner: &str,
     state: StateEnumeration,
@@ -334,7 +370,7 @@ where
     Ok(())
 }
 
-async fn delete_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<()>
+pub(crate) async fn delete_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<()>
 where
     E: Executor<'e, Database = Sqlite>,
 {
@@ -351,7 +387,7 @@ where
     Ok(())
 }
 
-async fn upsert_<'e, E>(
+pub(crate) async fn upsert_<'e, E>(
     uid: &str,
     owner: &str,
     object: &kmip_objects::Object,
@@ -383,7 +419,7 @@ where
     Ok(())
 }
 
-async fn list_accesses_<'e, E>(
+pub(crate) async fn list_accesses_<'e, E>(
     uid: &str,
     executor: E,
 ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>
@@ -411,7 +447,7 @@ where
     Ok(ids)
 }
 
-async fn list_shared_objects_<'e, E>(
+pub(crate) async fn list_shared_objects_<'e, E>(
     user: &str,
     executor: E,
 ) -> KResult<
@@ -452,7 +488,7 @@ where
     Ok(ids)
 }
 
-async fn fetch_permissions_<'e, E>(
+pub(crate) async fn fetch_permissions_<'e, E>(
     uid: &str,
     userid: &str,
     executor: E,
@@ -479,7 +515,7 @@ where
     })
 }
 
-async fn insert_access_<'e, E>(
+pub(crate) async fn insert_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_type: ObjectOperationTypes,
@@ -516,7 +552,7 @@ where
     Ok(())
 }
 
-async fn delete_access_<'e, E>(
+pub(crate) async fn delete_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_type: ObjectOperationTypes,
@@ -563,7 +599,7 @@ where
     Ok(())
 }
 
-async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<bool>
+pub(crate) async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<bool>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
@@ -579,7 +615,7 @@ where
     Ok(row.is_some())
 }
 
-async fn find_<'e, E>(
+pub(crate) async fn find_<'e, E>(
     researched_attributes: Option<&Attributes>,
     state: Option<StateEnumeration>,
     owner: &str,
@@ -589,12 +625,10 @@ where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
     let query = query_from_attributes::<SqlitePlaceholder>(researched_attributes, state, owner)?;
-    debug!("query: {query}");
 
     let query = sqlx::query(&query);
     let list = query.fetch_all(executor).await?;
 
-    debug!("fetched uids list's size: {}", list.len());
     let mut uids = Vec::with_capacity(list.len());
     for row in list {
         let raw = row.get::<Vec<u8>, _>(2);
@@ -609,7 +643,6 @@ where
         ));
     }
 
-    debug!("List of uids: {uids:?}");
     Ok(uids)
 }
 
@@ -647,14 +680,17 @@ mod tests {
         let symmetric_key = create_aes_symmetric_key(None)?;
         let uid = Uuid::new_v4().to_string();
 
-        db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active)
+        db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
             .await?;
 
-        assert!(db.is_object_owned_by(&uid, owner).await?);
+        assert!(db.is_object_owned_by(&uid, owner, None).await?);
 
         // Retrieve object with valid owner with `Get` operation type - OK
 
-        match db.retrieve(&uid, owner, ObjectOperationTypes::Get).await? {
+        match db
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
+            .await?
+        {
             Some((obj, state)) => {
                 assert_eq!(StateEnumeration::Active, state);
                 assert_eq!(&symmetric_key, &obj);
@@ -665,7 +701,7 @@ mod tests {
         // Retrieve object with invalid owner with `Get` operation type - ko
 
         if db
-            .retrieve(&uid, invalid_owner, ObjectOperationTypes::Get)
+            .retrieve(&uid, invalid_owner, ObjectOperationTypes::Get, None)
             .await?
             .is_some()
         {
@@ -674,13 +710,13 @@ mod tests {
 
         // Add authorized `userid` to `read_access` table
 
-        db.insert_access(&uid, userid, ObjectOperationTypes::Get)
+        db.insert_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         // Retrieve object with authorized `userid` with `Create` operation type - ko
 
         if db
-            .retrieve(&uid, userid, ObjectOperationTypes::Create)
+            .retrieve(&uid, userid, ObjectOperationTypes::Create, None)
             .await
             .is_ok()
         {
@@ -689,7 +725,10 @@ mod tests {
 
         // Retrieve object with authorized `userid` with `Get` operation type - OK
 
-        match db.retrieve(&uid, userid, ObjectOperationTypes::Get).await? {
+        match db
+            .retrieve(&uid, userid, ObjectOperationTypes::Get, None)
+            .await?
+        {
             Some((obj, state)) => {
                 assert_eq!(StateEnumeration::Active, state);
                 assert_eq!(&symmetric_key, &obj);
@@ -699,24 +738,24 @@ mod tests {
 
         // Add authorized `userid2` to `read_access` table
 
-        db.insert_access(&uid, userid2, ObjectOperationTypes::Get)
+        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         // Try to add same access again - OK
 
-        db.insert_access(&uid, userid2, ObjectOperationTypes::Get)
+        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
-        let objects = db.find(None, None, owner).await?;
+        let objects = db.find(None, None, owner, None).await?;
         assert_eq!(objects.len(), 1);
         let (o_uid, o_state, _) = &objects[0];
         assert_eq!(o_uid, &uid);
         assert_eq!(o_state, &StateEnumeration::Active);
 
-        let objects = db.find(None, None, userid2).await?;
+        let objects = db.find(None, None, userid2, None).await?;
         assert!(objects.is_empty());
 
-        let objects = db.list_shared_objects(userid2).await?;
+        let objects = db.list_shared_objects(userid2, None).await?;
         assert_eq!(
             objects,
             vec![(
@@ -730,7 +769,7 @@ mod tests {
         // Retrieve object with authorized `userid2` with `Create` operation type - ko
 
         if db
-            .retrieve(&uid, userid2, ObjectOperationTypes::Create)
+            .retrieve(&uid, userid2, ObjectOperationTypes::Create, None)
             .await
             .is_ok()
         {
@@ -740,7 +779,7 @@ mod tests {
         // Retrieve object with authorized `userid` with `Get` operation type - OK
 
         match db
-            .retrieve(&uid, userid2, ObjectOperationTypes::Get)
+            .retrieve(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?
         {
             Some((obj, state)) => {
@@ -752,7 +791,10 @@ mod tests {
 
         // Be sure we can still retrieve object with authorized `userid` with `Get` operation type - OK
 
-        match db.retrieve(&uid, userid, ObjectOperationTypes::Get).await? {
+        match db
+            .retrieve(&uid, userid, ObjectOperationTypes::Get, None)
+            .await?
+        {
             Some((obj, state)) => {
                 assert_eq!(StateEnumeration::Active, state);
                 assert_eq!(&symmetric_key, &obj);
@@ -762,13 +804,13 @@ mod tests {
 
         // Remove `userid2` authorization
 
-        db.delete_access(&uid, userid2, ObjectOperationTypes::Get)
+        db.delete_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         // Retrieve object with `userid2` with `Get` operation type - ko
 
         if db
-            .retrieve(&uid, userid2, ObjectOperationTypes::Get)
+            .retrieve(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?
             .is_some()
         {
@@ -793,21 +835,21 @@ mod tests {
         let uid = Uuid::new_v4().to_string();
 
         // simple insert
-        db.insert_access(&uid, userid, ObjectOperationTypes::Get)
+        db.insert_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = db.perms(&uid, userid).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
         // double insert, expect no duplicate
-        db.insert_access(&uid, userid, ObjectOperationTypes::Get)
+        db.insert_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = db.perms(&uid, userid).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
         // insert other operation type
-        db.insert_access(&uid, userid, ObjectOperationTypes::Encrypt)
+        db.insert_access(&uid, userid, ObjectOperationTypes::Encrypt, None)
             .await?;
 
         let perms = db.perms(&uid, userid).await?;
@@ -817,7 +859,7 @@ mod tests {
         );
 
         // insert other `userid2`, check it is ok and it didn't change anything for `userid`
-        db.insert_access(&uid, userid2, ObjectOperationTypes::Get)
+        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = db.perms(&uid, userid2).await?;
@@ -829,7 +871,7 @@ mod tests {
             vec![ObjectOperationTypes::Get, ObjectOperationTypes::Encrypt]
         );
 
-        let accesses = db.list_accesses(&uid).await?;
+        let accesses = db.list_accesses(&uid, None).await?;
         assert_eq!(
             accesses,
             vec![
@@ -845,7 +887,7 @@ mod tests {
         );
 
         // remove `Get` access for `userid`
-        db.delete_access(&uid, userid, ObjectOperationTypes::Get)
+        db.delete_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = db.perms(&uid, userid2).await?;
@@ -858,6 +900,7 @@ mod tests {
     }
 
     #[actix_rt::test]
+    #[cfg_attr(feature = "sqlcipher", ignore)]
     pub async fn test_json_access() -> KResult<()> {
         log_init("debug");
         let owner = "eyJhbGciOiJSUzI1Ni";
@@ -874,14 +917,17 @@ mod tests {
         let symmetric_key = create_aes_symmetric_key(None)?;
         let uid = Uuid::new_v4().to_string();
 
-        db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active)
+        db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
             .await?;
 
-        assert!(db.is_object_owned_by(&uid, owner).await?);
+        assert!(db.is_object_owned_by(&uid, owner, None).await?);
 
         // Retrieve object with valid owner with `Get` operation type - OK
 
-        match db.retrieve(&uid, owner, ObjectOperationTypes::Get).await? {
+        match db
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
+            .await?
+        {
             Some((obj, state)) => {
                 assert_eq!(StateEnumeration::Active, state);
                 assert_eq!(&symmetric_key, &obj);
@@ -900,6 +946,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
+                None,
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -916,6 +963,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
+                None,
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -933,6 +981,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
+                None,
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -949,6 +998,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
+                None,
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -968,6 +1018,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
+                None,
             )
             .await?;
         assert_eq!(found.len(), 1);
@@ -984,6 +1035,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
+                None,
             )
             .await?;
         assert!(found.is_empty());
@@ -999,6 +1051,7 @@ mod tests {
                 researched_attributes.as_ref(),
                 Some(StateEnumeration::Active),
                 owner,
+                None,
             )
             .await?;
         assert!(found.is_empty());

@@ -7,7 +7,7 @@ use cosmian_kmip::{
 use thiserror::Error;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum KmsError {
     // When a user requests an endpoint which does not exist
     #[error("Not Supported route: {0}")]

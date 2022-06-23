@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct CliConf {
-    kms_server_url: String,
+    pub kms_server_url: String,
     kms_access_token: String,
+    pub kms_database_secret: Option<String>,
 }
 
 /// Define the configuration of the CLI reading a json
@@ -15,6 +16,7 @@ pub struct CliConf {
 /// {
 ///     "kms_server_url": "http://127.0.0.1:9998",
 ///     "kms_access_token": "AA...AAA"
+///     "kms_database_secret": "BB...BBB"
 /// }
 ///
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
@@ -35,15 +37,17 @@ impl CliConf {
             .with_context(|| format!("Config JSON malformed in {}", &cli_conf_filename))?;
 
         // Create a client to query the KMS
-        let kms_connector =
-            KmsRestClient::instantiate(&conf.kms_server_url, &conf.kms_access_token).with_context(
-                || {
-                    format!(
-                        "Can't build the query to connect to the kms server {}",
-                        &conf.kms_server_url
-                    )
-                },
-            )?;
+        let kms_connector = KmsRestClient::instantiate(
+            &conf.kms_server_url,
+            &conf.kms_access_token,
+            conf.kms_database_secret.as_deref(),
+        )
+        .with_context(|| {
+            format!(
+                "Can't build the query to connect to the kms server {}",
+                &conf.kms_server_url
+            )
+        })?;
 
         Ok(kms_connector)
     }
@@ -58,6 +62,10 @@ mod tests {
     #[test]
     pub fn test_load() {
         env::set_var(KMS_CLI_CONF_ENV, "test_data/kms.json");
+
+        assert!(CliConf::load().is_ok());
+
+        env::set_var(KMS_CLI_CONF_ENV, "test_data/kms_partial.json");
 
         assert!(CliConf::load().is_ok());
 

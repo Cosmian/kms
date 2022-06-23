@@ -28,6 +28,12 @@ pub enum ObjectOperationTypes {
     Destroy,
 }
 
+#[derive(Deserialize, Serialize, Clone)]
+pub struct ExtraDatabaseParams {
+    pub group_id: u128,
+    pub key: String,
+}
+
 use std::str::FromStr;
 
 // any error type implementing Display is acceptable.

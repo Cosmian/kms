@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
@@ -5,7 +7,7 @@ use cosmian_kmip::kmip::{
         Attributes, LinkedObjectIdentifier::TextString, StateEnumeration, UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::types::ObjectOperationTypes;
+use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
 use lazy_static::lazy_static;
 use rawsql::Loader;
 use serde::{Deserialize, Serialize};
@@ -13,6 +15,8 @@ use serde::{Deserialize, Serialize};
 use crate::{kms_bail, result::KResult};
 
 pub(crate) type KMSServer = crate::core::KMS;
+pub(crate) mod cached_sqlcipher;
+pub(crate) mod cached_sqlite_struct;
 pub(crate) mod pgsql;
 pub(crate) mod sqlite;
 
@@ -37,6 +41,9 @@ lazy_static! {
 
 #[async_trait]
 pub(crate) trait Database {
+    /// Return the filename of the database if supported
+    fn filename(&self, group_id: u128) -> PathBuf;
+
     /// Insert the given Object in the database.
     ///
     /// A new UUID will be created if none is supplier.
@@ -47,6 +54,7 @@ pub(crate) trait Database {
         uid: Option<String>,
         owner: &str,
         object: &Object,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier>;
 
     /// Insert the provided Objects in the database in a transaction
@@ -58,6 +66,7 @@ pub(crate) trait Database {
         &self,
         owner: &str,
         objects: &[(Option<String>, Object)],
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>>;
 
     /// Retrieve an object from the database using `uid` and `owner`.
@@ -68,11 +77,24 @@ pub(crate) trait Database {
         uid: &str,
         owner: &str,
         query_read_access: ObjectOperationTypes,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Option<(Object, StateEnumeration)>>;
 
-    async fn update_object(&self, uid: &str, owner: &str, object: &Object) -> KResult<()>;
+    async fn update_object(
+        &self,
+        uid: &str,
+        owner: &str,
+        object: &Object,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<()>;
 
-    async fn update_state(&self, uid: &str, owner: &str, state: StateEnumeration) -> KResult<()>;
+    async fn update_state(
+        &self,
+        uid: &str,
+        owner: &str,
+        state: StateEnumeration,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<()>;
 
     /// upsert (update or create if not exsits)
     async fn upsert(
@@ -81,13 +103,20 @@ pub(crate) trait Database {
         owner: &str,
         object: &Object,
         state: StateEnumeration,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
-    async fn delete(&self, uid: &str, owner: &str) -> KResult<()>;
+    async fn delete(
+        &self,
+        uid: &str,
+        owner: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<()>;
 
     async fn list_shared_objects(
         &self,
         owner: &str,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
         Vec<(
             UniqueIdentifier,
@@ -97,7 +126,11 @@ pub(crate) trait Database {
         )>,
     >;
 
-    async fn list_accesses(&self, uid: &str) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>;
+    async fn list_accesses(
+        &self,
+        uid: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>;
 
     /// Insert a `userid` to give `operation_type` access right for the object identified
     /// by its `uid` and belonging to `owner`
@@ -106,6 +139,7 @@ pub(crate) trait Database {
         uid: &str,
         userid: &str,
         operation_type: ObjectOperationTypes,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
     /// Delete a `userid` to remove read access right for the object identified
@@ -115,10 +149,16 @@ pub(crate) trait Database {
         uid: &str,
         userid: &str,
         operation_type: ObjectOperationTypes,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
-    async fn is_object_owned_by(&self, uid: &str, owner: &str) -> KResult<bool>;
+    async fn is_object_owned_by(
+        &self,
+        uid: &str,
+        owner: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<bool>;
 
     /// Return uid, state and attributes of the object identified by its owner,
     /// and possibly by its attributes and/or its `state`
@@ -127,6 +167,7 @@ pub(crate) trait Database {
         researched_attributes: Option<&Attributes>,
         state: Option<StateEnumeration>,
         owner: &str,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>>;
 }
 

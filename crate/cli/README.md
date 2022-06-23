@@ -13,6 +13,9 @@ This CLI supports several crypto-systems listed below:
 cargo run
 ```
 
+Features are:
+- `insecure` to allow self-signed ssl connection
+
 ## Usage
 
 First of all, you need to specify the `kms.json` with the `kms_server_url` and your `kms_access_token` such as:
@@ -31,6 +34,12 @@ KMS_CLI_CONF=kms.json kms_cli --help
 ```
 
 If the server is running without Auth0, you can let `kms_access_token` empty. Indeed, the server is running without authentication in a single-user mode.
+
+If the server is running with cached sqlcipher as the KMS database, you also need to specify `kms_database_secret`. The first time, your organisation uses the KMS, you will run the following command to get the `kms_database_secret`. Save the output because the KMS won't remember it !
+
+```
+KMS_CLI_CONF=kms.json kms_cli configure
+```
 
 ### Attribute Based Encryption / Cover Crypt
 
@@ -109,7 +118,17 @@ The files you can manually verify are:
 ## Testing
 
 ```
-cargo test
+cargo build --features dev  --no-default-features --bin cosmian_kms_cli
+cargo test -p cosmian_kms_cli
 ```
 
 A kms server is started by the test. Make sure, you don't start another one by yourself.
+
+You can also test using a remote kms running inside an enclave. First, generate and start a docker as described in [README.md](../../enclave/README.md).
+
+Then:
+
+```
+cargo build --features staging  --no-default-features --bin cosmian_kms_cli
+cargo test --features staging --no-default-features -p cosmian_kms_cli
+```

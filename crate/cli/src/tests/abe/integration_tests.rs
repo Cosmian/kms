@@ -9,7 +9,7 @@ use crate::{
     tests::{
         test_utils::{init_test_server, ONCE},
         utils::extract_uids::{extract_private_key, extract_public_key, extract_user_key},
-        PROG_NAME,
+        CONF_PATH, PROG_NAME,
     },
 };
 
@@ -20,7 +20,7 @@ pub async fn test_init() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["init"]);
     cmd.assert()
         .success()
@@ -28,7 +28,7 @@ pub async fn test_init() -> Result<(), Box<dyn std::error::Error>> {
         .stdout(predicate::str::contains("Public key unique identifier:"));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
 
     cmd.arg(SUB_COMMAND)
         .args(vec!["init", "--policy", "test_data/policy.json"]);
@@ -45,7 +45,7 @@ pub async fn test_init_error() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
 
     cmd.arg(SUB_COMMAND)
         .args(vec!["init", "--policy", "test_data/notfound.json"]);
@@ -54,7 +54,7 @@ pub async fn test_init_error() -> Result<(), Box<dyn std::error::Error>> {
     ));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
 
     cmd.arg(SUB_COMMAND)
         .args(vec!["init", "--policy", "test_data/policy.bad"]);
@@ -98,14 +98,14 @@ pub async fn test_new() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["init"]);
     let success = cmd.assert().success();
     let output = success.get_output();
     let stdout: &str = std::str::from_utf8(&output.stdout)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
         "(department::marketing || department::finance) && level::secret",
@@ -124,7 +124,7 @@ pub async fn test_new_error() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["init"]);
     let success = cmd.assert().success();
     let output = success.get_output();
@@ -132,7 +132,7 @@ pub async fn test_new_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // bad attributes
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
         "department::marketing || level::secret2",
@@ -145,7 +145,7 @@ pub async fn test_new_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // bad keys
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
         "department::marketing || level::secret",
@@ -164,14 +164,14 @@ pub async fn test_revoke() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["init"]);
     let success = cmd.assert().success();
     let output = success.get_output();
     let stdout: &str = std::str::from_utf8(&output.stdout)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
         "(department::marketing || department::finance) && level::secret",
@@ -183,7 +183,7 @@ pub async fn test_revoke() -> Result<(), Box<dyn std::error::Error>> {
     let stdout: &str = std::str::from_utf8(&output.stdout)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "revoke",
         "--revocation-reason",
@@ -207,7 +207,7 @@ pub async fn test_revoke_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // not exist
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "revoke",
         "--revocation-reason",
@@ -228,14 +228,14 @@ pub async fn test_destroy() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["init"]);
     let success = cmd.assert().success();
     let output = success.get_output();
     let stdout: &str = std::str::from_utf8(&output.stdout)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
         "(department::marketing || department::finance) && level::secret",
@@ -247,7 +247,7 @@ pub async fn test_destroy() -> Result<(), Box<dyn std::error::Error>> {
     let stdout: &str = std::str::from_utf8(&output.stdout)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND)
         .args(vec!["destroy", "-u", extract_user_key(stdout).unwrap()]);
     cmd.assert().success();
@@ -261,26 +261,28 @@ pub async fn test_destroy_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // not exist
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["destroy", "-u", "none"]);
     cmd.assert().success(); // for now this command does not fail
 
     Ok(())
 }
 
+// TODO: remove ignore when sqlcipher will supports json and operator `->`
 #[tokio::test]
+#[cfg_attr(feature = "sqlcipher", ignore)]
 pub async fn test_rotate() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["init"]);
     let success = cmd.assert().success();
     let output = success.get_output();
     let stdout: &str = std::str::from_utf8(&output.stdout)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "rotate",
         "-a",
@@ -302,7 +304,7 @@ pub async fn test_rotate_error() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["init"]);
     let success = cmd.assert().success();
     let output = success.get_output();
@@ -310,7 +312,7 @@ pub async fn test_rotate_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // bad attributes
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "rotate",
         "-a",
@@ -324,7 +326,7 @@ pub async fn test_rotate_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // bad keys
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "rotate",
         "-a",
@@ -343,21 +345,21 @@ pub async fn test_rotate_error() -> Result<(), Box<dyn std::error::Error>> {
 pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
-    fs::remove_file("/tmp/plain.enc").ok();
-    fs::remove_file("/tmp/plain.plain").ok();
+    fs::remove_file("/tmp/plain-1.enc").ok();
+    fs::remove_file("/tmp/plain-1.plain").ok();
 
-    assert!(!Path::new("/tmp/plain.enc").exists());
-    assert!(!Path::new("/tmp/plain.plain").exists());
+    assert!(!Path::new("/tmp/plain-1.enc").exists());
+    assert!(!Path::new("/tmp/plain-1.plain").exists());
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["init"]);
     let success = cmd.assert().success();
     let output = success.get_output();
     let stdout: &str = std::str::from_utf8(&output.stdout)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "-a",
@@ -370,16 +372,16 @@ pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-p",
         extract_public_key(stdout).unwrap(),
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
     cmd.assert().success().stdout(predicate::str::contains(
-        "The encrypted file can be found at /tmp/plain.enc",
+        "The encrypted file can be found at /tmp/plain-1.enc",
     ));
 
-    assert!(Path::new("/tmp/plain.enc").exists());
+    assert!(Path::new("/tmp/plain-1.enc").exists());
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
         "(department::marketing || department::finance) && level::secret",
@@ -391,7 +393,7 @@ pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
     let stdout: &str = std::str::from_utf8(&output.stdout)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "decrypt",
         "--resource-uid",
@@ -400,17 +402,17 @@ pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
         "/tmp",
         "-u",
         extract_user_key(stdout).unwrap(),
-        "/tmp/plain.enc",
+        "/tmp/plain-1.enc",
     ]);
     cmd.assert().success().stdout(predicate::str::contains(
-        "The decrypted file can be found at /tmp/plain.plain",
+        "The decrypted file can be found at /tmp/plain-1.plain",
     ));
 
-    assert!(Path::new("/tmp/plain.plain").exists());
-    assert!(diff("/tmp/plain.plain", "test_data/plain.txt"));
+    assert!(Path::new("/tmp/plain-1.plain").exists());
+    assert!(diff("/tmp/plain-1.plain", "test_data/plain-1.txt"));
 
-    fs::remove_file("/tmp/plain.enc").unwrap();
-    fs::remove_file("/tmp/plain.plain").unwrap();
+    fs::remove_file("/tmp/plain-1.enc").unwrap();
+    fs::remove_file("/tmp/plain-1.plain").unwrap();
 
     Ok(())
 }
@@ -420,7 +422,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["init"]);
     let success = cmd.assert().success();
     let output = success.get_output();
@@ -428,7 +430,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // plain text not exist
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "-a",
@@ -449,7 +451,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // attributes are malformed
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "-a",
@@ -462,7 +464,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-p",
         extract_public_key(stdout).unwrap(),
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
     cmd.assert()
         .failure()
@@ -470,7 +472,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // attributes are wellformed but not exist
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "-a",
@@ -483,7 +485,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-p",
         extract_public_key(stdout).unwrap(),
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
         "attribute not found: department::marketing2",
@@ -491,7 +493,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // the key is wrong
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "-a",
@@ -504,7 +506,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-p",
         "trash",
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
     cmd.assert()
         .failure()
@@ -512,7 +514,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // the output target is wrong (no right)
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "-a",
@@ -525,7 +527,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-p",
         extract_public_key(stdout).unwrap(),
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
 
     cmd.assert()
@@ -540,14 +542,14 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["init"]);
     let success = cmd.assert().success();
     let output = success.get_output();
     let stdout: &str = std::str::from_utf8(&output.stdout)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
         "(department::marketing || department::finance) && level::secret",
@@ -560,7 +562,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // encrypted text not exist
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "decrypt",
         "-o",
@@ -577,7 +579,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // the key is wrong
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "decrypt",
         "-o",
@@ -586,7 +588,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-u",
         "trash",
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
     cmd.assert()
         .failure()
@@ -594,7 +596,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
 
     // the encrpyted file is wrong
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.json");
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "decrypt",
         "-o",
@@ -603,7 +605,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-u",
         extract_user_key(stdout).unwrap(),
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
 
     cmd.assert()

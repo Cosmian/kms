@@ -26,3 +26,15 @@ pub fn extract_public_key(text: &str) -> Option<&str> {
 pub fn extract_user_key(text: &str) -> Option<&str> {
     extract_uid(text, "Decryption user key unique identifier")
 }
+
+/// Extract the database secret from a text
+pub fn extract_database_secret(text: &str) -> Option<&str> {
+    let formatted = r"for further uses: (?P<uid>[a-zA-Z0-9=]+)$";
+    let uid_regex = RegexBuilder::new(formatted)
+        .multi_line(true)
+        .build()
+        .unwrap();
+    uid_regex
+        .captures(text)
+        .and_then(|cap| cap.name("uid").map(|uid| uid.as_str()))
+}

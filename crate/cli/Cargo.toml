@@ -8,6 +8,14 @@ description = "CLI used to manage the Cosmian KMS."
 name = "cosmian_kms_cli"
 path = "src/main.rs"
 
+[features]
+insecure = ["cosmian_kms_client/insecure"]
+staging = ["insecure"]
+# TODO: Remove these both features when sqlite >= 3.8 will be supported
+sqlcipher = []
+dev = []
+
+
 [dependencies]
 abe_gpsw = { version = "0.6.9", features = ["interfaces"] }
 base64 = "0.13"
@@ -30,6 +38,7 @@ tokio = { version = "1.0", features = ["full"] }
 
 [dev-dependencies]
 assert_cmd = "2.0"
+cosmian_kms_client = { path = "../client", features = ["insecure"], default-features = false  }
 cosmian_kms_server = { path = "../server", features = ["dev"], default-features = false }
 file_diff = "1.0.0"
 predicates = "2.1"

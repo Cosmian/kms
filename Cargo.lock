@@ -1356,6 +1356,7 @@ dependencies = [
  "http",
  "lazy_static",
  "libsgx",
+ "libsqlite3-sys",
  "mysql",
  "num-bigint 0.4.3",
  "once_cell",
@@ -2496,6 +2497,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "898745e570c7d0453cc1fbc4a701eb6c662ed54e8fec8b7d14be137ebeeb9d14"
 dependencies = [
  "cc",
+ "openssl-sys",
  "pkg-config",
  "vcpkg",
 ]

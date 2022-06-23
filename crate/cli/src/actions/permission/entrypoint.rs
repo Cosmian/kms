@@ -143,8 +143,14 @@ impl ListOwnedObjects {
         println!("The objects are:\n");
         for object in objects {
             println!(
-                "[{}] {} - {:?}",
-                object.state, object.object_id, object.attributes.key_format_type
+                "[{}] {} - {}",
+                object.state,
+                object.object_id,
+                if let Some(format) = object.attributes.key_format_type {
+                    format.to_string()
+                } else {
+                    "".to_string()
+                }
             );
         }
         Ok(())
