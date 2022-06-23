@@ -31,7 +31,7 @@ These three attributes enable you to fully verify the trustworthiness of the enc
 
 ## The database
 
-The database is encrypted and running inside the enclave. The key to decrypt the database are unknown by the KMS until the user sent it for each query, by adding the header: `KmsDatabaseSecret` following by the user secret token. 
+The database is read by the KMS server from the enclave and the database filesystem are encrypted for the host. The key to decrypt the database are unknown by the KMS until the user sent it for each query, by adding the header: `KmsDatabaseSecret` following by the user secret token. 
 
 The key was firstly provided to the user by the KMS when the user registers a new `group`. A `group` has two properties:
 

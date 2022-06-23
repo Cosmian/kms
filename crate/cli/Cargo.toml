@@ -11,6 +11,10 @@ path = "src/main.rs"
 [features]
 insecure = ["cosmian_kms_client/insecure"]
 staging = ["insecure"]
+# TODO: Remove these both features when sqlite >= 3.8 will be supported
+sqlcipher = []
+dev = ["sqlcipher"]
+
 
 [dependencies]
 abe_gpsw = { version = "0.6.9", features = ["interfaces"] }

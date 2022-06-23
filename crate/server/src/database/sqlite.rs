@@ -900,7 +900,7 @@ mod tests {
     }
 
     #[actix_rt::test]
-    #[ignore]
+    #[cfg_attr(feature = "sqlcipher", ignore)]
     pub async fn test_json_access() -> KResult<()> {
         log_init("debug");
         let owner = "eyJhbGciOiJSUzI1Ni";
