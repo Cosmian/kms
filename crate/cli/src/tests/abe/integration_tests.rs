@@ -345,11 +345,11 @@ pub async fn test_rotate_error() -> Result<(), Box<dyn std::error::Error>> {
 pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
-    fs::remove_file("/tmp/plain.enc").ok();
-    fs::remove_file("/tmp/plain.plain").ok();
+    fs::remove_file("/tmp/plain-1.enc").ok();
+    fs::remove_file("/tmp/plain-1.plain").ok();
 
-    assert!(!Path::new("/tmp/plain.enc").exists());
-    assert!(!Path::new("/tmp/plain.plain").exists());
+    assert!(!Path::new("/tmp/plain-1.enc").exists());
+    assert!(!Path::new("/tmp/plain-1.plain").exists());
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
@@ -372,13 +372,13 @@ pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-p",
         extract_public_key(stdout).unwrap(),
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
     cmd.assert().success().stdout(predicate::str::contains(
-        "The encrypted file can be found at /tmp/plain.enc",
+        "The encrypted file can be found at /tmp/plain-1.enc",
     ));
 
-    assert!(Path::new("/tmp/plain.enc").exists());
+    assert!(Path::new("/tmp/plain-1.enc").exists());
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
@@ -402,17 +402,17 @@ pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
         "/tmp",
         "-u",
         extract_user_key(stdout).unwrap(),
-        "/tmp/plain.enc",
+        "/tmp/plain-1.enc",
     ]);
     cmd.assert().success().stdout(predicate::str::contains(
-        "The decrypted file can be found at /tmp/plain.plain",
+        "The decrypted file can be found at /tmp/plain-1.plain",
     ));
 
-    assert!(Path::new("/tmp/plain.plain").exists());
-    assert!(diff("/tmp/plain.plain", "test_data/plain.txt"));
+    assert!(Path::new("/tmp/plain-1.plain").exists());
+    assert!(diff("/tmp/plain-1.plain", "test_data/plain-1.txt"));
 
-    fs::remove_file("/tmp/plain.enc").unwrap();
-    fs::remove_file("/tmp/plain.plain").unwrap();
+    fs::remove_file("/tmp/plain-1.enc").unwrap();
+    fs::remove_file("/tmp/plain-1.plain").unwrap();
 
     Ok(())
 }
@@ -464,7 +464,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-p",
         extract_public_key(stdout).unwrap(),
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
     cmd.assert()
         .failure()
@@ -485,7 +485,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-p",
         extract_public_key(stdout).unwrap(),
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
         "attribute not found: department::marketing2",
@@ -506,7 +506,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-p",
         "trash",
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
     cmd.assert()
         .failure()
@@ -527,7 +527,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-p",
         extract_public_key(stdout).unwrap(),
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
 
     cmd.assert()
@@ -588,7 +588,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-u",
         "trash",
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
     cmd.assert()
         .failure()
@@ -605,7 +605,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "myid",
         "-u",
         extract_user_key(stdout).unwrap(),
-        "test_data/plain.txt",
+        "test_data/plain-1.txt",
     ]);
 
     cmd.assert()

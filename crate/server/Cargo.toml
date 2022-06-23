@@ -19,7 +19,7 @@ timeout = ["actix-rt"]
 
 # Disable https, disable enclave, enable auth but unsecurely
 # To run on a dev environment
-dev = ["auth", "insecure", "sqlcipher"]
+dev = ["auth", "insecure"]
 
 # Enable all the feature even insecure but timeout
 # To run in a test environment using a real domain name and enclaves without the rest api limit of let's encrypt
@@ -29,7 +29,7 @@ staging = ["auth", "insecure", "https", "enclave"]
 prod = ["auth", "https", "enclave"]
 default = ["prod"]
 
-# TODO: Remove that feature and use bundled-sqlcipher-vendored-openssl as default feature in `dependencies` for libsqlite3-sys
+# TODO: Remove that feature and use bundled-sqlcipher-vendored-openssl as default feature in `dependencies` for libsqlite3-sys   
 # when sqlite >= 3.8 will be supported
 sqlcipher = [
   "libsqlite3-sys/bundled-sqlcipher-vendored-openssl"
@@ -68,7 +68,7 @@ lazy_static = "1.4"
 libsgx = { path = "../libsgx" }
 # Explicit import so that sqlcipher is enabled for sqlx (no pass-through feature available)
 # see: https://github.com/launchbadge/sqlx/issues/1436
-libsqlite3-sys = { version = "0.24"}
+libsqlite3-sys = { version = "0.24" }
 num-bigint = "0.4"
 once_cell = "1.9"
 openssl = { version = "0.10", features = ["vendored"] }
