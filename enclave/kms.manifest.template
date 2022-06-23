@@ -25,7 +25,6 @@ loader.env.KMS_MANIFEST_FILENAME = "kms.manifest.sgx"
 loader.env.KMS_PRIVATE_PATH = "private_data"
 loader.env.KMS_PUBLIC_PATH = "public_data"
 loader.env.KMS_SHARED_PATH = "shared_data"
-loader.env.KMS_KEYS_PATH = "data/"
 loader.env.KMS_SQLCIPHER="1"
 loader.env.RUST_BACKTRACE="0"
 # loader.env.RUST_LOG="debug"
@@ -65,11 +64,6 @@ sgx.trusted_files = [
   "file:{{ gramine.libos }}",
   "file:{{ gramine.runtimedir() }}/",
   "file:{{ arch_libdir }}/",
-#  "file:/lib64/",
-#  "file:/lib64/ld-linux-x86-64.so.2",
-#  "file:/lib/x86_64-linux-gnu/libc.so.6",
-#  "file:/usr/{{ arch_libdir }}/",
-#  "file:/etc/apt/apt.conf.d/",
   "file:/etc/nsswitch.conf",
   "file:/etc/group",
   "file:/etc/passwd",
@@ -77,18 +71,10 @@ sgx.trusted_files = [
   "file:/etc/hosts",
   "file:/etc/gai.conf",
   "file:/etc/resolv.conf",
-#  "file:/etc/fstab",
   "file:/etc/localtime",
-#  "file:/usr/share/dpkg/cputable",
-#  "file:/usr/share/dpkg/tupletable",
-#  "file:/usr/bin/gcc",
-#  "file:/usr/bin/ld",
-#  "file:/usr/bin/as",
-#  "file:/usr/bin/objdump",
-#  "file:/usr/bin/uname",
+  "file:/etc/ld.so.cache",
+  "file:{{ arch_libdir }}/libsodium.so.23",
   "file:/usr/lib/ssl/certs/",
-#  "file:/usr/lib/ssl/openssl.cnf",
-#  "file:/usr/share/zoneinfo/UTC",
   "file:/etc/ssl/certs/ca-certificates.crt",
 ]
 

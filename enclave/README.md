@@ -68,13 +68,50 @@ cargo build --release  --no-default-features --features staging  --bin cosmian_k
 Then, on a fresh database:
 
 ```
-KMS_CLI_CONF=kms-prod.json cosmian_kms_cli configure
+KMS_CLI_CONF=kms-staging.json cosmian_kms_cli configure
 ```
 
 Or in an already configured database:
 
 ```
-KMS_CLI_CONF=kms-prod.json cosmian_kms_cli abe init 
+KMS_CLI_CONF=kms-staging.json cosmian_kms_cli abe init 
 ```
 
 Enjoy ;)
+
+## Dockerization
+
+### Build
+
+On a **non-sgx** machine:
+
+```sh
+sudo docker build -f Dockerfile.staging -t enclave-kms .
+```
+
+### Run
+
+On a **sgx** machine:
+```sh
+# MR enclave directory
+mkdir -p private_data/
+# Plain text directory
+mkdir -p public_data/
+# MR signer directory
+mkdir -p shared_data/
+
+# To do if the kms binary have changed
+rm -rf private_data/*
+
+# Start the docker
+sudo docker run \
+    --device /dev/sgx_enclave \
+    --device /dev/sgx_provision \
+    -v /var/run/aesmd:/var/run/aesmd/ \
+    -v /opt/cosmian-internal:/opt/cosmian-internal \
+    -v public_data:/root/public_data \
+    -v private_data:/root/private_data \
+    -v shared_data:/root/shared_data \
+    --network=host \
+    -it enclave-kms
+```

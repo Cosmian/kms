@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct CliConf {
-    kms_server_url: String,
+    pub kms_server_url: String,
     kms_access_token: String,
-    kms_database_secret: Option<String>,
+    pub kms_database_secret: Option<String>,
 }
 
 /// Define the configuration of the CLI reading a json
