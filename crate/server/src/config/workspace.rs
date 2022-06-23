@@ -27,10 +27,10 @@ pub struct WorkspaceConfig {
 impl Default for WorkspaceConfig {
     fn default() -> Self {
         WorkspaceConfig {
-            public_path: PathBuf::from("/tmp"),
-            shared_path: PathBuf::from("/tmp"),
-            private_path: PathBuf::from("/tmp"),
-            tmp_path: PathBuf::from("/tmp"),
+            public_path: std::env::temp_dir(),
+            shared_path: std::env::temp_dir(),
+            private_path: std::env::temp_dir(),
+            tmp_path: std::env::temp_dir(),
         }
     }
 }

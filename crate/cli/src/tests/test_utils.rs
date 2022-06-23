@@ -48,7 +48,8 @@ pub async fn init_test_server() {
 
     // Read the conf. We will update it later by appending the secret token
     let file = File::open(PATTERN_CONF_PATH).expect("");
-    let mut cli_conf: CliConf = serde_json::from_reader(BufReader::new(file)).expect("");
+    let mut cli_conf: CliConf =
+        serde_json::from_reader(BufReader::new(file)).expect("cannot deserialize CLI cfg");
 
     println!("Using: {}", cli_conf.kms_server_url);
 
@@ -75,10 +76,7 @@ pub async fn init_test_server() {
                 timeout -= 1;
                 retry = timeout >= 0;
                 if retry {
-                    println!(
-                        "The server is not up yet, retrying in {}s... ({:?}) ",
-                        waiting, result
-                    );
+                    println!("The server is not up yet, retrying in {waiting}s... ({result:?}) ",);
                     thread::sleep(std::time::Duration::from_secs(waiting));
                     waiting *= 2;
                 } else {

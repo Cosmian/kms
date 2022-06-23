@@ -104,5 +104,14 @@ mkdir -p shared_data/
 rm -rf private_data/*
 
 # Start the docker
-sudo docker run --device /dev/sgx_enclave --device /dev/sgx_provision -v /var/run/aesmd:/var/run/aesmd/ -v /opt/cosmian-internal:/opt/cosmian-internal -v public_data:/root/public_data -v private_data:/root/private_data  -v shared_data:/root/shared_data --network=host  -it enclave-kms
+sudo docker run \
+    --device /dev/sgx_enclave \
+    --device /dev/sgx_provision \
+    -v /var/run/aesmd:/var/run/aesmd/ \
+    -v /opt/cosmian-internal:/opt/cosmian-internal \
+    -v public_data:/root/public_data \
+    -v private_data:/root/private_data \
+    -v shared_data:/root/shared_data \
+    --network=host \
+    -it enclave-kms
 ```
