@@ -56,7 +56,8 @@ pub fn prepare_server(
             .service(endpoint::list_accesses)
             .service(endpoint::insert_access)
             .service(endpoint::delete_access)
-            .service(endpoint::add_new_database);
+            .service(endpoint::add_new_database)
+            .service(endpoint::get_version);
 
         #[cfg(feature = "auth")]
         let app = app.wrap(Auth);

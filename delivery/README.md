@@ -42,6 +42,7 @@ Make sure it works as follow:
 
 ```
 wget 127.0.0.1:9998/objects/owned
+wget 127.0.0.1:9998/version
 ```
 
 ## Save the dockers

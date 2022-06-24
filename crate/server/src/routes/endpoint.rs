@@ -5,6 +5,7 @@ use actix_web::{
     web::{Data, Json, Path},
     HttpRequest, HttpResponse, HttpResponseBuilder,
 };
+use clap::crate_version;
 use cosmian_kmip::kmip::{
     kmip_operations::{
         Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Get, GetAttributes, Import, Locate,
@@ -301,6 +302,16 @@ pub async fn add_new_database(
 ) -> KResult<Json<String>> {
     debug!("Requesting a new database creation");
     Ok(Json(kms_client.add_new_database().await?))
+}
+
+/// Get the KMS version
+#[get("/version")]
+pub async fn get_version(
+    _req: HttpRequest,
+    _kms_client: Data<Arc<KMSServer>>,
+) -> KResult<Json<String>> {
+    debug!("Requesting the version");
+    Ok(Json(crate_version!().to_string()))
 }
 
 #[cfg(not(feature = "auth"))]

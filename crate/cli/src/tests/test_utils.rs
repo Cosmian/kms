@@ -67,7 +67,7 @@ pub async fn init_test_server() {
             let result = ClientBuilder::new()
                 .build()
                 .unwrap()
-                .post(format!("{}/kmip/2_1", cli_conf.kms_server_url))
+                .post(format!("{}/version", cli_conf.kms_server_url))
                 .json("{}")
                 .send()
                 .await;
