@@ -6,14 +6,20 @@ Note:
 
 ## Pre-requisites
 
-- Create a tag from main like that one: http://gitlab.cosmian.com/core/kms/-/tags/2.0.1
+- Create a tag from main like that one: http://gitlab.cosmian.com/core/kms/-/tags/2.0.5
+
+Then:
+
+```
+docker checkout tags/2.0.5
+```
 
 ## Build the docker
 
 From project root:
 
 ```
-docker build . -f delivery/Dockerfile.cats --network=host -t  kms:2.0.1
+docker build . -f delivery/Dockerfile.cats --network=host -t  kms:2.0.5
 ```
 
 Note:
@@ -21,6 +27,8 @@ Note:
   can't use https version (communication with Let's Encrypt is not possible)
 
 ## Run the docker compose
+
+Update the `docker-compose.yaml` with the proper version number.
 
 ```
 cd delivery
@@ -39,7 +47,7 @@ wget 127.0.0.1:9998/objects/owned
 ## Save the dockers
 
 ```
-docker save kms:2.0.1 > kms.tar
+docker save kms:2.0.5 > kms.tar
 docker save postgres > postgres.tar
 ```
 
