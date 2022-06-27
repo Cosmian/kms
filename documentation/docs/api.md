@@ -21,6 +21,8 @@ The server implements the [JSON Profile](https://docs.oasis-open.org/kmip/kmip-p
 Direct REST request can be performed by using the HTTP POST method on the `/kmip/2_1` endpoint on the server.
 The parameters and the returned data of the query are a JSON containing TTLV serialized data.
 
+You can get the kms server version using `/version` endpoint.
+
 Examples in `bash` and `javascript` are provided below.
 
 === "bash"
