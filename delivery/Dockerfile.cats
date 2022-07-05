@@ -22,7 +22,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 COPY . /root/kms
 
 WORKDIR /root/kms
-RUN /root/.cargo/bin/cargo build --release --no-default-features
+RUN /root/.cargo/bin/cargo build --release  --no-default-features
 
 #
 # KMS Server

@@ -82,7 +82,9 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   -s --  -y
 
 COPY . /root
 
-RUN /root/.cargo/bin/cargo build --release --no-default-features --features staging
+ARG FEATURES
+
+RUN /root/.cargo/bin/cargo build --release --no-default-features ${FEATURES}
 
 #
 # Minimal kms
@@ -99,6 +101,9 @@ WORKDIR /root
 
 RUN mkdir -p scripts
 # private_data, public_data and shared_data are supposed to be given as parameters of the docker run
+
+ARG KMS_DOMAIN
+ENV KMS_DOMAIN=${KMS_DOMAIN}
 
 COPY --from=minimal-rust /root/target/release/cosmian_kms_server scripts/server
 COPY enclave/build_and_run.sh enclave/Makefile enclave/kms.manifest.template /root/

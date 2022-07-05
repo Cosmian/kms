@@ -20,6 +20,7 @@ kms.manifest: kms.manifest.template
 		-Darch_libdir=$(ARCH_LIBDIR) \
 		-Dentrypoint_abs="$(PWD)/scripts"  \
 		-Dentrypoint="/scripts"  \
+		-Dkms_domain="$(KMS_DOMAIN)" \
 		$< >$@
 
 kms.manifest.sgx: kms.manifest

@@ -154,36 +154,27 @@ unused_deps:
     - sccache -s
 
 #
-# Build a docker to test the staging feature
+# Build a docker to test the staging feature and start it remotely
 #
-docker_staging_build_and_push:
+docker_test_build_and_deploy:
   image: docker:19.03.15
   stage: pretest
   only: [master, develop, merge_requests]
   variables:
-    IMAGE_TAG: $CI_REGISTRY_IMAGE:staging
+    IMAGE_TAG: $CI_REGISTRY_IMAGE:test
     SHORT_IMAGE_NAME: kms_enclave
     SGX_REMOTE: cosmian@sgx2-3.cosmian.com
+    KMS_DOMAIN: testsgx.cosmian.com
   script:
     - echo $IMAGE_TAG
     - echo $SGX_REMOTE
-    - docker build --network=host -f Dockerfile.staging  -t $IMAGE_TAG .
+    - docker build --network=host -f enclave/Dockerfile.sgx 
+      --build-arg FEATURES="--features staging" 
+      --build-arg KMS_DOMAIN="$KMS_DOMAIN"
+      -t $IMAGE_TAG .
     - docker push $IMAGE_TAG
-    - ssh $SGX_REMOTE docker pull $IMAGE_TAG
-    - ssh $SGX_REMOTE docker stop $SHORT_IMAGE_NAME || true
-    - ssh $SGX_REMOTE docker rm $SHORT_IMAGE_NAME || true
-    - ssh $SGX_REMOTE sudo rm -rf /tmp/private_data /tmp/public_data /tmp/shared_data
-    - ssh $SGX_REMOTE mkdir -p /tmp/private_data /tmp/public_data /tmp/shared_data
-    - ssh $SGX_REMOTE docker run -d
-      --pull=always --device /dev/sgx_enclave
-      --name $SHORT_IMAGE_NAME --device /dev/sgx_provision
-      -v /var/run/aesmd:/var/run/aesmd/
-      -v /opt/cosmian-internal:/opt/cosmian-internal
-      -v /tmp/public_data:/root/public_data
-      -v /tmp/private_data:/root/private_data
-      -v /tmp/shared_data:/root/shared_data
-      --network=host -it $IMAGE_TAG
-    - ssh $SGX_REMOTE docker system prune --all -f
+    - ./scripts/deploy_sgx.sh
+
 
 #
 # Test staging on the enclave
@@ -208,7 +199,30 @@ test-enclave:
     - sccache -s
 
 #
-# Build and push a docker with prod feature (default)
+# Build a docker and deploy it (for demo) 
+#
+docker_demo_build_and_deploy:
+  image: docker:19.03.15
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
+  variables:
+    IMAGE_TAG: $CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}_staging
+    SHORT_IMAGE_NAME: kms_enclave
+    KMS_DOMAIN: kms.demo.cosmian.com
+    SGX_REMOTE: cosmian@${KMS_DOMAIN}
+  script:
+    - echo $IMAGE_TAG
+    - echo $SGX_REMOTE
+    - docker build --network=host 
+      --build-arg FEATURES="--features=staging" 
+      --build-arg KMS_DOMAIN="$KMS_DOMAIN"
+      -f enclave/Dockerfile.sgx  -t $IMAGE_TAG .
+    - docker push $IMAGE_TAG
+    - ./scripts/deploy_sgx.sh
+
+#
+# Build and push a docker with prod feature but no enclave
 #
 docker_build_and_push:
   image: docker:19.03.15
@@ -219,11 +233,13 @@ docker_build_and_push:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   script:
     - echo $IMAGE_TAG
-    - docker build . --network=host -t $CI_REGISTRY_IMAGE -t $IMAGE_TAG
+    - docker build . --network=host 
+      --build-arg FEATURES="--features=auth,https"
+      -t $CI_REGISTRY_IMAGE -t $IMAGE_TAG
     - docker push $IMAGE_TAG
 
 #
-# Build and push a docker with timeout feature
+# Build and push a docker with timeout feature (no enclave)
 #
 docker_timeout_build_and_push:
   image: docker:19.03.15
@@ -234,7 +250,7 @@ docker_timeout_build_and_push:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}_timeout
   script:
     - echo $IMAGE_TAG
-    - docker build . --build-arg FEATURES="--features timeout" --network=host -t $IMAGE_TAG
+    - docker build . --build-arg FEATURES="--features=auth,https,timeout" --network=host -t $IMAGE_TAG
     - docker push $IMAGE_TAG
 
 #
@@ -249,8 +265,28 @@ docker_lib_ci_build_and_push:
     IMAGE_TAG: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_NAME}_ci
   script:
     - echo $IMAGE_TAG
-    - docker build . --build-arg FEATURES="--no-default-features" --network=host -t $IMAGE_TAG
+    - docker build . --network=host -t $IMAGE_TAG
     - docker push $IMAGE_TAG
+
+#
+# Build a delivery archive as a gitlab artifact.
+#
+build_cats_delivery:
+  image: docker:19.03.15
+  stage: prebuild
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
+  script:
+    - docker build . -f delivery/Dockerfile.cats --network=host -t kms
+    - docker save kms > kms.tar
+    - docker save postgres > postgres.tar
+  artifacts:
+    name: "delivery_${CI_COMMIT_TAG}_$(date +\"%Y%m%d\")"
+    paths: 
+      - kms.tar
+      - postgres.tar
+      - delivery/HOW-TO.md
+      - delivery/docker-compose.yml
 
 #
 # Build and deploy the public documentation on the prod env
