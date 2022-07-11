@@ -17,6 +17,10 @@ pub enum KmsError {
     #[error("Not Supported: {0}")]
     NotSupported(String),
 
+    // When a user requests something which is a non-sense
+    #[error("Inconsistent operation: {0}")]
+    InconsistentOperation(String),
+
     // When a user requests with place holder id arg.
     #[error("This KMIP server does not yet support place holder id")]
     UnsupportedPlaceholder,

@@ -1,3 +1,4 @@
+use cosmian_crypto_base::{kdf::hkdf_256, key_wrapping};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -7,6 +8,22 @@ use cosmian_kmip::{
         kmip_types::{Attributes, LinkType, LinkedObjectIdentifier},
     },
 };
+
+/// Wrap a key using a password
+pub fn wrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, KmipError> {
+    let wrapping_secret = hkdf_256(wrapping_password.as_bytes(), 32, &[])
+        .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Data_Type, e.to_string()))?;
+    key_wrapping::wrap(key, &wrapping_secret)
+        .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Data_Type, e.to_string()))
+}
+
+/// Unwrap a key using a password
+pub fn unwrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, KmipError> {
+    let wrapping_secret = hkdf_256(wrapping_password.as_bytes(), 32, &[])
+        .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Data_Type, e.to_string()))?;
+    key_wrapping::unwrap(key, &wrapping_secret)
+        .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Data_Type, e.to_string()))
+}
 
 /// Extract the attributes from the given `KeyBlock`
 /// Return an empty set of attributes if none are available

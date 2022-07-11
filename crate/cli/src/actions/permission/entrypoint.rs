@@ -142,16 +142,7 @@ impl ListOwnedObjects {
 
         println!("The objects are:\n");
         for object in objects {
-            println!(
-                "[{}] {} - {}",
-                object.state,
-                object.object_id,
-                if let Some(format) = object.attributes.key_format_type {
-                    format.to_string()
-                } else {
-                    "".to_string()
-                }
-            );
+            println!("{}", object);
         }
         Ok(())
     }
@@ -170,10 +161,7 @@ impl ListSharedObjects {
 
         println!("The objects are:\n");
         for object in objects {
-            println!(
-                "[{}][{}] {} {:?} - comments",
-                object.state, object.owner_id, object.object_id, object.operations
-            ); // TODO (@T.G): replace comments by attributes.KeyFormatType 
+            println!("{}", object);
         }
         Ok(())
     }

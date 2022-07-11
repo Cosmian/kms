@@ -61,6 +61,7 @@ impl actix_web::error::ResponseError for KmsError {
             Self::NotSupported(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::UnsupportedProtectionMasks => StatusCode::UNPROCESSABLE_ENTITY,
             Self::UnsupportedPlaceholder => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::InconsistentOperation(..) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::InvalidRequest(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,

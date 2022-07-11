@@ -119,7 +119,7 @@ fn prepare_symmetric_key(
     Ok(CoverCryptSymmetricKey {
         uid: cover_crypt_header_uid.to_vec(),
         symmetric_key: sk.into(),
-        encrypted_symmetric_key: sk_enc.to_bytes().map_err(|e| {
+        encrypted_symmetric_key: sk_enc.try_to_bytes().map_err(|e| {
             KmipError::KmipError(
                 ErrorReason::Codec_Error,
                 format!("cover crypt: failed serializing the encapsulation: {e}"),

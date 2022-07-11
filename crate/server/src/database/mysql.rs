@@ -6,7 +6,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::types::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
 use mysql::{prelude::*, Opts, OptsBuilder, Pool, Row, SslOpts};
 use serde_json::Value;
 use tracing::{debug, trace};
@@ -267,6 +267,7 @@ async fn list_shared_objects_(
         String,
         StateEnumeration,
         Vec<ObjectOperationTypes>,
+        IsWrapped,
     )>,
 > {
     let mut conn = executor.get_conn()?;
@@ -293,6 +294,7 @@ async fn list_shared_objects_(
                 row.get::<Value, _>(3)
                     .ok_or_else(|| kms_error!("no value in field 3 (permissions)"))?,
             )?,
+            false, // TODO: unharcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
         ));
     }
     Ok(ids)
@@ -440,7 +442,7 @@ async fn find_(
     state: Option<StateEnumeration>,
     owner: &str,
     executor: &Pool,
-) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>> {
+) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
     let query = query_from_attributes::<MySqlPlaceholder>(researched_attributes, state, owner)?;
 
     let mut conn = executor.get_conn()?;
@@ -463,7 +465,11 @@ async fn find_(
             .context("failed deserializing attributes")
             .map_err(|e| KmsError::DatabaseError(e.to_string()))?;
 
-        uids.push((uid, state, attrs));
+        let is_wrapped = row
+            .get::<IsWrapped, _>(3)
+            .ok_or_else(|| kms_error!("no value in field 3 (is_wrapped)"))?;
+
+        uids.push((uid, state, attrs, is_wrapped));
     }
 
     Ok(uids)
@@ -566,6 +572,7 @@ impl Database for Sql {
             String,
             StateEnumeration,
             Vec<ObjectOperationTypes>,
+            IsWrapped,
         )>,
     > {
         list_shared_objects_(owner, &self.pool).await
@@ -614,7 +621,7 @@ impl Database for Sql {
         state: Option<StateEnumeration>,
         owner: &str,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>> {
+    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
         find_(researched_attributes, state, owner, &self.pool).await
     }
 }
@@ -836,15 +843,22 @@ mod tests {
         assert_eq!(&uid_2, &ids[1]);
 
         let list = mysql.find(None, None, owner, None).await?;
-        match list.iter().find(|(id, _state, _attrs)| id == &uid_1) {
-            Some((uid_, state_, _attrs)) => {
+        match list
+            .iter()
+            .find(|(id, _state, _attrs, _is_wrapped)| id == &uid_1)
+        {
+            Some((uid_, state_, _attrs, is_wrapped)) => {
                 assert_eq!(&uid_1, uid_);
                 assert_eq!(&StateEnumeration::Active, state_);
+                assert!(!*is_wrapped);
             }
             None => todo!(),
         }
-        match list.iter().find(|(id, _state, _attrs)| id == &uid_2) {
-            Some((uid_, state_, _attrs)) => {
+        match list
+            .iter()
+            .find(|(id, _state, _attrs, _is_wrapped)| id == &uid_2)
+        {
+            Some((uid_, state_, _attrs, _is_wrapped)) => {
                 assert_eq!(&uid_2, uid_);
                 assert_eq!(&StateEnumeration::Active, state_);
             }
@@ -971,7 +985,7 @@ mod tests {
 
         let objects = mysql.find(None, None, owner, None).await?;
         assert_eq!(objects.len(), 1);
-        let (o_uid, o_state, _) = &objects[0];
+        let (o_uid, o_state, _, _) = &objects[0];
         assert_eq!(o_uid, &uid);
         assert_eq!(o_state, &StateEnumeration::Active);
 
@@ -985,7 +999,8 @@ mod tests {
                 uid.clone(),
                 String::from(owner),
                 StateEnumeration::Active,
-                vec![ObjectOperationTypes::Get]
+                vec![ObjectOperationTypes::Get],
+                false
             )]
         );
 

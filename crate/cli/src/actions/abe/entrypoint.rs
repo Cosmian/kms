@@ -5,8 +5,8 @@ use super::{
     decrypt::DecryptAction,
     encrypt::EncryptAction,
     keys::{
-        DestroyUserKeyAction, NewMasterKeyPairAction, NewUserKeyAction, RevokeUserKeyAction,
-        RotateAttributeAction,
+        DestroyUserKeyAction, GetKeyAction, ImportKeysAction, NewMasterKeyPairAction,
+        NewUserKeyAction, RevokeUserKeyAction, RotateAttributeAction,
     },
 };
 
@@ -20,6 +20,9 @@ pub enum AbeAction {
     Revoke(RevokeUserKeyAction),
     Destroy(DestroyUserKeyAction),
 
+    Import(ImportKeysAction),
+    Get(GetKeyAction),
+
     Encrypt(EncryptAction),
     Decrypt(DecryptAction),
 }
@@ -32,8 +35,10 @@ impl AbeAction {
             AbeAction::New(action) => action.run(client_connector, false).await?,
             // For the time being, Revoke an user decryption key is not possible. We dismiss the action in the cli.
             // Uncomment the followings to activate that command.
-            AbeAction::Revoke(_) => eyre::bail!("Revokation is not supported yet"), // action.run(client_connector).await?,
+            AbeAction::Revoke(_) => eyre::bail!("Revokation is not supported yet"), /* action.run(client_connector).await?, */
             AbeAction::Destroy(action) => action.run(client_connector, false).await?,
+            AbeAction::Import(action) => action.run(client_connector, false).await?,
+            AbeAction::Get(action) => action.run(client_connector).await?,
             AbeAction::Encrypt(action) => action.run(client_connector, false).await?,
             AbeAction::Decrypt(action) => action.run(client_connector, false).await?,
         };

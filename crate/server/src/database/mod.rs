@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
         Attributes, LinkedObjectIdentifier::TextString, StateEnumeration, UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::types::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
 use lazy_static::lazy_static;
 use rawsql::Loader;
 use serde::{Deserialize, Serialize};
@@ -123,6 +123,7 @@ pub(crate) trait Database {
             String,
             StateEnumeration,
             Vec<ObjectOperationTypes>,
+            IsWrapped,
         )>,
     >;
 
@@ -168,7 +169,7 @@ pub(crate) trait Database {
         state: Option<StateEnumeration>,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>>;
+    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>;
 }
 
 /// The Database implemented using `SQLite`
@@ -204,6 +205,7 @@ pub trait PlaceholderTrait {
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
     const JSON_NODE_ATTRS: &'static str = "'$.object.KeyBlock.KeyValue.Attributes'";
+    const JSON_NODE_WRAPPING: &'static str = "'$.object.KeyBlock.KeyWrappingData'";
     const JSON_NODE_LINK: &'static str = "'$.object.KeyBlock.KeyValue.Attributes.Link'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$.LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$.LinkType'";
@@ -227,6 +229,7 @@ impl PlaceholderTrait for PgsqlPlaceholder {
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract_path_text";
     const JSON_NODE_ATTRS: &'static str = "'object', 'KeyBlock', 'KeyValue', 'Attributes'";
     const JSON_NODE_LINK: &'static str = "'object', 'KeyBlock', 'KeyValue', 'Attributes', 'Link'";
+    const JSON_NODE_WRAPPING: &'static str = "'object', 'KeyBlock', 'KeyWrappingData'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'LinkType'";
 }
@@ -243,10 +246,13 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
     owner: &str,
 ) -> KResult<String> {
     let mut query = format!(
-        "SELECT objects.id as id, objects.state as state, {}(objects.object, {}) as attrs
+        "SELECT objects.id as id, objects.state as state, {}(objects.object, {}) as attrs, \
+         {}(objects.object, {}) IS NOT NULL AS is_wrapped
         FROM objects",
         P::JSON_FN_EXTRACT_PATH,
-        P::JSON_NODE_ATTRS
+        P::JSON_NODE_ATTRS,
+        P::JSON_FN_EXTRACT_PATH,
+        P::JSON_NODE_WRAPPING
     );
     if let Some(attributes) = attributes {
         if !attributes.link.is_empty() {

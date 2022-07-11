@@ -60,6 +60,12 @@ where
         .await?
         .object;
 
+    if private_key.is_wrapped()? {
+        kms_bail!(KmsError::InconsistentOperation(
+            "The server can't rekey: the key is wrapped".to_owned()
+        ));
+    }
+
     // Recover the Master Public Key
     let master_public_key_uid = public_key_unique_identifier_from_private_key(&private_key)?;
     let public_key = kmip_server
@@ -237,6 +243,13 @@ where
         .get(Get::from(master_private_key_uid.clone()), owner, params)
         .await?;
     let master_private_key = &gr_private_key.object;
+
+    if master_private_key.is_wrapped()? {
+        kms_bail!(KmsError::InconsistentOperation(
+            "The server can't create a decryption key: the master private key is wrapped"
+                .to_owned()
+        ));
+    }
 
     let (master_private_key_bytes, master_private_key_attributes) =
         key_bytes_and_attributes_from_key_block(

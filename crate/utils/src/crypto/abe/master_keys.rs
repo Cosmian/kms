@@ -50,7 +50,7 @@ pub fn create_master_keypair(request: &CreateKeyPair) -> Result<KeyPair, KmipErr
         .as_ref()
         .or(request.common_attributes.as_ref());
     let private_key = create_master_private_key_object(
-        &mk.0.as_bytes().map_err(|e| {
+        &mk.0.try_into_bytes().map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Message, e.to_string())
         })?,
         &policy,
@@ -64,7 +64,7 @@ pub fn create_master_keypair(request: &CreateKeyPair) -> Result<KeyPair, KmipErr
         .as_ref()
         .or(request.common_attributes.as_ref());
     let public_key = create_master_public_key_object(
-        &mk.1.as_bytes().map_err(|e| {
+        &mk.1.try_into_bytes().map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Message, e.to_string())
         })?,
         &policy,

@@ -151,6 +151,11 @@ impl Object {
         }
     }
 
+    /// Check if the key is wrapped
+    pub fn is_wrapped(&self) -> Result<bool, KmipError> {
+        Ok(self.key_block()?.key_wrapping_data.as_ref().is_some())
+    }
+
     /// Returns the `Attributes` of that object if any, an error otherwise
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
         self.key_block()?.key_value.attributes()

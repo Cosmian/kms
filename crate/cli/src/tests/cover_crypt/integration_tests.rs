@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-const SUB_COMMAND: &str = "abe";
+const SUB_COMMAND: &str = "cc";
 
 #[tokio::test]
 pub async fn test_init() -> Result<(), Box<dyn std::error::Error>> {
@@ -139,9 +139,9 @@ pub async fn test_new_error() -> Result<(), Box<dyn std::error::Error>> {
         "--secret-key-id",
         extract_private_key(stdout).unwrap(),
     ]);
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("secret2 is missing in axis level"));
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "attribute not found: level::secret2",
+    ));
 
     // bad keys
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -154,6 +154,37 @@ pub async fn test_new_error() -> Result<(), Box<dyn std::error::Error>> {
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
         "Object with uid: bad_key not found",
+    ));
+
+    // Import then generate a new user key
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/wrapped_key",
+        "--public-key-file",
+        "test_data/wrapped_key",
+        "--policy",
+        "test_data/policy.json",
+        "-w",
+    ]);
+
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let secret_key_id = extract_private_key(stdout).unwrap();
+
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "new",
+        "department::marketing || level::secret",
+        "--secret-key-id",
+        secret_key_id,
+    ]);
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "The server can't create a decryption key: the master private key is wrapped",
     ));
 
     Ok(())
@@ -197,6 +228,39 @@ pub async fn test_revoke() -> Result<(), Box<dyn std::error::Error>> {
 
     //TODO: Uncomment that when revokation will be supported
     // cmd.assert().success();
+
+    // Import a wrapped key
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/wrapped_key",
+        "--public-key-file",
+        "test_data/wrapped_key",
+        "--policy",
+        "test_data/policy.json",
+        "-w",
+    ]);
+
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let secret_key_id = extract_private_key(stdout).unwrap();
+
+    // Revocation is allowed for wrapped keys
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "revoke",
+        "--revocation-reason",
+        "for test",
+        "-u",
+        secret_key_id,
+    ]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Revokation is not supported yet"));
 
     Ok(())
 }
@@ -250,6 +314,32 @@ pub async fn test_destroy() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND)
         .args(vec!["destroy", "-u", extract_user_key(stdout).unwrap()]);
+    cmd.assert().success();
+
+    // Import a wrapped key
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/wrapped_key",
+        "--public-key-file",
+        "test_data/wrapped_key",
+        "--policy",
+        "test_data/policy.json",
+        "-w",
+    ]);
+
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let secret_key_id = extract_private_key(stdout).unwrap();
+
+    // Destroy is allowed for wrapped keys
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND)
+        .args(vec!["destroy", "-u", secret_key_id]);
     cmd.assert().success();
 
     Ok(())
@@ -336,6 +426,39 @@ pub async fn test_rotate_error() -> Result<(), Box<dyn std::error::Error>> {
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
         "Object with uid: bad_key not found",
+    ));
+
+    // Import a wrapped key
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/wrapped_key",
+        "--public-key-file",
+        "test_data/wrapped_key",
+        "--policy",
+        "test_data/policy.json",
+        "-w",
+    ]);
+
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let secret_key_id = extract_private_key(stdout).unwrap();
+
+    // Rotate is not allowed for wrapped keys
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "rotate",
+        "-a",
+        "department::marketing",
+        "--secret-key-id",
+        secret_key_id,
+    ]);
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "The server can't rekey: the key is wrapped",
     ));
 
     Ok(())
@@ -466,9 +589,9 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         extract_public_key(stdout).unwrap(),
         "test_data/plain-2.txt",
     ]);
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("invalid attribute: separator "));
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "at least one separator '::' expected in departmentmarketing",
+    ));
 
     // attributes are wellformed but not exist
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -533,6 +656,46 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("Fail to write the encrypted file"));
+
+    // Import a wrapped key
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/wrapped_key",
+        "--public-key-file",
+        "test_data/wrapped_key",
+        "--policy",
+        "test_data/policy.json",
+        "-w",
+    ]);
+
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let secret_key_id = extract_private_key(stdout).unwrap();
+
+    // Encrypt is not allowed for wrapped keys
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "encrypt",
+        "-a",
+        "department::marketing",
+        "-a",
+        "level::confidential",
+        "-o",
+        "/tmp",
+        "--resource-uid",
+        "myid",
+        "-p",
+        secret_key_id,
+        "test_data/plain-2.txt",
+    ]);
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "The server can't encrypt: the key is wrapped",
+    ));
 
     Ok(())
 }
@@ -611,6 +774,450 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("Bad or corrupted encrypted data"));
+
+    // Import a wrapped key
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--user-key-file",
+        "test_data/wrapped_key",
+        "--access-policy",
+        "department::marketing || level::secret",
+        "--secret-key-id",
+        "random-id",
+        "-w",
+    ]);
+
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let user_key_id = extract_user_key(stdout).unwrap();
+
+    // Decrypt is not allowed for wrapped keys
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "decrypt",
+        "-o",
+        "/tmp",
+        "--resource-uid",
+        "myid",
+        "--user-key-id",
+        user_key_id,
+        "test_data/plain-2.txt",
+    ]);
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "The server can't decrypt: the key is wrapped",
+    ));
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_import() -> Result<(), Box<dyn std::error::Error>> {
+    ONCE.get_or_init(init_test_server).await;
+
+    // Already wrapped keys
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/wrapped_key",
+        "--public-key-file",
+        "test_data/wrapped_key",
+        "--policy",
+        "test_data/policy.json",
+        "-w",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Private key unique identifier:"))
+        .stdout(predicate::str::contains("Public key unique identifier:"));
+
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let secret_key_id = extract_private_key(stdout).unwrap();
+
+    // Already wrapped keys
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--user-key-file",
+        "test_data/wrapped_key",
+        "--access-policy",
+        "department::marketing || level::secret",
+        "--secret-key-id",
+        secret_key_id,
+        "-w",
+    ]);
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Decryption user key unique identifier:",
+    ));
+
+    // To wrap keys
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/wrapped_key",
+        "--public-key-file",
+        "test_data/wrapped_key",
+        "--policy",
+        "test_data/policy.json",
+        "-W",
+        "password",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Private key unique identifier:"))
+        .stdout(predicate::str::contains("Public key unique identifier:"));
+
+    // To wrap keys
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--user-key-file",
+        "test_data/wrapped_key",
+        "--access-policy",
+        "department::marketing || level::secret",
+        "--secret-key-id",
+        secret_key_id,
+        "-W",
+        "password",
+    ]);
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Decryption user key unique identifier:",
+    ));
+
+    // Not wrapped keys
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/wrapped_key",
+        "--public-key-file",
+        "test_data/wrapped_key",
+        "--policy",
+        "test_data/policy.json",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Private key unique identifier:"))
+        .stdout(predicate::str::contains("Public key unique identifier:"));
+
+    // Not wrapped keys
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--user-key-file",
+        "test_data/wrapped_key",
+        "--access-policy",
+        "department::marketing || level::secret",
+        "--secret-key-id",
+        secret_key_id,
+    ]);
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Decryption user key unique identifier:",
+    ));
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_import_error() -> Result<(), Box<dyn std::error::Error>> {
+    ONCE.get_or_init(init_test_server).await;
+
+    // Policy file not found
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/wrapped_key",
+        "--public-key-file",
+        "test_data/wrapped_key",
+        "--policy",
+        "test_data/notfound.json",
+        "-w",
+    ]);
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Error: Can't read the policy json file",
+    ));
+
+    // Secret key file not found
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/notfound",
+        "--public-key-file",
+        "test_data/wrapped_key",
+        "--policy",
+        "test_data/policy.json",
+        "-w",
+    ]);
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Error: Can't read the private key file",
+    ));
+
+    // Public key file not found
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/wrapped_key",
+        "--public-key-file",
+        "test_data/notfound",
+        "--policy",
+        "test_data/policy.json",
+        "-w",
+    ]);
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Error: Can't read the public key file",
+    ));
+
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec!["init"]);
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let private_key_id = extract_private_key(stdout).unwrap();
+
+    // User key file not found
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--user-key-file",
+        "test_data/notfound",
+        "--access-policy",
+        "department::marketing || level::secret",
+        "--secret-key-id",
+        private_key_id,
+        "-w",
+    ]);
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Error: Can't read the user key file",
+    ));
+
+    // Bad attributes
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--user-key-file",
+        "test_data/wrapped_key",
+        "--access-policy",
+        "department::marketing || level::secret2",
+        "--secret-key-id",
+        private_key_id,
+        "-w",
+    ]);
+
+    // TODO: For now, it's a success. We do not check the attributes set in the object we import.
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Decryption user key unique identifier:",
+    ));
+
+    // Bad key
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--user-key-file",
+        "test_data/wrapped_key",
+        "--access-policy",
+        "department::marketing || level::secret2",
+        "--secret-key-id",
+        "bad_key",
+        "-w",
+    ]);
+
+    // TODO: For now, we do not check if the secret_key_id exist
+    cmd.assert().success().stdout(predicate::str::contains(
+        "Decryption user key unique identifier:",
+    ));
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_get() -> Result<(), Box<dyn std::error::Error>> {
+    ONCE.get_or_init(init_test_server).await;
+
+    // Get from init
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec!["init"]);
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "get",
+        "-k",
+        extract_private_key(stdout).unwrap(),
+        "/tmp/output.get",
+    ]);
+
+    cmd.assert().success().stdout(predicate::str::contains(
+        "The key file can be found at /tmp/output.get",
+    ));
+
+    // Get from import
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/wrapped_key",
+        "--public-key-file",
+        "test_data/wrapped_key",
+        "--policy",
+        "test_data/policy.json",
+        "-W",
+        "password",
+    ]);
+
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let secret_key_id = extract_private_key(stdout).unwrap();
+
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND)
+        .args(vec!["get", "-k", secret_key_id, "/tmp/output.get"]);
+
+    cmd.assert().success().stdout(predicate::str::contains(
+        "The key file can be found at /tmp/output.get",
+    ));
+
+    // We forgot to unwrap
+    assert!(!diff("test_data/wrapped_key", "/tmp/output.get"));
+
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "get",
+        "-k",
+        secret_key_id,
+        "-W",
+        "password",
+        "/tmp/output.get",
+    ]);
+
+    cmd.assert().success().stdout(predicate::str::contains(
+        "The key file can be found at /tmp/output.get",
+    ));
+
+    // We unwrapped
+    assert!(diff("test_data/wrapped_key", "/tmp/output.get"));
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_get_error() -> Result<(), Box<dyn std::error::Error>> {
+    ONCE.get_or_init(init_test_server).await;
+
+    // Get from init
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec!["init"]);
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let secret_key_id = extract_private_key(stdout).unwrap();
+
+    // Bad output
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND)
+        .args(vec!["get", "-k", secret_key_id, "/notexist/notexist"]);
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Fail to write the key file"));
+
+    // Id not exist
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND)
+        .args(vec!["get", "-k", "not_exist", "/tmp/output.get"]);
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Item not found: Object with uid: not_exist not found",
+    ));
+
+    // Unwrap not wrapped
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "get",
+        "-k",
+        secret_key_id,
+        "-W",
+        "password",
+        "/tmp/output.get",
+    ]);
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Invalid_Data_Type: Invalid size: ",
+    ));
+
+    // Get from import
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "import",
+        "--secret-key-file",
+        "test_data/wrapped_key",
+        "--public-key-file",
+        "test_data/wrapped_key",
+        "--policy",
+        "test_data/policy.json",
+        "-W",
+        "password",
+    ]);
+
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let secret_key_id = extract_private_key(stdout).unwrap();
+
+    // Unwrapped with bad password
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "get",
+        "-k",
+        secret_key_id,
+        "-W",
+        "bad_password",
+        "/tmp/output.get",
+    ]);
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Invalid size: The ciphertext is invalid. Decrypted IV is not appropriate",
+    ));
 
     Ok(())
 }

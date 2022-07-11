@@ -34,7 +34,7 @@ pub struct ExtraDatabaseParams {
     pub key: String,
 }
 
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 // any error type implementing Display is acceptable.
 type ParseError = &'static str;
@@ -73,19 +73,40 @@ impl From<(String, Vec<ObjectOperationTypes>)> for UserAccessResponse {
     }
 }
 
+pub type IsWrapped = bool;
+
 #[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
 pub struct ObjectOwnedResponse {
     pub object_id: UniqueIdentifier,
     pub state: StateEnumeration,
     pub attributes: Attributes,
+    pub is_wrapped: IsWrapped,
 }
 
-impl From<(String, StateEnumeration, Attributes)> for ObjectOwnedResponse {
-    fn from(e: (String, StateEnumeration, Attributes)) -> ObjectOwnedResponse {
+impl fmt::Display for ObjectOwnedResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "[{}]{} {} - {}",
+            self.state,
+            if self.is_wrapped { "[Wrapped]" } else { "" },
+            self.object_id,
+            if let Some(format) = self.attributes.key_format_type {
+                format.to_string()
+            } else {
+                "".to_string()
+            }
+        )
+    }
+}
+
+impl From<(String, StateEnumeration, Attributes, IsWrapped)> for ObjectOwnedResponse {
+    fn from(e: (String, StateEnumeration, Attributes, IsWrapped)) -> ObjectOwnedResponse {
         ObjectOwnedResponse {
             object_id: e.0,
             state: e.1,
             attributes: e.2,
+            is_wrapped: e.3,
         }
     }
 }
@@ -96,6 +117,21 @@ pub struct ObjectSharedResponse {
     pub owner_id: String,
     pub state: StateEnumeration,
     pub operations: Vec<ObjectOperationTypes>,
+    pub is_wrapped: IsWrapped,
+}
+
+impl fmt::Display for ObjectSharedResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "[{}][{}]{} {} {:?} - comments",
+            self.state,
+            self.owner_id,
+            if self.is_wrapped { "[Wrapped]" } else { "" },
+            self.object_id,
+            self.operations
+        )
+    } // TODO (@T.G): replace comments by attributes.KeyFormatType
 }
 
 impl
@@ -104,6 +140,7 @@ impl
         String,
         StateEnumeration,
         Vec<ObjectOperationTypes>,
+        IsWrapped,
     )> for ObjectSharedResponse
 {
     fn from(
@@ -112,6 +149,7 @@ impl
             String,
             StateEnumeration,
             Vec<ObjectOperationTypes>,
+            IsWrapped,
         ),
     ) -> ObjectSharedResponse {
         ObjectSharedResponse {
@@ -119,6 +157,7 @@ impl
             owner_id: e.1,
             state: e.2,
             operations: e.3,
+            is_wrapped: e.4,
         }
     }
 }

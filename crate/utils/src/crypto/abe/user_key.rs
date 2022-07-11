@@ -34,7 +34,7 @@ pub fn create_user_decryption_key_object(
     //
     let engine = Engine::<Gpsw<Bls12_381>>::new();
     let master_private_key =
-        <Gpsw<Bls12_381> as AbeScheme>::MasterPrivateKey::from_bytes(master_private_key_bytes)
+        <Gpsw<Bls12_381> as AbeScheme>::MasterPrivateKey::try_from_bytes(master_private_key_bytes)
             .map_err(|e| {
                 KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
             })?;
@@ -48,7 +48,7 @@ pub fn create_user_decryption_key_object(
         &uk,
         &access_policy
     );
-    let user_decryption_key_bytes = uk.as_bytes().map_err(|e| {
+    let user_decryption_key_bytes = uk.try_into_bytes().map_err(|e| {
         KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
     })?;
     let user_decryption_key_len = user_decryption_key_bytes.len();
