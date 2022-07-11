@@ -45,7 +45,7 @@ pub fn create_master_keypair(request: &CreateKeyPair) -> Result<KeyPair, KmipErr
         .private_key_attributes
         .as_ref()
         .or(request.common_attributes.as_ref());
-    let sk_bytes = sk.to_bytes().map_err(|e| {
+    let sk_bytes = sk.try_to_bytes().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Codec_Error,
             format!("cover crypt: failed serializing the master private key: {e}"),
@@ -59,7 +59,7 @@ pub fn create_master_keypair(request: &CreateKeyPair) -> Result<KeyPair, KmipErr
         .public_key_attributes
         .as_ref()
         .or(request.common_attributes.as_ref());
-    let pk_bytes = pk.to_bytes().map_err(|e| {
+    let pk_bytes = pk.try_to_bytes().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Codec_Error,
             format!("cover crypt: failed serializing the master public key: {e}"),

@@ -9,7 +9,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::types::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
 use serde_json::Value;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
@@ -170,6 +170,7 @@ impl Database for SqlitePool {
             String,
             StateEnumeration,
             Vec<ObjectOperationTypes>,
+            IsWrapped,
         )>,
     > {
         list_shared_objects_(owner, &self.pool).await
@@ -218,7 +219,7 @@ impl Database for SqlitePool {
         state: Option<StateEnumeration>,
         owner: &str,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>> {
+    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
         find_(researched_attributes, state, owner, &self.pool).await
     }
 }
@@ -456,6 +457,7 @@ pub(crate) async fn list_shared_objects_<'e, E>(
         String,
         StateEnumeration,
         Vec<ObjectOperationTypes>,
+        IsWrapped,
     )>,
 >
 where
@@ -475,6 +477,7 @@ where
         String,
         StateEnumeration,
         Vec<ObjectOperationTypes>,
+        IsWrapped,
     )> = Vec::with_capacity(list.len());
     for row in list {
         ids.push((
@@ -482,6 +485,7 @@ where
             row.get::<String, _>(1),
             state_from_string(&row.get::<String, _>(2))?,
             serde_json::from_slice(&row.get::<Vec<u8>, _>(3))?,
+            false, // TODO: unharcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
         ));
     }
     debug!("Listed {} rows", ids.len());
@@ -620,7 +624,7 @@ pub(crate) async fn find_<'e, E>(
     state: Option<StateEnumeration>,
     owner: &str,
     executor: E,
-) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>>
+) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
@@ -640,6 +644,7 @@ where
             row.get::<String, _>(0),
             state_from_string(&row.get::<String, _>(1))?,
             attrs,
+            row.get::<IsWrapped, _>(3),
         ));
     }
 
@@ -748,7 +753,7 @@ mod tests {
 
         let objects = db.find(None, None, owner, None).await?;
         assert_eq!(objects.len(), 1);
-        let (o_uid, o_state, _) = &objects[0];
+        let (o_uid, o_state, _, _) = &objects[0];
         assert_eq!(o_uid, &uid);
         assert_eq!(o_state, &StateEnumeration::Active);
 
@@ -762,7 +767,8 @@ mod tests {
                 uid.clone(),
                 String::from(owner),
                 StateEnumeration::Active,
-                vec![ObjectOperationTypes::Get]
+                vec![ObjectOperationTypes::Get],
+                false
             )]
         );
 

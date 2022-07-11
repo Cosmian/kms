@@ -4,13 +4,12 @@ version = 3
 
 [[package]]
 name = "abe_gpsw"
-version = "0.6.9"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f46ad549f2d83480082db7f1ddd6d87a59131e6c36688b2007cbb4a9e662d1a"
+checksum = "20e5eb4ac0221d44c5d46f58123c268ae137e62dc5536e68b94bcc5fba405395"
 dependencies = [
  "cosmian_bls12_381",
- "cosmian_crypto_base 1.3.0",
- "eyre",
+ "cosmian_crypto_base 2.0.0",
  "ff",
  "getrandom 0.2.4",
  "group",
@@ -1219,9 +1218,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_crypto_base"
-version = "1.3.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfe81d8e28941d3458de58b7f7ee530facdf28bb39c87d438b9e0434daafb147"
+checksum = "3ede4e2cadd3696c9fe4062109dbca1652eb5359d77f60b6be2dd3ab716d00fd"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1229,7 +1228,6 @@ dependencies = [
  "cosmian_fpe",
  "cupid",
  "curve25519-dalek",
- "eyre",
  "getrandom 0.2.4",
  "hex",
  "hkdf 0.12.2",
@@ -1308,6 +1306,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio 1.16.1",
+ "uuid 1.1.2",
 ]
 
 [[package]]
@@ -1343,7 +1342,7 @@ dependencies = [
  "bitflags",
  "chrono",
  "clap 3.1.8",
- "cosmian_crypto_base 1.3.0",
+ "cosmian_crypto_base 2.0.0",
  "cosmian_kmip",
  "cosmian_kms_utils",
  "cosmian_mcfe",
@@ -1377,7 +1376,7 @@ dependencies = [
  "tracing-log",
  "tracing-subscriber",
  "tracing-tree",
- "uuid 1.0.0",
+ "uuid 1.1.2",
 ]
 
 [[package]]
@@ -1387,7 +1386,7 @@ dependencies = [
  "abe_gpsw",
  "bitflags",
  "chrono",
- "cosmian_crypto_base 1.3.0",
+ "cosmian_crypto_base 2.0.0",
  "cosmian_kmip",
  "cosmian_mcfe",
  "cover_crypt",
@@ -1426,11 +1425,11 @@ dependencies = [
 
 [[package]]
 name = "cover_crypt"
-version = "2.0.0"
+version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7cb87d63a496aaeab78d22f9fa3f4cffef74f452987e4f34684a65a7a82a94b7"
+checksum = "5aa8e68f81f4b18f6616d75815baadc552f45bd5ca4b227f133c9abecea03987"
 dependencies = [
- "cosmian_crypto_base 1.3.0",
+ "cosmian_crypto_base 2.0.0",
  "hex",
  "leb128",
  "rand_core 0.5.1",
@@ -4844,9 +4843,9 @@ checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 
 [[package]]
 name = "uuid"
-version = "1.0.0"
+version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8cfcd319456c4d6ea10087ed423473267e1a071f3bc0aa89f80d60997843c6f0"
+checksum = "dd6469f4314d5f1ffec476e05f17cc9a78bc7a27a6a857842170bdf8d6f98d2f"
 dependencies = [
  "getrandom 0.2.4",
 ]

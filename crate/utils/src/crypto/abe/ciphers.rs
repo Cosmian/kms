@@ -9,9 +9,7 @@ use abe_gpsw::{
         decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_block, encrypt_hybrid_header,
     },
 };
-use cosmian_crypto_base::{
-    hybrid_crypto::Metadata, symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto,
-};
+use cosmian_crypto_base::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -98,7 +96,7 @@ impl EnCipher for AbeHybridCipher {
             })?;
 
         let public_key =
-            <Gpsw<Bls12_381> as AbeScheme>::MasterPublicKey::from_bytes(&self.public_key_bytes)
+            <Gpsw<Bls12_381> as AbeScheme>::MasterPublicKey::try_from_bytes(&self.public_key_bytes)
                 .map_err(|e| {
                     KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
                 })?;
@@ -108,7 +106,7 @@ impl EnCipher for AbeHybridCipher {
             &self.policy,
             &public_key,
             &data_to_encrypt.policy_attributes,
-            Metadata::default(),
+            None,
         )
         .map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
@@ -191,10 +189,13 @@ impl DeCipher for AbeHybridDecipher {
         let encrypted_header_bytes = &encrypted_data[4..(4 + encrypted_header_size)];
         let encrypted_block = &encrypted_data[(4 + encrypted_header_size)..];
 
-        let user_decryption_key = <<Gpsw<Bls12_381> as AbeScheme>::UserDecryptionKey>::from_bytes(
-            &self.user_decryption_key_bytes,
-        )
-        .map_err(|e| KmipError::InvalidKmipValue(ErrorReason::Invalid_Message, e.to_string()))?;
+        let user_decryption_key =
+            <<Gpsw<Bls12_381> as AbeScheme>::UserDecryptionKey>::try_from_bytes(
+                &self.user_decryption_key_bytes,
+            )
+            .map_err(|e| {
+                KmipError::InvalidKmipValue(ErrorReason::Invalid_Message, e.to_string())
+            })?;
 
         let header_ = decrypt_hybrid_header::<Gpsw<Bls12_381>, Aes256GcmCrypto>(
             &user_decryption_key,

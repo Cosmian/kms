@@ -9,7 +9,7 @@ use cosmian_kmip::kmip::{
     kmip_objects,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::types::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     ConnectOptions, Pool, Sqlite,
@@ -266,6 +266,7 @@ impl Database for CachedSqlCipher {
             String,
             StateEnumeration,
             Vec<ObjectOperationTypes>,
+            IsWrapped,
         )>,
     > {
         if let Some(params) = params {
@@ -349,7 +350,7 @@ impl Database for CachedSqlCipher {
         state: Option<StateEnumeration>,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>> {
+    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = find_(researched_attributes, state, owner, &*pool).await;
@@ -482,7 +483,7 @@ mod tests {
 
         let objects = db.find(None, None, owner, Some(&params)).await?;
         assert_eq!(objects.len(), 1);
-        let (o_uid, o_state, _) = &objects[0];
+        let (o_uid, o_state, _, _) = &objects[0];
         assert_eq!(o_uid, &uid);
         assert_eq!(o_state, &StateEnumeration::Active);
 
@@ -496,7 +497,8 @@ mod tests {
                 uid.clone(),
                 String::from(owner),
                 StateEnumeration::Active,
-                vec![ObjectOperationTypes::Get]
+                vec![ObjectOperationTypes::Get],
+                false
             )]
         );
 

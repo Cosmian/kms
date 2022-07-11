@@ -68,6 +68,13 @@ impl KMS {
                 KmsError::ItemNotFound(format!("Object with uid: {key_uid} not found"))
             })?;
 
+        // Be aware that if `object` is a public key, it is not wrapped even if the private key is
+        if object.is_wrapped()? {
+            kms_bail!(KmsError::InconsistentOperation(
+                "The server can't encrypt: the key is wrapped".to_owned()
+            ));
+        }
+
         match &object {
             Object::SymmetricKey { key_block } => {
                 match &key_block.key_format_type {
@@ -133,6 +140,12 @@ impl KMS {
             .ok_or_else(|| {
                 KmsError::ItemNotFound(format!("Object with uid: {object_uid} not found"))
             })?;
+
+        if object.is_wrapped()? {
+            kms_bail!(KmsError::InconsistentOperation(
+                "The server can't decrypt: the key is wrapped".to_owned()
+            ));
+        }
 
         match &object {
             Object::SecretData {

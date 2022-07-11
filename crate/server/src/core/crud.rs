@@ -517,19 +517,6 @@ impl KmipServer for KMS {
             }
         }
 
-        //TODO no support for wrapped stuff for now
-        let wrapped = match &object {
-            Object::PrivateKey { key_block } | Object::PublicKey { key_block } => {
-                key_block.key_wrapping_data.as_ref()
-            }
-            _ => None,
-        };
-        if wrapped.is_some() {
-            kms_bail!(KmsError::NotSupported(
-                "This server does not yet support wrapped keys".to_owned()
-            ));
-        }
-
         let replace_existing = if let Some(v) = request.replace_existing {
             v
         } else {
@@ -859,7 +846,7 @@ impl KmipServer for KMS {
                         )
                         .await?;
                     let mut uids = Vec::new();
-                    for (uid, _, attributes) in uids_attrs {
+                    for (uid, _, attributes, _) in uids_attrs {
                         if compare_abe_attributes(&attributes, &request.attributes)? {
                             uids.push(uid);
                         }
@@ -881,7 +868,7 @@ impl KmipServer for KMS {
                     )
                     .await?;
                 let mut uids = Vec::new();
-                for (uid, _, attributes) in uids_attrs {
+                for (uid, _, attributes, _) in uids_attrs {
                     if compare_cover_crypt_attributes(&attributes, &request.attributes)? {
                         uids.push(uid);
                     }

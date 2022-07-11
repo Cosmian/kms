@@ -44,7 +44,7 @@ pub fn create_user_decryption_key_object(
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
         })?;
     trace!("Created user decryption key {uk:?} with access policy: {access_policy:?}");
-    let user_decryption_key_bytes = uk.to_bytes().map_err(|e| {
+    let user_decryption_key_bytes = uk.try_to_bytes().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Codec_Error,
             format!("cover crypt: failed serializing the user key: {e}"),

@@ -6,7 +6,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::types::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
 use serde_json::Value;
 use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions, PgRow},
@@ -284,6 +284,7 @@ async fn list_shared_objects_<'e, E>(
         String,
         StateEnumeration,
         Vec<ObjectOperationTypes>,
+        IsWrapped,
     )>,
 >
 where
@@ -302,6 +303,7 @@ where
         String,
         StateEnumeration,
         Vec<ObjectOperationTypes>,
+        IsWrapped,
     )> = Vec::with_capacity(list.len());
     for row in list {
         ids.push((
@@ -309,6 +311,7 @@ where
             row.get::<String, _>(1),
             state_from_string(&row.get::<String, _>(2))?,
             serde_json::from_value(row.get::<Value, _>(3))?,
+            false, // TODO: unharcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
         ));
     }
     Ok(ids)
@@ -471,7 +474,7 @@ async fn find_<'e, E>(
     state: Option<StateEnumeration>,
     owner: &str,
     executor: E,
-) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>>
+) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
@@ -486,6 +489,7 @@ where
             row.get::<String, _>(0),
             state_from_string(&row.get::<String, _>(1))?,
             serde_json::from_value(row.get::<Value, _>(2))?,
+            row.get::<IsWrapped, _>(3),
         ));
     }
 
@@ -589,6 +593,7 @@ impl Database for Pgsql {
             String,
             StateEnumeration,
             Vec<ObjectOperationTypes>,
+            IsWrapped,
         )>,
     > {
         list_shared_objects_(owner, &self.pool).await
@@ -637,7 +642,7 @@ impl Database for Pgsql {
         state: Option<StateEnumeration>,
         owner: &str,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes)>> {
+    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
         find_(researched_attributes, state, owner, &self.pool).await
     }
 }
@@ -871,15 +876,22 @@ mod tests {
         assert_eq!(&uid_2, &ids[1]);
 
         let list = pg.find(None, None, owner, None).await?;
-        match list.iter().find(|(id, _state, _attrs)| id == &uid_1) {
-            Some((uid_, state_, _attrs)) => {
+        match list
+            .iter()
+            .find(|(id, _state, _attrs, _is_wrapped)| id == &uid_1)
+        {
+            Some((uid_, state_, _attrs, is_wrapped)) => {
                 assert_eq!(&uid_1, uid_);
                 assert_eq!(&StateEnumeration::Active, state_);
+                assert!(!*is_wrapped);
             }
             None => todo!(),
         }
-        match list.iter().find(|(id, _state, _attrs)| id == &uid_2) {
-            Some((uid_, state_, _attrs)) => {
+        match list
+            .iter()
+            .find(|(id, _state, _attrs, _is_wrapped)| id == &uid_2)
+        {
+            Some((uid_, state_, _attrs, _is_wrapped)) => {
                 assert_eq!(&uid_2, uid_);
                 assert_eq!(&StateEnumeration::Active, state_);
             }
@@ -1006,7 +1018,7 @@ mod tests {
 
         let objects = pg.find(None, None, owner, None).await?;
         assert_eq!(objects.len(), 1);
-        let (o_uid, o_state, _) = &objects[0];
+        let (o_uid, o_state, _, _) = &objects[0];
         assert_eq!(o_uid, &uid);
         assert_eq!(o_state, &StateEnumeration::Active);
 
@@ -1020,7 +1032,8 @@ mod tests {
                 uid.clone(),
                 String::from(owner),
                 StateEnumeration::Active,
-                vec![ObjectOperationTypes::Get]
+                vec![ObjectOperationTypes::Get],
+                false
             )]
         );
 

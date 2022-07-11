@@ -56,6 +56,11 @@ __On user keys__
 - `revoke` Revoke a user decryption key
 - `destroy` Remove the user decryption key from the kms
 
+__On both user or master keys__
+
+- `get` Export a key using its uid from the KMS. If a password is passed through and the key has been previously wrapped by the cli, the key will also be unwrapped by the cli
+- `import` Import a key to the KMS. If a password is passed through, the key will be wrapped by the cli. Otherwise, you can transparently import a plain text key or an already wrapped key done by a key the KMS doesn't know.
+
 __On user data__
 
 - `encrypt` Encrypt data using the public key
@@ -76,7 +81,7 @@ You can perform the following operations concerning to the users-to-objects perm
 - `remove` Remove an access authorization for an object to a user
 - `shared` List objects shared for the current user
 
-### Quote
+### Quote and remote attestation
 
 If the KMS server is runnning inside an enclave, you can and should verify its trustworthiness.
 
