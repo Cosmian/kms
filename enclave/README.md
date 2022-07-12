@@ -83,12 +83,12 @@ Enjoy ;)
 
 ### Build
 
-On a **non-sgx** machine:
+On a **non-sgx** machine, from the root of the project:
 
 ```sh
-sudo docker build -f Dockerfile.sgx \
+sudo docker build -f enclave/Dockerfile.sgx \
     --build-arg FEATURES="--features=staging" \
-    --build-arg KMS_DOMAIN="testsgx.cosmain.com" -t enclave-kms .
+    --build-arg KMS_DOMAIN="testsgx.cosmian.com" -t enclave-kms .
 ```
 
 ### Run
@@ -114,6 +114,21 @@ sudo docker run \
     -v public_data:/root/public_data \
     -v private_data:/root/private_data \
     -v shared_data:/root/shared_data \
-    --network=host \
+    -p80:80 \
+    -p443:443 \
     -it enclave-kms
+```
+
+### Emulate
+
+The KMS docker is openly-published in order any KMS users to check the authenticity of the running code against the open-sourced code on Cosmian github. 
+
+To do so, the user needs to compute the `MR_ENCLAVE` and needs to compare it to the one returned by the running KMS. 
+Using `--emulation` param, the KMS docker can locally compute `MR_ENCLAVE`. Just start it as follow from any kind of machine:
+
+```sh
+# Start the docker
+sudo docker run \
+    -v public_data:/root/public_data \
+    -it enclave-kms --emulation
 ```

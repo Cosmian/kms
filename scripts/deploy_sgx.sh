@@ -6,12 +6,16 @@ ssh $SGX_REMOTE docker rm $SHORT_IMAGE_NAME || true
 ssh $SGX_REMOTE sudo rm -rf /tmp/private_data /tmp/public_data /tmp/shared_data
 ssh $SGX_REMOTE mkdir -p /tmp/private_data /tmp/public_data /tmp/shared_data
 ssh $SGX_REMOTE docker run -d \
-    --pull=always --device /dev/sgx_enclave \
-    --name $SHORT_IMAGE_NAME --device /dev/sgx_provision \
+    --pull=always \
+    --device /dev/sgx_enclave \
+    --name $SHORT_IMAGE_NAME \
+    --device /dev/sgx_provision \
     -v /var/run/aesmd:/var/run/aesmd/ \
     -v /opt/cosmian-internal:/opt/cosmian-internal \
     -v /tmp/public_data:/root/public_data \
     -v /tmp/private_data:/root/private_data \
     -v /tmp/shared_data:/root/shared_data \
-    --network=host -it $IMAGE_TAG
+    -p80:80 \
+    -p443:443 \
+    -it $IMAGE_TAG
 ssh $SGX_REMOTE docker system prune --all -f

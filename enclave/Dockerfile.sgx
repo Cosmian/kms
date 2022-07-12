@@ -106,6 +106,6 @@ ARG KMS_DOMAIN
 ENV KMS_DOMAIN=${KMS_DOMAIN}
 
 COPY --from=minimal-rust /root/target/release/cosmian_kms_server scripts/server
-COPY enclave/build_and_run.sh enclave/Makefile enclave/kms.manifest.template /root/
+COPY etc enclave/build_and_run.sh enclave/Makefile enclave/kms.manifest.template /root/
 
 ENTRYPOINT ["./build_and_run.sh"]
