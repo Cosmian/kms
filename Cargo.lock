@@ -1280,7 +1280,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "abe_gpsw",
  "assert_cmd",
@@ -1326,7 +1326,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "2.0.5"
+version = "2.1.0"
 dependencies = [
  "abe_gpsw",
  "acme-lib",

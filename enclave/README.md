@@ -36,7 +36,7 @@ sudo chmod 644 /opt/cosmian-internal/cosmian-signer-key.pem
 ## Seal the SGX manifest
 
 ```sh
-make clean && make SGX=1 DEBUG=0
+KMS_DOMAIN="sgxtest.cosmian.com" make clean && make SGX=1 DEBUG=0
 ```
 
 You need to do that every time your KMS binary changed.
@@ -62,19 +62,19 @@ You can query the KMS with the CLI.
 Make sure you have compiled it with the same feature than the server. For example with the `staging` feature:
 
 ```
-cargo build --release  --no-default-features --features staging  --bin cosmian_kms_cli
+cargo build --release  --no-default-features --features insecure  --bin cosmian_kms_cli
 ```
 
 Then, on a fresh database:
 
 ```
-KMS_CLI_CONF=kms-staging.json cosmian_kms_cli configure
+KMS_CLI_CONF=kms-test.json cosmian_kms_cli configure
 ```
 
 Or in an already configured database:
 
 ```
-KMS_CLI_CONF=kms-staging.json cosmian_kms_cli abe init 
+KMS_CLI_CONF=kms-test.json cosmian_kms_cli abe init 
 ```
 
 Enjoy ;)
@@ -86,7 +86,9 @@ Enjoy ;)
 On a **non-sgx** machine:
 
 ```sh
-sudo docker build -f Dockerfile.staging -t enclave-kms .
+sudo docker build -f Dockerfile.sgx \
+    --build-arg FEATURES="--features=staging" \
+    --build-arg KMS_DOMAIN="testsgx.cosmain.com" -t enclave-kms .
 ```
 
 ### Run
