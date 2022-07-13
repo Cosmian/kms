@@ -12,6 +12,7 @@ The `cosmian_kms_utils` is designed to be called in any end-user programs such a
 For now, the supported crypto-systems are: 
 
 - [x] ABE
+- [x] Cover Crypt
 - [ ] To be continued...
 
 ## Compiling
