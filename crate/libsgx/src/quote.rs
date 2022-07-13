@@ -5,7 +5,7 @@ use std::{
 };
 
 use hex::encode;
-use openssl::sha::Sha256;
+use openssl::{error::ErrorStack, sha::Sha256};
 use tracing::debug;
 
 use crate::error::SgxError;
@@ -161,11 +161,10 @@ pub fn hash(quote: &[u8]) -> [u8; 32] {
 }
 
 /// Build the report data to use in the quote
-pub fn prepare_report_data(manifest: &[u8], certificate: Option<&[u8]>, nonce: &[u8]) -> Vec<u8> {
-    let manifest_hash = hash(manifest);
+pub fn prepare_report_data(certificate: Option<String>, nonce: String) -> Vec<u8> {
     match certificate {
-        Some(a) => [&manifest_hash, a, nonce].concat(),
-        None => [&manifest_hash, nonce].concat(),
+        Some(a) => [a.as_bytes(), nonce.as_bytes()].concat(),
+        None => nonce.into_bytes(),
     }
 }
 
@@ -175,6 +174,16 @@ pub fn prepare_report_data(manifest: &[u8], certificate: Option<&[u8]>, nonce: &
 pub unsafe fn from_bytes(quote: &[u8]) -> &Quote {
     let typed_quote: &Quote = std::mem::transmute_copy(&quote);
     typed_quote
+}
+
+/// Compute the `MR_SIGNER` from the  public enclave certificate (PEM format)
+pub fn compute_mr_signer(public_enclave_cert: &str) -> Result<[u8; 32], ErrorStack> {
+    let public_key = openssl::rsa::Rsa::public_key_from_pem(public_enclave_cert.as_bytes())?;
+
+    let modulus = public_key.n();
+    let mut modulus_bytes = modulus.to_vec();
+    modulus_bytes.reverse();
+    Ok(hash(&modulus_bytes))
 }
 
 /// Get the quote using a arbitrary user report data
@@ -249,9 +258,10 @@ pub fn get_quote(user_report_data_slice: &[u8]) -> Result<String, SgxError> {
 
 #[cfg(test)]
 mod tests {
-    use hex;
+    use hex::{self, encode};
 
     use super::{from_bytes, hash, prepare_report_data};
+    use crate::quote::compute_mr_signer;
     #[test]
     pub fn test_hash() {
         assert_eq!(
@@ -265,11 +275,31 @@ mod tests {
     #[test]
     pub fn test_prepare_report_data() {
         assert_eq!(
-            prepare_report_data(&[3], Some(&[2]), &[1u8]),
-            [
-                8, 79, 237, 8, 185, 120, 175, 77, 125, 25, 106, 116, 70, 168, 107, 88, 0, 158, 99,
-                107, 97, 29, 177, 98, 17, 182, 90, 154, 173, 255, 41, 197, 2, 1
-            ]
+            prepare_report_data(Some(String::from("2")), String::from("1")),
+            [50, 49]
+        );
+    }
+
+    #[test]
+    pub fn test_compute_mr_signer() {
+        assert_eq!(
+            encode(
+                compute_mr_signer(
+                    "-----BEGIN PUBLIC KEY-----
+MIIBoDANBgkqhkiG9w0BAQEFAAOCAY0AMIIBiAKCAYEA2YzUlbbI7SY73icXh0vm
+iIPBW6il9UVfYkTgN/FaMe5sFR2bWaQ9JhRaoXfF8ghx44z/WigkFjCQr/TacYPc
+jUpNyDgOte3TbJGOIKR0riXesJAeXVHwoesZdB4QZ0ZMDoGshe5k2bl9+/4nzK0z
+1BdgkpCTGFaXCTw/GlluxHoczBtTm2Gjo7feX+ETGymwiYvscje/dUERJ1NWSgT/
+DxF2mRkf5nP+bKeeZ/pLtcSxZsZJMtKic5xlcEIavYm7i8fMtqAjYduPobIKwKyg
+Z9vhBP2bFMzOBD0yAsifoSdZRnGDFs+KnKpCoIfB1Tjqj+OLj4l86XAC1A0rc/Xe
+FqQQenlM8XhvNRjxbX59tjpXUXhTTxOtQlI7DnNxU8+RwcIIlJbm0iFnSIW3U6At
+/T3feHCwPk417zjJAIMJYvjdCDfDLnw3ZM+Q1aYnzPLmScRiaUtbDnm4dJZPWed7
+4+qnTOgBm+8QGug3ksh6C6hnsbZ0DtkRLOQ1u+DMexwXAgED
+-----END PUBLIC KEY-----\n"
+                )
+                .unwrap()
+            ),
+            "2a6fbd91d09d26e5541a4060b0cc456827fd4d41e1928c98d89364557d40bff3"
         );
     }
 
