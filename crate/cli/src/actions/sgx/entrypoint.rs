@@ -10,7 +10,7 @@ use cosmian_kms_client::KmsRestClient;
 use eyre::Context;
 use hex::encode;
 use libsgx::{
-    quote::{from_bytes, hash, prepare_report_data, Quote},
+    quote::{compute_mr_signer, from_bytes, hash, prepare_report_data, Quote},
     remote_attestation::azure::remote_attestation,
 };
 use rand::Rng;
@@ -21,6 +21,10 @@ pub struct SgxAction {
     /// The path to store exported files (quote, manifest, certificate, remote attestation, ...)
     #[structopt(required = true, parse(from_os_str))]
     export_path: PathBuf,
+
+    /// The value of the MR_ENCLAVE obtains by running the KMS docker on your local machine
+    #[structopt(required = true, long = "mr-enclave")]
+    mr_enclave: String,
 }
 
 impl SgxAction {
@@ -58,15 +62,23 @@ impl SgxAction {
         );
 
         // Get the certificate
-        let certificate = client_connector
-            .get_certificate()
+        let certificates = client_connector
+            .get_certificates()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        // Save the certificate
-        let cert_path = self.export_path.join("ssl.cert");
-        fs::write(&cert_path, &certificate)?;
-        println!("The ssl certificate has been saved at {:?}", cert_path);
+        // Save the certificates
+        if let Some(ssl) = &certificates.ssl {
+            let cert_path = self.export_path.join("ssl.cert");
+            fs::write(&cert_path, ssl)?;
+            println!("The ssl certificate has been saved at {:?}", cert_path);
+        }
+
+        if let Some(enclave) = &certificates.enclave {
+            let cert_path = self.export_path.join("enclave.pub");
+            fs::write(&cert_path, enclave)?;
+            println!("The enclave certificate has been saved at {:?}", cert_path);
+        }
 
         // Get the manifest
         let manifest = client_connector
@@ -80,11 +92,7 @@ impl SgxAction {
         println!("The sgx manifest has been saved at {:?}", manifest_path);
 
         // Proceed the remote attestation
-        let user_report_data = prepare_report_data(
-            manifest.as_bytes(),
-            Some(certificate.as_bytes()),
-            nonce.as_bytes(),
-        );
+        let user_report_data = prepare_report_data(certificates.ssl, nonce);
 
         let remote_attestation = remote_attestation(&quote, Some(&user_report_data)).await?;
 
@@ -107,7 +115,9 @@ impl SgxAction {
         println!(
             "... MR enclave checking {}",
             bool_to_color(
-                encode(typed_quote.report_body.mr_enclave) == remote_attestation.sgx_mrenclave
+                self.mr_enclave == remote_attestation.sgx_mrenclave
+                    && encode(typed_quote.report_body.mr_enclave)
+                        == remote_attestation.sgx_mrenclave
                     && encode(typed_quote.report_body.mr_enclave)
                         == remote_attestation.x_ms_sgx_mrenclave
             ),
@@ -116,7 +126,13 @@ impl SgxAction {
         println!(
             "... MR signer checking {} ",
             bool_to_color(
-                encode(typed_quote.report_body.mr_signer) == remote_attestation.sgx_mrsigner
+                compute_mr_signer(&certificates.enclave.ok_or_else(|| {
+                    eyre::eyre!(
+                        "The server didn't return the enclave public certificate".to_string()
+                    )
+                })?)?
+                    == typed_quote.report_body.mr_signer
+                    && encode(typed_quote.report_body.mr_signer) == remote_attestation.sgx_mrsigner
                     && encode(typed_quote.report_body.mr_signer)
                         == remote_attestation.x_ms_sgx_mrsigner
             ),
