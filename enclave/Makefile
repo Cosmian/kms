@@ -1,5 +1,6 @@
 ARCH_LIBDIR ?= /lib/$(shell $(CC) -dumpmachine)
 SGX_SIGNER_KEY ?= /opt/cosmian-internal/cosmian-signer-key.pem
+SGX_SIGNER_PUBLIC_KEY = cosmian-signer-key.pub
 
 ifeq ($(DEBUG),1)
 GRAMINE_LOG_LEVEL = debug
@@ -20,6 +21,7 @@ kms.manifest: kms.manifest.template
 		-Darch_libdir=$(ARCH_LIBDIR) \
 		-Dentrypoint_abs="$(PWD)/scripts"  \
 		-Dentrypoint="/scripts"  \
+		-Dsgx_signer_public_key=$(SGX_SIGNER_PUBLIC_KEY) \
 		-Dkms_domain="$(KMS_DOMAIN)" \
 		$< >$@
 
@@ -29,6 +31,7 @@ kms.manifest.sgx: kms.manifest
 		--manifest kms.manifest \
 		--output $@
 	cp $@ public_data/
+	openssl rsa -in $(SGX_SIGNER_KEY) -pubout -out public_data/$(SGX_SIGNER_PUBLIC_KEY)
 
 kms.sig: kms.manifest.sgx
 

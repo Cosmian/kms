@@ -99,13 +99,14 @@ ENV LC_ALL C.UTF-8
 
 WORKDIR /root
 
-RUN mkdir -p scripts
+RUN mkdir -p scripts etc
 # private_data, public_data and shared_data are supposed to be given as parameters of the docker run
 
 ARG KMS_DOMAIN
 ENV KMS_DOMAIN=${KMS_DOMAIN}
 
 COPY --from=minimal-rust /root/target/release/cosmian_kms_server scripts/server
-COPY etc enclave/build_and_run.sh enclave/Makefile enclave/kms.manifest.template /root/
+COPY enclave/build_and_run.sh enclave/Makefile enclave/kms.manifest.template /root/
+COPY enclave/etc /root/etc
 
 ENTRYPOINT ["./build_and_run.sh"]
