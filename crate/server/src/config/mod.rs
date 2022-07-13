@@ -82,6 +82,14 @@ pub enum DbParams {
 }
 
 #[derive(Clone, Debug)]
+pub struct EnclaveParams {
+    // contains the path to the manifest
+    pub manifest_path: PathBuf,
+    // contains the path to the signer public key
+    pub public_key_path: PathBuf,
+}
+
+#[derive(Clone, Debug)]
 pub struct SharedConfig {
     #[cfg(feature = "auth")]
     pub delegated_authority_domain: String,
@@ -101,7 +109,7 @@ pub struct SharedConfig {
     pub certbot: Arc<Mutex<Certbot>>,
 
     #[cfg(feature = "enclave")]
-    pub manifest_path: PathBuf,
+    pub enclave_params: EnclaveParams,
 }
 
 pub(crate) fn init(conf: SharedConfig) {
@@ -149,11 +157,11 @@ pub(crate) fn db_params() -> DbParams {
 
 #[inline(always)]
 #[cfg(feature = "enclave")]
-pub(crate) fn manifest_path() -> PathBuf {
+pub(crate) fn enclave_params() -> EnclaveParams {
     INSTANCE_CONFIG
         .get()
         .expect("config must be initialised")
-        .manifest_path
+        .enclave_params
         .clone()
 }
 
@@ -203,7 +211,7 @@ pub async fn init_config(conf: &Config) -> eyre::Result<()> {
         db_params: conf.db.init(&workspace)?,
         kms_url: http_url.init(),
         #[cfg(feature = "enclave")]
-        manifest_path: conf.enclave.init(&workspace)?,
+        enclave_params: conf.enclave.init(&workspace)?,
         #[cfg(feature = "https")]
         certbot: Arc::new(Mutex::new(HTTPSConfig::init(&conf.https, &workspace)?)),
         #[cfg(not(feature = "auth"))]
