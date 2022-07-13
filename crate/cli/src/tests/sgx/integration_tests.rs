@@ -27,16 +27,15 @@ pub async fn test_quote() -> Result<(), Box<dyn std::error::Error>> {
         .stdout(predicate::str::contains(
             "You can check all these files manually.",
         ))
-        .stdout(predicate::str::contains("... Remote attestation checking Ok").not())
-        .stdout(predicate::str::contains("... MR signer checking Ok").not())
-        .stdout(predicate::str::contains("... Quote checking Ok").not())
-        .stdout(predicate::str::contains("... Date checking Ok ").not())
-        .stdout(
-            predicate::str::contains(
-                "... Quote report data (manifest, kms certificates and nonce) checking Ok ",
-            )
-            .not(),
-        );
+        .stdout(predicate::str::contains(
+            "... Remote attestation checking Ok",
+        ))
+        .stdout(predicate::str::contains("... MR signer checking Ok"))
+        .stdout(predicate::str::contains("... Quote checking Ok"))
+        .stdout(predicate::str::contains("... Date checking Ok "))
+        .stdout(predicate::str::contains(
+            "... Quote report data (manifest, kms certificates and nonce) checking Ok ",
+        ));
 
     // We do not test: "... MR enclave checking Ok" because we don't know yet how to pass `--mr-enclave` in the CI
 

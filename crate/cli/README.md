@@ -118,7 +118,7 @@ This value enables you to verify that the KMS is running inside a enclave belong
 
 This value will be compute by the CLI and compared against the values obtain from the quote and the remote attestation.
 
-If the value is altered, it could mean that you are not using the *Cosmian* KMS in the *Cosmian* infrastructure. You shouldn't proceed and you should report that incident to us.
+If the value is altered, it could mean that you are not using the *Cosmian* KMS in the *Cosmian* infrastructures. You shouldn't proceed and you should report that incident to us.
 
 #### `mr_enclave`
 
