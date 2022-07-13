@@ -9,25 +9,62 @@ Compared to the on-premise self-installation, this service is configured using:
 
 ## Trustworthiness
 
-The KMS enable you to check its trustworthiness. To do so, three routes are useful, using `GET` method:
+The KMS enables you to check its trustworthiness. To do so, three routes are useful, using `GET` method:
 
 - `/quote?nonce=<nonce>` returning the quote of the KMS running inside the enclave. It takes a nonce as parameter which is an arbitrary and non predictable string. The returning quote is base64 encoded.
-- `/certificate` returning the SSL certificate of the HTTPS server
+- `/certificates` returning the SSL certificate and the enclave public key of the HTTPS server
 - `/manifest` returning the manifest of the enclave. You can therefore analyse the hashes of the trusted files and the execution context such as env variables or enclave parameters
 
 With these three routes, you can proceed a remote attestation on Microsoft Azure Service. Note that the report data of the quote is generated has follow:
 
 ```
-report_data = Sha256( Sha256(manifest) + nonce + certificate )
+report_data = Sha256( certificate + nounce )
 ```
 
 Let's explain why:
 
 - The **ssl certificate** is encrypted using the `mr_enclave` key. Therefore if the server is updated, the certificates will be also updated and the quote will vary. Moreover this parameter is public, so you are plenty aware when the certificate changes.
 - The **nonce** is added to make the quote unique each time the user want a proof a trust. It uses an arbitrary and non predictable string. The kms server can't therefore send a previous verify version of the quote.
-- The **manifest** assures you that the manifest you will read is the one the enclave is using and therefore *Cosmian* can't alter the hash of the trusted files.
 
-These three attributes enable you to fully verify the trustworthiness of the enclave we are running.
+Once obtain the remote attestation, you can proceed several checks:
+- If the kms server runs inside an sgx enclave known by *Intel*
+- If the quote inside the remote attestation is the same than the quote returning by the enclave
+- If the `mr_enclave` and `mr_signer` are the same between the remote attestation and the quote
+- If the `mr_enclave` and `mr_signer` are the expected ones. See below.
+- If the current time is contained into the `iat` and the `exp` time of the remote attestation
+- If the quote's report data is both the same in the remote attestation and in the quote
+
+### `mr_signer`
+
+This value enables you to verify that the KMS is running inside a enclave belongs to *Cosmian*. Indeed this value is a `sha256` of the public key used to sign the enclave. 
+
+You can compute this value and compare it against the values obtain from the quote and the remote attestation.
+
+If the value is altered, it could mean that you are not using the *Cosmian* KMS in the *Cosmian* infrastructures. You shouldn't proceed and you should report that incident to us.
+
+### `mr_enclave`
+
+This value enables you to verify that the KMS code and libraries inside the enclave are the same than the code you can read on *Cosmian* github.
+
+You can get the open-sourced KMS docker, read the `mr_enclave` from it and compare it against the values obtain from the quote and the remote attestation.
+
+```sh
+sudo docker run \
+    -v public_data:/root/public_data \
+    -it enclave-kms --emulation
+```
+
+The `mr_enclave` can be read from the output of the docker itself.
+
+```
+Measurement:
+    c8e0ac76ee1b9416e53890677cbbce8a5f1d8bf2f1c7ab208c1e0efa56e8cea2
+
+Attributes:
+    mr_enclave: c8e0ac76ee1b9416e53890677cbbce8a5f1d8bf2f1c7ab208c1e0efa56e8cea2
+```
+
+If the value is altered, it could mean that you are not using the KMS from *Cosmian* but a modified one. You shouldn't proceed and you should report that incident to us.
 
 ## The database
 

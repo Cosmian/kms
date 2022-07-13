@@ -118,13 +118,15 @@ This value enables you to verify that the KMS is running inside a enclave belong
 
 This value will be compute by the CLI and compared against the values obtain from the quote and the remote attestation.
 
-If the value is altered, it could mean that you are not using a KMS from *Cosmian*. You shouldn't proceed and you should report that incident to us.
+If the value is altered, it could mean that you are not using the *Cosmian* KMS in the *Cosmian* infrastructure. You shouldn't proceed and you should report that incident to us.
 
 #### `mr_enclave`
 
-This value enables you to verify that the KMS code and libraries inside the enclave are the same than the code you can read on `Cosmian` github.
+This value enables you to verify that the KMS code and libraries inside the enclave are the same than the code you can read on *Cosmian* github.
 
 This value is not compute by the CLI. You can get the open-sourced KMS docker, read the `mr_enclave` from it and give it to  the CLI to check it. See [README.md](../../enclave/README.md#emulate) for more details.
+
+If the value is altered, it could mean that you are not using the KMS from *Cosmian* but a modified one. You shouldn't proceed and you should report that incident to us.
 
 #### Exported files
 
