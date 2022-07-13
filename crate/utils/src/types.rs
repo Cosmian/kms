@@ -168,6 +168,13 @@ pub struct SuccessResponse {
     pub success: String,
 }
 
+// Response when querying the KMS certificates
+#[derive(Deserialize, Serialize, Debug)]
+pub struct CertificatesResponse {
+    pub ssl: Option<String>,
+    pub enclave: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QuoteParams {
     pub nonce: String,

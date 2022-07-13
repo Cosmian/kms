@@ -65,7 +65,7 @@ pub fn prepare_server(
         #[cfg(feature = "enclave")]
         let app = app.service(endpoint::get_quote);
         #[cfg(feature = "https")]
-        let app = app.service(endpoint::get_certificate);
+        let app = app.service(endpoint::get_certificates);
         #[cfg(feature = "enclave")]
         let app = app.service(endpoint::get_manifest);
 
