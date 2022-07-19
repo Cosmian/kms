@@ -13,19 +13,19 @@ This CLI supports several crypto-systems listed below:
 cargo run
 ```
 
-Features are:
-- `insecure` to allow self-signed ssl connection
-
 ## Usage
 
 First of all, you need to specify the `kms.json` with the `kms_server_url` and your `kms_access_token` such as:
 
 ```json
 {
+    "insecure": false,
     "kms_server_url": "http://127.0.0.1:9998",
     "kms_access_token": "MY_TOKEN"
 }
 ```
+
+Note: `insecure` needs to be `true` if `kms_server_url` uses https and the server provides a self-signed ssl connection
 
 Then:
 
@@ -123,7 +123,7 @@ The files you can manually verify are:
 ## Testing
 
 ```
-cargo build --features dev  --no-default-features --bin cosmian_kms_cli
+cargo build --bin cosmian_kms_cli
 cargo test -p cosmian_kms_cli
 ```
 
@@ -134,6 +134,6 @@ You can also test using a remote kms running inside an enclave. First, generate 
 Then:
 
 ```
-cargo build --features staging  --no-default-features --bin cosmian_kms_cli
+cargo build --bin cosmian_kms_cli
 cargo test --features staging --no-default-features -p cosmian_kms_cli
 ```

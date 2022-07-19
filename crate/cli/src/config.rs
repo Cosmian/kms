@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct CliConf {
+    // Insecure is useful if the cli needs to connect to an HTTPS KMS using unsecured SSL certificate
+    #[serde(default)]
+    pub insecure: bool,
     pub kms_server_url: String,
     kms_access_token: String,
     pub kms_database_secret: Option<String>,
@@ -14,6 +17,7 @@ pub struct CliConf {
 /// Define the configuration of the CLI reading a json
 ///
 /// {
+///     "insecure": false
 ///     "kms_server_url": "http://127.0.0.1:9998",
 ///     "kms_access_token": "AA...AAA"
 ///     "kms_database_secret": "BB...BBB"
@@ -41,6 +45,7 @@ impl CliConf {
             &conf.kms_server_url,
             &conf.kms_access_token,
             conf.kms_database_secret.as_deref(),
+            conf.insecure,
         )
         .with_context(|| {
             format!(
