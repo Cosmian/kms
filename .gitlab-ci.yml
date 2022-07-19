@@ -271,7 +271,7 @@ docker_lib_ci_build_and_push:
 #
 build_cats_delivery:
   image: docker:19.03.15
-  stage: prebuild
+  stage: deploy
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
   script:
@@ -279,7 +279,7 @@ build_cats_delivery:
     - docker save kms > kms.tar
     - docker save postgres > postgres.tar
   artifacts:
-    name: 'delivery_${CI_COMMIT_TAG}_$(date +"%Y%m%d")'
+    name: 'kms_server_${CI_COMMIT_TAG}_$(date +"%Y%m%d")'
     paths:
       - kms.tar
       - postgres.tar
@@ -289,17 +289,21 @@ build_cats_delivery:
 #
 # Build CLI on windows
 #
-build_cli_windows:
-  stage: build
+build_cli_windows_linux:
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
   before_script:
     - rustup target add x86_64-pc-windows-gnu
   script:
     - cd crate/cli
     - cargo build --release --target x86_64-pc-windows-gnu
+    - cargo build --release
   artifacts:
-    name: 'cli_${CI_COMMIT_TAG}_$(date +"%Y%m%d")'
+    name: 'kms_cli_${CI_COMMIT_TAG}_$(date +"%Y%m%d")'
     paths:
       - target/x86_64-pc-windows-gnu/release/cosmian_kms_cli.exe
+      - target/release/cosmian_kms_cli
 
 #
 # Build and deploy the public documentation on the prod env
