@@ -48,7 +48,7 @@ dependencies = [
 category = "dev"
 description = "Run Rust tests"
 script = '''
-cargo build --features staging  --no-default-features --bin cosmian_kms_cli
+cargo build --bin cosmian_kms_cli
 cargo test --features staging --no-default-features -p cosmian_kms_cli
 '''
 

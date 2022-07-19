@@ -404,6 +404,7 @@ impl KmsRestClient {
         server_url: &str,
         bearer_token: &str,
         database_secret: Option<&str>,
+        insecure: bool,
     ) -> Result<KmsRestClient, KmsClientError> {
         let server_url = match server_url.strip_suffix('/') {
             Some(s) => s.to_string(),
@@ -418,10 +419,7 @@ impl KmsRestClient {
             headers.insert("KmsDatabaseSecret", HeaderValue::from_str(database_secret)?);
         }
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-        let builder = ClientBuilder::new();
-
-        #[cfg(feature = "insecure")]
-        let builder = builder.danger_accept_invalid_certs(true);
+        let builder = ClientBuilder::new().danger_accept_invalid_certs(insecure);
 
         Ok(KmsRestClient {
             client: builder
