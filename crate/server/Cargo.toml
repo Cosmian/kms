@@ -17,10 +17,6 @@ insecure = []
 # The binary won't start after a date chosen at compile-time
 timeout = ["actix-rt"]
 
-# Disable https, disable enclave, enable auth but unsecurely
-# To run on a dev environment
-dev = ["auth", "insecure"]
-
 # Enable all the feature even insecure but timeout
 # To run in a test environment using a real domain name and enclaves without the rest api limit of let's encrypt
 staging = ["auth", "insecure", "https", "enclave"]

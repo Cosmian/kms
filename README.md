@@ -13,3 +13,17 @@ And also some libraries:
 
 Please refer to the README of the inner directories to have more information.
 
+The `enclave` directory contains all the requirements to run the KMS inside an Intel SGX enclave.
+
+You can build a docker containing the KMS server as follow:
+
+```sh
+# Example with auth and https features
+docker build . --network=host \
+               --build-arg FEATURES="--features=auth,https" \
+               -t kms 
+```
+
+The `delivery` directory contains all the requirements to proceed a KMS delivery based on a docker creation.
+
+Find the public documentation of the KMS in the `documentation` directory.

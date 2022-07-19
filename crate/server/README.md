@@ -4,17 +4,42 @@
 
 The KMS server provides several features which can be enabled at compilation times. Enable/Disable these features will change the server configuration variables. 
 
-| Feature  | Description                                                                                                       | Dev | Staging | Prod 🔥 |
-| -------- | ----------------------------------------------------------------------------------------------------------------- | --- | ------- | ------ |
-| auth     | Enable authentication. If disabled, multi-user is not supported                                                   | ✅   | ✅       | ✅      |
-| enclave  | Enable the ability to run inside an enclave                                                                       |     | ✅       | ✅      |
-| https    | Enable https in the KMS in order to encrypt query between client and the KMS. If disabled, it uses http           |     | ✅       | ✅      |
-| insecure | Do not verify auth0 token expiration date and https ssl is self-signed (to avoid to be banned by letsencrypt)     | ✅   | ✅       |        |
-| timeout  | The binary will stop (and won't be able to start again) after a period of time, starting from date of compilation |     |         |        |
+| Feature  | Description                                                                                                       | Local | Staging | Prod 🔥 |
+| -------- | ----------------------------------------------------------------------------------------------------------------- | ----- | ------- | ------ |
+| auth     | Enable authentication. If disabled, multi-user is not supported                                                   | ✅     | ✅       |
+| enclave  | Enable the ability to run inside an enclave                                                                       | ✅     | ✅       |
+| https    | Enable https in the KMS in order to encrypt query between client and the KMS. If disabled, it uses http           | ✅     | ✅       |
+| insecure | Do not verify auth0 token expiration date and https ssl is self-signed (to avoid to be banned by letsencrypt)     | ✅     |         |
+| timeout  | The binary will stop (and won't be able to start again) after a period of time, starting from date of compilation |       |         |
 
 __Caption__: 
 ✅ Enabled
 🔥 Default
+
+### Development
+
+For development, you can use `--no-default-features`. It will tell the server:
+- to not use authentication
+- to use HTTP connection
+
+### Staging feature
+
+For staging environment, you can use `--features=staging --no-default-features`. It will tell the server:
+- to not verify the expiration of OAuth2 tokens if `KMS_DELEGATED_AUTHORITY_DOMAIN` is set.
+- to use HTTPS connection with unsecure SSL certificates (it will play anyway all the process to get a valid certificates and starts a HTTPS server)
+- to be runnable only inside an enclave
+
+### Timeout feature
+
+The KMS server's binary can be configured to stop running 3 months after date of compilation.
+
+This is done by using feature flag `timeout`:
+
+```console
+cargo build --features timeout
+```
+
+This feature can be combined with any other features.
 
 ## Configuration
 
@@ -44,28 +69,7 @@ If so, `admin` will be the user id.
 
 ## Configure the SGDB
 
-The KMS relies on a database using various kinds of connector to store all the user secrets. The database is made up of two tables: `objects` et `read_access`.
-
-### `objects` table
-
-This table is designed to contain the kmip objects. A row is described as:
-
-- `id` which is the index of the kmip object. This value is known by a user and used to retreive any stored objects
-- `object` is the object itself
-- `state` could be `PreActive`, `Active`, `Deactivated`, `Compromised`, `Destroyed` or `Destroyed_Compromised`
-- `owner` is the external id (email) of the user the object belongs to
-
-### `read_access` table
-
-Object's owner can allow any other user to perform actions on a given object.
-
-This table describes those actions a specific user is allowed to perform onto the object:
-
-- `id` which is the internal id of the kmip object
-- `userid` which is the external id of the user: its email address
-- `permissions` is a serialized JSON list containing one or more of the following flags: `Create`, `Get`, `Encrypt`, `Decrypt`, `Import`, `Revoke`, `Locate`, `Rekey`, `Destroy` defining the operation kinds the user is granted
-
-The `userid` field will be used to check authorization by matching the email address contained in the authorization JWT.
+The KMS relies on a database using various kinds of connector to store all the user secrets. 
 
 By default, an sqlite database is used. This configuration is not suitable for production environment. Use one of the two followings instead.
 
@@ -81,84 +85,6 @@ KMS_POSTGRES_URL=postgresql://kms:kms@127.0.0.1:5432/kms cargo run
 KMS_MYSQL_URL=mysql://root:kms@localhost/kms cargo run
 ```
 
-### EdgelessDB as database
-
-[EdgelessDB](https://docs.edgeless.systems/edgelessdb/#/) is based on MariaDB, so the MySQL connector will be used for that.
-
-Currently, the `sqlx` crate is not able to authentify using a key-file, as requested with EdgelessDB.
-
-That's why two implementations are available in the KMS Server.
-
-Follow this guide to use EdgelessDB in simulation mode (without SGX): https://docs.edgeless.systems/edgelessdb/#/getting-started/quickstart-simulation
-
-Use `KMS_USER_CERT_PATH` to give the client certificate to the KMS server. 
-
-**TL;DR**
-
-Data has been generated and is available in `data-ssl` and `data_ssl3` folder such
-as:
-
-- `data-ssl` is to use if you have a libssl<=2
-- `data-ssl3` is to use if you have a libssl=3
-
-To re-create key material, perform the following:
-
-```console
-openssl req -x509 -newkey rsa -nodes -days 3650 -subj '/CN=My CA' -keyout ca-key.pem -out ca-cert.pem
-openssl req -newkey rsa -nodes -subj '/CN=rootuser' -keyout key.pem -out csr.pem
-openssl x509 -req -days 3650 -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial -in csr.pem -out cert.pem
-
-awk 1 ORS='\\n' ca-cert.pem
-```
-
-Then create a `manifest.json` file as requested in the guide.
-
-An additional step is required to use properly the `mysql` crate that will connect using key-file.
-
-```console
-openssl pkcs12 -export -out cert.p12 -in cert.pem -inkey key.pem
-```
-
-If it prompts for export password, just hit `Enter`.
-
-For simplified example, see: http://gitlab.cosmian.com/thibaud.genty/mysql_test
-
-**EdgelessDB for Gitlab CI**
-
-An EdgelessDB is running on `gitlab-runner-1` so that CI can test MySQL connector against it.
-
-The database is using key material located on the home folder of the `gitlab-runner` user.
-
-<u>Start Docker container</u>
-
-```console
-sudo docker run --restart unless-stopped -d --name my-edb -p3306:3306 -p8080:8080 -e OE_SIMULATION=1 -t ghcr.io/edgelesssys/edgelessdb-sgx-1gb
-```
-
-Note: the EdgelessDB is currently running in simulation mode (not using SGX enclave).
-
-<u>Upload manifest to setup key material</u>
-
-```console
-cd /home/gitlab-runner/data
-curl -k --data-binary @manifest.json http://gitlab-runner-1.cosmian.com:8080/manifest
-```
-
-<u>Test it works</u>
-
-```console
-cd /home/gitlab-runner/
-mysql -h127.0.0.1  -uroot -e "SHOW DATABASES"  --ssl-cert $(pwd)/data/cert.pem --ssl-key $(pwd)/data/key.pem
-+--------------------+
-| Database           |
-+--------------------+
-| $edgeless          |
-| information_schema |
-| kms                |
-| mysql              |
-+--------------------+
-```
-
 ## Tests
 
 `cargo make` setups PostgreSQL and MariaDB automatically to perform tests.
@@ -168,29 +94,7 @@ cargo install cargo-make
 cargo make rust-tests
 ```
 
-## Dev
 
-For development, you can use `--features dev --no-default-features`. It will tell the server:
-- to not verify the expiration of OAuth2 tokens if `KMS_DELEGATED_AUTHORITY_DOMAIN` is set.
-- to use HTTP connection
-
-## Staging
-
-For staging environment, you can use `--features=staging --no-default-features`. It will tell the server:
-- to not verify the expiration of OAuth2 tokens if `KMS_DELEGATED_AUTHORITY_DOMAIN` is set.
-- to use HTTPS connection with unsecure SSL certificates (it will play anyway all the process to get a valid certificates and starts a HTTPS server)
-
-## Timeout
-
-The KMS server's binary can be configured to stop running 3 months after date of compilation.
-
-This is done by using feature flag `timeout`:
-
-```console
-cargo build --features timeout
-```
-
-This feature can be combined with any other features.
 
 ## Production / Running inside a Secure Enclave 
 
@@ -265,3 +169,30 @@ This part cover the following scenario: we lost the KMS server and the KMS datab
 Let's describe how *Cosmian* deals with this concern:
 - The HTTPS server can be lost. *Cosmian* will start a new one in another machine. The `mr_enclave` key will changed. As the update process, the new KMS version will remove the previous SSL keys and regenerate them.
 - The sqlcipher-encrypted databases are stored in plain-text on the host. It means that, if the user provides thesqlcipher key, a new KMS in another secure enclave can reload the database. The database files are written to a network volume. The replication of this volume is managed by Azure with a high level of redundancy. 
+
+## In-depth understanding
+
+### Database
+
+The database is made up of two tables: `objects` et `read_access`.
+
+#### `objects` table
+
+This table is designed to contain the kmip objects. A row is described as:
+
+- `id` which is the index of the kmip object. This value is known by a user and used to retreive any stored objects
+- `object` is the object itself
+- `state` could be `PreActive`, `Active`, `Deactivated`, `Compromised`, `Destroyed` or `Destroyed_Compromised`
+- `owner` is the external id (email) of the user the object belongs to
+
+#### `read_access` table
+
+Object's owner can allow any other user to perform actions on a given object.
+
+This table describes those actions a specific user is allowed to perform onto the object:
+
+- `id` which is the internal id of the kmip object
+- `userid` which is the external id of the user: its email address
+- `permissions` is a serialized JSON list containing one or more of the following flags: `Create`, `Get`, `Encrypt`, `Decrypt`, `Import`, `Revoke`, `Locate`, `Rekey`, `Destroy` defining the operation kinds the user is granted
+
+The `userid` field will be used to check authorization by matching the email address contained in the authorization JWT.

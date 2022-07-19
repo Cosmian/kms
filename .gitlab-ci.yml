@@ -167,7 +167,7 @@ docker_test_build_and_deploy:
     - echo $IMAGE_TAG
     - echo $SGX_REMOTE
     - docker build --network=host -f enclave/Dockerfile.sgx
-      --build-arg FEATURES="--features staging"
+      --build-arg FEATURES="--features=staging"
       --build-arg KMS_DOMAIN="$KMS_DOMAIN"
       -t $IMAGE_TAG .
     - docker push $IMAGE_TAG
