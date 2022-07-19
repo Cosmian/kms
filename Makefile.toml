@@ -2,18 +2,18 @@
 default_to_workspace = false
 
 [tasks.ci-format]
-description = "Run Rustfmt on base code"
 category = "dev"
+description = "Run Rustfmt on base code"
 script = "cargo format"
 
 [tasks.ci-clippy-all]
-description = "Run Clippy on base code"
 category = "dev"
+description = "Run Clippy on base code"
 script = "cargo clippy-all"
 
 [tasks.ci-build]
-description = "Build all"
 category = "dev"
+description = "Build all"
 script = '''
 #!/bin/bash
 set -ex
@@ -27,8 +27,8 @@ cargo build --all-targets --all-features
 '''
 
 [tasks.ci-rust-tests]
-description = "Run Rust tests"
 category = "dev"
+description = "Run Rust tests"
 script = '''
 #!/bin/bash
 set -ex
@@ -38,15 +38,15 @@ cargo test --bins -- --nocapture
 
 [tasks.ci]
 dependencies = [
-    "ci-format",
-    "ci-clippy-all",
-    "ci-build",
-    "ci-rust-tests",
+  "ci-format",
+  "ci-clippy-all",
+  "ci-build",
+  "ci-rust-tests",
 ]
 
 [tasks.ci-enclave-tests]
-description = "Run Rust tests"
 category = "dev"
+description = "Run Rust tests"
 script = '''
 cargo build --features staging  --no-default-features --bin cosmian_kms_cli
 cargo test --features staging --no-default-features -p cosmian_kms_cli

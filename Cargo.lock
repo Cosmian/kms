@@ -1190,9 +1190,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_crypto_base"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a346fb7462170b145735c4a73781e4d627df2465b931e7d024567b850f022455"
+checksum = "472d1b8e705142328bc7bd094f2da790cd255695d2d107dd11d5dfa12ddf3556"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1410,9 +1410,9 @@ dependencies = [
 [[package]]
 name = "cosmian_mcfe"
 version = "0.2.0"
-source = "git+https://github.com/Cosmian/DMCFE.git?branch=feature/add_mcfe#f400c2fd19c52dddd2903da12e7c9af421f3b2e5"
+source = "git+https://github.com/Cosmian/DMCFE.git?branch=feature/add_mcfe#2cfb3a18ea601bd954635dc7ade2ff9be3c3d2d5"
 dependencies = [
- "cosmian_crypto_base 0.1.0",
+ "cosmian_crypto_base 0.1.1",
  "eyre",
  "num-bigint 0.4.3",
  "num-traits",
@@ -4725,8 +4725,8 @@ version = "1.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ee73e6e4924fe940354b8d4d98cad5231175d615cd855b758adc658c0aac6a0"
 dependencies = [
- "cfg-if 1.0.0",
- "rand 0.8.5",
+ "cfg-if 0.1.10",
+ "rand 0.7.3",
  "static_assertions",
 ]
 
