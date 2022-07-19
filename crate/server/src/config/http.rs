@@ -7,7 +7,7 @@ pub struct HTTPConfig {
     pub port: u16,
 
     /// The server http hostname
-    #[clap(long, env = "KMS_HOSTNAME", default_value = "localhost")]
+    #[clap(long, env = "KMS_HOSTNAME", default_value = "0.0.0.0")]
     pub hostname: String,
 }
 

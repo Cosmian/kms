@@ -12,7 +12,7 @@ It's probably more convenient to query the KMS using a SDK due to the specifity 
 
 ## Query using the KMS-CLI
 
-Coming soon... ;)
+Read [cli](cli.md)
 
 ## Query using server's API
 
