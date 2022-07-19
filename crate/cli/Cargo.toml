@@ -15,7 +15,6 @@ staging = []
 sqlcipher = []
 dev = []
 
-
 [dependencies]
 abe_gpsw = { version = "1.0", features = ["interfaces"] }
 base64 = "0.13"
@@ -40,7 +39,7 @@ uuid = { version = "1.1", features = ["v4"] }
 [dev-dependencies]
 assert_cmd = "2.0"
 cosmian_kms_client = { path = "../client", default-features = false  }
-cosmian_kms_server = { path = "../server", features = ["dev"], default-features = false }
+cosmian_kms_server = { path = "../server", features = ["auth", "insecure"], default-features = false }
 file_diff = "1.0.0"
 predicates = "2.1"
 regex = "1.5.5"

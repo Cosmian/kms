@@ -32,7 +32,7 @@ description = "Run Rust tests"
 script = '''
 #!/bin/bash
 set -ex
-cargo test --workspace --features dev --no-default-features -- --nocapture
+cargo test --workspace --features auth,insecure --no-default-features -- --nocapture
 cargo test --bins -- --nocapture
 '''
 
@@ -98,9 +98,7 @@ export KMS_PUBLIC_PATH="data/public"
 export KMS_SHARED_PATH="data/shared"
 export KMS_PRIVATE_PATH="data/private"
 
-# TODO: add a test inside an enclave with --features=enclave
-# TODO: add a test on a server with a domain name with --features=https
-cargo test --workspace --features dev --no-default-features -- --nocapture
+cargo test --workspace --features auth,insecure --no-default-features -- --nocapture
 cargo test --bins -- --nocapture
 '''
 script.post = '''
