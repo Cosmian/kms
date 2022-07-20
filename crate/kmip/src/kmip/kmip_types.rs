@@ -15,26 +15,26 @@ use super::kmip_objects::ObjectType;
 /// The Certificate Type value SHALL be set by the server when the certificate
 /// is created or registered and then SHALL NOT be changed or deleted before the
 /// object is destroyed.
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum CertificateType {
     X509 = 0x01,
     PGP = 0x02,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum CertificateRequestType {
     CRMF = 0x01,
     PKCS10 = 0x02,
     PEM = 0x03,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::enum_clike_unportable_variant)]
 pub enum OpaqueDataType {
     Unknown = 0x8000_0001,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::enum_clike_unportable_variant)]
 pub enum SecretDataType {
     Password = 0x01,
@@ -43,7 +43,7 @@ pub enum SecretDataType {
     FunctionalKeyShare = 0x8000_0002,
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SplitKeyMethod {
     XOR = 0x0000_0001,
     PolynomialSharingGf216 = 0x0000_0002,
@@ -52,7 +52,7 @@ pub enum SplitKeyMethod {
 }
 
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Display, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, Apiv2Schema)]
 pub enum KeyFormatType {
     Raw = 0x01,
     Opaque = 0x02,
@@ -88,7 +88,7 @@ pub enum KeyFormatType {
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Display, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Display, Eq, PartialEq, Apiv2Schema)]
 pub enum CryptographicAlgorithm {
     DES = 0x0000_0001,
     THREE_DES = 0x0000_0002,
@@ -161,7 +161,7 @@ pub enum CryptographicAlgorithm {
 /// parameter P (refer toto [RFC7778],[SEC2]and [SP800-56A]) is specified
 /// separately by setting the Cryptographic Length attribute. Recommended Curve
 /// is applicable to elliptic curve algorithms such as ECDSA, ECDH, and ECMQV
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 #[serde(rename_all = "PascalCase")]
 pub struct CryptographicDomainParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -181,7 +181,7 @@ impl Default for CryptographicDomainParameters {
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 pub enum RecommendedCurve {
     P192 = 0x0000_0001,
     K163 = 0x0000_0002,
@@ -261,7 +261,7 @@ impl Default for RecommendedCurve {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 pub enum KeyCompressionType {
     ECPublicKeyTypeUncompressed = 0x0000_0001,
     ECPublicKeyTypeX962CompressedPrime = 0x0000_0002,
@@ -351,7 +351,7 @@ bitflags::bitflags! {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 #[serde(rename_all = "PascalCase")]
 pub enum ObjectGroupMember {
     Group_Member_Fresh = 0x0000_0001,
@@ -371,7 +371,7 @@ bitflags::bitflags! {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Display, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, Apiv2Schema)]
 pub enum LinkType {
     /// For Certificate objects: the parent certificate for a certificate in a
     /// certificate chain. For Public Key objects: the corresponding
@@ -423,7 +423,7 @@ pub enum LinkType {
 /// operation is repeated for each of them. If an operation appears
 /// multiple times in a request, it is the most recent that is referred to.
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Display)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
 pub enum UniqueIdentifierEnumeration {
     IDPlaceholder = 0x0000_0001,
     Certify = 0x0000_0002,
@@ -445,7 +445,7 @@ pub enum UniqueIdentifierEnumeration {
     //Extensions 8XXXXXXX
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 #[openapi(empty)]
 #[serde(untagged)]
 /// #[openapi(empty)] silences the warning but then the type completely vanishes
@@ -462,7 +462,7 @@ pub enum LinkedObjectIdentifier {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Display)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
 pub enum RevocationReasonEnumeration {
     Unspecified = 0x0000_0001,
     KeyCompromise = 0x0000_0002,
@@ -482,7 +482,7 @@ pub enum RevocationReasonEnumeration {
 /// audit trail/logging purposes and MAY contain additional information about
 /// why the object was revoked (e.g., “Laptop stolen”, or “Machine
 /// decommissioned”).
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 #[openapi(empty)]
 #[serde(untagged)]
 /// #[openapi(empty)] silences the warning but then the type completely vanishes
@@ -520,7 +520,7 @@ pub enum RevocationReason {
 /// material is not available to the server or client (e.g., the registration of
 /// a CA Signer certificate with a server, where the corresponding private key
 /// is held in a different manner).
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Apiv2Schema)]
 #[serde(rename_all = "PascalCase")]
 pub struct Link {
     pub link_type: LinkType,
@@ -542,7 +542,7 @@ pub struct Link {
 /// Vendor Attributes created by the server with Vendor Identification “y”
 /// are not created (provided during object creation), set, added, adjusted,
 /// modified or deleted by the client.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq, Apiv2Schema)]
 #[serde(rename_all = "PascalCase")]
 pub struct VendorAttribute {
     /// Text String (with usage limited to alphanumeric, underscore and period –
@@ -575,7 +575,7 @@ pub struct VendorAttribute {
 /// the server MAY retain all, some or none of the object attributes,
 /// depending on the object type and server policy.
 // TODO: there are 56 attributes in the specs. Only a handful are implemented here
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Attributes {
     /// The Activation Date attribute contains the date and time when the
@@ -753,14 +753,14 @@ impl Attributes {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct VendorAttributeReference {
     pub vendor_identification: String,
     pub attribute_name: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 #[openapi(empty)]
 pub enum AttributeReference {
     Vendor(VendorAttributeReference),
@@ -768,7 +768,7 @@ pub enum AttributeReference {
 }
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_variant_names)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, EnumString, Display)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString, Display)]
 pub enum Tag {
     ActivationDate = 0x42_0001,
     ApplicationData = 0x42_0002,
@@ -1113,7 +1113,7 @@ pub enum Tag {
 
 /// Indicates the method used to wrap the Key Value.
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 pub enum WrappingMethod {
     Encrypt = 0x0000_0001,
     MACSign = 0x0000_0002,
@@ -1128,7 +1128,7 @@ impl Default for WrappingMethod {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 pub enum BlockCipherMode {
     CBC = 0x0000_0001,
     ECB = 0x0000_0002,
@@ -1149,7 +1149,7 @@ pub enum BlockCipherMode {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 pub enum PaddingMethod {
     None = 0x0000_0001,
     OAEP = 0x0000_0002,
@@ -1164,7 +1164,7 @@ pub enum PaddingMethod {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 pub enum HashingAlgorithm {
     MD2 = 0x0000_0001,
     MD4 = 0x0000_0002,
@@ -1186,7 +1186,7 @@ pub enum HashingAlgorithm {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 pub enum KeyRoleType {
     BDK = 0x0000_0001,
     CVK = 0x0000_0002,
@@ -1215,7 +1215,7 @@ pub enum KeyRoleType {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 pub enum DigitalSignatureAlgorithm {
     MD2WithRSAEncryption = 0x0000_0001,
     MD5WithRSAEncryption = 0x0000_0002,
@@ -1239,7 +1239,7 @@ pub enum DigitalSignatureAlgorithm {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 pub enum MaskGenerator {
     MFG1 = 0x0000_0001,
 }
@@ -1276,7 +1276,7 @@ pub enum MaskGenerator {
 ///
 /// Initial Counter Value is the starting counter value for CTR mode (for
 /// [RFC3686] it is 1).
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Apiv2Schema, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Apiv2Schema, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct CryptographicParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1326,7 +1326,7 @@ pub struct CryptographicParameters {
 
 /// Contains the Unique Identifier value of the encryption key and
 /// associated cryptographic parameters.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 #[serde(rename_all = "PascalCase")]
 pub struct EncryptionKeyInformation {
     pub unique_identifier: UniqueIdentifier,
@@ -1334,7 +1334,7 @@ pub struct EncryptionKeyInformation {
     pub cryptographic_parameters: Option<CryptographicParameters>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 #[serde(rename_all = "PascalCase")]
 pub struct MacSignatureKeyInformation {
     pub unique_identifier: UniqueIdentifier,
@@ -1343,7 +1343,7 @@ pub struct MacSignatureKeyInformation {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 pub enum EncodingOption {
     /// the wrapped un-encoded value of the Byte String Key Material field in
     /// the Key Value structure
@@ -1353,7 +1353,7 @@ pub enum EncodingOption {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 pub enum KeyWrapType {
     NotWrapped = 0x0000_0001,
     AsRegistered = 0x0000_0002,
@@ -1367,7 +1367,7 @@ pub enum KeyWrapType {
 ///
 /// Note: The states correspond to those described in [SP800-57-1].
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Display)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
 pub enum StateEnumeration {
     // Pre-Active: The object exists and SHALL NOT be used for any cryptographic purpose.
     PreActive = 0x0000_0001,

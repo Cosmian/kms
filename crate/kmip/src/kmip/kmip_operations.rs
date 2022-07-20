@@ -18,7 +18,7 @@ use super::{
 };
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Display, Debug, PartialEq)]
+#[derive(Copy, Clone, Display, Debug, Eq, PartialEq)]
 pub enum ErrorReason {
     Item_Not_Found = 0x0000_0001,
     Response_Too_Large = 0x0000_0002,
@@ -236,7 +236,7 @@ impl<'de> Deserialize<'de> for Import {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Apiv2Schema)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Apiv2Schema)]
 #[serde(rename_all = "PascalCase")]
 pub struct ImportResponse {
     /// The Unique Identifier of the newly imported object.

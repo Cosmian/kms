@@ -198,12 +198,13 @@ impl KMSSqliteCache {
         );
 
         while self.max_size <= self.current_size.load(Ordering::Relaxed) {
-            let id = match self
+            let id = self
                 .freeable_sqlites
                 .write()
                 .expect("Unable to lock for write")
-                .pop()
-            {
+                .pop();
+
+            let id = match id {
                 Ok(id) => id,
                 Err(_) => break, // nothing in the cache, just leave
             };
@@ -247,7 +248,13 @@ impl KMSSqliteCache {
 
         let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
 
-        match sqlites.get_mut(&id) {
+        let mut freeable_sqlites = self
+            .freeable_sqlites
+            .write()
+            .expect("Unable to lock for write");
+
+        let item = sqlites.get_mut(&id);
+        match item {
             // Deal with the case: the id is already known but the sqlite was closed
             Some(item) => {
                 if !item.closed {
@@ -266,19 +273,12 @@ impl KMSSqliteCache {
                 info!("CachedSQLCipher: new group_id={id}");
 
                 // Book a slot for it
-                let freeable_cache_id = self
-                    .freeable_sqlites
-                    .write()
-                    .expect("Unable to lock for write")
-                    .push(id)?;
+                let freeable_cache_id = freeable_sqlites.push(id)?;
 
                 // Add it to the SqliteCache
                 let mut item = KMSSqliteCacheItem::new(pool, key.to_string(), freeable_cache_id);
 
-                self.freeable_sqlites
-                    .write()
-                    .expect("Unable to lock for write")
-                    .uncache(freeable_cache_id)?;
+                freeable_sqlites.uncache(freeable_cache_id)?;
 
                 // Make it usable (to avoid direct free after alloc in case of cache overflow)
                 item.in_used = 1;
@@ -294,7 +294,7 @@ impl KMSSqliteCache {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub enum FSCNeighborEntry {
     /// Start/End of chain
     Nil,

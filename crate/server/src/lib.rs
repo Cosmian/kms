@@ -117,11 +117,11 @@ async fn start_https(cert: &Arc<Mutex<Certbot>>) -> eyre::Result<()> {
 
         // Define and start the thread renewing the certificate
         spawn(async move {
-            let renew_in = match cert_copy
+            let days_before_renew = cert_copy
                 .lock()
                 .expect("can't lock certificate mutex")
-                .get_days_before_renew()
-            {
+                .get_days_before_renew();
+            let renew_in = match days_before_renew {
                 Ok(x) => x,
                 Err(error) => {
                     error!("Error when asking for renewing the certificate {error}");
@@ -137,11 +137,11 @@ async fn start_https(cert: &Arc<Mutex<Certbot>>) -> eyre::Result<()> {
 
             // It's time to renew!!
             info!("Updating certificate now...");
-            match cert_copy
+            let request_cert = cert_copy
                 .lock()
                 .expect("can't lock certificate mutex")
-                .request_cert()
-            {
+                .request_cert();
+            match request_cert {
                 Ok(_) => restart_me.store(true, Ordering::Relaxed),
                 Err(error) => {
                     error!("Error when renewing the certificate {error}");
@@ -213,11 +213,11 @@ pub async fn start_kms_server() -> eyre::Result<()> {
         spawn(async move {
             // Generate the certificate in another thread
             info!("Requesting acme...");
-            match cert_copy
+            let request_cert = cert_copy
                 .lock()
                 .expect("can't lock certificate mutex")
-                .request_cert()
-            {
+                .request_cert();
+            match request_cert {
                 Ok(_) => succeed_me.store(true, Ordering::Relaxed),
                 Err(error) => {
                     error!("Error when generating the certificate: {error}");

@@ -19,7 +19,7 @@ use crate::{
 /// A Key Block object is a structure used to encapsulate all of the information
 /// that is closely associated with a cryptographic key.
 /// Section 3 of KMIP Reference 2.1
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct KeyBlock {
     pub key_format_type: KeyFormatType,
@@ -97,7 +97,7 @@ impl KeyBlock {
 /// • The Key Value Byte String is either the wrapped TTLV-encoded Key Value
 /// structure, or the wrapped un-encoded value of the Byte String Key Material
 /// field.
-#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub struct KeyValue {
     #[serde(rename = "KeyMaterial")]
@@ -183,7 +183,7 @@ impl Serialize for KeyValue {
 /// present, from the Cryptographic Parameters attribute of the respective
 /// key(s). Either the Encryption Key Information or the MAC/Signature Key
 /// Information (or both) in the Key Wrapping Data structure SHALL be specified.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Apiv2Schema, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Apiv2Schema, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct KeyWrappingData {
     pub wrapping_method: WrappingMethod,
@@ -214,7 +214,7 @@ pub struct KeyWrappingData {
 // }
 // ```
 // So we use the `untagged` which unfortunately breaks pascalCase
-#[derive(Deserialize, Clone, Debug, PartialEq, Apiv2Schema)]
+#[derive(Deserialize, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
 #[serde(untagged)]
 #[openapi(empty)]
 pub enum KeyMaterial {

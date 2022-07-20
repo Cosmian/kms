@@ -34,7 +34,7 @@ use crate::{
 ///
 /// Order matters: `SecretData` will be deserialized as a `PrivateKey` if it
 /// appears after despite the presence of `secret_data_type`
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Display, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Display, Apiv2Schema)]
 #[serde(untagged)]
 #[openapi(empty)]
 pub enum Object {
@@ -242,7 +242,7 @@ impl TryInto<Vec<u8>> for Object {
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
 #[derive(
-    Serialize, Deserialize, Copy, Clone, Debug, PartialEq, EnumString, Display, Apiv2Schema,
+    Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString, Display, Apiv2Schema,
 )]
 #[serde(rename_all = "PascalCase")]
 pub enum ObjectType {

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{kmip_utils::key_bytes_and_attributes_from_key_block, DeCipher, EnCipher};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum NumericType {
     U32,
     U64,
@@ -19,7 +19,7 @@ pub enum NumericType {
     // Custom(i32)
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum AlphabetCharacters {
     Alphabetic,
     SensitiveAlphabetic,

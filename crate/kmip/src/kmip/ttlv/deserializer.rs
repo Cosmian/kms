@@ -657,7 +657,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
 // The calls to `next_value` are driven by the visitor
 // and it is up to this Access to synchronize and advance its counter
 // over the struct fields (`self.index`) in this case
-impl<'de, 'a> MapAccess<'de> for TtlvDeserializer<'de> {
+impl<'de> MapAccess<'de> for TtlvDeserializer<'de> {
     type Error = TtlvError;
 
     // #[instrument(skip(self, seed))]
@@ -731,7 +731,7 @@ impl<'de, 'a> MapAccess<'de> for TtlvDeserializer<'de> {
 
 // `SeqAccess` is provided to the `Visitor` to give it the ability to iterate
 // through elements of the sequence.
-impl<'de, 'a> SeqAccess<'de> for TtlvDeserializer<'de> {
+impl<'de> SeqAccess<'de> for TtlvDeserializer<'de> {
     type Error = TtlvError;
 
     // #[instrument(skip(self, seed))]

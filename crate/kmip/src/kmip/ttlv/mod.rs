@@ -31,7 +31,7 @@ pub enum ItemTypeEnumeration {
     DateTimeExtended = 0x0B,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub enum TTLVEnumeration {
     Integer(i32),
     Name(String),
