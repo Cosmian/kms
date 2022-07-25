@@ -4,7 +4,7 @@ use cosmian_kms_client::KmsRestClient;
 use eyre::Context;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug)]
 pub struct CliConf {
     // Insecure is useful if the cli needs to connect to an HTTPS KMS using unsecured SSL certificate
     #[serde(default)]

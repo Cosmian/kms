@@ -27,3 +27,12 @@ docker build . --network=host \
 The `delivery` directory contains all the requirements to proceed a KMS delivery based on a docker creation.
 
 Find the public documentation of the KMS in the `documentation` directory.
+
+## Quick start
+
+From the root of the project, on your local machine, for developing:
+
+```sh
+cargo build --no-default-features
+cargo test --no-default-features
+```
