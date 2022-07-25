@@ -5,7 +5,6 @@ Cosmian has designed a command line to use the KMS in order to manage keys, encr
 This CLI supports several crypto-systems listed below:
 - [X] Attribute-Based Encryption
 - [X] Cover Crypt
-- [ ] To be continued....
 
 ## Compiling
 
