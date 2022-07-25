@@ -8,8 +8,8 @@ ssh $SGX_REMOTE mkdir -p /tmp/private_data /tmp/public_data /tmp/shared_data
 ssh $SGX_REMOTE docker run -d \
     --pull=always \
     --device /dev/sgx_enclave \
-    --name $SHORT_IMAGE_NAME \
     --device /dev/sgx_provision \
+    --name $SHORT_IMAGE_NAME \
     -v /var/run/aesmd:/var/run/aesmd/ \
     -v /opt/cosmian-internal:/opt/cosmian-internal \
     -v /tmp/public_data:/root/public_data \

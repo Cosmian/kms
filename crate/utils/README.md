@@ -13,7 +13,6 @@ For now, the supported crypto-systems are:
 
 - [x] ABE
 - [x] Cover Crypt
-- [ ] To be continued...
 
 ## Compiling
 

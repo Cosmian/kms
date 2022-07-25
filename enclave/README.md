@@ -121,7 +121,7 @@ sudo docker run \
 
 ### Emulate
 
-The KMS docker is openly-published in order any KMS users to check the authenticity of the running code against the open-sourced code on Cosmian github. 
+The KMS docker is openly published so that KMS users can check the integrity of the running code against the open-source code on [*Cosmian* Github](https://github.com/Cosmian). 
 
 To do so, the user needs to compute the `MR_ENCLAVE` and needs to compare it to the one returned by the running KMS. 
 Using `--emulation` param, the KMS docker can locally compute `MR_ENCLAVE`. Just start it as follow from any kind of machine:

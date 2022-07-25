@@ -176,7 +176,7 @@ pub unsafe fn from_bytes(quote: &[u8]) -> &Quote {
     typed_quote
 }
 
-/// Compute the `MR_SIGNER` from the  public enclave certificate (PEM format)
+/// Compute the `MR_SIGNER` from the public enclave certificate (PEM format)
 pub fn compute_mr_signer(public_enclave_cert: &str) -> Result<[u8; 32], ErrorStack> {
     let public_key = openssl::rsa::Rsa::public_key_from_pem(public_enclave_cert.as_bytes())?;
 

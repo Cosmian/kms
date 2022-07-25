@@ -16,7 +16,7 @@ if [ $# -eq 0 ]; then
     make SGX=1 SGX_SIGNER_KEY=$SGX_SIGNER_KEY && gramine-sgx ./kms
 elif [ $# -eq 1 -a $1 = "--emulation" ]; then
     mkdir /opt/cosmian-internal
-    # Generate a dummy key. `MR_ENCLAVE` does not depend to it.
+    # Generate a dummy key. `MR_ENCLAVE` does not depend on it.
     openssl genrsa -3 -out $SGX_SIGNER_KEY 3072
     # Compile but don't start
     make SGX=1 SGX_SIGNER_KEY=$SGX_SIGNER_KEY

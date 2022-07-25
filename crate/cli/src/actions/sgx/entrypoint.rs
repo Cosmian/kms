@@ -22,7 +22,7 @@ pub struct SgxAction {
     #[structopt(required = true, parse(from_os_str))]
     export_path: PathBuf,
 
-    /// The value of the MR_ENCLAVE obtains by running the KMS docker on your local machine
+    /// The value of the MR_ENCLAVE obtained by running the KMS docker on your local machine
     #[structopt(required = true, long = "mr-enclave")]
     mr_enclave: String,
 }
