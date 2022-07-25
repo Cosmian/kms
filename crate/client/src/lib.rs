@@ -19,8 +19,8 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_utils::types::{
-    Access, ObjectOwnedResponse, ObjectSharedResponse, QuoteParams, SuccessResponse,
-    UserAccessResponse,
+    Access, CertificatesResponse, ObjectOwnedResponse, ObjectSharedResponse, QuoteParams,
+    SuccessResponse, UserAccessResponse,
 };
 use error::KmsClientError;
 use http::{HeaderMap, HeaderValue, StatusCode};
@@ -387,8 +387,8 @@ impl KmsRestClient {
     }
 
     /// This operation requests the server to get the HTTPS certificate.
-    pub async fn get_certificate(&self) -> Result<String, KmsClientError> {
-        self.get_no_ttlv("/certificate", None::<&()>).await
+    pub async fn get_certificates(&self) -> Result<CertificatesResponse, KmsClientError> {
+        self.get_no_ttlv("/certificates", None::<&()>).await
     }
 
     /// This operation requests the server to get the sgx manifest.

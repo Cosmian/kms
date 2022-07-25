@@ -20,13 +20,24 @@ pub async fn test_quote() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
-    cmd.arg(SUB_COMMAND).args(vec!["/tmp"]);
+    cmd.arg(SUB_COMMAND)
+        .args(vec!["--mr-enclave", "dummy", "/tmp"]);
     cmd.assert()
         .success()
         .stdout(predicate::str::contains(
             "You can check all these files manually.",
         ))
-        .stdout(predicate::str::contains("Ko").not());
+        .stdout(predicate::str::contains(
+            "... Remote attestation checking Ok",
+        ))
+        .stdout(predicate::str::contains("... MR signer checking Ok"))
+        .stdout(predicate::str::contains("... Quote checking Ok"))
+        .stdout(predicate::str::contains("... Date checking Ok "))
+        .stdout(predicate::str::contains(
+            "... Quote report data (manifest, kms certificates and nonce) checking Ok ",
+        ));
+
+    // We do not test: "... MR enclave checking Ok" because we don't know yet how to pass `--mr-enclave` in the CI
 
     Ok(())
 }

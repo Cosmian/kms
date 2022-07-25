@@ -16,6 +16,8 @@ use cosmian_kmip::kmip::{
         Tag, UniqueIdentifier,
     },
 };
+#[cfg(any(feature = "https", feature = "enclave"))]
+use cosmian_kms_utils::types::CertificatesResponse;
 use cosmian_kms_utils::{
     crypto::{
         abe::locate::compare_abe_attributes, cover_crypt::locate::compare_cover_crypt_attributes,
@@ -36,7 +38,7 @@ use super::KMS;
 #[cfg(feature = "https")]
 use crate::certbot;
 #[cfg(feature = "enclave")]
-use crate::config::manifest_path;
+use crate::config::enclave_params;
 use crate::{
     config::{db_params, DbParams},
     error::KmsError,
@@ -410,9 +412,9 @@ pub trait KmipServer {
     /// Get the SGX quote of a KMS running inside the enclave
     async fn get_quote(&self, nonce: &str) -> KResult<String>;
 
-    #[cfg(feature = "https")]
-    /// Get the certificate of a KMS running using HTTPS
-    async fn get_certificate(&self) -> KResult<String>;
+    #[cfg(any(feature = "https", feature = "enclave"))]
+    /// Get the certificates of a KMS (HTTPS and enclave)
+    async fn get_certificates(&self) -> KResult<CertificatesResponse>;
 
     #[cfg(feature = "enclave")]
     /// Get the manifest of the KMS running inside the enclave
@@ -426,17 +428,29 @@ pub trait KmipServer {
 /// to the implementation module or ciphers for encryption/decryption
 #[async_trait]
 impl KmipServer for KMS {
-    #[cfg(feature = "https")]
-    async fn get_certificate(&self) -> KResult<String> {
+    #[cfg(any(feature = "https", feature = "enclave"))]
+    async fn get_certificates(&self) -> KResult<CertificatesResponse> {
         // Get the SSL cert
-        let cert = certbot().lock().expect("can't lock certificate mutex");
-        let (_, certificate) = cert.get_raw_cert()?;
-        Ok(certificate.to_string())
+        #[cfg(feature = "https")]
+        let ssl = {
+            let cert = certbot().lock().expect("can't lock certificate mutex");
+            let (_, certificate) = cert.get_raw_cert()?;
+            Some(certificate.to_string())
+        };
+        #[cfg(not(feature = "https"))]
+        let ssl = None;
+
+        #[cfg(feature = "enclave")]
+        let enclave = Some(fs::read_to_string(enclave_params().public_key_path)?);
+        #[cfg(not(feature = "enclave"))]
+        let enclave = None;
+
+        Ok(CertificatesResponse { ssl, enclave })
     }
 
     #[cfg(feature = "enclave")]
     async fn get_manifest(&self) -> KResult<String> {
-        Ok(fs::read_to_string(manifest_path())?)
+        Ok(fs::read_to_string(enclave_params().manifest_path)?)
     }
 
     async fn add_new_database(&self) -> KResult<String> {
@@ -481,12 +495,8 @@ impl KmipServer for KMS {
     async fn get_quote(&self, nonce: &str) -> KResult<String> {
         // Hash the user nonce, the cert and the hash of the manifest
         let data = hash(&prepare_report_data(
-            self.get_manifest().await?.as_bytes(),
-            #[cfg(feature = "https")]
-            Some(self.get_certificate().await?.as_bytes()),
-            #[cfg(not(feature = "https"))]
-            None,
-            nonce.as_bytes(),
+            self.get_certificates().await?.ssl,
+            nonce.to_string(),
         ));
 
         // get the quote

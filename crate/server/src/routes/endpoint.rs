@@ -14,6 +14,8 @@ use cosmian_kmip::kmip::{
     kmip_types::UniqueIdentifier,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
+#[cfg(any(feature = "https", feature = "enclave"))]
+use cosmian_kms_utils::types::CertificatesResponse;
 use cosmian_kms_utils::types::{
     Access, ExtraDatabaseParams, ObjectOwnedResponse, ObjectSharedResponse, SuccessResponse,
     UserAccessResponse,
@@ -273,15 +275,15 @@ pub async fn get_quote(
     Ok(Json(kms_client.get_quote(&params.nonce).await?))
 }
 
-#[cfg(feature = "https")]
+#[cfg(any(feature = "https", feature = "enclave"))]
 /// Get the quote of the server running inside an enclave
-#[get("/certificate")]
-pub async fn get_certificate(
+#[get("/certificates")]
+pub async fn get_certificates(
     _req: HttpRequest,
     kms_client: Data<Arc<KMSServer>>,
-) -> KResult<Json<String>> {
+) -> KResult<Json<CertificatesResponse>> {
     debug!("Requesting the certificate");
-    Ok(Json(kms_client.get_certificate().await?))
+    Ok(Json(kms_client.get_certificates().await?))
 }
 
 #[cfg(feature = "enclave")]

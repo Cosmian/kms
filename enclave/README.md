@@ -83,12 +83,12 @@ Enjoy ;)
 
 ### Build
 
-On a **non-sgx** machine:
+On a **non-sgx** machine, from the root of the project:
 
 ```sh
-sudo docker build -f Dockerfile.sgx \
+sudo docker build -f enclave/Dockerfile.sgx \
     --build-arg FEATURES="--features=staging" \
-    --build-arg KMS_DOMAIN="testsgx.cosmain.com" -t enclave-kms .
+    --build-arg KMS_DOMAIN="testsgx.cosmian.com" -t enclave-kms .
 ```
 
 ### Run
@@ -114,6 +114,34 @@ sudo docker run \
     -v public_data:/root/public_data \
     -v private_data:/root/private_data \
     -v shared_data:/root/shared_data \
-    --network=host \
+    -p80:80 \
+    -p443:443 \
     -it enclave-kms
 ```
+
+### Emulate
+
+The KMS docker is openly published so that KMS users can check the integrity of the running code against the open-source code on [*Cosmian* Github](https://github.com/Cosmian). 
+
+To do so, the user needs to compute the `MR_ENCLAVE` and needs to compare it to the one returned by the running KMS. 
+Using `--emulation` param, the KMS docker can locally compute `MR_ENCLAVE`. Just start it as follow from any kind of machine:
+
+```sh
+sudo docker run \
+    -v public_data:/root/public_data \
+    -it enclave-kms --emulation
+```
+
+The `MR_ENCLAVE` can be read from the output of the docker itself.
+
+```
+Measurement:
+    c8e0ac76ee1b9416e53890677cbbce8a5f1d8bf2f1c7ab208c1e0efa56e8cea2
+
+Attributes:
+    mr_enclave: c8e0ac76ee1b9416e53890677cbbce8a5f1d8bf2f1c7ab208c1e0efa56e8cea2
+```
+
+The `public_data` directory contains the compiled manifest with all trusted files hashes.
+
+__Note__: the `MR_SIGNER` should be ignore. It is logical wrong because we don't use cosmian public key to generate the enclave in that case.
