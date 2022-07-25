@@ -49,6 +49,7 @@ nav:
   - On premise: on_premise.md
   - API: api.md
   - Authorization: authorization.md
+  - CLI: cli.md
   - KMIP 2.1:
       - Home: kmip_2_1/index.md
       - Objects: kmip_2_1/objects.md
