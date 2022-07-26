@@ -65,27 +65,26 @@ pub async fn test_init_error() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[test]
-pub fn test_bad_conf() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env_clear();
-    cmd.arg(SUB_COMMAND).args(vec!["--help"]);
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "Error: Can't find KMS_CLI_CONF env variable",
-    ));
+#[tokio::test]
+pub async fn test_bad_conf() -> Result<(), Box<dyn std::error::Error>> {
+    ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "notfound.json");
 
+    cmd.arg(SUB_COMMAND).args(vec!["init"]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Error: Can't read notfound.json"));
+
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.arg(SUB_COMMAND).args(vec!["--help"]);
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "Error: Can't read notfound.json set in the KMS_CLI_CONF env variable",
-    ));
+    cmd.assert().success();
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.bad");
 
-    cmd.arg(SUB_COMMAND).args(vec!["--help"]);
+    cmd.arg(SUB_COMMAND).args(vec!["init"]);
     cmd.assert().failure().stderr(predicate::str::contains(
         "Error: Config JSON malformed in test_data/kms.bad",
     ));
@@ -160,7 +159,7 @@ pub async fn test_new_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/wrapped_key",
         "--public-key-file",
@@ -224,16 +223,16 @@ pub async fn test_revoke() -> Result<(), Box<dyn std::error::Error>> {
     ]);
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("Revokation is not supported yet"));
+        .stderr(predicate::str::contains("Revocation is not supported yet"));
 
-    //TODO: Uncomment that when revokation will be supported
+    //TODO: Uncomment that when revocation will be supported
     // cmd.assert().success();
 
     // Import a wrapped key
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/wrapped_key",
         "--public-key-file",
@@ -260,7 +259,7 @@ pub async fn test_revoke() -> Result<(), Box<dyn std::error::Error>> {
     ]);
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("Revokation is not supported yet"));
+        .stderr(predicate::str::contains("Revocation is not supported yet"));
 
     Ok(())
 }
@@ -282,7 +281,7 @@ pub async fn test_revoke_error() -> Result<(), Box<dyn std::error::Error>> {
 
     cmd.assert()
         .failure()
-        .stderr(predicate::str::contains("Revokation is not supported yet"));
+        .stderr(predicate::str::contains("Revocation is not supported yet"));
 
     Ok(())
 }
@@ -320,7 +319,7 @@ pub async fn test_destroy() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/wrapped_key",
         "--public-key-file",
@@ -432,7 +431,7 @@ pub async fn test_rotate_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/wrapped_key",
         "--public-key-file",
@@ -490,7 +489,7 @@ pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
         "-a",
         "level::confidential",
         "-o",
-        "/tmp",
+        "/tmp/plain-2.enc",
         "--resource-uid",
         "myid",
         "-p",
@@ -498,7 +497,7 @@ pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
         "test_data/plain-2.txt",
     ]);
     cmd.assert().success().stdout(predicate::str::contains(
-        "The encrypted file can be found at /tmp/plain-2.enc",
+        "The encrypted file can be found at \"/tmp/plain-2.enc\"",
     ));
 
     assert!(Path::new("/tmp/plain-2.enc").exists());
@@ -522,20 +521,20 @@ pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
         "--resource-uid",
         "myid",
         "-o",
-        "/tmp",
+        "/tmp/plain-2.dec",
         "-u",
         extract_user_key(stdout).unwrap(),
         "/tmp/plain-2.enc",
     ]);
     cmd.assert().success().stdout(predicate::str::contains(
-        "The decrypted file can be found at /tmp/plain-2.plain",
+        "The decrypted file can be found at \"/tmp/plain-2.dec\"",
     ));
 
-    assert!(Path::new("/tmp/plain-2.plain").exists());
-    assert!(diff("/tmp/plain-2.plain", "test_data/plain-2.txt"));
+    assert!(Path::new("/tmp/plain-2.dec").exists());
+    assert!(diff("/tmp/plain-2.dec", "test_data/plain-2.txt"));
 
     fs::remove_file("/tmp/plain-2.enc").unwrap();
-    fs::remove_file("/tmp/plain-2.plain").unwrap();
+    fs::remove_file("/tmp/plain-2.dec").unwrap();
 
     Ok(())
 }
@@ -551,7 +550,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     let output = success.get_output();
     let stdout: &str = std::str::from_utf8(&output.stdout)?;
 
-    // plain text not exist
+    // plain text does not exist
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
@@ -561,7 +560,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "-a",
         "level::confidential",
         "-o",
-        "/tmp",
+        "/tmp/output.enc",
         "--resource-uid",
         "myid",
         "-p",
@@ -582,7 +581,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "-a",
         "level::confidential",
         "-o",
-        "/tmp",
+        "/tmp/output.enc",
         "--resource-uid",
         "myid",
         "-p",
@@ -593,7 +592,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "at least one separator '::' expected in departmentmarketing",
     ));
 
-    // attributes are wellformed but not exist
+    // attributes are wellformed but do not exist
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
@@ -603,7 +602,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "-a",
         "level::confidential",
         "-o",
-        "/tmp",
+        "/tmp/output.enc",
         "--resource-uid",
         "myid",
         "-p",
@@ -624,7 +623,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "-a",
         "level::confidential",
         "-o",
-        "/tmp",
+        "/tmp/output.enc",
         "--resource-uid",
         "myid",
         "-p",
@@ -645,7 +644,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "-a",
         "level::confidential",
         "-o",
-        "/noexist",
+        "/noexist/output.enc",
         "--resource-uid",
         "myid",
         "-p",
@@ -661,7 +660,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/wrapped_key",
         "--public-key-file",
@@ -686,7 +685,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "-a",
         "level::confidential",
         "-o",
-        "/tmp",
+        "/tmp/output.enc",
         "--resource-uid",
         "myid",
         "-p",
@@ -723,13 +722,13 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     let output = success.get_output();
     let stdout: &str = std::str::from_utf8(&output.stdout)?;
 
-    // encrypted text not exist
+    // encrypted text does not exist
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "decrypt",
         "-o",
-        "/tmp",
+        "/tmp/output.dec",
         "--resource-uid",
         "myid",
         "-u",
@@ -746,7 +745,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "decrypt",
         "-o",
-        "/tmp",
+        "/tmp/output.dec",
         "--resource-uid",
         "myid",
         "-u",
@@ -757,13 +756,13 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         .failure()
         .stderr(predicate::str::contains("Object with uid: trash not found"));
 
-    // the encrpyted file is wrong
+    // the encrypted file is wrong
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "decrypt",
         "-o",
-        "/tmp",
+        "/tmp/output.dec",
         "--resource-uid",
         "myid",
         "-u",
@@ -779,7 +778,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--user-key-file",
         "test_data/wrapped_key",
         "--access-policy",
@@ -800,7 +799,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "decrypt",
         "-o",
-        "/tmp",
+        "/tmp/output.dec",
         "--resource-uid",
         "myid",
         "--user-key-id",
@@ -818,11 +817,73 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
 pub async fn test_import() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
+    // Init
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec!["init"]);
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let private_key_id = extract_private_key(stdout).unwrap();
+
+    // Export
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "export",
+        "-i",
+        private_key_id,
+        "-o",
+        "/tmp/output.export",
+    ]);
+    cmd.assert().success();
+
+    // Import
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND)
+        .args(vec!["import", "-f", "/tmp/output.export"]);
+    cmd.assert().success();
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_import_error() -> Result<(), Box<dyn std::error::Error>> {
+    ONCE.get_or_init(init_test_server).await;
+
+    // Secret key file not found
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND)
+        .args(vec!["import", "--object-file", "test_data/notfound"]);
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Error: Can't read the object file: \"test_data/notfound\"",
+    ));
+
+    // Secret key file is not a TTLV one
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND)
+        .args(vec!["import", "--object-file", "test_data/policy.bad"]);
+
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Error: Failed reading the object file: \"test_data/policy.bad\"",
+    ));
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_import_keys() -> Result<(), Box<dyn std::error::Error>> {
+    ONCE.get_or_init(init_test_server).await;
+
     // Already wrapped keys
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/wrapped_key",
         "--public-key-file",
@@ -845,7 +906,7 @@ pub async fn test_import() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--user-key-file",
         "test_data/wrapped_key",
         "--access-policy",
@@ -862,7 +923,7 @@ pub async fn test_import() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/wrapped_key",
         "--public-key-file",
@@ -881,7 +942,7 @@ pub async fn test_import() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--user-key-file",
         "test_data/wrapped_key",
         "--access-policy",
@@ -899,7 +960,7 @@ pub async fn test_import() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/wrapped_key",
         "--public-key-file",
@@ -916,7 +977,7 @@ pub async fn test_import() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--user-key-file",
         "test_data/wrapped_key",
         "--access-policy",
@@ -932,14 +993,14 @@ pub async fn test_import() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
-pub async fn test_import_error() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn test_import_keys_error() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     // Policy file not found
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/wrapped_key",
         "--public-key-file",
@@ -957,7 +1018,7 @@ pub async fn test_import_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/notfound",
         "--public-key-file",
@@ -975,7 +1036,7 @@ pub async fn test_import_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/wrapped_key",
         "--public-key-file",
@@ -1001,7 +1062,7 @@ pub async fn test_import_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--user-key-file",
         "test_data/notfound",
         "--access-policy",
@@ -1019,7 +1080,7 @@ pub async fn test_import_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--user-key-file",
         "test_data/wrapped_key",
         "--access-policy",
@@ -1038,7 +1099,7 @@ pub async fn test_import_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--user-key-file",
         "test_data/wrapped_key",
         "--access-policy",
@@ -1057,7 +1118,7 @@ pub async fn test_import_error() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
-pub async fn test_get() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn test_export_keys() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     // Get from init
@@ -1071,7 +1132,7 @@ pub async fn test_get() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "get",
+        "export-keys",
         "-k",
         extract_private_key(stdout).unwrap(),
         "/tmp/output.get",
@@ -1085,7 +1146,7 @@ pub async fn test_get() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/wrapped_key",
         "--public-key-file",
@@ -1104,7 +1165,7 @@ pub async fn test_get() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND)
-        .args(vec!["get", "-k", secret_key_id, "/tmp/output.get"]);
+        .args(vec!["export-keys", "-k", secret_key_id, "/tmp/output.get"]);
 
     cmd.assert().success().stdout(predicate::str::contains(
         "The key file can be found at /tmp/output.get",
@@ -1116,7 +1177,7 @@ pub async fn test_get() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "get",
+        "export-keys",
         "-k",
         secret_key_id,
         "-W",
@@ -1135,7 +1196,7 @@ pub async fn test_get() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
-pub async fn test_get_error() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn test_export_keys_error() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
     // Get from init
@@ -1150,8 +1211,12 @@ pub async fn test_get_error() -> Result<(), Box<dyn std::error::Error>> {
     // Bad output
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
-    cmd.arg(SUB_COMMAND)
-        .args(vec!["get", "-k", secret_key_id, "/notexist/notexist"]);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "export-keys",
+        "-k",
+        secret_key_id,
+        "/notexist/notexist",
+    ]);
 
     cmd.assert()
         .failure()
@@ -1161,7 +1226,7 @@ pub async fn test_get_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND)
-        .args(vec!["get", "-k", "not_exist", "/tmp/output.get"]);
+        .args(vec!["export-keys", "-k", "not_exist", "/tmp/output.get"]);
 
     cmd.assert().failure().stderr(predicate::str::contains(
         "Item not found: Object with uid: not_exist not found",
@@ -1171,7 +1236,7 @@ pub async fn test_get_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "get",
+        "export-keys",
         "-k",
         secret_key_id,
         "-W",
@@ -1187,7 +1252,7 @@ pub async fn test_get_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "import",
+        "import-keys",
         "--secret-key-file",
         "test_data/wrapped_key",
         "--public-key-file",
@@ -1207,7 +1272,7 @@ pub async fn test_get_error() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
-        "get",
+        "export-keys",
         "-k",
         secret_key_id,
         "-W",
@@ -1218,6 +1283,79 @@ pub async fn test_get_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert().failure().stderr(predicate::str::contains(
         "Invalid size: The ciphertext is invalid. Decrypted IV is not appropriate",
     ));
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_export() -> Result<(), Box<dyn std::error::Error>> {
+    ONCE.get_or_init(init_test_server).await;
+
+    // Init
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec!["init"]);
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let private_key_id = extract_private_key(stdout).unwrap();
+
+    // Export
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "export",
+        "-i",
+        private_key_id,
+        "-o",
+        "/tmp/output.export",
+    ]);
+    cmd.assert().success();
+
+    // Export but don't exist
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "export",
+        "-i",
+        "dont_exist",
+        "-o",
+        "/tmp/output2.export",
+    ]);
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Error: failed retrieving the object dont_exist",
+    ));
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_export_error() -> Result<(), Box<dyn std::error::Error>> {
+    ONCE.get_or_init(init_test_server).await;
+
+    // Init
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec!["init"]);
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let stdout: &str = std::str::from_utf8(&output.stdout)?;
+    let private_key_id = extract_private_key(stdout).unwrap();
+
+    // Export
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.arg(SUB_COMMAND).args(vec![
+        "export",
+        "-i",
+        private_key_id,
+        "-o",
+        "/notexist/notexist",
+    ]);
+
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Fail to write exported file"));
 
     Ok(())
 }

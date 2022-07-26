@@ -98,6 +98,8 @@ export KMS_PUBLIC_PATH="data/public"
 export KMS_SHARED_PATH="data/shared"
 export KMS_PRIVATE_PATH="data/private"
 
+cargo build --bin cosmian_kms_cli
+
 cargo test --workspace --features auth,insecure --no-default-features -- --nocapture
 cargo test --bins -- --nocapture
 '''

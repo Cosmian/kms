@@ -891,9 +891,10 @@ mod tests {
             .iter()
             .find(|(id, _state, _attrs, _is_wrapped)| id == &uid_2)
         {
-            Some((uid_, state_, _attrs, _is_wrapped)) => {
+            Some((uid_, state_, _attrs, is_wrapped)) => {
                 assert_eq!(&uid_2, uid_);
                 assert_eq!(&StateEnumeration::Active, state_);
+                assert!(!*is_wrapped);
             }
             None => todo!(),
         }

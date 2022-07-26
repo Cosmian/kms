@@ -1,8 +1,7 @@
 use std::convert::TryFrom;
 
-use cosmian_crypto_base::{
-    asymmetric::ristretto::X25519Crypto, symmetric_crypto::aes_256_gcm_pure,
-};
+use abe_policy::{AccessPolicy, Attribute as PolicyAttribute};
+use cosmian_crypto_base::symmetric_crypto::aes_256_gcm_pure;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -12,10 +11,7 @@ use cosmian_kmip::{
         kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, WrappingMethod},
     },
 };
-use cover_crypt::{
-    api::{CoverCrypt, PublicKey},
-    policies::{AccessPolicy, Attribute as PolicyAttribute},
-};
+use cover_crypt::{api::CoverCrypt, PublicKey};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 
@@ -103,7 +99,7 @@ fn prepare_symmetric_key(
         )
     })?)?;
 
-    let engine = CoverCrypt::<X25519Crypto>::default();
+    let engine = CoverCrypt::default();
     let (sk, sk_enc) = engine
         .generate_symmetric_key(
             &policy,

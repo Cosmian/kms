@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use abe_gpsw::core::policy::{ap, attr, Policy};
+use abe_policy::{ap, Attribute, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Get, Import, Locate},
@@ -8,47 +8,47 @@ use cosmian_kmip::kmip::{
         Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
     },
 };
-use cosmian_kms_utils::crypto::abe::{
-    attributes::access_policy_as_vendor_attribute,
-    kmip_requests::{
-        build_create_master_keypair_request, build_create_user_decryption_key_pair_request,
-        build_create_user_decryption_private_key_request, build_decryption_request,
-        build_hybrid_encryption_request,
-    },
-};
-use tracing::debug;
-use uuid::Uuid;
-
-use crate::{
-    config::init_config,
+use cosmian_kms_server::{
+    config::{auth::AuthConfig, init_config, Config},
     core::crud::KmipServer,
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
     KMSServer,
 };
+use cosmian_kms_utils::crypto::cover_crypt::{
+    attributes::access_policy_as_vendor_attribute,
+    kmip_requests::{
+        build_create_master_keypair_request, build_create_user_decryption_private_key_request,
+        build_decryption_request, build_hybrid_encryption_request,
+    },
+};
+use tracing::debug;
+use uuid::Uuid;
 
 #[actix_rt::test]
-async fn test_abe_keys() -> KResult<()> {
-    let config = crate::config::Config {
-        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
+async fn test_cover_crypt_keys() -> KResult<()> {
+    let config = Config {
+        auth: AuthConfig {
+            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+        },
         ..Default::default()
     };
     init_config(&config).await?;
 
     let kms = Arc::new(KMSServer::instantiate().await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = "cceyJhbGciOiJSUzI1Ni";
 
     //
-    let policy = Policy::new(10)
-        .add_axis("Department", &["MKG", "FIN", "HR"], false)?
-        .add_axis("Level", &["confidential", "secret"], true)?;
+    let mut policy = Policy::new(10);
+    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
+    policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
 
     // create Key Pair
     debug!("ABE Create Master Key Pair");
 
     let cr = kms
-        .create_key_pair(build_create_master_keypair_request(&policy)?, owner)
+        .create_key_pair(build_create_master_keypair_request(&policy)?, owner, None)
         .await?;
     debug!("  -> response {:?}", cr);
     let sk_uid = cr.private_key_unique_identifier;
@@ -58,7 +58,7 @@ async fn test_abe_keys() -> KResult<()> {
 
     // get Private Key
     debug!("ABE Get Master Secret Key");
-    let gr_sk = kms.get(Get::from(sk_uid.as_str()), owner).await?;
+    let gr_sk = kms.get(Get::from(sk_uid.as_str()), owner, None).await?;
     assert_eq!(&sk_uid, &gr_sk.unique_identifier);
     assert_eq!(ObjectType::PrivateKey, gr_sk.object_type);
 
@@ -67,7 +67,7 @@ async fn test_abe_keys() -> KResult<()> {
     let recovered_kms_sk_key_block = match object {
         Object::PrivateKey { key_block } => key_block,
         _other => {
-            kms_bail!("The objet at uid: {sk_uid} is not an ABE Master secret key");
+            kms_bail!("The objet at uid: {sk_uid} is not a CC Master secret key");
         }
     };
     debug!(
@@ -75,14 +75,14 @@ async fn test_abe_keys() -> KResult<()> {
         recovered_kms_sk_key_block.cryptographic_algorithm
     );
     assert_eq!(
-        CryptographicAlgorithm::ABE,
+        CryptographicAlgorithm::CoverCrypt,
         recovered_kms_sk_key_block.cryptographic_algorithm
     );
 
     // get Public Key
     debug!("ABE Get Master Public Key");
     let pk_uid = cr.public_key_unique_identifier;
-    let gr_pk = kms.get(Get::from(pk_uid.as_str()), owner).await?;
+    let gr_pk = kms.get(Get::from(pk_uid.as_str()), owner, None).await?;
     assert_eq!(pk_uid, gr_pk.unique_identifier);
     assert_eq!(ObjectType::PublicKey, gr_pk.object_type);
 
@@ -91,15 +91,15 @@ async fn test_abe_keys() -> KResult<()> {
     let recovered_kms_pk_key_block = match pk {
         Object::PublicKey { key_block } => key_block,
         _other => {
-            kms_bail!("The objet at uid: {pk_uid} is not an ABE Master secret key");
+            kms_bail!("The objet at uid: {pk_uid} is not a CC Master secret key");
         }
     };
     debug!(
-        "  -> ABE kms_pk: {:?}",
+        "  -> CC kms_pk: {:?}",
         recovered_kms_pk_key_block.cryptographic_algorithm
     );
     assert_eq!(
-        CryptographicAlgorithm::ABE,
+        CryptographicAlgorithm::CoverCrypt,
         recovered_kms_pk_key_block.cryptographic_algorithm
     );
 
@@ -112,7 +112,7 @@ async fn test_abe_keys() -> KResult<()> {
         attributes: Attributes::new(ObjectType::PublicKey),
         object: pk.clone(),
     };
-    assert!(kms.import(request, owner).await.is_err());
+    assert!(kms.import(request, owner, None).await.is_err());
 
     // re-import public key - should succeed
     let request = Import {
@@ -123,7 +123,7 @@ async fn test_abe_keys() -> KResult<()> {
         attributes: Attributes::new(ObjectType::PublicKey),
         object: pk.clone(),
     };
-    let _update_response = kms.import(request, owner).await?;
+    let _update_response = kms.import(request, owner, None).await?;
 
     // User decryption key
 
@@ -132,32 +132,8 @@ async fn test_abe_keys() -> KResult<()> {
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
-    let request = build_create_user_decryption_key_pair_request(&access_policy, &sk_uid, &pk_uid)?;
-    let cr = kms.create_key_pair(request, owner).await?;
-    debug!("Create Response for User Decryption Key {:?}", cr);
-
-    let usk_uid = cr.private_key_unique_identifier;
-    // check the generated id is an UUID
-    let usk_uid_ =
-        Uuid::parse_str(&usk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
-    assert_eq!(&usk_uid, &usk_uid_.to_string());
-
-    // get object
-    let gr = kms.get(Get::from(usk_uid.as_str()), owner).await?;
-    let object = &gr.object;
-    assert_eq!(&usk_uid, &gr.unique_identifier);
-    let _recovered_kms_uk_key_block = match object {
-        Object::PrivateKey { key_block } => key_block,
-        _other => {
-            kms_bail!("The objet at uid: {usk_uid} is not an ABE user decryption key");
-        }
-    };
-    // debug!("ABE kms_uk: {:?}", recovered_kms_uk_key_block);
-
-    // ...via Private key
-    debug!(" .... user key via Private Key");
     let request = build_create_user_decryption_private_key_request(&access_policy, &sk_uid)?;
-    let cr = kms.create(request, owner).await?;
+    let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
     let usk_uid = cr.unique_identifier;
@@ -167,13 +143,37 @@ async fn test_abe_keys() -> KResult<()> {
     assert_eq!(&usk_uid, &usk_uid_.to_string());
 
     // get object
-    let gr = kms.get(Get::from(usk_uid.as_str()), owner).await?;
+    let gr = kms.get(Get::from(usk_uid.as_str()), owner, None).await?;
+    let object = &gr.object;
+    assert_eq!(&usk_uid, &gr.unique_identifier);
+    let _recovered_kms_uk_key_block = match object {
+        Object::PrivateKey { key_block } => key_block,
+        _other => {
+            kms_bail!("The objet at uid: {usk_uid} is not a CC user decryption key");
+        }
+    };
+    // debug!("CC kms_uk: {:?}", _recovered_kms_uk_key_block);
+
+    // ...via Private key
+    debug!(" .... user key via Private Key");
+    let request = build_create_user_decryption_private_key_request(&access_policy, &sk_uid)?;
+    let cr = kms.create(request, owner, None).await?;
+    debug!("Create Response for User Decryption Key {:?}", cr);
+
+    let usk_uid = cr.unique_identifier;
+    // check the generated id is an UUID
+    let usk_uid_ =
+        Uuid::parse_str(&usk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
+    assert_eq!(&usk_uid, &usk_uid_.to_string());
+
+    // get object
+    let gr = kms.get(Get::from(usk_uid.as_str()), owner, None).await?;
     let object = &gr.object;
     assert_eq!(&usk_uid, &gr.unique_identifier);
     let recovered_kms_uk_key_block = match object {
         Object::PrivateKey { key_block } => key_block,
         _other => {
-            kms_bail!("The objet at uid: {usk_uid} is not an ABE user decryption key");
+            kms_bail!("The objet at uid: {usk_uid} is not a CC user decryption key");
         }
     };
     debug!("ABE kms_uk: {:?}", recovered_kms_uk_key_block);
@@ -194,32 +194,36 @@ pub fn access_policy_serialization() -> KResult<()> {
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // cosmian_kms_common::log_utils::log_init("debug,cosmian_kms::kmip_server=trace");
 
-    let config = crate::config::Config {
-        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
+    let config = Config {
+        auth: AuthConfig {
+            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+        },
         ..Default::default()
     };
     init_config(&config).await?;
 
     let kms = Arc::new(KMSServer::instantiate().await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
     //
-    let policy = Policy::new(10)
-        .add_axis("Department", &["MKG", "FIN", "HR"], false)?
-        .add_axis("Level", &["confidential", "secret"], true)?;
+    let mut policy = Policy::new(10);
+    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
+    policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
 
     // create Key Pair
     let ckr = kms
-        .create_key_pair(build_create_master_keypair_request(&policy)?, owner)
+        .create_key_pair(build_create_master_keypair_request(&policy)?, owner, None)
         .await?;
     let master_private_key_id = &ckr.private_key_unique_identifier;
     let master_public_key_id = &ckr.public_key_unique_identifier;
 
     // encrypt a resource MKG + confidential
-    let confidential_resource_uid = "the uid confidential".as_bytes().to_vec();
+    let confidential_resource_uid = "cc the uid confidential".as_bytes().to_vec();
     let confidential_mkg_data = "Confidential MKG Data".as_bytes();
-    let confidential_mkg_policy_attributes =
-        vec![attr("Level", "confidential"), attr("Department", "MKG")];
+    let confidential_mkg_policy_attributes = vec![
+        Attribute::new("Level", "confidential"),
+        Attribute::new("Department", "MKG"),
+    ];
     let er = kms
         .encrypt(
             build_hybrid_encryption_request(
@@ -229,6 +233,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 confidential_mkg_data.to_vec(),
             )?,
             owner,
+            None,
         )
         .await?;
     assert_eq!(master_public_key_id, &er.unique_identifier);
@@ -244,14 +249,18 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 confidential_mkg_data.to_vec(),
             )?,
             nonexistent_owner,
+            None,
         )
         .await;
     assert!(er.is_err());
 
     // encrypt a resource FIN + Secret
-    let secret_resource_uid = "the uid secret".as_bytes().to_vec();
+    let secret_resource_uid = "cc the uid secret".as_bytes().to_vec();
     let secret_fin_data = "Secret FIN data".as_bytes();
-    let secret_fin_policy_attributes = vec![attr("Level", "secret"), attr("Department", "FIN")];
+    let secret_fin_policy_attributes = vec![
+        Attribute::new("Level", "secret"),
+        Attribute::new("Department", "FIN"),
+    ];
     let er = kms
         .encrypt(
             build_hybrid_encryption_request(
@@ -261,6 +270,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_data.to_vec(),
             )?,
             owner,
+            None,
         )
         .await?;
     assert_eq!(master_public_key_id, &er.unique_identifier);
@@ -276,6 +286,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_data.to_vec(),
             )?,
             nonexistent_owner,
+            None,
         )
         .await;
     assert!(er.is_err());
@@ -290,6 +301,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 master_private_key_id,
             )?,
             owner,
+            None,
         )
         .await?;
     let secret_mkg_fin_user_key = &cr.unique_identifier;
@@ -303,6 +315,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 confidential_mkg_encrypted_data.clone(),
             ),
             owner,
+            None,
         )
         .await?;
     assert_eq!(
@@ -319,6 +332,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 confidential_mkg_encrypted_data,
             ),
             nonexistent_owner,
+            None,
         )
         .await;
     assert!(dr.is_err());
@@ -332,6 +346,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_encrypted_data.clone(),
             ),
             owner,
+            None,
         )
         .await?;
     assert_eq!(
@@ -348,6 +363,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_encrypted_data,
             ),
             nonexistent_owner,
+            None,
         )
         .await;
     assert!(dr.is_err());
@@ -357,34 +373,36 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_abe_json_access() -> KResult<()> {
-    let config = crate::config::Config {
-        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
+    let config = Config {
+        auth: AuthConfig {
+            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+        },
         ..Default::default()
     };
     init_config(&config).await?;
 
     let kms = Arc::new(KMSServer::instantiate().await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = "cceyJhbGciOiJSUzI1Ni";
     //
-    let policy = Policy::new(10)
-        .add_axis("Department", &["MKG", "FIN", "HR"], false)?
-        .add_axis("Level", &["confidential", "secret"], true)?;
+    let mut policy = Policy::new(10);
+    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
+    policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
 
     let secret_mkg_fin_access_policy =
         (ap("Department", "MKG") | ap("Department", "FIN")) & ap("Level", "secret");
 
-    // Create ABE master key pair
+    // Create CC master key pair
     let master_keypair = build_create_master_keypair_request(&policy)?;
 
     // create Key Pair
-    let ckr = kms.create_key_pair(master_keypair, owner).await?;
+    let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
     let master_private_key_uid = &ckr.private_key_unique_identifier;
 
     // define search criterias
     let search_attrs = Attributes {
-        cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
-        cryptographic_length: Some(5344),
-        key_format_type: Some(KeyFormatType::AbeUserDecryptionKey),
+        cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
+        cryptographic_length: None,
+        key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(
             &secret_mkg_fin_access_policy,
         )?]),
@@ -405,7 +423,7 @@ async fn test_abe_json_access() -> KResult<()> {
 
     // println!("Rq attrs: {:#?}", locate.attributes);
 
-    let locate_response = kms.locate(locate, owner).await?;
+    let locate_response = kms.locate(locate, owner, None).await?;
     // println!("1 - {locate_response:#?}");
 
     // we only have 1 master keypair, but 0 decryption keys as
@@ -420,6 +438,7 @@ async fn test_abe_json_access() -> KResult<()> {
                 master_private_key_uid,
             )?,
             owner,
+            None,
         )
         .await?;
     let secret_mkg_fin_user_key_id = &cr.unique_identifier;
@@ -430,7 +449,7 @@ async fn test_abe_json_access() -> KResult<()> {
         ..Locate::new(ObjectType::PrivateKey)
     };
 
-    let locate_response = kms.locate(locate, owner).await?;
+    let locate_response = kms.locate(locate, owner, None).await?;
     // println!("2 - {locate_response:#?}");
 
     // now we have 1 key
@@ -445,22 +464,24 @@ async fn test_abe_json_access() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_import_decrypt() -> KResult<()> {
-    let config = crate::config::Config {
-        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
+    let config = Config {
+        auth: AuthConfig {
+            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+        },
         ..Default::default()
     };
     init_config(&config).await?;
 
     let kms = Arc::new(KMSServer::instantiate().await?);
-    let owner = "eyJhbGciOiJSUzI1Ni";
+    let owner = "cceyJhbGciOiJSUzI1Ni";
 
-    let policy = Policy::new(10)
-        .add_axis("Department", &["MKG", "FIN", "HR"], false)?
-        .add_axis("Level", &["confidential", "secret"], true)?;
+    let mut policy = Policy::new(10);
+    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
+    policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
 
     // create Key Pair
     let cr = kms
-        .create_key_pair(build_create_master_keypair_request(&policy)?, owner)
+        .create_key_pair(build_create_master_keypair_request(&policy)?, owner, None)
         .await?;
     debug!("  -> response {:?}", cr);
     let sk_uid = cr.private_key_unique_identifier;
@@ -471,10 +492,12 @@ async fn test_import_decrypt() -> KResult<()> {
     assert_eq!(&sk_uid, &sk_uid_.to_string());
 
     // encrypt a resource MKG + confidential
-    let confidential_resource_uid = "the uid confidential".as_bytes().to_vec();
+    let confidential_resource_uid = "cc the uid confidential".as_bytes().to_vec();
     let confidential_mkg_data = "Confidential MKG Data".as_bytes();
-    let confidential_mkg_policy_attributes =
-        vec![attr("Level", "confidential"), attr("Department", "MKG")];
+    let confidential_mkg_policy_attributes = vec![
+        Attribute::new("Level", "confidential"),
+        Attribute::new("Department", "MKG"),
+    ];
     let er = kms
         .encrypt(
             build_hybrid_encryption_request(
@@ -484,6 +507,7 @@ async fn test_import_decrypt() -> KResult<()> {
                 confidential_mkg_data.to_vec(),
             )?,
             owner,
+            None,
         )
         .await?;
     assert_eq!(&pk_uid, &er.unique_identifier);
@@ -499,19 +523,20 @@ async fn test_import_decrypt() -> KResult<()> {
                 &sk_uid,
             )?,
             owner,
+            None,
         )
         .await?;
     let secret_mkg_fin_user_key = &cr.unique_identifier;
 
     // Retrieve the user key...
     let gr_sk = kms
-        .get(Get::from(secret_mkg_fin_user_key.as_str()), owner)
+        .get(Get::from(secret_mkg_fin_user_key.as_str()), owner, None)
         .await?;
     assert_eq!(secret_mkg_fin_user_key, &gr_sk.unique_identifier);
     assert_eq!(ObjectType::PrivateKey, gr_sk.object_type);
 
     // ...and reimport it under custom uid (won't work)
-    let custom_sk_uid = "sk_custom_id_fail".to_string();
+    let custom_sk_uid = "cc sk_custom_id_fail".to_string();
     let request = Import {
         unique_identifier: custom_sk_uid.clone(),
         object_type: ObjectType::PrivateKey,
@@ -522,7 +547,7 @@ async fn test_import_decrypt() -> KResult<()> {
         attributes: Attributes::new(ObjectType::PrivateKey),
         object: gr_sk.object.clone(),
     };
-    assert!(kms.import(request, owner).await.is_ok());
+    assert!(kms.import(request, owner, None).await.is_ok());
     // decrypt resource MKG + confidential
     let dr = kms
         .decrypt(
@@ -532,6 +557,7 @@ async fn test_import_decrypt() -> KResult<()> {
                 confidential_mkg_encrypted_data.clone(),
             ),
             owner,
+            None,
         )
         .await;
     // Decryption fails: it cannot find the key.
@@ -540,7 +566,7 @@ async fn test_import_decrypt() -> KResult<()> {
     assert!(dr.is_err());
 
     // ...and reimport it under custom uid (will work)
-    let custom_sk_uid = "sk_custom_id_ok".to_string();
+    let custom_sk_uid = "cc sk_custom_id_ok".to_string();
     let request = Import {
         unique_identifier: custom_sk_uid.clone(),
         object_type: ObjectType::PrivateKey,
@@ -551,7 +577,7 @@ async fn test_import_decrypt() -> KResult<()> {
         attributes: gr_sk.object.attributes()?.clone(),
         object: gr_sk.object.clone(),
     };
-    assert!(kms.import(request, owner).await.is_ok());
+    assert!(kms.import(request, owner, None).await.is_ok());
     // decrypt resource MKG + confidential
     let dr = kms
         .decrypt(
@@ -562,6 +588,7 @@ async fn test_import_decrypt() -> KResult<()> {
                 confidential_mkg_encrypted_data.clone(),
             ),
             owner,
+            None,
         )
         .await?;
     assert_eq!(

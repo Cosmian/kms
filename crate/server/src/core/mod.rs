@@ -1,8 +1,8 @@
-pub(crate) mod abe;
 #[cfg(feature = "https")]
 pub(crate) mod certbot;
 pub(crate) mod cover_crypt;
 pub mod crud;
+pub(crate) mod gpsw;
 pub(crate) mod implementation;
 
 use crate::database::Database;

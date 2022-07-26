@@ -3,12 +3,12 @@ use abe_gpsw::{
     core::{
         bilinear_map::bls12_381::Bls12_381,
         gpsw::{AbeScheme, AsBytes, Gpsw},
-        policy::{Attribute, Policy},
     },
     interfaces::hybrid_crypto::{
         decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_block, encrypt_hybrid_header,
     },
 };
+use abe_policy::{Attribute, Policy};
 use cosmian_crypto_base::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
 use cosmian_kmip::{
     error::KmipError,
@@ -22,7 +22,7 @@ use tracing::{debug, trace};
 
 use super::user_key::unwrap_user_decryption_key_object;
 use crate::{
-    crypto::abe::attributes::policy_from_attributes,
+    crypto::gpsw::attributes::policy_from_attributes,
     kmip_utils::key_bytes_and_attributes_from_key_block, DeCipher, EnCipher,
 };
 

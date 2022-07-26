@@ -1,9 +1,9 @@
 use abe_gpsw::core::{
     bilinear_map::bls12_381::Bls12_381,
     gpsw::{AsBytes, Gpsw},
-    policy::Policy,
     Engine,
 };
+use abe_policy::Policy;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -15,7 +15,7 @@ use cosmian_kmip::{
 };
 
 use crate::{
-    crypto::abe::attributes::{policy_from_attributes, upsert_policy_in_attributes},
+    crypto::gpsw::attributes::{policy_from_attributes, upsert_policy_in_attributes},
     KeyPair,
 };
 

@@ -20,7 +20,7 @@ use cosmian_kmip::kmip::{
 use cosmian_kms_utils::types::CertificatesResponse;
 use cosmian_kms_utils::{
     crypto::{
-        abe::locate::compare_abe_attributes, cover_crypt::locate::compare_cover_crypt_attributes,
+        cover_crypt::locate::compare_cover_crypt_attributes, gpsw::locate::compare_abe_attributes,
     },
     types::{
         Access, ExtraDatabaseParams, ObjectOperationTypes, ObjectOwnedResponse,
@@ -964,7 +964,7 @@ impl KmipServer for KMS {
 
         match &attributes.cryptographic_algorithm {
             Some(CryptographicAlgorithm::ABE) => {
-                super::abe::rekey_keypair_abe(
+                super::gpsw::rekey_keypair_abe(
                     self,
                     private_key_unique_identifier,
                     attributes,

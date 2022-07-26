@@ -1,6 +1,7 @@
 use cosmian_kmip::{error::KmipError, kmip::kmip_types::Attributes};
+use tracing::trace;
 
-use crate::crypto::abe::attributes::{access_policy_from_attributes, attributes_from_attributes};
+use crate::crypto::gpsw::attributes::{access_policy_from_attributes, attributes_from_attributes};
 
 /// 2 types of KMIP attributes comparison: (it depends if
 /// `researched_attributes` contains "`abe_attributes`" vendor attributes) first:
@@ -13,6 +14,8 @@ pub fn compare_abe_attributes(
     attributes: &Attributes,
     researched_attributes: &Attributes,
 ) -> Result<bool, KmipError> {
+    trace!("Compare: {attributes:#?} <==> {researched_attributes:#?}");
+
     if let Ok(access_policy) = access_policy_from_attributes(attributes) {
         if let Ok(researched_access_policy) = access_policy_from_attributes(researched_attributes) {
             if researched_access_policy == access_policy {

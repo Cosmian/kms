@@ -1,7 +1,7 @@
 pub mod auth;
 pub mod db;
 mod enclave;
-mod http;
+pub mod http;
 mod https;
 mod workspace;
 

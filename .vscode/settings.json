@@ -1,11 +1,12 @@
 {
     "cSpell.words": [
-        "ciphertext",
         "cosmian",
-        "keypair",
+        "Cosmian",
+        "gpsw",
+        "Gpsw",
         "kmip",
-        "Kmip",
-        "ttlv",
-        "Ttlv"
+        "KMIP",
+        "structopt",
+        "ttlv"
     ]
 }

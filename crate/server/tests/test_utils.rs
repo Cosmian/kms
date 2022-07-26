@@ -9,9 +9,8 @@ use actix_web::{
     App,
 };
 use cosmian_kmip::kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
+use cosmian_kms_server::{middlewares::auth::Auth, result::KResult, routes::endpoint, KMSServer};
 use serde::{de::DeserializeOwned, Serialize};
-
-use crate::{middlewares::auth::Auth, result::KResult, routes::endpoint, KMSServer};
 
 /// Test auth0 token (expired) -
 /// bnjjj: I know it's ugly but it's easy and sufficient for now

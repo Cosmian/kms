@@ -27,7 +27,8 @@ use crate::{
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
-pub(crate) struct SqlitePool {
+
+pub struct SqlitePool {
     pool: Pool<Sqlite>,
 }
 

@@ -9,6 +9,24 @@ use cosmian_kmip::{
     },
 };
 
+pub fn tag_from_object(object: &Object) -> String {
+    // this is required to match the Java library behavior which expects
+    // the first tag to describe the type of object and not simply equal 'Object'
+    // TODO: check what is specified by the KMIP norm if any
+    match &object {
+        Object::PublicKey { .. } => "PublicKey",
+        Object::SecretData { .. } => "SecretData",
+        Object::PGPKey { .. } => "PGPKey",
+        Object::SymmetricKey { .. } => "SymmetricKey",
+        Object::SplitKey { .. } => "SplitKey",
+        Object::Certificate { .. } => "Certificate",
+        Object::CertificateRequest { .. } => "CertificateRequest",
+        Object::OpaqueObject { .. } => "OpaqueObject",
+        Object::PrivateKey { .. } => "PrivateKey",
+    }
+    .to_string()
+}
+
 /// Wrap a key using a password
 pub fn wrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, KmipError> {
     let wrapping_secret = hkdf_256(wrapping_password.as_bytes(), 32, &[])

@@ -4,12 +4,13 @@ version = 3
 
 [[package]]
 name = "abe_gpsw"
-version = "1.0.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20e5eb4ac0221d44c5d46f58123c268ae137e62dc5536e68b94bcc5fba405395"
+checksum = "8689921d37c15335a02e3e2107b465cd821e84bf4e66ce1d69f863235f58e2e8"
 dependencies = [
+ "abe_policy",
  "cosmian_bls12_381",
- "cosmian_crypto_base 2.0.0",
+ "cosmian_crypto_base 2.1.0",
  "ff",
  "getrandom 0.2.4",
  "group",
@@ -22,6 +23,17 @@ dependencies = [
  "serde",
  "serde_json",
  "sha3 0.10.0",
+ "thiserror",
+]
+
+[[package]]
+name = "abe_policy"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdc56bd72f6f7f12de477a700692ce63befa83d0b05fd5b009a76e1cf3c313d5"
+dependencies = [
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 
@@ -1218,9 +1230,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_crypto_base"
-version = "2.0.0"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ede4e2cadd3696c9fe4062109dbca1652eb5359d77f60b6be2dd3ab716d00fd"
+checksum = "d85d75ec068e26a877a841581d17f0724badc703f199660f1e93136536c61365"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1242,6 +1254,7 @@ dependencies = [
  "sha2 0.10.1",
  "thiserror",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
@@ -1283,6 +1296,7 @@ name = "cosmian_kms_cli"
 version = "0.2.0"
 dependencies = [
  "abe_gpsw",
+ "abe_policy",
  "assert_cmd",
  "base64 0.13.0",
  "base64-url",
@@ -1329,6 +1343,7 @@ name = "cosmian_kms_server"
 version = "2.1.0"
 dependencies = [
  "abe_gpsw",
+ "abe_policy",
  "acme-lib",
  "actix-files",
  "actix-http 3.0.0",
@@ -1342,7 +1357,7 @@ dependencies = [
  "bitflags",
  "chrono",
  "clap 3.1.8",
- "cosmian_crypto_base 2.0.0",
+ "cosmian_crypto_base 2.1.0",
  "cosmian_kmip",
  "cosmian_kms_utils",
  "cosmian_mcfe",
@@ -1384,9 +1399,10 @@ name = "cosmian_kms_utils"
 version = "0.1.0"
 dependencies = [
  "abe_gpsw",
+ "abe_policy",
  "bitflags",
  "chrono",
- "cosmian_crypto_base 2.0.0",
+ "cosmian_crypto_base 2.1.0",
  "cosmian_kmip",
  "cosmian_mcfe",
  "cover_crypt",
@@ -1425,17 +1441,19 @@ dependencies = [
 
 [[package]]
 name = "cover_crypt"
-version = "3.1.0"
+version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5aa8e68f81f4b18f6616d75815baadc552f45bd5ca4b227f133c9abecea03987"
+checksum = "e205292c02a6bad4b8c46b4c3e81dfd568bf34b9c9d6eee225b564a907e3f446"
 dependencies = [
- "cosmian_crypto_base 2.0.0",
+ "abe_policy",
+ "cosmian_crypto_base 2.1.0",
  "hex",
  "leb128",
  "rand_core 0.5.1",
  "serde",
  "serde_json",
  "thiserror",
+ "zeroize",
 ]
 
 [[package]]
@@ -4725,8 +4743,8 @@ version = "1.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ee73e6e4924fe940354b8d4d98cad5231175d615cd855b758adc658c0aac6a0"
 dependencies = [
- "cfg-if 0.1.10",
- "rand 0.7.3",
+ "cfg-if 1.0.0",
+ "rand 0.8.5",
  "static_assertions",
 ]
 
@@ -5115,9 +5133,9 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.5.5"
+version = "1.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94693807d016b2f2d2e14420eb3bfcca689311ff775dcf113d74ea624b7cdf07"
+checksum = "c394b5bd0c6f669e7275d9c20aa90ae064cb22e75a1cad54e1b34088034b149f"
 
 [[package]]
 name = "zstd"

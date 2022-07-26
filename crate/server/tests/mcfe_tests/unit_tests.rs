@@ -4,6 +4,14 @@ use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Get, GetAttributes},
 };
+use cosmian_kms_server::{
+    config::{auth::AuthConfig, init_config, Config},
+    core::crud::KmipServer,
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+    KMSServer,
+};
 use cosmian_kms_utils::crypto::mcfe::{
     kmip_requests::{lwe_secret_key_create_request, lwe_setup_attribute_reference},
     operation::{
@@ -14,15 +22,12 @@ use cosmian_mcfe::lwe;
 use num_bigint::BigUint;
 use uuid::Uuid;
 
-use crate::{
-    config::init_config, core::crud::KmipServer, error::KmsError, kms_bail, result::KResult,
-    KMSServer,
-};
-
 #[actix_rt::test]
 async fn test_secret_key_crud() -> KResult<()> {
-    let config = crate::config::Config {
-        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
+    let config = Config {
+        auth: AuthConfig {
+            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+        },
         ..Default::default()
     };
     init_config(&config).await?;
@@ -48,7 +53,7 @@ async fn test_secret_key_crud() -> KResult<()> {
         }
     };
     let cr = kms
-        .create(lwe_secret_key_create_request(&lwe_setup)?, owner)
+        .create(lwe_secret_key_create_request(&lwe_setup)?, owner, None)
         .await?;
     assert_eq!(ObjectType::SymmetricKey, cr.object_type);
 
@@ -58,7 +63,7 @@ async fn test_secret_key_crud() -> KResult<()> {
     assert_eq!(&uid, &uid_.to_string());
 
     // get object
-    let gr = kms.get(Get::from(uid.as_str()), owner).await?;
+    let gr = kms.get(Get::from(uid.as_str()), owner, None).await?;
     assert_eq!(uid, gr.unique_identifier);
     assert_eq!(ObjectType::SymmetricKey, gr.object_type);
     // recover sk
@@ -91,6 +96,7 @@ async fn test_secret_key_crud() -> KResult<()> {
                 attribute_references: None,
             },
             owner,
+            None,
         )
         .await?;
     let kms_sk_attr = kms_sk_key_block.key_value.attributes()?;
@@ -104,6 +110,7 @@ async fn test_secret_key_crud() -> KResult<()> {
                 attribute_references: Some(vec![lwe_setup_attribute_reference()]),
             },
             owner,
+            None,
         )
         .await?;
     let recovered_setup = mcfe_setup_from_attributes(&gar.attributes)?;

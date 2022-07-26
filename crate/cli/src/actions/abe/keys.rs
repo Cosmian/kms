@@ -4,22 +4,12 @@ use std::{
     path::PathBuf,
 };
 
-use abe_gpsw::core::policy::{AccessPolicy as AbeAccessPolicy, Attribute as AbeAttribute};
+use abe_policy::{AccessPolicy, Attribute};
 use clap::StructOpt;
 use cosmian_kmip::kmip::kmip_operations::Get;
 use cosmian_kms_client::{kmip::kmip_types::RevocationReason, KmsRestClient};
 use cosmian_kms_utils::{
     crypto::{
-        abe::kmip_requests::{
-            build_create_master_keypair_request as abe_build_create_master_keypair_request,
-            build_create_user_decryption_private_key_request as abe_build_create_user_decryption_private_key_request,
-            build_destroy_key_request as abe_build_destroy_key_request,
-            build_import_decryption_private_key_request as abe_build_import_decryption_private_key_request,
-            build_import_private_key_request as abe_build_import_private_key_request,
-            build_import_public_key_request as abe_build_import_public_key_request,
-            build_rekey_keypair_request as abe_build_rekey_keypair_request,
-            build_revoke_user_decryption_key_request as abe_build_revoke_user_decryption_key_request,
-        },
         cover_crypt::kmip_requests::{
             build_create_master_keypair_request as cc_build_create_master_keypair_request,
             build_create_user_decryption_private_key_request as cc_build_create_user_decryption_private_key_request,
@@ -30,18 +20,23 @@ use cosmian_kms_utils::{
             build_rekey_keypair_request as cc_build_rekey_keypair_request,
             build_revoke_user_decryption_key_request as cc_build_revoke_user_decryption_key_request,
         },
+        gpsw::kmip_requests::{
+            build_create_master_keypair_request as abe_build_create_master_keypair_request,
+            build_create_user_decryption_private_key_request as abe_build_create_user_decryption_private_key_request,
+            build_destroy_key_request as abe_build_destroy_key_request,
+            build_import_decryption_private_key_request as abe_build_import_decryption_private_key_request,
+            build_import_private_key_request as abe_build_import_private_key_request,
+            build_import_public_key_request as abe_build_import_public_key_request,
+            build_rekey_keypair_request as abe_build_rekey_keypair_request,
+            build_revoke_user_decryption_key_request as abe_build_revoke_user_decryption_key_request,
+        },
     },
     kmip_utils::unwrap_key_bytes,
-};
-use cover_crypt::policies::{
-    AccessPolicy as CoverCryptAccessPolicy, Attribute as CoverCryptAttribute,
 };
 use eyre::Context;
 use uuid::Uuid;
 
-use crate::actions::abe::policy::CLIPolicy;
-
-/// Create a new ABE master access key pair for a given policy.
+/// Create a new master access key pair for a given policy.
 /// The master public key is used to encrypt the files and can be safely shared.
 /// The master secret key is used to generate user decryption keys and must be
 /// kept confidential.
@@ -69,12 +64,13 @@ impl NewMasterKeyPairAction {
         is_cover_crypt: bool,
     ) -> eyre::Result<()> {
         // Parse the json policy file
-        let policy = super::policy::policy_from_file(&self.policy_file, is_cover_crypt)?;
+        let policy = super::policy::policy_from_file(&self.policy_file)?;
 
         // Create the kmip query
-        let create_key_pair = match policy {
-            CLIPolicy::CoverCrypt(p) => cc_build_create_master_keypair_request(&p)?,
-            CLIPolicy::Abe(p) => abe_build_create_master_keypair_request(&p)?,
+        let create_key_pair = if is_cover_crypt {
+            cc_build_create_master_keypair_request(&policy)?
+        } else {
+            abe_build_create_master_keypair_request(&policy)?
         };
 
         // Query the KMS with your kmip data and get the key pair ids
@@ -99,6 +95,8 @@ impl NewMasterKeyPairAction {
 /// Generate a new user decryption key given an Access Policy expressed
 /// as a boolean expression. The user decryption key can decrypt files with
 /// attributes matching its access policy (i.e. the access policy is true).
+///
+/// Example: cosmian_kms_cli cc new -s abf0e213-59c1-4acf-bb93-8ab4bedfa2f5 "department::marketing && level::secret"
 #[derive(StructOpt, Debug)]
 pub struct NewUserKeyAction {
     /// The private master key unique identifier stored in the KMS
@@ -118,17 +116,17 @@ impl NewUserKeyAction {
         is_cover_crypt: bool,
     ) -> eyre::Result<()> {
         // Parse self.access_policy
+        let policy = if self.access_policy.trim().is_empty() {
+            AccessPolicy::All
+        } else {
+            AccessPolicy::from_boolean_expression(&self.access_policy)
+                .with_context(|| "Bad access policy definition")?
+        };
 
         // Create the kmip query
         let create_user_key = if is_cover_crypt {
-            let policy = CoverCryptAccessPolicy::from_boolean_expression(&self.access_policy)
-                .with_context(|| "Bad access policy definition")?;
-
             cc_build_create_user_decryption_private_key_request(&policy, &self.secret_key_id)?
         } else {
-            let policy = AbeAccessPolicy::from_boolean_expression(&self.access_policy)
-                .with_context(|| "Bad access policy definition")?;
-
             abe_build_create_user_decryption_private_key_request(&policy, &self.secret_key_id)?
         };
 
@@ -159,11 +157,9 @@ pub struct RevokeUserKeyAction {
     /// The reason of this revocation
     #[structopt(required = true, long = "revocation-reason", short = 'r')]
     revocation_reason: String,
-    /*
-    /// Compromission date if it occurs
-    #[structopt(long = "compromission-date", short = "d")]
-    compromise_occurrence_date: Option<String>,
-    */
+    // /// Compromission date if it occurs
+    // #[structopt(long = "compromission-date", short = "d")]
+    // compromise_occurrence_date: Option<String>,
 }
 
 impl RevokeUserKeyAction {
@@ -211,7 +207,7 @@ pub struct RotateAttributeAction {
 
     /// The policy attributes to rotate.
     /// Example: `-a department::marketing -a level::confidential`
-    #[structopt(required = true, short, long)]
+    #[structopt(required = true, long, short)]
     attributes: Vec<String>,
 }
 
@@ -221,24 +217,17 @@ impl RotateAttributeAction {
         client_connector: &KmsRestClient,
         is_cover_crypt: bool,
     ) -> eyre::Result<()> {
-        let rotate_query = if is_cover_crypt {
-            // Parse the attributes
-            let attributes = self
-                .attributes
-                .iter()
-                .map(|s| CoverCryptAttribute::try_from(s.as_str()).map_err(Into::into))
-                .collect::<eyre::Result<Vec<CoverCryptAttribute>>>()?;
+        // Parse the attributes
+        let attributes = self
+            .attributes
+            .iter()
+            .map(|s| Attribute::try_from(s.as_str()).map_err(Into::into))
+            .collect::<eyre::Result<Vec<Attribute>>>()?;
 
-            // Create the kmip query
+        // Create the kmip query
+        let rotate_query = if is_cover_crypt {
             cc_build_rekey_keypair_request(&self.secret_key_id, attributes)?
         } else {
-            // Parse the attributes
-            let attributes = self
-                .attributes
-                .iter()
-                .map(|s| AbeAttribute::try_from(s.as_str()).map_err(Into::into))
-                .collect::<eyre::Result<Vec<AbeAttribute>>>()?;
-
             abe_build_rekey_keypair_request(&self.secret_key_id, attributes)?
         };
 
@@ -294,7 +283,9 @@ impl DestroyUserKeyAction {
     }
 }
 
-/// Import (wrapped, to wrap or unwrapped) keys for a given user.
+/// Import (wrapped, to wrap or unwrapped) ABE raw keys for a given user.
+/// Note: the keys import must be in raw format.
+/// If you want to import keys serialized in TTLV format, please use `import` subcommand.
 #[derive(StructOpt, Debug)]
 pub struct ImportKeysAction {
     /// The private master key file (hint: raw binary file) (to set if `public-key-file` is set). [Wrappable]
@@ -320,8 +311,8 @@ pub struct ImportKeysAction {
     public_key_file: Option<PathBuf>,
 
     /// The policy filename. The policy is expressed as a JSON object
-    /// describing the Policy axes and attributes. See the documentation for
-    /// details.
+    /// describing the Policy axes and attributes.
+    /// See the documentation for details.
     #[structopt(
         name = "policy",
         required_unless_present = "user_key_file",
@@ -365,7 +356,7 @@ pub struct ImportKeysAction {
     secret_key_id: Option<String>,
 
     /// Wrap the key (if [Wrappable]) using a password before importing it
-    #[structopt(required = false, long = "password", short = 'W')]
+    #[structopt(required = false, long, short = 'W')]
     password: Option<String>,
 
     /// The provided key is already wrapped. If false, it is imported in plain text. Is ignored if password is set.
@@ -389,7 +380,7 @@ impl ImportKeysAction {
         ) {
             (Some(secret_key_file), Some(public_key_file), Some(policy_file), None, None, None) => {
                 // Parse the json policy file
-                let policy = super::policy::policy_from_file(policy_file, is_cover_crypt)?;
+                let policy = super::policy::policy_from_file(policy_file)?;
 
                 // Read the private key
                 let mut f = File::open(&secret_key_file)
@@ -410,25 +401,26 @@ impl ImportKeysAction {
                 let public_uuid = Uuid::new_v4().to_string();
 
                 // Create the kmip query for private key
-                let import_private_query = match &policy {
-                    CLIPolicy::CoverCrypt(p) => cc_build_import_private_key_request(
+                let import_private_query = if is_cover_crypt {
+                    cc_build_import_private_key_request(
                         &private_key,
                         Some(private_uuid),
                         false,
                         &public_uuid,
-                        p,
+                        &policy,
                         self.wrapped,
                         self.password.clone(),
-                    )?,
-                    CLIPolicy::Abe(p) => abe_build_import_private_key_request(
+                    )?
+                } else {
+                    abe_build_import_private_key_request(
                         &private_key,
                         Some(private_uuid),
                         false,
                         &public_uuid,
-                        p,
+                        &policy,
                         self.wrapped,
                         self.password.clone(),
-                    )?,
+                    )?
                 };
 
                 // Query the KMS with your kmip data for private key
@@ -441,21 +433,23 @@ impl ImportKeysAction {
                 let private_key_unique_identifier = &import_private_response.unique_identifier;
 
                 // Create the kmip query for public key
-                let import_public_query = match policy {
-                    CLIPolicy::CoverCrypt(p) => cc_build_import_public_key_request(
+
+                let import_public_query = if is_cover_crypt {
+                    cc_build_import_public_key_request(
                         &public_key,
                         Some(public_uuid),
                         false,
-                        &p,
+                        &policy,
                         private_key_unique_identifier,
-                    )?,
-                    CLIPolicy::Abe(p) => abe_build_import_public_key_request(
+                    )?
+                } else {
+                    abe_build_import_public_key_request(
                         &public_key,
                         Some(public_uuid),
                         false,
-                        &p,
+                        &policy,
                         private_key_unique_identifier,
-                    )?,
+                    )?
                 };
 
                 // Query the KMS with your kmip data for public key
@@ -479,10 +473,14 @@ impl ImportKeysAction {
                 f.read_to_end(&mut user_key)
                     .with_context(|| "Fail to read the user key file")?;
 
-                let import_query = if is_cover_crypt {
-                    let policy = CoverCryptAccessPolicy::from_boolean_expression(access_policy)
-                        .with_context(|| "Bad access policy definition")?;
+                let policy = if access_policy.trim().is_empty() {
+                    AccessPolicy::All
+                } else {
+                    AccessPolicy::from_boolean_expression(access_policy)
+                        .with_context(|| "Bad access policy definition")?
+                };
 
+                let import_query = if is_cover_crypt {
                     // Create the kmip query
                     cc_build_import_decryption_private_key_request(
                         &user_key,
@@ -494,9 +492,6 @@ impl ImportKeysAction {
                         self.password.clone(),
                     )?
                 } else {
-                    let policy = AbeAccessPolicy::from_boolean_expression(access_policy)
-                        .with_context(|| "Bad access policy definition")?;
-
                     // Create the kmip query
                     abe_build_import_decryption_private_key_request(
                         &user_key,
@@ -533,23 +528,25 @@ impl ImportKeysAction {
     }
 }
 
-/// Get a key by its id.
+/// Export a key by its id.
+/// Note: the exported key is in raw format.
+/// If you want to export a key serialized in TTLV format, please use `export` subcommand
 #[derive(StructOpt, Debug)]
-pub struct GetKeyAction {
+pub struct ExportKeysAction {
     /// The output file to write the key
-    #[clap(required = true, name = "FILE", parse(from_os_str))]
+    #[structopt(required = true, name = "FILE", parse(from_os_str))]
     output_file: PathBuf,
 
     /// The key unique identifier stored in the KMS
-    #[clap(required = true, long = "key-id", short = 'k')]
+    #[structopt(required = true, long = "key-id", short = 'k')]
     key_id: String,
 
     /// Unwrap the key using a password before writting it
-    #[structopt(required = false, long = "password", short = 'W')]
+    #[structopt(required = false, long, short = 'W')]
     password: Option<String>,
 }
 
-impl GetKeyAction {
+impl ExportKeysAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Query the KMS with your kmip data and get the key pair ids
         let get_response = client_connector
