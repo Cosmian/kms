@@ -14,11 +14,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{kms_bail, result::KResult};
 
-pub(crate) type KMSServer = crate::core::KMS;
+pub type KMSServer = crate::core::KMS;
 pub(crate) mod cached_sqlcipher;
 pub(crate) mod cached_sqlite_struct;
 pub(crate) mod pgsql;
-pub(crate) mod sqlite;
+pub mod sqlite;
 
 // the `sqlx` connector for MySQL is unable to connect
 // using key-file (instead of password) for EdgelessDB
@@ -40,7 +40,7 @@ lazy_static! {
 }
 
 #[async_trait]
-pub(crate) trait Database {
+pub trait Database {
     /// Return the filename of the database if supported
     fn filename(&self, group_id: u128) -> PathBuf;
 

@@ -1,4 +1,4 @@
-use abe_gpsw::core::policy::{ap, attr, Attribute, Policy};
+use abe_policy::{ap, Attribute, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_operations::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DestroyResponse, EncryptResponse,
@@ -6,35 +6,41 @@ use cosmian_kmip::kmip::{
     },
     kmip_types::RevocationReason,
 };
-use cosmian_kms_utils::crypto::abe::kmip_requests::{
+use cosmian_kms_server::{
+    config::{auth::AuthConfig, init_config, Config},
+    log_utils,
+    result::{KResult, KResultHelper},
+};
+use cosmian_kms_utils::crypto::gpsw::kmip_requests::{
     build_create_master_keypair_request, build_create_user_decryption_private_key_request,
     build_decryption_request, build_destroy_key_request, build_hybrid_encryption_request,
     build_rekey_keypair_request,
 };
 
-use crate::{
-    config::{init_config, Config},
-    log_utils,
-    result::{KResult, KResultHelper},
-    tests::test_utils,
-};
+use crate::test_utils;
 
 #[actix_web::test]
 async fn integration_tests() -> KResult<()> {
     log_utils::log_init("cosmian_kms_server=trace");
 
     let config = Config {
-        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
-        port: 9999,
+        auth: AuthConfig {
+            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+        },
+        // port: 9999,
         ..Default::default()
     };
     init_config(&config).await?;
 
     let app = test_utils::test_app().await;
 
-    let policy = Policy::new(10)
-        .add_axis("Department", &["MKG", "FIN", "HR"], false)?
-        .add_axis("Level", &["Confidential", "Top Secret"], true)?;
+    let mut policy = Policy::new(10);
+    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
+    policy.add_axis(&PolicyAxis::new(
+        "Level",
+        &["Confidential", "Top Secret"],
+        true,
+    ))?;
 
     // create Key Pair
     let create_key_pair = build_create_master_keypair_request(&policy)?;
@@ -47,7 +53,10 @@ async fn integration_tests() -> KResult<()> {
     // Encrypt
     let resource_uid = "the uid".as_bytes().to_vec();
     let data = "Confidential MKG Data".as_bytes();
-    let policy_attributes = vec![attr("Level", "Confidential"), attr("Department", "MKG")];
+    let policy_attributes = vec![
+        Attribute::new("Level", "Confidential"),
+        Attribute::new("Department", "MKG"),
+    ];
     let request = build_hybrid_encryption_request(
         public_key_unique_identifier,
         policy_attributes.clone(),
@@ -76,7 +85,7 @@ async fn integration_tests() -> KResult<()> {
         resource_uid.clone(),
         encrypted_data.clone(),
     );
-    let decrypt_response: DecryptResponse = test_utils::post(&app, request).await.unwrap();
+    let decrypt_response: DecryptResponse = test_utils::post(&app, request).await?;
     assert_eq!(
         data,
         &decrypt_response
@@ -89,7 +98,10 @@ async fn integration_tests() -> KResult<()> {
     // Encrypt
     let resource_uid = "the uid".as_bytes().to_vec();
     let data = "Voilà voilà".as_bytes();
-    let policy_attributes = vec![attr("Level", "Confidential"), attr("Department", "MKG")];
+    let policy_attributes = vec![
+        Attribute::new("Level", "Confidential"),
+        Attribute::new("Department", "MKG"),
+    ];
     let request = build_hybrid_encryption_request(
         public_key_unique_identifier,
         policy_attributes.clone(),
@@ -167,8 +179,7 @@ async fn integration_tests() -> KResult<()> {
 
     let request =
         build_rekey_keypair_request(private_key_unique_identifier, abe_policy_attributes)?;
-    let rekey_keypair_response: ReKeyKeyPairResponse =
-        test_utils::post(&app, &request).await.unwrap();
+    let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
         &rekey_keypair_response.private_key_unique_identifier,
         private_key_unique_identifier
@@ -181,7 +192,10 @@ async fn integration_tests() -> KResult<()> {
     // ReEncrypt with same ABE attribute (which has been previously incremented)
     let resource_uid = "the uid".as_bytes().to_vec();
     let data = "Voilà voilà".as_bytes();
-    let policy_attributes = vec![attr("Level", "Confidential"), attr("Department", "MKG")];
+    let policy_attributes = vec![
+        Attribute::new("Level", "Confidential"),
+        Attribute::new("Department", "MKG"),
+    ];
     let request = build_hybrid_encryption_request(
         public_key_unique_identifier,
         policy_attributes,

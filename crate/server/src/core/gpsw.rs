@@ -1,4 +1,4 @@
-use abe_gpsw::core::policy::Policy;
+use abe_policy::Policy;
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Create, CreateKeyPair, Get, Import, Locate, ReKeyKeyPairResponse},
@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_utils::{
-    crypto::abe::{
+    crypto::gpsw::{
         attributes::{
             access_policy_from_attributes, attributes_as_vendor_attribute,
             attributes_from_attributes, policy_from_attributes, upsert_policy_in_attributes,
@@ -85,7 +85,9 @@ where
 
     // Increment the Attributes values in the Policy
     for attr in &abe_policy_attributes_to_revoke {
-        policy.rotate(attr)?
+        policy
+            .rotate(attr)
+            .map_err(|e| KmsError::InvalidRequest(e.to_string()))?
     }
     trace!("The new policy is : {policy:#?}");
 

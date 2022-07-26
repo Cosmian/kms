@@ -541,7 +541,7 @@ async fn handle_error(response: Response) -> Result<String, KmsClientError> {
         Ok(match status {
             StatusCode::NOT_FOUND => "Server endpoint does not exist".to_string(),
             StatusCode::UNAUTHORIZED => "Bad authorization token".to_string(),
-            _ => text,
+            _ => format!("{status} {text}"),
         })
     }
 }

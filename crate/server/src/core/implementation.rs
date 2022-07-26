@@ -1,4 +1,4 @@
-//TODO Split this file in multiple implementations under their operations names
+// TODO Split this file in multiple implementations under their operations names
 
 use std::convert::TryFrom;
 
@@ -9,11 +9,11 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::{
     crypto::{
-        abe::ciphers::{AbeHybridCipher, AbeHybridDecipher},
         aes::{create_aes_symmetric_key, AesGcmCipher},
         cover_crypt::ciphers::{CoverCryptHybridCipher, CoverCryptHybridDecipher},
         curve_25519::operation::generate_key_pair,
         fpe::{operation::FpeCipher, symmetric_key::create_fpe_ff1_symmetric_key},
+        gpsw::ciphers::{AbeHybridCipher, AbeHybridDecipher},
         mcfe::operation::{
             mcfe_master_key_from_key_block, mcfe_setup_from_attributes,
             secret_data_from_lwe_functional_key, secret_key_from_lwe_master_secret_key,
@@ -383,7 +383,7 @@ impl KMS {
                 )),
                 Some(KeyFormatType::AbeUserDecryptionKey) => {
                     trace!("Creating ABE user decryption key");
-                    super::abe::create_user_decryption_key(self, create_request, owner, params)
+                    super::gpsw::create_user_decryption_key(self, create_request, owner, params)
                         .await
                 }
                 Some(other) => kms_bail!(KmsError::NotSupported(format!(
@@ -446,11 +446,11 @@ impl KMS {
                     "Unable to create an ABE key, the format type is not specified".to_string()
                 )),
                 Some(KeyFormatType::AbeMasterSecretKey) => {
-                    cosmian_kms_utils::crypto::abe::master_keys::create_master_keypair(request)
+                    cosmian_kms_utils::crypto::gpsw::master_keys::create_master_keypair(request)
                         .map_err(Into::into)
                 }
                 Some(KeyFormatType::AbeUserDecryptionKey) => {
-                    super::abe::create_user_decryption_key_pair(self, request, owner, params).await
+                    super::gpsw::create_user_decryption_key_pair(self, request, owner, params).await
                 }
                 Some(other) => kms_bail!(KmsError::NotSupported(format!(
                     "Unable to generate an ABE keypair for format: {other:?}"
@@ -459,8 +459,6 @@ impl KMS {
             Some(CryptographicAlgorithm::CoverCrypt) => {
                 cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(request)
                     .map_err(Into::into)
-                // TODO: cannot create a user key pair: does it matter ?
-                // super::cover_crypt::create_user_decryption_key_pair(self, request, owner).await
             }
             Some(other) => kms_bail!(KmsError::NotSupported(format!(
                 "The creation of a key pair for algorithm: {other:?} is not supported"

@@ -5,6 +5,12 @@ use cosmian_kmip::kmip::{
     kmip_operations::Create,
     kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
 };
+use cosmian_kms_server::{
+    config::{auth::AuthConfig, init_config, Config},
+    core::crud::KmipServer,
+    result::{KResult, KResultHelper},
+    KMSServer,
+};
 use cosmian_kms_utils::{
     cosmian_crypto_base::entropy::CsRng,
     crypto::fpe::{
@@ -14,17 +20,12 @@ use cosmian_kms_utils::{
 };
 use tracing::debug;
 
-use crate::{
-    config::init_config,
-    core::crud::KmipServer,
-    result::{KResult, KResultHelper},
-    KMSServer,
-};
-
 #[actix_rt::test]
 async fn fpe_encryption() -> KResult<()> {
-    let config = crate::config::Config {
-        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
+    let config = Config {
+        auth: AuthConfig {
+            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+        },
         ..Default::default()
     };
     init_config(&config).await?;
@@ -49,7 +50,7 @@ async fn fpe_encryption() -> KResult<()> {
         },
         protection_storage_masks: None,
     };
-    let cr = kms.create(create_request, owner).await?;
+    let cr = kms.create(create_request, owner, None).await?;
     let aes_uid = &cr.unique_identifier;
     debug!("Create response: {:?}", cr);
 
@@ -60,6 +61,7 @@ async fn fpe_encryption() -> KResult<()> {
         .encrypt(
             fpe_build_encryption_request(aes_uid, tweak.clone(), alphabet, data)?,
             owner,
+            None,
         )
         .await?;
     assert_eq!(aes_uid, &er.unique_identifier);
@@ -76,6 +78,7 @@ async fn fpe_encryption() -> KResult<()> {
                 data,
             )?,
             nonexistent_owner,
+            None,
         )
         .await;
     assert!(er.is_err());
@@ -85,6 +88,7 @@ async fn fpe_encryption() -> KResult<()> {
         .decrypt(
             fpe_build_decryption_request(aes_uid, tweak.clone(), encrypted_data.clone()),
             owner,
+            None,
         )
         .await?;
     let cleartext = &dr.data.context("There should be decrypted data")?;
@@ -96,6 +100,7 @@ async fn fpe_encryption() -> KResult<()> {
         .decrypt(
             fpe_build_decryption_request(aes_uid, tweak, encrypted_data),
             nonexistent_owner,
+            None,
         )
         .await;
     assert!(er.is_err());

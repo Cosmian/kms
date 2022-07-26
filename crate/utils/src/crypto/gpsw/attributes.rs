@@ -1,4 +1,4 @@
-use abe_gpsw::core::policy::{AccessPolicy, Policy};
+use abe_policy::{AccessPolicy, Policy};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -75,7 +75,7 @@ pub fn access_policy_as_vendor_attribute(
 
 /// Convert from ABE policy attributes to vendor attributes
 pub fn attributes_as_vendor_attribute(
-    attributes: Vec<abe_gpsw::core::policy::Attribute>,
+    attributes: Vec<abe_policy::Attribute>,
 ) -> Result<VendorAttribute, KmipError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
@@ -92,7 +92,7 @@ pub fn attributes_as_vendor_attribute(
 /// Convert from vendor attributes to ABE policy attributes
 pub fn attributes_from_attributes(
     attributes: &Attributes,
-) -> Result<Vec<abe_gpsw::core::policy::Attribute>, KmipError> {
+) -> Result<Vec<abe_policy::Attribute>, KmipError> {
     if let Some(bytes) = attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_ABE_ATTR) {
         serde_json::from_slice(bytes).map_err(|e| {
             KmipError::InvalidKmipValue(

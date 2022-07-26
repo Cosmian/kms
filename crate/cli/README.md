@@ -14,7 +14,7 @@ cargo run
 
 ## Usage
 
-First of all, you need to specify the `kms.json` with the `kms_server_url` and your `kms_access_token` such as:
+Create a `kms.json` file with the `kms_server_url` and your `kms_access_token` such as:
 
 ```json
 {
@@ -26,10 +26,16 @@ First of all, you need to specify the `kms.json` with the `kms_server_url` and y
 
 Note: `insecure` needs to be `true` if `kms_server_url` uses https and the server provides a self-signed ssl connection
 
-Then:
+Then from the same directory as the `kms.json` file, run:
 
 ```
-KMS_CLI_CONF=kms.json kms_cli --help
+cosmian_kms_cli --help
+```
+
+If you wish to use a different configuration file, set its full path in the `KMS_CLI_CONF` environment variable e.g.
+
+```
+KMS_CLI_CONF=kms.json cosmian_kms_cli --help
 ```
 
 If the server is running without Auth0, you can let `kms_access_token` empty. Indeed, the server is running without authentication in a single-user mode.
@@ -40,7 +46,7 @@ If the server is running with cached sqlcipher as the KMS database, you also nee
 KMS_CLI_CONF=kms.json kms_cli configure
 ```
 
-### Attribute Based Encryption / Cover Crypt
+### Attribute Based Encryption: GPSW / CoverCrypt
 
 You can perform the following ABE operations by taking advantage of the KMS.
 
@@ -57,8 +63,11 @@ __On user keys__
 
 __On both user or master keys__
 
-- `get` Export a key using its uid from the KMS. If a password is passed through and the key has been previously wrapped by the cli, the key will also be unwrapped by the cli
-- `import` Import a key to the KMS. If a password is passed through, the key will be wrapped by the cli. Otherwise, you can transparently import a plain text key or an already wrapped key done by a key the KMS doesn't know.
+- `export` Export a key using its uid from the KMS. The key is exported serialized in KMIP TTLV format.
+- `import` Import a key to the KMS. The key to import must be serialized in KMIP TTLV format
+
+- `export-keys` Export a raw key using its uid from the KMS. If a password is passed through and the key has been previously wrapped by the cli, the key will also be unwrapped by the cli
+- `import-keys` Import a raw key to the KMS. If a password is passed through, the key will be wrapped by the cli. Otherwise, you can transparently import a plain text key or an already wrapped key done by a key the KMS doesn't know.
 
 __On user data__
 
@@ -67,7 +76,11 @@ __On user data__
 
 For more details, run:
 ```
-kms_cli abe --help
+# Details for GPSW
+kms_cli gpsw --help
+
+# Details for CoverCrypt
+kms_cli cc --help
 ```
 
 ### Permissions

@@ -9,6 +9,15 @@ use cosmian_kmip::kmip::{
         LinkType, LinkedObjectIdentifier, StateEnumeration, WrappingMethod,
     },
 };
+use cosmian_kms_server::{
+    config::{auth::AuthConfig, init_config, Config},
+    core::crud::KmipServer,
+    database::{sqlite::SqlitePool, Database},
+    error::KmsError,
+    log_utils::log_init,
+    result::KResult,
+    KMSServer,
+};
 use cosmian_kms_utils::{
     crypto::{curve_25519, mcfe::operation::secret_key_from_lwe_secret_key},
     types::ObjectOperationTypes,
@@ -18,16 +27,6 @@ use num_bigint::BigUint;
 use tempfile::tempdir;
 use tracing::trace;
 use uuid::Uuid;
-
-use crate::{
-    config::init_config,
-    core::crud::KmipServer,
-    database::{sqlite::SqlitePool, Database},
-    error::KmsError,
-    log_utils::log_init,
-    result::KResult,
-    KMSServer,
-};
 
 #[actix_rt::test]
 async fn test_crud() -> KResult<()> {
@@ -51,13 +50,15 @@ async fn test_crud() -> KResult<()> {
     //
     let db = SqlitePool::instantiate(&file_path).await?;
     //
-    let uid = db.create(None, owner, &sk).await?;
+    let uid = db.create(None, owner, &sk, None).await?;
     //
-    let list = db.find(None, None, owner).await?;
+    let list = db.find(None, None, owner, None).await?;
     assert_eq!(1, list.len());
     assert_eq!(uid, list[0].0);
     //
-    let req_obj = db.retrieve(&uid, owner, ObjectOperationTypes::Get).await?;
+    let req_obj = db
+        .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
+        .await?;
     assert!(req_obj.is_some());
     let req_sk =
         req_obj.ok_or_else(|| KmsError::ServerError("invalid object returned".to_owned()))?;
@@ -110,12 +111,13 @@ async fn test_crud() -> KResult<()> {
         &Object::SymmetricKey {
             key_block: updated_key_block,
         },
+        None,
     )
     .await?;
 
     // check update
     let sk2 = db
-        .retrieve(&uid, owner, ObjectOperationTypes::Get)
+        .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
         .await?
         .unwrap();
     let req_key_block_2 = match &sk2.0 {
@@ -136,22 +138,22 @@ async fn test_crud() -> KResult<()> {
 
     // upsert
     let uid_upsert = Uuid::new_v4().to_string();
-    db.upsert(&uid_upsert, owner, &sk, StateEnumeration::Active)
+    db.upsert(&uid_upsert, owner, &sk, StateEnumeration::Active, None)
         .await?;
-    db.upsert(&uid_upsert, owner, &sk2.0, StateEnumeration::Active)
+    db.upsert(&uid_upsert, owner, &sk2.0, StateEnumeration::Active, None)
         .await?;
     let sk2_ = db
-        .retrieve(&uid, owner, ObjectOperationTypes::Get)
+        .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
         .await?
         .unwrap();
     assert_eq!(&sk2, &sk2_);
 
     // delete and list
-    assert_eq!(2, db.find(None, None, owner).await?.len());
-    db.delete(&uid, owner).await?;
-    assert_eq!(1, db.find(None, None, owner).await?.len());
-    db.delete(&uid_upsert, owner).await?;
-    assert_eq!(0, db.find(None, None, owner).await?.len());
+    assert_eq!(2, db.find(None, None, owner, None).await?.len());
+    db.delete(&uid, owner, None).await?;
+    assert_eq!(1, db.find(None, None, owner, None).await?.len());
+    db.delete(&uid_upsert, owner, None).await?;
+    assert_eq!(0, db.find(None, None, owner, None).await?.len());
     // cleanup
     dir.close()?;
     Ok(())
@@ -178,13 +180,15 @@ async fn test_crud_2() -> KResult<()> {
     //
     let db = SqlitePool::instantiate(&file_path).await?;
     //
-    let uid = db.create(None, owner, &sk).await?;
+    let uid = db.create(None, owner, &sk, None).await?;
     //
-    let list = db.find(None, None, owner).await?;
+    let list = db.find(None, None, owner, None).await?;
     assert_eq!(1, list.len());
     assert_eq!(uid, list[0].0);
     //
-    let req_obj = db.retrieve(&uid, owner, ObjectOperationTypes::Get).await?;
+    let req_obj = db
+        .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
+        .await?;
     assert!(req_obj.is_some());
     let (req_sk, _state) =
         req_obj.ok_or_else(|| KmsError::ServerError("invalid object returned".to_owned()))?;
@@ -237,12 +241,13 @@ async fn test_crud_2() -> KResult<()> {
         &Object::SymmetricKey {
             key_block: updated_key_block,
         },
+        None,
     )
     .await?;
 
     // check update
     let (sk2, _state) = db
-        .retrieve(&uid, owner, ObjectOperationTypes::Get)
+        .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
         .await?
         .unwrap();
     let req_key_block_2 = match &sk2 {
@@ -263,22 +268,22 @@ async fn test_crud_2() -> KResult<()> {
 
     // upsert
     let uid_upsert = Uuid::new_v4().to_string();
-    db.upsert(&uid_upsert, owner, &sk, StateEnumeration::Active)
+    db.upsert(&uid_upsert, owner, &sk, StateEnumeration::Active, None)
         .await?;
-    db.upsert(&uid_upsert, owner, &sk2, StateEnumeration::Active)
+    db.upsert(&uid_upsert, owner, &sk2, StateEnumeration::Active, None)
         .await?;
     let (sk2_, _state) = db
-        .retrieve(&uid, owner, ObjectOperationTypes::Get)
+        .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
         .await?
         .unwrap();
     assert_eq!(&sk2, &sk2_);
 
     // delete and list
-    assert_eq!(2, db.find(None, None, owner).await?.len());
-    db.delete(&uid, owner).await?;
-    assert_eq!(1, db.find(None, None, owner).await?.len());
-    db.delete(&uid_upsert, owner).await?;
-    assert_eq!(0, db.find(None, None, owner).await?.len());
+    assert_eq!(2, db.find(None, None, owner, None).await?.len());
+    db.delete(&uid, owner, None).await?;
+    assert_eq!(1, db.find(None, None, owner, None).await?.len());
+    db.delete(&uid_upsert, owner, None).await?;
+    assert_eq!(0, db.find(None, None, owner, None).await?.len());
     // cleanup
     dir.close()?;
     Ok(())
@@ -286,8 +291,10 @@ async fn test_crud_2() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
-    let config = crate::config::Config {
-        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
+    let config = Config {
+        auth: AuthConfig {
+            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+        },
         ..Default::default()
     };
     init_config(&config).await?;
@@ -297,7 +304,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 
     // request key pair creation
     let request = curve_25519::kmip_requests::create_key_pair_request();
-    let response = kms.create_key_pair(request, owner).await?;
+    let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
     let sk_response = kms
@@ -306,6 +313,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
                 &response.private_key_unique_identifier,
             ),
             owner,
+            None,
         )
         .await?;
     let sk = &sk_response.object;
@@ -346,6 +354,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
                 &response.public_key_unique_identifier,
             ),
             owner,
+            None,
         )
         .await?;
     let pk = &pk_response.object;
@@ -389,7 +398,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         attributes: Attributes::new(ObjectType::PublicKey),
         object: pk,
     };
-    let new_uid = kms.import(request, owner).await?.unique_identifier;
+    let new_uid = kms.import(request, owner, None).await?.unique_identifier;
     // update
 
     let pk = curve_25519::kmip_requests::parse_public_key(&pk_bytes)?;
@@ -401,7 +410,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         attributes: Attributes::new(ObjectType::PublicKey),
         object: pk,
     };
-    let update_response = kms.import(request, owner).await?;
+    let update_response = kms.import(request, owner, None).await?;
     assert_eq!(new_uid, update_response.unique_identifier);
     Ok(())
 }
@@ -410,8 +419,10 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     log_init("info");
 
-    let config = crate::config::Config {
-        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
+    let config = Config {
+        auth: AuthConfig {
+            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+        },
         ..Default::default()
     };
     init_config(&config).await?;
@@ -460,7 +471,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     };
 
     trace!("request: {:?}", request);
-    let response = kms.import(request, owner).await?;
+    let response = kms.import(request, owner, None).await?;
     trace!("response: {:?}", response);
 
     Ok(())
@@ -468,12 +479,22 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_database_user_tenant() -> KResult<()> {
+    log_init("info");
+
+    let config = Config {
+        auth: AuthConfig {
+            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+        },
+        ..Default::default()
+    };
+    init_config(&config).await?;
+
     let kms = Arc::new(KMSServer::instantiate().await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
     let request = curve_25519::kmip_requests::create_key_pair_request();
-    let response = kms.create_key_pair(request, owner).await?;
+    let response = kms.create_key_pair(request, owner, None).await?;
 
     // check that we can get the private and public key
     // check secret key
@@ -482,6 +503,7 @@ async fn test_database_user_tenant() -> KResult<()> {
             &response.private_key_unique_identifier,
         ),
         owner,
+        None,
     )
     .await?;
 
@@ -489,18 +511,20 @@ async fn test_database_user_tenant() -> KResult<()> {
     kms.get(
         curve_25519::kmip_requests::get_public_key_request(&response.public_key_unique_identifier),
         owner,
+        None,
     )
     .await?;
 
     // request with an invalid `owner` but with the same `uid` and assert we don't get any key
-    let owner = "invalid_owner".to_string();
+    let owner = "invalid_owner";
     // check public key
     let sk_response = kms
         .get(
             curve_25519::kmip_requests::get_private_key_request(
                 &response.private_key_unique_identifier,
             ),
-            &owner,
+            owner,
+            None,
         )
         .await;
     assert!(sk_response.is_err());
@@ -510,7 +534,8 @@ async fn test_database_user_tenant() -> KResult<()> {
             curve_25519::kmip_requests::get_public_key_request(
                 &response.public_key_unique_identifier,
             ),
-            &owner,
+            owner,
+            None,
         )
         .await;
     assert!(pk_response.is_err());

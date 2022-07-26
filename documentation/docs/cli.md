@@ -92,26 +92,42 @@ The decryption has been properly done.
 The decrypted file can be found at /tmp/my_file.plain
 ```
 
-## Get 
+## Export
 
-Export from the KMS a key by its KMS ID.
+Export a key from the KMS in TTLV serialized format.
 
 ```sh
-$ cosmian_kms_cli cc get -k b5193e13-784c-4b24-a8cf-b58a34d90e0f /tmp/key
+cosmian_kms_cli cc export -i b5193e13-784c-4b24-a8cf-b58a34d90e0f -o /tmp/key.json
+```
+
+## Import
+
+Import a TTLV serialized key into the KMS.
+
+```sh
+cosmian_kms_cli cc import -i unique_uid -f /tmp/master_private_key.json -r
+```
+
+## Export-keys
+
+Export from the KMS a key by its KMS ID. The key exported is in raw format.
+
+```sh
+$ cosmian_kms_cli cc export-keys -k b5193e13-784c-4b24-a8cf-b58a34d90e0f /tmp/key
 The key has been properly exported.
 The key file can be found at /tmp/key
 ```
 
 If the key is stored wrapped inside the KMS, you can unwrap it after getting it and before storing it on the disk by adding `-W my_password`.
 
-## Import 
+## Import-keys
 
-Import (wrapped, to wrap, or unwrapped) keys for a given user.
+Import (wrapped, to wrap, or unwrapped) keys for a given user. The import keys are in raw format.
 
 For a master key pair, you can proceed as follow: 
 
 ```sh
-$ cosmian_kms_cli cc import --secret-key-file /tmp/key.private  --public-key-file /tmp/key.public  --policy crate/cli/policy.json 
+$ cosmian_kms_cli cc import-keys --secret-key-file /tmp/key.private  --public-key-file /tmp/key.public  --policy crate/cli/policy.json 
 The master key pair has been properly imported.
 Store the following securely for any further uses:
 
@@ -124,7 +140,7 @@ Store the following securely for any further uses:
 For a user decryption key:
 
 ```sh
-cosmian_kms_cli cc import --user-key-file /tmp/key --secret-key-id 33892479-7ee1-4b22-ab24-9ac6b6ed7c25 -a "(department::marketing || department::finance) && level::secret"
+cosmian_kms_cli cc import-keys --user-key-file /tmp/key --secret-key-id 33892479-7ee1-4b22-ab24-9ac6b6ed7c25 -a "(department::marketing || department::finance) && level::secret"
 The decryption user key has been properly imported.
 Store the following securely for any further uses:
 

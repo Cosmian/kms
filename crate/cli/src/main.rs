@@ -1,8 +1,9 @@
 use clap::{crate_description, crate_name, crate_version, StructOpt};
 use cosmian_kms_cli::{
     actions::{
-        abe::entrypoint::AbeAction, configure::entrypoint::ConfigureAction,
-        cover_crypt::entrypoint::CoverCryptAction, permission::entrypoint::PermissionAction,
+        abe::{cover_crypt::entrypoint::CoverCryptAction, gpsw::entrypoint::GpswAction},
+        configure::entrypoint::ConfigureAction,
+        permission::entrypoint::PermissionAction,
         sgx::entrypoint::SgxAction,
     },
     config::CliConf,
@@ -16,7 +17,7 @@ use cosmian_kms_cli::{
 )]
 enum CliCommands {
     #[clap(subcommand)]
-    Abe(AbeAction),
+    Gpsw(GpswAction),
     #[clap(subcommand)]
     Cc(CoverCryptAction),
     #[clap(subcommand)]
@@ -27,11 +28,11 @@ enum CliCommands {
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    let conf = CliConf::load()?;
     let opts = CliCommands::parse();
+    let conf = CliConf::load()?;
 
     match opts {
-        CliCommands::Abe(action) => action.process(&conf).await?,
+        CliCommands::Gpsw(action) => action.process(&conf).await?,
         CliCommands::Cc(action) => action.process(&conf).await?,
         CliCommands::Permission(action) => action.process(&conf).await?,
         CliCommands::Trust(action) => action.process(&conf).await?,

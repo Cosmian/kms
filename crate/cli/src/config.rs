@@ -28,17 +28,13 @@ pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
 impl CliConf {
     pub fn load() -> eyre::Result<KmsRestClient> {
         let cli_conf_filename =
-            env::var(KMS_CLI_CONF_ENV).with_context(|| "Can't find KMS_CLI_CONF env variable")?;
+            env::var(KMS_CLI_CONF_ENV).unwrap_or_else(|_| "kms.json".to_string());
 
-        let file = File::open(&cli_conf_filename).with_context(|| {
-            format!(
-                "Can't read {} set in the KMS_CLI_CONF env variable",
-                &cli_conf_filename
-            )
-        })?;
+        let file = File::open(&cli_conf_filename)
+            .with_context(|| format!("Can't read {cli_conf_filename}"))?;
 
         let conf: CliConf = serde_json::from_reader(BufReader::new(file))
-            .with_context(|| format!("Config JSON malformed in {}", &cli_conf_filename))?;
+            .with_context(|| format!("Config JSON malformed in {cli_conf_filename}"))?;
 
         // Create a client to query the KMS
         let kms_connector = KmsRestClient::instantiate(
@@ -77,7 +73,7 @@ mod tests {
         env::set_var(KMS_CLI_CONF_ENV, "not_exist.json");
         assert_eq!(
             CliConf::load().err().unwrap().to_string(),
-            "Can't read not_exist.json set in the KMS_CLI_CONF env variable"
+            "Can't read not_exist.json"
         );
 
         env::set_var(KMS_CLI_CONF_ENV, "test_data/kms.bad");

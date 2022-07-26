@@ -1,3 +1,4 @@
+use abe_policy::{Attribute, Policy};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{
@@ -11,17 +12,15 @@ use cosmian_kms_utils::{
     crypto::cover_crypt::{
         attributes::{
             access_policy_from_attributes, attributes_as_vendor_attribute,
-            attributes_from_attributes, policy_from_attributes, upsert_policy_in_attributes,
+            attributes_from_attributes, policy_from_attributes,
         },
-        user_key::create_user_decryption_key_object,
+        master_keys::update_master_keys,
+        user_key::UserDecryptionKeysHandler,
     },
-    kmip_utils::{
-        key_bytes_and_attributes_from_key_block, public_key_unique_identifier_from_private_key,
-    },
+    kmip_utils::public_key_unique_identifier_from_private_key,
     types::ExtraDatabaseParams,
     KeyPair,
 };
-use cover_crypt::policies::Policy;
 use tracing::trace;
 
 use crate::{core::crud::KmipServer, error::KmsError, kms_bail, result::KResult};
@@ -60,74 +59,33 @@ where
     );
 
     // Recover the master private key
-    let private_key = kmip_server
+    let master_private_key = kmip_server
         .get(Get::from(master_private_key_uid), owner, params)
         .await?
         .object;
 
-    if private_key.is_wrapped()? {
+    if master_private_key.is_wrapped()? {
         kms_bail!(KmsError::InconsistentOperation(
             "The server can't rekey: the key is wrapped".to_owned()
         ));
     }
 
-    // Recover the Master Public Key
-    let master_public_key_uid = public_key_unique_identifier_from_private_key(&private_key)?;
-    let public_key = kmip_server
-        .get(Get::from(master_public_key_uid.clone()), owner, params)
-        .await?
-        .object;
+    // Rotate the policy
+    let policy = rotate_policy(
+        &master_private_key,
+        &cover_crypt_policy_attributes_to_revoke,
+    )?;
 
-    // Recover the policy from the private key
-    let (master_private_key_bytes, private_key_attributes) = private_key
-        .key_block()?
-        .key_bytes_and_attributes(master_private_key_uid)?;
-    let master_private_key_bytes = master_private_key_bytes.to_vec();
-    let mut private_key_attributes = private_key_attributes
-        .ok_or_else(|| {
-            KmsError::InvalidRequest("The CoverCrypt Master key should have attributes".to_owned())
-        })?
-        .to_owned();
-    let mut policy = policy_from_attributes(&private_key_attributes)?;
-
-    // Increment the Attributes values in the Policy
-    for attr in &cover_crypt_policy_attributes_to_revoke {
-        policy.rotate(attr).map_err(|e| {
-            KmsError::KmipError(
-                ErrorReason::Unsupported_Cryptographic_Parameters,
-                e.to_string(),
-            )
-        })?
-    }
-    trace!("The new policy is : {policy:#?}");
-
-    // Update Master Private Key Policy and re-import the key
-    upsert_policy_in_attributes(&mut private_key_attributes, &policy)?;
-    // re_import it
-    let import_request = Import {
-        unique_identifier: master_private_key_uid.to_string(),
-        object_type: ObjectType::PrivateKey,
-        replace_existing: Some(true),
-        key_wrap_type: None,
-        attributes: private_key_attributes.to_owned(),
-        object: private_key,
-    };
-    let _import_response = kmip_server.import(import_request, owner, params).await?;
-
-    // Update Master Public Key Policy and re-import the key
-    let mut public_key_attributes = public_key.key_block()?.key_value.attributes()?.clone();
-    public_key_attributes.set_object_type(ObjectType::PublicKey);
-    upsert_policy_in_attributes(&mut public_key_attributes, &policy)?;
-    // re_import it
-    let import_request = Import {
-        unique_identifier: master_public_key_uid.clone(),
-        object_type: ObjectType::PublicKey,
-        replace_existing: Some(true),
-        key_wrap_type: None,
-        attributes: public_key_attributes,
-        object: public_key,
-    };
-    let _import_response = kmip_server.import(import_request, owner, params).await?;
+    // Rekey the master keys
+    let master_public_key_uid = rekey_master_keys(
+        kmip_server,
+        master_private_key_uid,
+        &master_private_key,
+        &policy,
+        owner,
+        params,
+    )
+    .await?;
 
     // Search the user decryption keys that need to be refreshed
     let search_attributes = Attributes {
@@ -153,12 +111,12 @@ where
 
     // Refresh the User Decryption Key that were found
     if let Some(unique_identifiers) = &locate_response.unique_identifiers {
-        trace!("Rekeying the following user decryption keys: {unique_identifiers:?}");
-        renew_all_user_decryption_keys(
+        // refresh the user keys
+        refresh_all_user_decryption_keys(
             kmip_server,
-            &master_private_key_bytes,
-            &policy,
+            master_private_key_uid,
             unique_identifiers,
+            true, //TODO: do we want to conserve this or make it a parameter ?
             owner,
             params,
         )
@@ -171,19 +129,106 @@ where
     })
 }
 
-async fn renew_all_user_decryption_keys<K>(
+/// Rotate the policy of the given Master Private Key
+/// and return it
+fn rotate_policy(
+    private_key: &Object,
+    cover_crypt_policy_attributes_to_revoke: &[Attribute],
+) -> KResult<Policy> {
+    // Recover the current policy
+    let private_key_attributes = private_key.attributes()?;
+    let mut policy = policy_from_attributes(private_key_attributes)?;
+
+    // Rotate the Attributes values in the Policy
+    for attr in cover_crypt_policy_attributes_to_revoke {
+        policy.rotate(attr).map_err(|e| {
+            KmsError::KmipError(
+                ErrorReason::Unsupported_Cryptographic_Parameters,
+                e.to_string(),
+            )
+        })?
+    }
+    trace!("The new policy is : {policy:#?}");
+    Ok(policy)
+}
+
+/// Rekey the Master keys given the provided Private Master Key and Policy
+/// Return the Public Mater Key Identifier
+async fn rekey_master_keys<K>(
     kmip_server: &K,
-    master_private_key_bytes: &[u8],
+    master_private_key_uid: &str,
+    master_private_key: &Object,
     policy: &Policy,
+    owner: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<String>
+where
+    K: KmipServer,
+{
+    // Recover the Master Public Key
+    let master_public_key_uid = public_key_unique_identifier_from_private_key(master_private_key)?;
+    let master_public_key = kmip_server
+        .get(Get::from(master_public_key_uid.clone()), owner, params)
+        .await?
+        .object;
+
+    // update the master private key
+    let (updated_private_key, updated_public_key) =
+        update_master_keys(policy, master_private_key, &master_public_key)?;
+
+    // re_import it
+    let import_request = Import {
+        unique_identifier: master_private_key_uid.to_string(),
+        object_type: ObjectType::PrivateKey,
+        replace_existing: Some(true),
+        key_wrap_type: None,
+        attributes: updated_private_key.attributes()?.to_owned(),
+        object: updated_private_key,
+    };
+    let _import_response = kmip_server.import(import_request, owner, params).await?;
+
+    // Update Master Public Key Policy and re-import the key
+    // re_import it
+    let import_request = Import {
+        unique_identifier: master_public_key_uid.clone(),
+        object_type: ObjectType::PublicKey,
+        replace_existing: Some(true),
+        key_wrap_type: None,
+        attributes: updated_public_key.attributes()?.to_owned(),
+        object: updated_public_key,
+    };
+    let _import_response = kmip_server.import(import_request, owner, params).await?;
+
+    Ok(master_public_key_uid)
+}
+
+async fn refresh_all_user_decryption_keys<K>(
+    kmip_server: &K,
+    master_private_key_uid: &str,
     user_decryption_key_unique_identifiers: &[String],
+    preserve_access_to_old_partitions: bool,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()>
 where
     K: KmipServer,
 {
+    trace!(
+        "Rekeying the following user decryption keys: {user_decryption_key_unique_identifiers:?}"
+    );
+
+    // Recover the updated master private key
+    let master_private_key = kmip_server
+        .get(Get::from(master_private_key_uid), owner, params)
+        .await?
+        .object;
+
+    //instantiate a CoverCrypt User Key Handler
+    let handler = UserDecryptionKeysHandler::instantiate(&master_private_key)?;
+
     // Renew user decryption key previously found
     for user_decryption_key_unique_identifier in user_decryption_key_unique_identifiers {
+        //fetch the user decryption key
         let get_response = kmip_server
             .get(
                 Get::from(user_decryption_key_unique_identifier),
@@ -191,24 +236,23 @@ where
                 params,
             )
             .await?;
-        let key_block = get_response.object.key_block()?;
-        // Handle both plaintext and wrapped key
-        let current_key_attributes = key_block.key_value.attributes()?.clone();
-        let current_access_policy = access_policy_from_attributes(&current_key_attributes)?;
+        let user_decryption_key = get_response.object;
+
         // Generate a fresh User Decryption Key
-        let new_user_decryption_key = create_user_decryption_key_object(
-            master_private_key_bytes,
-            policy,
-            &current_access_policy,
-            Some(&current_key_attributes),
+        let updated_user_decryption_key = handler.refresh_user_decryption_key_object(
+            &user_decryption_key,
+            preserve_access_to_old_partitions,
         )?;
         let import_request = Import {
             unique_identifier: get_response.unique_identifier,
             object_type: get_response.object_type,
             replace_existing: Some(true),
             key_wrap_type: None,
-            attributes: current_key_attributes,
-            object: new_user_decryption_key,
+            attributes: updated_user_decryption_key
+                .attributes()
+                .map_err(|e| KmsError::KmipError(ErrorReason::Attribute_Not_Found, e.to_string()))?
+                .to_owned(),
+            object: updated_user_decryption_key,
         };
         let _import_response = kmip_server.import(import_request, owner, params).await?;
     }
@@ -263,27 +307,9 @@ where
         ));
     }
 
-    let (master_private_key_bytes, master_private_key_attributes) =
-        key_bytes_and_attributes_from_key_block(
-            master_private_key.key_block()?,
-            &master_private_key_uid,
-        )?;
-
-    // recover the current policy from the key attributes
-    let policy = policy_from_attributes(master_private_key_attributes.ok_or_else(|| {
-        KmsError::InvalidRequest(
-            "the master private key does not have attributes with the Policy".to_string(),
-        )
-    })?)?;
-    trace!("Policy: {:?}", &policy);
-
-    create_user_decryption_key_object(
-        master_private_key_bytes,
-        &policy,
-        &access_policy,
-        Some(create_attributes),
-    )
-    .map_err(Into::into)
+    UserDecryptionKeysHandler::instantiate(master_private_key)?
+        .create_user_decryption_key_object(&access_policy, Some(create_attributes))
+        .map_err(Into::into)
 }
 
 #[allow(unused)]

@@ -6,7 +6,7 @@ TODO.md
 data/html
 data/keys
 .env
-data/private
-data/public
-data/shared
+**/data/private
+**/data/public
+**/data/shared
 crate/cli/*.sqlite

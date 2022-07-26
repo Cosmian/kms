@@ -1,3 +1,4 @@
+use abe_policy::{AccessPolicy, Attribute, Policy};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -12,7 +13,6 @@ use cosmian_kmip::{
         },
     },
 };
-use cover_crypt::policies::{AccessPolicy, Attribute, Policy};
 use serde::{Deserialize, Serialize};
 
 use super::attributes::{
@@ -26,41 +26,6 @@ pub fn build_create_master_keypair_request(policy: &Policy) -> Result<CreateKeyP
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
             vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
-            ..Attributes::new(ObjectType::PrivateKey)
-        }),
-        ..CreateKeyPair::default()
-    })
-}
-
-/// Build a `CreateKeyPair` request for an CoverCrypt User Decryption Key
-pub fn build_create_user_decryption_key_pair_request(
-    access_policy: &AccessPolicy,
-    cover_crypt_master_private_key_id: &str,
-    cover_crypt_master_public_key_id: &str,
-) -> Result<CreateKeyPair, KmipError> {
-    Ok(CreateKeyPair {
-        private_key_attributes: Some(Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
-            key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
-            vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-            link: vec![Link {
-                link_type: LinkType::ParentLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    cover_crypt_master_private_key_id.to_owned(),
-                ),
-            }],
-            ..Attributes::new(ObjectType::PrivateKey)
-        }),
-        public_key_attributes: Some(Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
-            key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
-            vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-            link: vec![Link {
-                link_type: LinkType::ParentLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    cover_crypt_master_public_key_id.to_owned(),
-                ),
-            }],
             ..Attributes::new(ObjectType::PrivateKey)
         }),
         ..CreateKeyPair::default()
@@ -316,7 +281,7 @@ pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, Kmi
 /// The routine will then locate and renew all user decryption keys with those CoverCrypt attributes
 pub fn build_rekey_keypair_request(
     master_private_key_unique_identifier: &str,
-    cover_crypt_policy_attributes: Vec<cover_crypt::policies::Attribute>,
+    cover_crypt_policy_attributes: Vec<abe_policy::Attribute>,
 ) -> Result<ReKeyKeyPair, KmipError> {
     Ok(ReKeyKeyPair {
         private_key_unique_identifier: Some(master_private_key_unique_identifier.to_string()),

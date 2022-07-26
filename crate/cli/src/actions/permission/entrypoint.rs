@@ -40,11 +40,11 @@ pub struct AddPermission {
     object_uid: String,
 
     /// The user to allow
-    #[structopt(required = true, long = "user", short = 'u')]
+    #[structopt(required = true, long, short = 'u')]
     user: String,
 
     /// The operation to allow (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
-    #[structopt(required = true, long = "operation", short = 'o')]
+    #[structopt(required = true, long, short = 'o')]
     operation: ObjectOperationTypes,
 }
 
@@ -75,11 +75,11 @@ pub struct RemovePermission {
     object_uid: String,
 
     /// The user to ungrant
-    #[structopt(required = true, long = "user", short = 'u')]
+    #[structopt(required = true, long, short = 'u')]
     user: String,
 
     /// The operation to remove (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
-    #[structopt(required = true, long = "operation", short = 'o')]
+    #[structopt(required = true, long, short = 'o')]
     operation: ObjectOperationTypes,
 }
 

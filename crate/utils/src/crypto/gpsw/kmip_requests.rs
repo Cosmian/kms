@@ -1,4 +1,4 @@
-use abe_gpsw::core::policy::{AccessPolicy, Attribute, Policy};
+use abe_policy::{AccessPolicy, Attribute, Policy};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -301,7 +301,7 @@ pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, Kmi
 /// The routine will then locate and renew all user decryption keys with those ABE attributes
 pub fn build_rekey_keypair_request(
     master_private_key_unique_identifier: &str,
-    abe_policy_attributes: Vec<abe_gpsw::core::policy::Attribute>,
+    abe_policy_attributes: Vec<abe_policy::Attribute>,
 ) -> Result<ReKeyKeyPair, KmipError> {
     Ok(ReKeyKeyPair {
         private_key_unique_identifier: Some(master_private_key_unique_identifier.to_string()),

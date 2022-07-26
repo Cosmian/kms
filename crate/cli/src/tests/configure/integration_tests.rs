@@ -6,6 +6,7 @@ use predicates::prelude::*;
 use crate::{
     config::KMS_CLI_CONF_ENV,
     tests::{
+        abe,
         test_utils::{init_test_server, ONCE},
         CONF_PATH, CONF_PATH_BAD_KEY, PROG_NAME,
     },
@@ -35,7 +36,7 @@ pub async fn test_secrets_bad() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "staging"))]
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms_bad_secret.bad"); // Token can't be deserialized
 
-    cmd.arg("abe")
+    cmd.arg(abe::SUB_COMMAND)
         .args(vec!["init", "--policy", "test_data/policy.json"]);
     cmd.assert().failure().stderr(predicate::str::contains(
         "Access denied: KmsDatabaseSecret header can't be read",
@@ -54,7 +55,7 @@ pub async fn test_secrets_group_id_bad() -> Result<(), Box<dyn std::error::Error
     #[cfg(not(feature = "staging"))]
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms_bad_group_id.bad");
 
-    cmd.arg("abe")
+    cmd.arg(abe::SUB_COMMAND)
         .args(vec!["init", "--policy", "test_data/policy.json"]);
     cmd.assert()
         .failure()
@@ -69,14 +70,14 @@ pub async fn test_secrets_key_bad() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
-    cmd.arg("abe")
+    cmd.arg(abe::SUB_COMMAND)
         .args(vec!["init", "--policy", "test_data/policy.json"]);
     cmd.assert().success();
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH_BAD_KEY);
 
-    cmd.arg("abe")
+    cmd.arg(abe::SUB_COMMAND)
         .args(vec!["init", "--policy", "test_data/policy.json"]);
 
     cmd.assert()

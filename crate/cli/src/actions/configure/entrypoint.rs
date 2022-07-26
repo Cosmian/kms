@@ -4,7 +4,7 @@ use eyre::Context;
 
 /// Query the KMS to initialize a new database
 #[derive(StructOpt, Debug)]
-pub struct ConfigureAction {}
+pub struct ConfigureAction;
 
 impl ConfigureAction {
     pub async fn process(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {

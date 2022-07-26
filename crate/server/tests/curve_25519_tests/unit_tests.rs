@@ -7,6 +7,13 @@ use cosmian_kmip::kmip::{
         Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
     },
 };
+use cosmian_kms_server::{
+    config::{auth::AuthConfig, init_config, Config},
+    core::crud::KmipServer,
+    error::KmsError,
+    result::KResult,
+    KMSServer,
+};
 use cosmian_kms_utils::crypto::curve_25519::{
     kmip_requests::{
         create_key_pair_request, extract_key_bytes, get_private_key_request,
@@ -15,14 +22,12 @@ use cosmian_kms_utils::crypto::curve_25519::{
     operation,
 };
 
-use crate::{
-    config::init_config, core::crud::KmipServer, error::KmsError, result::KResult, KMSServer,
-};
-
 #[actix_rt::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
-    let config = crate::config::Config {
-        delegated_authority_domain: Some("dev-1mbsbmin.us.auth0.com".to_string()),
+    let config = Config {
+        auth: AuthConfig {
+            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+        },
         ..Default::default()
     };
     init_config(&config).await?;
@@ -32,13 +37,14 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 
     // request key pair creation
     let request = create_key_pair_request();
-    let response = kms.create_key_pair(request, owner).await?;
+    let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
     let sk_response = kms
         .get(
             get_private_key_request(&response.private_key_unique_identifier),
             owner,
+            None,
         )
         .await?;
     let sk = &sk_response.object;
@@ -74,6 +80,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         .get(
             get_public_key_request(&response.public_key_unique_identifier),
             owner,
+            None,
         )
         .await?;
     let pk = &pk_response.object;
@@ -114,7 +121,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         attributes: Attributes::new(ObjectType::PublicKey),
         object: pk,
     };
-    let new_uid = kms.import(request, owner).await?.unique_identifier;
+    let new_uid = kms.import(request, owner, None).await?.unique_identifier;
     // update
 
     let pk = parse_public_key(&pk_bytes)?;
@@ -126,7 +133,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         attributes: Attributes::new(ObjectType::PublicKey),
         object: pk,
     };
-    let update_response = kms.import(request, owner).await?;
+    let update_response = kms.import(request, owner, None).await?;
     assert_eq!(new_uid, update_response.unique_identifier);
     Ok(())
 }

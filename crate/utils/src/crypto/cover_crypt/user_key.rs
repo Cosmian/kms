@@ -1,4 +1,4 @@
-use cosmian_crypto_base::asymmetric::ristretto::X25519Crypto;
+use abe_policy::{AccessPolicy, Policy};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -8,72 +8,12 @@ use cosmian_kmip::{
         kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cover_crypt::{
-    api::{CoverCrypt, PrivateKey},
-    policies::{AccessPolicy, Policy},
-};
+use cover_crypt::{api::CoverCrypt, MasterPrivateKey, UserPrivateKey};
 use tracing::trace;
 
 use crate::crypto::cover_crypt::attributes::{
-    access_policy_from_attributes, upsert_access_policy_in_attributes,
+    access_policy_from_attributes, policy_from_attributes, upsert_access_policy_in_attributes,
 };
-
-/// Create a User Decryption Key Object from the passed master private key bytes,
-/// Policy, Access Policy and optional additional attributes
-///
-/// see `cover_crypt_unwrap_user_decryption_key` for the reverse operation
-pub fn create_user_decryption_key_object(
-    master_private_key_bytes: &[u8],
-    policy: &Policy,
-    access_policy: &AccessPolicy,
-    attributes: Option<&Attributes>,
-) -> Result<Object, KmipError> {
-    //
-    // Generate a fresh user decryption key
-    //
-    let engine = CoverCrypt::<X25519Crypto>::default();
-    let master_private_key = PrivateKey::try_from_bytes(master_private_key_bytes).map_err(|e| {
-        KmipError::KmipError(
-            ErrorReason::Codec_Error,
-            format!("cover crypt: failed deserializing the master private key: {e}"),
-        )
-    })?;
-    let uk = engine
-        .generate_user_private_key(&master_private_key, access_policy, policy)
-        .map_err(|e| {
-            KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
-        })?;
-    trace!("Created user decryption key {uk:?} with access policy: {access_policy:?}");
-    let user_decryption_key_bytes = uk.try_to_bytes().map_err(|e| {
-        KmipError::KmipError(
-            ErrorReason::Codec_Error,
-            format!("cover crypt: failed serializing the user key: {e}"),
-        )
-    })?;
-    let user_decryption_key_len = user_decryption_key_bytes.len();
-
-    let mut attributes = attributes
-        .map(|att| {
-            let mut att = att.clone();
-            att.object_type = ObjectType::PrivateKey;
-            att
-        })
-        .unwrap_or_else(|| Attributes::new(ObjectType::PrivateKey));
-    upsert_access_policy_in_attributes(&mut attributes, access_policy)?;
-    Ok(Object::PrivateKey {
-        key_block: KeyBlock {
-            cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
-            key_format_type: KeyFormatType::CoverCryptSecretKey,
-            key_compression_type: None,
-            key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
-                attributes: Some(attributes),
-            },
-            cryptographic_length: user_decryption_key_len as i32 * 8,
-            key_wrapping_data: None,
-        },
-    })
-}
 
 /// Unwrap the User Decryption Key bytes, Policy and Access Policy from the
 /// provided User Decryption Key Object
@@ -114,4 +54,140 @@ pub(crate) fn unwrap_user_decryption_key_object(
     })?;
     let access_policy = access_policy_from_attributes(attributes)?;
     Ok((bytes, access_policy, attributes.clone()))
+}
+
+/// Handles operations on user keys, caching the engine
+/// and the master key information for efficiency
+pub struct UserDecryptionKeysHandler {
+    engine: CoverCrypt,
+    master_private_key: MasterPrivateKey,
+    policy: Policy,
+}
+
+impl UserDecryptionKeysHandler {
+    pub fn instantiate(
+        master_private_key: &Object,
+    ) -> Result<UserDecryptionKeysHandler, KmipError> {
+        let engine = CoverCrypt::default();
+        let msk_key_block = master_private_key.key_block()?;
+        let msk_key_bytes = msk_key_block.as_bytes()?;
+        let msk = MasterPrivateKey::try_from_bytes(msk_key_bytes).map_err(|e| {
+            KmipError::KmipError(
+                ErrorReason::Codec_Error,
+                format!("cover crypt: failed deserializing the master private key: {e}"),
+            )
+        })?;
+        let private_key_attributes = master_private_key.attributes()?;
+        let policy = policy_from_attributes(private_key_attributes)?;
+        Ok(UserDecryptionKeysHandler {
+            engine,
+            master_private_key: msk,
+            policy,
+        })
+    }
+
+    /// Create a User Decryption Key Object from the passed master private key bytes,
+    /// Policy, Access Policy and optional additional attributes
+    ///
+    /// see `cover_crypt_unwrap_user_decryption_key` for the reverse operation
+    pub fn create_user_decryption_key_object(
+        &self,
+        access_policy: &AccessPolicy,
+        attributes: Option<&Attributes>,
+    ) -> Result<Object, KmipError> {
+        //
+        // Generate a fresh user decryption key
+        //
+        let uk = self
+            .engine
+            .generate_user_private_key(&self.master_private_key, access_policy, &self.policy)
+            .map_err(|e| {
+                KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
+            })?;
+        trace!("Created user decryption key {uk:?} with access policy: {access_policy:?}");
+        let user_decryption_key_bytes = uk.try_to_bytes().map_err(|e| {
+            KmipError::KmipError(
+                ErrorReason::Codec_Error,
+                format!("cover crypt: failed serializing the user key: {e}"),
+            )
+        })?;
+        let user_decryption_key_len = user_decryption_key_bytes.len();
+
+        let mut attributes = attributes
+            .map(|att| {
+                let mut att = att.clone();
+                att.object_type = ObjectType::PrivateKey;
+                att
+            })
+            .unwrap_or_else(|| Attributes::new(ObjectType::PrivateKey));
+        upsert_access_policy_in_attributes(&mut attributes, access_policy)?;
+        Ok(Object::PrivateKey {
+            key_block: KeyBlock {
+                cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
+                key_format_type: KeyFormatType::CoverCryptSecretKey,
+                key_compression_type: None,
+                key_value: KeyValue {
+                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
+                    attributes: Some(attributes),
+                },
+                cryptographic_length: user_decryption_key_len as i32 * 8,
+                key_wrapping_data: None,
+            },
+        })
+    }
+
+    /// Refresh the user decryption key according to the (new) policy of the master key
+    pub fn refresh_user_decryption_key_object(
+        &self,
+        user_decryption_key: &Object,
+        preserve_access_to_old_partitions: bool,
+    ) -> Result<Object, KmipError> {
+        let (usk_key_bytes, usk_access_policy, usk_attributes) =
+            unwrap_user_decryption_key_object(user_decryption_key)?;
+        let mut usk = UserPrivateKey::try_from_bytes(&usk_key_bytes).map_err(|e| {
+            KmipError::KmipError(
+                ErrorReason::Codec_Error,
+                format!("cover crypt: failed deserializing the user decryption key: {e}"),
+            )
+        })?;
+
+        self.engine
+            .refresh_user_private_key(
+                &mut usk,
+                &usk_access_policy,
+                &self.master_private_key,
+                &self.policy,
+                preserve_access_to_old_partitions,
+            )
+            .map_err(|e| {
+                KmipError::KmipError(
+                    ErrorReason::Cryptographic_Failure,
+                    format!("cover crypt: failed refreshing the user decryption key: {e}"),
+                )
+            })?;
+
+        trace!("Refreshed  user decryption key {usk:?} with access policy: {usk_access_policy:?}");
+
+        let user_decryption_key_bytes = usk.try_to_bytes().map_err(|e| {
+            KmipError::KmipError(
+                ErrorReason::Codec_Error,
+                format!("cover crypt: failed serializing the user key: {e}"),
+            )
+        })?;
+        let user_decryption_key_len = user_decryption_key_bytes.len() as i32 * 8;
+
+        Ok(Object::PrivateKey {
+            key_block: KeyBlock {
+                cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
+                key_format_type: KeyFormatType::CoverCryptSecretKey,
+                key_compression_type: None,
+                key_value: KeyValue {
+                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
+                    attributes: Some(usk_attributes),
+                },
+                cryptographic_length: user_decryption_key_len,
+                key_wrapping_data: None,
+            },
+        })
+    }
 }

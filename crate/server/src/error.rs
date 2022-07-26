@@ -112,6 +112,12 @@ impl From<FormatErr> for KmsError {
     }
 }
 
+impl From<abe_policy::Error> for KmsError {
+    fn from(e: abe_policy::Error) -> Self {
+        KmsError::InvalidRequest(e.to_string())
+    }
+}
+
 impl From<libsgx::error::SgxError> for KmsError {
     fn from(e: libsgx::error::SgxError) -> Self {
         KmsError::SGXError(e.to_string())

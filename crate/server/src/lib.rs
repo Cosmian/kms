@@ -1,12 +1,12 @@
 pub mod config;
-mod core;
-mod database;
+pub mod core;
+pub mod database;
 pub mod error;
 
 #[cfg(feature = "auth")]
-mod middlewares;
+pub mod middlewares;
 pub mod result;
-mod routes;
+pub mod routes;
 
 use std::sync::Arc;
 
@@ -35,7 +35,7 @@ use actix_web::{
     App, HttpServer,
 };
 use config::kms_url;
-use database::KMSServer;
+pub use database::KMSServer;
 use openssl::ssl::SslAcceptorBuilder;
 
 use crate::routes::endpoint;
@@ -70,7 +70,8 @@ pub fn prepare_server(
         let app = app.service(endpoint::get_manifest);
 
         app
-    });
+    })
+    .client_request_timeout(std::time::Duration::from_secs(10));
 
     Ok(match builder {
         Some(b) => server.bind_openssl(kms_url(), b)?.run(),

@@ -1,3 +1,4 @@
+use abe_policy::{AccessPolicy, Policy};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -5,7 +6,6 @@ use cosmian_kmip::{
         kmip_types::{Attributes, VendorAttribute},
     },
 };
-use cover_crypt::policies::{AccessPolicy, Policy};
 
 pub const VENDOR_ID_COSMIAN: &str = "cosmian";
 pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
@@ -43,7 +43,7 @@ pub fn policy_from_attributes(attributes: &Attributes) -> Result<Policy, KmipErr
     } else {
         Err(KmipError::InvalidKmipValue(
             ErrorReason::Invalid_Attribute_Value,
-            "the attributes do not contain an CoverCrypt Policy".to_string(),
+            "the attributes do not contain a CoverCrypt Policy".to_string(),
         ))
     }
 }
@@ -77,7 +77,7 @@ pub fn access_policy_as_vendor_attribute(
 
 /// Convert from CoverCrypt policy attributes to vendor attributes
 pub fn attributes_as_vendor_attribute(
-    attributes: Vec<cover_crypt::policies::Attribute>,
+    attributes: Vec<abe_policy::Attribute>,
 ) -> Result<VendorAttribute, KmipError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
@@ -94,7 +94,7 @@ pub fn attributes_as_vendor_attribute(
 /// Convert from vendor attributes to CoverCrypt policy attributes
 pub fn attributes_from_attributes(
     attributes: &Attributes,
-) -> Result<Vec<cover_crypt::policies::Attribute>, KmipError> {
+) -> Result<Vec<abe_policy::Attribute>, KmipError> {
     if let Some(bytes) =
         attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ATTR)
     {
