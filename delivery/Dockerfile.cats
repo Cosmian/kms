@@ -1,4 +1,4 @@
-FROM ubuntu:21.10 as builder
+FROM ubuntu:22.04 as builder
 
 ARG TIMEOUT
 ENV DEBIAN_FRONTEND=noninteractive
@@ -27,7 +27,7 @@ RUN /root/.cargo/bin/cargo build --release --no-default-features
 #
 # KMS Server
 #
-FROM ubuntu:21.10 as kms
+FROM ubuntu:22.04 as kms
 
 ENV DEBIAN_FRONTEND=noninteractive
 
