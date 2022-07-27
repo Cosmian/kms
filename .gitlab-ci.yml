@@ -298,6 +298,8 @@ build_cli_windows_linux:
   script:
     - cd crate/cli
     - cargo build --release --target x86_64-pc-windows-gnu
+    - apt-get update
+    - TZ=Europe/Paris apt-get install --no-install-recommends -qq libsodium-dev libclang-dev
     - cargo build --release
   artifacts:
     name: 'kms_cli_${CI_COMMIT_TAG}_$(date +"%Y%m%d")'
