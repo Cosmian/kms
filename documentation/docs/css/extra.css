@@ -1,14 +1,24 @@
 @import url("https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400;1,500;1,600;1,700;1,800&display=swap");
+html {
+  font-size: 100%;
+}
 :root {
-  --md-primary-fg-color: #ff5f38;
+  --md-primary-fg-color: #320099;
   --md-primary-fg-color--light: #ecb7b7;
-  --md-primary-fg-color--dark: #e3431a;
-  --md-accent-fg-color: #e3431a;
-  --indigo: #320099;
+  --md-primary-fg-color--dark: #1b0056;
+  --md-accent-fg-color: #1b0056;
+  --dark: #3f3f3f;
+  --grey-1: #3f3f3f;
+  --grey-2: #7c7c7c;
+  --grey-3: #bbb;
+  --grey-4: #d9d9d9;
+  --nav-bg-color: #f8f8fb;
+  --warning: #f2994a;
 }
 body {
-  font-family: "Open sans", Arial, Helvetica, sans-serif;
   font-size: 16px;
+  font-family: "Open sans", Arial, Helvetica, sans-serif;
+  color: var(--dark);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -16,120 +26,362 @@ body {
   background-color: var(--md-primary-fg-color);
   color: white;
 }
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: "Montserrat", "Open sans", Arial, Helvetica, sans-serif;
-}
 
+/* ------- HEADER ------- */
 .md-header {
-  background-color: var(--indigo);
+  background-color: #fff;
+  border-bottom: 1px solid var(--grey-4);
+  color: var(--dark);
+}
+.md-header__inner {
+  height: 70px;
+}
+.md-header__button.md-logo :-webkit-any(img, svg) {
+  height: 28px;
+}
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 28px;
 }
 .md-header__topic:first-child {
-  font-weight: 500;
+  font-weight: 400;
+}
+.md-header[data-md-state="shadow"] {
+  box-shadow: none;
+}
+.md-header__title .md-header__topic {
+  display: none;
 }
 
+.md-search__inner {
+  width: 340px;
+}
+.md-search__form {
+  height: 2.5em;
+}
+.md-search__icon[for="__search"],
+.md-search__options {
+  top: 0.7em;
+}
+.md-header input {
+  background-color: #fff;
+  border: 1px solid var(--grey-3);
+  border-radius: 4px;
+  color: var(--dark);
+}
+.md-search__input::placeholder {
+  color: var(--dark);
+}
+.md-search__output {
+  margin-top: 11px;
+}
+.md-header .md-search__form {
+  background-color: #fff;
+}
+
+.md-header .md-search__form .md-search__icon {
+  color: var(--dark);
+}
+
+/* FONTS */
+
+.md-typeset {
+  font-size: 0.875rem;
+}
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4,
+.md-typeset h5,
+.md-typeset h6 {
+  font-family: "Montserrat", "Open sans", Arial, Helvetica, sans-serif;
+  font-style: normal;
+  font-weight: 600;
+  margin-bottom: 1em;
+  margin-bottom: 0.75em;
+}
+.md-typeset h1 {
+  font-size: 2rem;
+}
+.md-typeset h2 {
+  font-size: 1.75rem;
+}
+.md-typeset h3 {
+  font-size: 1.5rem;
+}
+.md-typeset h4 {
+  font-size: 1.25rem;
+}
+.md-typeset h5 {
+  font-size: 1rem;
+}
+.md-typeset h6 {
+  font-size: 0.875rem;
+}
+strong {
+  font-weight: 600;
+}
+.md-nav {
+  font-size: 0.875em;
+  line-height: 1.5;
+}
+.md-typeset h1 {
+  color: inherit;
+}
 .md-typeset code {
   background-color: #f6f7fb;
 }
 .md-typeset code *::selection {
-    background-color: black;
-    color: white;
-  }
+  background-color: black;
+  color: white;
+}
 .md-typeset code::selection {
-    background-color: black;
-    color: white;
-  }
+  background-color: black;
+  color: white;
+}
 
-  /* Footer */
-.md-footer {
-  background: linear-gradient(92.95deg, #0f0e15 0%, #2f038c 100%);
-  box-shadow: 170px -20px 50px rgba(47, 3, 140, 0.2),
-    -170px -20px 50px -20px rgba(224, 72, 39, 0.2);
-  margin-top: 3em;
+.admonition,
+code,
+.md-typeset .tabbed-labels > label {
+  font-size: 0.875rem !important;
 }
-.md-footer-nav > nav,
-.md-footer-nav__inner {
-  display: flex;
-  width: 100%;
-  justify-content: space-around;
+
+.md-typeset
+  .tabbed-set
+  > input:first-child:checked
+  ~ .tabbed-labels
+  > :first-child {
+  color: var(--md-primary-fg-color);
+}
+.js .md-typeset .tabbed-labels:before {
+  background: var(--md-primary-fg-color);
+}
+.tabbed-labels label {
+  font-weight: 400 !important;
+}
+
+/* GRID and Body */
+.md-content {
+  min-height: calc(100vh - 70px);
+}
+
+.md-content__inner:before {
+  height: 0;
+}
+.md-grid {
+  max-width: 1220px;
+}
+@media (min-width: 1220px) {
+  .md-main {
+    background: linear-gradient(90deg, var(--nav-bg-color) 50%, #fff 50%);
+  }
+  .md-main__inner {
+    margin-top: 0px;
+  }
+  .md-content,
+  .md-sidebar .md-sidebar--secondary.md-sidebar__scrollwrap {
+    background-color: #fff;
+  }
+}
+
+/* Sidebar */
+@media screen and (max-width: 76.1875em) {
+  .md-sidebar--primary {
+    /* width: 250px; */
+  }
+}
+@media screen and (min-width: 76.25em) {
+  .md-sidebar {
+    width: auto;
+    padding-top: 50px;
+  }
+  .md-sidebar--primary {
+    min-width: 290px;
+  }
+  .md-content:first-child {
+    padding-top: 40px;
+  }
+  .md-sidebar--primary .md-nav__title {
+    /* display: none; */
+    margin-bottom: 2em;
+  }
+  .md-nav__item {
+    margin-top: 1.25em;
+    margin-bottom: 2.5em;
+  }
+  .md-sidebar--primary .md-nav__item {
+    padding-right: 2em;
+  }
+}
+.md-nav--secondary .md-nav__title::after {
+  content: "On this page";
+  text-transform: uppercase;
+  visibility: visible;
+  display: block;
+}
+.md-nav--secondary .md-nav__title {
+  visibility: hidden;
+}
+
+.md-sidebar--primary .md-nav__item a {
+  font-family: "Montserrat", "Open sans", Arial, Helvetica, sans-serif;
+}
+
+.md-nav__link {
+  justify-content: flex-start;
+}
+.md-nav__link object {
+  margin-right: 0.5em;
+  font-size: 1.2em;
+}
+.md-nav__link .md-nav__icon {
+  margin-left: auto;
+}
+
+.md-nav__link:is(:focus, :hover) svg {
+  fill: #320099;
+}
+.md-nav--primary .md-nav__list .md-nav__list .md-nav__item {
+  font-size: 0.875rem;
+  padding-left: 2.2em;
+  margin: 1em 0;
+}
+.md-nav__icon {
+  /* display: none; */
+}
+
+/* second sidebar */
+.md-sidebar--secondary {
+  width: 290px;
+  color: var(--grey-2);
+}
+.md-sidebar--secondary .md-nav__item {
   margin-top: 1em;
-  margin-bottom: 1em;
+  margin-bottom: 0;
+  padding-bottom: 1em;
+  border-bottom: 1px solid var(--grey-4);
 }
-@media (max-width: 660px) {
-  .md-footer-nav > nav,
-  .md-footer-nav__inner {
-    flex-direction: column;
-    align-items: center;
-  }
-  .md-footer-nav > nav > a:first-child,
-  .md-footer-nav__inner > a:first-child {
-    margin: 0 auto 0.5em 1em;
-  }
-  .md-footer-nav > nav > a:last-child,
-  .md-footer-nav__inner > a:last-child {
-    margin: 0.5em 2em 0 auto;
-  }
+
+.md-sidebar--secondary .md-nav__item nav {
+  /* Hide deeper levels */
+  display: none;
 }
-.md-footer-nav > nav > a,
-.md-footer-nav__inner > a {
-  display: flex;
-  gap: 1em;
+.md-sidebar--secondary .md-nav__item nav .md-nav__item {
+  /* level 2 */
+  border: none;
+  padding-bottom: 0.5em;
 }
-.md-footer-meta {
-  background-color: inherit;
+.md-sidebar--secondary .md-nav__item nav .md-nav__item .md-nav {
+  /* level 3 */
+  font-size: 1em;
 }
-.md-footer-meta__inner {
+
+/* Information box */
+.admonition {
+  padding: 30px !important;
+  background: #ffffff;
+  border-left-width: 0px !important;
+  border: 1px solid var(--grey-4);
+  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+}
+.md-typeset
+  :is(.tip, .hint, .important, .warning)
+  > :is(.admonition-title, summary) {
+  background: none;
+  border-bottom: 1px solid var(--dark);
+  padding: 0;
+  padding-bottom: 10px;
+  margin: 0;
+  font-family: "Montserrat";
+  font-weight: 600;
+  font-size: 1em;
+  text-transform: uppercase;
+}
+.md-typeset :is(.tip, .hint) > :is(.admonition-title, summary) {
+  color: var(--md-primary-fg-color);
+  border-bottom: 1px solid var(--md-primary-fg-color);
+}
+.md-typeset :is(.important, .warning) > :is(.admonition-title, summary) {
+  color: var(--warning);
+  border-bottom: 1px solid var(--warning);
+}
+.md-typeset
+  :is(.tip, .hint, .important, .warning)
+  > :is(.admonition-title, summary):before {
+  display: none;
+}
+
+/* Footer */
+footer,
+.footer {
+  margin-top: 5em;
+  padding-top: 2.5em;
+  padding-bottom: 1em;
+  border-top: 1px solid var(--grey-4);
+  font-size: 0.875em;
   display: flex;
   justify-content: center;
 }
-.md-footer-nav__direction {
-  font-weight: 700;
-  margin-right: 0.5em;
-}
-.md-footer-nav__direction::after {
-  content: ": ";
-}
-.md-footer-meta__inner .md-footer-copyright {
-  margin: 1em auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.md-footer-copyright .custom-md-footer-logo {
-  margin-bottom: 1em;
-}
-.md-footer-meta__inner .md-social {
+
+.md-footer {
   display: none;
 }
-.md-footer-copyright__highlight {
-  font-size: 0.85em;
+
+/* Buttons */
+.md-typeset .md-button {
+  padding: 30px;
+  width: 100%;
+  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.25);
+  margin: 1.5em 0;
+  border-radius: 4px;
+  border: none;
+  color: var(--dark);
+  font-weight: 600;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+  transition: all 0.3s;
+}
+.md-typeset .md-button::after {
+  content: ">";
+}
+.md-typeset .md-button:is(:focus, :hover),
+.md-typeset .md-button:focus,
+.md-typeset .md-button:hover {
+  border: none;
+  background-color: #fff !important;
+  border-color: none !important;
+  color: initial !important;
+  transform: translateX(6px);
+}
+
+/* iframe only */
+.iframe-doc {
+  margin-top: -1.5em;
 }
 
 /* PDF style */
 @page {
-    size: a4 portrait;
-    margin: 20mm 10mm 20mm 10mm;
-    font-size: 80%;
-    font-family: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
-    white-space: pre;
-    color: grey;
-    @top-left {
-        content: url("../favicon.png");
-    }
-    @top-center {
-        content: string(chapter);
-    }
-    @bottom-center {
-        content: '© Copyright 2018-2021 Cosmian. All rights reserved';
-    }
-    @bottom-right {
-        content: 'Page ' counter(__pgnum__);
-    }
-    @bottom-left {
-        content: 'Version draft';
-    }
+  size: a4 portrait;
+  margin: 20mm 10mm 20mm 10mm;
+  font-size: 80%;
+  font-family: "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  white-space: pre;
+  color: grey;
+  @top-left {
+    content: url("../favicon.png");
+  }
+  @top-center {
+    content: string(chapter);
+  }
+  @bottom-center {
+    content: "© Copyright 2018-2021 Cosmian. All rights reserved";
+  }
+  @bottom-right {
+    content: "Page " counter(__pgnum__);
+  }
+  @bottom-left {
+    content: "Version draft";
+  }
 }
