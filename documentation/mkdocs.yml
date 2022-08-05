@@ -5,8 +5,10 @@ dev_addr: "localhost:8003"
 theme:
   name: "material"
   language: "en"
+  font:
+    text: Open Sans
   favicon: "favicon.png"
-  logo: "favicon.png"
+  logo: "images/docslogo-2x.png"
   custom_dir: overrides
   features:
     - content.tabs.link
@@ -19,7 +21,7 @@ markdown_extensions:
   - admonition
   - toc:
       permalink: true
-      baselevel: 2
+      baselevel: 1
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true

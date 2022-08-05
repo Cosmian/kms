@@ -1,18 +1,16 @@
-
 The CLI enables you to interact with the KMS to manage keys and encrypt or decrypt data.
 
 You first need to write a configuration file as follows:
 
 ```json
 {
-    "kms_server_url": "http://127.0.0.1:9998",
-    "kms_access_token": "MY_TOKEN"
+  "kms_server_url": "http://127.0.0.1:9998",
+  "kms_access_token": "MY_TOKEN"
 }
 ```
 
-The `kms_server_url` is the remote URL of the KMS you want to query. 
+The `kms_server_url` is the remote URL of the KMS you want to query.
 The `kms_access_token` is the access token that authenticates you to the KMS server. If the server runs without Auth0, you can let `kms_access_token` empty.
-
 
 You can also add `"insecure': true` to allow the CLI to connect to a KMS using a self-signed SSL certificate. For instance, it could be the case when running tests with the on-premise version.
 
@@ -22,16 +20,16 @@ The CLI expects to find a file named `kms.json` in the current directory or a pa
 $ KMS_CLI_CONF=kms.json cosmian_kms_cli --help
 ```
 
-# ABE (Covercrypt and GPSW)
+## ABE (Covercrypt and GPSW)
 
-*In the following examples, we describe how to use the CLI using cover crypt (`cc`). The commands are the same for GPSW by replacing `cc` with `gpsw`.*
+_In the following examples, we describe how to use the CLI using cover crypt (`cc`). The commands are the same for GPSW by replacing `cc` with `gpsw`._
 
-## Generate the master key
+### Generate the master key
 
 Create a new ABE master access key pair for a given policy. The master public key encrypts files and can be safely shared. However, the master secret key generates user decryption keys and must be kept confidential. Both of them are stored inside the KMS. This command returns a couple of IDs referring to this new key pair.
 
 ```sh
-$ cosmian_kms_cli cc init -p policy.json 
+$ cosmian_kms_cli cc init -p policy.json
 The master key pair has been properly generated.
 Store the following securely for any further uses:
 
@@ -44,22 +42,22 @@ The file `policy.json` describes the policies. Find below an example:
 
 ```json
 {
-    "policy": {
-        "level": {
-            "hierarchical": true,
-            "attributes": ["confidential", "secret", "top-secret"]
-        },
-        "department": {
-            "hierarchical": false,
-            "attributes": ["finance", "marketing", "operations"]
-        }
+  "policy": {
+    "level": {
+      "hierarchical": true,
+      "attributes": ["confidential", "secret", "top-secret"]
     },
-    "max-rotations": 100
+    "department": {
+      "hierarchical": false,
+      "attributes": ["finance", "marketing", "operations"]
+    }
+  },
+  "max-rotations": 100
 }
 ```
 
-## Generate a user decryption key       
- 
+### Generate a user decryption key
+
 Generate a new user decryption key given an access policy expressed as a boolean
 expression. The user decryption key can decrypt files with attributes matching its access policy (i.e. the access policy is true). This command returns the ID referring to this
 new decryption key.
@@ -72,7 +70,7 @@ Store the following securely for any further uses:
   Decryption user key unique identifier: bc103f01-000a-4da4-8ecd-848684e8b238
 ```
 
-## Encrypt
+### Encrypt
 
 It encrypts a file with the given policy attributes and the public key stored in the KMS.
 
@@ -82,17 +80,17 @@ The encryption has been properly done.
 The encrypted file can be found at /tmp/my_file.enc
 ```
 
-## Decrypt
+### Decrypt
 
 It decrypts a file identified by its name and gives a user decryption key stored in the KMS.
 
 ```sh
-$ cosmian_kms_cli cc decrypt -u bc103f01-000a-4da4-8ecd-848684e8b238 -o /tmp /tmp/my_file.enc 
+$ cosmian_kms_cli cc decrypt -u bc103f01-000a-4da4-8ecd-848684e8b238 -o /tmp /tmp/my_file.enc
 The decryption has been properly done.
 The decrypted file can be found at /tmp/my_file.plain
 ```
 
-## Export
+### Export
 
 Export a key from the KMS in TTLV serialized format.
 
@@ -100,7 +98,7 @@ Export a key from the KMS in TTLV serialized format.
 cosmian_kms_cli cc export -i b5193e13-784c-4b24-a8cf-b58a34d90e0f -o /tmp/key.json
 ```
 
-## Import
+### Import
 
 Import a TTLV serialized key into the KMS.
 
@@ -108,7 +106,7 @@ Import a TTLV serialized key into the KMS.
 cosmian_kms_cli cc import -i unique_uid -f /tmp/master_private_key.json -r
 ```
 
-## Export-keys
+### Export-keys
 
 Export from the KMS a key by its KMS ID. The key exported is in raw format.
 
@@ -120,14 +118,14 @@ The key file can be found at /tmp/key
 
 If the key is stored wrapped inside the KMS, you can unwrap it after getting it and before storing it on the disk by adding `-W my_password`.
 
-## Import-keys
+### Import-keys
 
 Import (wrapped, to wrap, or unwrapped) keys for a given user. The import keys are in raw format.
 
-For a master key pair, you can proceed as follow: 
+For a master key pair, you can proceed as follow:
 
 ```sh
-$ cosmian_kms_cli cc import-keys --secret-key-file /tmp/key.private  --public-key-file /tmp/key.public  --policy crate/cli/policy.json 
+$ cosmian_kms_cli cc import-keys --secret-key-file /tmp/key.private  --public-key-file /tmp/key.public  --policy crate/cli/policy.json
 The master key pair has been properly imported.
 Store the following securely for any further uses:
 
@@ -147,30 +145,30 @@ Store the following securely for any further uses:
   Decryption user key unique identifier: 24a112dc-3239-4549-a6a7-8b7879c77d19
 ```
 
-The two previous examples have imported plain-text keys. You also can import wrapped keys as follow: 
+The two previous examples have imported plain-text keys. You also can import wrapped keys as follow:
 
 - If the keys have been wrapped on your own, you just need to say it to the CLI using `-w`.
 - If you rely on the CLI to wrap the key before sending it to the KMS server, you can add `-W my_password`.
 
-## Rotate the keys
+### Rotate the keys
 
 Rotate an attribute and update the master public key file. New files encrypted with the rotated attribute cannot be decrypted by user decryption keys until they have been re-keyed.
 
 ```sh
-$ cosmian_kms_cli cc rotate -a department::marketing -a level::confidential -s 33892479-7ee1-4b22-ab24-9ac6b6ed7c25 
+$ cosmian_kms_cli cc rotate -a department::marketing -a level::confidential -s 33892479-7ee1-4b22-ab24-9ac6b6ed7c25
 The master key pair has been properly rotated.
 ```
 
-## Revoke a user decryption key
+### Revoke a user decryption key
 
 Not implemented yet
 
-## Destroy a user decryption key
+### Destroy a user decryption key
 
 Destroy the decryption key for a given user
 
 ```sh
-$ cosmian_kms_cli cc destroy -u 24a112dc-3239-4549-a6a7-8b7879c77d19 
+$ cosmian_kms_cli cc destroy -u 24a112dc-3239-4549-a6a7-8b7879c77d19
 The decryption user key has been properly destroyed.
 ```
 
@@ -222,7 +220,7 @@ You can call this command several times on every operation you want. See [author
 
 ## List permissions on an object
 
-```sh 
+```sh
 $ cosmian_kms_cli permission list  b7c0e623-7800-4f87-a347-63bcf22cbd04
 The permissions are:
 
@@ -232,9 +230,9 @@ The permissions are:
 
 # Enclave
 
-If the server is running inside an enclave, you can, and you should check its trustworthiness. See [saas](saas.md) for more details. 
+If the server is running inside an enclave, you can, and you should check its trustworthiness. See [saas](saas.md) for more details.
 
-To do so: 
+To do so:
 
 ```sh
 $ cosmian_kms_cli trust /tmp
@@ -249,10 +247,10 @@ You can check all these files manually.
 Proceed with some automatic checks:
 ... Remote attestation checking Ok
 ... MR enclave checking Ok
-... MR signer checking Ok 
-... Quote checking Ok 
-... Date checking Ok 
-... Quote report data (manifest, kms certificates and nonce) checking Ok 
+... MR signer checking Ok
+... Quote checking Ok
+... Date checking Ok
+... Quote report data (manifest, kms certificates and nonce) checking Ok
 ```
 
 This command proceeds the remote attestation for you.

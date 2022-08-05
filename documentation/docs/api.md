@@ -12,7 +12,7 @@ It's probably more convenient to query the KMS using a SDK due to the specifity 
 
 ## Query using the KMS-CLI
 
-Read [cli](cli.md)
+[Read CLI](./cli.md){ .md-button }
 
 ## Query using server's API
 
