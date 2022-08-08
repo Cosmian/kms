@@ -332,24 +332,34 @@ footer,
 .md-typeset .md-button {
   padding: 30px;
   width: 100%;
-  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.25);
   margin: 1.5em 0;
   border-radius: 4px;
-  border: none;
   color: var(--dark);
   font-weight: 600;
   text-transform: uppercase;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
+  align-items: center;
   transition: all 0.3s;
+  border: 1px solid var(--grey-4);
+  background: linear-gradient(180deg, #ffffff 0%, #f4f4f4 100%);
 }
+
 .md-typeset .md-button::after {
-  content: ">";
+  content: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 512'%3E%3Cpath fill='inherit' d='M96 480c-8.188 0-16.38-3.125-22.62-9.375-12.5-12.5-12.5-32.75 0-45.25L242.8 256 73.38 86.63c-12.5-12.5-12.5-32.75 0-45.25s32.75-12.5 45.25 0l192 192c12.5 12.5 12.5 32.75 0 45.25l-192 192C112.4 476.9 104.2 480 96 480z'%3E%3C/path%3E%3C/svg%3E");
+  width: 10px;
+  height: 10px;
+  margin-left: auto;
+  fill: var(--dark);
+  margin-top: -0.25em;
+}
+.md-typeset .md-button .twemoji {
+  margin-right: 1em;
 }
 .md-typeset .md-button:is(:focus, :hover),
 .md-typeset .md-button:focus,
 .md-typeset .md-button:hover {
-  border: none;
+  border: 1px solid var(--grey-4);
   background-color: #fff !important;
   border-color: none !important;
   color: initial !important;

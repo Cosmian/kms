@@ -35,7 +35,9 @@ markdown_extensions:
   - markdown_katex:
       no_inline_svg: True
       insert_fonts_css: True
-      macro-file: docs/src/macros.tex
+  - pymdownx.emoji:
+      emoji_index: !!python/name:materialx.emoji.twemoji
+      emoji_generator: !!python/name:materialx.emoji.to_svg
 plugins:
   - search
   - kroki
