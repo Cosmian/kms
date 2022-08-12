@@ -364,6 +364,8 @@ impl Database for CachedSqlCipher {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -382,7 +384,6 @@ mod tests {
     use crate::{database::Database, kms_bail, log_utils::log_init, result::KResult};
 
     #[actix_rt::test]
-    #[ignore = "Waiting for SqlCipher crate upgrade to handle JSON operators"]
     pub async fn test_owner() -> KResult<()> {
         log_init("info");
         let owner = "eyJhbGciOiJSUzI1Ni";
@@ -390,16 +391,13 @@ mod tests {
         let userid2 = "bar@example.org";
         let invalid_owner = "invalid_owner";
         let dir = tempdir()?;
-        let file_path = dir.path().join("test_sqlite.db");
-        if file_path.exists() {
-            std::fs::remove_file(&file_path).unwrap();
-        }
 
-        let db = CachedSqlCipher::instantiate(&file_path).await?;
+        let db = CachedSqlCipher::instantiate(dir.path()).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
             key: String::from("password"),
         };
+        fs::File::create(db.filename(params.group_id))?;
 
         let symmetric_key = create_aes_symmetric_key(None)?;
         let uid = Uuid::new_v4().to_string();
@@ -557,22 +555,18 @@ mod tests {
     }
 
     #[actix_rt::test]
-    #[ignore]
     pub async fn test_permissions() -> KResult<()> {
         log_init("info");
         let userid = "foo@example.org";
         let userid2 = "bar@example.org";
         let dir = tempdir()?;
-        let file_path = dir.path().join("test_sqlite.db");
-        if file_path.exists() {
-            std::fs::remove_file(&file_path).unwrap();
-        }
 
-        let db = CachedSqlCipher::instantiate(&file_path).await?;
+        let db = CachedSqlCipher::instantiate(dir.path()).await?;
         let params = ExtraDatabaseParams {
-            group_id: 0,
+            group_id: 1,
             key: String::from("password"),
         };
+        fs::File::create(db.filename(params.group_id))?;
 
         let uid = Uuid::new_v4().to_string();
 
@@ -642,21 +636,17 @@ mod tests {
     }
 
     #[actix_rt::test]
-    #[ignore = "Waiting for SqlCipher crate upgrade to handle JSON operators"]
     pub async fn test_json_access() -> KResult<()> {
         log_init("debug");
         let owner = "eyJhbGciOiJSUzI1Ni";
         let dir = tempdir()?;
-        let file_path = dir.path().join("test_sqlite.db");
-        if file_path.exists() {
-            std::fs::remove_file(&file_path).unwrap();
-        }
 
-        let db = CachedSqlCipher::instantiate(&file_path).await?;
+        let db = CachedSqlCipher::instantiate(dir.path()).await?;
         let params = ExtraDatabaseParams {
-            group_id: 0,
+            group_id: 2,
             key: String::from("password"),
         };
+        fs::File::create(db.filename(params.group_id))?;
 
         let symmetric_key = create_aes_symmetric_key(None)?;
         let uid = Uuid::new_v4().to_string();
