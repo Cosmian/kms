@@ -1,4 +1,4 @@
-use abe_policy::{ap, Attribute, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_operations::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DestroyResponse, EncryptResponse,
@@ -69,8 +69,9 @@ async fn integration_tests() -> KResult<()> {
         .expect("There should be encrypted data");
 
     // Create a user decryption key
-    let access_policy =
-        (ap("Department", "MKG") | ap("Department", "FIN")) & ap("Level", "Top Secret");
+    let access_policy = (AccessPolicy::new("Department", "MKG")
+        | AccessPolicy::new("Department", "FIN"))
+        & AccessPolicy::new("Level", "Top Secret");
     let request = build_create_user_decryption_private_key_request(
         &access_policy,
         private_key_unique_identifier,
@@ -114,8 +115,9 @@ async fn integration_tests() -> KResult<()> {
 
     //
     // Create a user decryption key
-    let access_policy =
-        (ap("Department", "MKG") | ap("Department", "FIN")) & ap("Level", "Confidential");
+    let access_policy = (AccessPolicy::new("Department", "MKG")
+        | AccessPolicy::new("Department", "FIN"))
+        & AccessPolicy::new("Level", "Confidential");
     let request = build_create_user_decryption_private_key_request(
         &access_policy,
         private_key_unique_identifier,
@@ -125,7 +127,8 @@ async fn integration_tests() -> KResult<()> {
 
     //
     // Create another user decryption key
-    let access_policy = (ap("Department", "MKG")) & ap("Level", "Confidential");
+    let access_policy =
+        (AccessPolicy::new("Department", "MKG")) & AccessPolicy::new("Level", "Confidential");
     let request = build_create_user_decryption_private_key_request(
         &access_policy,
         private_key_unique_identifier,

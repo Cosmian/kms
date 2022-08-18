@@ -149,7 +149,6 @@ pub enum CryptographicAlgorithm {
     TFHE = 0x8880_0002,
     ABE = 0x8880_0003,
     CoverCrypt = 0x8880_0004,
-    FPEFF1 = 0x8880_0005,
 }
 
 /// The Cryptographic Domain Parameters attribute (4.14) is a structure that
@@ -319,12 +318,6 @@ bitflags::bitflags! {
         const Authenticate=0x0010_0000;
         /// Cryptographic Usage Mask contains no Usage Restrictions.
         const Unrestricted=0x0020_0000;
-        /// Allow for Format Preserving Encrypt. Valid for Symmetric Keys, Public
-        /// Keys and Private Keys
-        const FPEEncrypt=0x0040_0000;
-        /// Allow for Format Preserving Decrypt. Valid for Symmetric Keys, Public
-        /// Keys and Private Keys
-        const FPEDecrypt=0x0080_0000;
         // Extensions XXX00000
     }
 }

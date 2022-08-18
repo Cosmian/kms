@@ -16,8 +16,8 @@ sqlcipher = []
 dev = []
 
 [dependencies]
-abe_gpsw = { version = "1.1", features = ["interfaces"] }
-abe_policy = "0.1"
+abe_gpsw = { version = "2.0", features = ["interfaces"] }
+abe_policy = "1.0"
 base64 = "0.13"
 base64-url = "1.4"
 chrono = "0.4"
@@ -26,7 +26,7 @@ colored = "2.0"
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_client = { path = "../client" }
 cosmian_kms_utils = { path = "../utils" }
-cover_crypt = "4.0"
+cover_crypt = "5.0"
 eyre = "0.6"
 futures = "0.3"
 hex = "0.4"

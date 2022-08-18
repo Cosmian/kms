@@ -101,11 +101,10 @@ fn prepare_symmetric_key(
 
     let engine = CoverCrypt::default();
     let (sk, sk_enc) = engine
-        .generate_symmetric_key(
+        .generate_symmetric_key::<aes_256_gcm_pure::KeyLength>(
             &policy,
             &public_key,
             policy_attributes,
-            aes_256_gcm_pure::KEY_LENGTH,
         )
         .map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
@@ -114,7 +113,7 @@ fn prepare_symmetric_key(
     debug!("Generate symmetric key for CoverCrypt OK");
     Ok(CoverCryptSymmetricKey {
         uid: cover_crypt_header_uid.to_vec(),
-        symmetric_key: sk.into(),
+        symmetric_key: sk.to_vec(),
         encrypted_symmetric_key: sk_enc.try_to_bytes().map_err(|e| {
             KmipError::KmipError(
                 ErrorReason::Codec_Error,
