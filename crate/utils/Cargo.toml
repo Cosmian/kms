@@ -14,7 +14,7 @@ bitflags = "1.2"
 cosmian_crypto_base = { version = "2.1", features = ["libsodium"] }
 cosmian_kmip = { path = "../kmip" }
 cosmian_mcfe = { git = "https://github.com/Cosmian/DMCFE.git", branch = "feature/add_mcfe" }
-cover_crypt = "5.0"
+cover_crypt = "6.0"
 chrono = "0.4"
 hex = { version = "0.4", features = ["serde"] }
 # for status codes
