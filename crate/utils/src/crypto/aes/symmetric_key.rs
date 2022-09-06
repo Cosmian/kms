@@ -21,7 +21,7 @@ pub fn create_aes_symmetric_key(cryptographic_length: Option<usize>) -> Result<O
     let mut rng = CsRng::new();
     let aes_key_len = cryptographic_length.unwrap_or_else(KeyLength::to_usize);
     // Generate symmetric key
-    let mut symmetric_key = Vec::with_capacity(aes_key_len);
+    let mut symmetric_key = vec![0; aes_key_len];
     rng.fill_bytes(&mut symmetric_key);
     let symmetric_key_len = i32::try_from(symmetric_key.len()).map_err(|_e| {
         KmipError::InvalidKmipValue(
