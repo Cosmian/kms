@@ -931,7 +931,7 @@ pub async fn test_import_keys() -> Result<(), Box<dyn std::error::Error>> {
         "--policy",
         "test_data/policy.json",
         "-W",
-        "password",
+        "0123456789abcdefgijklmnopqrstuvw", // 32-bytes password
     ]);
     cmd.assert()
         .success()
@@ -950,7 +950,7 @@ pub async fn test_import_keys() -> Result<(), Box<dyn std::error::Error>> {
         "--secret-key-id",
         secret_key_id,
         "-W",
-        "password",
+        "0123456789abcdefgijklmnopqrstuvw", // 32-bytes password
     ]);
     cmd.assert().success().stdout(predicate::str::contains(
         "Decryption user key unique identifier:",
@@ -1154,7 +1154,7 @@ pub async fn test_export_keys() -> Result<(), Box<dyn std::error::Error>> {
         "--policy",
         "test_data/policy.json",
         "-W",
-        "password",
+        "0123456789abcdefgijklmnopqrstuvw", // 32-bytes password
     ]);
 
     let success = cmd.assert().success();
@@ -1181,7 +1181,7 @@ pub async fn test_export_keys() -> Result<(), Box<dyn std::error::Error>> {
         "-k",
         secret_key_id,
         "-W",
-        "password",
+        "0123456789abcdefgijklmnopqrstuvw", // 32-bytes password
         "/tmp/output.get",
     ]);
 
@@ -1240,13 +1240,13 @@ pub async fn test_export_keys_error() -> Result<(), Box<dyn std::error::Error>> 
         "-k",
         secret_key_id,
         "-W",
-        "password",
+        "0123456789abcdefgijklmnopqrstuvw", // 32-bytes password
         "/tmp/output.get",
     ]);
 
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "Invalid_Data_Type: Invalid size: ",
-    ));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Invalid_Data_Type: Invalid size"));
 
     // Get from import
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -1260,7 +1260,7 @@ pub async fn test_export_keys_error() -> Result<(), Box<dyn std::error::Error>> 
         "--policy",
         "test_data/policy.json",
         "-W",
-        "password",
+        "0123456789abcdefgijklmnopqrstuvw", // 32-bytes password
     ]);
 
     let success = cmd.assert().success();
@@ -1276,12 +1276,12 @@ pub async fn test_export_keys_error() -> Result<(), Box<dyn std::error::Error>> 
         "-k",
         secret_key_id,
         "-W",
-        "bad_password",
+        "0000000000abcdefgijklmnopqrstuvw", // wrong 32-bytes password
         "/tmp/output.get",
     ]);
 
     cmd.assert().failure().stderr(predicate::str::contains(
-        "Invalid size: The ciphertext is invalid. Decrypted IV is not appropriate",
+        "The ciphertext is invalid. Decrypted IV is not appropriate",
     ));
 
     Ok(())

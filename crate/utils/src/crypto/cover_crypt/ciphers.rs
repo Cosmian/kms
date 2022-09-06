@@ -10,7 +10,8 @@ use cosmian_kmip::{
 use cover_crypt::{
     self,
     interfaces::statics::{
-        decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_block, encrypt_hybrid_header,
+        decrypt_hybrid_header, decrypt_symmetric_block, encrypt_hybrid_header,
+        encrypt_symmetric_block,
     },
     PublicKey, UserPrivateKey,
 };
@@ -102,14 +103,14 @@ impl EnCipher for CoverCryptHybridCipher {
         let mut encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto>(
             &self.policy,
             &public_key,
-            &data_to_encrypt.policy_attributes,
+            data_to_encrypt.policy_attributes.as_slice(),
             None,
         )
         .map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
         })?;
 
-        let mut encrypted_block = encrypt_hybrid_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
+        let mut encrypted_block = encrypt_symmetric_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
             &encrypted_header.symmetric_key,
             uid,
             0,
@@ -216,7 +217,7 @@ impl DeCipher for CoverCryptHybridDecipher {
             &header_.meta_data.uid
         };
 
-        let clear_text = decrypt_hybrid_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
+        let clear_text = decrypt_symmetric_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
             &header_.symmetric_key,
             uid,
             0,

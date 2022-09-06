@@ -1,12 +1,19 @@
 {
-    "cSpell.words": [
-        "cosmian",
-        "Cosmian",
-        "gpsw",
-        "Gpsw",
-        "kmip",
-        "KMIP",
-        "structopt",
-        "ttlv"
-    ]
+  "cSpell.words": [
+    "cosmian",
+    "Cosmian",
+    "gpsw",
+    "Gpsw",
+    "kmip",
+    "KMIP",
+    "structopt",
+    "ttlv"
+  ],
+  "[md]": {
+    "editor.formatOnSave": false,
+    "editor.tabSize": 4
+  },
+  "[html]": {
+    "editor.formatOnSave": false
+  }
 }

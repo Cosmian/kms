@@ -52,14 +52,14 @@ pub fn compare_cover_crypt_attributes(
                         let access_policy_attributes = access_policy.attributes();
                         let access_policy_axes: HashSet<String> = access_policy_attributes
                             .iter()
-                            .map(|att| att.axis())
+                            .map(|att| att.axis.clone())
                             .collect();
                         // if a research attribute axis is not present in the access policy,
                         // it means that the access policy accepts all values for that axis,
                         // so there is an intersection
                         if cover_crypt_attributes
                             .iter()
-                            .any(|attr| !access_policy_axes.contains(&attr.axis()))
+                            .any(|attr| !access_policy_axes.contains(&attr.axis))
                         {
                             return Ok(true)
                         }

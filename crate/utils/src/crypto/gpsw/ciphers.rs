@@ -4,11 +4,14 @@ use abe_gpsw::{
         bilinear_map::bls12_381::Bls12_381,
         gpsw::{AbeScheme, AsBytes, Gpsw},
     },
-    interfaces::hybrid_crypto::{
-        decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_block, encrypt_hybrid_header,
+    interfaces::{
+        abe_policy::{Attribute, Policy},
+        hybrid_crypto::{
+            decrypt_hybrid_block, decrypt_hybrid_header, encrypt_hybrid_block,
+            encrypt_hybrid_header,
+        },
     },
 };
-use abe_policy::{Attribute, Policy};
 use cosmian_crypto_base::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
 use cosmian_kmip::{
     error::KmipError,

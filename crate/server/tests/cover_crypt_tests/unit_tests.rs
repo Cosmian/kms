@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use abe_policy::{ap, Attribute, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Get, Import, Locate},
@@ -127,8 +127,9 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // User decryption key
 
-    let access_policy =
-        (ap("Department", "MKG") | ap("Department", "FIN")) & ap("Level", "confidential");
+    let access_policy = (AccessPolicy::new("Department", "MKG")
+        | AccessPolicy::new("Department", "FIN"))
+        & AccessPolicy::new("Level", "confidential");
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
@@ -183,8 +184,9 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
 #[test]
 pub fn access_policy_serialization() -> KResult<()> {
-    let access_policy =
-        (ap("Department", "MKG") | ap("Department", "FIN")) & ap("Level", "confidential");
+    let access_policy = (AccessPolicy::new("Department", "MKG")
+        | AccessPolicy::new("Department", "FIN"))
+        & AccessPolicy::new("Level", "confidential");
     let _json = serde_json::to_string(&access_policy)?;
     // println!("{}", &json);
     Ok(())
@@ -292,8 +294,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     assert!(er.is_err());
 
     // Create a user decryption key MKG | FIN + secret
-    let secret_mkg_fin_access_policy =
-        (ap("Department", "MKG") | ap("Department", "FIN")) & ap("Level", "secret");
+    let secret_mkg_fin_access_policy = (AccessPolicy::new("Department", "MKG")
+        | AccessPolicy::new("Department", "FIN"))
+        & AccessPolicy::new("Level", "secret");
     let cr = kms
         .create(
             build_create_user_decryption_private_key_request(
@@ -388,8 +391,9 @@ async fn test_abe_json_access() -> KResult<()> {
     policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
     policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
 
-    let secret_mkg_fin_access_policy =
-        (ap("Department", "MKG") | ap("Department", "FIN")) & ap("Level", "secret");
+    let secret_mkg_fin_access_policy = (AccessPolicy::new("Department", "MKG")
+        | AccessPolicy::new("Department", "FIN"))
+        & AccessPolicy::new("Level", "secret");
 
     // Create CC master key pair
     let master_keypair = build_create_master_keypair_request(&policy)?;
@@ -514,8 +518,9 @@ async fn test_import_decrypt() -> KResult<()> {
     let confidential_mkg_encrypted_data = er.data.context("There should be encrypted data")?;
 
     // Create a user decryption key MKG | FIN + secret
-    let secret_mkg_fin_access_policy =
-        (ap("Department", "MKG") | ap("Department", "FIN")) & ap("Level", "secret");
+    let secret_mkg_fin_access_policy = (AccessPolicy::new("Department", "MKG")
+        | AccessPolicy::new("Department", "FIN"))
+        & AccessPolicy::new("Level", "secret");
     let cr = kms
         .create(
             build_create_user_decryption_private_key_request(

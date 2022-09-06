@@ -1,4 +1,4 @@
-use cosmian_crypto_base::{kdf::hkdf_256, key_wrapping};
+use cosmian_crypto_base::{kdf::hkdf_256, key_wrapping, typenum};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -29,7 +29,7 @@ pub fn tag_from_object(object: &Object) -> String {
 
 /// Wrap a key using a password
 pub fn wrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, KmipError> {
-    let wrapping_secret = hkdf_256(wrapping_password.as_bytes(), 32, &[])
+    let wrapping_secret = hkdf_256::<typenum::U32>(wrapping_password.as_bytes(), &[])
         .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Data_Type, e.to_string()))?;
     key_wrapping::wrap(key, &wrapping_secret)
         .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Data_Type, e.to_string()))
@@ -37,7 +37,7 @@ pub fn wrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, Km
 
 /// Unwrap a key using a password
 pub fn unwrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, KmipError> {
-    let wrapping_secret = hkdf_256(wrapping_password.as_bytes(), 32, &[])
+    let wrapping_secret = hkdf_256::<typenum::U32>(wrapping_password.as_bytes(), &[])
         .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Data_Type, e.to_string()))?;
     key_wrapping::unwrap(key, &wrapping_secret)
         .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Data_Type, e.to_string()))
