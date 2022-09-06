@@ -12,7 +12,6 @@ use cosmian_kms_utils::{
         aes::{create_aes_symmetric_key, AesGcmCipher},
         cover_crypt::ciphers::{CoverCryptHybridCipher, CoverCryptHybridDecipher},
         curve_25519::operation::generate_key_pair,
-        fpe::{operation::FpeCipher, symmetric_key::create_fpe_ff1_symmetric_key},
         gpsw::ciphers::{AbeHybridCipher, AbeHybridDecipher},
         mcfe::operation::{
             mcfe_master_key_from_key_block, mcfe_setup_from_attributes,
@@ -80,10 +79,6 @@ impl KMS {
                 match &key_block.key_format_type {
                     KeyFormatType::TransparentSymmetricKey => {
                         match &key_block.cryptographic_algorithm {
-                            CryptographicAlgorithm::FPEFF1 => {
-                                Ok(Box::new(FpeCipher::instantiate(key_uid, &object)?)
-                                    as Box<dyn EnCipher>)
-                            }
                             CryptographicAlgorithm::AES => {
                                 Ok(Box::new(AesGcmCipher::instantiate(key_uid, &object)?)
                                     as Box<dyn EnCipher>)
@@ -176,9 +171,6 @@ impl KMS {
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => {
                     match &key_block.cryptographic_algorithm {
-                        CryptographicAlgorithm::FPEFF1 => {
-                            Ok(Box::new(FpeCipher::instantiate(object_uid, &object)?))
-                        }
                         CryptographicAlgorithm::AES => {
                             Ok(Box::new(AesGcmCipher::instantiate(object_uid, &object)?))
                         }
@@ -209,10 +201,6 @@ impl KMS {
     ) -> KResult<Object> {
         let attributes = &request.attributes;
         match &attributes.cryptographic_algorithm {
-            Some(CryptographicAlgorithm::FPEFF1) => {
-                create_fpe_ff1_symmetric_key(attributes.cryptographic_length.map(|v| v as usize))
-                    .map_err(Into::into)
-            }
             Some(CryptographicAlgorithm::AES) => match attributes.key_format_type {
                 None => kms_bail!(KmsError::InvalidRequest(
                     "Unable to create a symmetric key, the format type is not specified"

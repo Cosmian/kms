@@ -339,7 +339,7 @@ pub struct ImportKeysAction {
     #[structopt(
         required_unless_present_any = ["secret_key_file", "public_key_file"],
         requires_all = &["user_key_file", "secret_key_id"],
-        name = "access_policy", 
+        name = "access_policy",
         long = "access-policy",
         short = 'a'
     )]
@@ -349,7 +349,7 @@ pub struct ImportKeysAction {
     #[structopt(
         required_unless_present_any = ["secret_key_file", "public_key_file"],
         requires_all = &["user_key_file", "access_policy"],
-        name = "secret_key_id", 
+        name = "secret_key_id",
         long = "secret-key-id",
         short = 's'
     )]
