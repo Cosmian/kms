@@ -60,7 +60,7 @@ Note: the EdgelessDB is currently running in simulation mode (not using SGX encl
 
 ```console
 cd /home/gitlab-runner/data
-curl -k --data-binary @manifest.json http://gitlab-runner-1.cosmian.com:8080/manifest
+curl -k --data-binary @manifest.json https://gitlab-runner-1.cosmian.com:8080/manifest
 ```
 
 <u>Test it works</u>

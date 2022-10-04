@@ -7,12 +7,12 @@ variables:
   POSTGRES_USER: orchestrator
   POSTGRES_PASSWORD: orchestrator
   POSTGRES_HOST_AUTH_METHOD: trust
-  POSTGRES_HOST: gitlab-runner-1.cosmian.com
+  POSTGRES_HOST: gitlab-runner-1.ovh.cosmian.com
   DATABASE_URL_TEST: postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST/$POSTGRES_DB
   KMS_POSTGRES_URL: postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST/$POSTGRES_DB
   MYSQL_DB: kms
   MYSQL_ROOT_PASSWORD: kms
-  MYSQL_HOST: gitlab-runner-1.cosmian.com
+  MYSQL_HOST: gitlab-runner-1.ovh.cosmian.com
   #  KMS_MYSQL_URL: mysql://root:$MYSQL_ROOT_PASSWORD@$MYSQL_HOST/$MYSQL_DB
   KMS_MYSQL_URL: mysql://root@$MYSQL_HOST/$MYSQL_DB
   KMS_USER_CERT_PATH: ${CI_PROJECT_DIR}/data/data-ssl/cert.p12
@@ -154,14 +154,15 @@ unused_deps:
 #
 # Build a docker to test the staging feature and start it remotely
 #
-docker_test_build_and_deploy:
+# Note: this step is hidden because the kms can't run RA with OVH yet
+.docker_test_build_and_deploy:
   image: docker:19.03.15
   stage: pretest
   only: [master, develop, merge_requests]
   variables:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:test
     SHORT_IMAGE_NAME: kms_enclave
-    SGX_REMOTE: cosmian@sgx2-3.cosmian.com
+    SGX_REMOTE: cosmian@sgx2-1.sc.ci.cosmian.com
     KMS_DOMAIN: testsgx.cosmian.com
   script:
     - echo $IMAGE_TAG
@@ -176,7 +177,8 @@ docker_test_build_and_deploy:
 #
 # Test staging on the enclave
 #
-test-enclave:
+# Note: this step is hidden because the kms can't run RA with OVH yet
+.test-enclave:
   stage: test
   only: [master, develop, merge_requests]
   cache:
@@ -199,7 +201,8 @@ test-enclave:
 #
 # Build a docker and deploy it (for demo)
 #
-docker_demo_build_and_deploy:
+# Note: this step is hidden because kms.demo.cosmian.com doesn't exist yet
+.docker_demo_build_and_deploy:
   image: docker:19.03.15
   stage: deploy
   rules:
@@ -319,11 +322,11 @@ doc:
     - pushd documentation
     - mkdocs build
     # remove any previous KMS doc with same current tag
-    - ssh cosmian@ui.prod.sc.cosmian.com "rm -fr /var/www/documentation_root/kms/${CI_COMMIT_TAG}"
-    - scp -r site cosmian@ui.prod.sc.cosmian.com:/var/www/documentation_root/kms/"${CI_COMMIT_TAG}"
+    - ssh cosmian@ui.sc.prod.cosmian.com "rm -fr /var/www/documentation_root/kms/${CI_COMMIT_TAG}"
+    - scp -r site cosmian@ui.sc.prod.cosmian.com:/var/www/documentation_root/kms/"${CI_COMMIT_TAG}"
     # Update the link to the latest doc
-    - ssh cosmian@ui.prod.sc.cosmian.com "unlink /var/www/documentation_root/kms/2.0 || true"
-    - ssh cosmian@ui.prod.sc.cosmian.com "ln -s /var/www/documentation_root/kms/${CI_COMMIT_TAG} /var/www/documentation_root/kms/2.0"
+    - ssh cosmian@ui.sc.prod.cosmian.com "unlink /var/www/documentation_root/kms/2.0 || true"
+    - ssh cosmian@ui.sc.prod.cosmian.com "ln -s /var/www/documentation_root/kms/${CI_COMMIT_TAG} /var/www/documentation_root/kms/2.0"
 
 #
 # Build and deploy the public documentation on the test env
@@ -336,8 +339,8 @@ doc-test:
     - pushd documentation
     - mkdocs build
     # remove any previous KMS doc with same current tag
-    - ssh cosmian@ui.test.sc.cosmian.com "rm -fr /var/www/documentation_root/kms/dev"
-    - scp -r site cosmian@ui.test.sc.cosmian.com:/var/www/documentation_root/kms/dev
+    - ssh cosmian@ui.sc.test.cosmian.com "rm -fr /var/www/documentation_root/kms/dev"
+    - scp -r site cosmian@ui.sc.test.cosmian.com:/var/www/documentation_root/kms/dev
     # Update the link to the latest doc
-    - ssh cosmian@ui.test.sc.cosmian.com "unlink /var/www/documentation_root/kms/2.0 || true"
-    - ssh cosmian@ui.test.sc.cosmian.com "ln -s /var/www/documentation_root/kms/dev /var/www/documentation_root/kms/2.0"
+    - ssh cosmian@ui.sc.test.cosmian.com "unlink /var/www/documentation_root/kms/2.0 || true"
+    - ssh cosmian@ui.sc.test.cosmian.com "ln -s /var/www/documentation_root/kms/dev /var/www/documentation_root/kms/2.0"
