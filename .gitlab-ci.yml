@@ -255,7 +255,7 @@ docker_timeout_build_and_push:
     - docker push $IMAGE_TAG
 
 #
-# This image is used by the CI of projects using the KMS. For example cosmian_java_lib.
+# This image is used by the CI of projects using the KMS. For example cloudproof_java.
 #
 docker_lib_ci_build_and_push:
   image: docker:19.03.15
