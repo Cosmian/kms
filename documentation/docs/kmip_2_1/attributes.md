@@ -3,12 +3,12 @@ In [chapter 4](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2
 
 Extensions in KMIP consist mostly in augmenting enumerations with new values and attributing a specific prefix values, usually `0x8880` to the new variants.
 
-The Cosmian extensions are listed below. They can also be viewed in the open sourced [Cosmian java library](https://github.com/Cosmian/cosmian_java_lib/) which implements the KMIP specifications required to interact with the Cosmian KMS server. For instance, the `CryptographicAlgorithm` enumeration extensions can be viewed in [this java source code](https://github.com/Cosmian/cosmian_java_lib/blob/main/src/main/java/com/cosmian/rest/kmip/types/CryptographicAlgorithm.java)
+The Cosmian extensions are listed below. They can also be viewed in the open sourced [Cloudproof Java library](https://github.com/Cosmian/cloudproof_java/) which implements the KMIP specifications required to interact with the Cosmian KMS server. For instance, the `CryptographicAlgorithm` enumeration extensions can be viewed in [this java source code](https://github.com/Cosmian/cloudproof_java/blob/main/src/main/java/com/cosmian/rest/kmip/types/CryptographicAlgorithm.java)
 
 
 #### KeyFormatType
 
-The Key Format Type attribute is a required attribute of a Cryptographic Object. 
+The Key Format Type attribute is a required attribute of a Cryptographic Object.
 
 It is set by the server, but a particular Key Format Type MAY be requested by the client if the cryptographic material is produced by the server (i.e., Create, Create Key Pair, Create Split Key, Re-key, Re-key Key Pair, Derive Key) on the client’s behalf. The server SHALL comply with the client’s requested format or SHALL fail the request. When the server calculates a Digest for the object, it SHALL compute the digest on the data in the assigned Key Format Type, as well as a digest in the default KMIP Key Format Type for that type of key and the algorithm requested (if a non-default value is specified).
 
@@ -57,7 +57,7 @@ Initial Counter Value is the starting counter value for CTR mode (for [RFC3686] 
 All keys managed by the Cosmian KMS server are primarily a `KeyMaterial` made of bytes. Some keys, typically those of ABE, also carry information regarding the underlying access policies. This information is carried together with the keys using [VendorAttributes](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html#_Toc32239382)
 
 Typically a vendor attribute is made of 3 values: a `Vendor Identification` - always hardcoded to `cosmian`  - and a tuple `Attribute Name`, `Attribute Value`.
-The different attribute names can be seen in the [VendorAttributes.java](https://github.com/Cosmian/cosmian_java_lib/blob/main/src/main/java/com/cosmian/rest/kmip/types/VendorAttribute.java) file of the Cosmian Java Lib.
+The different attribute names can be seen in the [VendorAttributes.java](https://github.com/Cosmian/cloudproof_java/blob/main/src/main/java/com/cosmian/rest/kmip/types/VendorAttribute.java) file of the Cloudproof JavaLib.
 
 The attributes names and corresponding values used for a given `KeyFormatType` are as follows:
 
@@ -65,6 +65,6 @@ The attributes names and corresponding values used for a given `KeyFormatType` a
     - `VENDOR_ATTR_ABE_POLICY = "abe_policy"` : the JSONified Policy
 - `AbeUserDecryptionKey`:
     - `VENDOR_ATTR_ABE_ACCESS_POLICY = "abe_access_policy"`: The JSONified boolean Access Policy of the key
-  
+
 
 In addition the `VENDOR_ATTR_ABE_ATTR = "abe_attributes"` name is used in Locate requests to identify User Decryption Keys holding certain Policy Attributes.
