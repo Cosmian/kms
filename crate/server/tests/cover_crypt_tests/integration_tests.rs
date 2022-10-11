@@ -218,21 +218,19 @@ async fn integration_tests() -> KResult<()> {
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
     assert!(post_ttlv_decrypt.is_err());
 
-    // TODO: fix rekey not touching expected keys ! Following tests must be activated
-
     // decrypt
-    // let request = build_decryption_request(
-    //     user_decryption_key_identifier_2,
-    //     resource_uid.clone(),
-    //     encrypted_data,
-    // );
-    // let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
-    // assert_eq!(
-    //     data,
-    //     &decrypt_response
-    //         .data
-    //         .context("There should be decrypted data")?
-    // );
+    let request = build_decryption_request(
+        user_decryption_key_identifier_2,
+        resource_uid.clone(),
+        encrypted_data,
+    );
+    let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
+    assert_eq!(
+        data,
+        &decrypt_response
+            .data
+            .context("There should be decrypted data")?
+    );
 
     //
     // Destroy user decryption key

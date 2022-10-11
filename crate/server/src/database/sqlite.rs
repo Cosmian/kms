@@ -657,8 +657,8 @@ mod tests {
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
-            StateEnumeration,
+            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
+            LinkType, LinkedObjectIdentifier, StateEnumeration,
         },
     };
     use cosmian_kms_utils::{crypto::aes::create_aes_symmetric_key, types::ObjectOperationTypes};
@@ -1062,6 +1062,70 @@ mod tests {
             )
             .await?;
         assert!(found.is_empty());
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    #[cfg_attr(feature = "sqlcipher", ignore)]
+    pub async fn test_find_attrs() -> KResult<()> {
+        let owner = "eyJhbGciOiJSUzI1Ni";
+        let dir = tempdir()?;
+        let file_path = dir.path().join("test_sqlite.db");
+        if file_path.exists() {
+            std::fs::remove_file(&file_path).unwrap();
+        }
+
+        let db = SqlitePool::instantiate(&file_path).await?;
+
+        //
+
+        let mut symmetric_key = create_aes_symmetric_key(None)?;
+        let uid = Uuid::new_v4().to_string();
+
+        // Define the link vector
+        let link = vec![Link {
+            link_type: LinkType::ParentLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
+        }];
+
+        let mut attributes = symmetric_key.attributes_mut()?;
+        attributes.link = link.clone();
+
+        let uid_ = db
+            .create(Some(uid.clone()), owner, &symmetric_key, None)
+            .await?;
+        assert_eq!(&uid, &uid_);
+
+        match db
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
+            .await?
+        {
+            Some((obj_, state_)) => {
+                assert_eq!(StateEnumeration::Active, state_);
+                assert_eq!(&symmetric_key, &obj_);
+                assert_eq!(
+                    obj_.attributes()?.link[0].linked_object_identifier,
+                    LinkedObjectIdentifier::TextString("foo".to_string())
+                );
+            }
+            None => kms_bail!("There should be an object"),
+        }
+
+        let researched_attributes = Some(Attributes {
+            link: link.clone(),
+            ..Attributes::new(ObjectType::SymmetricKey)
+        });
+        let found = db
+            .find(
+                researched_attributes.as_ref(),
+                Some(StateEnumeration::Active),
+                owner,
+                None,
+            )
+            .await?;
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, uid);
 
         Ok(())
     }

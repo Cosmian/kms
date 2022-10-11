@@ -1300,4 +1300,68 @@ mod tests {
 
         Ok(())
     }
+
+    #[actix_rt::test]
+    #[serial(mysql)]
+    // MySQL part is tested on an EdgelessDB, which doesn't currently support JSON, so this test can't pass.
+    #[ignore]
+    pub async fn test_find_attrs() -> KResult<()> {
+        let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
+        let user_cert = std::option_env!("KMS_USER_CERT_PATH").expect("No user cert configured");
+        let db = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
+        db.clean_database().await;
+
+        let owner = "eyJhbGciOiJSUzI1Ni";
+
+        //
+
+        let mut symmetric_key = create_aes_symmetric_key(None)?;
+        let uid = Uuid::new_v4().to_string();
+
+        // Define the link vector
+        let link = vec![Link {
+            link_type: LinkType::ParentLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
+        }];
+
+        let mut attributes = symmetric_key.attributes_mut()?;
+        attributes.link = link.clone();
+
+        let uid_ = db
+            .create(Some(uid.clone()), owner, &symmetric_key, None)
+            .await?;
+        assert_eq!(&uid, &uid_);
+
+        match db
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
+            .await?
+        {
+            Some((obj_, state_)) => {
+                assert_eq!(StateEnumeration::Active, state_);
+                assert_eq!(&symmetric_key, &obj_);
+                assert_eq!(
+                    obj_.attributes()?.link[0].linked_object_identifier,
+                    LinkedObjectIdentifier::TextString("foo".to_string())
+                );
+            }
+            None => kms_bail!("There should be an object"),
+        }
+
+        let researched_attributes = Some(Attributes {
+            link: link.clone(),
+            ..Attributes::new(ObjectType::SymmetricKey)
+        });
+        let found = db
+            .find(
+                researched_attributes.as_ref(),
+                Some(StateEnumeration::Active),
+                owner,
+                None,
+            )
+            .await?;
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, uid);
+
+        Ok(())
+    }
 }
