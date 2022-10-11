@@ -202,6 +202,7 @@ pub fn state_from_string(s: &str) -> KResult<StateEnumeration> {
 /// This trait contains default naming which are overriden
 /// by implementation if needed
 pub trait PlaceholderTrait {
+    const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
     const JSON_NODE_ATTRS: &'static str = "'$.object.KeyBlock.KeyValue.Attributes'";
@@ -225,6 +226,7 @@ impl PlaceholderTrait for MySqlPlaceholder {
 }
 pub enum PgsqlPlaceholder {}
 impl PlaceholderTrait for PgsqlPlaceholder {
+    const JSON_FN_EACH_ELEMENT: &'static str = "json_array_elements";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract_path";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract_path_text";
     const JSON_NODE_ATTRS: &'static str = "'object', 'KeyBlock', 'KeyValue', 'Attributes'";
@@ -247,8 +249,7 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
 ) -> KResult<String> {
     let mut query = format!(
         "SELECT objects.id as id, objects.state as state, {}(objects.object, {}) as attrs, \
-         {}(objects.object, {}) IS NOT NULL AS is_wrapped
-        FROM objects",
+         {}(objects.object, {}) IS NOT NULL AS is_wrapped FROM objects",
         P::JSON_FN_EXTRACT_PATH,
         P::JSON_NODE_ATTRS,
         P::JSON_FN_EXTRACT_PATH,
@@ -257,7 +258,8 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
     if let Some(attributes) = attributes {
         if !attributes.link.is_empty() {
             query = format!(
-                "{query}, json_each({}(objects.object, {}))",
+                "{query}, {}({}(objects.object, {}))",
+                P::JSON_FN_EACH_ELEMENT,
                 P::JSON_FN_EXTRACT_PATH,
                 P::JSON_NODE_LINK
             )
