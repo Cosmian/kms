@@ -59,12 +59,22 @@ The list of parameters, which depends on the compiled features, can be obtained 
 cosmian_kms_server -h
 ```
 
-A server for developement can be quickly run as follow (with sqlite):
+A server for development can be quickly run as follow (with sqlite):
 
 ```sh
 cargo run --no-default-features -- --public-path /tmp --shared-path /tmp --private-path /tmp
 ```
 
+or:
+
+```sh
+$ export KMS_PUBLIC_PATH=/tmp
+$ export KMS_PRIVATE_PATH=/tmp
+$ export KMS_SHARED_PATH=/tmp
+$ cargo run --no-default-features
+```
+
+The 3 parameters `public-path`, `shared-path` and `private-path` are related to certificate generation in the Secure Enclave. Outside of the enclave, the value of these parameters can be set to `/tmp`.
 
 ## Configure the authentication
 
@@ -118,7 +128,7 @@ At *Cosmian*, for production, the architecture and the security rely on secure e
 
 To set up the enclave to run the kms server, please refer to the dedicated [Readme](../../enclave/server/README.md)
 
-**Mandatory**: all KMS source codes are fully opensource.
+**Mandatory**: all KMS source codes are fully open source.
 
 ### HTTPS
 
@@ -132,10 +142,10 @@ After getting the certificate, it stores them on disk: the private key is encryp
 Then, the real HTTPS server is started using this latter and the user can now query the KMS.
 
 If the initialized KMS is manually restarted while running:
-- if the private key can be read, the HTTPS server is restarted immediatelly
+- if the private key can be read, the HTTPS server is restarted immediately
 - otherwise, the certification process will raise an exception and the server won't start
 
-At a point, the certificate will be renew automatically and the HTTPS server will be restarted immediatelly and automatically.
+At a point, the certificate will be renew automatically and the HTTPS server will be restarted immediately and automatically.
 If an error occurs during the certification process, the server stops.
 
 ### The database
@@ -180,7 +190,7 @@ This part cover the following scenario: we lost the KMS server and the KMS datab
 
 Let's describe how *Cosmian* deals with this concern:
 - The HTTPS server can be lost. *Cosmian* will start a new one in another machine. The `mr_enclave` key will changed. As the update process, the new KMS version will remove the previous SSL keys and regenerate them.
-- The sqlcipher-encrypted databases are stored in plain-text on the host. It means that, if the user provides thesqlcipher key, a new KMS in another secure enclave can reload the database. The database files are written to a network volume. The replication of this volume is managed by Azure with a high level of redundancy.
+- The sqlcipher-encrypted databases are stored in plain-text on the host. It means that, if the user provides the sqlcipher key, a new KMS in another secure enclave can reload the database. The database files are written to a network volume. The replication of this volume is managed by Azure with a high level of redundancy.
 
 ## In-depth understanding
 
@@ -192,7 +202,7 @@ The database is made up of two tables: `objects` et `read_access`.
 
 This table is designed to contain the kmip objects. A row is described as:
 
-- `id` which is the index of the kmip object. This value is known by a user and used to retreive any stored objects
+- `id` which is the index of the kmip object. This value is known by a user and used to retrieve any stored objects
 - `object` is the object itself
 - `state` could be `PreActive`, `Active`, `Deactivated`, `Compromised`, `Destroyed` or `Destroyed_Compromised`
 - `owner` is the external id (email) of the user the object belongs to
