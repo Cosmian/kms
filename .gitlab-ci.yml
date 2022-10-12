@@ -270,15 +270,20 @@ docker_lib_ci_build_and_push:
     - docker push $IMAGE_TAG
 
 #
-# Build a delivery archive as a gitlab artifact.
+# Build a delivery archive as a Gitlab artifact.
+# This artifact contains:
+# - a KMS Docker container (no authentication support, no HTTPS support)
+# - a Postgres Docker container
+# - a Docker Compose script
+# - a HOW-TO guide
 #
-build_cats_delivery:
+build_standalone_delivery:
   image: docker:19.03.15
   stage: deploy
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
   script:
-    - docker build . -f delivery/Dockerfile.cats --network=host -t kms
+    - docker build . -f delivery/Dockerfile.standalone --network=host -t kms
     - docker save kms > kms.tar
     - docker save postgres > postgres.tar
   artifacts:

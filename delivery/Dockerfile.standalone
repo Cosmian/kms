@@ -1,6 +1,5 @@
 FROM ubuntu:22.04 as builder
 
-ARG TIMEOUT
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /root
 
@@ -41,7 +40,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server
-COPY --from=builder /root/kms/target/release/cosmian_kms_cli /usr/bin/cosmian_kms_cli
+COPY --from=builder /root/kms/target/release/cosmian_kms_cli    /usr/bin/cosmian_kms_cli
 
 EXPOSE 9998
 
