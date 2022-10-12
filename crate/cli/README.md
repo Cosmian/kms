@@ -43,7 +43,7 @@ If the server is running without Auth0, you can let `kms_access_token` empty. In
 If the server is running with cached sqlcipher as the KMS database, you also need to specify `kms_database_secret`. The first time, your organisation uses the KMS, you will run the following command to get the `kms_database_secret`. Save the output because the KMS won't remember it !
 
 ```
-KMS_CLI_CONF=kms.json kms_cli configure
+KMS_CLI_CONF=kms.json cosmian_kms_cli configure
 ```
 
 ### Attribute Based Encryption: GPSW / CoverCrypt
@@ -77,10 +77,10 @@ __On user data__
 For more details, run:
 ```
 # Details for GPSW
-kms_cli gpsw --help
+cosmian_kms_cli gpsw --help
 
 # Details for CoverCrypt
-kms_cli cc --help
+cosmian_kms_cli cc --help
 ```
 
 ### Permissions
