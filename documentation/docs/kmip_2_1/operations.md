@@ -11,13 +11,23 @@ KMIP states that a number of the operations are affected by a mechanism referred
 
     You need the following package: [Cloudproof Java Lib](https://github.com/Cosmian/cloudproof_java)
 
+    Then you can instantiate a new `Abe` object to query the KMS.
+
+    ``` java
+    Abe abe = new Abe(
+      new RestClient([KMS_SERVER_URL], [YOUR_API_KEY]),
+      new Specifications(Implementation.CoverCrypt)
+    );
+    ```
+
+
 === "Rust"
 
-    Coming soon... ;)
+    Coming soon…
 
 === "Python"
 
-    Coming soon... ;)
+    Coming soon…
 
 ### Import
 
@@ -34,25 +44,9 @@ The response contains the Unique Identifier provided in the request or assigned 
 
 The server fully implements import operations for the supported objects in PlainText mode but only for Symmetric Keys in Wrapped mode.
 
-=== "Java raw"
+=== "Java"
 
     ``` java
-    Kmip kmip = new Kmip(new RestClient(KMS_SERVER_URL, API_KEY));
-
-    String uniqueIdentifier = ...,
-    PrivateKey key = ...;
-    boolean replaceExisting = ...;
-
-    Import request = new Import(uniqueIdentifier, ObjectType.Private_Key, Optional.of(replaceExisting),
-                        Optional.empty(), key.attributes(), key);
-    ImportResponse response = this.kmip.importObject(request);
-    ```
-
-=== "Java ABE"
-
-    ``` java
-    Abe abe = new Abe(new RestClient(KMS_SERVER_URL, API_KEY));
-
     String privateMasterKeyUniqueIdentifier = ...;
     PrivateKey privateMasterKey = ...;
     boolean replaceExisting = ...;
@@ -83,32 +77,9 @@ The response contains the Unique Identifier of the created object. The server SH
 
 The Cosmian KMS server support creation of all supported objects except for Public Keys which are creates using the [Create Key Pair](#create-key-pair) operation (as one would expect).
 
-=== "Java raw"
+=== "Java"
 
     ``` java
-    Kmip kmip = new Kmip(new RestClient(KMS_SERVER_URL, API_KEY));
-
-    Attributes commonAttributes = new Attributes(ObjectType.Private_Key, Optional.of(CryptographicAlgorithm.ABE));
-    commonAttributes.setKeyFormatType(Optional.of(KeyFormatType.AbeUserDecryptionKey));
-
-    // convert the Access Policy to attributes and attach it to the common attributes
-    AccessPolicy accessPolicy = new And(new Or(new Attr("Department", "FIN"), new Attr("Department", "MKG")),
-            new Attr("Security Level", "Protected"));
-    VendorAttribute accessPolicyAttribute = accessPolicy.toVendorAttribute();
-    commonAttributes.setVendorAttributes(Optional.of(new VendorAttribute[] { accessPolicyAttribute }));
-    // link to the master private key
-    commonAttributes.setLink(new Link[] {new Link(LinkType.Parent_Link, new LinkedObjectIdentifier(privateMasterKeyUniqueIdentifier)) });
-
-    Create request = new Create(ObjectType.Private_Key, commonAttributes, Optional.empty());
-    CreateResponse response = kmip.create(request);
-    String keyUniqueIdentifier = response.getUniqueIdentifier();
-    ```
-
-=== "Java ABE"
-
-    ``` java
-    Abe abe = new Abe(new RestClient(KMS_SERVER_URL, API_KEY));
-
     String privateMasterKeyUniqueIdentifier = ...;
     AccessPolicy accessPolicy = new And(new Or(new Attr("Department", "FIN"), new Attr("Department", "MKG")),
             new Attr("Security Level", "Protected"));
@@ -132,33 +103,9 @@ For the Private Key, the server SHALL create a Link attribute of Link Type Publi
 
 The Create Key Pair operation is used to create Curve 25519 Key Pairs as well as ABE Master Key Pairs.
 
-=== "Java raw"
+=== "Java"
 
     ``` java
-    Kmip kmip = new Kmip(new RestClient(KMS_SERVER_URL, API_KEY));
-
-    Policy policy = new Policy(20)
-            .addAxis("Security Level", new String[] { "Protected", "Confidential", "Top Secret" }, true)
-            .addAxis("Department", new String[] { "FIN", "MKG", "HR" }, false);
-
-    Attributes commonAttributes = new Attributes(ObjectType.Private_Key, Optional.of(CryptographicAlgorithm.ABE));
-    commonAttributes.setKeyFormatType(Optional.of(KeyFormatType.AbeMasterSecretKey));
-
-    // convert the Policy to attributes and attach it to the common attributes
-    VendorAttribute policy_attribute = policy.toVendorAttribute();
-    commonAttributes.setVendorAttributes(Optional.of(new VendorAttribute[] { policy_attribute }));
-
-    CreateKeyPair request = new CreateKeyPair(Optional.of(commonAttributes), Optional.empty());
-    CreateKeyPairResponse response = kmip.createKeyPair(request);
-    String masterPrivateKeyUniqueIdentifier =  response.getPrivateKeyUniqueIdentifier();
-    String masterPublicKeyUniqueIdentifier = response.getPublicKeyUniqueIdentifier();
-    ```
-
-=== "Java ABE"
-
-    ``` java
-    Abe abe = new Abe(new RestClient(KMS_SERVER_URL, API_KEY));
-
     Policy policy = new Policy(20)
             .addAxis("Security Level", new String[] { "Protected", "Confidential", "Top Secret" }, true)
             .addAxis("Department", new String[] { "FIN", "MKG", "HR" }, false);
@@ -184,29 +131,9 @@ The success or failure of the operation is indicated by the Result Status (and i
 
 When used with an ABE user decryption key, this operation will attempt to perform a hybrid ABE+AES 256GCM decryption. The first 4 bytes of the cipher text are expected to be the ABE encrypted header length encoded as an an unsigned 32 bit in big endian format. The following bytes should contain the ABE header, made of an ABE encryption of the symmetric key, optionally followed by the symmetrically encoded meta data. The rest of the cipher text is the AES encrypted content.
 
-
-=== "Java raw"
-
-    ``` java
-    Kmip kmip = new Kmip(new RestClient(KMS_SERVER_URL, API_KEY));
-
-    String userDecryptionKeyUniqueIdentifier = ...;
-    byte[] encryptedData = ...;
-    Optional<byte[]> authenticated_encryption_additional_data = ...;
-
-    Decrypt request = new Decrypt(userDecryptionKeyUniqueIdentifier, encryptedData, authenticated_encryption_additional_data);
-    DecryptResponse response = kmip.decrypt(request);
-    if (response.getData().isPresent()) {
-        return response.getData().get();
-    }
-    throw new CosmianException("No decrypted data in response !");
-    ```
-
-=== "Java ABE"
+=== "Java"
 
     ``` java
-    Abe abe = new Abe(new RestClient(KMS_SERVER_URL, API_KEY));
-
     String userDecryptionKeyUniqueIdentifier = ...;
     byte[] encryptedData = ...;
     Optional<byte[]> authenticated_encryption_additional_data = ...;
@@ -224,15 +151,11 @@ This operation is used to indicate to the server that the key material for the s
 
 Destroyed keys are set in the state `destroyed` on the Cosmian KMS Server.
 
-=== "Java raw"
+=== "Java"
 
     ``` java
-    Kmip kmip = new Kmip(new RestClient(KMS_SERVER_URL, API_KEY));
-
     String uniqueIdentifier = ...;
-
-    Destroy request = new Destroy(Optional.of(uniqueIdentifier));
-    DestroyResponse response = kmip.destroy(request);
+    abe.destroy(uniqueIdentifier);
     ```
 
 ### Encrypt
@@ -258,38 +181,9 @@ When used with ABE master public key, this operation will perform an ABE+AES256G
     - the symmetrically encrypted content
 Note: the passed in the authentication parameters (typically the resource UID) used for authentication of the symmetrically encrypted content are NOT encrypted as part of the ABE header and must be re-supplied on decryption.
 
-
-=== "Java raw"
-
-    ``` java
-    Kmip kmip = new Kmip(new RestClient(KMS_SERVER_URL, API_KEY));
-
-    // The policy attributes that will be used to encrypt the content. They must
-    // exist in the policy associated with the Public Key
-    Attr[] attributes = new Attr[] { new Attr("Department", "FIN"), new Attr("Security Level", "Confidential") };
-
-    String publicKeyUniqueIdentifier = ...;
-    byte[] clearText = ...;
-
-    // For ABE we need to use a specific structure to pass the policy attributes
-    // to the Encrypt operation
-    DataToEncrypt dataToEncrypt = new DataToEncrypt(attributes, clearText);
-    ObjectMapper mapper = new ObjectMapper();
-    byte[] bytes = mapper.writeValueAsBytes(dataToEncrypt);
-
-    Encrypt request = new Encrypt(publicKeyUniqueIdentifier, bytes, Optional.empty(), Optional.empty());
-    EncryptResponse response = this.kmip.encrypt(request);
-    if (response.getData().isPresent()) {
-        return response.getData().get();
-    }
-    throw new CosmianException("No encrypted data in response !");
-    ```
-
-=== "Java ABE"
+=== "Java"
 
     ``` java
-    Abe abe = new Abe(new RestClient(KMS_SERVER_URL, API_KEY));
-
     // The policy attributes that will be used to encrypt the content. They must
     // exist in the policy associated with the Public Key
     Attr[] attributes = new Attr[] { new Attr("Department", "FIN"), new Attr("Security Level", "Confidential") };
@@ -323,29 +217,9 @@ The container shall be protected using the Secret Data object specified via the 
 
 The Cosmian KMS server returns the retrieved object in the same format as it was inserted and does not perform conversion.
 
-=== "Java raw"
+=== "Java"
 
     ``` java
-    Kmip kmip = new Kmip(new RestClient(KMS_SERVER_URL, API_KEY));
-
-    String userDecryptionKeyUniqueIdentifier = ...;
-
-    Get request = new Get(userDecryptionKeyUniqueIdentifier);
-    // It is better to specify the format and perform additional filtering server side
-    request.setKeyFormatType(Optional.of(KeyFormatType.AbeUserDecryptionKey));
-    GetResponse response = kmip.get(request);
-    Object object = response.getObject();
-    if (!(object instanceof PrivateKey)) {
-        throw new CosmianException(
-                "No ABE User Decryption Key at identifier " + userDecryptionKeyUniqueIdentifier);
-    }
-    ```
-
-=== "Java ABE"
-
-    ``` java
-    Abe abe = new Abe(new RestClient(KMS_SERVER_URL, API_KEY));
-
     String privateMasterKeyUniqueIdentifier = ...;
     PublicKey masterPublicKey = abe.retrievePrivateMasterKey(privateMasterKeyUniqueIdentifier);
 
@@ -354,36 +228,6 @@ The Cosmian KMS server returns the retrieved object in the same format as it was
 
     String userDecryptionKeyUniqueIdentifier = ...;
     PrivateKey userKey = abe.retrieveUserDecryptionKey(userDecryptionKeyUniqueIdentifier);
-    ```
-
-
-### Get Attributes
-
-#### specification
-
-This operation requests one or more attributes associated with a Managed Object.
-
-The object is specified by its Unique Identifier, and the attributes are specified by their name in the request.
-
-If a specified attribute has multiple instances, then all instances are returned. If a specified attribute does not exist (i.e., has no value), then it SHALL NOT be present in the returned response. If none of the requested attributes exist, then the response SHALL consist only of the Unique Identifier. The same Attribute Reference SHALL NOT be present more than once in a request.
-
-If no Attribute Reference is provided, the server SHALL return all attributes.
-
-#### implementation
-
-The Cosmian KMS server fully implements Get Attributes on the supported Objects.
-
-
-=== "Java raw"
-
-    ``` java
-    Kmip kmip = new Kmip(new RestClient(KMS_SERVER_URL, API_KEY));
-
-    String userDecryptionKeyUniqueIdentifier = ...;
-
-    GetAttributes request = new GetAttributes(userDecryptionKeyUniqueIdentifier, Optional.empty());
-    GetAttributesResponse response = kmip.get(request);
-    Attributes attributes = response.getAttributes();
     ```
 
 ### Locate
@@ -437,45 +281,9 @@ The Re-Key Key Pair Operation is the main mechanism to rotate ABE attributes on 
 
  The operation has currently no other usages on the Cosmian server.
 
-
-=== "Java raw"
-
-    ``` java
-    Kmip kmip = new Kmip(new RestClient(KMS_SERVER_URL, API_KEY));
-
-    String userDecryptionKeyUniqueIdentifier = ...;
-
-    // This will rekey in the KMS:
-    //
-    // - the Master Public Key
-    // - all User Decryption Keys that contain one of these attributes in their
-    // policy and are not revoked.
-    //
-    // the ABE policy attributes to rotate
-    Attr[] abePolicyAttributes = ...;
-
-    Attributes attributes = new Attributes(ObjectType.Private_Key, Optional.of(CryptographicAlgorithm.ABE));
-    attributes.keyFormatType(Optional.of(KeyFormatType.AbeMasterSecretKey));
-    attributes.vendorAttributes(
-            Optional.of(new VendorAttribute[] { Attr.toVendorAttribute(abePolicyAttributes) }));
-    ReKeyKeyPair request = new ReKeyKeyPair(
-            Optional.of(privateMasterKeyUniqueIdentifier),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.of(attributes),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty());
-    ReKeyKeyPairResponse response = this.kmip.reKeyKeyPair(request);
-    return response.getPublicKeyUniqueIdentifier();
-    ```
-
-=== "Java ABE"
+=== "Java"
 
     ``` java
-    Abe abe = new Abe(new RestClient(KMS_SERVER_URL, API_KEY));
-
     String privateMasterKeyUniqueIdentifier = ...;
     // This will rekey in the KMS:
     //
@@ -502,24 +310,9 @@ The operation has one of two effects. If the revocation reason is “key comprom
 
 The state of the object is kept as specified bu the revocation reason is currently not maintained.
 
-
-=== "Java raw"
-
-    ``` java
-    Kmip kmip = new Kmip(new RestClient(KMS_SERVER_URL, API_KEY));
-
-    String keyUniqueIdentifier = ...;
-
-    Revoke request = new Revoke(Optional.of(keyUniqueIdentifier), new RevocationReason("Revoked"),
-                        Optional.empty());
-    RevokeResponse response = kmip.revoke(request);
-    ```
-
-=== "Java ABE"
+=== "Java"
 
     ``` java
-    Abe abe = new Abe(new RestClient(KMS_SERVER_URL, API_KEY));
-
     String keyUniqueIdentifier = ...;
     abe.revokeKey(keyUniqueIdentifier);
     ```

@@ -3,7 +3,7 @@ This document is the main documentation of the Cosmian Key Management System.
 
 ## Introduction
 
-The Cosmian Key Management System (KMS) is a high performance server application written in [Rust](https://www.rust-lang.org/) which provides a REST API to store and manage keys and secrets used with Cosmian cryptographic stacks.
+The Cosmian Key Management System (KMS) is a high performance server application written in [Rust](https://www.rust-lang.org/) which provides an API to store and manage keys and secrets used with Cosmian cryptographic stacks.
 
 The Cosmian KMS server is available [on-premise](./on_premise.md) or as [SaaS](./saas.md) (create a free account on [console.cosmian.com](https://console.cosmian.com)).
 
@@ -11,7 +11,7 @@ The server is usually queried by using the [Cloudproof Java Library](https://git
 
 ## KMIP 2.1 Support
 
-The REST API follows the [JSON profile](https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/os/kmip-profiles-v2.1-os.html#_Toc32324415) of the OASIS normalized [KMIP 2.1 specifications](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html). Only a limited set of operations of the KMIP 2.1 specification, described below, is supported but which is sufficient to exercise Cosmian cryptographic stacks.
+The API follows the [JSON profile](https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/os/kmip-profiles-v2.1-os.html#_Toc32324415) of the OASIS normalized [KMIP 2.1 specifications](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html). Only a limited set of operations of the KMIP 2.1 specification, described below, is supported but which is sufficient to exercise Cosmian cryptographic stacks.
 
 This KMS completes classic offering of KMS servers on the market which are usually unable to natively support advanced cryptography. Do not hesitate to contact the Cosmian team if you wish to see additional cryptographic objects supported inside the Cosmian KMS.
 
