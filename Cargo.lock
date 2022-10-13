@@ -964,7 +964,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bitflags",
  "chrono",
@@ -1031,7 +1031,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "abe_gpsw",
  "abe_policy",
