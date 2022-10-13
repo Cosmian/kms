@@ -70,6 +70,6 @@ fn normalize_path(current_path: &Path, target: &Path) -> PathBuf {
     if target.is_absolute() {
         target.to_owned()
     } else {
-        current_path.join(&target)
+        current_path.join(target)
     }
 }

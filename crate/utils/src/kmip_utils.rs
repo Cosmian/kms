@@ -85,17 +85,25 @@ pub fn public_key_unique_identifier_from_private_key(
     };
 
     let attributes = key_block.key_value.attributes()?;
-    if attributes.link.is_empty() {
+    let links = match &attributes.link {
+        Some(links) => links,
+        None => {
+            return Err(KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Object_Type,
+                "Invalid public key. Should at least contain the link to private key".to_string(),
+            ))
+        }
+    };
+    if links.is_empty() {
         return Err(KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Object_Type,
             "Invalid public key. Should at least contain the link to private key".to_string(),
         ))
     }
 
-    attributes
-        .link
+    links
         .iter()
-        .find(|link| link.link_type == LinkType::PublicKeyLink)
+        .find(|&link| link.link_type == LinkType::PublicKeyLink)
         .map_or_else(
             || {
                 Err(KmipError::InvalidKmipObject(

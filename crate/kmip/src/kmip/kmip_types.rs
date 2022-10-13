@@ -4,8 +4,13 @@
 // see CryptographicUsageMask
 #![allow(non_upper_case_globals)]
 
+use std::fmt;
+
 use paperclip::actix::Apiv2Schema;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{self, Visitor},
+    Deserialize, Serialize,
+};
 use strum_macros::{Display, EnumString};
 
 use super::kmip_objects::ObjectType;
@@ -270,7 +275,6 @@ pub enum KeyCompressionType {
 }
 
 bitflags::bitflags! {
-    #[derive(Serialize, Deserialize)]
     pub struct CryptographicUsageMask: u32 {
         /// Allow for signing. Applies to Sign operation. Valid for PGP Key, Private Key
         const Sign=0x0000_0001;
@@ -322,8 +326,63 @@ bitflags::bitflags! {
     }
 }
 
+impl Serialize for CryptographicUsageMask {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_i32(self.bits as i32)
+    }
+}
+impl<'de> Deserialize<'de> for CryptographicUsageMask {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct CryptographicUsageMaskVisitor;
+
+        impl<'de> Visitor<'de> for CryptographicUsageMaskVisitor {
+            type Value = CryptographicUsageMask;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct CryptographicUsageMask")
+            }
+
+            fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(CryptographicUsageMask { bits: v })
+            }
+
+            // used by the TTLV representation
+            fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(CryptographicUsageMask { bits: v as u32 })
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(CryptographicUsageMask { bits: v as u32 })
+            }
+
+            // used by the direct JSON representation
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(CryptographicUsageMask { bits: v as u32 })
+            }
+        }
+        deserializer.deserialize_any(CryptographicUsageMaskVisitor)
+    }
+}
+
 bitflags::bitflags! {
-    #[derive(Serialize, Deserialize)]
     pub struct ProtectionStorageMasks: u32 {
         const Software=0x0000_0001;
         const Hardware=0x0000_0002;
@@ -342,6 +401,61 @@ bitflags::bitflags! {
         // Extensions XXX00000
     }
 }
+impl Serialize for ProtectionStorageMasks {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_i32(self.bits as i32)
+    }
+}
+impl<'de> Deserialize<'de> for ProtectionStorageMasks {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ProtectionStorageMasksVisitor;
+
+        impl<'de> Visitor<'de> for ProtectionStorageMasksVisitor {
+            type Value = ProtectionStorageMasks;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct ProtectionStorageMasks")
+            }
+
+            fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(ProtectionStorageMasks { bits: v })
+            }
+
+            // used by the TTLV representation
+            fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(ProtectionStorageMasks { bits: v as u32 })
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(ProtectionStorageMasks { bits: v as u32 })
+            }
+
+            // used by the direct JSON representation
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(ProtectionStorageMasks { bits: v as u32 })
+            }
+        }
+        deserializer.deserialize_any(ProtectionStorageMasksVisitor)
+    }
+}
 
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
@@ -353,13 +467,67 @@ pub enum ObjectGroupMember {
 }
 
 bitflags::bitflags! {
-    #[derive(Serialize, Deserialize)]
-    #[serde(rename_all = "PascalCase")]
+    // #[serde(rename_all = "PascalCase")]
     pub struct StorageStatusMask: u32 {
         const OnlineStorage=0x0000_0001;
         const ArchivalStorage=0x0000_0002;
         const DestroyedStorage=0x0000_0004;
         // Extensions XXXXXXX0
+    }
+}
+impl Serialize for StorageStatusMask {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_i32(self.bits as i32)
+    }
+}
+impl<'de> Deserialize<'de> for StorageStatusMask {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct StorageStatusMaskVisitor;
+
+        impl<'de> Visitor<'de> for StorageStatusMaskVisitor {
+            type Value = StorageStatusMask;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct StorageStatusMask")
+            }
+
+            fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(StorageStatusMask { bits: v })
+            }
+
+            // used by the TTLV representation
+            fn visit_i32<E>(self, v: i32) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(StorageStatusMask { bits: v as u32 })
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(StorageStatusMask { bits: v as u32 })
+            }
+
+            // used by the direct JSON representation
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(StorageStatusMask { bits: v as u32 })
+            }
+        }
+        deserializer.deserialize_any(StorageStatusMaskVisitor)
     }
 }
 
@@ -649,7 +817,8 @@ pub struct Attributes {
     /// associated key material is not available to the server or client (e.g.,
     /// the registration of a CA Signer certificate with a server, where the
     /// corresponding private key is held in a different manner)
-    pub link: Vec<Link>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link: Option<Vec<Link>>,
     /// The Object Typeof a Managed Object (e.g., public key, private key,
     /// symmetric key, etc.) SHALL be set by the server when the object is
     /// created or registered and then SHALL NOT be changed or deleted before
@@ -689,7 +858,7 @@ impl Attributes {
             cryptographic_parameters: None,
             cryptographic_usage_mask: None,
             key_format_type: None,
-            link: vec![],
+            link: None,
             object_type,
             vendor_attributes: None,
         }
@@ -730,14 +899,18 @@ impl Attributes {
     }
 
     pub fn get_parent_id(&self) -> Option<String> {
-        self.link
-            .iter()
-            .find(|l| l.link_type == LinkType::ParentLink)
-            .and_then(|l| match &l.linked_object_identifier {
-                LinkedObjectIdentifier::TextString(s) => Some(s.to_owned()),
-                LinkedObjectIdentifier::Enumeration(_e) => None,
-                LinkedObjectIdentifier::Index(i) => Some(i.to_string()),
-            })
+        if let Some(links) = &self.link {
+            links
+                .iter()
+                .find(|&l| l.link_type == LinkType::ParentLink)
+                .and_then(|l| match &l.linked_object_identifier {
+                    LinkedObjectIdentifier::TextString(s) => Some(s.to_owned()),
+                    LinkedObjectIdentifier::Enumeration(_e) => None,
+                    LinkedObjectIdentifier::Index(i) => Some(i.to_string()),
+                })
+        } else {
+            None
+        }
     }
 
     /// Set the attributes's object type.
