@@ -180,7 +180,7 @@ async fn verify_jws(token: &str, jwks: Value) -> Result<MicrosoftAttestation, Sg
     for jwk in jwks.iter() {
         if jwk.kid == kid {
             let x5c = &jwk.x5c[0];
-            let raw_cert = base64::decode(&x5c)?;
+            let raw_cert = base64::decode(x5c)?;
             let x509 = X509::from_der(&raw_cert)?;
 
             let token_data = decode::<Value>(

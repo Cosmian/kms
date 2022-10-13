@@ -11,9 +11,8 @@ curve25519 = []
 abe_policy = "1.0"
 abe_gpsw = { version = "2.0", features = ["interfaces"] }
 bitflags = "1.2"
-cosmian_crypto_base = { version = "2.1", features = ["libsodium"] }
+cosmian_crypto_base = "2.1"
 cosmian_kmip = { path = "../kmip" }
-cosmian_mcfe = { git = "https://github.com/Cosmian/DMCFE.git", branch = "feature/add_mcfe" }
 cover_crypt = "6.0"
 chrono = "0.4"
 hex = { version = "0.4", features = ["serde"] }
@@ -29,6 +28,10 @@ strum_macros = "0.24"
 thiserror = "1.0.20"
 torus_fhe = { git = "http://gitlab.cosmian.com/other/tfhe.git" }
 tracing = "0.1"
+
+[target.'cfg(all(not(target_arch = "wasm32"), not(windows)))'.dependencies]
+cosmian_mcfe = { git = "https://github.com/Cosmian/DMCFE.git", branch = "feature/add_mcfe" }
+cosmian_crypto_base = { version = "2.1", features = ["libsodium"] }
 
 [dev-dependencies]
 tracing-log = "0.1"

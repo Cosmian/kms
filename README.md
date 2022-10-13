@@ -11,7 +11,8 @@ And also some libraries:
 - `cosmian_kms_utils` to create kmip requests for the crypto-systems designed by *Cosmian*
 - `cosmian_kmip` which is an implementation of the kmip standard
 
-Please refer to the README of the inner directories to have more information.
+**Please refer to the README of the inner directories to have more
+information.**
 
 The `enclave` directory contains all the requirements to run the KMS inside an Intel SGX enclave.
 
@@ -21,7 +22,7 @@ You can build a docker containing the KMS server as follow:
 # Example with auth and https features
 docker build . --network=host \
                --build-arg FEATURES="--features=auth,https" \
-               -t kms 
+               -t kms
 ```
 
 The `delivery` directory contains all the requirements to proceed a KMS delivery based on a docker creation.

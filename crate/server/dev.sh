@@ -7,4 +7,4 @@ export KMS_PRIVATE_PATH="data/private"
 
 mkdir -p ${KMS_PUBLIC_PATH} ${KMS_SHARED_PATH} ${KMS_PRIVATE_PATH} 
 
-cargo run --bin cosmian_kms_server --features dev --no-default-features
+cargo run --bin cosmian_kms_server --no-default-features

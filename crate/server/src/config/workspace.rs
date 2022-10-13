@@ -15,7 +15,7 @@ pub struct WorkspaceConfig {
     #[clap(long, env = "KMS_SHARED_PATH", parse(from_os_str))]
     pub shared_path: PathBuf,
 
-    /// The folder to store private data (encrypted and readable by noone but the current instance)
+    /// The folder to store private data (encrypted and readable by none but the current instance)
     #[clap(long, env = "KMS_PRIVATE_PATH", parse(from_os_str))]
     pub private_path: PathBuf,
 
@@ -70,6 +70,6 @@ fn normalize_path(current_path: &Path, target: &Path) -> PathBuf {
     if target.is_absolute() {
         target.to_owned()
     } else {
-        current_path.join(&target)
+        current_path.join(target)
     }
 }

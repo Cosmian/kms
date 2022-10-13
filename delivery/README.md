@@ -1,8 +1,8 @@
 # Create a delivery package
 
 Note:
-- This delivery procedure has been written for CATS. If you need to generate a
-  docker with other parameters, please copy the `Dockerfile`, do not modify it.
+- This delivery procedure has been written for customers that need standalone KMS with no authentication and no HTTPS support.
+If you need to generate a docker with other parameters, please copy the `Dockerfile`, do not modify it.
 
 ## Pre-requisites
 
@@ -19,12 +19,11 @@ docker checkout tags/2.0.5
 From project root:
 
 ```
-docker build . -f delivery/Dockerfile.cats --network=host -t  kms:2.0.5
+docker build . -f delivery/Dockerfile.standalone --network=host -t kms:2.0.5
 ```
 
 Note:
-- The docker is created using `--features=dev` because CATS is offline. So they
-  can't use https version (communication with Let's Encrypt is not possible)
+- The docker is created without any features, in order to make the KMS run in offline mode. So the customer can't use HTTPS (communication with Let's Encrypt is not possible)
 
 ## Run the docker compose
 

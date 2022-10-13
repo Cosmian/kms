@@ -3,13 +3,17 @@ use std::time::SystemTime;
 use chrono::{DateTime, Utc};
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
+use tracing::trace;
 
 use crate::{
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
-        kmip_operations::{Import, ImportResponse},
-        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
+        kmip_operations::{Create, Import, ImportResponse},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
+            LinkedObjectIdentifier,
+        },
         ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
     },
     log_utils::log_init,
@@ -24,7 +28,13 @@ pub(crate) fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
 pub(crate) fn aes_key_value(key_value: &[u8]) -> KeyValue {
     KeyValue {
         key_material: aes_key_material(key_value),
-        attributes: Some(Attributes::new(ObjectType::SymmetricKey)),
+        attributes: Some(Attributes {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+            cryptographic_length: Some(256),
+            cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
+            key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+            ..Attributes::new(ObjectType::SymmetricKey)
+        }),
     }
 }
 
@@ -64,8 +74,22 @@ pub(crate) fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
                 tag: "Attributes".to_string(),
                 value: TTLValue::Structure(vec![
                     TTLV {
-                        tag: "Link".to_string(),
-                        value: TTLValue::Structure(vec![]),
+                        tag: "CryptographicAlgorithm".to_string(),
+                        value: TTLValue::Enumeration(TTLVEnumeration::Name("AES".to_string())),
+                    },
+                    TTLV {
+                        tag: "CryptographicLength".to_string(),
+                        value: TTLValue::Integer(256),
+                    },
+                    TTLV {
+                        tag: "CryptographicUsageMask".to_string(),
+                        value: TTLValue::Integer(4),
+                    },
+                    TTLV {
+                        tag: "KeyFormatType".to_string(),
+                        value: TTLValue::Enumeration(TTLVEnumeration::Name(
+                            "TransparentSymmetricKey".to_string(),
+                        )),
                     },
                     TTLV {
                         tag: "ObjectType".to_string(),
@@ -435,9 +459,10 @@ fn test_big_int_deserialization() {
 
 #[test]
 fn test_des_aes_key() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("trace,hyper=info,reqwest=info");
     let key_bytes: &[u8] = b"this_is_a_test";
-    //
+    trace!("HELLO");
+
     let json = serde_json::to_value(aes_key(key_bytes)).unwrap();
     let o: Object = serde_json::from_value(json).unwrap();
     // Deserialization cannot make the difference
@@ -446,7 +471,7 @@ fn test_des_aes_key() {
         aes_key(key_bytes),
         Object::post_fix(ObjectType::SymmetricKey, o)
     );
-    //
+
     let ttlv = aes_key_ttlv(key_bytes);
     let rec: Object = from_ttlv(&ttlv).unwrap();
     // Deserialization cannot make the difference
@@ -473,13 +498,14 @@ fn test_aes_key_block() {
 
 #[test]
 fn test_aes_key_value() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("trace,hyper=info,reqwest=info");
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_value(key_bytes)).unwrap();
+    // println!("JSON {:?}", json);
     let kv: KeyValue = serde_json::from_value(json).unwrap();
     assert_eq!(aes_key_value(key_bytes), kv);
-    //
+
     let ttlv = aes_key_value_ttlv(key_bytes);
     let rec: KeyValue = from_ttlv(&ttlv).unwrap();
     assert_eq!(aes_key_value(key_bytes), rec);
@@ -657,5 +683,36 @@ pub fn test_import_correct_object() {
     assert_eq!(
         CryptographicAlgorithm::ABE,
         import.object.key_block().unwrap().cryptographic_algorithm
+    );
+}
+
+#[test]
+pub fn test_create() {
+    let attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        link: Some(vec![Link {
+            link_type: crate::kmip::kmip_types::LinkType::ParentLink,
+            linked_object_identifier: crate::kmip::kmip_types::LinkedObjectIdentifier::TextString(
+                "SK".to_string(),
+            ),
+        }]),
+        ..Attributes::new(ObjectType::SymmetricKey)
+    };
+    let create = Create {
+        object_type: ObjectType::SymmetricKey,
+        attributes,
+        protection_storage_masks: None,
+    };
+    let ttlv = to_ttlv(&create).unwrap();
+    // println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
+    let create_: Create = from_ttlv(&ttlv).unwrap();
+    assert_eq!(ObjectType::SymmetricKey, create_.object_type);
+    assert_eq!(
+        CryptographicAlgorithm::AES,
+        create_.attributes.cryptographic_algorithm.unwrap()
+    );
+    assert_eq!(
+        LinkedObjectIdentifier::TextString("SK".to_string(),),
+        create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
     );
 }
