@@ -411,12 +411,12 @@ async fn test_abe_json_access() -> KResult<()> {
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(
             &secret_mkg_fin_access_policy,
         )?]),
-        link: vec![Link {
+        link: Some(vec![Link {
             link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
                 master_private_key_uid.to_owned(),
             ),
-        }],
+        }]),
         ..Attributes::new(ObjectType::PrivateKey)
     };
 

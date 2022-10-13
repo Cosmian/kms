@@ -641,7 +641,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::Sql;
-    use crate::{database::Database, kms_bail, result::KResult};
+    use crate::{database::Database, error::KmsError, kms_bail, result::KResult};
 
     #[actix_rt::test]
     #[serial(mysql)]
@@ -686,10 +686,10 @@ mod tests {
         }
 
         let mut attributes = symmetric_key.attributes_mut()?;
-        attributes.link = vec![Link {
+        attributes.link = Some(vec![Link {
             link_type: LinkType::PreviousLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
-        }];
+        }]);
 
         mysql
             .update_object(&uid, owner, &symmetric_key, None)
@@ -702,7 +702,13 @@ mod tests {
             Some((obj_, state_)) => {
                 assert_eq!(StateEnumeration::Active, state_);
                 assert_eq!(
-                    obj_.attributes()?.link[0].linked_object_identifier,
+                    obj_.attributes()?
+                        .link
+                        .as_ref()
+                        .ok_or_else(|| KmsError::ServerError(
+                            "links should not be empty".to_string()
+                        ))?[0]
+                        .linked_object_identifier,
                     LinkedObjectIdentifier::TextString("foo".to_string())
                 );
             }
@@ -768,10 +774,10 @@ mod tests {
         }
 
         let mut attributes = symmetric_key.attributes_mut()?;
-        attributes.link = vec![Link {
+        attributes.link = Some(vec![Link {
             link_type: LinkType::PreviousLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
-        }];
+        }]);
 
         mysql
             .upsert(
@@ -790,7 +796,13 @@ mod tests {
             Some((obj_, state_)) => {
                 assert_eq!(StateEnumeration::PreActive, state_);
                 assert_eq!(
-                    obj_.attributes()?.link[0].linked_object_identifier,
+                    obj_.attributes()?
+                        .link
+                        .as_ref()
+                        .ok_or_else(|| KmsError::ServerError(
+                            "links should not be empty".to_string()
+                        ))?[0]
+                        .linked_object_identifier,
                     LinkedObjectIdentifier::TextString("foo".to_string())
                 );
             }
@@ -1325,7 +1337,7 @@ mod tests {
         }];
 
         let mut attributes = symmetric_key.attributes_mut()?;
-        attributes.link = link.clone();
+        attributes.link = Some(link.clone());
 
         let uid_ = db
             .create(Some(uid.clone()), owner, &symmetric_key, None)
@@ -1340,7 +1352,7 @@ mod tests {
                 assert_eq!(StateEnumeration::Active, state_);
                 assert_eq!(&symmetric_key, &obj_);
                 assert_eq!(
-                    obj_.attributes()?.link[0].linked_object_identifier,
+                    obj_.attributes()?.link.as_ref().unwrap()[0].linked_object_identifier,
                     LinkedObjectIdentifier::TextString("foo".to_string())
                 );
             }
@@ -1348,7 +1360,7 @@ mod tests {
         }
 
         let researched_attributes = Some(Attributes {
-            link: link.clone(),
+            link: Some(link.clone()),
             ..Attributes::new(ObjectType::SymmetricKey)
         });
         let found = db

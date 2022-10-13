@@ -44,24 +44,24 @@ pub fn build_create_user_decryption_key_pair_request(
             cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
             key_format_type: Some(KeyFormatType::AbeUserDecryptionKey),
             vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-            link: vec![Link {
+            link: Some(vec![Link {
                 link_type: LinkType::ParentLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(
                     abe_master_private_key_id.to_owned(),
                 ),
-            }],
+            }]),
             ..Attributes::new(ObjectType::PrivateKey)
         }),
         public_key_attributes: Some(Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
             key_format_type: Some(KeyFormatType::AbeUserDecryptionKey),
             vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-            link: vec![Link {
+            link: Some(vec![Link {
                 link_type: LinkType::ParentLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(
                     abe_master_public_key_id.to_owned(),
                 ),
-            }],
+            }]),
             ..Attributes::new(ObjectType::PrivateKey)
         }),
         ..CreateKeyPair::default()
@@ -78,12 +78,12 @@ pub fn build_create_user_decryption_private_key_request(
             cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
             key_format_type: Some(KeyFormatType::AbeUserDecryptionKey),
             vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-            link: vec![Link {
+            link: Some(vec![Link {
                 link_type: LinkType::ParentLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(
                     abe_master_private_key_id.to_owned(),
                 ),
-            }],
+            }]),
             ..Attributes::new(ObjectType::PrivateKey)
         },
         object_type: ObjectType::PrivateKey,
@@ -106,12 +106,12 @@ pub fn build_import_decryption_private_key_request(
     let attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
         key_format_type: Some(KeyFormatType::AbeUserDecryptionKey),
-        link: vec![Link {
+        link: Some(vec![Link {
             link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
                 abe_master_private_key_id.to_owned(),
             ),
-        }],
+        }]),
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
         ..Attributes::new(ObjectType::PrivateKey)
     };
@@ -177,12 +177,12 @@ pub fn build_import_private_key_request(
         cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
         key_format_type: Some(KeyFormatType::AbeMasterSecretKey),
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
-        link: vec![Link {
+        link: Some(vec![Link {
             link_type: LinkType::PublicKeyLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
                 abe_master_public_key_id.to_owned(),
             ),
-        }],
+        }]),
         ..Attributes::new(ObjectType::PrivateKey)
     };
 
@@ -244,12 +244,12 @@ pub fn build_import_public_key_request(
         cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
         key_format_type: Some(KeyFormatType::AbeMasterSecretKey),
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
-        link: vec![Link {
+        link: Some(vec![Link {
             link_type: LinkType::PrivateKeyLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
                 abe_master_private_key_id.to_owned(),
             ),
-        }],
+        }]),
         ..Attributes::new(ObjectType::PublicKey)
     };
 

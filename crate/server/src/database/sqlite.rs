@@ -1090,7 +1090,7 @@ mod tests {
         }];
 
         let mut attributes = symmetric_key.attributes_mut()?;
-        attributes.link = link.clone();
+        attributes.link = Some(link.clone());
 
         let uid_ = db
             .create(Some(uid.clone()), owner, &symmetric_key, None)
@@ -1105,7 +1105,7 @@ mod tests {
                 assert_eq!(StateEnumeration::Active, state_);
                 assert_eq!(&symmetric_key, &obj_);
                 assert_eq!(
-                    obj_.attributes()?.link[0].linked_object_identifier,
+                    obj_.attributes()?.link.as_ref().unwrap()[0].linked_object_identifier,
                     LinkedObjectIdentifier::TextString("foo".to_string())
                 );
             }
@@ -1113,7 +1113,7 @@ mod tests {
         }
 
         let researched_attributes = Some(Attributes {
-            link: link.clone(),
+            link: Some(link.clone()),
             ..Attributes::new(ObjectType::SymmetricKey)
         });
         let found = db

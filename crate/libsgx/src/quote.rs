@@ -79,17 +79,17 @@ pub struct ReportBody {
 impl fmt::Debug for ReportBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ReportBody")
-            .field("cpu_svn", &encode(&self.cpu_svn))
+            .field("cpu_svn", &encode(self.cpu_svn))
             .field("misc_select", &self.misc_select)
-            .field("isv_ext_prod_id", &encode(&self.isv_ext_prod_id))
+            .field("isv_ext_prod_id", &encode(self.isv_ext_prod_id))
             .field("attributes", &self.attributes)
-            .field("mr_enclave", &encode(&self.mr_enclave))
-            .field("mr_signer", &encode(&self.mr_signer))
-            .field("config_id", &encode(&self.config_id))
+            .field("mr_enclave", &encode(self.mr_enclave))
+            .field("mr_signer", &encode(self.mr_signer))
+            .field("config_id", &encode(self.config_id))
             .field("isv_prod_id", &self.isv_prod_id)
             .field("config_svn", &self.config_svn)
-            .field("isv_family_id", &encode(&self.isv_family_id))
-            .field("report_data", &encode(&self.report_data))
+            .field("isv_family_id", &encode(self.isv_family_id))
+            .field("report_data", &encode(self.report_data))
             .finish()
     }
 }
@@ -122,10 +122,10 @@ impl fmt::Debug for Quote {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Quote")
             .field("sign_type", &self.version)
-            .field("epid_group_id", &encode(&self.epid_group_id))
+            .field("epid_group_id", &encode(self.epid_group_id))
             .field("qe_svn", &self.qe_svn)
             .field("pce_svn", &self.pce_svn)
-            .field("basename", &encode(&self.basename))
+            .field("basename", &encode(self.basename))
             .field("report_body", &self.report_body)
             .field("signature_len", &self.signature_len)
             .field("signature", &encode(&self.signature))

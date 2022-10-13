@@ -339,8 +339,17 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     );
     //check link to public key
     let attr = sk_key_block.key_value.attributes()?;
-    assert_eq!(attr.link.len(), 1);
-    let link = &attr.link[0];
+    assert_eq!(
+        attr.link
+            .as_ref()
+            .ok_or_else(|| KmsError::ServerError("links should not be empty".to_string()))?
+            .len(),
+        1
+    );
+    let link = &attr
+        .link
+        .as_ref()
+        .ok_or_else(|| KmsError::ServerError("links should not be empty".to_string()))?[0];
     assert_eq!(link.link_type, LinkType::PublicKeyLink);
     assert_eq!(
         link.linked_object_identifier,
@@ -380,8 +389,17 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     );
     // check link to secret key
     let attr = pk_key_block.key_value.attributes()?;
-    assert_eq!(attr.link.len(), 1);
-    let link = &attr.link[0];
+    assert_eq!(
+        attr.link
+            .as_ref()
+            .ok_or_else(|| KmsError::ServerError("links should not be empty".to_string()))?
+            .len(),
+        1
+    );
+    let link = &attr
+        .link
+        .as_ref()
+        .ok_or_else(|| KmsError::ServerError("links should not be empty".to_string()))?[0];
     assert_eq!(link.link_type, LinkType::PrivateKeyLink);
     assert_eq!(
         link.linked_object_identifier,

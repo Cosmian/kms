@@ -100,7 +100,7 @@ impl EnCipher for AesGcmCipher {
         // see `Block` in crypto_base
         if let Some(cp) = &request.cryptographic_parameters {
             if let Some(block_number) = cp.initial_counter_value {
-                ad.extend(&(block_number as usize).to_le_bytes());
+                ad.extend((block_number as usize).to_le_bytes());
             }
         }
 
@@ -173,7 +173,7 @@ impl DeCipher for AesGcmCipher {
         // see `Block` in crypto_base
         if let Some(cp) = &request.cryptographic_parameters {
             if let Some(block_number) = cp.initial_counter_value {
-                ad.extend(&(block_number as usize).to_le_bytes());
+                ad.extend((block_number as usize).to_le_bytes());
             }
         }
 

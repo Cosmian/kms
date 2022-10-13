@@ -95,12 +95,12 @@ where
             // cover_crypt_master_private_key_id_as_vendor_attribute(master_private_key_uid),
             attributes_as_vendor_attribute(cover_crypt_policy_attributes_to_revoke)?,
         ]),
-        link: vec![Link {
+        link: Some(vec![Link {
             link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
                 master_private_key_uid.to_owned(),
             ),
-        }],
+        }]),
         ..Attributes::new(ObjectType::PrivateKey)
     };
     let locate_request = Locate {

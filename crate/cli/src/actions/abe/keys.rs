@@ -383,14 +383,14 @@ impl ImportKeysAction {
                 let policy = super::policy::policy_from_file(policy_file)?;
 
                 // Read the private key
-                let mut f = File::open(&secret_key_file)
+                let mut f = File::open(secret_key_file)
                     .with_context(|| "Can't read the private key file")?;
                 let mut private_key = Vec::new();
                 f.read_to_end(&mut private_key)
                     .with_context(|| "Fail to read the private key file")?;
 
                 // Read the public key
-                let mut f = File::open(&public_key_file)
+                let mut f = File::open(public_key_file)
                     .with_context(|| "Can't read the public key file")?;
                 let mut public_key = Vec::new();
                 f.read_to_end(&mut public_key)
@@ -468,7 +468,7 @@ impl ImportKeysAction {
             (None, None, None, Some(user_key_file), Some(secret_key_id), Some(access_policy)) => {
                 // Read the public key
                 let mut f =
-                    File::open(&user_key_file).with_context(|| "Can't read the user key file")?;
+                    File::open(user_key_file).with_context(|| "Can't read the user key file")?;
                 let mut user_key = Vec::new();
                 f.read_to_end(&mut user_key)
                     .with_context(|| "Fail to read the user key file")?;

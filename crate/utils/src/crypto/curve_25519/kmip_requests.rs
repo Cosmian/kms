@@ -32,7 +32,7 @@ pub fn create_key_pair_request() -> CreateKeyPair {
             cryptographic_parameters: None,
             cryptographic_usage_mask: None,
             key_format_type: Some(KeyFormatType::ECPrivateKey),
-            link: vec![],
+            link: None,
             object_type: ObjectType::PrivateKey,
             vendor_attributes: None,
         }),

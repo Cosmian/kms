@@ -630,10 +630,10 @@ impl KmipServer for KMS {
             }
         };
         let mut attr = pk_key_block.key_value.attributes()?.clone();
-        attr.link = vec![Link {
+        attr.link = Some(vec![Link {
             link_type: LinkType::PrivateKeyLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(sk_uid.clone()),
-        }];
+        }]);
         pk_key_block.key_value = KeyValue {
             key_material: pk_key_block.key_value.key_material.clone(),
             attributes: Some(attr),
@@ -659,10 +659,10 @@ impl KmipServer for KMS {
         };
         trace!("Create private key link OK");
         let mut attr = sk_key_block.key_value.attributes()?.clone();
-        attr.link = vec![Link {
+        attr.link = Some(vec![Link {
             link_type: LinkType::PublicKeyLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(pk_uid.clone()),
-        }];
+        }]);
         sk_key_block.key_value = KeyValue {
             key_material: sk_key_block.key_value.key_material.clone(),
             attributes: Some(attr),
