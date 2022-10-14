@@ -9,12 +9,12 @@ use cosmian_kmip::kmip::{
 };
 
 use super::AesGcmCipher;
-use crate::{crypto::aes::create_aes_symmetric_key, DeCipher, EnCipher};
+use crate::{crypto::aes::create_symmetric_key, DeCipher, EnCipher};
 
 #[test]
 pub fn test_aes() {
     let mut rng = CsRng::new();
-    let key = create_aes_symmetric_key(None).unwrap();
+    let key = create_symmetric_key(CryptographicAlgorithm::AES, None).unwrap();
     let aes = AesGcmCipher::instantiate("blah", &key).unwrap();
     let data = rng.generate_random_bytes::<typenum::U42>();
     let uid = rng.generate_random_bytes::<typenum::U32>();

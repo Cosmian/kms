@@ -9,7 +9,7 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::{
     crypto::{
-        aes::{create_aes_symmetric_key, AesGcmCipher},
+        aes::{create_symmetric_key, AesGcmCipher},
         cover_crypt::ciphers::{CoverCryptHybridCipher, CoverCryptHybridDecipher},
         curve_25519::operation::generate_key_pair,
         gpsw::ciphers::{AbeHybridCipher, AbeHybridDecipher},
@@ -35,7 +35,7 @@ use crate::{
         cached_sqlcipher::CachedSqlCipher, mysql::Sql, pgsql::Pgsql, sqlite::SqlitePool, Database,
     },
     error::KmsError,
-    kms_bail,
+    kms_bail, kms_error,
     result::KResult,
 };
 
@@ -200,21 +200,29 @@ impl KMS {
         _owner: &str,
     ) -> KResult<Object> {
         let attributes = &request.attributes;
-        match &attributes.cryptographic_algorithm {
-            Some(CryptographicAlgorithm::AES) => match attributes.key_format_type {
+        let cryptographic_algorithm = &attributes.cryptographic_algorithm.ok_or_else(|| {
+            kms_error!(
+                "The cryptographic algorithm must be specified for secret key creation".to_string()
+            )
+        })?;
+        match cryptographic_algorithm {
+            CryptographicAlgorithm::AES
+            | CryptographicAlgorithm::ChaCha20
+            | CryptographicAlgorithm::ChaCha20Poly1305 => match attributes.key_format_type {
                 None => kms_bail!(KmsError::InvalidRequest(
                     "Unable to create a symmetric key, the format type is not specified"
                         .to_string()
                 )),
-                Some(KeyFormatType::TransparentSymmetricKey) => {
-                    create_aes_symmetric_key(attributes.cryptographic_length.map(|v| v as usize))
-                        .map_err(Into::into)
-                }
+                Some(KeyFormatType::TransparentSymmetricKey) => create_symmetric_key(
+                    *cryptographic_algorithm,
+                    attributes.cryptographic_length.map(|v| v as usize),
+                )
+                .map_err(Into::into),
                 Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
                     "Unable to generate a symmetric key for format: {other}"
                 ))),
             },
-            Some(CryptographicAlgorithm::LWE) => match attributes.key_format_type {
+            CryptographicAlgorithm::LWE => match attributes.key_format_type {
                 None => kms_bail!(KmsError::InvalidRequest(
                     "Unable to create a secret key, the format type is not specified".to_string()
                 )),
@@ -237,7 +245,7 @@ impl KMS {
                     "Unable to generate an LWE secret key for format: {other}"
                 ))),
             },
-            Some(CryptographicAlgorithm::TFHE) => match attributes.key_format_type {
+            CryptographicAlgorithm::TFHE => match attributes.key_format_type {
                 None => kms_bail!(KmsError::InvalidRequest(
                     "Unable to create a secret key, the format type is not specified".to_string()
                 )),
@@ -279,12 +287,9 @@ impl KMS {
                     "Unable to generate an TFHE secret key for format: {other}"
                 ))),
             },
-            Some(other) => kms_bail!(KmsError::NotSupported(format!(
+            other => kms_bail!(KmsError::NotSupported(format!(
                 "The creation of secret key for algorithm: {other:?} is not supported"
             ))),
-            None => kms_bail!(KmsError::InvalidRequest(
-                "The cryptographic algorithm must be specified for secret key creation".to_string()
-            )),
         }
     }
 

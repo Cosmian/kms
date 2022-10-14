@@ -661,7 +661,7 @@ mod tests {
             LinkType, LinkedObjectIdentifier, StateEnumeration,
         },
     };
-    use cosmian_kms_utils::{crypto::aes::create_aes_symmetric_key, types::ObjectOperationTypes};
+    use cosmian_kms_utils::{crypto::aes::create_symmetric_key, types::ObjectOperationTypes};
     use tempfile::tempdir;
     use uuid::Uuid;
 
@@ -683,7 +683,7 @@ mod tests {
 
         let db = SqlitePool::instantiate(&file_path).await?;
 
-        let symmetric_key = create_aes_symmetric_key(None)?;
+        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -921,7 +921,7 @@ mod tests {
 
         //
 
-        let symmetric_key = create_aes_symmetric_key(None)?;
+        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -1080,7 +1080,7 @@ mod tests {
 
         //
 
-        let mut symmetric_key = create_aes_symmetric_key(None)?;
+        let mut symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         // Define the link vector

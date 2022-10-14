@@ -2,7 +2,7 @@
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 name = "cosmian_kms_server"
-version = "2.3.0"
+version = "2.3.1"
 description = "Cosmian Key Management Service"
 
 [features]
