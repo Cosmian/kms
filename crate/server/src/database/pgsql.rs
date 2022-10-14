@@ -660,7 +660,7 @@ mod tests {
             LinkType, LinkedObjectIdentifier, StateEnumeration,
         },
     };
-    use cosmian_kms_utils::{crypto::aes::create_aes_symmetric_key, types::ObjectOperationTypes};
+    use cosmian_kms_utils::{crypto::aes::create_symmetric_key, types::ObjectOperationTypes};
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -696,7 +696,7 @@ mod tests {
         }
 
         // Insert an object and query it, update it, delete it, query it
-        let mut symmetric_key = create_aes_symmetric_key(None)?;
+        let mut symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         let uid_ = pg
@@ -786,7 +786,7 @@ mod tests {
 
         // Create key
 
-        let mut symmetric_key = create_aes_symmetric_key(None)?;
+        let mut symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         pg.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -867,10 +867,10 @@ mod tests {
 
         // Create key
 
-        let symmetric_key_1 = create_aes_symmetric_key(None)?;
+        let symmetric_key_1 = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
         let uid_1 = Uuid::new_v4().to_string();
 
-        let symmetric_key_2 = create_aes_symmetric_key(None)?;
+        let symmetric_key_2 = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
         let uid_2 = Uuid::new_v4().to_string();
 
         let ids = pg
@@ -951,7 +951,7 @@ mod tests {
 
         // Create key
 
-        let symmetric_key = create_aes_symmetric_key(None)?;
+        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         // test non existent row (with very high probability)
@@ -1193,7 +1193,7 @@ mod tests {
 
         // Create key
 
-        let symmetric_key = create_aes_symmetric_key(None)?;
+        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -1350,7 +1350,7 @@ mod tests {
 
         //
 
-        let mut symmetric_key = create_aes_symmetric_key(None)?;
+        let mut symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         // Define the link vector
