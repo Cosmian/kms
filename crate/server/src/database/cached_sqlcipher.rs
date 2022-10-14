@@ -372,7 +372,7 @@ mod tests {
         },
     };
     use cosmian_kms_utils::{
-        crypto::aes::create_aes_symmetric_key,
+        crypto::aes::create_symmetric_key,
         types::{ExtraDatabaseParams, ObjectOperationTypes},
     };
     use tempfile::tempdir;
@@ -401,7 +401,7 @@ mod tests {
             key: String::from("password"),
         };
 
-        let symmetric_key = create_aes_symmetric_key(None)?;
+        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(
@@ -658,7 +658,7 @@ mod tests {
             key: String::from("password"),
         };
 
-        let symmetric_key = create_aes_symmetric_key(None)?;
+        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(

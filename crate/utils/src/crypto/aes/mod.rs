@@ -19,7 +19,7 @@ use cosmian_kmip::{
 };
 
 mod symmetric_key;
-pub use symmetric_key::create_aes_symmetric_key;
+pub use symmetric_key::create_symmetric_key;
 
 #[cfg(test)]
 mod tests;
