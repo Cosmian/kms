@@ -1,7 +1,7 @@
 The library is made available under two different licenses depending on how you plan to use it.
 
 # Open Source License
-The library is made available under an Affero GPLv3 license for open-source, academic, and personal projects.
+The library is made available under an Affero GPLv3 license for open-source, academic, technology evaluation, and personal projects.
 A copy of this license is available below.
 
 # Commercial License
