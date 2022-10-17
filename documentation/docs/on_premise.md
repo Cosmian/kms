@@ -1,5 +1,5 @@
 
-If you don't use the SaaS offering on the Cosmian public platform, and want to run your own KMS, follow the instructions below. 
+If you don't use the SaaS offering on the Cosmian public platform, and want to run your own KMS, follow the instructions below.
 
 The KMS server is packaged in a single Docker image based on Ubuntu 21.10.
 
@@ -35,11 +35,11 @@ The KMS server port will be available on 9998.
 ### Production mode
 
 
-In DB mode, the server is using PostgreSQL or Maria database to store its objects. 
+In DB mode, the server is using PostgreSQL or Maria database to store its objects.
 
 An URL must be provided to allow the KMS server to connect to the database (see below).
 
-Find below the instructions for PostgreSQL. 
+Find below the instructions for PostgreSQL.
 
 Before running the server a dedicated database with a dedicated user should be created on the PostgreSQL instance. Here are example instructions to create a database called `kms` owned by a user `kms_user` with password `kms_password`:
 
@@ -86,7 +86,7 @@ cosmian/kms_server:1.2.1
 ```
 
 > The API authentication is enabled if the environment variable `KMS_DELEGATED_AUTHORITY_DOMAIN` is provided when starting the KMS Docker container (see below). The variable should contain the URL of the domain i.e.
-> 
+>
 > ```-e KMS_DELEGATED_AUTHORITY_DOMAIN=my_auth_domain.com```
 >
 > If the flag is not provided, the authentication is completely disabled.
@@ -104,3 +104,36 @@ sudo docker run \
 cosmian/kms_server:1.2.1
 ```
 The port wil be `9998`; this can be changed by setting the environment variable `KMS_PORT=[port]`
+
+
+#### Example of docker-compose.yml
+
+KMS server using a PostgreSQL database can also be run with `docker-compose`:
+
+```yaml
+version: "3.4"
+services:
+  db:
+    container_name: db
+    image: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=kms
+      - POSTGRES_DB=kms
+      - POSTGRES_PASSWORD=kms
+      - PGDATA=/opt/postgres
+  kms:
+    container_name: kms
+    image: cosmian/kms
+    environment:
+      - KMS_POSTGRES_URL=postgres://kms:kms@db/kms
+      - KMS_HOSTNAME=0.0.0.0
+    ports:
+      - "9998:9998"
+    depends_on:
+      - db
+```
+
+As reminder, the `cosmian/kms` docker container also contains the KMS client `cosmian_kms_cli`. This client simplifies the communications with the server as described in the [CLI documentation](https://docs.cosmian.com/kms/2.0/cli/).
+
