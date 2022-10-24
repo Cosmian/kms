@@ -30,6 +30,7 @@ use {
 use crate::core::KMS;
 pub mod log_utils;
 
+use actix_cors::Cors;
 use actix_web::{
     web::{Data, JsonConfig, PayloadConfig},
     App, HttpServer,
@@ -47,6 +48,7 @@ pub fn prepare_server(
 ) -> eyre::Result<actix_web::dev::Server> {
     let server = HttpServer::new(move || {
         let app = App::new()
+            .wrap(Cors::permissive())
             .app_data(Data::new(kms_server.clone()))
             .app_data(PayloadConfig::new(10_000_000_000))
             .app_data(JsonConfig::default().limit(10_000_000_000))
