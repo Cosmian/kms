@@ -1046,7 +1046,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "2.3.1"
+version = "2.3.3"
 dependencies = [
  "abe_gpsw",
  "abe_policy",

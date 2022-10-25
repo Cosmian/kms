@@ -2,7 +2,7 @@ use clap::StructOpt;
 use cosmian_kms_client::KmsRestClient;
 use eyre::Context;
 
-/// Query the KMS to initialize a new database
+/// Query the KMS to initialize a new database [enclave mode only]
 #[derive(StructOpt, Debug)]
 pub struct ConfigureAction;
 

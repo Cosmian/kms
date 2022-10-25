@@ -1,9 +1,9 @@
 [package]
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
+description = "Cosmian Key Management Service"
 edition = "2021"
 name = "cosmian_kms_server"
-version = "2.3.1"
-description = "Cosmian Key Management Service"
+version = "2.3.3"
 
 [features]
 # Enable authentication (via auth0). If disabled, multi-user is not supported
@@ -22,86 +22,86 @@ timeout = ["actix-rt"]
 staging = ["auth", "insecure", "https", "enclave"]
 
 # Enable all but timeout
-prod = ["auth", "https", "enclave"]
 default = ["prod"]
+prod = ["auth", "https", "enclave"]
 
 # TODO: Remove that feature and use bundled-sqlcipher-vendored-openssl as default feature in `dependencies` for libsqlite3-sys
 # when sqlite >= 3.8 will be supported
 sqlcipher = [
-  "libsqlite3-sys/bundled-sqlcipher-vendored-openssl"
+  "libsqlite3-sys/bundled-sqlcipher-vendored-openssl",
 ]
 
 [dependencies]
+abe_gpsw = {version = "2.0", features = ["interfaces"]}
 abe_policy = "1.0"
-abe_gpsw = { version = "2.0", features = ["interfaces"] }
 # We use our own acme-lib. We have removed timeout set to ureq
 # For a reason we ignore right now, it fails inside the enclave if we set timeout
-acme-lib = { git = "https://github.com/Cosmian/acme-lib" }
+acme-lib = {git = "https://github.com/Cosmian/acme-lib"}
 actix-files = "0.6.0"
 actix-identity = "0.4"
-actix-rt = { version = "2.6", optional = true }
+actix-rt = {version = "2.6", optional = true}
 actix-service = "2.0"
-actix-web = { version = "4.0", features = ["openssl"] }
+actix-web = {version = "4.0", features = ["openssl"]}
 alcoholic_jwt = "1.0"
 async-trait = "0.1"
 base64 = "0.13"
 bitflags = "1.2"
-clap = { version = "3.1", features = ["derive", "cargo", "env"] }
 chrono = "0.4"
-cosmian_crypto_base = { version = "2.1", features = ["libsodium"] }
-cosmian_kmip = { path = "../kmip" }
-cosmian_kms_utils = { path = "../utils", features=["curve25519"] }
-cosmian_mcfe = { git = "https://github.com/Cosmian/DMCFE.git", branch = "feature/add_mcfe" }
+clap = {version = "3.1", features = ["derive", "cargo", "env"]}
+cosmian_crypto_base = {version = "2.1", features = ["libsodium"]}
+cosmian_kmip = {path = "../kmip"}
+cosmian_kms_utils = {path = "../utils", features = ["curve25519"]}
+cosmian_mcfe = {git = "https://github.com/Cosmian/DMCFE.git", branch = "feature/add_mcfe"}
 cover_crypt = "6.0"
 dotenv = "0.15.0"
 env_logger = "0.9"
 # eyre is used to handle errors related to the server binary
 eyre = "0.6"
 futures = "0.3"
-hex = { version = "0.4", features = ["serde"] }
+hex = {version = "0.4", features = ["serde"]}
 # for status codes
 http = "0.2"
 lazy_static = "1.4"
-libsgx = { path = "../libsgx" }
+libsgx = {path = "../libsgx"}
 # Explicit import so that sqlcipher is enabled for sqlx (no pass-through feature available)
 # see: https://github.com/launchbadge/sqlx/issues/1436
-libsqlite3-sys = { version = "0.24" }
+libsqlite3-sys = {version = "0.24"}
 num-bigint = "0.4"
 once_cell = "1.9"
-openssl = { version = "0.10", features = ["vendored"] }
+openssl = {version = "0.10", features = ["vendored"]}
 rand_core = "0.6"
 rand_hc = "0.3"
-reqwest = { version = "0.11", features = ["json"] }
-serde = { version = "1.0", features = ["derive"] }
+reqwest = {version = "0.11", features = ["json"]}
+serde = {version = "1.0", features = ["derive"]}
 serde_json = "1.0"
 sha3 = "0.10"
 # do not use version > 20, `funty` sub-dependencies is incompatible with
 # some of our crypto crates' sub-dependencies
 mysql = "20"
-rawsql = { git = "https://github.com/manute/rawsql" }
-sqlx = { version = "0.5", features = [
+rawsql = {git = "https://github.com/manute/rawsql"}
+sqlx = {version = "0.5", features = [
   "json",
   "runtime-actix-native-tls",
   "mysql",
   "postgres",
   "sqlite",
-] }
+]}
 # thiserror is used to handle errors propagated through HTTP response
 # to set a proper http status code
+actix-cors = "0.6.3"
 thiserror = "1.0.20"
-torus_fhe = { git = "http://gitlab.cosmian.com/other/tfhe.git" }
+torus_fhe = {git = "http://gitlab.cosmian.com/other/tfhe.git"}
 tracing = "0.1"
 tracing-log = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = {version = "0.3", features = ["env-filter"]}
 tracing-tree = "0.2"
-uuid = { version = "1.0.0", features = ["v4"] }
-actix-cors = "0.6.3"
+uuid = {version = "1.0.0", features = ["v4"]}
 
 [dev-dependencies]
-actix-rt = "2.6"
 actix-http = "3.0"
-tempfile = "3.1"
+actix-rt = "2.6"
 serial_test = "0.6"
+tempfile = "3.1"
 
 [build-dependencies]
 chrono = "0.4"
