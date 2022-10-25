@@ -6,12 +6,12 @@ If you need to generate a docker with other parameters, please copy the `Dockerf
 
 ## Pre-requisites
 
-- Create a tag from main like that one: http://gitlab.cosmian.com/core/kms/-/tags/2.0.5
+- Create a tag from main like that one: http://gitlab.cosmian.com/core/kms/-/tags/X.Y.Z
 
 Then:
 
 ```
-docker checkout tags/2.0.5
+docker checkout tags/X.Y.Z
 ```
 
 ## Build the docker
@@ -19,7 +19,7 @@ docker checkout tags/2.0.5
 From project root:
 
 ```
-docker build . -f delivery/Dockerfile.standalone --network=host -t kms:2.0.5
+docker build . -f delivery/Dockerfile.standalone --network=host -t kms:X.Y.Z
 ```
 
 Note:
@@ -47,7 +47,7 @@ wget 127.0.0.1:9998/version
 ## Save the dockers
 
 ```
-docker save kms:2.0.5 > kms.tar
+docker save kms:X.Y.Z > kms.tar
 docker save postgres > postgres.tar
 ```
 

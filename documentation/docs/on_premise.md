@@ -5,39 +5,83 @@ The KMS server is packaged in a single Docker image based on Ubuntu 21.10.
 
 ## Installing
 
-Install the Docker image:
-
-```console
-sudo docker load < cosmian_kms_server_1_2_1.tar.gz
-```
-## Running
-
-The KMS server can be run in 2 modes:
+The KMS server as been published in [Cosmian public docker hub](https://hub.docker.com/r/cosmian/kms) and can be run in 2 modes:
 
  - in light mode, mostly for testing, using an embedded SQLite database
  - in production mode, using an external PostgreSQL or MariaDB Database
 
 ### Light mode
 
-The light mode is for single server run and persists data _inside_ the container (in `/tmp/kms.db`) by default. The root directory for the DB inside the container can be changed by setting the environment variable `KMS_ROOT_DIR` i.e.
-```
--e KMS_ROOT_DIR=/root
+The light mode is for single server run and persists data _inside_ the container (in `/tmp/kms.db`) by default.
+
+To run in light mode, using the defaults, simply run the container as follows:
+
+```yaml
+version: "3.4"
+services:
+  kms:
+    container_name: kms
+    image: cosmian/kms
+    environment:
+      - KMS_HOSTNAME=0.0.0.0
+      - KMS_PUBLIC_PATH=/data
+      - KMS_PRIVATE_PATH=/data
+      - KMS_SHARED_PATH=/data
+    ports:
+      - "9998:9998"
 ```
 
-To run in light mode, using the defaults, simply run the container as
+And run:
 
-```
-sudo docker run -p 9998:9998 cosmian/kms_server:1.2.1
+```bash
+docker-compose up
 ```
 
 The KMS server port will be available on 9998.
 
 ### Production mode
 
-
 In DB mode, the server is using PostgreSQL or Maria database to store its objects.
 
 An URL must be provided to allow the KMS server to connect to the database (see below).
+
+For example, KMS server can use a PostgreSQL database as follows:
+
+```yaml
+version: "3.4"
+services:
+  db:
+    container_name: db
+    image: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=kms
+      - POSTGRES_DB=kms
+      - POSTGRES_PASSWORD=kms
+      - PGDATA=/opt/postgres
+  kms:
+    container_name: kms
+    image: cosmian/kms
+    environment:
+      - KMS_POSTGRES_URL=postgres://kms:kms@db/kms
+      - KMS_HOSTNAME=0.0.0.0
+      - KMS_PUBLIC_PATH=/data
+      - KMS_PRIVATE_PATH=/data
+      - KMS_SHARED_PATH=/data
+    ports:
+      - "9998:9998"
+    depends_on:
+      - db
+```
+
+And run:
+
+```bash
+docker-compose up
+```
+
+#### PostgreSQL survival kit
 
 Find below the instructions for PostgreSQL.
 
@@ -66,74 +110,47 @@ create database kms owner=kms_user;
 
 Likewise, the database can be set to another name.
 
-4. Connection `POSTGRES_URL`
-
-Assuming a server running on 1.2.3.4, the environment variable to pass with the connection URL will be
-
-```
-KMS_POSTGRES_URL=postgresql://kms_user:kms_password@1.2.3.4:5432:kms
-```
-The environment variable for MariaDB is `KMS_MYSQL_URL`. With that one, you can also be authenticated using a PKCS#12 certificate by setting `KMS_USER_CERT_PATH`.
-
-5. Launch the KMS server on port 9998
-
-```sh
-sudo docker run \
--p 9998:9998 \
--e KMS_POSTGRES_URL=postgresql://kms_user:kms_password@1.2.3.4:5432:kms \
--e KMS_DELEGATED_AUTHORITY_DOMAIN=my_auth_domain.com \
-cosmian/kms_server:1.2.1
-```
-
-> The API authentication is enabled if the environment variable `KMS_DELEGATED_AUTHORITY_DOMAIN` is provided when starting the KMS Docker container (see below). The variable should contain the URL of the domain i.e.
->
-> ```-e KMS_DELEGATED_AUTHORITY_DOMAIN=my_auth_domain.com```
->
-> If the flag is not provided, the authentication is completely disabled.
-
-
 #### Note
 
-On linux, if PostgreSQL is running on the docker host, the network should be mapped to the `host` and launched using
+On linux, if PostgreSQL is running on the docker host, the network should be mapped to the `host`.
 
 
-```sh
-sudo docker run \
--e KMS_POSTGRES_URL=postgresql://kms_user:kms_password@localhost:5432/kms \
---network host \
-cosmian/kms_server:1.2.1
+## KMS CLI
+The `cosmian/kms` docker image also contains the KMS client `cosmian_kms_cli`. This client simplifies the communications with the server as described in the CLI documentation.
+
+The KMS CLI can be used as follows:
+
+```bash
+docker run --network=host -it --entrypoint /bin/cosmian_kms_cli -v $PWD/conf:/conf -e KMS_CLI_CONF=/conf/kms.json cosmian/kms:latest cc init --policy /conf/policy.json
 ```
-The port wil be `9998`; this can be changed by setting the environment variable `KMS_PORT=[port]`
 
+where $PWD/conf is a folder containing the files:
+- kms.json
+- policy.json: The JSON file refers to [CoverCrypt](https://github.com/Cosmian/cover_crypt) which is a Cosmian encryption scheme which allows creating ciphertexts for a set of attributes and issuing user keys with access policies over these attributes.
 
-#### Example of docker-compose.yml
+As example:
 
-KMS server using a PostgreSQL database can also be run with `docker-compose`:
-
+kms.json:
 ```yaml
-version: "3.4"
-services:
-  db:
-    container_name: db
-    image: postgres
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=kms
-      - POSTGRES_DB=kms
-      - POSTGRES_PASSWORD=kms
-      - PGDATA=/opt/postgres
-  kms:
-    container_name: kms
-    image: cosmian/kms
-    environment:
-      - KMS_POSTGRES_URL=postgres://kms:kms@db/kms
-      - KMS_HOSTNAME=0.0.0.0
-    ports:
-      - "9998:9998"
-    depends_on:
-      - db
+{
+  "kms_server_url": "http://127.0.0.1:9998",
+  "kms_access_token": ""
+}
 ```
 
-As reminder, the `cosmian/kms` docker container also contains the KMS client `cosmian_kms_cli`. This client simplifies the communications with the server as described in the [CLI documentation](https://docs.cosmian.com/kms/2.0/cli/).
-
+policy.json:
+```yaml
+{
+    "policy": {
+        "level": {
+            "hierarchical": true,
+            "attributes": ["confidential", "secret", "top-secret"]
+        },
+        "department": {
+            "hierarchical": false,
+            "attributes": ["finance", "marketing", "operations"]
+        }
+    },
+    "max-rotations": 100
+}
+```
