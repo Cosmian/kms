@@ -41,13 +41,12 @@ Base elliptic curve cryptography is provided using curve 25519 on the prime orde
 
 The curve implementation is from the [curve25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek) repository while the [cosmian_crypto_base](https://github.com/Cosmian/crypto_base) open source library provides an implementation of ECIES on the curve (Elliptic Curve Integrated Encryption Scheme).
 
-#### Attribute Based Encryption (ABE)
+#### Multi-user Encryption: CoverCrypt
 
-The goal of Attribute Based Encryption is to embed access policies in cipher texts and user decryption keys to strongly control access to data without the use of a centralized authorization system.
+The KMS encryption implementation is based on [CoverCrypt](https://github.com/Cosmian/cover_crypt) which is a multi‑user encryption solution which provides access rights to users with respect to
+an access policy where the policy over attributes can be expressed as a union of users’ rights. **CoverCrypt** has been proposed as a more efficient alternative to [Attribute-Based Encryption for Fine-Grained Access Control of Encrypted Data](https://eprint.iacr.org/2006/309.pdf) by vipul Goyal, Omkant Pandey, Amit Sahai, Brent Waters.
 
-The KMS supports a Key Policy Attributes Based Encryption known as GPSW06 based on the paper [Attribute-Based Encryption for Fine-Grained Access Control of Encrypted Data ](https://eprint.iacr.org/2006/309.pdf) by vipul Goyal, Omkant Pandey, Amit Sahai, Brent Waters. The implementation uses the BLS12-381 elliptic curve.
-
-Please refer to this (Cosmian abe_gpsw repository)[https://github.com/Cosmian/abe_gpsw] for details on GPSW and BLS12-381.
+Please refer to the [Cosmian CoverCrypt documentation](https://github.com/Cosmian/cover_crypt/blob/develop/bib/CoverCrypt.pdf) for more details.
 
 
 #### Decentralized Multi-Client Functional Encryption (DMCFE)
