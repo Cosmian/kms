@@ -9,7 +9,6 @@ curve25519 = []
 
 [dependencies]
 abe_policy = "1.0"
-abe_gpsw = { version = "2.0", features = ["interfaces"] }
 bitflags = "1.2"
 cosmian_crypto_base = "2.1"
 cosmian_kmip = { path = "../kmip" }

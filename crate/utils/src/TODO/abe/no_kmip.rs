@@ -2,7 +2,6 @@ use actix_web::web;
 use cosmian_crypto_base::{
     abe::{
         bilinear_map::bls12_381::Bls12_381,
-        gpsw::abe::Gpsw,
         policy::{AccessPolicy, Policy},
         wrapper::{self, generate_user_decryption_key},
         Engine,
@@ -426,7 +425,6 @@ mod tests {
     use cosmian_crypto_base::{
         abe::{
             bilinear_map::bls12_381::Bls12_381,
-            gpsw::abe::Gpsw,
             policy::{ap, Policy},
             Engine,
         },

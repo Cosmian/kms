@@ -9,27 +9,15 @@ use clap::StructOpt;
 use cosmian_kmip::kmip::kmip_operations::Get;
 use cosmian_kms_client::{kmip::kmip_types::RevocationReason, KmsRestClient};
 use cosmian_kms_utils::{
-    crypto::{
-        cover_crypt::kmip_requests::{
-            build_create_master_keypair_request as cc_build_create_master_keypair_request,
-            build_create_user_decryption_private_key_request as cc_build_create_user_decryption_private_key_request,
-            build_destroy_key_request as cc_build_destroy_key_request,
-            build_import_decryption_private_key_request as cc_build_import_decryption_private_key_request,
-            build_import_private_key_request as cc_build_import_private_key_request,
-            build_import_public_key_request as cc_build_import_public_key_request,
-            build_rekey_keypair_request as cc_build_rekey_keypair_request,
-            build_revoke_user_decryption_key_request as cc_build_revoke_user_decryption_key_request,
-        },
-        gpsw::kmip_requests::{
-            build_create_master_keypair_request as abe_build_create_master_keypair_request,
-            build_create_user_decryption_private_key_request as abe_build_create_user_decryption_private_key_request,
-            build_destroy_key_request as abe_build_destroy_key_request,
-            build_import_decryption_private_key_request as abe_build_import_decryption_private_key_request,
-            build_import_private_key_request as abe_build_import_private_key_request,
-            build_import_public_key_request as abe_build_import_public_key_request,
-            build_rekey_keypair_request as abe_build_rekey_keypair_request,
-            build_revoke_user_decryption_key_request as abe_build_revoke_user_decryption_key_request,
-        },
+    crypto::cover_crypt::kmip_requests::{
+        build_create_master_keypair_request as cc_build_create_master_keypair_request,
+        build_create_user_decryption_private_key_request as cc_build_create_user_decryption_private_key_request,
+        build_destroy_key_request as cc_build_destroy_key_request,
+        build_import_decryption_private_key_request as cc_build_import_decryption_private_key_request,
+        build_import_private_key_request as cc_build_import_private_key_request,
+        build_import_public_key_request as cc_build_import_public_key_request,
+        build_rekey_keypair_request as cc_build_rekey_keypair_request,
+        build_revoke_user_decryption_key_request as cc_build_revoke_user_decryption_key_request,
     },
     kmip_utils::unwrap_key_bytes,
 };
@@ -58,20 +46,12 @@ pub struct NewMasterKeyPairAction {
 }
 
 impl NewMasterKeyPairAction {
-    pub async fn run(
-        &self,
-        client_connector: &KmsRestClient,
-        is_cover_crypt: bool,
-    ) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Parse the json policy file
         let policy = super::policy::policy_from_file(&self.policy_file)?;
 
         // Create the kmip query
-        let create_key_pair = if is_cover_crypt {
-            cc_build_create_master_keypair_request(&policy)?
-        } else {
-            abe_build_create_master_keypair_request(&policy)?
-        };
+        let create_key_pair = cc_build_create_master_keypair_request(&policy)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = client_connector
@@ -110,11 +90,7 @@ pub struct NewUserKeyAction {
 }
 
 impl NewUserKeyAction {
-    pub async fn run(
-        &self,
-        client_connector: &KmsRestClient,
-        is_cover_crypt: bool,
-    ) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Parse self.access_policy
         let policy = if self.access_policy.trim().is_empty() {
             AccessPolicy::All
@@ -124,11 +100,8 @@ impl NewUserKeyAction {
         };
 
         // Create the kmip query
-        let create_user_key = if is_cover_crypt {
-            cc_build_create_user_decryption_private_key_request(&policy, &self.secret_key_id)?
-        } else {
-            abe_build_create_user_decryption_private_key_request(&policy, &self.secret_key_id)?
-        };
+        let create_user_key =
+            cc_build_create_user_decryption_private_key_request(&policy, &self.secret_key_id)?;
 
         // Query the KMS with your kmip data
         let create_response = client_connector
@@ -163,23 +136,12 @@ pub struct RevokeUserKeyAction {
 }
 
 impl RevokeUserKeyAction {
-    pub async fn run(
-        &self,
-        client_connector: &KmsRestClient,
-        is_cover_crypt: bool,
-    ) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Create the kmip query
-        let revoke_query = if is_cover_crypt {
-            cc_build_revoke_user_decryption_key_request(
-                &self.user_key_id,
-                RevocationReason::TextString(self.revocation_reason.to_owned()),
-            )?
-        } else {
-            abe_build_revoke_user_decryption_key_request(
-                &self.user_key_id,
-                RevocationReason::TextString(self.revocation_reason.to_owned()),
-            )?
-        };
+        let revoke_query = cc_build_revoke_user_decryption_key_request(
+            &self.user_key_id,
+            RevocationReason::TextString(self.revocation_reason.to_owned()),
+        )?;
 
         // Query the KMS with your kmip data
         let revoke_response = client_connector
@@ -212,11 +174,7 @@ pub struct RotateAttributeAction {
 }
 
 impl RotateAttributeAction {
-    pub async fn run(
-        &self,
-        client_connector: &KmsRestClient,
-        is_cover_crypt: bool,
-    ) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Parse the attributes
         let attributes = self
             .attributes
@@ -225,11 +183,7 @@ impl RotateAttributeAction {
             .collect::<eyre::Result<Vec<Attribute>>>()?;
 
         // Create the kmip query
-        let rotate_query = if is_cover_crypt {
-            cc_build_rekey_keypair_request(&self.secret_key_id, attributes)?
-        } else {
-            abe_build_rekey_keypair_request(&self.secret_key_id, attributes)?
-        };
+        let rotate_query = cc_build_rekey_keypair_request(&self.secret_key_id, attributes)?;
 
         // Query the KMS with your kmip data
         let rotate_response = client_connector
@@ -256,17 +210,9 @@ pub struct DestroyUserKeyAction {
 }
 
 impl DestroyUserKeyAction {
-    pub async fn run(
-        &self,
-        client_connector: &KmsRestClient,
-        is_cover_crypt: bool,
-    ) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         // Create the kmip query
-        let destroy_query = if is_cover_crypt {
-            cc_build_destroy_key_request(&self.user_key_id)?
-        } else {
-            abe_build_destroy_key_request(&self.user_key_id)?
-        };
+        let destroy_query = cc_build_destroy_key_request(&self.user_key_id)?;
 
         // Query the KMS with your kmip data
         let destroy_response = client_connector
@@ -365,11 +311,7 @@ pub struct ImportKeysAction {
 }
 
 impl ImportKeysAction {
-    pub async fn run(
-        &self,
-        client_connector: &KmsRestClient,
-        is_cover_crypt: bool,
-    ) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         match (
             &self.secret_key_file,
             &self.public_key_file,
@@ -401,27 +343,15 @@ impl ImportKeysAction {
                 let public_uuid = Uuid::new_v4().to_string();
 
                 // Create the kmip query for private key
-                let import_private_query = if is_cover_crypt {
-                    cc_build_import_private_key_request(
-                        &private_key,
-                        Some(private_uuid),
-                        false,
-                        &public_uuid,
-                        &policy,
-                        self.wrapped,
-                        self.password.clone(),
-                    )?
-                } else {
-                    abe_build_import_private_key_request(
-                        &private_key,
-                        Some(private_uuid),
-                        false,
-                        &public_uuid,
-                        &policy,
-                        self.wrapped,
-                        self.password.clone(),
-                    )?
-                };
+                let import_private_query = cc_build_import_private_key_request(
+                    &private_key,
+                    Some(private_uuid),
+                    false,
+                    &public_uuid,
+                    &policy,
+                    self.wrapped,
+                    self.password.clone(),
+                )?;
 
                 // Query the KMS with your kmip data for private key
                 let import_private_response =
@@ -434,23 +364,13 @@ impl ImportKeysAction {
 
                 // Create the kmip query for public key
 
-                let import_public_query = if is_cover_crypt {
-                    cc_build_import_public_key_request(
-                        &public_key,
-                        Some(public_uuid),
-                        false,
-                        &policy,
-                        private_key_unique_identifier,
-                    )?
-                } else {
-                    abe_build_import_public_key_request(
-                        &public_key,
-                        Some(public_uuid),
-                        false,
-                        &policy,
-                        private_key_unique_identifier,
-                    )?
-                };
+                let import_public_query = cc_build_import_public_key_request(
+                    &public_key,
+                    Some(public_uuid),
+                    false,
+                    &policy,
+                    private_key_unique_identifier,
+                )?;
 
                 // Query the KMS with your kmip data for public key
                 let import_public_response = client_connector
@@ -480,29 +400,15 @@ impl ImportKeysAction {
                         .with_context(|| "Bad access policy definition")?
                 };
 
-                let import_query = if is_cover_crypt {
-                    // Create the kmip query
-                    cc_build_import_decryption_private_key_request(
-                        &user_key,
-                        None,
-                        false,
-                        secret_key_id,
-                        &policy,
-                        self.wrapped,
-                        self.password.clone(),
-                    )?
-                } else {
-                    // Create the kmip query
-                    abe_build_import_decryption_private_key_request(
-                        &user_key,
-                        None,
-                        false,
-                        secret_key_id,
-                        &policy,
-                        self.wrapped,
-                        self.password.clone(),
-                    )?
-                };
+                let import_query = cc_build_import_decryption_private_key_request(
+                    &user_key,
+                    None,
+                    false,
+                    secret_key_id,
+                    &policy,
+                    self.wrapped,
+                    self.password.clone(),
+                )?;
 
                 // Query the KMS with your kmip data
                 let import_response = client_connector

@@ -13,7 +13,7 @@ use crate::{
     },
 };
 
-const SUB_COMMAND: &str = "cc";
+pub const SUB_COMMAND: &str = "cc";
 
 #[tokio::test]
 pub async fn test_init() -> Result<(), Box<dyn std::error::Error>> {

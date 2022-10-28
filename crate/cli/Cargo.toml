@@ -16,7 +16,6 @@ sqlcipher = []
 dev = []
 
 [dependencies]
-abe_gpsw = { version = "2.0", features = ["interfaces"] }
 abe_policy = "1.0"
 base64 = "0.13"
 base64-url = "1.4"

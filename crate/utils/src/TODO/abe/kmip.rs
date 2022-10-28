@@ -1,6 +1,5 @@
 use std::convert::TryFrom;
 
-use abe_gpsw::hybrid_crypto::policy::PolicyGroup;
 use actix_web::web;
 use cosmian_kms::{
     kmip_client,

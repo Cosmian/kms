@@ -76,10 +76,6 @@ __On user data__
 
 For more details, run:
 ```
-# Details for GPSW
-cosmian_kms_cli gpsw --help
-
-# Details for CoverCrypt
 cosmian_kms_cli cc --help
 ```
 

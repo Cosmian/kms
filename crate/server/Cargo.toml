@@ -32,7 +32,6 @@ sqlcipher = [
 ]
 
 [dependencies]
-abe_gpsw = {version = "2.0", features = ["interfaces"]}
 abe_policy = "1.0"
 # We use our own acme-lib. We have removed timeout set to ureq
 # For a reason we ignore right now, it fails inside the enclave if we set timeout

@@ -13,7 +13,6 @@ use cosmian_kms_utils::{
         aes::{create_symmetric_key, AesGcmCipher},
         cover_crypt::ciphers::{CoverCryptHybridCipher, CoverCryptHybridDecipher},
         curve_25519::operation::generate_key_pair,
-        gpsw::ciphers::{AbeHybridCipher, AbeHybridDecipher},
         mcfe::operation::{
             mcfe_master_key_from_key_block, mcfe_setup_from_attributes,
             secret_data_from_lwe_functional_key, secret_key_from_lwe_master_secret_key,
@@ -105,10 +104,6 @@ impl KMS {
                 }
             }
             Object::PublicKey { key_block } => match &key_block.key_format_type {
-                KeyFormatType::AbeMasterPublicKey => {
-                    Ok(Box::new(AbeHybridCipher::instantiate(key_uid, &object)?)
-                        as Box<dyn EnCipher>)
-                }
                 KeyFormatType::CoverCryptPublicKey => Ok(Box::new(
                     CoverCryptHybridCipher::instantiate(cover_crypt, key_uid, &object)?,
                 ) as Box<dyn EnCipher>),
@@ -161,9 +156,6 @@ impl KMS {
                 }
             }
             Object::PrivateKey { key_block } => match &key_block.key_format_type {
-                KeyFormatType::AbeUserDecryptionKey => Ok(Box::new(
-                    AbeHybridDecipher::instantiate(object_uid, &object)?,
-                )),
                 KeyFormatType::CoverCryptSecretKey => Ok(Box::new(
                     CoverCryptHybridDecipher::instantiate(cover_crypt, object_uid, &object)?,
                 )),
@@ -373,19 +365,6 @@ impl KMS {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;
         match &attributes.cryptographic_algorithm {
-            Some(CryptographicAlgorithm::ABE) => match attributes.key_format_type {
-                None => kms_bail!(KmsError::InvalidRequest(
-                    "Unable to create an ABE key, the format type is not specified".to_string()
-                )),
-                Some(KeyFormatType::AbeUserDecryptionKey) => {
-                    trace!("Creating ABE user decryption key");
-                    super::gpsw::create_user_decryption_key(self, create_request, owner, params)
-                        .await
-                }
-                Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                    "Unable to generate an ABE private key for format: {other:?}"
-                ))),
-            },
             Some(CryptographicAlgorithm::CoverCrypt) => {
                 super::cover_crypt::create_user_decryption_key(
                     self,
@@ -406,12 +385,7 @@ impl KMS {
         }
     }
 
-    pub(crate) async fn create_key_pair_(
-        &self,
-        request: &CreateKeyPair,
-        owner: &str,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<KeyPair> {
+    pub(crate) async fn create_key_pair_(&self, request: &CreateKeyPair) -> KResult<KeyPair> {
         trace!("Internal create key pair");
         let attributes = request
             .common_attributes
@@ -441,21 +415,6 @@ impl KMS {
                 }
                 Some(other) => kms_bail!(KmsError::NotSupported(format!(
                     "Unable to generate an DH keypair for format: {other}"
-                ))),
-            },
-            Some(CryptographicAlgorithm::ABE) => match attributes.key_format_type {
-                None => kms_bail!(KmsError::InvalidRequest(
-                    "Unable to create an ABE key, the format type is not specified".to_string()
-                )),
-                Some(KeyFormatType::AbeMasterSecretKey) => {
-                    cosmian_kms_utils::crypto::gpsw::master_keys::create_master_keypair(request)
-                        .map_err(Into::into)
-                }
-                Some(KeyFormatType::AbeUserDecryptionKey) => {
-                    super::gpsw::create_user_decryption_key_pair(self, request, owner, params).await
-                }
-                Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                    "Unable to generate an ABE keypair for format: {other:?}"
                 ))),
             },
             Some(CryptographicAlgorithm::CoverCrypt) => {
