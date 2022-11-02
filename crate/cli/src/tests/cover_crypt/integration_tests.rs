@@ -102,6 +102,25 @@ pub async fn test_bad_conf() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
+pub async fn test_secrets_group_id_bad() -> Result<(), Box<dyn std::error::Error>> {
+    ONCE.get_or_init(init_test_server).await;
+
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    #[cfg(feature = "staging")]
+    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms_bad_group_id-staging.bad");
+    #[cfg(not(feature = "staging"))]
+    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms_bad_group_id.bad");
+
+    cmd.arg(SUB_COMMAND)
+        .args(vec!["init", "--policy", "test_data/policy.json"]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("unable to open database file"));
+
+    Ok(())
+}
+
+#[tokio::test]
 pub async fn test_new() -> Result<(), Box<dyn std::error::Error>> {
     ONCE.get_or_init(init_test_server).await;
 
