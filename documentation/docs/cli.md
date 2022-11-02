@@ -20,7 +20,7 @@ The CLI expects to find a file named `kms.json` in the current directory or a pa
 $ KMS_CLI_CONF=kms.json cosmian_kms_cli --help
 ```
 
-## ABE (Covercrypt and GPSW)
+## ABE Covercrypt
 
 _In the following examples, we describe how to use the CLI using cover crypt (`cc`).
 
