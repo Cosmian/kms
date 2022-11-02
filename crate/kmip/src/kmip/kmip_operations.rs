@@ -264,9 +264,9 @@ pub struct Create {
 }
 
 impl paperclip::v2::schema::Apiv2Schema for Create {
-    const DESCRIPTION: &'static str = "Create request Apiv2Schema";
-    const NAME: Option<&'static str> = None;
-    const REQUIRED: bool = true;
+    fn description() -> &'static str {
+        "Create request Apiv2Schema"
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Apiv2Schema)]
@@ -322,9 +322,9 @@ pub struct CreateKeyPair {
 }
 
 impl paperclip::v2::schema::Apiv2Schema for CreateKeyPair {
-    const DESCRIPTION: &'static str = "Create key pair request Apiv2Schema";
-    const NAME: Option<&'static str> = None;
-    const REQUIRED: bool = true;
+    fn description() -> &'static str {
+        "Create key pair request Apiv2Schema"
+    }
 }
 
 #[derive(Serialize, Deserialize, Apiv2Schema, Debug)]
@@ -709,9 +709,9 @@ impl Locate {
 }
 
 impl paperclip::v2::schema::Apiv2Schema for Locate {
-    const DESCRIPTION: &'static str = "Locate Request Apiv2Schema";
-    const NAME: Option<&'static str> = None;
-    const REQUIRED: bool = true;
+    fn description() -> &'static str {
+        "Locate Request Apiv2Schema"
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Apiv2Schema)]

@@ -77,7 +77,7 @@ sha3 = "0.10"
 # do not use version > 20, `funty` sub-dependencies is incompatible with
 # some of our crypto crates' sub-dependencies
 mysql = "21"
-rawsql = {git = "https://github.com/manute/rawsql"}
+rawsql = "0.1.1"
 sqlx = {version = "0.5", features = [
   "json",
   "runtime-actix-native-tls",
@@ -99,7 +99,7 @@ uuid = {version = "1.0.0", features = ["v4"]}
 [dev-dependencies]
 actix-http = "3.0"
 actix-rt = "2.6"
-serial_test = "0.6"
+serial_test = "0.9"
 tempfile = "3.1"
 
 [build-dependencies]

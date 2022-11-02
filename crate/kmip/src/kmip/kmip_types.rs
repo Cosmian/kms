@@ -842,9 +842,9 @@ pub struct Attributes {
 }
 
 impl paperclip::v2::schema::Apiv2Schema for Attributes {
-    const DESCRIPTION: &'static str = "Attributes Apiv2Schema";
-    const NAME: Option<&'static str> = None;
-    const REQUIRED: bool = true;
+    fn description() -> &'static str {
+        "Attributes Apiv2Schema"
+    }
 }
 
 impl Attributes {
