@@ -617,14 +617,6 @@ fn test_java_import_request() {
 }
 
 #[test]
-pub fn test_java_import_request_2() {
-    log_init("info");
-    let json = include_str!("./import_abe_public_key_java.json");
-    let ttlv: TTLV = serde_json::from_str(json).unwrap();
-    let _import_request: Import = from_ttlv(&ttlv).unwrap();
-}
-
-#[test]
 fn test_java_import_response() {
     log_init("info");
     let ir = ImportResponse {
@@ -669,21 +661,6 @@ pub fn test_attributes_with_links() {
     let json = include_str!("./attributes_with_links.json");
     let ttlv: TTLV = serde_json::from_str(json).unwrap();
     let _attributes: Attributes = from_ttlv(&ttlv).unwrap();
-}
-
-#[test]
-pub fn test_import_correct_object() {
-    log_init("debug,hyper=info,reqwest=info");
-    let json = include_str!("./import.json");
-    let ttlv: TTLV = serde_json::from_str(json).unwrap();
-    let import: Import = from_ttlv(&ttlv).unwrap();
-
-    assert_eq!(ObjectType::PublicKey, import.object_type);
-    assert_eq!(ObjectType::PublicKey, import.object.object_type());
-    assert_eq!(
-        CryptographicAlgorithm::ABE,
-        import.object.key_block().unwrap().cryptographic_algorithm
-    );
 }
 
 #[test]

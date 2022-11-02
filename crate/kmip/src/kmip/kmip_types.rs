@@ -83,10 +83,10 @@ pub enum KeyFormatType {
     EnclaveECKeyPair = 0x8880_0005,
     EnclaveECSharedKey = 0x8880_0006,
     TFHE = 0x8880_0007,
-    AbeMasterSecretKey = 0x8880_0008,
-    AbeMasterPublicKey = 0x8880_0009,
-    AbeUserDecryptionKey = 0x8880_000A,
-    AbeSymmetricKey = 0x8880_000B,
+    // Available slot 0x8880_0008,
+    // Available slot 0x8880_0009,
+    // Available slot 0x8880_000A,
+    // Available slot 0x8880_000B,
     CoverCryptSecretKey = 0x8880_000C,
     CoverCryptPublicKey = 0x8880_000D,
 }
@@ -152,7 +152,7 @@ pub enum CryptographicAlgorithm {
     Ed448 = 0x0000_0038,
     LWE = 0x8880_0001,
     TFHE = 0x8880_0002,
-    ABE = 0x8880_0003,
+    // Available slot 0x8880_0003,
     CoverCrypt = 0x8880_0004,
 }
 

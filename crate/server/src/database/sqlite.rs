@@ -1034,7 +1034,7 @@ mod tests {
         // Find bad crypto algo
 
         let researched_attributes = Some(Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             ..Attributes::new(ObjectType::SymmetricKey)
         });
         let found = db
@@ -1050,7 +1050,7 @@ mod tests {
         // Find bad key format type
 
         let researched_attributes = Some(Attributes {
-            key_format_type: Some(KeyFormatType::AbeUserDecryptionKey),
+            key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
             ..Attributes::new(ObjectType::SymmetricKey)
         });
         let found = db
