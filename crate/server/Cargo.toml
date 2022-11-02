@@ -52,7 +52,7 @@ cosmian_crypto_base = {version = "2.1", features = ["libsodium"]}
 cosmian_kmip = {path = "../kmip"}
 cosmian_kms_utils = {path = "../utils", features = ["curve25519"]}
 cosmian_mcfe = {git = "https://github.com/Cosmian/DMCFE.git", branch = "feature/add_mcfe"}
-cover_crypt = "6.0"
+cosmian_cover_crypt = "7.0"
 dotenv = "0.15.0"
 env_logger = "0.9"
 # eyre is used to handle errors related to the server binary

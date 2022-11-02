@@ -1,6 +1,7 @@
 use std::fs;
 
 use async_trait::async_trait;
+use cosmian_cover_crypt::interfaces::statics::CoverCryptX25519Aes256;
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyValue,
     kmip_objects::{Object, ObjectType},
@@ -811,7 +812,7 @@ impl KmipServer for KMS {
             .unique_identifier
             .as_ref()
             .ok_or(KmsError::UnsupportedPlaceholder)?;
-        self.get_encipher(uid, owner, params)
+        self.get_encipher(Default::default(), uid, owner, params)
             .await?
             .encrypt(&request)
             .map_err(Into::into)
@@ -828,7 +829,7 @@ impl KmipServer for KMS {
             .unique_identifier
             .as_ref()
             .ok_or(KmsError::UnsupportedPlaceholder)?;
-        self.get_decipher(uid, owner, params)
+        self.get_decipher(Default::default(), uid, owner, params)
             .await?
             .decrypt(&request)
             .map_err(Into::into)
@@ -976,6 +977,7 @@ impl KmipServer for KMS {
             Some(CryptographicAlgorithm::CoverCrypt) => {
                 super::cover_crypt::rekey_keypair_cover_crypt(
                     self,
+                    CoverCryptX25519Aes256::default(),
                     private_key_unique_identifier,
                     attributes,
                     owner,

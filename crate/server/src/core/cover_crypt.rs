@@ -1,4 +1,5 @@
 use abe_policy::{Attribute, Policy};
+use cosmian_cover_crypt::interfaces::statics::CoverCryptX25519Aes256;
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{
@@ -29,6 +30,7 @@ use crate::{core::crud::KmipServer, error::KmsError, kms_bail, result::KResult};
 /// is to "revoke" the list of given attributes by increasing their value
 pub(crate) async fn rekey_keypair_cover_crypt<K>(
     kmip_server: &K,
+    cover_crypt: CoverCryptX25519Aes256,
     master_private_key_uid: &str,
     attributes: &Attributes,
     owner: &str,
@@ -78,6 +80,7 @@ where
 
     // Rekey the master keys
     let master_public_key_uid = rekey_master_keys(
+        &cover_crypt,
         kmip_server,
         master_private_key_uid,
         &master_private_key,
@@ -114,6 +117,7 @@ where
         // refresh the user keys
         refresh_all_user_decryption_keys(
             kmip_server,
+            cover_crypt,
             master_private_key_uid,
             unique_identifiers,
             true, //TODO: do we want to conserve this or make it a parameter ?
@@ -155,6 +159,7 @@ fn rotate_policy(
 /// Rekey the Master keys given the provided Private Master Key and Policy
 /// Return the Public Mater Key Identifier
 async fn rekey_master_keys<K>(
+    cover_crypt: &CoverCryptX25519Aes256,
     kmip_server: &K,
     master_private_key_uid: &str,
     master_private_key: &Object,
@@ -174,7 +179,7 @@ where
 
     // update the master private key
     let (updated_private_key, updated_public_key) =
-        update_master_keys(policy, master_private_key, &master_public_key)?;
+        update_master_keys(cover_crypt, policy, master_private_key, &master_public_key)?;
 
     // re_import it
     let import_request = Import {
@@ -204,6 +209,7 @@ where
 
 async fn refresh_all_user_decryption_keys<K>(
     kmip_server: &K,
+    cover_crypt: CoverCryptX25519Aes256,
     master_private_key_uid: &str,
     user_decryption_key_unique_identifiers: &[String],
     preserve_access_to_old_partitions: bool,
@@ -224,7 +230,7 @@ where
         .object;
 
     //instantiate a CoverCrypt User Key Handler
-    let handler = UserDecryptionKeysHandler::instantiate(&master_private_key)?;
+    let handler = UserDecryptionKeysHandler::instantiate(cover_crypt, &master_private_key)?;
 
     // Renew user decryption key previously found
     for user_decryption_key_unique_identifier in user_decryption_key_unique_identifiers {
@@ -266,6 +272,7 @@ where
 /// `Access Policy`
 pub(crate) async fn create_user_decryption_key<K>(
     kmip_server: &K,
+    cover_crypt: CoverCryptX25519Aes256,
     create_request: &Create,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
@@ -273,11 +280,19 @@ pub(crate) async fn create_user_decryption_key<K>(
 where
     K: KmipServer,
 {
-    create_user_decryption_key_(kmip_server, &create_request.attributes, owner, params).await
+    create_user_decryption_key_(
+        kmip_server,
+        cover_crypt,
+        &create_request.attributes,
+        owner,
+        params,
+    )
+    .await
 }
 
 async fn create_user_decryption_key_<K>(
     kmip_server: &K,
+    cover_crypt: CoverCryptX25519Aes256,
     create_attributes: &Attributes,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
@@ -307,7 +322,7 @@ where
         ));
     }
 
-    UserDecryptionKeysHandler::instantiate(master_private_key)?
+    UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?
         .create_user_decryption_key_object(&access_policy, Some(create_attributes))
         .map_err(Into::into)
 }
@@ -317,6 +332,7 @@ where
 /// Create a KMIP tuple (`Object::PrivateKey`, `Object::PublicKey`)
 pub(crate) async fn create_user_decryption_key_pair<K>(
     kmip_server: &K,
+    cover_crypt: CoverCryptX25519Aes256,
     create_key_pair_request: &CreateKeyPair,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
@@ -334,8 +350,14 @@ where
                 "Missing private attributes in CoverCrypt Create Keypair request".to_string(),
             )
         })?;
-    let private_key =
-        create_user_decryption_key_(kmip_server, private_key_attributes, owner, params).await?;
+    let private_key = create_user_decryption_key_(
+        kmip_server,
+        cover_crypt,
+        private_key_attributes,
+        owner,
+        params,
+    )
+    .await?;
 
     //Recover Public Key
     let public_key_attributes = create_key_pair_request

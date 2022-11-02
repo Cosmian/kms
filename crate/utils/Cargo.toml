@@ -13,7 +13,8 @@ abe_gpsw = { version = "2.0", features = ["interfaces"] }
 bitflags = "1.2"
 cosmian_crypto_base = "2.1"
 cosmian_kmip = { path = "../kmip" }
-cover_crypt = "6.0"
+cosmian_cover_crypt = "7.0"
+cosmian_crypto_core = "4.0"
 chrono = "0.4"
 hex = { version = "0.4", features = ["serde"] }
 # for status codes

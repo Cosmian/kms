@@ -209,9 +209,9 @@ fn test_serialization_deserialization() {
     match rec.value {
         TTLValue::Structure(s) => match &s[0].value {
             TTLValue::Integer(i) => assert_eq!(42, *i),
-            x => panic!("unexpected 2nd level type : {:?}", x),
+            x => panic!("unexpected 2nd level type : {x:?}"),
         },
-        x => panic!("unexpected type : {:?}", x),
+        x => panic!("unexpected type : {x:?}"),
     };
 }
 
@@ -231,7 +231,7 @@ fn test_ser_int() {
     let ttlv = to_ttlv(&test).unwrap();
     let expected =
         r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnInt", value: Integer(1) }]) }"#;
-    let ttlv_s = format!("{:?}", ttlv);
+    let ttlv_s = format!("{ttlv:?}");
     assert_eq!(ttlv_s, expected);
 }
 
@@ -249,7 +249,7 @@ fn test_ser_array() {
     };
     let ttlv = to_ttlv(&test).unwrap();
     let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "Seq", value: Structure([TTLV { tag: "Seq", value: TextString("a") }, TTLV { tag: "Seq", value: TextString("b") }]) }]) }"#;
-    let ttlv_s = format!("{:?}", ttlv);
+    let ttlv_s = format!("{ttlv:?}");
     // println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
     assert_eq!(ttlv_s, expected);
 }
@@ -281,7 +281,7 @@ fn test_ser_big_int() {
         ],
     ),
 }"#;
-    let ttlv_s = format!("{:#?}", ttlv);
+    let ttlv_s = format!("{ttlv:#?}");
     // println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
     assert_eq!(ttlv_s, expected);
 }

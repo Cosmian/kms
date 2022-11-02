@@ -1,4 +1,9 @@
 use abe_policy::Policy;
+use cosmian_cover_crypt::{
+    api::CoverCrypt,
+    interfaces::statics::{CoverCryptX25519Aes256, MasterSecretKey, PublicKey},
+};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -8,7 +13,6 @@ use cosmian_kmip::{
         kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cover_crypt::{api::CoverCrypt, MasterPrivateKey, PublicKey};
 
 use crate::{
     crypto::cover_crypt::attributes::{policy_from_attributes, upsert_policy_in_attributes},
@@ -17,7 +21,10 @@ use crate::{
 
 /// Generate a `KeyPair` `(PrivateKey, PublicKey)` from the attributes
 /// of a `CreateKeyPair` operation
-pub fn create_master_keypair(request: &CreateKeyPair) -> Result<KeyPair, KmipError> {
+pub fn create_master_keypair(
+    cover_crypt: &CoverCryptX25519Aes256,
+    request: &CreateKeyPair,
+) -> Result<KeyPair, KmipError> {
     let attributes = request
         .common_attributes
         .as_ref()
@@ -34,8 +41,7 @@ pub fn create_master_keypair(request: &CreateKeyPair) -> Result<KeyPair, KmipErr
     let policy = policy_from_attributes(attributes)?;
 
     // Now generate a master key using the CoverCrypt Engine
-    let engine = CoverCrypt::default();
-    let (sk, pk) = engine
+    let (sk, pk) = cover_crypt
         .generate_master_keys(&policy)
         .map_err(|e| KmipError::InvalidKmipValue(ErrorReason::Invalid_Message, e.to_string()))?;
 
@@ -133,6 +139,7 @@ fn create_master_public_key_object(
 /// Update the master key with a new Policy
 /// (after rotation of some attributes typically)
 pub fn update_master_keys(
+    cover_crypt: &CoverCryptX25519Aes256,
     policy: &Policy,
     master_private_key: &Object,
     master_public_key: &Object,
@@ -141,7 +148,7 @@ pub fn update_master_keys(
     let msk_key_block = master_private_key.key_block()?;
     let msk_key_bytes = msk_key_block.as_bytes()?;
     let msk_attributes = msk_key_block.key_value.attributes()?;
-    let mut msk = MasterPrivateKey::try_from_bytes(msk_key_bytes).map_err(|e| {
+    let mut msk = MasterSecretKey::try_from_bytes(msk_key_bytes).map_err(|e| {
         KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
             format!(
@@ -166,8 +173,7 @@ pub fn update_master_keys(
     })?;
 
     // Update the keys
-    let engine = CoverCrypt::default();
-    engine
+    cover_crypt
         .update_master_keys(policy, &mut msk, &mut mpk)
         .map_err(|e| {
             KmipError::KmipError(
@@ -197,7 +203,7 @@ pub fn update_master_keys(
     let updated_master_public_key_bytes = &mpk.try_to_bytes().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Cryptographic_Failure,
-            format!("Failed serializing the CoverCrypt Master Public Key: {}", e),
+            format!("Failed serializing the CoverCrypt Master Public Key: {e}"),
         )
     })?;
     let updated_master_public_key = create_master_public_key_object(

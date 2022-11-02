@@ -71,13 +71,13 @@ impl SgxAction {
         if let Some(ssl) = &certificates.ssl {
             let cert_path = self.export_path.join("ssl.cert");
             fs::write(&cert_path, ssl)?;
-            println!("The ssl certificate has been saved at {:?}", cert_path);
+            println!("The ssl certificate has been saved at {cert_path:?}");
         }
 
         if let Some(enclave) = &certificates.enclave {
             let cert_path = self.export_path.join("enclave.pub");
             fs::write(&cert_path, enclave)?;
-            println!("The enclave certificate has been saved at {:?}", cert_path);
+            println!("The enclave certificate has been saved at {cert_path:?}");
         }
 
         // Get the manifest
@@ -89,7 +89,7 @@ impl SgxAction {
         // Save the manifest
         let manifest_path = self.export_path.join("manifest.sgx");
         fs::write(&manifest_path, &manifest)?;
-        println!("The sgx manifest has been saved at {:?}", manifest_path);
+        println!("The sgx manifest has been saved at {manifest_path:?}");
 
         // Proceed the remote attestation
         let user_report_data = prepare_report_data(certificates.ssl, nonce);
@@ -98,10 +98,7 @@ impl SgxAction {
 
         // Save the remote attestation
         let remote_attestation_path = self.export_path.join("remote_attestation");
-        fs::write(
-            &remote_attestation_path,
-            format!("{:#?}", remote_attestation),
-        )?;
+        fs::write(&remote_attestation_path, format!("{remote_attestation:#?}"))?;
         println!(
             "The remote attestation has been saved at {:?}",
             remote_attestation_path

@@ -269,16 +269,13 @@ impl<'de> Deserialize<'de> for IntegerOrMask {
                 E: de::Error,
             {
                 if &hex[0..2] != "0x" {
-                    return Err(de::Error::custom(format!(
-                        "Invalid value for Mask: {}",
-                        hex
-                    )))
+                    return Err(de::Error::custom(format!("Invalid value for Mask: {hex}")))
                 }
                 let bytes = hex::decode(&hex[2..])
-                    .map_err(|_e| de::Error::custom(format!("Invalid value for Mask: {}", hex)))?;
+                    .map_err(|_e| de::Error::custom(format!("Invalid value for Mask: {hex}")))?;
                 let m: u32 =
                     u32::from_be_bytes(bytes.as_slice().try_into().map_err(|_e| {
-                        de::Error::custom(format!("Invalid value for Mask: {}", hex))
+                        de::Error::custom(format!("Invalid value for Mask: {hex}"))
                     })?);
                 Ok(IntegerOrMask::Mask(m))
             }
@@ -444,7 +441,7 @@ impl<'de> Deserialize<'de> for TTLV {
                                     let dt = Utc.timestamp_nanos(v * 1000);
                                     TTLValue::DateTimeExtended(dt)
                                 }
-                                t => return Err(de::Error::custom(format!("Unknown type: {}", t))),
+                                t => return Err(de::Error::custom(format!("Unknown type: {t}"))),
                             });
                         }
                     }

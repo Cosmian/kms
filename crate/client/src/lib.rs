@@ -361,7 +361,7 @@ impl KmsRestClient {
 
     /// This operation requests the server to list all the granted access on a object
     pub async fn list_access(&self, uid: &str) -> Result<Vec<UserAccessResponse>, KmsClientError> {
-        self.get_no_ttlv(&format!("/accesses/{}", uid), None::<&()>)
+        self.get_no_ttlv(&format!("/accesses/{uid}"), None::<&()>)
             .await
     }
 
@@ -413,7 +413,7 @@ impl KmsRestClient {
         let mut headers = HeaderMap::new();
         headers.insert(
             "Authorization",
-            HeaderValue::from_str(format!("Bearer {}", bearer_token).as_str())?,
+            HeaderValue::from_str(format!("Bearer {bearer_token}").as_str())?,
         );
         if let Some(database_secret) = database_secret {
             headers.insert("KmsDatabaseSecret", HeaderValue::from_str(database_secret)?);
@@ -440,7 +440,7 @@ impl KmsRestClient {
         R: serde::de::DeserializeOwned + Sized + 'static,
         O: Serialize,
     {
-        let server_url = format!("{}{}", self.server_url, endpoint);
+        let server_url = format!("{}{endpoint}", self.server_url);
         let response = match data {
             Some(d) => self.client.get(server_url).query(d).send().await?,
             None => self.client.get(server_url).send().await?,
@@ -461,7 +461,7 @@ impl KmsRestClient {
         O: Serialize,
         R: serde::de::DeserializeOwned + Sized + 'static,
     {
-        let server_url = format!("{}{}", self.server_url, endpoint);
+        let server_url = format!("{}{endpoint}", self.server_url);
         let response = self.client.delete(server_url).json(data).send().await?;
 
         let status_code = response.status();
@@ -483,7 +483,7 @@ impl KmsRestClient {
         O: Serialize,
         R: serde::de::DeserializeOwned + Sized + 'static,
     {
-        let server_url = format!("{}{}", self.server_url, endpoint);
+        let server_url = format!("{}{endpoint}", self.server_url);
         let response = match data {
             Some(d) => self.client.post(server_url).json(d).send().await?,
             None => self.client.post(server_url).send().await?,

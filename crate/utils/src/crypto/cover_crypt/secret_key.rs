@@ -1,7 +1,11 @@
 use std::convert::TryFrom;
 
-use abe_policy::{AccessPolicy, Attribute as PolicyAttribute};
-use cosmian_crypto_base::symmetric_crypto::aes_256_gcm_pure;
+use abe_policy::AccessPolicy;
+use cosmian_cover_crypt::{
+    api::CoverCrypt,
+    interfaces::statics::{CoverCryptX25519Aes256, PublicKey},
+};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -11,7 +15,6 @@ use cosmian_kmip::{
         kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, WrappingMethod},
     },
 };
-use cover_crypt::{api::CoverCrypt, PublicKey};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 
@@ -28,13 +31,15 @@ use crate::{
 /// A reference to the CoverCrypt master public key is kept to access the policy later
 /// when locating symmetric keys
 pub fn wrapped_secret_key(
+    cover_crypt: &CoverCryptX25519Aes256,
     public_key_response: &GetResponse,
     access_policy: &AccessPolicy,
     cover_crypt_header_uid: &[u8],
 ) -> Result<Object, KmipError> {
     let sk = prepare_symmetric_key(
+        cover_crypt,
         public_key_response,
-        &access_policy.attributes(),
+        access_policy,
         cover_crypt_header_uid,
     )?;
     // Since KMIP 2.1 does not plan to locate wrapped key, we serialize vendor
@@ -75,8 +80,9 @@ pub struct CoverCryptSymmetricKey {
 }
 
 fn prepare_symmetric_key(
+    cover_crypt: &CoverCryptX25519Aes256,
     public_key_response: &GetResponse,
-    policy_attributes: &[PolicyAttribute],
+    access_policy: &AccessPolicy,
     cover_crypt_header_uid: &[u8],
 ) -> Result<CoverCryptSymmetricKey, KmipError> {
     trace!("Starting create secret key");
@@ -99,13 +105,8 @@ fn prepare_symmetric_key(
         )
     })?)?;
 
-    let engine = CoverCrypt::default();
-    let (sk, sk_enc) = engine
-        .generate_symmetric_key::<aes_256_gcm_pure::KeyLength>(
-            &policy,
-            &public_key,
-            policy_attributes,
-        )
+    let (sk, sk_enc) = cover_crypt
+        .encaps(&policy, &public_key, access_policy)
         .map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
         })?;

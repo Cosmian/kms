@@ -69,6 +69,8 @@ test_db_mariadb_connect:
     - mysql -h "$MYSQL_HOST" -uroot -e "CREATE DATABASE kms" --ssl-cert "${CI_PROJECT_DIR}/data/data-ssl/cert.pem" --ssl-key "${CI_PROJECT_DIR}/data/data-ssl/key.pem"
 
 # Security check
+# Failing because mysql has some dependencies with problems but cannot be upgraded 
+# because new versions of bitvec/funty are incompatible with some of our crypto dependencies.
 cargo_audit:
   stage: prebuild
   only: [master, develop, merge_requests]

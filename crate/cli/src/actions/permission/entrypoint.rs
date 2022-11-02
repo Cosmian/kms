@@ -142,7 +142,7 @@ impl ListOwnedObjects {
 
         println!("The objects are:\n");
         for object in objects {
-            println!("{}", object);
+            println!("{object}");
         }
         Ok(())
     }
@@ -161,7 +161,7 @@ impl ListSharedObjects {
 
         println!("The objects are:\n");
         for object in objects {
-            println!("{}", object);
+            println!("{object}");
         }
         Ok(())
     }

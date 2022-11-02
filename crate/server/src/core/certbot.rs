@@ -191,6 +191,7 @@ impl Certbot {
             ord_new.refresh()?;
 
             // Clean the .well-known
+            #[allow(clippy::needless_borrow)]
             fs::remove_dir_all(&target_parent)?;
         };
 
