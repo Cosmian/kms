@@ -1,4 +1,9 @@
 use abe_policy::{AccessPolicy, Policy};
+use cosmian_cover_crypt::{
+    api::CoverCrypt,
+    interfaces::statics::{CoverCryptX25519Aes256, MasterSecretKey, UserSecretKey},
+};
+use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -8,7 +13,6 @@ use cosmian_kmip::{
         kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
     },
 };
-use cover_crypt::{api::CoverCrypt, MasterPrivateKey, UserPrivateKey};
 use tracing::trace;
 
 use crate::crypto::cover_crypt::attributes::{
@@ -59,19 +63,19 @@ pub(crate) fn unwrap_user_decryption_key_object(
 /// Handles operations on user keys, caching the engine
 /// and the master key information for efficiency
 pub struct UserDecryptionKeysHandler {
-    engine: CoverCrypt,
-    master_private_key: MasterPrivateKey,
+    cover_crypt: CoverCryptX25519Aes256,
+    master_private_key: MasterSecretKey,
     policy: Policy,
 }
 
 impl UserDecryptionKeysHandler {
     pub fn instantiate(
+        cover_crypt: CoverCryptX25519Aes256,
         master_private_key: &Object,
     ) -> Result<UserDecryptionKeysHandler, KmipError> {
-        let engine = CoverCrypt::default();
         let msk_key_block = master_private_key.key_block()?;
         let msk_key_bytes = msk_key_block.as_bytes()?;
-        let msk = MasterPrivateKey::try_from_bytes(msk_key_bytes).map_err(|e| {
+        let msk = MasterSecretKey::try_from_bytes(msk_key_bytes).map_err(|e| {
             KmipError::KmipError(
                 ErrorReason::Codec_Error,
                 format!("cover crypt: failed deserializing the master private key: {e}"),
@@ -80,7 +84,7 @@ impl UserDecryptionKeysHandler {
         let private_key_attributes = master_private_key.attributes()?;
         let policy = policy_from_attributes(private_key_attributes)?;
         Ok(UserDecryptionKeysHandler {
-            engine,
+            cover_crypt,
             master_private_key: msk,
             policy,
         })
@@ -99,8 +103,8 @@ impl UserDecryptionKeysHandler {
         // Generate a fresh user decryption key
         //
         let uk = self
-            .engine
-            .generate_user_private_key(&self.master_private_key, access_policy, &self.policy)
+            .cover_crypt
+            .generate_user_secret_key(&self.master_private_key, access_policy, &self.policy)
             .map_err(|e| {
                 KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
             })?;
@@ -144,15 +148,15 @@ impl UserDecryptionKeysHandler {
     ) -> Result<Object, KmipError> {
         let (usk_key_bytes, usk_access_policy, usk_attributes) =
             unwrap_user_decryption_key_object(user_decryption_key)?;
-        let mut usk = UserPrivateKey::try_from_bytes(&usk_key_bytes).map_err(|e| {
+        let mut usk = UserSecretKey::try_from_bytes(&usk_key_bytes).map_err(|e| {
             KmipError::KmipError(
                 ErrorReason::Codec_Error,
                 format!("cover crypt: failed deserializing the user decryption key: {e}"),
             )
         })?;
 
-        self.engine
-            .refresh_user_private_key(
+        self.cover_crypt
+            .refresh_user_secret_key(
                 &mut usk,
                 &usk_access_policy,
                 &self.master_private_key,

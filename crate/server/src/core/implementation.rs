@@ -2,6 +2,7 @@
 
 use std::convert::TryFrom;
 
+use cosmian_cover_crypt::interfaces::statics::CoverCryptX25519Aes256;
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{Create, CreateKeyPair},
@@ -55,6 +56,7 @@ impl KMS {
 
     pub async fn get_encipher(
         &self,
+        cover_crypt: CoverCryptX25519Aes256,
         key_uid: &str,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
@@ -108,7 +110,7 @@ impl KMS {
                         as Box<dyn EnCipher>)
                 }
                 KeyFormatType::CoverCryptPublicKey => Ok(Box::new(
-                    CoverCryptHybridCipher::instantiate(key_uid, &object)?,
+                    CoverCryptHybridCipher::instantiate(cover_crypt, key_uid, &object)?,
                 ) as Box<dyn EnCipher>),
                 other => kms_bail!(KmsError::NotSupported(format!(
                     "This server does not yet support encryption with public keys of format: \
@@ -124,6 +126,7 @@ impl KMS {
 
     pub(crate) async fn get_decipher(
         &self,
+        cover_crypt: CoverCryptX25519Aes256,
         object_uid: &str,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
@@ -162,7 +165,7 @@ impl KMS {
                     AbeHybridDecipher::instantiate(object_uid, &object)?,
                 )),
                 KeyFormatType::CoverCryptSecretKey => Ok(Box::new(
-                    CoverCryptHybridDecipher::instantiate(object_uid, &object)?,
+                    CoverCryptHybridDecipher::instantiate(cover_crypt, object_uid, &object)?,
                 )),
                 other => kms_bail!(KmsError::NotSupported(format!(
                     "This server does not yet support decryption with keys of format: {other}"
@@ -384,8 +387,14 @@ impl KMS {
                 ))),
             },
             Some(CryptographicAlgorithm::CoverCrypt) => {
-                super::cover_crypt::create_user_decryption_key(self, create_request, owner, params)
-                    .await
+                super::cover_crypt::create_user_decryption_key(
+                    self,
+                    CoverCryptX25519Aes256::default(),
+                    create_request,
+                    owner,
+                    params,
+                )
+                .await
             }
             Some(other) => kms_bail!(KmsError::NotSupported(format!(
                 "The creation of a private key for algorithm: {other:?} is not supported"
@@ -450,8 +459,11 @@ impl KMS {
                 ))),
             },
             Some(CryptographicAlgorithm::CoverCrypt) => {
-                cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(request)
-                    .map_err(Into::into)
+                cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
+                    &CoverCryptX25519Aes256::default(),
+                    request,
+                )
+                .map_err(Into::into)
             }
             Some(other) => kms_bail!(KmsError::NotSupported(format!(
                 "The creation of a key pair for algorithm: {other:?} is not supported"

@@ -1,19 +1,16 @@
-use abe_policy::{Attribute, Policy};
-use cosmian_crypto_base::symmetric_crypto::aes_256_gcm_pure::Aes256GcmCrypto;
+use abe_policy::{AccessPolicy, Attribute, Policy};
+use cosmian_cover_crypt::{
+    self,
+    interfaces::statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey},
+    CoverCrypt,
+};
+use cosmian_crypto_core::bytes_ser_de::{Deserializer, Serializable};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
         kmip_objects::Object,
         kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse, ErrorReason},
     },
-};
-use cover_crypt::{
-    self,
-    interfaces::statics::{
-        decrypt_hybrid_header, decrypt_symmetric_block, encrypt_hybrid_header,
-        encrypt_symmetric_block,
-    },
-    PublicKey, UserPrivateKey,
 };
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
@@ -32,9 +29,27 @@ pub struct DataToEncrypt {
     pub data: Vec<u8>,
 }
 
+fn attributes_to_access_policy(mut attributes: Vec<Attribute>) -> Option<AccessPolicy> {
+    let mut access_policy = if let Some(attribute) = attributes.pop() {
+        AccessPolicy::Attr(attribute)
+    } else {
+        return None
+    };
+
+    for attribute in attributes {
+        access_policy = AccessPolicy::And(
+            Box::new(AccessPolicy::Attr(attribute)),
+            Box::new(access_policy),
+        );
+    }
+
+    Some(access_policy)
+}
+
 /// Encrypt a single block of data using an hybrid encryption mode
 /// Cannot be used as a stream cipher
 pub struct CoverCryptHybridCipher {
+    cover_crypt: CoverCryptX25519Aes256,
     public_key_uid: String,
     public_key_bytes: Vec<u8>,
     policy: Policy,
@@ -45,6 +60,7 @@ pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
 
 impl CoverCryptHybridCipher {
     pub fn instantiate(
+        cover_crypt: CoverCryptX25519Aes256,
         public_key_uid: &str,
         public_key: &Object,
     ) -> Result<CoverCryptHybridCipher, KmipError> {
@@ -64,6 +80,7 @@ impl CoverCryptHybridCipher {
         );
 
         Ok(CoverCryptHybridCipher {
+            cover_crypt,
             public_key_uid: public_key_uid.into(),
             public_key_bytes: public_key_bytes.to_vec(),
             policy,
@@ -73,7 +90,7 @@ impl CoverCryptHybridCipher {
 
 impl EnCipher for CoverCryptHybridCipher {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipError> {
-        let uid = &request
+        let authenticated_encryption_additional_data = &request
             .authenticated_encryption_additional_data
             .clone()
             .unwrap_or_default();
@@ -100,48 +117,51 @@ impl EnCipher for CoverCryptHybridCipher {
         })?;
 
         // The UID is NOT written in the header and needs to be re-supplied on block decryption
-        let mut encrypted_header = encrypt_hybrid_header::<Aes256GcmCrypto>(
+        let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
+            &self.cover_crypt,
             &self.policy,
             &public_key,
-            data_to_encrypt.policy_attributes.as_slice(),
+            &attributes_to_access_policy(data_to_encrypt.policy_attributes).ok_or_else(|| {
+                KmipError::InvalidKmipValue(
+                    ErrorReason::Invalid_Message,
+                    "empty attribute list".to_owned(),
+                )
+            })?,
+            None,
             None,
         )
         .map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
         })?;
 
-        let mut encrypted_block = encrypt_symmetric_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
-            &encrypted_header.symmetric_key,
-            uid,
-            0,
-            &data_to_encrypt.data,
-        )
-        .map_err(|e| {
+        let mut encrypted_block = self
+            .cover_crypt
+            .encrypt(
+                &symmetric_key,
+                &data_to_encrypt.data,
+                Some(authenticated_encryption_additional_data),
+            )
+            .map_err(|e| {
+                KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
+            })?;
+
+        let mut ciphertext = encrypted_header.try_to_bytes().map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
         })?;
-
-        let encrypted_header_len = encrypted_header.header_bytes.len();
-        let mut ciphertext = (encrypted_header_len as u32) //should not overflow
-            .to_be_bytes()
-            .to_vec();
-        ciphertext.append(&mut encrypted_header.header_bytes);
         ciphertext.append(&mut encrypted_block);
 
         debug!(
-            "Encrypted data with public key {} of len (CT/Enc): {}/{}, header size: {}, \
-             Attributes: {:?}",
+            "Encrypted data with public key {} of len (CT/Enc): {}/{}",
             &self.public_key_uid,
             data_to_encrypt.data.len(),
             ciphertext.len(),
-            encrypted_header_len,
-            &data_to_encrypt.policy_attributes
         );
         Ok(EncryptResponse {
             unique_identifier: self.public_key_uid.clone(),
             data: Some(ciphertext),
             iv_counter_nonce: None,
             correlation_value: None,
-            authenticated_encryption_tag: Some(uid.to_vec()),
+            authenticated_encryption_tag: Some(authenticated_encryption_additional_data.to_vec()),
         })
     }
 }
@@ -149,12 +169,14 @@ impl EnCipher for CoverCryptHybridCipher {
 /// Decrypt a single block of data encrypted using an hybrid encryption mode
 /// Cannot be used as a stream decipher
 pub struct CoverCryptHybridDecipher {
+    cover_crypt: CoverCryptX25519Aes256,
     user_decryption_key_uid: String,
     user_decryption_key_bytes: Vec<u8>,
 }
 
 impl CoverCryptHybridDecipher {
     pub fn instantiate(
+        cover_crypt: CoverCryptX25519Aes256,
         user_decryption_key_uid: &str,
         user_decryption_key: &Object,
     ) -> Result<CoverCryptHybridDecipher, KmipError> {
@@ -167,6 +189,7 @@ impl CoverCryptHybridDecipher {
         );
 
         Ok(CoverCryptHybridDecipher {
+            cover_crypt,
             user_decryption_key_uid: user_decryption_key_uid.into(),
             user_decryption_key_bytes,
         })
@@ -175,65 +198,56 @@ impl CoverCryptHybridDecipher {
 
 impl DeCipher for CoverCryptHybridDecipher {
     fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, KmipError> {
-        let encrypted_data = request.data.as_ref().ok_or_else(|| {
+        let user_decryption_key = UserSecretKey::try_from_bytes(&self.user_decryption_key_bytes)
+            .map_err(|e| {
+                KmipError::KmipError(
+                    ErrorReason::Codec_Error,
+                    format!("cover crypt decipher: failed recovering the user key: {e}"),
+                )
+            })?;
+
+        let encrypted_bytes = request.data.as_ref().ok_or_else(|| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Message,
                 "The decryption request should contain encrypted data".to_string(),
             )
         })?;
-        let mut header_length_bytes = [0_u8; 4];
-        header_length_bytes.copy_from_slice(&encrypted_data[0..4]);
-        let encrypted_header_size: usize = u32::from_be_bytes(header_length_bytes) as usize;
 
-        if encrypted_header_size + 4 >= encrypted_data.len() {
-            return Err(KmipError::KmipError(
+        let mut de = Deserializer::new(encrypted_bytes.as_slice());
+        let encrypted_header = EncryptedHeader::read(&mut de).map_err(|e| {
+            KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Message,
-                "Bad or corrupted encrypted data".to_string(),
-            ))
-        }
-
-        let encrypted_header_bytes = &encrypted_data[4..(4 + encrypted_header_size)];
-        let encrypted_block = &encrypted_data[(4 + encrypted_header_size)..];
-
-        let user_decryption_key = UserPrivateKey::try_from_bytes(&self.user_decryption_key_bytes)
-            .map_err(|e| {
-            KmipError::KmipError(
-                ErrorReason::Codec_Error,
-                format!("cover crypt decipher: failed recovering the user key: {e}"),
+                format!("Bad or corrupted encrypted data: {e}"),
             )
         })?;
+        let encrypted_block = de.finalize();
 
-        let header_ =
-            decrypt_hybrid_header::<Aes256GcmCrypto>(&user_decryption_key, encrypted_header_bytes)
-                .map_err(|e| {
-                    KmipError::InvalidKmipValue(ErrorReason::Invalid_Message, e.to_string())
-                })?;
+        let header_ = encrypted_header
+            .decrypt(&self.cover_crypt, &user_decryption_key, None)
+            .map_err(|e| {
+                KmipError::InvalidKmipValue(ErrorReason::Invalid_Message, e.to_string())
+            })?;
 
-        // check if the user supplied UID as part of the Decrypt request
-        // and use that if so
-        let uid = if let Some(uid) = &request.authenticated_encryption_additional_data {
-            uid
-        } else {
-            &header_.meta_data.uid
-        };
-
-        let clear_text = decrypt_symmetric_block::<Aes256GcmCrypto, MAX_CLEAR_TEXT_SIZE>(
-            &header_.symmetric_key,
-            uid,
-            0,
-            encrypted_block,
-        )
-        .map_err(|e| KmipError::InvalidKmipValue(ErrorReason::Invalid_Message, e.to_string()))?;
+        let cleartext = self
+            .cover_crypt
+            .decrypt(
+                &header_.symmetric_key,
+                &encrypted_block,
+                request.authenticated_encryption_additional_data.as_deref(),
+            )
+            .map_err(|e| {
+                KmipError::InvalidKmipValue(ErrorReason::Invalid_Message, e.to_string())
+            })?;
 
         debug!(
             "Decrypted data with user key {} of len (CT/Enc): {}/{}",
             &self.user_decryption_key_uid,
-            clear_text.len(),
-            encrypted_data.len(),
+            cleartext.len(),
+            encrypted_bytes.len(),
         );
         Ok(DecryptResponse {
             unique_identifier: self.user_decryption_key_uid.clone(),
-            data: Some(clear_text),
+            data: Some(cleartext),
             correlation_value: None,
         })
     }

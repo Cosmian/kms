@@ -30,7 +30,7 @@ impl ser::Error for TtlvError {
         T: Display,
     {
         TtlvError {
-            error: format!("{}", msg),
+            error: format!("{msg}"),
         }
     }
 }
@@ -41,7 +41,7 @@ impl de::Error for TtlvError {
         T: Display,
     {
         TtlvError {
-            error: format!("{}", msg),
+            error: format!("{msg}"),
         }
     }
 }

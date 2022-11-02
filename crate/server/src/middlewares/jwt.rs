@@ -33,7 +33,7 @@ pub(crate) fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> 
     let jwks = config::jwks();
 
     let validations = vec![
-        alcoholic_jwt::Validation::Issuer(format!("https://{}/", authority)),
+        alcoholic_jwt::Validation::Issuer(format!("https://{authority}/")),
         alcoholic_jwt::Validation::SubjectPresent,
         #[cfg(not(feature = "insecure"))]
         alcoholic_jwt::Validation::NotExpired,
@@ -53,10 +53,10 @@ pub(crate) fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> 
         .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_string()))?;
 
     let valid_jwt = alcoholic_jwt::validate(token, jwk, validations)
-        .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {:?}", err)))?;
+        .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;
 
     let payload = serde_json::from_value(valid_jwt.claims)
-        .map_err(|err| KmsError::Unauthorized(format!("JWT claims is malformed: {:?}", err)))?;
+        .map_err(|err| KmsError::Unauthorized(format!("JWT claims is malformed: {err:?}")))?;
 
     Ok(payload)
 }
