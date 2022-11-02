@@ -9,7 +9,7 @@ use crate::{
     tests::{
         test_utils::{init_test_server, ONCE},
         utils::extract_uids::{extract_private_key, extract_public_key, extract_user_key},
-        CONF_PATH, PROG_NAME,
+        CONF_PATH, CONF_PATH_BAD_KEY, PROG_NAME,
     },
 };
 
@@ -61,6 +61,15 @@ pub async fn test_init_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("Error: Policy JSON malformed"));
+
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH_BAD_KEY);
+
+    cmd.arg(SUB_COMMAND)
+        .args(vec!["init", "--policy", "test_data/policy.json"]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Database secret is wrong"));
 
     Ok(())
 }
