@@ -22,7 +22,7 @@ $ KMS_CLI_CONF=kms.json cosmian_kms_cli --help
 
 ## ABE Covercrypt
 
-_In the following examples, we describe how to use the CLI using cover crypt (`cc`).
+_In the following examples, we describe how to use the CLI using Covercrypt (`cc`).
 
 ### Generate the master key
 
