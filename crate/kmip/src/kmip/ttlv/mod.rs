@@ -8,13 +8,13 @@ mod tests;
 use core::fmt;
 use std::convert::TryInto;
 
-use chrono::{DateTime, TimeZone, Utc};
 use num_bigint::BigUint;
 use serde::{
     de::{self, MapAccess, Visitor},
-    ser::{SerializeStruct, Serializer},
+    ser::{self, SerializeStruct, Serializer},
     Deserialize, Serialize,
 };
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 pub enum ItemTypeEnumeration {
     Structure = 0x01,
@@ -108,9 +108,9 @@ pub enum TTLValue {
     Boolean(bool),
     TextString(String),
     ByteString(Vec<u8>),
-    DateTime(DateTime<Utc>),
+    DateTime(OffsetDateTime),
     Interval(u32),
-    DateTimeExtended(DateTime<Utc>),
+    DateTimeExtended(OffsetDateTime),
 }
 
 impl Default for TTLValue {
@@ -131,10 +131,10 @@ impl PartialEq for TTLValue {
             (Self::Boolean(l0), Self::Boolean(r0)) => l0 == r0,
             (Self::TextString(l0), Self::TextString(r0)) => l0 == r0,
             (Self::ByteString(l0), Self::ByteString(r0)) => l0 == r0,
-            (Self::DateTime(l0), Self::DateTime(r0)) => l0.timestamp() == r0.timestamp(),
+            (Self::DateTime(l0), Self::DateTime(r0)) => l0.unix_timestamp() == r0.unix_timestamp(),
             (Self::Interval(l0), Self::Interval(r0)) => l0 == r0,
             (Self::DateTimeExtended(l0), Self::DateTimeExtended(r0)) => {
-                l0.timestamp_nanos() / 1000 == r0.timestamp_nanos() / 1000
+                l0.unix_timestamp_nanos() / 1000 == r0.unix_timestamp_nanos() / 1000
             }
             (_, _) => false,
         }
@@ -204,7 +204,9 @@ impl Serialize for TTLV {
                 serializer,
                 &self.tag,
                 "DateTime",
-                &format!("{}", v.format("%+")),
+                &v.format(&Rfc3339).map_err(|err| {
+                    ser::Error::custom(format!("Cannot format DateTime {v} into RFC3339: {err}"))
+                })?,
             ),
             TTLValue::Interval(v) => _serialize(serializer, &self.tag, "Interval", v),
             TTLValue::DateTimeExtended(v) => _serialize(
@@ -212,7 +214,7 @@ impl Serialize for TTLV {
                 &self.tag,
                 "DateTimeExtended",
                 &("0x".to_string()
-                    + &hex::encode_upper((v.timestamp_nanos() / 1000).to_be_bytes())),
+                    + &hex::encode_upper((v.unix_timestamp_nanos() / 1000).to_be_bytes())),
             ),
         }
     }
@@ -345,21 +347,20 @@ impl<'de> Deserialize<'de> for TTLV {
                                     let hex: String = map.next_value()?;
                                     if &hex[0..2] != "0x" {
                                         return Err(de::Error::custom(format!(
-                                            "Invalid value for i64 hex String: {}",
-                                            hex
+                                            "Invalid value for i64 hex String: {hex} (should \
+                                             start with 0x)"
                                         )))
                                     }
-                                    let bytes = hex::decode(&hex[2..]).map_err(|_e| {
+                                    let bytes = hex::decode(&hex[2..]).map_err(|_| {
                                         de::Error::custom(format!(
-                                            "Invalid value for i64 hex String: {}",
-                                            hex
+                                            "Invalid value for i64 hex String: {hex} (not a hex \
+                                             string)"
                                         ))
                                     })?;
                                     let v: i64 = i64::from_be_bytes(
-                                        bytes.as_slice().try_into().map_err(|_e| {
+                                        bytes.as_slice().try_into().map_err(|_| {
                                             de::Error::custom(format!(
-                                                "Invalid value for i64 hex String: {}",
-                                                hex
+                                                "Invalid value for i64 hex String: {hex}"
                                             ))
                                         })?,
                                     );
@@ -405,38 +406,43 @@ impl<'de> Deserialize<'de> for TTLV {
                                 }
                                 "DateTime" => {
                                     let d: String = map.next_value()?;
-                                    let date = DateTime::parse_from_rfc3339(&d).map_err(|_e| {
-                                        de::Error::custom(format!(
-                                            "Invalid value for an ISO 8601 date: {}",
-                                            d
-                                        ))
-                                    })?;
-                                    TTLValue::DateTime(date.into())
+                                    let date =
+                                        OffsetDateTime::parse(&d, &Rfc3339).map_err(|_e| {
+                                            de::Error::custom(format!(
+                                                "Invalid value for an RFC3339 date: {}",
+                                                d
+                                            ))
+                                        })?;
+                                    TTLValue::DateTime(date)
                                 }
                                 "Interval" => TTLValue::Interval(map.next_value()?),
                                 "DateTimeExtended" => {
                                     let hex: String = map.next_value()?;
                                     if &hex[0..2] != "0x" {
                                         return Err(de::Error::custom(format!(
-                                            "Invalid value for i64 hex String: {}",
-                                            hex
+                                            "Invalid value for i64 hex String: {hex} (should \
+                                             start with 0x)",
                                         )))
                                     }
-                                    let bytes = hex::decode(&hex[2..]).map_err(|_e| {
+                                    let bytes = hex::decode(&hex[2..]).map_err(|_| {
                                         de::Error::custom(format!(
-                                            "Invalid value for i64 hex String: {}",
-                                            hex
+                                            "Invalid value for i64 hex String: {hex} (not an hex \
+                                             string)"
                                         ))
                                     })?;
-                                    let v: i64 = i64::from_be_bytes(
-                                        bytes.as_slice().try_into().map_err(|_e| {
+                                    let v = i128::from_be_bytes(
+                                        bytes.as_slice().try_into().map_err(|_| {
                                             de::Error::custom(format!(
-                                                "Invalid value for i64 hex String: {}",
-                                                hex
+                                                "Invalid value for i64 hex String: {hex}"
                                             ))
                                         })?,
                                     );
-                                    let dt = Utc.timestamp_nanos(v * 1000);
+                                    let dt = OffsetDateTime::from_unix_timestamp_nanos(v * 1000)
+                                        .map_err(|_| {
+                                            de::Error::custom(format!(
+                                                "Invalid value for unix timestamp: {hex}",
+                                            ))
+                                        })?;
                                     TTLValue::DateTimeExtended(dt)
                                 }
                                 t => return Err(de::Error::custom(format!("Unknown type: {t}"))),

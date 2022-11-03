@@ -27,9 +27,7 @@ prod = ["auth", "https", "enclave"]
 
 # TODO: Remove that feature and use bundled-sqlcipher-vendored-openssl as default feature in `dependencies` for libsqlite3-sys
 # when sqlite >= 3.8 will be supported
-sqlcipher = [
-  "libsqlite3-sys/bundled-sqlcipher-vendored-openssl",
-]
+sqlcipher = ["libsqlite3-sys/bundled-sqlcipher-vendored-openssl"]
 
 [dependencies]
 abe_policy = "1.0"
@@ -45,7 +43,6 @@ alcoholic_jwt = "1.0"
 async-trait = "0.1"
 base64 = "0.13"
 bitflags = "1.2"
-chrono = "0.4"
 clap = {version = "3.1", features = ["derive", "cargo", "env"]}
 cosmian_crypto_base = {version = "2.1", features = ["libsodium"]}
 cosmian_kmip = {path = "../kmip"}
@@ -91,6 +88,7 @@ tracing-log = "0.1"
 tracing-subscriber = {version = "0.3", features = ["env-filter"]}
 tracing-tree = "0.2"
 uuid = {version = "1.0.0", features = ["v4"]}
+time = { version = "0.3", features = ["local-offset", "formatting"] }
 
 [dev-dependencies]
 actix-http = "3.0"
@@ -99,4 +97,4 @@ serial_test = "0.9"
 tempfile = "3.1"
 
 [build-dependencies]
-chrono = "0.4"
+time = { version = "0.3", features = ["local-offset", "formatting"] }
