@@ -6,7 +6,6 @@ use actix_web::web::{Data, Path};
 use common::prelude::{CError, CResult};
 use cosmian_mcfe::lwe;
 use num_bigint::BigUint;
-use paperclip::actix::{api_v2_operation, web::Json, Apiv2Schema};
 use serde::{Deserialize, Serialize};
 
 use super::actions;

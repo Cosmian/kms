@@ -10,7 +10,6 @@ use std::convert::TryInto;
 
 use chrono::{DateTime, TimeZone, Utc};
 use num_bigint::BigUint;
-use paperclip::actix::Apiv2Schema;
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::{SerializeStruct, Serializer},
@@ -98,8 +97,7 @@ impl<'de> Deserialize<'de> for TTLVEnumeration {
     }
 }
 
-#[derive(Debug, Clone, Apiv2Schema)]
-#[openapi(empty)]
+#[derive(Debug, Clone)]
 pub enum TTLValue {
     Structure(Vec<TTLV>),
     Integer(i32),
@@ -143,7 +141,7 @@ impl PartialEq for TTLValue {
     }
 }
 
-#[derive(PartialEq, Debug, Clone, Apiv2Schema, Default)]
+#[derive(PartialEq, Debug, Clone, Default)]
 pub struct TTLV {
     pub tag: String,
     pub value: TTLValue,

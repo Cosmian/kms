@@ -7,7 +7,6 @@ use cosmian_kms_client::kmip::{
     kmip_operations::{Create, Decrypt, Encrypt, Get},
     kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
 };
-use paperclip::actix::{api_v2_operation, web::Json, Apiv2Schema};
 use serde::{Deserialize, Serialize};
 use torus_fhe::{
     tgsw::T32RGSWSample,

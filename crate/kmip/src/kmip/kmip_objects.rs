@@ -1,7 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
 use num_bigint::BigUint;
-use paperclip::actix::Apiv2Schema;
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 
@@ -34,9 +33,8 @@ use crate::{
 ///
 /// Order matters: `SecretData` will be deserialized as a `PrivateKey` if it
 /// appears after despite the presence of `secret_data_type`
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Display, Apiv2Schema)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Display)]
 #[serde(untagged)]
-#[openapi(empty)]
 pub enum Object {
     #[serde(rename_all = "PascalCase")]
     Certificate {
@@ -241,9 +239,7 @@ impl TryInto<Vec<u8>> for Object {
 /// The type of a KMIP Objects
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(
-    Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString, Display, Apiv2Schema,
-)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString, Display)]
 #[serde(rename_all = "PascalCase")]
 pub enum ObjectType {
     Certificate = 0x0000_0001,
