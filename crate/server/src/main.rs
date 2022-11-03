@@ -2,7 +2,7 @@ use cosmian_kms_server::{
     config::{init_config, Config},
     start_kms_server,
 };
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use tracing::info;
 #[cfg(feature = "timeout")]
 use tracing::warn;

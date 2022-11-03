@@ -52,7 +52,7 @@ cosmian_kmip = {path = "../kmip"}
 cosmian_kms_utils = {path = "../utils", features = ["curve25519"]}
 cosmian_mcfe = {git = "https://github.com/Cosmian/DMCFE.git", branch = "feature/add_mcfe"}
 cosmian_cover_crypt = "7.0"
-dotenv = "0.15.0"
+dotenvy = "0.15.0"
 env_logger = "0.9"
 eyre = "0.6"
 futures = "0.3"
