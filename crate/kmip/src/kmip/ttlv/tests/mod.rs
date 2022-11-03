@@ -617,14 +617,6 @@ fn test_java_import_request() {
 }
 
 #[test]
-pub fn test_java_import_request_2() {
-    log_init("info");
-    let json = include_str!("./import_abe_public_key_java.json");
-    let ttlv: TTLV = serde_json::from_str(json).unwrap();
-    let _import_request: Import = from_ttlv(&ttlv).unwrap();
-}
-
-#[test]
 fn test_java_import_response() {
     log_init("info");
     let ir = ImportResponse {
@@ -674,6 +666,9 @@ pub fn test_attributes_with_links() {
 #[test]
 pub fn test_import_correct_object() {
     log_init("debug,hyper=info,reqwest=info");
+
+    // This file was migrated from GPSW without touching the keys (just changing the `CryptographicAlgorithm` and `KeyFormatType`)
+    // It cannot be used to do crypto stuff, it's just for testing the serialization/deserialisation of TTLV.
     let json = include_str!("./import.json");
     let ttlv: TTLV = serde_json::from_str(json).unwrap();
     let import: Import = from_ttlv(&ttlv).unwrap();
@@ -681,7 +676,7 @@ pub fn test_import_correct_object() {
     assert_eq!(ObjectType::PublicKey, import.object_type);
     assert_eq!(ObjectType::PublicKey, import.object.object_type());
     assert_eq!(
-        CryptographicAlgorithm::ABE,
+        CryptographicAlgorithm::CoverCrypt,
         import.object.key_block().unwrap().cryptographic_algorithm
     );
 }

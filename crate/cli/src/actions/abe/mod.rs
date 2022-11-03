@@ -4,4 +4,3 @@ pub(crate) mod keys;
 pub(crate) mod policy;
 
 pub mod cover_crypt;
-pub mod gpsw;

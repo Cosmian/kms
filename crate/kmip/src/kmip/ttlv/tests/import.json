@@ -22,7 +22,7 @@
         {
           "tag": "CryptographicAlgorithm",
           "type": "Enumeration",
-          "value": "ABE"
+          "value": "CoverCrypt"
         },
         {
           "tag": "Link",
@@ -44,7 +44,7 @@
             {
               "tag": "KeyFormatType",
               "type": "Enumeration",
-              "value": "AbeMasterPublicKey"
+              "value": "CoverCryptPublicKey"
             },
             {
               "tag": "KeyValue",
@@ -60,12 +60,12 @@
                     {
                       "tag": "CryptographicAlgorithm",
                       "type": "Enumeration",
-                      "value": "ABE"
+                      "value": "CoverCrypt"
                     },
                     {
                       "tag": "KeyFormatType",
                       "type": "Enumeration",
-                      "value": "AbeMasterSecretKey"
+                      "value": "CoverCryptSecretKey"
                     },
                     {
                       "tag": "Link",
@@ -124,7 +124,7 @@
             {
               "tag": "CryptographicAlgorithm",
               "type": "Enumeration",
-              "value": "ABE"
+              "value": "CoverCrypt"
             },
             {
               "tag": "CryptographicLength",

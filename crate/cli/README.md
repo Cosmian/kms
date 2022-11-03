@@ -46,7 +46,7 @@ If the server is running with cached sqlcipher as the KMS database, you also nee
 KMS_CLI_CONF=kms.json cosmian_kms_cli configure
 ```
 
-### Attribute Based Encryption: GPSW / CoverCrypt
+### Attribute Based Encryption: CoverCrypt
 
 You can perform the following ABE operations by taking advantage of the KMS.
 
@@ -76,10 +76,6 @@ __On user data__
 
 For more details, run:
 ```
-# Details for GPSW
-cosmian_kms_cli gpsw --help
-
-# Details for CoverCrypt
 cosmian_kms_cli cc --help
 ```
 

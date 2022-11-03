@@ -6,7 +6,7 @@ use predicates::prelude::*;
 use crate::{
     config::KMS_CLI_CONF_ENV,
     tests::{
-        abe,
+        cover_crypt::integration_tests::SUB_COMMAND as CC_SUB_COMMAND,
         test_utils::{init_test_server, ONCE},
         utils::extract_uids::extract_private_key,
         CONF_PATH, PROG_NAME,
@@ -18,7 +18,7 @@ const SUB_COMMAND: &str = "permission";
 fn gen_object() -> String {
     let mut cmd = Command::cargo_bin(PROG_NAME).unwrap();
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
-    cmd.arg(abe::SUB_COMMAND).args(vec!["init"]);
+    cmd.arg(CC_SUB_COMMAND).args(vec!["init"]);
     let success = cmd.assert().success();
     let output = success.get_output();
     let stdout: &str = std::str::from_utf8(&output.stdout).unwrap();

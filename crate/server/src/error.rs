@@ -1,4 +1,3 @@
-use abe_gpsw::error::FormatErr;
 use actix_web::error::QueryPayloadError;
 use cosmian_kmip::{
     error::KmipError,
@@ -102,12 +101,6 @@ impl From<acme_lib::Error> for KmsError {
 
 impl From<serde_json::Error> for KmsError {
     fn from(e: serde_json::Error) -> Self {
-        KmsError::InvalidRequest(e.to_string())
-    }
-}
-
-impl From<FormatErr> for KmsError {
-    fn from(e: FormatErr) -> Self {
         KmsError::InvalidRequest(e.to_string())
     }
 }
