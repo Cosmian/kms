@@ -76,8 +76,7 @@ cargo_audit:
   only: [master, develop, merge_requests]
   cache: {}
   script:
-    - cargo audit
-  allow_failure: true
+    - cargo audit --ignore RUSTSEC-2020-0071
 
 #
 # Coverage
