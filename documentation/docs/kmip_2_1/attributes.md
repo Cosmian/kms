@@ -15,17 +15,10 @@ It is set by the server, but a particular Key Format Type MAY be requested by th
 *Extensions*
 
 ```
-McfeSecretKey = 0x8880_0001,
-McfeMasterSecretKey = 0x8880_0002,
-McfeFunctionalKey = 0x8880_0003,
-McfeFksSecretKey = 0x8880_0004,
 EnclaveECKeyPair = 0x8880_0005,
 EnclaveECSharedKey = 0x8880_0006,
-TFHE = 0x8880_0007,
-AbeMasterSecretKey = 0x8880_0008,
-AbeMasterPublicKey = 0x8880_0009,
-AbeUserDecryptionKey = 0x8880_000A,
-AbeSymmetricKey = 0x8880_000B,
+CoverCryptSecretKey = 0x8880_000C,
+CoverCryptPublicKey = 0x8880_000D,
 ```
 
 #### CryptographicAlgorithm
@@ -47,9 +40,7 @@ Initial Counter Value is the starting counter value for CTR mode (for [RFC3686] 
 *Extensions*
 
 ```
-    LWE = 0x8880_0001,
-    TFHE = 0x8880_0002,
-    ABE = 0x8880_0003,
+CoverCrypt = 0x8880_0004,
 ```
 
 #### Vendor Attributes

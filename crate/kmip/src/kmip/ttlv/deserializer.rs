@@ -4,6 +4,7 @@ use serde::{
     de::{self, DeserializeSeed, EnumAccess, Error, MapAccess, SeqAccess, VariantAccess, Visitor},
     Deserialize,
 };
+use time::format_description::well_known::Rfc3339;
 use tracing::log::trace;
 
 use crate::kmip::ttlv::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV};
@@ -157,9 +158,17 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
             }),
             TTLValue::TextString(s) => visitor.visit_str(s),
             TTLValue::Boolean(b) => visitor.visit_bool(*b),
-            TTLValue::DateTime(dt) => visitor.visit_str(&dt.to_rfc3339()),
+            TTLValue::DateTime(dt) => visitor.visit_str(&dt.format(&Rfc3339).map_err(|err| {
+                TtlvError::custom(format!("Cannot format DateTime {dt} into RFC3339: {err}"))
+            })?),
             TTLValue::Interval(i) => visitor.visit_u32(*i),
-            TTLValue::DateTimeExtended(dte) => visitor.visit_str(&dte.to_rfc3339()),
+            TTLValue::DateTimeExtended(dte) => {
+                visitor.visit_str(&dte.format(&Rfc3339).map_err(|err| {
+                    TtlvError::custom(format!(
+                        "Cannot format DateTimeExtended {dte} into RFC3339: {err}"
+                    ))
+                })?)
+            }
         }
     }
 

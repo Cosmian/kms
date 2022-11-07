@@ -2,7 +2,7 @@ use cosmian_kms_server::{
     config::{init_config, Config},
     start_kms_server,
 };
-use dotenv::dotenv;
+use dotenvy::dotenv;
 use tracing::info;
 #[cfg(feature = "timeout")]
 use tracing::warn;
@@ -34,13 +34,6 @@ async fn main() -> eyre::Result<()> {
     let conf = Config::parse();
     init_config(&conf).await?;
 
-    #[cfg(feature = "timeout")]
-    {
-        warn!("This is a demo version, the server will stop in 3 months");
-        let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(Box::pin(start_kms_server()), demo).await;
-    }
-
     info!("Enabled features:");
     #[cfg(feature = "auth")]
     info!("- Auth");
@@ -53,7 +46,15 @@ async fn main() -> eyre::Result<()> {
     #[cfg(feature = "insecure")]
     info!("- Insecure");
 
+    #[cfg(feature = "timeout")]
+    {
+        warn!("This is a demo version, the server will stop in 3 months");
+        let demo = actix_rt::spawn(expiry::demo_timeout());
+        futures::future::select(Box::pin(start_kms_server()), demo).await;
+    }
+
     // Start the KMS
+    #[cfg(not(feature = "timeout"))]
     start_kms_server().await?;
 
     Ok(())

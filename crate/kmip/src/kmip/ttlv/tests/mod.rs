@@ -1,8 +1,6 @@
-use std::time::SystemTime;
-
-use chrono::{DateTime, Utc};
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use tracing::trace;
 
 use crate::{
@@ -150,7 +148,7 @@ fn test_enumeration() {
 
 #[test]
 fn test_serialization_deserialization() {
-    let now: DateTime<Utc> = SystemTime::now().into();
+    let now = OffsetDateTime::now_utc();
     let ttlv = TTLV {
         tag: "Test".to_string(),
         value: TTLValue::Structure(vec![

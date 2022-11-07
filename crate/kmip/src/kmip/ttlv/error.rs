@@ -45,3 +45,9 @@ impl de::Error for TtlvError {
         }
     }
 }
+
+impl From<time::Error> for TtlvError {
+    fn from(err: time::error::Error) -> Self {
+        TtlvError::new(&err.to_string())
+    }
+}

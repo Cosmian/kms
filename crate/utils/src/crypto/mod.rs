@@ -5,6 +5,3 @@ pub mod cover_crypt;
 pub mod curve_25519;
 pub mod dh_shared_keys;
 pub mod generic;
-#[cfg(all(not(target_arch = "wasm32"), not(windows)))]
-pub mod mcfe;
-pub mod tfhe;
