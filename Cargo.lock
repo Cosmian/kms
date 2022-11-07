@@ -580,28 +580,12 @@ dependencies = [
 
 [[package]]
 name = "block-buffer"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4152116fd6e9dadb291ae18fc1ec3575ed6d84c29642d97890f4b4a3417297e4"
-dependencies = [
- "block-padding",
- "generic-array",
-]
-
-[[package]]
-name = "block-buffer"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cce20737498f97b993470a6e536b8523f0af7892a4f928cceb1ac5e52ebe7e"
 dependencies = [
  "generic-array",
 ]
-
-[[package]]
-name = "block-padding"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d696c370c750c948ada61c69a0ee2cbbb9c50b1019ddb86d9317157a99c2cae"
 
 [[package]]
 name = "brotli"
@@ -846,7 +830,7 @@ dependencies = [
  "rand_core 0.6.4",
  "serde",
  "serde_json",
- "sha3 0.10.6",
+ "sha3",
  "thiserror",
  "zeroize",
 ]
@@ -1006,7 +990,6 @@ dependencies = [
  "cosmian_crypto_base",
  "cosmian_kmip",
  "cosmian_kms_utils",
- "cosmian_mcfe",
  "dotenvy",
  "env_logger",
  "eyre",
@@ -1027,12 +1010,11 @@ dependencies = [
  "serde",
  "serde_json",
  "serial_test",
- "sha3 0.10.6",
+ "sha3",
  "sqlx",
  "tempfile",
  "thiserror",
  "time 0.3.16",
- "torus_fhe",
  "tracing",
  "tracing-log",
  "tracing-subscriber",
@@ -1050,7 +1032,6 @@ dependencies = [
  "cosmian_crypto_base",
  "cosmian_crypto_core 4.0.1",
  "cosmian_kmip",
- "cosmian_mcfe",
  "hex",
  "num-bigint",
  "rand_core 0.6.4",
@@ -1060,27 +1041,10 @@ dependencies = [
  "strum",
  "strum_macros",
  "thiserror",
- "torus_fhe",
  "tracing",
  "tracing-log",
  "tracing-subscriber",
  "tracing-tree",
-]
-
-[[package]]
-name = "cosmian_mcfe"
-version = "0.2.0"
-source = "git+https://github.com/Cosmian/DMCFE.git?branch=feature/add_mcfe#5529575b5be47cff2d682d79ade17947ece280d0"
-dependencies = [
- "cosmian_crypto_base",
- "eyre",
- "num-bigint",
- "num-traits",
- "rand",
- "rand_distr",
- "rand_hc",
- "serde",
- "sha3 0.9.1",
 ]
 
 [[package]]
@@ -1314,7 +1278,7 @@ version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adfbc57365a37acbd2ebf2b64d7e69bb766e2fea813521ed536f5d0520dcf86c"
 dependencies = [
- "block-buffer 0.10.3",
+ "block-buffer",
  "crypto-common",
  "subtle",
 ]
@@ -2767,15 +2731,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "psm"
-version = "0.1.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5787f7cda34e3033a72192c018bc5883100330f362ef279a8cbccfce8bb4e874"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3220,18 +3175,6 @@ dependencies = [
 
 [[package]]
 name = "sha3"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f81199417d4e5de3f04b1e871023acea7389672c4135918f05aa9cbf2f2fa809"
-dependencies = [
- "block-buffer 0.9.0",
- "digest 0.9.0",
- "keccak",
- "opaque-debug",
-]
-
-[[package]]
-name = "sha3"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bdf0c33fae925bdc080598b84bc15c55e7b9a4a43b3c704da051f977469691c9"
@@ -3434,19 +3377,6 @@ dependencies = [
  "once_cell",
  "tokio",
  "tokio-native-tls",
-]
-
-[[package]]
-name = "stacker"
-version = "0.1.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c886bd4480155fd3ef527d45e9ac8dd7118a898a46530b7b94c3e21866259fce"
-dependencies = [
- "cc",
- "cfg-if",
- "libc",
- "psm",
- "winapi",
 ]
 
 [[package]]
@@ -3718,23 +3648,6 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "torus_fhe"
-version = "0.1.0"
-source = "git+http://gitlab.cosmian.com/other/tfhe.git#54bd856268890ff4feeda4a60996d1b78330084b"
-dependencies = [
- "eyre",
- "generic-array",
- "num-traits",
- "rand",
- "rand_distr",
- "rand_hc",
- "serde",
- "stacker",
- "tracing",
- "typenum",
 ]
 
 [[package]]

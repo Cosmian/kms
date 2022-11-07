@@ -1,7 +1,5 @@
 // TODO Split this file in multiple implementations under their operations names
 
-use std::convert::TryFrom;
-
 use cosmian_cover_crypt::interfaces::statics::CoverCryptX25519Aes256;
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
@@ -13,19 +11,10 @@ use cosmian_kms_utils::{
         aes::{create_symmetric_key, AesGcmCipher},
         cover_crypt::ciphers::{CoverCryptHybridCipher, CoverCryptHybridDecipher},
         curve_25519::operation::generate_key_pair,
-        mcfe::operation::{
-            mcfe_master_key_from_key_block, mcfe_setup_from_attributes,
-            secret_data_from_lwe_functional_key, secret_key_from_lwe_master_secret_key,
-            secret_key_from_lwe_secret_key, setup_from_secret_key, DMcfeDeCipher, DMcfeEnCipher,
-            FunctionalKeyCreateRequest,
-        },
-        tfhe::{self, TFHEKeyCreateRequest},
     },
     types::{ExtraDatabaseParams, ObjectOperationTypes},
     DeCipher, EnCipher, KeyPair,
 };
-use cosmian_mcfe::lwe;
-use torus_fhe::{trlwe::TRLWEKey, HasGenerator};
 use tracing::trace;
 
 use super::KMS;
@@ -76,33 +65,23 @@ impl KMS {
         }
 
         match &object {
-            Object::SymmetricKey { key_block } => {
-                match &key_block.key_format_type {
-                    KeyFormatType::TransparentSymmetricKey => {
-                        match &key_block.cryptographic_algorithm {
-                            CryptographicAlgorithm::AES => {
-                                Ok(Box::new(AesGcmCipher::instantiate(key_uid, &object)?)
-                                    as Box<dyn EnCipher>)
-                            }
-                            other => kms_bail!(KmsError::NotSupported(format!(
-                                "This server does not yet support symetric encryption with \
-                                 algorithm: {other:?}"
-                            ))),
+            Object::SymmetricKey { key_block } => match &key_block.key_format_type {
+                KeyFormatType::TransparentSymmetricKey => {
+                    match &key_block.cryptographic_algorithm {
+                        CryptographicAlgorithm::AES => {
+                            Ok(Box::new(AesGcmCipher::instantiate(key_uid, &object)?)
+                                as Box<dyn EnCipher>)
                         }
+                        other => kms_bail!(KmsError::NotSupported(format!(
+                            "This server does not yet support symetric encryption with algorithm: \
+                             {other:?}"
+                        ))),
                     }
-                    KeyFormatType::McfeSecretKey => {
-                        // we need to recover the lwe::Setup parameter
-                        Ok(Box::new(DMcfeEnCipher::instantiate(key_uid, &object)?)
-                            as Box<dyn EnCipher>)
-                    }
-                    KeyFormatType::TFHE => {
-                        Ok(Box::new(tfhe::Cipher::instantiate(key_uid, &object)?))
-                    }
-                    other => kms_bail!(KmsError::NotSupported(format!(
-                        "This server does not yet support encryption with keys of format: {other}"
-                    ))),
                 }
-            }
+                other => kms_bail!(KmsError::NotSupported(format!(
+                    "This server does not yet support encryption with keys of format: {other}"
+                ))),
+            },
             Object::PublicKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::CoverCryptPublicKey => Ok(Box::new(
                     CoverCryptHybridCipher::instantiate(cover_crypt, key_uid, &object)?,
@@ -141,20 +120,6 @@ impl KMS {
         }
 
         match &object {
-            Object::SecretData {
-                key_block,
-                secret_data_type: _,
-            } => {
-                match &key_block.key_format_type {
-                    KeyFormatType::McfeFunctionalKey => {
-                        // we need to recover the lwe::Setup parameter
-                        Ok(Box::new(DMcfeDeCipher::instantiate(object_uid, &object)?))
-                    }
-                    other => kms_bail!(KmsError::NotSupported(format!(
-                        "This server does not yet support decryption with keys of format: {other}"
-                    ))),
-                }
-            }
             Object::PrivateKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::CoverCryptSecretKey => Ok(Box::new(
                     CoverCryptHybridDecipher::instantiate(cover_crypt, object_uid, &object)?,
@@ -174,9 +139,6 @@ impl KMS {
                              algorithm: {other:?}"
                         ))),
                     }
-                }
-                KeyFormatType::TFHE => {
-                    Ok(Box::new(tfhe::Cipher::instantiate(object_uid, &object)?))
                 }
                 other => kms_bail!(KmsError::NotSupported(format!(
                     "This server does not yet support decryption with keys of format: {other}"
@@ -217,142 +179,9 @@ impl KMS {
                     "Unable to generate a symmetric key for format: {other}"
                 ))),
             },
-            CryptographicAlgorithm::LWE => match attributes.key_format_type {
-                None => kms_bail!(KmsError::InvalidRequest(
-                    "Unable to create a secret key, the format type is not specified".to_string()
-                )),
-                Some(KeyFormatType::McfeSecretKey) => {
-                    let setup = mcfe_setup_from_attributes(attributes)?;
-                    let sk = lwe::SecretKey::try_from(&setup)?;
-                    secret_key_from_lwe_secret_key(&setup, &sk).map_err(Into::into)
-                }
-                Some(KeyFormatType::McfeFksSecretKey) => kms_bail!(KmsError::NotSupported(
-                    "Generation of Functional Key Shares Secret Keys is not yet supported"
-                        .to_string()
-                )),
-                Some(KeyFormatType::McfeMasterSecretKey) => {
-                    let setup = mcfe_setup_from_attributes(attributes)?;
-                    let msk = lwe::MasterSecretKey::try_from(&setup)?;
-                    secret_key_from_lwe_master_secret_key(&setup, msk.as_slice())
-                        .map_err(Into::into)
-                }
-                Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
-                    "Unable to generate an LWE secret key for format: {other}"
-                ))),
-            },
-            CryptographicAlgorithm::TFHE => match attributes.key_format_type {
-                None => kms_bail!(KmsError::InvalidRequest(
-                    "Unable to create a secret key, the format type is not specified".to_string()
-                )),
-                Some(KeyFormatType::TFHE) => {
-                    let request = TFHEKeyCreateRequest::try_from(attributes)?;
-                    let key = match request.pregenerated_key {
-                        None => {
-                            //*** Security Parameter
-                            //
-                            // Vector size
-                            use torus_fhe::typenum::{U1023, U512};
-                            type N = U512;
-                            const N: usize = 512;
-                            //*** LUT Parameters
-                            type D = U1023;
-                            const D: usize = 1023;
-                            match (request.vector_size, request.d) {
-                                (N, D) => TRLWEKey::<N, D>::gen(),
-                                _ => {
-                                    kms_bail!(KmsError::InvalidRequest(format!(
-                                        "no rule to process vector_size {}, d {}",
-                                        request.vector_size, request.d
-                                    )))
-                                }
-                            }
-                        }
-                        Some(key) => key,
-                    };
-                    let key_bytes = serde_json::to_vec(&key)?;
-                    Ok(Object::SymmetricKey {
-                        key_block: tfhe::array_to_key_block(
-                            &key_bytes,
-                            attributes.clone(),
-                            KeyFormatType::TFHE,
-                        ),
-                    })
-                }
-                Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
-                    "Unable to generate an TFHE secret key for format: {other}"
-                ))),
-            },
             other => kms_bail!(KmsError::NotSupported(format!(
                 "The creation of secret key for algorithm: {other:?} is not supported"
             ))),
-        }
-    }
-
-    pub(crate) async fn create_secret_data(
-        &self,
-        request: &Create,
-        owner: &str,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Object> {
-        let attributes = &request.attributes;
-        match &attributes.cryptographic_algorithm {
-            Some(CryptographicAlgorithm::LWE) => match attributes.key_format_type {
-                None => kms_bail!(KmsError::InvalidRequest(
-                    "Unable to create a secret key, the format type is not specified".to_string()
-                )),
-
-                Some(KeyFormatType::McfeFunctionalKey) => {
-                    let request = FunctionalKeyCreateRequest::try_from(attributes)?;
-                    let (object, _state) = self
-                        .db
-                        .retrieve(
-                            &request.master_secret_key_uid,
-                            owner,
-                            ObjectOperationTypes::Create,
-                            params,
-                        )
-                        .await?
-                        .ok_or_else(|| {
-                            KmsError::ItemNotFound(format!(
-                                "Object with uid: {} and owner: {owner} not found",
-                                request.master_secret_key_uid
-                            ))
-                        })?;
-                    if let Object::SymmetricKey { key_block } = &object {
-                        if key_block.key_format_type == KeyFormatType::McfeMasterSecretKey {
-                            let msk = mcfe_master_key_from_key_block(key_block)?;
-                            let setup =
-                                setup_from_secret_key(&request.master_secret_key_uid, key_block)?;
-                            let parameters = lwe::Parameters::instantiate(&setup)?;
-                            let fk = parameters.functional_key(&msk, &request.vectors)?;
-                            secret_data_from_lwe_functional_key(&setup, &fk).map_err(Into::into)
-                        } else {
-                            kms_bail!(KmsError::InvalidRequest(
-                                "Generation of Functional Key failed. The given uid is not that \
-                                 of a Master Secret Key"
-                                    .to_string()
-                            ))
-                        }
-                    } else {
-                        kms_bail!(KmsError::InvalidRequest(
-                            "Generation of Functional Key failed. The given uid is not that of a \
-                             Master Secret Key"
-                                .to_string()
-                        ))
-                    }
-                }
-                Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                    "Unable to generate an LWE secret key for format: {other:?}"
-                ))),
-            },
-
-            Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                "The creation of secret data for algorithm: {other:?} is not supported"
-            ))),
-            None => kms_bail!(KmsError::InvalidRequest(
-                "The cryptographic algorithm must be specified for secret data creation"
-                    .to_string()
-            )),
         }
     }
 

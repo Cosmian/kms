@@ -572,7 +572,6 @@ impl KmipServer for KMS {
         }
         let object = match &request.object_type {
             ObjectType::SymmetricKey => self.create_symmetric_key(&request, owner).await?,
-            ObjectType::SecretData => self.create_secret_data(&request, owner, params).await?,
             ObjectType::PrivateKey => self.create_private_key(&request, owner, params).await?,
             _ => {
                 kms_bail!(KmsError::NotSupported(format!(
