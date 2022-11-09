@@ -1,7 +1,6 @@
 use std::clone::Clone;
 
 use num_bigint::BigUint;
-use paperclip::actix::Apiv2Schema;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
 use crate::{
@@ -183,7 +182,7 @@ impl Serialize for KeyValue {
 /// present, from the Cryptographic Parameters attribute of the respective
 /// key(s). Either the Encryption Key Information or the MAC/Signature Key
 /// Information (or both) in the Key Wrapping Data structure SHALL be specified.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Apiv2Schema, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct KeyWrappingData {
     pub wrapping_method: WrappingMethod,
@@ -214,9 +213,8 @@ pub struct KeyWrappingData {
 // }
 // ```
 // So we use the `untagged` which unfortunately breaks pascalCase
-#[derive(Deserialize, Clone, Debug, Eq, PartialEq, Apiv2Schema)]
+#[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(untagged)]
-#[openapi(empty)]
 pub enum KeyMaterial {
     ByteString(Vec<u8>),
     #[serde(rename_all = "PascalCase")]

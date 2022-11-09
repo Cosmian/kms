@@ -4,6 +4,7 @@ use serde::{
     de::{self, DeserializeSeed, EnumAccess, Error, MapAccess, SeqAccess, VariantAccess, Visitor},
     Deserialize,
 };
+use time::format_description::well_known::Rfc3339;
 use tracing::log::trace;
 
 use crate::kmip::ttlv::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV};
@@ -157,9 +158,17 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
             }),
             TTLValue::TextString(s) => visitor.visit_str(s),
             TTLValue::Boolean(b) => visitor.visit_bool(*b),
-            TTLValue::DateTime(dt) => visitor.visit_str(&dt.to_rfc3339()),
+            TTLValue::DateTime(dt) => visitor.visit_str(&dt.format(&Rfc3339).map_err(|err| {
+                TtlvError::custom(format!("Cannot format DateTime {dt} into RFC3339: {err}"))
+            })?),
             TTLValue::Interval(i) => visitor.visit_u32(*i),
-            TTLValue::DateTimeExtended(dte) => visitor.visit_str(&dte.to_rfc3339()),
+            TTLValue::DateTimeExtended(dte) => {
+                visitor.visit_str(&dte.format(&Rfc3339).map_err(|err| {
+                    TtlvError::custom(format!(
+                        "Cannot format DateTimeExtended {dte} into RFC3339: {err}"
+                    ))
+                })?)
+            }
         }
     }
 
@@ -172,7 +181,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         let child = &self.get_structure()?[self.index - 1].value;
         visitor.visit_bool(match child {
             TTLValue::Boolean(b) => *b,
-            x => return Err(TtlvError::custom(format!("Invalid type for bool: {:?}", x))),
+            x => return Err(TtlvError::custom(format!("Invalid type for bool: {x:?}"))),
         })
     }
 
@@ -205,7 +214,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         let child = &self.get_structure()?[self.index - 1].value;
         visitor.visit_i32(match child {
             TTLValue::Integer(v) => *v,
-            x => return Err(TtlvError::custom(format!("Invalid type for i32: {:?}", x))),
+            x => return Err(TtlvError::custom(format!("Invalid type for i32: {x:?}",))),
         })
     }
 
@@ -218,7 +227,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         let child = &self.get_structure()?[self.index - 1].value;
         visitor.visit_i64(match child {
             TTLValue::LongInteger(v) => *v,
-            x => return Err(TtlvError::custom(format!("Invalid type for i64: {:?}", x))),
+            x => return Err(TtlvError::custom(format!("Invalid type for i64: {x:?}"))),
         })
     }
 
@@ -262,11 +271,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
             Deserializing::StructureValue => {
                 let child = &self.get_structure()?[self.index - 1].value;
                 visitor.visit_u32(match child {
-                    TTLValue::Integer(v) => (*v).try_into().map_err(|_e| {
-                        TtlvError::custom(format!("Invalid type for u32: {:?}", v))
-                    })?,
+                    TTLValue::Integer(v) => (*v)
+                        .try_into()
+                        .map_err(|_e| TtlvError::custom(format!("Invalid type for u32: {v:?}")))?,
                     TTLValue::BitMask(v) => *v,
-                    x => return Err(TtlvError::custom(format!("Invalid type for u32: {:?}", x))),
+                    x => return Err(TtlvError::custom(format!("Invalid type for u32: {x:?}"))),
                 })
             }
             x => Err(TtlvError::custom(format!(
@@ -286,8 +295,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         visitor.visit_u64(match child {
             TTLValue::LongInteger(v) => (*v)
                 .try_into()
-                .map_err(|_e| TtlvError::custom(format!("Invalid type for u64: {:?}", v)))?,
-            x => return Err(TtlvError::custom(format!("Invalid type for u64: {:?}", x))),
+                .map_err(|_e| TtlvError::custom(format!("Invalid type for u64: {v:?}")))?,
+            x => return Err(TtlvError::custom(format!("Invalid type for u64: {x:?}"))),
         })
     }
 
@@ -310,7 +319,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         let child = &self.get_structure()?[self.index - 1].value;
         visitor.visit_f64(match child {
             TTLValue::Integer(v) => f64::from(*v),
-            x => return Err(TtlvError::custom(format!("Invalid type for f64: {:?}", x))),
+            x => return Err(TtlvError::custom(format!("Invalid type for f64: {x:?}"))),
         })
     }
 
@@ -342,20 +351,17 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                     TTLValue::TextString(v) => visitor.visit_borrowed_str(v),
                     TTLValue::Enumeration(v) => match v {
                         TTLVEnumeration::Integer(i) => Err(TtlvError::custom(format!(
-                            "deserialize_str. Unexpected integer in enumeration: {:?}",
-                            i
+                            "deserialize_str. Unexpected integer in enumeration: {i:?}"
                         ))),
                         TTLVEnumeration::Name(n) => visitor.visit_borrowed_str(n),
                     },
                     x => Err(TtlvError::custom(format!(
-                        "deserialize_str. Invalid type for string: {:?}",
-                        x
+                        "deserialize_str. Invalid type for string: {x:?}"
                     ))),
                 }
             }
             x => Err(TtlvError::custom(format!(
-                "deserialize_str. Unexpected {:?}",
-                x
+                "deserialize_str. Unexpected {x:?}"
             ))),
         }
     }

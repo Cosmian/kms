@@ -1,6 +1,5 @@
 use std::fmt;
 
-use paperclip::actix::Apiv2Schema;
 use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize, Serialize,
@@ -236,7 +235,7 @@ impl<'de> Deserialize<'de> for Import {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Apiv2Schema)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ImportResponse {
     /// The Unique Identifier of the newly imported object.
@@ -263,13 +262,7 @@ pub struct Create {
     pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
-impl paperclip::v2::schema::Apiv2Schema for Create {
-    const DESCRIPTION: &'static str = "Create request Apiv2Schema";
-    const NAME: Option<&'static str> = None;
-    const REQUIRED: bool = true;
-}
-
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateResponse {
     /// Type of object created.
@@ -321,13 +314,7 @@ pub struct CreateKeyPair {
     pub public_protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
-impl paperclip::v2::schema::Apiv2Schema for CreateKeyPair {
-    const DESCRIPTION: &'static str = "Create key pair request Apiv2Schema";
-    const NAME: Option<&'static str> = None;
-    const REQUIRED: bool = true;
-}
-
-#[derive(Serialize, Deserialize, Apiv2Schema, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPairResponse {
     /// The Unique Identifier of the newly created private key object.
@@ -336,7 +323,7 @@ pub struct CreateKeyPairResponse {
     pub public_key_unique_identifier: UniqueIdentifier,
 }
 
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema, Default)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Get {
     /// Determines the object being requested. If omitted, then the ID
@@ -382,7 +369,7 @@ impl From<&str> for Get {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetResponse {
     pub object_type: ObjectType,
@@ -390,7 +377,7 @@ pub struct GetResponse {
     pub object: Object,
 }
 
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributes {
     /// Determines the object whose attributes
@@ -423,7 +410,7 @@ impl From<&str> for GetAttributes {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributesResponse {
     /// The Unique Identifier of the object
@@ -432,7 +419,7 @@ pub struct GetAttributesResponse {
     pub attributes: Attributes,
 }
 
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema, Default)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Encrypt {
     /// The Unique Identifier of the Managed
@@ -482,7 +469,7 @@ pub struct Encrypt {
     pub authenticated_encryption_additional_data: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct EncryptResponse {
     /// The Unique Identifier of the Managed
@@ -516,7 +503,7 @@ pub struct EncryptResponse {
     pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema, Default)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Decrypt {
     /// The Unique Identifier of the Managed
@@ -569,7 +556,7 @@ pub struct Decrypt {
     pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct DecryptResponse {
     /// The Unique Identifier of the Managed
@@ -708,13 +695,7 @@ impl Locate {
     }
 }
 
-impl paperclip::v2::schema::Apiv2Schema for Locate {
-    const DESCRIPTION: &'static str = "Locate Request Apiv2Schema";
-    const NAME: Option<&'static str> = None;
-    const REQUIRED: bool = true;
-}
-
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LocateResponse {
     /// An Integer object that indicates the number of object identifiers that
     /// satisfy the identification criteria specified in the request. A server
@@ -760,7 +741,7 @@ pub struct Revoke {
     pub compromise_occurrence_date: Option<u64>, // epoch millis
 }
 
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct RevokeResponse {
     /// The Unique Identifier of the object.
@@ -833,7 +814,7 @@ pub struct ReKeyKeyPair {
     pub public_protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPairResponse {
     // The Unique Identifier of the newly created replacement Private Key object.
@@ -851,7 +832,7 @@ pub struct Destroy {
     pub unique_identifier: Option<UniqueIdentifier>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Apiv2Schema)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct DestroyResponse {
     /// The Unique Identifier of the object.

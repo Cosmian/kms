@@ -1,6 +1,7 @@
 use std::fs;
 
 use async_trait::async_trait;
+use cosmian_cover_crypt::interfaces::statics::CoverCryptX25519Aes256;
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyValue,
     kmip_objects::{Object, ObjectType},
@@ -11,7 +12,7 @@ use cosmian_kmip::kmip::{
         ReKeyKeyPair, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
     kmip_types::{
-        AttributeReference, Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
+        AttributeReference, Attributes, CryptographicAlgorithm, Link, LinkType,
         LinkedObjectIdentifier, RevocationReason, RevocationReasonEnumeration, StateEnumeration,
         Tag, UniqueIdentifier,
     },
@@ -19,9 +20,7 @@ use cosmian_kmip::kmip::{
 #[cfg(any(feature = "https", feature = "enclave"))]
 use cosmian_kms_utils::types::CertificatesResponse;
 use cosmian_kms_utils::{
-    crypto::{
-        cover_crypt::locate::compare_cover_crypt_attributes, gpsw::locate::compare_abe_attributes,
-    },
+    crypto::cover_crypt::locate::compare_cover_crypt_attributes,
     types::{
         Access, ExtraDatabaseParams, ObjectOperationTypes, ObjectOwnedResponse,
         ObjectSharedResponse, UserAccessResponse,
@@ -573,7 +572,6 @@ impl KmipServer for KMS {
         }
         let object = match &request.object_type {
             ObjectType::SymmetricKey => self.create_symmetric_key(&request, owner).await?,
-            ObjectType::SecretData => self.create_secret_data(&request, owner, params).await?,
             ObjectType::PrivateKey => self.create_private_key(&request, owner, params).await?,
             _ => {
                 kms_bail!(KmsError::NotSupported(format!(
@@ -608,7 +606,7 @@ impl KmipServer for KMS {
         }
         let sk_uid = Uuid::new_v4().to_string();
         let pk_uid = Uuid::new_v4().to_string();
-        let (sk, pk) = self.create_key_pair_(&request, owner, params).await?.0;
+        let (sk, pk) = self.create_key_pair_(&request).await?.0;
 
         // start a transaction
         // let mut conn = self.db.get_connection()?;
@@ -811,7 +809,7 @@ impl KmipServer for KMS {
             .unique_identifier
             .as_ref()
             .ok_or(KmsError::UnsupportedPlaceholder)?;
-        self.get_encipher(uid, owner, params)
+        self.get_encipher(Default::default(), uid, owner, params)
             .await?
             .encrypt(&request)
             .map_err(Into::into)
@@ -828,7 +826,7 @@ impl KmipServer for KMS {
             .unique_identifier
             .as_ref()
             .ok_or(KmsError::UnsupportedPlaceholder)?;
-        self.get_decipher(uid, owner, params)
+        self.get_decipher(Default::default(), uid, owner, params)
             .await?
             .decrypt(&request)
             .map_err(Into::into)
@@ -841,32 +839,6 @@ impl KmipServer for KMS {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<LocateResponse> {
         let uids = match &request.attributes.cryptographic_algorithm {
-            Some(CryptographicAlgorithm::ABE) => match request.attributes.key_format_type {
-                None => kms_bail!(KmsError::InvalidRequest(
-                    "Unable to locate an ABE key, the format type is not specified".to_string()
-                )),
-                Some(KeyFormatType::AbeUserDecryptionKey) => {
-                    let uids_attrs = self
-                        .db
-                        .find(
-                            Some(&request.attributes),
-                            Some(StateEnumeration::Active),
-                            owner,
-                            params,
-                        )
-                        .await?;
-                    let mut uids = Vec::new();
-                    for (uid, _, attributes, _) in uids_attrs {
-                        if compare_abe_attributes(&attributes, &request.attributes)? {
-                            uids.push(uid);
-                        }
-                    }
-                    uids
-                }
-                Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
-                    "Unable to locate an ABE keypair for format: {other:?}"
-                ))),
-            },
             Some(CryptographicAlgorithm::CoverCrypt) => {
                 let uids_attrs = self
                     .db
@@ -963,19 +935,10 @@ impl KmipServer for KMS {
         })?;
 
         match &attributes.cryptographic_algorithm {
-            Some(CryptographicAlgorithm::ABE) => {
-                super::gpsw::rekey_keypair_abe(
-                    self,
-                    private_key_unique_identifier,
-                    attributes,
-                    owner,
-                    params,
-                )
-                .await
-            }
             Some(CryptographicAlgorithm::CoverCrypt) => {
                 super::cover_crypt::rekey_keypair_cover_crypt(
                     self,
+                    CoverCryptX25519Aes256::default(),
                     private_key_unique_identifier,
                     attributes,
                     owner,

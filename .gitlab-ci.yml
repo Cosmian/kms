@@ -69,13 +69,14 @@ test_db_mariadb_connect:
     - mysql -h "$MYSQL_HOST" -uroot -e "CREATE DATABASE kms" --ssl-cert "${CI_PROJECT_DIR}/data/data-ssl/cert.pem" --ssl-key "${CI_PROJECT_DIR}/data/data-ssl/key.pem"
 
 # Security check
+# Failing because mysql has some dependencies with problems but cannot be upgraded 
+# because new versions of bitvec/funty are incompatible with some of our crypto dependencies.
 cargo_audit:
   stage: prebuild
   only: [master, develop, merge_requests]
   cache: {}
   script:
-    - cargo audit
-  allow_failure: true
+    - cargo audit --ignore RUSTSEC-2020-0071
 
 #
 # Coverage
@@ -262,6 +263,7 @@ docker_lib_ci_build_and_push:
   stage: build_docker
   rules:
     - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
+    - if: $CI_COMMIT_REF_NAME == "develop"
   variables:
     IMAGE_TAG: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_NAME}_ci
   script:

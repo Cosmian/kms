@@ -21,14 +21,14 @@ where
     }
 
     fn context(self, context: &str) -> KResult<T> {
-        self.map_err(|e| KmsError::ServerError(format!("{}: {}", context, e)))
+        self.map_err(|e| KmsError::ServerError(format!("{context}: {e}")))
     }
 
     fn with_context<O>(self, op: O) -> KResult<T>
     where
         O: FnOnce() -> String,
     {
-        self.map_err(|e| KmsError::ServerError(format!("{}: {}", op(), e)))
+        self.map_err(|e| KmsError::ServerError(format!("{}: {e}", op())))
     }
 }
 

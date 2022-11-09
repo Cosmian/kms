@@ -1,8 +1,6 @@
-use std::time::SystemTime;
-
-use chrono::{DateTime, Utc};
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use tracing::trace;
 
 use crate::{
@@ -150,7 +148,7 @@ fn test_enumeration() {
 
 #[test]
 fn test_serialization_deserialization() {
-    let now: DateTime<Utc> = SystemTime::now().into();
+    let now = OffsetDateTime::now_utc();
     let ttlv = TTLV {
         tag: "Test".to_string(),
         value: TTLValue::Structure(vec![
@@ -209,9 +207,9 @@ fn test_serialization_deserialization() {
     match rec.value {
         TTLValue::Structure(s) => match &s[0].value {
             TTLValue::Integer(i) => assert_eq!(42, *i),
-            x => panic!("unexpected 2nd level type : {:?}", x),
+            x => panic!("unexpected 2nd level type : {x:?}"),
         },
-        x => panic!("unexpected type : {:?}", x),
+        x => panic!("unexpected type : {x:?}"),
     };
 }
 
@@ -231,7 +229,7 @@ fn test_ser_int() {
     let ttlv = to_ttlv(&test).unwrap();
     let expected =
         r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "AnInt", value: Integer(1) }]) }"#;
-    let ttlv_s = format!("{:?}", ttlv);
+    let ttlv_s = format!("{ttlv:?}");
     assert_eq!(ttlv_s, expected);
 }
 
@@ -249,7 +247,7 @@ fn test_ser_array() {
     };
     let ttlv = to_ttlv(&test).unwrap();
     let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "Seq", value: Structure([TTLV { tag: "Seq", value: TextString("a") }, TTLV { tag: "Seq", value: TextString("b") }]) }]) }"#;
-    let ttlv_s = format!("{:?}", ttlv);
+    let ttlv_s = format!("{ttlv:?}");
     // println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
     assert_eq!(ttlv_s, expected);
 }
@@ -281,7 +279,7 @@ fn test_ser_big_int() {
         ],
     ),
 }"#;
-    let ttlv_s = format!("{:#?}", ttlv);
+    let ttlv_s = format!("{ttlv:#?}");
     // println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
     assert_eq!(ttlv_s, expected);
 }
@@ -617,14 +615,6 @@ fn test_java_import_request() {
 }
 
 #[test]
-pub fn test_java_import_request_2() {
-    log_init("info");
-    let json = include_str!("./import_abe_public_key_java.json");
-    let ttlv: TTLV = serde_json::from_str(json).unwrap();
-    let _import_request: Import = from_ttlv(&ttlv).unwrap();
-}
-
-#[test]
 fn test_java_import_response() {
     log_init("info");
     let ir = ImportResponse {
@@ -674,6 +664,9 @@ pub fn test_attributes_with_links() {
 #[test]
 pub fn test_import_correct_object() {
     log_init("debug,hyper=info,reqwest=info");
+
+    // This file was migrated from GPSW without touching the keys (just changing the `CryptographicAlgorithm` and `KeyFormatType`)
+    // It cannot be used to do crypto stuff, it's just for testing the serialization/deserialisation of TTLV.
     let json = include_str!("./import.json");
     let ttlv: TTLV = serde_json::from_str(json).unwrap();
     let import: Import = from_ttlv(&ttlv).unwrap();
@@ -681,7 +674,7 @@ pub fn test_import_correct_object() {
     assert_eq!(ObjectType::PublicKey, import.object_type);
     assert_eq!(ObjectType::PublicKey, import.object.object_type());
     assert_eq!(
-        CryptographicAlgorithm::ABE,
+        CryptographicAlgorithm::CoverCrypt,
         import.object.key_block().unwrap().cryptographic_algorithm
     );
 }

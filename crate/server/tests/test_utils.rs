@@ -44,8 +44,8 @@ where
 {
     let req = test::TestRequest::post()
         .uri("/kmip/2_1")
-        .insert_header(("Authorization", format!("Bearer {}", AUTH0_TOKEN)))
-        .set_json(&to_ttlv(&operation)?)
+        .insert_header(("Authorization", format!("Bearer {AUTH0_TOKEN}")))
+        .set_json(to_ttlv(&operation)?)
         .to_request();
     let body = test::call_and_read_body(&app, req).await;
     let json: TTLV = serde_json::from_slice(&body)?;

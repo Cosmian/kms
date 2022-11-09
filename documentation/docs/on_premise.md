@@ -5,7 +5,7 @@ The KMS server is packaged in a single Docker image based on Ubuntu 21.10.
 
 ## Installing
 
-The KMS server as been published in [Cosmian public docker hub](https://hub.docker.com/r/cosmian/kms) and can be run in 2 modes:
+The KMS server has been published in [Cosmian public docker hub](https://hub.docker.com/r/cosmian/kms) and can be run in 2 modes:
 
  - in light mode, mostly for testing, using an embedded SQLite database
  - in production mode, using an external PostgreSQL or MariaDB Database

@@ -41,31 +41,15 @@ Base elliptic curve cryptography is provided using curve 25519 on the prime orde
 
 The curve implementation is from the [curve25519-dalek](https://github.com/dalek-cryptography/curve25519-dalek) repository while the [cosmian_crypto_base](https://github.com/Cosmian/crypto_base) open source library provides an implementation of ECIES on the curve (Elliptic Curve Integrated Encryption Scheme).
 
-#### Attribute Based Encryption (ABE)
+#### Multi-user Encryption: CoverCrypt
 
-The goal of Attribute Based Encryption is to embed access policies in cipher texts and user decryption keys to strongly control access to data without the use of a centralized authorization system.
+The KMS encryption implementation is based on [CoverCrypt](https://github.com/Cosmian/cover_crypt) which is a multi‑user encryption solution which provides access rights to users with respect to
+an access policy where the policy over attributes can be expressed as a union of users’ rights. **CoverCrypt** has been proposed as a more efficient alternative to [Attribute-Based Encryption for Fine-Grained Access Control of Encrypted Data](https://eprint.iacr.org/2006/309.pdf) by vipul Goyal, Omkant Pandey, Amit Sahai, Brent Waters.
 
-The KMS supports a Key Policy Attributes Based Encryption known as GPSW06 based on the paper [Attribute-Based Encryption for Fine-Grained Access Control of Encrypted Data ](https://eprint.iacr.org/2006/309.pdf) by vipul Goyal, Omkant Pandey, Amit Sahai, Brent Waters. The implementation uses the BLS12-381 elliptic curve.
-
-Please refer to this (Cosmian abe_gpsw repository)[https://github.com/Cosmian/abe_gpsw] for details on GPSW and BLS12-381.
-
-
-#### Decentralized Multi-Client Functional Encryption (DMCFE)
-
-DMCFE is used to apply linear functions to data encrypted by multiple data providers under their own key. The result consumer owns a functional key, which gives it with the ability to apply the embedded function to the encrypted data and decrypt the result.
-
-The implementation is based on the paper [Implementation of a Decentralized Multi-Client Inner-Product Functional Encryption in the Random-Oracle Model](https://eprint.iacr.org/2020/788.pdf) by Michel Abdalla, Florian Bourse, Hugo Marival, David Pointcheval, Azam Soleimanian, and Hendrik Waldner. This implementation uses Learning With Errors (LWE) as a cryptographic scheme, a quantum resistant encryption scheme.
-
+Please refer to the [Cosmian CoverCrypt documentation](https://github.com/Cosmian/cover_crypt/blob/develop/bib/CoverCrypt.pdf) for more details.
 
 #### Format Preserving Encryption (FPE)
 
 Format Preserving Encryption (FPE) is, as the name implies, used to keep the format of the encrypted data identical to that of the clear text data. Consider a credit card number of 16 digits; after encryption, the cipher text will still look like a 16 digit credit card number. FPE is particularly useful to add encryption in forms or databases where the data format cannot be changed.
 
 Cosmian KMS exposes the [NIST recommended FF1 algorithm](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38G.pdf). A [recent cryptanalysis paper](https://eprint.iacr.org/2020/1311) has exposed new attacks, and the Cosmian implementation of FF1 includes the increased umber of rounds of the Feistel recommended in the paper. Cosmian has open-sourced its implementation in [cosmian_crypto_base](https://github.com/Cosmian/crypto_base); check the `ff1.rs` files for details.
-
-
-#### Torus Fully Homomorphic Encryption (TFHE)
-
-Cosmian KMS also exposes cryptographic routines, key generation, encryption and decryption using Learning with Errors which are appropriate to use with TFHE. [LWE](https://en.wikipedia.org/wiki/Learning_with_errors) is used in cryptography to build a quantum resistant encryption scheme. [TFHE](https://eprint.iacr.org/2018/421) is a variant of fully homomorphic encryption over the torus, that is appropriate to perform secure computations on boolean circuits.
-
-Please note that encryption with LWE for TFHE may result in very large cipher texts and lead to KMS performance issues.

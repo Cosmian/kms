@@ -9,7 +9,7 @@ static LOG_INIT: Once = Once::new();
 pub fn log_init(paths: &str) {
     LOG_INIT.call_once(|| {
         if let Ok(old) = std::env::var("RUST_LOG") {
-            std::env::set_var("RUST_LOG", format!("{},{}", old, paths));
+            std::env::set_var("RUST_LOG", format!("{old},{paths}"));
         } else {
             std::env::set_var("RUST_LOG", paths);
         }

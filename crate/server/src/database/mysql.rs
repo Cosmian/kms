@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_utils::types::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
-use mysql::{prelude::*, Opts, OptsBuilder, Pool, Row, SslOpts};
+use mysql::{prelude::*, ClientIdentity, Opts, OptsBuilder, Pool, Row, SslOpts};
 use serde_json::Value;
 use tracing::{debug, trace};
 use uuid::Uuid;
@@ -30,7 +30,7 @@ impl Sql {
     pub async fn instantiate(connection_url: &str, user_cert: Option<PathBuf>) -> KResult<Sql> {
         let client = SslOpts::default();
         let ssl_opts = client
-            .with_pkcs12_path(user_cert)
+            .with_client_identity(user_cert.map(ClientIdentity::new))
             .with_danger_accept_invalid_certs(true);
         debug!("{ssl_opts:#?}");
 
@@ -1281,7 +1281,7 @@ mod tests {
         // Find bad crypto algo
 
         let researched_attributes = Some(Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::ABE),
+            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             ..Attributes::new(ObjectType::SymmetricKey)
         });
         let found = db
@@ -1297,7 +1297,7 @@ mod tests {
         // Find bad key format type
 
         let researched_attributes = Some(Attributes {
-            key_format_type: Some(KeyFormatType::AbeUserDecryptionKey),
+            key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
             ..Attributes::new(ObjectType::SymmetricKey)
         });
         let found = db
