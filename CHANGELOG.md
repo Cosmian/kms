@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [3.0.1] - 2022-11-14
+
+### Added
+
+### Changed
+
+### Fixed
+
+- Rename KMS URL
+
+### Removed
+
+- Remove AVX flag
+
+---
+
 ## [3.0.0] - 2022-11-09
 
 ### Added

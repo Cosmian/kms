@@ -1,8 +1,8 @@
 [package]
-authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
-edition = "2021"
 name = "cosmian_kms_utils"
 version = "0.1.0"
+authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
+edition = "2021"
 
 [features]
 curve25519 = []
@@ -10,10 +10,10 @@ curve25519 = []
 [dependencies]
 abe_policy = "1.0"
 bitflags = "1.2"
-cosmian_crypto_base = "2.1"
-cosmian_kmip = { path = "../kmip" }
 cosmian_cover_crypt = "7.0"
+cosmian_crypto_base = "2.1"
 cosmian_crypto_core = "4.0"
+cosmian_kmip = { path = "../kmip" }
 hex = { version = "0.4", features = ["serde"] }
 num-bigint = { version = "0.4", features = ["rand", "serde"] }
 rand_core = "0.6"

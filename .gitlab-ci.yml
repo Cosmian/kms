@@ -1,3 +1,4 @@
+---
 image: gitlab.cosmian.com:5000/core/ci-rust:latest
 
 variables:
@@ -27,8 +28,8 @@ stages:
 
 workflow:
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
 
 #
 # Prebuild
@@ -69,7 +70,7 @@ test_db_mariadb_connect:
     - mysql -h "$MYSQL_HOST" -uroot -e "CREATE DATABASE kms" --ssl-cert "${CI_PROJECT_DIR}/data/data-ssl/cert.pem" --ssl-key "${CI_PROJECT_DIR}/data/data-ssl/key.pem"
 
 # Security check
-# Failing because mysql has some dependencies with problems but cannot be upgraded 
+# Failing because mysql has some dependencies with problems but cannot be upgraded
 # because new versions of bitvec/funty are incompatible with some of our crypto dependencies.
 cargo_audit:
   stage: prebuild
@@ -113,7 +114,7 @@ compile_and_test:
   stage: build
   only: [master, develop, merge_requests]
   cache:
-    key: "${CI_COMMIT_REF_SLUG}"
+    key: ${CI_COMMIT_REF_SLUG}
     policy: pull
     paths:
       - $CARGO_HOME
@@ -138,7 +139,7 @@ unused_deps:
   stage: build
   only: [master, develop, merge_requests]
   cache:
-    key: "${CI_COMMIT_REF_SLUG}"
+    key: ${CI_COMMIT_REF_SLUG}
     policy: pull
     paths:
       - $CARGO_HOME
@@ -168,10 +169,8 @@ unused_deps:
   script:
     - echo $IMAGE_TAG
     - echo $SGX_REMOTE
-    - docker build --network=host -f enclave/Dockerfile.sgx
-      --build-arg FEATURES="--features=staging"
-      --build-arg KMS_DOMAIN="$KMS_DOMAIN"
-      -t $IMAGE_TAG .
+    - docker build --network=host -f enclave/Dockerfile.sgx --build-arg FEATURES="--features=staging" --build-arg KMS_DOMAIN="$KMS_DOMAIN" -t $IMAGE_TAG
+      .
     - docker push $IMAGE_TAG
     - ./scripts/deploy_sgx.sh
 
@@ -183,7 +182,7 @@ unused_deps:
   stage: test
   only: [master, develop, merge_requests]
   cache:
-    key: "${CI_COMMIT_REF_SLUG}"
+    key: ${CI_COMMIT_REF_SLUG}
     policy: pull
     paths:
       - $CARGO_HOME
@@ -207,7 +206,7 @@ unused_deps:
   image: docker:19.03.15
   stage: deploy
   rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
+    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
   variables:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}_staging
     SHORT_IMAGE_NAME: kms_enclave
@@ -216,10 +215,8 @@ unused_deps:
   script:
     - echo $IMAGE_TAG
     - echo $SGX_REMOTE
-    - docker build --network=host
-      --build-arg FEATURES="--features=staging"
-      --build-arg KMS_DOMAIN="$KMS_DOMAIN"
-      -f enclave/Dockerfile.sgx  -t $IMAGE_TAG .
+    - docker build --network=host --build-arg FEATURES="--features=staging" --build-arg KMS_DOMAIN="$KMS_DOMAIN" -f enclave/Dockerfile.sgx  -t $IMAGE_TAG
+      .
     - docker push $IMAGE_TAG
     - ./scripts/deploy_sgx.sh
 
@@ -230,14 +227,12 @@ docker_build_and_push:
   image: docker:19.03.15
   stage: build_docker
   rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
+    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
   variables:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   script:
     - echo $IMAGE_TAG
-    - docker build . --network=host
-      --build-arg FEATURES="--features=auth,https"
-      -t $CI_REGISTRY_IMAGE -t $IMAGE_TAG
+    - docker build . --network=host --build-arg FEATURES="--features=auth,https" -t $CI_REGISTRY_IMAGE -t $IMAGE_TAG
     - docker push $IMAGE_TAG
 
 #
@@ -247,7 +242,7 @@ docker_timeout_build_and_push:
   image: docker:19.03.15
   stage: build_docker
   rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
+    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
   variables:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}_timeout
   script:
@@ -262,7 +257,7 @@ docker_lib_ci_build_and_push:
   image: docker:19.03.15
   stage: build_docker
   rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
+    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
     - if: $CI_COMMIT_REF_NAME == "develop"
   variables:
     IMAGE_TAG: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_NAME}_ci
@@ -283,7 +278,7 @@ build_standalone_delivery:
   image: docker:19.03.15
   stage: deploy
   rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
+    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
   script:
     - docker build . -f delivery/Dockerfile.standalone --network=host -t cosmian/kms:${CI_COMMIT_TAG}
     - docker save cosmian/kms:${CI_COMMIT_TAG} > kms.tar
@@ -295,7 +290,7 @@ build_standalone_delivery:
     - docker push cosmian/kms:latest
 
   artifacts:
-    name: 'kms_server_${CI_COMMIT_TAG}_$(date +"%Y%m%d")'
+    name: kms_server_${CI_COMMIT_TAG}_$(date +"%Y%m%d")
     paths:
       - kms.tar
       - postgres.tar
@@ -308,7 +303,7 @@ build_standalone_delivery:
 build_cli_windows_linux:
   stage: deploy
   rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
+    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
   before_script:
     - rustup target add x86_64-pc-windows-gnu
   script:
@@ -317,7 +312,7 @@ build_cli_windows_linux:
     - TZ=Europe/Paris apt-get install --no-install-recommends -qq libsodium-dev libclang-dev
     - cargo build --release --bin cosmian_kms_cli
   artifacts:
-    name: 'kms_cli_${CI_COMMIT_TAG}_$(date +"%Y%m%d")'
+    name: kms_cli_${CI_COMMIT_TAG}_$(date +"%Y%m%d")
     paths:
       - target/x86_64-pc-windows-gnu/release/cosmian_kms_cli.exe
       - target/release/cosmian_kms_cli
@@ -329,7 +324,7 @@ doc:
   image: gitlab.cosmian.com:5000/core/docker_doc_ci_image:latest
   stage: deploy
   rules:
-    - if: '$CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/'
+    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
   script:
     - pushd documentation
     - mkdocs build
@@ -337,8 +332,8 @@ doc:
     - ssh cosmian@ui.sc.prod.cosmian.com "rm -fr /var/www/documentation_root/kms/${CI_COMMIT_TAG}"
     - scp -r site cosmian@ui.sc.prod.cosmian.com:/var/www/documentation_root/kms/"${CI_COMMIT_TAG}"
     # Update the link to the latest doc
-    - ssh cosmian@ui.sc.prod.cosmian.com "unlink /var/www/documentation_root/kms/2 || true"
-    - ssh cosmian@ui.sc.prod.cosmian.com "ln -s /var/www/documentation_root/kms/${CI_COMMIT_TAG} /var/www/documentation_root/kms/2"
+    - ssh cosmian@ui.sc.prod.cosmian.com "unlink /var/www/documentation_root/kms/3 || true"
+    - ssh cosmian@ui.sc.prod.cosmian.com "ln -s /var/www/documentation_root/kms/${CI_COMMIT_TAG} /var/www/documentation_root/kms/3"
 
 #
 # Build and deploy the public documentation on the test env
@@ -354,5 +349,5 @@ doc-test:
     - ssh cosmian@ui.sc.test.cosmian.com "rm -fr /var/www/documentation_root/kms/dev"
     - scp -r site cosmian@ui.sc.test.cosmian.com:/var/www/documentation_root/kms/dev
     # Update the link to the latest doc
-    - ssh cosmian@ui.sc.test.cosmian.com "unlink /var/www/documentation_root/kms/2 || true"
-    - ssh cosmian@ui.sc.test.cosmian.com "ln -s /var/www/documentation_root/kms/dev /var/www/documentation_root/kms/2"
+    - ssh cosmian@ui.sc.test.cosmian.com "unlink /var/www/documentation_root/kms/3 || true"
+    - ssh cosmian@ui.sc.test.cosmian.com "ln -s /var/www/documentation_root/kms/dev /var/www/documentation_root/kms/3"
