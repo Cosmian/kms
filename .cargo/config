@@ -1,6 +1,3 @@
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "target-feature=+aes,+ssse3,+avx2,+fma,+sse2","-C","force-frame-pointers","-C","debuginfo=2","-C","force-unwind-tables"]
-
 [alias]
 
 # Check for formatting
