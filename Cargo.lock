@@ -819,9 +819,9 @@ checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
 
 [[package]]
 name = "cosmian_cover_crypt"
-version = "7.0.1"
+version = "7.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a93fd418428dc79ac70e84d4470e4c7cdb62d2d9707621381f57ec06d64120c"
+checksum = "31eb2d6cb1bb82b95acb2ef6eda68c1fbb961f44de784a6f35c908e4fde79fee"
 dependencies = [
  "abe_policy",
  "cosmian_crypto_core 4.0.1",
@@ -970,7 +970,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "3.0.1"
+version = "3.1.0"
 dependencies = [
  "abe_policy",
  "acme-lib",
