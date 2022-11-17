@@ -325,6 +325,7 @@ documentation:
     - if: $CI_COMMIT_BRANCH == 'main'
     - if: $CI_COMMIT_BRANCH == 'develop'
   before_script:
+    - echo ${CI_COMMIT_BRANCH}
     - apk add --update curl
   script:
-    - curl --request POST --form token=${CI_JOB_TOKEN} --form ref=${CI_COMMIT_BRANCH} http://gitlab.cosmian.com/api/v4/projects/10/trigger/pipeline
+    - curl --request POST --form token=${CI_JOB_TOKEN} --form ref=${CI_COMMIT_BRANCH} http://gitlab.cosmian.com/api/v4/projects/95/trigger/pipeline
