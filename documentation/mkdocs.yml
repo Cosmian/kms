@@ -1,5 +1,5 @@
 ---
-site_name: Cosmian KMS v3 User Guide
+site_name: Secure KMS
 site_url: https://docs.cosmian.com/
 copyright: © Copyright 2018-2022 Cosmian. All rights reserved
 dev_addr: localhost:8003
@@ -36,9 +36,6 @@ markdown_extensions:
   - markdown_katex:
       no_inline_svg: true
       insert_fonts_css: true
-  - pymdownx.emoji:
-      emoji_index: !!python/name:materialx.emoji.twemoji
-      emoji_generator: !!python/name:materialx.emoji.to_svg
 plugins:
   - search
   - kroki

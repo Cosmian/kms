@@ -317,37 +317,14 @@ build_cli_windows_linux:
       - target/x86_64-pc-windows-gnu/release/cosmian_kms_cli.exe
       - target/release/cosmian_kms_cli
 
-#
-# Build and deploy the public documentation on the prod env
-#
-doc:
-  image: gitlab.cosmian.com:5000/core/docker_doc_ci_image:latest
+# Triggers public_documentation to rebuild the doc
+documentation:
+  image: alpine:3.16
   stage: deploy
   rules:
-    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
+    - if: $CI_COMMIT_BRANCH == 'main'
+    - if: $CI_COMMIT_BRANCH == 'develop'
+  before_script:
+    - apk add --update curl
   script:
-    - pushd documentation
-    - mkdocs build
-    # remove any previous KMS doc with same current tag
-    - ssh cosmian@ui.sc.prod.cosmian.com "rm -fr /var/www/documentation_root/kms/${CI_COMMIT_TAG}"
-    - scp -r site cosmian@ui.sc.prod.cosmian.com:/var/www/documentation_root/kms/"${CI_COMMIT_TAG}"
-    # Update the link to the latest doc
-    - ssh cosmian@ui.sc.prod.cosmian.com "unlink /var/www/documentation_root/kms/3 || true"
-    - ssh cosmian@ui.sc.prod.cosmian.com "ln -s /var/www/documentation_root/kms/${CI_COMMIT_TAG} /var/www/documentation_root/kms/3"
-
-#
-# Build and deploy the public documentation on the test env
-#
-doc-test:
-  image: gitlab.cosmian.com:5000/core/docker_doc_ci_image:latest
-  stage: deploy
-  only: [develop]
-  script:
-    - pushd documentation
-    - mkdocs build
-    # remove any previous KMS doc with same current tag
-    - ssh cosmian@ui.sc.test.cosmian.com "rm -fr /var/www/documentation_root/kms/dev"
-    - scp -r site cosmian@ui.sc.test.cosmian.com:/var/www/documentation_root/kms/dev
-    # Update the link to the latest doc
-    - ssh cosmian@ui.sc.test.cosmian.com "unlink /var/www/documentation_root/kms/3 || true"
-    - ssh cosmian@ui.sc.test.cosmian.com "ln -s /var/www/documentation_root/kms/dev /var/www/documentation_root/kms/3"
+    - curl --request POST --form token=${CI_JOB_TOKEN} --form ref=${CI_COMMIT_BRANCH} http://gitlab.cosmian.com/api/v4/projects/10/trigger/pipeline
