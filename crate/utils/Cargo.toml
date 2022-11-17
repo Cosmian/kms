@@ -10,7 +10,7 @@ curve25519 = []
 [dependencies]
 abe_policy = "1.0"
 bitflags = "1.2"
-cosmian_cover_crypt = "7.0"
+cosmian_cover_crypt = "7.1"
 cosmian_crypto_base = "2.1"
 cosmian_crypto_core = "4.0"
 cosmian_kmip = { path = "../kmip" }

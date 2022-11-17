@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [3.0.2] - 2022-11-16
+
+### Added
+
+### Changed
+
+- Support `cover_crypt` 7.1.0
+
+### Fixed
+
+### Removed
+
+---
+
 ## [3.0.1] - 2022-11-14
 
 ### Added
