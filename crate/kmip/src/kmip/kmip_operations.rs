@@ -1,5 +1,6 @@
-use std::fmt;
+use std::{fmt, str::from_utf8};
 
+use abe_policy::AccessPolicy;
 use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize, Serialize,
@@ -15,6 +16,7 @@ use super::{
         StorageStatusMask, UniqueIdentifier,
     },
 };
+use crate::error::KmipError;
 
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Display, Debug, Eq, PartialEq)]
@@ -419,6 +421,114 @@ pub struct GetAttributesResponse {
     pub attributes: Attributes,
 }
 
+/// To encrypt some data with Cover Crypt we need to
+/// pass an access policy. The KMIP format do not provide
+/// us a way to send this access policy with the plaintext
+/// data to encrypt (in a vendor attribute for exemple).
+/// We need to prepend the encoded access policy to the plaintext
+/// bytes and decode them in the KMS code before encrypting with
+/// Cover Crypt. This struct is not useful (and shouldn't be use)
+/// if the user ask to encrypt with something else than Cover Crypt
+/// (for exemple an AES encrypt.) See also `DecryptedData` struct.
+/// The binary format of this struct is:
+/// 1. LEB128 unsigned length of access policy string in UTF8 encoded bytes
+/// 2. access policy string in UTF8 encoded bytes
+/// 3. LEB128 unsigned length of additional metadata
+/// 4. additional metadata encrypted in the header by the DEM
+/// 5. plaintext data to encrypt
+pub struct DataToEncrypt {
+    pub access_policy: AccessPolicy,
+    pub metadata: Option<Vec<u8>>,
+    pub plaintext: Vec<u8>,
+}
+
+impl TryFrom<&[u8]> for DataToEncrypt {
+    type Error = KmipError;
+
+    fn try_from(mut bytes: &[u8]) -> Result<Self, Self::Error> {
+        let size_of_access_policy_in_bytes = leb128::read::unsigned(&mut bytes).map_err(|_| {
+            KmipError::KmipError(
+                ErrorReason::Invalid_Message,
+                "Expect a LEB128 encoded number (size of the access policy string) at the \
+                 beginning of the data to encrypt."
+                    .to_owned(),
+            )
+        })? as usize;
+
+        let access_policy_bytes =
+            bytes
+                .take(..size_of_access_policy_in_bytes)
+                .ok_or_else(|| {
+                    KmipError::KmipError(
+                        ErrorReason::Invalid_Message,
+                        format!(
+                            "After the LEB128 encoded size of access policy in bytes of \
+                             {size_of_access_policy_in_bytes}, expecting to be able to read that \
+                             many bytes but the data to encrypt length is {}.",
+                            bytes.len()
+                        ),
+                    )
+                })?;
+
+        let access_policy_string = from_utf8(access_policy_bytes).map_err(|e| {
+            KmipError::KmipError(
+                ErrorReason::Invalid_Message,
+                format!(
+                    "After the LEB128 encoded size of access policy in bytes of \
+                     {size_of_access_policy_in_bytes}, expecting to be able to read an UTF-8 \
+                     encoded access policy. {e}",
+                ),
+            )
+        })?;
+
+        let access_policy =
+            AccessPolicy::from_boolean_expression(access_policy_string).map_err(|e| {
+                KmipError::KmipError(
+                    ErrorReason::Invalid_Message,
+                    format!("Cannot parse access policy '{access_policy_string}'. {e}"),
+                )
+            })?;
+
+        let size_of_metadata = leb128::read::unsigned(&mut bytes).map_err(|_| {
+            KmipError::KmipError(
+                ErrorReason::Invalid_Message,
+                "Expect a LEB128 encoded number (size of metadata) after the access policy."
+                    .to_owned(),
+            )
+        })? as usize;
+
+        let metadata = if size_of_metadata == 0 {
+            None
+        } else {
+            Some(
+                bytes
+                    .take(..size_of_metadata)
+                    .ok_or_else(|| {
+                        KmipError::KmipError(
+                            ErrorReason::Invalid_Message,
+                            format!(
+                                "After the LEB128 encoded size of metadata in bytes of \
+                                 {size_of_metadata}, expecting to be able to read that many bytes \
+                                 but the data left length is {}.",
+                                bytes.len()
+                            ),
+                        )
+                    })?
+                    .to_vec(),
+            )
+        };
+
+        // Remaining is the plaintext to encrypt
+        let plaintext = bytes.to_vec();
+
+        Ok(Self {
+            access_policy,
+            metadata,
+            plaintext,
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Encrypt {
@@ -554,6 +664,82 @@ pub struct Decrypt {
     /// Decrypt request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub authenticated_encryption_tag: Option<Vec<u8>>,
+}
+
+/// When decrypting data with Cover Crypt we can have some
+/// additional metadata stored inside the header and encrypted
+/// with de DEM. We need to return these data to the user but
+/// the KMIP protocol do not provide a way to do it. So we prepend
+/// the decrypted bytes with the decrypted additional metadata.
+/// This struct is not useful (and shouldn't be use) if the user
+/// ask to encrypt with something else than Cover Crypt (for exemple an AES encrypt.)
+/// See also `DataToEncrypt` struct.
+/// The binary format of this struct is:
+/// 1. LEB128 unsigned length of the metadata
+/// 2. metadata decrypted bytes
+/// 3. data decrypted
+pub struct DecryptedData {
+    pub metadata: Vec<u8>,
+    pub plaintext: Vec<u8>,
+}
+
+impl TryInto<Vec<u8>> for DecryptedData {
+    type Error = KmipError;
+
+    fn try_into(self) -> Result<Vec<u8>, Self::Error> {
+        let mut result = vec![];
+        leb128::write::unsigned(&mut result, self.metadata.len() as u64).map_err(|_| {
+            KmipError::KmipError(
+                ErrorReason::Invalid_Message,
+                format!(
+                    "Cannot put the length of the additional metadata {} into the response.",
+                    self.metadata.len()
+                ),
+            )
+        })?;
+        result.extend_from_slice(&self.metadata);
+        result.extend_from_slice(&self.plaintext);
+
+        Ok(result)
+    }
+}
+
+impl TryFrom<&[u8]> for DecryptedData {
+    type Error = KmipError;
+
+    fn try_from(mut bytes: &[u8]) -> Result<Self, Self::Error> {
+        let size_of_metadata = leb128::read::unsigned(&mut bytes).map_err(|_| {
+            KmipError::KmipError(
+                ErrorReason::Invalid_Message,
+                "Expect a LEB128 encoded number (size of the metadata) at the beginning of the \
+                 data to encrypt."
+                    .to_owned(),
+            )
+        })? as usize;
+
+        let metadata = bytes
+            .take(..size_of_metadata)
+            .ok_or_else(|| {
+                KmipError::KmipError(
+                    ErrorReason::Invalid_Message,
+                    format!(
+                        "After the LEB128 encoded size of access policy in bytes of \
+                         {size_of_metadata}, expecting to be able to read that many bytes but the \
+                         data to encrypt length is {}.",
+                        bytes.len()
+                    ),
+                )
+            })?
+            .to_vec();
+
+        // Remaining is the decrypted plaintext
+        let plaintext = bytes.to_vec();
+
+        Ok(Self {
+            metadata,
+            plaintext,
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

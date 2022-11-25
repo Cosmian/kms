@@ -1,6 +1,5 @@
 use std::{fs::File, io::prelude::*, path::PathBuf};
 
-use abe_policy::Attribute;
 use clap::StructOpt;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_hybrid_encryption_request;
@@ -14,10 +13,10 @@ pub struct EncryptAction {
     #[structopt(required = true, name = "FILE", parse(from_os_str))]
     input_file: PathBuf,
 
-    /// The policy attributes to encrypt the file with
-    /// Example: `-a department::marketing -a level::confidential`
+    /// The access policy to encrypt the file with
+    /// Example: `--access-policy "department::marketing && level::confidential"`
     #[structopt(required = true, long, short)]
-    attributes: Vec<String>,
+    access_policy: String,
 
     /// The encrypted output file path
     #[structopt(required = false, parse(from_os_str), long, short = 'o')]
@@ -41,19 +40,13 @@ impl EncryptAction {
         f.read_to_end(&mut data)
             .with_context(|| "Fail to read the file to encrypt")?;
 
-        // Parse the attributes
-        let attributes = self
-            .attributes
-            .iter()
-            .map(|s| Attribute::try_from(s.as_str()).map_err(Into::into))
-            .collect::<eyre::Result<Vec<Attribute>>>()?;
-
         // Create the kmip query
         let encrypt_request = build_hybrid_encryption_request(
             &self.public_key_id,
-            attributes,
+            &self.access_policy,
             self.resource_uid.as_bytes().to_vec(),
             data,
+            None,
         )?;
 
         // Query the KMS with your kmip data and get the key pair ids

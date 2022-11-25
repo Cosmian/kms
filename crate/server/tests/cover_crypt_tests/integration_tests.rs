@@ -1,8 +1,8 @@
 use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_operations::{
-        CreateKeyPairResponse, CreateResponse, DecryptResponse, DestroyResponse, EncryptResponse,
-        ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
+        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
     kmip_types::RevocationReason,
 };
@@ -52,15 +52,14 @@ async fn integration_tests() -> KResult<()> {
     // Encrypt
     let resource_uid = "cc the uid".as_bytes().to_vec();
     let data = "Confidential MKG Data".as_bytes();
-    let policy_attributes = vec![
-        Attribute::new("Level", "Confidential"),
-        Attribute::new("Department", "MKG"),
-    ];
+    let policy_attributes = "Level::Confidential && Department::MKG";
+    let header_metadata = vec![1, 2, 3];
     let request = build_hybrid_encryption_request(
         public_key_unique_identifier,
-        policy_attributes.clone(),
+        policy_attributes,
         resource_uid.clone(),
         data.to_vec(),
+        Some(header_metadata.clone()),
     )?;
 
     let encrypt_response: EncryptResponse = test_utils::post(&app, request).await?;
@@ -86,27 +85,29 @@ async fn integration_tests() -> KResult<()> {
         encrypted_data.clone(),
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, request).await?;
-    assert_eq!(
-        data,
-        &decrypt_response
-            .data
-            .context("There should be decrypted data")?
-    );
+
+    let decrypted_data: DecryptedData = decrypt_response
+        .data
+        .context("There should be decrypted data")?
+        .as_slice()
+        .try_into()
+        .unwrap();
+
+    assert_eq!(data, &decrypted_data.plaintext);
+    assert_eq!(header_metadata, decrypted_data.metadata);
 
     // revocation
 
     // Encrypt
     let resource_uid = "cc the uid".as_bytes().to_vec();
     let data = "Voilà voilà".as_bytes();
-    let policy_attributes = vec![
-        Attribute::new("Level", "Confidential"),
-        Attribute::new("Department", "MKG"),
-    ];
+    let policy_attributes = "Level::Confidential && Department::MKG";
     let request = build_hybrid_encryption_request(
         public_key_unique_identifier,
-        policy_attributes.clone(),
+        policy_attributes,
         resource_uid.clone(),
         data.to_vec(),
+        None,
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
     let encrypted_data = encrypt_response
@@ -143,12 +144,16 @@ async fn integration_tests() -> KResult<()> {
         encrypted_data.clone(),
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
-    assert_eq!(
-        data,
-        &decrypt_response
-            .data
-            .context("There should be decrypted data")?
-    );
+
+    let decrypted_data: DecryptedData = decrypt_response
+        .data
+        .context("There should be decrypted data")?
+        .as_slice()
+        .try_into()
+        .unwrap();
+
+    assert_eq!(data, &decrypted_data.plaintext);
+    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
 
     // test user2 can decrypt
     let request = build_decryption_request(
@@ -157,12 +162,16 @@ async fn integration_tests() -> KResult<()> {
         encrypted_data.clone(),
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
-    assert_eq!(
-        data,
-        &decrypt_response
-            .data
-            .context("There should be decrypted data")?
-    );
+
+    let decrypted_data: DecryptedData = decrypt_response
+        .data
+        .context("There should be decrypted data")?
+        .as_slice()
+        .try_into()
+        .unwrap();
+
+    assert_eq!(data, &decrypted_data.plaintext);
+    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
 
     // Revoke key of user 1
     let _revoke_response: RevokeResponse = test_utils::post(
@@ -194,15 +203,13 @@ async fn integration_tests() -> KResult<()> {
     // ReEncrypt with same ABE attribute (which has been previously incremented)
     let resource_uid = "cc the uid".as_bytes().to_vec();
     let data = "Voilà voilà".as_bytes();
-    let policy_attributes = vec![
-        Attribute::new("Level", "Confidential"),
-        Attribute::new("Department", "MKG"),
-    ];
+    let policy_attributes = "Level::Confidential && Department::MKG";
     let request = build_hybrid_encryption_request(
         public_key_unique_identifier,
         policy_attributes,
         resource_uid.clone(),
         data.to_vec(),
+        None,
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
     let encrypted_data = encrypt_response
@@ -225,12 +232,15 @@ async fn integration_tests() -> KResult<()> {
         encrypted_data,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
-    assert_eq!(
-        data,
-        &decrypt_response
-            .data
-            .context("There should be decrypted data")?
-    );
+    let decrypted_data: DecryptedData = decrypt_response
+        .data
+        .context("There should be decrypted data")?
+        .as_slice()
+        .try_into()
+        .unwrap();
+
+    assert_eq!(data, &decrypted_data.plaintext);
+    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
 
     //
     // Destroy user decryption key

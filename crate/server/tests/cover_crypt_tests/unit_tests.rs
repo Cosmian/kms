@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{Get, Import, Locate},
+    kmip_operations::{DecryptedData, Get, Import, Locate},
     kmip_types::{
         Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
     },
@@ -222,17 +222,15 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // encrypt a resource MKG + confidential
     let confidential_resource_uid = "cc the uid confidential".as_bytes().to_vec();
     let confidential_mkg_data = "Confidential MKG Data".as_bytes();
-    let confidential_mkg_policy_attributes = vec![
-        Attribute::new("Level", "confidential"),
-        Attribute::new("Department", "MKG"),
-    ];
+    let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
     let er = kms
         .encrypt(
             build_hybrid_encryption_request(
                 master_public_key_id,
-                confidential_mkg_policy_attributes.clone(),
+                confidential_mkg_policy_attributes,
                 confidential_resource_uid.clone(),
                 confidential_mkg_data.to_vec(),
+                None,
             )?,
             owner,
             None,
@@ -249,6 +247,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 confidential_mkg_policy_attributes,
                 confidential_resource_uid.clone(),
                 confidential_mkg_data.to_vec(),
+                None,
             )?,
             nonexistent_owner,
             None,
@@ -259,17 +258,15 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // encrypt a resource FIN + Secret
     let secret_resource_uid = "cc the uid secret".as_bytes().to_vec();
     let secret_fin_data = "Secret FIN data".as_bytes();
-    let secret_fin_policy_attributes = vec![
-        Attribute::new("Level", "secret"),
-        Attribute::new("Department", "FIN"),
-    ];
+    let secret_fin_policy_attributes = "Level::secret && Department::FIN";
     let er = kms
         .encrypt(
             build_hybrid_encryption_request(
                 master_public_key_id,
-                secret_fin_policy_attributes.clone(),
+                secret_fin_policy_attributes,
                 secret_resource_uid.clone(),
                 secret_fin_data.to_vec(),
+                None,
             )?,
             owner,
             None,
@@ -286,6 +283,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_policy_attributes,
                 secret_resource_uid.clone(),
                 secret_fin_data.to_vec(),
+                None,
             )?,
             nonexistent_owner,
             None,
@@ -321,10 +319,16 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    assert_eq!(
-        confidential_mkg_data,
-        &dr.data.context("There should be decrypted data")?
-    );
+
+    let decrypted_data: DecryptedData = dr
+        .data
+        .context("There should be decrypted data")?
+        .as_slice()
+        .try_into()
+        .unwrap();
+
+    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext);
+    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
 
     // check it doesn't work with invalid tenant
     let dr = kms
@@ -352,10 +356,16 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    assert_eq!(
-        secret_fin_data,
-        &dr.data.context("There should be decrypted data")?
-    );
+
+    let decrypted_data: DecryptedData = dr
+        .data
+        .context("There should be decrypted data")?
+        .as_slice()
+        .try_into()
+        .unwrap();
+
+    assert_eq!(secret_fin_data, &decrypted_data.plaintext);
+    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
 
     // check it doesn't work with invalid tenant
     let dr = kms
@@ -498,17 +508,15 @@ async fn test_import_decrypt() -> KResult<()> {
     // encrypt a resource MKG + confidential
     let confidential_resource_uid = "cc the uid confidential".as_bytes().to_vec();
     let confidential_mkg_data = "Confidential MKG Data".as_bytes();
-    let confidential_mkg_policy_attributes = vec![
-        Attribute::new("Level", "confidential"),
-        Attribute::new("Department", "MKG"),
-    ];
+    let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
     let er = kms
         .encrypt(
             build_hybrid_encryption_request(
                 &pk_uid,
-                confidential_mkg_policy_attributes.clone(),
+                confidential_mkg_policy_attributes,
                 confidential_resource_uid.clone(),
                 confidential_mkg_data.to_vec(),
+                None,
             )?,
             owner,
             None,
@@ -596,10 +604,16 @@ async fn test_import_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    assert_eq!(
-        confidential_mkg_data,
-        &dr.data.context("There should be decrypted data")?
-    );
+
+    let decrypted_data: DecryptedData = dr
+        .data
+        .context("There should be decrypted data")?
+        .as_slice()
+        .try_into()
+        .unwrap();
+
+    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext);
+    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
 
     Ok(())
 }

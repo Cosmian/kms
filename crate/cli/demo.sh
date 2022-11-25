@@ -50,9 +50,9 @@ echo "//  Encryption / Decryption"
 echo "////////////////////////////////////////////////////////////////////////////////////"
 echo
 echo "Encrypting a message with attributes: department::marketing, level::secret ..."
-res=$($BINARY cc encrypt -a "department::marketing" -a "level::secret" -p $public_key_id policy.json -o /tmp/policy_mkg_secret.enc)
+res=$($BINARY cc encrypt --access-policy "department::marketing && level::secret" -p $public_key_id policy.json -o /tmp/policy_mkg_secret.enc)
 echo "... and a message with attributes: department::marketing, level::top-secret."
-res=$($BINARY cc encrypt -a "department::marketing" -a "level::top-secret" -p $public_key_id policy.json -o /tmp/policy_mkg_top_secret.enc)
+res=$($BINARY cc encrypt --access-policy "department::marketing && level::top-secret" -p $public_key_id policy.json -o /tmp/policy_mkg_top_secret.enc)
 echo " => OK"
 echo
 echo "Decrypting the message with attributes: department::marketing, level::secret"
@@ -90,7 +90,7 @@ res=$($BINARY cc rotate -s $private_key_id -a department::marketing)
 echo " => OK"
 echo
 echo "Encrypting a NEW message with attributes: department::marketing, level::secret ..."
-res=$($BINARY cc encrypt -a "department::marketing" -a "level::secret" -p $public_key_id policy.json -o /tmp/policy_mkg_secret_new.enc)
+res=$($BINARY cc encrypt --access-policy "department::marketing && level::secret" -p $public_key_id policy.json -o /tmp/policy_mkg_secret_new.enc)
 echo " => OK"
 echo
 echo "Decrypt the NEW message with attributes: department::marketing, level::secret"

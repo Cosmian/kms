@@ -22,7 +22,7 @@ $ KMS_CLI_CONF=kms.json cosmian_kms_cli --help
 
 ## ABE Covercrypt
 
-_In the following examples, we describe how to use the CLI using Covercrypt (`cc`).
+\_In the following examples, we describe how to use the CLI using Covercrypt (`cc`).
 
 ### Generate the master key
 
@@ -75,7 +75,7 @@ Store the following securely for any further uses:
 It encrypts a file with the given policy attributes and the public key stored in the KMS.
 
 ```sh
-$ cosmian_kms_cli cc encrypt -a department::marketing -a level::confidential -o /tmp -p b5193e13-784c-4b24-a8cf-b58a34d90e0f my_file
+$ cosmian_kms_cli cc encrypt --access-policy "department::marketing && level::confidential" -o /tmp -p b5193e13-784c-4b24-a8cf-b58a34d90e0f my_file
 The encryption has been properly done.
 The encrypted file can be found at /tmp/my_file.enc
 ```
