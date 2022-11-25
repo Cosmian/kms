@@ -908,8 +908,10 @@ dependencies = [
 name = "cosmian_kmip"
 version = "0.2.0"
 dependencies = [
+ "abe_policy",
  "bitflags",
  "hex",
+ "leb128",
  "num-bigint",
  "serde",
  "serde_json",
@@ -970,7 +972,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "3.1.0"
+version = "3.0.2"
 dependencies = [
  "abe_policy",
  "acme-lib",
@@ -1033,6 +1035,7 @@ dependencies = [
  "cosmian_crypto_core 4.0.1",
  "cosmian_kmip",
  "hex",
+ "leb128",
  "num-bigint",
  "rand_core 0.6.4",
  "rand_hc",

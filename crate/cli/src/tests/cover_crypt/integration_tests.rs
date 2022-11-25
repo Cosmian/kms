@@ -512,10 +512,8 @@ pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
-        "-a",
-        "department::marketing",
-        "-a",
-        "level::confidential",
+        "--access-policy",
+        "department::marketing && level::confidential",
         "-o",
         "/tmp/plain-2.enc",
         "--resource-uid",
@@ -583,10 +581,8 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
-        "-a",
-        "department::marketing",
-        "-a",
-        "level::confidential",
+        "--access-policy",
+        "department::marketing && level::confidential",
         "-o",
         "/tmp/output.enc",
         "--resource-uid",
@@ -604,10 +600,8 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
-        "-a",
-        "departmentmarketing",
-        "-a",
-        "level::confidential",
+        "--access-policy",
+        "departmentmarketing && level::confidential",
         "-o",
         "/tmp/output.enc",
         "--resource-uid",
@@ -617,7 +611,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "test_data/plain-2.txt",
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "at least one separator '::' expected in departmentmarketing",
+        "'departmentmarketing' does not contain any attribute separator '::'",
     ));
 
     // attributes are wellformed but do not exist
@@ -625,10 +619,8 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
-        "-a",
-        "department::marketing2",
-        "-a",
-        "level::confidential",
+        "--access-policy",
+        "department::marketing2 && level::confidential",
         "-o",
         "/tmp/output.enc",
         "--resource-uid",
@@ -646,10 +638,8 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
-        "-a",
-        "department::marketing2",
-        "-a",
-        "level::confidential",
+        "--access-policy",
+        "department::marketing2 && level::confidential",
         "-o",
         "/tmp/output.enc",
         "--resource-uid",
@@ -667,10 +657,8 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
-        "-a",
-        "department::marketing",
-        "-a",
-        "level::confidential",
+        "--access-policy",
+        "department::marketing && level::confidential",
         "-o",
         "/noexist/output.enc",
         "--resource-uid",
@@ -708,10 +696,8 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
-        "-a",
-        "department::marketing",
-        "-a",
-        "level::confidential",
+        "--access-policy",
+        "department::marketing && level::confidential",
         "-o",
         "/tmp/output.enc",
         "--resource-uid",

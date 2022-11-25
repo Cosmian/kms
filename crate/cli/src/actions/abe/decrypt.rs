@@ -1,6 +1,7 @@
 use std::{fs::File, io::prelude::*, path::PathBuf};
 
 use clap::StructOpt;
+use cosmian_kmip::kmip::kmip_operations::DecryptedData;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_decryption_request;
 use eyre::Context;
@@ -48,15 +49,17 @@ impl DecryptAction {
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        data = decrypt_response
+        let metadata_and_cleartext: DecryptedData = decrypt_response
             .data
-            .ok_or_else(|| eyre::eyre!("The plain data are empty"))?;
+            .ok_or_else(|| eyre::eyre!("The plain data are empty"))?
+            .as_slice()
+            .try_into()?;
 
         // Write the decrypted file
         let mut buffer =
             File::create(&self.output_file).with_context(|| "Fail to write the plain file")?;
         buffer
-            .write_all(&data)
+            .write_all(&metadata_and_cleartext.plaintext)
             .with_context(|| "Fail to write the plain file")?;
 
         println!("The decryption has been properly done.");

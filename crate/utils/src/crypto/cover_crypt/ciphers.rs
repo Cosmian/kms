@@ -1,4 +1,4 @@
-use abe_policy::{AccessPolicy, Attribute, Policy};
+use abe_policy::Policy;
 use cosmian_cover_crypt::{
     self,
     interfaces::statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey},
@@ -9,10 +9,12 @@ use cosmian_kmip::{
     error::KmipError,
     kmip::{
         kmip_objects::Object,
-        kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse, ErrorReason},
+        kmip_operations::{
+            DataToEncrypt, Decrypt, DecryptResponse, DecryptedData, Encrypt, EncryptResponse,
+            ErrorReason,
+        },
     },
 };
-use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 
 use super::user_key::unwrap_user_decryption_key_object;
@@ -20,31 +22,6 @@ use crate::{
     crypto::cover_crypt::attributes::policy_from_attributes,
     kmip_utils::key_bytes_and_attributes_from_key_block, DeCipher, EnCipher,
 };
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub struct DataToEncrypt {
-    pub policy_attributes: Vec<Attribute>,
-    #[serde(with = "hex")]
-    pub data: Vec<u8>,
-}
-
-fn attributes_to_access_policy(mut attributes: Vec<Attribute>) -> Option<AccessPolicy> {
-    let mut access_policy = if let Some(attribute) = attributes.pop() {
-        AccessPolicy::Attr(attribute)
-    } else {
-        return None
-    };
-
-    for attribute in attributes {
-        access_policy = AccessPolicy::And(
-            Box::new(AccessPolicy::Attr(attribute)),
-            Box::new(access_policy),
-        );
-    }
-
-    Some(access_policy)
-}
 
 /// Encrypt a single block of data using an hybrid encryption mode
 /// Cannot be used as a stream cipher
@@ -95,19 +72,17 @@ impl EnCipher for CoverCryptHybridCipher {
             .clone()
             .unwrap_or_default();
 
-        let data_to_encrypt: DataToEncrypt =
-            serde_json::from_slice(request.data.as_ref().ok_or_else(|| {
+        let data_to_encrypt: DataToEncrypt = request
+            .data
+            .as_ref()
+            .ok_or_else(|| {
                 KmipError::InvalidKmipValue(
                     ErrorReason::Invalid_Message,
-                    "Missing data to encrypt".to_string(),
+                    "Missing data to encrypt".to_owned(),
                 )
-            })?)
-            .map_err(|e| {
-                KmipError::InvalidKmipValue(
-                    ErrorReason::Invalid_Message,
-                    format!("de-serialization failed {e}"),
-                )
-            })?;
+            })?
+            .as_slice()
+            .try_into()?;
 
         let public_key = PublicKey::try_from_bytes(&self.public_key_bytes).map_err(|e| {
             KmipError::KmipError(
@@ -121,13 +96,8 @@ impl EnCipher for CoverCryptHybridCipher {
             &self.cover_crypt,
             &self.policy,
             &public_key,
-            &attributes_to_access_policy(data_to_encrypt.policy_attributes).ok_or_else(|| {
-                KmipError::InvalidKmipValue(
-                    ErrorReason::Invalid_Message,
-                    "empty attribute list".to_owned(),
-                )
-            })?,
-            None,
+            &data_to_encrypt.access_policy,
+            data_to_encrypt.metadata.as_deref(),
             None,
         )
         .map_err(|e| {
@@ -138,7 +108,7 @@ impl EnCipher for CoverCryptHybridCipher {
             .cover_crypt
             .encrypt(
                 &symmetric_key,
-                &data_to_encrypt.data,
+                &data_to_encrypt.plaintext,
                 Some(authenticated_encryption_additional_data),
             )
             .map_err(|e| {
@@ -153,7 +123,7 @@ impl EnCipher for CoverCryptHybridCipher {
         debug!(
             "Encrypted data with public key {} of len (CT/Enc): {}/{}",
             &self.public_key_uid,
-            data_to_encrypt.data.len(),
+            data_to_encrypt.plaintext.len(),
             ciphertext.len(),
         );
         Ok(EncryptResponse {
@@ -245,9 +215,15 @@ impl DeCipher for CoverCryptHybridDecipher {
             cleartext.len(),
             encrypted_bytes.len(),
         );
+
+        let decrypted_data = DecryptedData {
+            metadata: header_.additional_data,
+            plaintext: cleartext,
+        };
+
         Ok(DecryptResponse {
             unique_identifier: self.user_decryption_key_uid.clone(),
-            data: Some(cleartext),
+            data: Some(decrypted_data.try_into()?),
             correlation_value: None,
         })
     }

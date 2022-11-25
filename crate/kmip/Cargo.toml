@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 bitflags = "1.2"
+abe_policy = "1.0"
 hex = { version = "0.4", features = ["serde"] }
+leb128 = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

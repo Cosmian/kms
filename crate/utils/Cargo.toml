@@ -15,6 +15,7 @@ cosmian_crypto_base = "2.1"
 cosmian_crypto_core = "4.0"
 cosmian_kmip = { path = "../kmip" }
 hex = { version = "0.4", features = ["serde"] }
+leb128 = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }
 rand_core = "0.6"
 rand_hc = "0.3"
