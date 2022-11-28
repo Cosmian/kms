@@ -1,5 +1,4 @@
-
-##TL;DR;
+## TL;DR;
 The main documentation for the KMS is in [docs/index.md](./docs/index.md)
 
 The documentation is deployed automatically on `docs.cosmian.com` when you add a new tag on this repo. However you need to adapt manually [the public documentation nav bar](http://gitlab.cosmian.com/core/public_documentation/-/blob/master/mkdocs.yml) to make it visible.
@@ -51,7 +50,7 @@ cargo install pandoc-katex
 
 #### Generating a PDF
 
-Run 
+Run
 
 ```sh
 ./build_pdf.sh
@@ -62,7 +61,7 @@ Warning: you need a LaTeX install , if some content is written in LaTeX
 
 #### Installing Latex
 
-WARING: this is a BIG install
+WARNING: this is a BIG install
 
 ```sh
 # LateX

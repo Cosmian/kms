@@ -94,7 +94,7 @@ pub enum ErrorReason {
 /// This operation requests the server to Import a Managed Object specified by
 /// its Unique Identifier. The request specifies the object being imported and
 /// all the attributes to be assigned to the object. The attribute rules for
-/// each attribute for “Initially set by” and “When implicitly set” SHALL NOT be
+/// each attribute for "Initially set by" and "When implicitly set" SHALL NOT be
 /// enforced as all attributes MUST be set to the supplied values rather than
 /// any server generated values.
 ///
@@ -424,12 +424,12 @@ pub struct GetAttributesResponse {
 /// To encrypt some data with Cover Crypt we need to
 /// pass an access policy. The KMIP format do not provide
 /// us a way to send this access policy with the plaintext
-/// data to encrypt (in a vendor attribute for exemple).
+/// data to encrypt (in a vendor attribute for example).
 /// We need to prepend the encoded access policy to the plaintext
 /// bytes and decode them in the KMS code before encrypting with
 /// Cover Crypt. This struct is not useful (and shouldn't be use)
 /// if the user ask to encrypt with something else than Cover Crypt
-/// (for exemple an AES encrypt.) See also `DecryptedData` struct.
+/// (for example an AES encrypt.) See also `DecryptedData` struct.
 /// The binary format of this struct is:
 /// 1. LEB128 unsigned length of access policy string in UTF8 encoded bytes
 /// 2. access policy string in UTF8 encoded bytes
@@ -605,7 +605,7 @@ pub struct EncryptResponse {
     pub correlation_value: Option<Vec<u8>>,
     /// Specifies the tag that will be needed to
     /// authenticate the decrypted data (and
-    /// any “additional data”). Only returned on
+    /// any "additional data"). Only returned on
     /// completion of the encryption of the last
     /// of the plaintext by an authenticated
     /// encryption cipher.
@@ -672,7 +672,7 @@ pub struct Decrypt {
 /// the KMIP protocol do not provide a way to do it. So we prepend
 /// the decrypted bytes with the decrypted additional metadata.
 /// This struct is not useful (and shouldn't be use) if the user
-/// ask to encrypt with something else than Cover Crypt (for exemple an AES encrypt.)
+/// ask to encrypt with something else than Cover Crypt (for example an AES encrypt.)
 /// See also `DataToEncrypt` struct.
 /// The binary format of this struct is:
 /// 1. LEB128 unsigned length of the metadata
@@ -855,10 +855,10 @@ pub struct Locate {
 ///
 /// When the Object Group attribute and the Object Group Member flag are
 /// specified in the request, and the value specified for Object Group Member is
-/// ‘Group Member Fresh’, matching candidate objects SHALL be fresh objects from
+/// 'Group Member Fresh', matching candidate objects SHALL be fresh objects from
 /// the object group. If there are no more fresh objects in the group, the server
 /// MAY choose to generate a new object on-the-fly, based on server policy. If
-/// the value specified for Object Group Member is ‘Group Member Default’, the
+/// the value specified for Object Group Member is 'Group Member Default', the
 /// server locates the default object as defined by server policy.
 ///
 /// The Storage Status Mask field is used to indicate whether on-line objects
@@ -898,18 +898,18 @@ pub struct LocateResponse {
 
 /// This operation requests the server to revoke a Managed Cryptographic Object
 /// or an Opaque Object. The request contains a reason for the revocation (e.g.,
-/// “key compromise”, “cessation of operation”, etc.). The operation has one of
+/// "key compromise", "cessation of operation", etc.). The operation has one of
 /// two effects.
 ///
-/// If the revocation reason is “key compromise” or “CA compromise”,
-/// then the object is placed into the “compromised” state; the Date is set to
+/// If the revocation reason is "key compromise" or "CA compromise",
+/// then the object is placed into the "compromised" state; the Date is set to
 /// the current date and time; and the Compromise Occurrence Date is set to the
 /// value (if provided) in the Revoke request and if a value is not provided in
 /// the Revoke request then Compromise Occurrence Date SHOULD be set to the
 /// Initial Date for the object.
 ///
-/// If the revocation reason is neither “key
-/// compromise” nor “CA compromise”, the object is placed into the “deactivated”
+/// If the revocation reason is neither "key
+/// compromise" nor "CA compromise", the object is placed into the "deactivated"
 /// state, and the Deactivation Date is set to the current date and time.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
@@ -920,8 +920,8 @@ pub struct Revoke {
     pub unique_identifier: Option<UniqueIdentifier>,
     /// Specifies the reason for revocation.
     pub revocation_reason: RevocationReason,
-    /// SHOULD be specified if the Revocation Reason is 'key compromise' or ‘CA
-    /// compromise’ and SHALL NOT be specified for other Revocation Reason
+    /// SHOULD be specified if the Revocation Reason is 'key compromise' or 'CA
+    /// compromise' and SHALL NOT be specified for other Revocation Reason
     /// enumerations.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compromise_occurrence_date: Option<u64>, // epoch millis
