@@ -8,7 +8,7 @@ A valid access token is required to access the KMS API. The token must be carrie
 
 ## Query using SDK
 
-It's probably more convenient to query the KMS using a SDK due to the specifity of the KMIP format. Please, refer to [operations](kmip_2_1/operations.md) to learn how to perform queries using a KMS client SDK.
+It's probably more convenient to query the KMS using a SDK due to the specificity of the KMIP format. Please, refer to [operations](kmip_2_1/operations.md) to learn how to perform queries using a KMS client SDK.
 
 ## Query using the KMS-CLI
 
@@ -65,12 +65,12 @@ Examples in `bash` and `javascript` are provided below.
     #
     # Create an ABE user decryption key
     # Remark:
-    #   this user has its own access policy in hexadecimal-json format embbeded in the decryption key:
+    #   this user has its own access policy in hexadecimal-json format embedded in the decryption key:
     #     {"And":[{"Attr":"Entity::377"},{"Attr":"Country::france"}]}
     #   the request contains the reference of the ABE Master Private key
     kms_post "{\"tag\":\"Create\",\"type\":\"Structure\",\"value\":[{\"tag\":\"ObjectType\",\"type\":\"Enumeration\",\"value\":\"PrivateKey\"},{\"tag\":\"Attributes\",\"type\":\"Structure\",\"value\":[{\"tag\":\"CryptographicAlgorithm\",\"type\":\"Enumeration\",\"value\":\"ABE\"},{\"tag\":\"KeyFormatType\",\"type\":\"Enumeration\",\"value\":\"AbeUserDecryptionKey\"},{\"tag\":\"Link\",\"type\":\"Structure\",\"value\":[{\"tag\":\"Link\",\"type\":\"Structure\",\"value\":[{\"tag\":\"LinkType\",\"type\":\"Enumeration\",\"value\":\"ParentLink\"},{\"tag\":\"LinkedObjectIdentifier\",\"type\":\"TextString\",\"value\":\"${private_key_uid}\"}]}]},{\"tag\":\"ObjectType\",\"type\":\"Enumeration\",\"value\":\"PrivateKey\"},{\"tag\":\"VendorAttributes\",\"type\":\"Structure\",\"value\":[{\"tag\":\"VendorAttributes\",\"type\":\"Structure\",\"value\":[{\"tag\":\"String\",\"type\":\"TextString\",\"value\":\"cosmian\"},{\"tag\":\"String\",\"type\":\"TextString\",\"value\":\"abe_attributes\"},{\"tag\":\"String\",\"type\":\"TextString\",\"value\":\"abe_policy\"},{\"tag\":\"String\",\"type\":\"TextString\",\"value\":\"abe_access_policy\"},{\"tag\":\"String\",\"type\":\"TextString\",\"value\":\"abe_header_uid\"},{\"tag\":\"VendorIdentification\",\"type\":\"TextString\",\"value\":\"cosmian\"},{\"tag\":\"AttributeName\",\"type\":\"TextString\",\"value\":\"abe_access_policy\"},{\"tag\":\"AttributeValue\",\"type\":\"ByteString\",\"value\":\"7B22416E64223A5B7B2241747472223A22456E746974793A3A333737227D2C7B2241747472223A22436F756E7472793A3A6672616E6365227D5D7D\"}]}]}]}]}"
     user_decryption_key_id=$(echo $response | jq -r .value[1].value)
-    # Response examle: it contains the UID of the user decryption key
+    # Response example: it contains the UID of the user decryption key
     # {"tag":"CreateResponse","type":"Structure","value":[{"tag":"ObjectType","type":"Enumeration","value":"PrivateKey"},{"tag":"UniqueIdentifier","type":"TextString","value":"78b5d54d-01b0-464e-a36f-3ec5db5216ef"}]}
     ​
     ####

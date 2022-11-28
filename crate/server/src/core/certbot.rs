@@ -134,7 +134,7 @@ impl Certbot {
         let acc = self
             .account
             .as_ref()
-            .ok_or_else(|| KmsError::ServerError("Account shoudn't be None".to_string()))?;
+            .ok_or_else(|| KmsError::ServerError("Account shouldn't be None".to_string()))?;
 
         // Order a new TLS certificate for a domain.
         let mut ord_new = acc.new_order(&self.domain, &[])?;

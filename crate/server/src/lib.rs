@@ -199,7 +199,7 @@ pub async fn start_kms_server() -> eyre::Result<()> {
         info!("No valid certificate found!");
         info!("Starting certification process...");
 
-        // Start a HTTP server, to negociate a certificate
+        // Start a HTTP server, to negotiate a certificate
         let server = HttpServer::new(move || {
             App::new().service(fs::Files::new("/", &http_root_path).use_hidden_files())
         })

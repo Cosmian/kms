@@ -44,11 +44,11 @@ pub enum KmsError {
     #[error("Database Error: {0}")]
     DatabaseError(String),
 
-    // Any errors related to a bad bahaviour of the server but not related to the user input
+    // Any errors related to a bad behaviour of the server but not related to the user input
     #[error("Unexpected server error: {0}")]
     ServerError(String),
 
-    // Any errors related to a bad bahaviour of the server concerning the SGX environment
+    // Any errors related to a bad behaviour of the server concerning the SGX environment
     #[error("Unexpected sgx error: {0}")]
     SGXError(String),
 

@@ -30,7 +30,7 @@ async fn main() -> eyre::Result<()> {
 
     env_logger::init();
 
-    // Instanciate a config object using the env variables and the args of the binary
+    // Instantiate a config object using the env variables and the args of the binary
     let conf = Config::parse();
     init_config(&conf).await?;
 

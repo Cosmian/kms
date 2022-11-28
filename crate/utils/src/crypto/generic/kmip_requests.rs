@@ -1,36 +1,35 @@
-use abe_policy::Attribute;
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Decrypt, Encrypt, Import},
     kmip_types::{Attributes, KeyWrapType},
 };
-use serde::{Deserialize, Serialize};
-
-#[derive(Serialize, Deserialize)]
-#[serde(rename_all = "PascalCase")]
-pub struct DataToEncrypt {
-    pub policy_attributes: Vec<Attribute>,
-    #[serde(with = "hex")]
-    pub data: Vec<u8>,
-}
 
 /// Build an Encryption Request to encrypt the provided `data`
 /// with the given `policy attributes` using the public key identified by
 /// `public_key_identifier`
 pub fn build_hybrid_encryption_request(
     public_key_identifier: &str,
-    policy_attributes: Vec<Attribute>,
+    access_policy: &str,
     resource_uid: Vec<u8>,
     data: Vec<u8>,
-) -> Result<Encrypt, serde_json::Error> {
-    let data = DataToEncrypt {
-        policy_attributes,
-        data,
-    };
+    header_metadata: Option<Vec<u8>>,
+) -> Result<Encrypt, std::io::Error> {
+    let mut data_to_encrypt = vec![];
+    let access_policy_bytes = access_policy.as_bytes();
+    leb128::write::unsigned(&mut data_to_encrypt, access_policy_bytes.len() as u64)?;
+    data_to_encrypt.extend_from_slice(access_policy_bytes);
+    if let Some(header_metadata) = header_metadata {
+        leb128::write::unsigned(&mut data_to_encrypt, header_metadata.len() as u64)?;
+        data_to_encrypt.extend_from_slice(&header_metadata);
+    } else {
+        leb128::write::unsigned(&mut data_to_encrypt, 0)?;
+    }
+    data_to_encrypt.extend_from_slice(&data);
+
     Ok(Encrypt {
         unique_identifier: Some(public_key_identifier.to_owned()),
         cryptographic_parameters: None,
-        data: Some(serde_json::to_vec(&data)?),
+        data: Some(data_to_encrypt),
         iv_counter_nonce: None,
         correlation_value: None,
         init_indicator: None,

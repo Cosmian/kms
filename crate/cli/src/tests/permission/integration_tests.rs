@@ -209,7 +209,7 @@ pub async fn test_remove_error() -> Result<(), Box<dyn std::error::Error>> {
         "get",
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "Access denied: You can\'t revoke yourself, you shoud keep all rights on your own objects",
+        "Access denied: You can\'t revoke yourself, you should keep all rights on your own objects",
     ));
 
     Ok(())

@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [4.0.0] - 2022-11-28
+
+### Added
+
+### Changed
+
+- data to encrypt with CoverCrypt is not a JSON anymore but a custom binary format (see `DataToEncrypt` struct)
+- decrypted data with CoverCrypt is now a custom binary format (see `DecryptedData` struct)
+
+### Fixed
+
+### Removed
+
+---
+
 ## [3.0.2] - 2022-11-16
 
 ### Added
