@@ -1,7 +1,6 @@
-
 In [chapter 6](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html#_Toc32239394), the KMIP 2.1 specifications describe 57 potential operations that can be performed on a KMS.
 
-Out of this list, the Cosmian KMS server ony requires 9 operations to provide all required functionalities to support the cryptographic schemes available on the server. KMIP operations are usually made of large nested objects, a lot of them being optional. Despite the details provided in the specifications, some of the options are subject to interpretation and the list below disambiguate the Cosmian implementation.
+Out of this list, the Cosmian KMS server only requires 9 operations to provide all required functionalities to support the cryptographic schemes available on the server. KMIP operations are usually made of large nested objects, a lot of them being optional. Despite the details provided in the specifications, some of the options are subject to interpretation and the list below disambiguate the Cosmian implementation.
 
 KMIP states that a number of the operations are affected by a mechanism referred to as the ID Placeholder. It is a variable stored inside the server that is preserved during the execution of a batch of operations. Maintaining this value requires maintaining state during a batch session across multiple requests, and potentially multiple servers. The performance gain of using placeholder IDs is not obvious and the added complexity of maintaining sessions across multiple servers when scaling horizontally is not worth in Cosmian view for the type of operations conducted on the server. The Cosmian KMS servers are kept stateless to simplify horizontal scaling and therefore do not support placeholder IDs for now.
 
@@ -36,7 +35,7 @@ KMIP states that a number of the operations are affected by a mechanism referred
 This operation requests the server to Import a Managed Object specified by its Unique Identifier.
 The request specifies the object being imported and all the attributes to be assigned to the object.
 
-The attribute rules for each attribute for “Initially set by” and “When implicitly set” SHALL NOT be enforced as all attributes MUST be set to the supplied values rather than any server generated values.
+The attribute rules for each attribute for "Initially set by" and "When implicitly set" SHALL NOT be enforced as all attributes MUST be set to the supplied values rather than any server generated values.
 
 The response contains the Unique Identifier provided in the request or assigned by the server. The server SHALL copy the Unique Identifier returned by this operations into the ID Placeholder variable.
 
@@ -211,7 +210,7 @@ format:
 
 The Unique Identifier shall be either that of a private key or certificate to be included in the response.
 
-The container shall be protected using the Secret Data object specified via the private key or certificate’s PKCS#12 Password Link. The current certificate chain shall also be included as determined by using the private key’s Public Key link to get the corresponding public key (where relevant), and then using that public key’s PKCS#12 Certificate Link to get the base certificate, and then using each certificate’s Certificate Link to build the certificate chain.  It is an error if there is more than one valid certificate chain.
+The container shall be protected using the Secret Data object specified via the private key or certificate's PKCS#12 Password Link. The current certificate chain shall also be included as determined by using the private key's Public Key link to get the corresponding public key (where relevant), and then using that public key's PKCS#12 Certificate Link to get the base certificate, and then using each certificate's Certificate Link to build the certificate chain.  It is an error if there is more than one valid certificate chain.
 
 #### implementation
 
@@ -250,7 +249,7 @@ When the Usage Limits attribute is specified in the request, matching candidate 
 
 When an attribute that is defined as a structure is specified, all of the structure fields are not REQUIRED to be specified. For instance, for the Link attribute, if the Linked Object Identifier value is specified without the Link Type value, then matching candidate objects have the Linked Object Identifier as specified, irrespective of their Link Type.
 
-When the Object Group attribute and the Object Group Member flag are specified in the request, and the value specified for Object Group Member is ‘Group Member Fresh’, matching candidate objects SHALL be fresh objects from the object group. If there are no more fresh objects in the group, the server MAY choose to generate a new object on-the-fly, based on server policy. If the value specified for Object Group Member is ‘Group Member Default’, the server locates the default object as defined by server policy.
+When the Object Group attribute and the Object Group Member flag are specified in the request, and the value specified for Object Group Member is 'Group Member Fresh', matching candidate objects SHALL be fresh objects from the object group. If there are no more fresh objects in the group, the server MAY choose to generate a new object on-the-fly, based on server policy. If the value specified for Object Group Member is 'Group Member Default', the server locates the default object as defined by server policy.
 
 The Storage Status Mask field is used to indicate whether on-line objects (not archived or destroyed), archived objects, destroyed objects or any combination of the above are to be searched.The server SHALL NOT return unique identifiers for objects that are destroyed unless the Storage Status Mask field includes the Destroyed Storage indicator. The server SHALL NOT return unique identifiers for objects that are archived unless the Storage Status Mask field includes the Archived Storage indicator.
 
@@ -302,9 +301,9 @@ The Re-Key Key Pair Operation is the main mechanism to rotate ABE attributes on 
 
 This operation requests the server to revoke a Managed Cryptographic Object or an Opaque Object.
 
-The request contains a reason for the revocation (e.g., “key compromise”, “cessation of operation”, etc.).
+The request contains a reason for the revocation (e.g., "key compromise", "cessation of operation", etc.).
 
-The operation has one of two effects. If the revocation reason is “key compromise” or “CA compromise”, then the object is placed into the “compromised” state; the Date is set to the current date and time; and the Compromise Occurrence Date is set to the value (if provided) in the Revoke request and if a value is not provided in the Revoke request then Compromise Occurrence Date SHOULD be set to the Initial Date for the object. If the revocation reason is neither “key compromise” nor “CA compromise”, the object is placed into the “deactivated” state, and the Deactivation Date is set to the current date and time.
+The operation has one of two effects. If the revocation reason is "key compromise" or "CA compromise", then the object is placed into the "compromised" state; the Date is set to the current date and time; and the Compromise Occurrence Date is set to the value (if provided) in the Revoke request and if a value is not provided in the Revoke request then Compromise Occurrence Date SHOULD be set to the Initial Date for the object. If the revocation reason is neither "key compromise" nor "CA compromise", the object is placed into the "deactivated" state, and the Deactivation Date is set to the current date and time.
 
 #### implementation
 

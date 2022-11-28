@@ -73,8 +73,8 @@ impl KMS {
                                 as Box<dyn EnCipher>)
                         }
                         other => kms_bail!(KmsError::NotSupported(format!(
-                            "This server does not yet support symetric encryption with algorithm: \
-                             {other:?}"
+                            "This server does not yet support symmetric encryption with \
+                             algorithm: {other:?}"
                         ))),
                     }
                 }

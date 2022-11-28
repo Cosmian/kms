@@ -67,7 +67,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let recovered_kms_sk_key_block = match object {
         Object::PrivateKey { key_block } => key_block,
         _other => {
-            kms_bail!("The objet at uid: {sk_uid} is not a CC Master secret key");
+            kms_bail!("The object at uid: {sk_uid} is not a CC Master secret key");
         }
     };
     debug!(
@@ -91,7 +91,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let recovered_kms_pk_key_block = match pk {
         Object::PublicKey { key_block } => key_block,
         _other => {
-            kms_bail!("The objet at uid: {pk_uid} is not a CC Master secret key");
+            kms_bail!("The object at uid: {pk_uid} is not a CC Master secret key");
         }
     };
     debug!(
@@ -150,7 +150,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let _recovered_kms_uk_key_block = match object {
         Object::PrivateKey { key_block } => key_block,
         _other => {
-            kms_bail!("The objet at uid: {usk_uid} is not a CC user decryption key");
+            kms_bail!("The object at uid: {usk_uid} is not a CC user decryption key");
         }
     };
     // debug!("CC kms_uk: {:?}", _recovered_kms_uk_key_block);
@@ -174,7 +174,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let recovered_kms_uk_key_block = match object {
         Object::PrivateKey { key_block } => key_block,
         _other => {
-            kms_bail!("The objet at uid: {usk_uid} is not a CC user decryption key");
+            kms_bail!("The object at uid: {usk_uid} is not a CC user decryption key");
         }
     };
     debug!("ABE kms_uk: {:?}", recovered_kms_uk_key_block);

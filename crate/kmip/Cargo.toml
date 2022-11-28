@@ -4,8 +4,8 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-bitflags = "1.2"
 abe_policy = "1.0"
+bitflags = "1.2"
 hex = { version = "0.4", features = ["serde"] }
 leb128 = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }

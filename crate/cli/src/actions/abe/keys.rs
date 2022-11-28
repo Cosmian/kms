@@ -29,7 +29,7 @@ use uuid::Uuid;
 /// The master secret key is used to generate user decryption keys and must be
 /// kept confidential.
 /// Both of them are stored inside the KMS.
-/// This command returns a couple of ID refering to this new key pair.
+/// This command returns a couple of ID referring to this new key pair.
 #[derive(StructOpt, Debug)]
 pub struct NewMasterKeyPairAction {
     /// The policy filename. The policy is expressed as a JSON object
@@ -447,7 +447,7 @@ pub struct ExportKeysAction {
     #[structopt(required = true, long = "key-id", short = 'k')]
     key_id: String,
 
-    /// Unwrap the key using a password before writting it
+    /// Unwrap the key using a password before writing it
     #[structopt(required = false, long, short = 'W')]
     password: Option<String>,
 }

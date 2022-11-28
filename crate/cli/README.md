@@ -53,7 +53,7 @@ You can perform the following ABE operations by taking advantage of the KMS.
 __On master keys__
 
 - `init` Generate a new master key pair
-- `rotate` Rotate an attribute 
+- `rotate` Rotate an attribute
 
 __On user keys__
 
@@ -91,16 +91,16 @@ You can perform the following operations concerning to the users-to-objects perm
 
 ### Quote and remote attestation
 
-If the KMS server is runnning inside an enclave, you can and should verify its trustworthiness.
+If the KMS server is running inside an enclave, you can and should verify its trustworthiness.
 
-To do so, use `trust` subcommand. Doing that, the `cli` will: 
+To do so, use `trust` subcommand. Doing that, the `cli` will:
 
 - Ask the kms server to generate a quote containing the public certificate of the kms server and a nonce (a randomly generated string to make the quote unique each time)
 - Send the quote to Azure Microsoft to proceed a remote attestation
 - Proceed some trust checks
-- Export various files on your filesystem to let you manually verify them. 
+- Export various files on your filesystem to let you manually verify them.
 
-From [gramine docs](https://gramine.readthedocs.io/en/latest/sgx-intro.html#term-sgx-quote), you can read: "*The SGX quote is the proof of trustworthiness of the enclave and is used during Remote Attestation. The attesting enclave generates the enclave-specific SGX Report, sends the request to the Quoting Enclave using Local Attestation, and the Quoting Enclave returns back the SGX quote with the SGX report embedded in it. The resulting SGX quote contains the enclave’s measurement, attributes and other security-relevant fields, and is tied to the identity of the Quoting Enclave to prove its authenticity. The obtained SGX quote may be later sent to the verifying remote party, which examines the SGX quote and gains trust in the remote enclave.*"
+From [gramine docs](https://gramine.readthedocs.io/en/latest/sgx-intro.html#term-sgx-quote), you can read: "*The SGX quote is the proof of trustworthiness of the enclave and is used during Remote Attestation. The attesting enclave generates the enclave-specific SGX Report, sends the request to the Quoting Enclave using Local Attestation, and the Quoting Enclave returns back the SGX quote with the SGX report embedded in it. The resulting SGX quote contains the enclave's measurement, attributes and other security-relevant fields, and is tied to the identity of the Quoting Enclave to prove its authenticity. The obtained SGX quote may be later sent to the verifying remote party, which examines the SGX quote and gains trust in the remote enclave.*"
 
 
 #### Quote report data
@@ -122,7 +122,7 @@ The cli automatically checks:
 
 #### `mr_signer`
 
-This value enables you to verify that the KMS is running inside an enclave which belongs to *Cosmian*. Indeed this value is a `sha256` hash of the public key used to sign the enclave. 
+This value enables you to verify that the KMS is running inside an enclave which belongs to *Cosmian*. Indeed this value is a `sha256` hash of the public key used to sign the enclave.
 
 This value will be compute by the CLI and compared against the values obtained from the quote and the remote attestation.
 
@@ -138,12 +138,12 @@ If the value is altered, it could mean that you are not using the KMS from *Cosm
 
 #### Exported files
 
-The files you can manually verify are: 
+The files you can manually verify are:
 
 - The quote: `quote.raw` and `quote.struct`
 - The manifest of the enclave containing the hashes of all trusted files and the running context (env variables, etc.): `manifest.sgx`
 - The remote attestation itself: `remote_attestation`
-- The enclave and the ssl certificate: `enclave.pub` and `ssl.cert` 
+- The enclave and the ssl certificate: `enclave.pub` and `ssl.cert`
 
 ## Testing
 

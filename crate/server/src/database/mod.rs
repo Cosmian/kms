@@ -96,7 +96,7 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
-    /// upsert (update or create if not exsits)
+    /// upsert (update or create if not exists)
     async fn upsert(
         &self,
         uid: &str,
@@ -199,7 +199,7 @@ pub fn state_from_string(s: &str) -> KResult<StateEnumeration> {
 
 /// Handle different placeholders naming (bind parameter or
 /// function) in SQL databases.
-/// This trait contains default naming which are overriden
+/// This trait contains default naming which are overridden
 /// by implementation if needed
 pub trait PlaceholderTrait {
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
