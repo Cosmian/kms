@@ -28,7 +28,7 @@ enum Inputs<'de> {
 }
 
 pub struct TtlvDeserializer<'de> {
-    /// whether a tag or a value is being deserialized with thi serializer
+    /// whether a tag or a value is being deserialized with this serializer
     deserializing: Deserializing,
     /// the index+1 of the TTLV being processed
     /// 0 is reserved so that visitors can increase then process

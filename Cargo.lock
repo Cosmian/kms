@@ -972,7 +972,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "4.0.0"
+version = "4.0.1"
 dependencies = [
  "abe_policy",
  "acme-lib",

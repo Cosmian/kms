@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [4.0.1] - 2022-11-29
+
+### Changed
+
+- add authentication data in header too in encrypt operation
+
+---
+
 ## [4.0.0] - 2022-11-28
 
 ### Added
