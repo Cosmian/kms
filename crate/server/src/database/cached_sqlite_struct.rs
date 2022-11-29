@@ -26,7 +26,7 @@ pub struct KMSSqliteCacheItem {
     in_used: u32,
     /// The date of last used
     last_used_at: u64,
-    /// Wether the sqlite is closed
+    /// Whether the sqlite is closed
     closed: bool,
     /// The date of the last sqlite close
     closed_at: u64,
@@ -84,7 +84,7 @@ impl KMSSqliteCacheItem {
 /// - The cache will never refuse a new Sqlite handler insertion. It will flush the unused handler if adding a new one
 ///   makes the cache exceed its max size but if all handlers are currently in used, it will accept the insertion. The
 ///   clean up will occur during the next insertion.
-/// - The cache always removes the oldest unused items first. To do so, the cache contains a `FreeableSqliteCache` structure which is a linked list. The first item is the oldest, the last one the freshest. A new item is always pushed back and an old item is always poped front. An item already in the list and now reused will be removed and pushed back to the end of the linked list.
+/// - The cache always removes the oldest unused items first. To do so, the cache contains a `FreeableSqliteCache` structure which is a linked list. The first item is the oldest, the last one the freshest. A new item is always pushed back and an old item is always popped front. An item already in the list and now reused will be removed and pushed back to the end of the linked list.
 /// - An handler is considered as used after each `get` and won't be closed until it is not explicitly `release`-ed by the caller. Several `get` are allowed. The `release` will take effect when the last one got is explicitly `release`-ed.
 ///
 /// The cache saves already decrypted sqlite handler. To verify that a user can `get` the handler, the key is checked at each access.
