@@ -18,7 +18,7 @@ pub struct DBConfig {
     #[clap(long, env = "KMS_USER_CERT_PATH", parse(from_os_str))]
     pub user_cert_path: Option<PathBuf>,
 
-    /// Wether to use sqlcipher
+    /// Whether to use sqlcipher
     #[clap(long, env = "KMS_SQLCIPHER")]
     pub sqlcipher: bool,
 }
