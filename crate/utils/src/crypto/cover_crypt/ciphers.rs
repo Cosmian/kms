@@ -91,14 +91,13 @@ impl EnCipher for CoverCryptHybridCipher {
             )
         })?;
 
-        // The UID is NOT written in the header and needs to be re-supplied on block decryption
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &self.cover_crypt,
             &self.policy,
             &public_key,
             &data_to_encrypt.access_policy,
             data_to_encrypt.metadata.as_deref(),
-            None,
+            Some(authenticated_encryption_additional_data),
         )
         .map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
@@ -193,7 +192,11 @@ impl DeCipher for CoverCryptHybridDecipher {
         let encrypted_block = de.finalize();
 
         let header_ = encrypted_header
-            .decrypt(&self.cover_crypt, &user_decryption_key, None)
+            .decrypt(
+                &self.cover_crypt,
+                &user_decryption_key,
+                request.authenticated_encryption_additional_data.as_deref(),
+            )
             .map_err(|e| {
                 KmipError::InvalidKmipValue(ErrorReason::Invalid_Message, e.to_string())
             })?;
