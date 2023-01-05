@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## Unreleased
+
+### Changed
+
+- CoverCrypt 8 / CryptoCore 5
+
+---
+
 ## [4.0.1] - 2022-11-29
 
 ### Changed

@@ -50,16 +50,16 @@ async fn integration_tests() -> KResult<()> {
     let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
     // Encrypt
-    let resource_uid = "cc the uid".as_bytes().to_vec();
+    let authentication_data = "cc the uid".as_bytes().to_vec();
     let data = "Confidential MKG Data".as_bytes();
     let policy_attributes = "Level::Confidential && Department::MKG";
     let header_metadata = vec![1, 2, 3];
     let request = build_hybrid_encryption_request(
         public_key_unique_identifier,
         policy_attributes,
-        resource_uid.clone(),
         data.to_vec(),
         Some(header_metadata.clone()),
+        Some(authentication_data.clone()),
     )?;
 
     let encrypt_response: EncryptResponse = test_utils::post(&app, request).await?;
@@ -81,8 +81,8 @@ async fn integration_tests() -> KResult<()> {
     // decrypt
     let request = build_decryption_request(
         user_decryption_key_identifier,
-        resource_uid.clone(),
         encrypted_data.clone(),
+        Some(authentication_data.clone()),
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, request).await?;
 
@@ -99,15 +99,15 @@ async fn integration_tests() -> KResult<()> {
     // revocation
 
     // Encrypt
-    let resource_uid = "cc the uid".as_bytes().to_vec();
+    let authentication_data = "cc the uid".as_bytes().to_vec();
     let data = "Voilà voilà".as_bytes();
     let policy_attributes = "Level::Confidential && Department::MKG";
     let request = build_hybrid_encryption_request(
         public_key_unique_identifier,
         policy_attributes,
-        resource_uid.clone(),
         data.to_vec(),
         None,
+        Some(authentication_data.clone()),
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
     let encrypted_data = encrypt_response
@@ -140,8 +140,8 @@ async fn integration_tests() -> KResult<()> {
     // test user1 can decrypt
     let request = build_decryption_request(
         user_decryption_key_identifier_1,
-        resource_uid.clone(),
         encrypted_data.clone(),
+        Some(authentication_data.clone()),
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
 
@@ -158,8 +158,8 @@ async fn integration_tests() -> KResult<()> {
     // test user2 can decrypt
     let request = build_decryption_request(
         user_decryption_key_identifier_2,
-        resource_uid.clone(),
         encrypted_data.clone(),
+        Some(authentication_data.clone()),
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
 
@@ -201,15 +201,15 @@ async fn integration_tests() -> KResult<()> {
     );
 
     // ReEncrypt with same ABE attribute (which has been previously incremented)
-    let resource_uid = "cc the uid".as_bytes().to_vec();
+    let authentication_data = "cc the uid".as_bytes().to_vec();
     let data = "Voilà voilà".as_bytes();
     let policy_attributes = "Level::Confidential && Department::MKG";
     let request = build_hybrid_encryption_request(
         public_key_unique_identifier,
         policy_attributes,
-        resource_uid.clone(),
         data.to_vec(),
         None,
+        Some(authentication_data.clone()),
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
     let encrypted_data = encrypt_response
@@ -219,8 +219,8 @@ async fn integration_tests() -> KResult<()> {
     // Make sure first user decryption key cannot decrypt new encrypted message (message being encrypted with new `MKG` value)
     let request = build_decryption_request(
         user_decryption_key_identifier_1,
-        resource_uid.clone(),
         encrypted_data.clone(),
+        Some(authentication_data.clone()),
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
     assert!(post_ttlv_decrypt.is_err());
@@ -228,8 +228,8 @@ async fn integration_tests() -> KResult<()> {
     // decrypt
     let request = build_decryption_request(
         user_decryption_key_identifier_2,
-        resource_uid.clone(),
         encrypted_data,
+        Some(authentication_data.clone()),
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
     let decrypted_data: DecryptedData = decrypt_response
