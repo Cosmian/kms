@@ -302,9 +302,9 @@ pub fn build_rekey_keypair_request(
 pub fn build_hybrid_encryption_request(
     public_key_identifier: &str,
     access_policy: &str,
-    resource_uid: Vec<u8>,
     data: Vec<u8>,
     header_metadata: Option<Vec<u8>>,
+    authentication_data: Option<Vec<u8>>,
 ) -> Result<Encrypt, std::io::Error> {
     let mut data_to_encrypt = vec![];
     let access_policy_bytes = access_policy.as_bytes();
@@ -326,14 +326,14 @@ pub fn build_hybrid_encryption_request(
         correlation_value: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: Some(resource_uid),
+        authenticated_encryption_additional_data: authentication_data,
     })
 }
 
 pub fn build_decryption_request(
     user_decryption_key_identifier: &str,
-    resource_uid: Vec<u8>,
     encrypted_data: Vec<u8>,
+    authentication_data: Option<Vec<u8>>,
 ) -> Decrypt {
     Decrypt {
         unique_identifier: Some(user_decryption_key_identifier.to_owned()),
@@ -342,7 +342,7 @@ pub fn build_decryption_request(
         iv_counter_nonce: None,
         init_indicator: None,
         final_indicator: None,
-        authenticated_encryption_additional_data: Some(resource_uid),
+        authenticated_encryption_additional_data: authentication_data,
         authenticated_encryption_tag: None,
     }
 }

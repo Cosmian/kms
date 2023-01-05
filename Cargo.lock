@@ -819,12 +819,12 @@ checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
 
 [[package]]
 name = "cosmian_cover_crypt"
-version = "7.1.1"
+version = "8.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b32b5772d12ac2f619c81b6e79a5566e45637f3c138176b657f1babe97bfd8d"
+checksum = "de7f2d2778e17d60fe01113cb4427e9eabce7f52a7e2b7af9cf650c9de4fc5be"
 dependencies = [
  "abe_policy",
- "cosmian_crypto_core 4.0.1",
+ "cosmian_crypto_core 5.0.0",
  "hex",
  "leb128",
  "rand_core 0.6.4",
@@ -889,9 +889,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_crypto_core"
-version = "4.0.1"
+version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58a09b8dde1c8c4daaa2881eb688f6475f84fe4a28910cc2abbcf64a3d397dfd"
+checksum = "0e5490966c09f4f783327dc7b5dea4c4a7d164fcdfb5fc4a277f3677473017ca"
 dependencies = [
  "aes-gcm 0.10.1",
  "curve25519-dalek",
@@ -900,6 +900,7 @@ dependencies = [
  "leb128",
  "rand_chacha",
  "serde",
+ "sha3",
  "thiserror",
  "zeroize",
 ]
@@ -1032,7 +1033,7 @@ dependencies = [
  "bitflags",
  "cosmian_cover_crypt",
  "cosmian_crypto_base",
- "cosmian_crypto_core 4.0.1",
+ "cosmian_crypto_core 5.0.0",
  "cosmian_kmip",
  "hex",
  "leb128",
