@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+### Added
+
+- add python interface
+
 ### Changed
 
 - CoverCrypt 8 / CryptoCore 5

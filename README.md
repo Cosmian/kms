@@ -10,6 +10,7 @@ And also some libraries:
 - `cosmian_kms_client` to query the server
 - `cosmian_kms_utils` to create kmip requests for the crypto-systems designed by *Cosmian*
 - `cosmian_kmip` which is an implementation of the kmip standard
+- `cosmian_kms_pyo3` a KMS client in python.
 
 **Please refer to the README of the inner directories to have more
 information.**
