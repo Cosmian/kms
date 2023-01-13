@@ -26,7 +26,7 @@ strum_macros = "0.24"
 thiserror = "1.0.20"
 tracing = "0.1"
 
-[target.'cfg(all(not(target_arch = "wasm32"), not(windows)))'.dependencies]
+[target.'cfg(all(not(target_arch = "wasm32"), not(windows), not(target_os = "macos")))'.dependencies]
 cosmian_crypto_base = { version = "2.1", features = ["libsodium"] }
 
 [dev-dependencies]

@@ -16,5 +16,6 @@
   },
   "[html]": {
     "editor.formatOnSave": false
-  }
+  },
+  "python.analysis.typeCheckingMode": "basic"
 }
