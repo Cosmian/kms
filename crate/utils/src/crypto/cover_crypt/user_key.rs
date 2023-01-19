@@ -1,7 +1,7 @@
 use abe_policy::{AccessPolicy, Policy};
 use cosmian_cover_crypt::{
-    api::CoverCrypt,
-    interfaces::statics::{CoverCryptX25519Aes256, MasterSecretKey, UserSecretKey},
+    core::api::CoverCrypt,
+    statics::{CoverCryptX25519Aes256, MasterSecretKey, UserSecretKey},
 };
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{

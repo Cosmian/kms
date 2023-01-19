@@ -15,7 +15,6 @@ variables:
   MYSQL_HOST: gitlab-runner-1.ovh.cosmian.com
   KMS_USER_CERT_PATH: ${CI_PROJECT_DIR}/data/data-ssl/cert.p12
 
-
 stages:
   - prebuild
   - build
@@ -133,6 +132,30 @@ compile_and_test:
     - cat /proc/meminfo
     - /usr/bin/time -v cargo make ci
     - sccache -s
+
+compile_release_kms_server:
+  stage: build
+  only: [master, develop, merge_requests]
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    policy: pull
+    paths:
+      - $CARGO_HOME
+      - $SCCACHE_DIR
+  before_script:
+    - export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
+    - cargo clippy -V
+    - sccache -s
+    - apt-get update
+    - TZ=Europe/Paris apt-get install --no-install-recommends -qq libsodium-dev libclang-dev
+  script:
+    - cat /proc/meminfo
+    - cargo build --bin cosmian_kms_server --release --no-default-features
+    - sccache -s
+  artifacts:
+    paths:
+      - target/release/cosmian_kms_server
+    expire_in: 3 mos
 
 #
 # Build python lib for linux glibc >= 2.17
@@ -261,6 +284,21 @@ unused_deps:
     - sccache -s
 
 #
+# Build a dev container
+#
+build_dev_container:
+  image: docker:19.03.15
+  only: [merge_requests]
+  except:
+    - tags
+  stage: build
+  script:
+    - docker build . -f delivery/Dockerfile.standalone --network=host -t cosmian/kms:${CI_COMMIT_REF_SLUG}
+    # Docker hub deployment
+    - docker login -u cosmian -p "${DOCKER_HUB_PWD}"
+    - docker push cosmian/kms:${CI_COMMIT_REF_SLUG}
+
+#
 # Test python lib
 #
 test_python:
@@ -271,13 +309,22 @@ test_python:
     KMS_PRIVATE_PATH: /tmp
     KMS_SHARED_PATH: /tmp
   services:
-    - name: gitlab.cosmian.com:5000/core/kms:${KMS_VERSION}_ci
-      alias: kms_ci
+    - name: cosmian/kms:${CI_COMMIT_REF_SLUG}
+      alias: kms
+  before_script:
+    - apt-get update
+    - TZ=Europe/Paris apt-get install --no-install-recommends -qq git
   only: [master, develop, merge_requests]
   script:
     # Check python code
     - pip install target/wheels/*manylinux*.whl
     - pip install -r crate/pyo3/python/requirements.txt
+    - git clone --branch develop https://github.com/Cosmian/cover_crypt.git /tmp/cover_crypt
+    - pushd /tmp/cover_crypt
+    - git checkout 84957843
+    - maturin build --release --features python
+    - pip install --force-reinstall target/wheels/*.whl
+    - popd
     - mypy crate/pyo3/python/scripts/test_kms.py
     - python3 crate/pyo3/python/scripts/test_kms.py
     # Check that the lib version is the same as the server

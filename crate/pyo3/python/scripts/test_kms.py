@@ -19,12 +19,20 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
         self.policy.add_axis(
             PolicyAxis(
                 'Security Level',
-                ['Protected', 'Confidential', 'Top Secret'],
+                [
+                    ('Protected', False),
+                    ('Confidential', False),
+                    ('Top Secret', False),
+                ],
                 hierarchical=True,
             )
         )
         self.policy.add_axis(
-            PolicyAxis('Department', ['FIN', 'MKG', 'HR'], hierarchical=False)
+            PolicyAxis(
+                'Department',
+                [('FIN', False), ('MKG', False), ('HR', False)],
+                hierarchical=False,
+            )
         )
 
         # Generate master key pair

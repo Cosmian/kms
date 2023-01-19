@@ -12,7 +12,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- CoverCrypt 8 / CryptoCore 5
+- CoverCrypt v9 / CryptoCore v5 / AbePolicy v3.0
+- CLI Policy interface (format changed with AbePolicy v2.1)
 
 ---
 

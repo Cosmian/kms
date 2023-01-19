@@ -1,5 +1,5 @@
 use abe_policy::{Attribute, Policy};
-use cosmian_cover_crypt::interfaces::statics::CoverCryptX25519Aes256;
+use cosmian_cover_crypt::statics::CoverCryptX25519Aes256;
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{

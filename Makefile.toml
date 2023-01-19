@@ -82,6 +82,9 @@ fi
 echo `apt list libssl-dev`
 echo $data_path
 
+# delete existing database
+rm -f /tmp/kms.db
+
 sudo docker stop postgre || true
 # sudo docker stop mariadb || true
 sudo docker stop my-edb || true
@@ -91,7 +94,7 @@ sudo docker run -d --rm --network=host --name postgre -e POSTGRES_DB=$TEST_DB -e
 # sudo docker run -d --rm --network=host --name mariadb -e MYSQL_DATABASE=$TEST_DB -e MYSQL_ROOT_PASSWORD=$TEST_PASSWORD mariadb:latest
 
 # MySQL connector using `mysql` crate (for EdgelessDB usage)
-sudo docker run -d --rm --name my-edb -p3306:3306 -p8080:8080 -e OE_SIMULATION=1 -t ghcr.io/edgelesssys/edgelessdb-sgx-1gb
+sudo docker run -d --rm --name my-edb -p3306:3306 -p8080:8080 -e OE_SIMULATION=1 -t ghcr.io/edgelesssys/edgelessdb-sgx-1gb@sha256:668d43866609e7a93cec56cfa68c8ef5835e36244c8cecc57766b265e687f688
 # inject manifest into EdgelessDB
 sleep 20
 pushd "$data_path"

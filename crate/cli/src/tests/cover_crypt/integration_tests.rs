@@ -49,9 +49,9 @@ pub async fn test_init_error() -> Result<(), Box<dyn std::error::Error>> {
 
     cmd.arg(SUB_COMMAND)
         .args(vec!["init", "--policy", "test_data/notfound.json"]);
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "Error: Can't read the policy json file",
-    ));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Error: Could not open the file"));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
@@ -135,7 +135,7 @@ pub async fn test_new() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
-        "(department::marketing || department::finance) && level::secret",
+        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         "--secret-key-id",
         extract_private_key(stdout).unwrap(),
     ]);
@@ -162,12 +162,12 @@ pub async fn test_new_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
-        "department::marketing || level::secret2",
+        "Department::MKG || Security Level::Confidential2",
         "--secret-key-id",
         extract_private_key(stdout).unwrap(),
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "attribute not found: level::secret2",
+        "attribute not found: Security Level::Confidential2",
     ));
 
     // bad keys
@@ -175,7 +175,7 @@ pub async fn test_new_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
-        "department::marketing || level::secret",
+        "Department::MKG || Security Level::Top Secret",
         "--secret-key-id",
         "bad_key",
     ]);
@@ -206,7 +206,7 @@ pub async fn test_new_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
-        "department::marketing || level::secret",
+        "Department::MKG || Security Level::Top Secret",
         "--secret-key-id",
         secret_key_id,
     ]);
@@ -232,7 +232,7 @@ pub async fn test_revoke() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
-        "(department::marketing || department::finance) && level::secret",
+        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         "--secret-key-id",
         extract_private_key(stdout).unwrap(),
     ]);
@@ -329,7 +329,7 @@ pub async fn test_destroy() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
-        "(department::marketing || department::finance) && level::secret",
+        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         "--secret-key-id",
         extract_private_key(stdout).unwrap(),
     ]);
@@ -403,9 +403,9 @@ pub async fn test_rotate() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "rotate",
         "-a",
-        "department::marketing",
+        "Department::MKG",
         "-a",
-        "department::finance",
+        "Department::FIN",
         "--secret-key-id",
         extract_private_key(stdout).unwrap(),
     ]);
@@ -433,12 +433,12 @@ pub async fn test_rotate_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "rotate",
         "-a",
-        "level::secret2",
+        "Security Level::Top Secret2",
         "--secret-key-id",
         extract_private_key(stdout).unwrap(),
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "attribute not found: level::secret2",
+        "attribute not found: Security Level::Top Secret2",
     ));
 
     // bad keys
@@ -447,7 +447,7 @@ pub async fn test_rotate_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "rotate",
         "-a",
-        "department::marketing",
+        "Department::MKG",
         "--secret-key-id",
         "bad_key",
     ]);
@@ -480,7 +480,7 @@ pub async fn test_rotate_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "rotate",
         "-a",
-        "department::marketing",
+        "Department::MKG",
         "--secret-key-id",
         secret_key_id,
     ]);
@@ -513,7 +513,7 @@ pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "--access-policy",
-        "department::marketing && level::confidential",
+        "Department::MKG && Security Level::Confidential",
         "-o",
         "/tmp/plain-2.enc",
         "--resource-uid",
@@ -532,7 +532,7 @@ pub async fn test_encrypt_decrypt() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
-        "(department::marketing || department::finance) && level::secret",
+        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         "--secret-key-id",
         extract_private_key(stdout).unwrap(),
     ]);
@@ -582,7 +582,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "--access-policy",
-        "department::marketing && level::confidential",
+        "Department::MKG && Security Level::Confidential",
         "-o",
         "/tmp/output.enc",
         "--resource-uid",
@@ -601,7 +601,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "--access-policy",
-        "departmentmarketing && level::confidential",
+        "departmentmarketing && Security Level::Confidential",
         "-o",
         "/tmp/output.enc",
         "--resource-uid",
@@ -620,7 +620,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "--access-policy",
-        "department::marketing2 && level::confidential",
+        "Department::MKG2 && Security Level::Confidential",
         "-o",
         "/tmp/output.enc",
         "--resource-uid",
@@ -630,7 +630,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "test_data/plain-2.txt",
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "attribute not found: department::marketing2",
+        "attribute not found: Department::MKG2",
     ));
 
     // the key is wrong
@@ -639,7 +639,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "--access-policy",
-        "department::marketing2 && level::confidential",
+        "Department::MKG2 && Security Level::Confidential",
         "-o",
         "/tmp/output.enc",
         "--resource-uid",
@@ -658,7 +658,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "--access-policy",
-        "department::marketing && level::confidential",
+        "Department::MKG && Security Level::Confidential",
         "-o",
         "/noexist/output.enc",
         "--resource-uid",
@@ -697,7 +697,7 @@ pub async fn test_encrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND).args(vec![
         "encrypt",
         "--access-policy",
-        "department::marketing && level::confidential",
+        "Department::MKG && Security Level::Confidential",
         "-o",
         "/tmp/output.enc",
         "--resource-uid",
@@ -728,7 +728,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
         "new",
-        "(department::marketing || department::finance) && level::secret",
+        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         "--secret-key-id",
         extract_private_key(stdout).unwrap(),
     ]);
@@ -796,7 +796,7 @@ pub async fn test_decrypt_error() -> Result<(), Box<dyn std::error::Error>> {
         "--user-key-file",
         "test_data/wrapped_key",
         "--access-policy",
-        "department::marketing || level::secret",
+        "Department::MKG || Security Level::Top Secret",
         "--secret-key-id",
         "random-id",
         "-w",
@@ -924,7 +924,7 @@ pub async fn test_import_keys() -> Result<(), Box<dyn std::error::Error>> {
         "--user-key-file",
         "test_data/wrapped_key",
         "--access-policy",
-        "department::marketing || level::secret",
+        "Department::MKG || Security Level::Top Secret",
         "--secret-key-id",
         secret_key_id,
         "-w",
@@ -960,7 +960,7 @@ pub async fn test_import_keys() -> Result<(), Box<dyn std::error::Error>> {
         "--user-key-file",
         "test_data/wrapped_key",
         "--access-policy",
-        "department::marketing || level::secret",
+        "Department::MKG || Security Level::Top Secret",
         "--secret-key-id",
         secret_key_id,
         "-W",
@@ -995,7 +995,7 @@ pub async fn test_import_keys() -> Result<(), Box<dyn std::error::Error>> {
         "--user-key-file",
         "test_data/wrapped_key",
         "--access-policy",
-        "department::marketing || level::secret",
+        "Department::MKG || Security Level::Top Secret",
         "--secret-key-id",
         secret_key_id,
     ]);
@@ -1024,9 +1024,9 @@ pub async fn test_import_keys_error() -> Result<(), Box<dyn std::error::Error>> 
         "-w",
     ]);
 
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "Error: Can't read the policy json file",
-    ));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Error: Could not open the file"));
 
     // Secret key file not found
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -1080,7 +1080,7 @@ pub async fn test_import_keys_error() -> Result<(), Box<dyn std::error::Error>> 
         "--user-key-file",
         "test_data/notfound",
         "--access-policy",
-        "department::marketing || level::secret",
+        "Department::MKG || Security Level::Top Secret",
         "--secret-key-id",
         private_key_id,
         "-w",
@@ -1098,7 +1098,7 @@ pub async fn test_import_keys_error() -> Result<(), Box<dyn std::error::Error>> 
         "--user-key-file",
         "test_data/wrapped_key",
         "--access-policy",
-        "department::marketing || level::secret2",
+        "Department::MKG || Security Level::Top Secret2",
         "--secret-key-id",
         private_key_id,
         "-w",
@@ -1117,7 +1117,7 @@ pub async fn test_import_keys_error() -> Result<(), Box<dyn std::error::Error>> 
         "--user-key-file",
         "test_data/wrapped_key",
         "--access-policy",
-        "department::marketing || level::secret2",
+        "Department::MKG || Security Level::Top Secret2",
         "--secret-key-id",
         "bad_key",
         "-w",

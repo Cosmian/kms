@@ -77,7 +77,7 @@ repos:
       - id: cargo-check
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.1
+    rev: v1.0.5
     hooks:
   #     - id: cargo-update
       # - id: cargo-check-semver
@@ -122,3 +122,10 @@ repos:
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
       - id: trailing-whitespace
+
+  - repo: https://github.com/psf/black
+    rev: 22.10.0
+    hooks:
+      - id: black
+        # avoid clash with `double-quote-string-fixer`
+        args: [--skip-string-normalization]

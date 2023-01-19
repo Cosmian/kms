@@ -2,8 +2,8 @@ use std::convert::TryFrom;
 
 use abe_policy::AccessPolicy;
 use cosmian_cover_crypt::{
-    api::CoverCrypt,
-    interfaces::statics::{CoverCryptX25519Aes256, PublicKey},
+    statics::{CoverCryptX25519Aes256, PublicKey},
+    CoverCrypt,
 };
 use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
