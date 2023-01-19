@@ -10,12 +10,9 @@ variables:
   POSTGRES_HOST_AUTH_METHOD: trust
   POSTGRES_HOST: gitlab-runner-1.ovh.cosmian.com
   DATABASE_URL_TEST: postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST/$POSTGRES_DB
-  KMS_POSTGRES_URL: postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST/$POSTGRES_DB
   MYSQL_DB: kms
   MYSQL_ROOT_PASSWORD: kms
   MYSQL_HOST: gitlab-runner-1.ovh.cosmian.com
-  #  KMS_MYSQL_URL: mysql://root:$MYSQL_ROOT_PASSWORD@$MYSQL_HOST/$MYSQL_DB
-  KMS_MYSQL_URL: mysql://root@$MYSQL_HOST/$MYSQL_DB
   KMS_USER_CERT_PATH: ${CI_PROJECT_DIR}/data/data-ssl/cert.p12
 
 stages:
@@ -37,7 +34,7 @@ workflow:
 # Test Postgre connection and cleanup db
 test_db_postgre_connect:
   image: postgres
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   stage: prebuild
   script:
     # official way to provide password to psql: http://www.postgresql.org/docs/9.3/static/libpq-envars.html
@@ -56,7 +53,7 @@ test_db_postgre_connect:
 # Test Maria connection and cleanup db
 test_db_mariadb_connect:
   image: mariadb
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   stage: prebuild
   script:
     - echo $MYSQL_DB
@@ -74,7 +71,7 @@ test_db_mariadb_connect:
 # because new versions of bitvec/funty are incompatible with some of our crypto dependencies.
 cargo_audit:
   stage: prebuild
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   cache: {}
   script:
     - cargo audit --ignore RUSTSEC-2020-0071
@@ -112,13 +109,17 @@ cargo_audit:
 #
 compile_and_test:
   stage: build
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     policy: pull
     paths:
       - $CARGO_HOME
       - $SCCACHE_DIR
+  variables:
+    KMS_POSTGRES_URL: postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST/$POSTGRES_DB
+    #  KMS_MYSQL_URL: mysql://root:$MYSQL_ROOT_PASSWORD@$MYSQL_HOST/$MYSQL_DB
+    KMS_MYSQL_URL: mysql://root@$MYSQL_HOST/$MYSQL_DB
   before_script:
     - export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
     - cargo clippy -V
@@ -133,11 +134,68 @@ compile_and_test:
     - sccache -s
 
 #
+# Build python lib for linux glibc >= 2.17
+#
+build_python_manylinux:
+  stage: build
+  only: [main, develop, merge_requests]
+  image:
+    name: gitlab.cosmian.com:5000/core/ci-python-kms
+  script:
+    # build python lib using the right clang version
+    - cd crate/pyo3/ && LIBCLANG_PATH=/opt/rh/llvm-toolset-7/root/usr/lib64/ LIBCLANG_STATIC_PATH=/opt/rh/llvm-toolset-7/root/usr/lib64/ CLANG_PATH=/opt/rh/llvm-toolset-7/root/usr/bin/clang
+      OPENSSL_DIR=/usr/local/ssl maturin build --compatibility manylinux_2_17 --release
+  artifacts:
+    paths:
+      - target/wheels/*manylinux*.whl
+    expire_in: 3 mos
+
+#
+# Build python lib for macos
+#
+build_python_macos:
+  stage: build
+  only: [main, develop, merge_requests]
+  image:
+    name: joseluisq/rust-linux-darwin-builder:1.66
+  before_script:
+    - env
+    - cd /builds/core/kms && rustup target add x86_64-apple-darwin
+    - apt-get update && apt-get install -y python3-pip
+    - cd /builds/core/kms/crate/pyo3/python/ && pip install -r requirements.txt
+  script:
+    # copy cross compilation tools in the custom gitlab home
+    - cp /root/.cargo/config "$CARGO_HOME/"
+    - cd /builds/core/kms/crate/pyo3/ && maturin build --release --target x86_64-apple-darwin
+  artifacts:
+    paths:
+      - /builds/core/kms/target/wheels/*macosx*.whl
+    expire_in: 3 mos
+
+#
+# Build python lib for windows
+#
+build_python_windows:
+  stage: build
+  only: [main, develop, merge_requests]
+  before_script:
+    - rustup target add x86_64-pc-windows-gnu
+    - apt-get update
+    - TZ=Europe/Paris apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
+  script:
+    - cd crate/pyo3/ && pip install -r python/requirements.txt
+    - maturin build --release --target x86_64-pc-windows-gnu --target-dir target_python
+  artifacts:
+    paths:
+      - target/wheels/*win*.whl
+    expire_in: 3 mos
+
+#
 # Check for unused deps
 #
 unused_deps:
   stage: build
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     policy: pull
@@ -160,7 +218,7 @@ unused_deps:
 .docker_test_build_and_deploy:
   image: docker:19.03.15
   stage: pretest
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   variables:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:test
     SHORT_IMAGE_NAME: kms_enclave
@@ -180,13 +238,16 @@ unused_deps:
 # Note: this step is hidden because the kms can't run RA with OVH yet
 .test-enclave:
   stage: test
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     policy: pull
     paths:
       - $CARGO_HOME
       - $SCCACHE_DIR
+  variables:
+    KMS_POSTGRES_URL: postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST/$POSTGRES_DB
+    KMS_MYSQL_URL: mysql://root@$MYSQL_HOST/$MYSQL_DB
   before_script:
     - export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
     - cargo clippy -V
@@ -197,6 +258,57 @@ unused_deps:
     - cat /proc/meminfo
     - /usr/bin/time -v cargo make ci-enclave-tests
     - sccache -s
+
+#
+# Build a dev container
+#
+build_dev_container:
+  image: docker:19.03.15
+  only: [main, develop, merge_requests]
+  except:
+    - tags
+  stage: build
+  script:
+    - docker build . -f delivery/Dockerfile.standalone --network=host -t cosmian/kms:${CI_COMMIT_REF_SLUG}
+    # Docker hub deployment
+    - docker login -u cosmian -p "${DOCKER_HUB_PWD}"
+    - docker push cosmian/kms:${CI_COMMIT_REF_SLUG}
+
+#
+# Test python lib
+#
+test_python:
+  stage: test
+  only: [main, develop, merge_requests]
+  except:
+    - tags
+  variables:
+    COSMIAN_SERVER_URL: http://localhost:9998
+    KMS_PUBLIC_PATH: /tmp
+    KMS_PRIVATE_PATH: /tmp
+    KMS_SHARED_PATH: /tmp
+  services:
+    - name: cosmian/kms:${CI_COMMIT_REF_SLUG}
+      alias: kms
+  before_script:
+    - apt-get update
+    - TZ=Europe/Paris apt-get install --no-install-recommends -qq git
+  script:
+    # Check python code
+    - pip install target/wheels/*manylinux*.whl
+    - pip install -r crate/pyo3/python/requirements.txt
+    - git clone --branch develop https://github.com/Cosmian/cover_crypt.git /tmp/cover_crypt
+    - pushd /tmp/cover_crypt
+    - git checkout 84957843
+    - maturin build --release --features python
+    - pip install --force-reinstall target/wheels/*.whl
+    - popd
+    - mypy crate/pyo3/python/scripts/test_kms.py
+    - python3 crate/pyo3/python/scripts/test_kms.py
+    # Check that the lib version is the same as the server
+    - cargo install cargo-get
+    - diff <(cargo get --root crate/pyo3 version) <(cargo get --root crate/server version) || (echo "Update the version in crate/pyo3/Cargo.toml"; exit
+      1)
 
 #
 # Build a docker and deploy it (for demo)
@@ -329,3 +441,11 @@ documentation:
     - apk add --update curl
   script:
     - curl --request POST --form token=${CI_JOB_TOKEN} --form ref=${CI_COMMIT_BRANCH} http://gitlab.cosmian.com/api/v4/projects/95/trigger/pipeline
+
+python_publish:
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/
+  script:
+    - pip install twine
+    - twine upload -u "${PYPI_USERNAME}" -p "${PYPI_PASSWORD}" target/wheels/cosmian_kms-${CI_COMMIT_TAG}*.whl

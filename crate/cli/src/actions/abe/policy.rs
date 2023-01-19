@@ -1,63 +1,26 @@
-use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
+use std::{fs::File, io::Read, path::Path};
 
-use abe_policy::{Policy, PolicyAxis};
+use abe_policy::Policy;
 use eyre::Context;
-use serde::{Deserialize, Serialize};
-
-/// Example of a Policy json:
-/// ```json
-/// {
-///    "policy": {
-///            "level": {
-///                    "hierarchical": true,
-///                    "attributes": ["confidential","secret","top-secret"]
-///            },
-///            "department": {
-///                    "hierarchical": false,
-///                    "attributes": ["finance","marketing","operations"]
-///            }
-///    },
-///    "max-rotations": 100
-/// }
-/// ```
-#[derive(Serialize, Deserialize)]
-struct InputPolicy {
-    #[serde(alias = "max-rotations")]
-    max_rotations: usize,
-    #[serde(alias = "policy")]
-    policy_axis: HashMap<String, InputPolicyAxis>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct InputPolicyAxis {
-    hierarchical: bool,
-    attributes: Vec<String>,
-}
 
 pub fn policy_from_file(json_filename: &impl AsRef<Path>) -> eyre::Result<Policy> {
-    let file = File::open(json_filename).with_context(|| "Can't read the policy json file")?;
-
-    // Read the json
-    let raw_policy: InputPolicy =
-        serde_json::from_reader(BufReader::new(file)).with_context(|| "Policy JSON malformed")?;
-
-    // Build the policy
-    let mut policy = Policy::new(raw_policy.max_rotations as u32);
-
-    // Build the policy axis
-    for (name, axis) in &raw_policy.policy_axis {
-        let v = axis
-            .attributes
-            .iter()
-            .map(|x| x.as_ref())
-            .collect::<Vec<_>>();
-
-        policy
-            .add_axis(&PolicyAxis::new(name, &v, axis.hierarchical))
-            .with_context(|| format!("Can't initialize the policy axis {name}"))?;
-    }
-
-    Ok(policy)
+    let mut policy_str = String::new();
+    File::open(json_filename)
+        .with_context(|| {
+            format!(
+                "Could not open the file {}",
+                json_filename.as_ref().display()
+            )
+        })?
+        .read_to_string(&mut policy_str)
+        .with_context(|| {
+            format!(
+                "Could not read the file {}",
+                json_filename.as_ref().display()
+            )
+        })?;
+    Policy::parse_and_convert(policy_str.as_bytes())
+        .with_context(|| format!("Policy JSON malformed {}", json_filename.as_ref().display()))
 }
 
 #[cfg(test)]
@@ -69,21 +32,27 @@ mod tests {
     #[test]
     pub fn test_policy_from_file() {
         //file not found
-        let result = policy_from_file(&PathBuf::from("not_exist"));
+        const WRONG_FILENAME: &str = "not_exist";
+        let result = policy_from_file(&PathBuf::from(WRONG_FILENAME));
         assert_eq!(
             result.err().unwrap().to_string(),
-            "Can't read the policy json file"
+            format!("Could not open the file {WRONG_FILENAME}")
         );
 
         // malformed json
-        let result = policy_from_file(&PathBuf::from("test_data/policy.bad"));
-        assert_eq!(result.err().unwrap().to_string(), "Policy JSON malformed");
-
-        // duplicate policies
-        let result = policy_from_file(&PathBuf::from("test_data/policy.bad2"));
+        const MALFORMED_FILE: &str = "test_data/policy.bad";
+        let result = policy_from_file(&PathBuf::from(MALFORMED_FILE));
         assert_eq!(
             result.err().unwrap().to_string(),
-            "Can't initialize the policy axis level"
+            format!("Policy JSON malformed {MALFORMED_FILE}")
+        );
+
+        // duplicate policies
+        const DUPLICATED_POLICIES: &str = "test_data/policy.bad2";
+        let result = policy_from_file(&PathBuf::from(DUPLICATED_POLICIES));
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            format!("Policy JSON malformed {DUPLICATED_POLICIES}")
         );
     }
 }

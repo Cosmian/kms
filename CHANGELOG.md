@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [4.1.0] - 2023-01-19
+
+### Added
+
+- add python interface
+
+### Changed
+
+- CoverCrypt v9 / CryptoCore v5 / AbePolicy v3.0
+- CLI Policy interface (format changed with AbePolicy v2.1)
+
+---
+
 ## [4.0.1] - 2022-11-29
 
 ### Changed

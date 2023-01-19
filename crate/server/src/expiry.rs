@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use actix_web::cookie::time::OffsetDateTime;
 use time::format_description::well_known::Rfc2822;
-use tracing_log::log::warn;
+use tracing::warn;
 
 // check every 1 hour
 const ONE_HOUR: Duration = Duration::from_secs(60 * 60); // 1 hour

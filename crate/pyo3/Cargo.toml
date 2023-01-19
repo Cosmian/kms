@@ -1,0 +1,20 @@
+[package]
+name = "cosmian_kms_python"
+version = "4.1.0"
+authors = ["Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>"]
+edition = "2021"
+
+[lib]
+name = "cosmian_kms"
+crate-type = ["cdylib"]
+
+[dependencies]
+abe_policy = "3.0"
+cosmian_kmip = { path = "../kmip" }
+cosmian_kms_client = { path = "../client" }
+cosmian_kms_utils = { path = "../utils" }
+leb128 = "0.2"
+pyo3 = { version = "0.17.3", features = ["extension-module", "abi3", "abi3-py37", "generate-import-lib"] }
+pyo3-asyncio = { version = "0.17.0", features = ["tokio-runtime"] }
+serde_json = "1.0"
+tokio = { version = "1.24", features = ["full"] }

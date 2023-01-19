@@ -1,0 +1,3 @@
+cover_crypt==8.0.1
+maturin[patchelf]==0.14.9
+mypy>=0.99

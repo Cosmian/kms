@@ -5,7 +5,7 @@ use serde::{
     Deserialize,
 };
 use time::format_description::well_known::Rfc3339;
-use tracing::log::trace;
+use tracing::trace;
 
 use crate::kmip::ttlv::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV};
 

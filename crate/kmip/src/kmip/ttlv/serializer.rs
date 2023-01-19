@@ -5,7 +5,7 @@ use serde::{
     ser::{self, Error, SerializeSeq},
     Serialize,
 };
-use tracing::{debug, log::trace};
+use tracing::{debug, trace};
 
 use super::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV};
 

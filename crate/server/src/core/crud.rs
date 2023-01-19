@@ -1,7 +1,7 @@
 use std::fs;
 
 use async_trait::async_trait;
-use cosmian_cover_crypt::interfaces::statics::CoverCryptX25519Aes256;
+use cosmian_cover_crypt::statics::CoverCryptX25519Aes256;
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyValue,
     kmip_objects::{Object, ObjectType},

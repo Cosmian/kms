@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use abe_policy::{AccessPolicy, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, EncryptionHint, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{DecryptedData, Get, Import, Locate},
@@ -41,8 +41,23 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     //
     let mut policy = Policy::new(10);
-    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
-    policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
+    policy.add_axis(PolicyAxis::new(
+        "Department",
+        vec![
+            ("MKG", EncryptionHint::Classic),
+            ("FIN", EncryptionHint::Classic),
+            ("HR", EncryptionHint::Classic),
+        ],
+        false,
+    ))?;
+    policy.add_axis(PolicyAxis::new(
+        "Level",
+        vec![
+            ("confidential", EncryptionHint::Classic),
+            ("secret", EncryptionHint::Hybridized),
+        ],
+        true,
+    ))?;
 
     // create Key Pair
     debug!("ABE Create Master Key Pair");
@@ -209,8 +224,23 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let nonexistent_owner = "invalid_owner";
     //
     let mut policy = Policy::new(10);
-    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
-    policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
+    policy.add_axis(PolicyAxis::new(
+        "Department",
+        vec![
+            ("MKG", EncryptionHint::Classic),
+            ("FIN", EncryptionHint::Classic),
+            ("HR", EncryptionHint::Classic),
+        ],
+        false,
+    ))?;
+    policy.add_axis(PolicyAxis::new(
+        "Level",
+        vec![
+            ("confidential", EncryptionHint::Classic),
+            ("secret", EncryptionHint::Hybridized),
+        ],
+        true,
+    ))?;
 
     // create Key Pair
     let ckr = kms
@@ -220,7 +250,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let master_public_key_id = &ckr.public_key_unique_identifier;
 
     // encrypt a resource MKG + confidential
-    let confidential_resource_uid = "cc the uid confidential".as_bytes().to_vec();
+    let confidential_authentication_data = "cc the uid confidential".as_bytes().to_vec();
     let confidential_mkg_data = "Confidential MKG Data".as_bytes();
     let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
     let er = kms
@@ -228,9 +258,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             build_hybrid_encryption_request(
                 master_public_key_id,
                 confidential_mkg_policy_attributes,
-                confidential_resource_uid.clone(),
                 confidential_mkg_data.to_vec(),
                 None,
+                Some(confidential_authentication_data.clone()),
             )?,
             owner,
             None,
@@ -245,9 +275,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             build_hybrid_encryption_request(
                 master_public_key_id,
                 confidential_mkg_policy_attributes,
-                confidential_resource_uid.clone(),
                 confidential_mkg_data.to_vec(),
                 None,
+                Some(confidential_authentication_data.clone()),
             )?,
             nonexistent_owner,
             None,
@@ -256,7 +286,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     assert!(er.is_err());
 
     // encrypt a resource FIN + Secret
-    let secret_resource_uid = "cc the uid secret".as_bytes().to_vec();
+    let secret_authentication_data = "cc the uid secret".as_bytes().to_vec();
     let secret_fin_data = "Secret FIN data".as_bytes();
     let secret_fin_policy_attributes = "Level::secret && Department::FIN";
     let er = kms
@@ -264,9 +294,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             build_hybrid_encryption_request(
                 master_public_key_id,
                 secret_fin_policy_attributes,
-                secret_resource_uid.clone(),
                 secret_fin_data.to_vec(),
                 None,
+                Some(secret_authentication_data.clone()),
             )?,
             owner,
             None,
@@ -281,9 +311,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             build_hybrid_encryption_request(
                 master_public_key_id,
                 secret_fin_policy_attributes,
-                secret_resource_uid.clone(),
                 secret_fin_data.to_vec(),
                 None,
+                Some(secret_authentication_data.clone()),
             )?,
             nonexistent_owner,
             None,
@@ -312,8 +342,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .decrypt(
             build_decryption_request(
                 secret_mkg_fin_user_key,
-                confidential_resource_uid.clone(),
                 confidential_mkg_encrypted_data.clone(),
+                Some(confidential_authentication_data.clone()),
             ),
             owner,
             None,
@@ -335,8 +365,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .decrypt(
             build_decryption_request(
                 secret_mkg_fin_user_key,
-                confidential_resource_uid,
                 confidential_mkg_encrypted_data,
+                Some(confidential_authentication_data),
             ),
             nonexistent_owner,
             None,
@@ -349,8 +379,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .decrypt(
             build_decryption_request(
                 secret_mkg_fin_user_key,
-                secret_resource_uid.clone(),
                 secret_fin_encrypted_data.clone(),
+                Some(secret_authentication_data.clone()),
             ),
             owner,
             None,
@@ -372,8 +402,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .decrypt(
             build_decryption_request(
                 secret_mkg_fin_user_key,
-                secret_resource_uid,
                 secret_fin_encrypted_data,
+                Some(secret_authentication_data),
             ),
             nonexistent_owner,
             None,
@@ -398,8 +428,23 @@ async fn test_abe_json_access() -> KResult<()> {
     let owner = "cceyJhbGciOiJSUzI1Ni";
     //
     let mut policy = Policy::new(10);
-    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
-    policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
+    policy.add_axis(PolicyAxis::new(
+        "Department",
+        vec![
+            ("MKG", EncryptionHint::Classic),
+            ("FIN", EncryptionHint::Classic),
+            ("HR", EncryptionHint::Classic),
+        ],
+        false,
+    ))?;
+    policy.add_axis(PolicyAxis::new(
+        "Level",
+        vec![
+            ("confidential", EncryptionHint::Classic),
+            ("secret", EncryptionHint::Hybridized),
+        ],
+        true,
+    ))?;
 
     let secret_mkg_fin_access_policy = (AccessPolicy::new("Department", "MKG")
         | AccessPolicy::new("Department", "FIN"))
@@ -490,8 +535,23 @@ async fn test_import_decrypt() -> KResult<()> {
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     let mut policy = Policy::new(10);
-    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
-    policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
+    policy.add_axis(PolicyAxis::new(
+        "Department",
+        vec![
+            ("MKG", EncryptionHint::Classic),
+            ("FIN", EncryptionHint::Classic),
+            ("HR", EncryptionHint::Classic),
+        ],
+        false,
+    ))?;
+    policy.add_axis(PolicyAxis::new(
+        "Level",
+        vec![
+            ("confidential", EncryptionHint::Classic),
+            ("secret", EncryptionHint::Hybridized),
+        ],
+        true,
+    ))?;
 
     // create Key Pair
     let cr = kms
@@ -506,7 +566,7 @@ async fn test_import_decrypt() -> KResult<()> {
     assert_eq!(&sk_uid, &sk_uid_.to_string());
 
     // encrypt a resource MKG + confidential
-    let confidential_resource_uid = "cc the uid confidential".as_bytes().to_vec();
+    let confidential_authentication_data = "cc the uid confidential".as_bytes().to_vec();
     let confidential_mkg_data = "Confidential MKG Data".as_bytes();
     let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
     let er = kms
@@ -514,9 +574,9 @@ async fn test_import_decrypt() -> KResult<()> {
             build_hybrid_encryption_request(
                 &pk_uid,
                 confidential_mkg_policy_attributes,
-                confidential_resource_uid.clone(),
                 confidential_mkg_data.to_vec(),
                 None,
+                Some(confidential_authentication_data.clone()),
             )?,
             owner,
             None,
@@ -560,14 +620,16 @@ async fn test_import_decrypt() -> KResult<()> {
         attributes: Attributes::new(ObjectType::PrivateKey),
         object: gr_sk.object.clone(),
     };
-    assert!(kms.import(request, owner, None).await.is_ok());
+    kms.import(request, owner, None)
+        .await
+        .context(&custom_sk_uid)?;
     // decrypt resource MKG + confidential
     let dr = kms
         .decrypt(
             build_decryption_request(
                 &custom_sk_uid,
-                confidential_resource_uid.clone(),
                 confidential_mkg_encrypted_data.clone(),
+                Some(confidential_authentication_data.clone()),
             ),
             owner,
             None,
@@ -590,15 +652,17 @@ async fn test_import_decrypt() -> KResult<()> {
         attributes: gr_sk.object.attributes()?.clone(),
         object: gr_sk.object.clone(),
     };
-    assert!(kms.import(request, owner, None).await.is_ok());
+    kms.import(request, owner, None)
+        .await
+        .context(&custom_sk_uid)?;
     // decrypt resource MKG + confidential
     let dr = kms
         .decrypt(
             build_decryption_request(
                 // secret_mkg_fin_user_key,
                 &custom_sk_uid,
-                confidential_resource_uid.clone(),
                 confidential_mkg_encrypted_data.clone(),
+                Some(confidential_authentication_data.clone()),
             ),
             owner,
             None,
