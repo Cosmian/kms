@@ -82,15 +82,11 @@ repos:
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.5
     hooks:
-  #     - id: cargo-update
-      # - id: cargo-check-semver
-  #     - id: cargo-audit
-  #     - id: cargo-outdated
-  #     - id: cargo-tests-all
-  #     - id: clippy-autofix-all
-  #     - id: clippy-autofix-pedantic
-  #     - id: clippy-autofix-nursery
-  #     - id: clippy-autofix-others
+      - id: cargo-update
+      - id: clippy-autofix-all
+      - id: clippy-autofix-pedantic
+      - id: clippy-autofix-nursery
+      - id: clippy-autofix-others
       - id: cargo-format
       - id: dprint-toml-fix
 
