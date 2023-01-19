@@ -1,6 +1,7 @@
 ---
 # Pre-requisites:
 # pip install pre-commit conventional-pre-commit
+# pre-commit install
 # pre-commit install --install-hooks -t commit-msg
 # pre-commit autoupdate
 
@@ -15,18 +16,28 @@ repos:
         stages: [commit-msg]
         args: [] # optional: list of Conventional Commits types to allow e.g. [feat, fix, ci, chore, test]
 
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.0.0-alpha.4
+    hooks:
+      - id: prettier
+        stages: [commit]
+        exclude_types:
+          - yaml
+          - markdown
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.32.2
+    hooks:
+      - id: markdownlint-fix
+        args: [--disable=MD013, --disable=MD024, --disable=MD041]
+
   - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
     rev: v1.1.2
     hooks:
       - id: htmlhint
       - id: dockerfile_lint
       - id: markdown-toc
-
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.0.0-alpha.4
-    hooks:
-      - id: prettier
-        types_or: [bash, bib, c, css, dart, dockerfile, html, java, javascript, jsx, json, python3, sql, ts, tsx, sh, vue]
+        args: [--bullets="-"] # comment this to refresh TOC
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.2
@@ -35,7 +46,7 @@ repos:
         args: [--mapping, '2', --sequence, '4', --offset, '2']
 
   - repo: https://github.com/crate-ci/typos
-    rev: v1.13.0
+    rev: v1.13.1
     hooks:
       - id: typos
 
@@ -45,7 +56,9 @@ repos:
       - id: forbid-crlf
       - id: remove-crlf
       - id: forbid-tabs
+        exclude: ^.git/
       - id: remove-tabs
+        exclude: ^.git/
 
   - repo: https://github.com/sirosen/texthooks
     rev: 0.4.0
@@ -61,16 +74,6 @@ repos:
     hooks:
       - id: shellcheck
 
-  - repo: https://github.com/Cretezy/flutter-format-pre-commit
-    rev: 4a1df675bb74dea371c17934933e257e46f8dd98
-    hooks:
-      - id: flutter-format
-
-  - repo: https://github.com/dluksza/flutter-analyze-pre-commit
-    rev: 0bfdb7415bb2d02794a884bf2b763a92772001eb
-    hooks:
-      - id: flutter-analyze
-
   - repo: https://github.com/doublify/pre-commit-rust
     rev: v1.0
     hooks:
@@ -79,17 +82,12 @@ repos:
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.5
     hooks:
-  #     - id: cargo-update
-      # - id: cargo-check-semver
-  #     - id: cargo-audit
-  #     - id: cargo-outdated
-  #     - id: cargo-tests-all
-  #     - id: clippy-autofix-all
-  #     - id: clippy-autofix-pedantic
-  #     - id: clippy-autofix-nursery
-  #     - id: clippy-autofix-others
+      - id: cargo-update
+      - id: clippy-autofix-all
+      - id: clippy-autofix-pedantic
+      - id: clippy-autofix-nursery
+      - id: clippy-autofix-others
       - id: cargo-format
-  #     - id: cargo-dry-publish
       - id: dprint-toml-fix
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
