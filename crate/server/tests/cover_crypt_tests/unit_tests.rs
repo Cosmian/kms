@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use abe_policy::{AccessPolicy, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, EncryptionHint, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{DecryptedData, Get, Import, Locate},
@@ -41,8 +41,23 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     //
     let mut policy = Policy::new(10);
-    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
-    policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
+    policy.add_axis(PolicyAxis::new(
+        "Department",
+        vec![
+            ("MKG", EncryptionHint::Classic),
+            ("FIN", EncryptionHint::Classic),
+            ("HR", EncryptionHint::Classic),
+        ],
+        false,
+    ))?;
+    policy.add_axis(PolicyAxis::new(
+        "Level",
+        vec![
+            ("confidential", EncryptionHint::Classic),
+            ("secret", EncryptionHint::Hybridized),
+        ],
+        true,
+    ))?;
 
     // create Key Pair
     debug!("ABE Create Master Key Pair");
@@ -209,8 +224,23 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let nonexistent_owner = "invalid_owner";
     //
     let mut policy = Policy::new(10);
-    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
-    policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
+    policy.add_axis(PolicyAxis::new(
+        "Department",
+        vec![
+            ("MKG", EncryptionHint::Classic),
+            ("FIN", EncryptionHint::Classic),
+            ("HR", EncryptionHint::Classic),
+        ],
+        false,
+    ))?;
+    policy.add_axis(PolicyAxis::new(
+        "Level",
+        vec![
+            ("confidential", EncryptionHint::Classic),
+            ("secret", EncryptionHint::Hybridized),
+        ],
+        true,
+    ))?;
 
     // create Key Pair
     let ckr = kms
@@ -398,8 +428,23 @@ async fn test_abe_json_access() -> KResult<()> {
     let owner = "cceyJhbGciOiJSUzI1Ni";
     //
     let mut policy = Policy::new(10);
-    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
-    policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
+    policy.add_axis(PolicyAxis::new(
+        "Department",
+        vec![
+            ("MKG", EncryptionHint::Classic),
+            ("FIN", EncryptionHint::Classic),
+            ("HR", EncryptionHint::Classic),
+        ],
+        false,
+    ))?;
+    policy.add_axis(PolicyAxis::new(
+        "Level",
+        vec![
+            ("confidential", EncryptionHint::Classic),
+            ("secret", EncryptionHint::Hybridized),
+        ],
+        true,
+    ))?;
 
     let secret_mkg_fin_access_policy = (AccessPolicy::new("Department", "MKG")
         | AccessPolicy::new("Department", "FIN"))
@@ -490,8 +535,23 @@ async fn test_import_decrypt() -> KResult<()> {
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     let mut policy = Policy::new(10);
-    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
-    policy.add_axis(&PolicyAxis::new("Level", &["confidential", "secret"], true))?;
+    policy.add_axis(PolicyAxis::new(
+        "Department",
+        vec![
+            ("MKG", EncryptionHint::Classic),
+            ("FIN", EncryptionHint::Classic),
+            ("HR", EncryptionHint::Classic),
+        ],
+        false,
+    ))?;
+    policy.add_axis(PolicyAxis::new(
+        "Level",
+        vec![
+            ("confidential", EncryptionHint::Classic),
+            ("secret", EncryptionHint::Hybridized),
+        ],
+        true,
+    ))?;
 
     // create Key Pair
     let cr = kms
@@ -560,7 +620,9 @@ async fn test_import_decrypt() -> KResult<()> {
         attributes: Attributes::new(ObjectType::PrivateKey),
         object: gr_sk.object.clone(),
     };
-    assert!(kms.import(request, owner, None).await.is_ok());
+    kms.import(request, owner, None)
+        .await
+        .context(&custom_sk_uid)?;
     // decrypt resource MKG + confidential
     let dr = kms
         .decrypt(
@@ -590,7 +652,9 @@ async fn test_import_decrypt() -> KResult<()> {
         attributes: gr_sk.object.attributes()?.clone(),
         object: gr_sk.object.clone(),
     };
-    assert!(kms.import(request, owner, None).await.is_ok());
+    kms.import(request, owner, None)
+        .await
+        .context(&custom_sk_uid)?;
     // decrypt resource MKG + confidential
     let dr = kms
         .decrypt(

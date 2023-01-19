@@ -1,4 +1,4 @@
-use abe_policy::{AccessPolicy, Attribute, Policy, PolicyAxis};
+use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_operations::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
@@ -34,10 +34,21 @@ async fn integration_tests() -> KResult<()> {
     let app = test_utils::test_app().await;
 
     let mut policy = Policy::new(10);
-    policy.add_axis(&PolicyAxis::new("Department", &["MKG", "FIN", "HR"], false))?;
-    policy.add_axis(&PolicyAxis::new(
+    policy.add_axis(PolicyAxis::new(
+        "Department",
+        vec![
+            ("MKG", EncryptionHint::Classic),
+            ("FIN", EncryptionHint::Classic),
+            ("HR", EncryptionHint::Classic),
+        ],
+        false,
+    ))?;
+    policy.add_axis(PolicyAxis::new(
         "Level",
-        &["Confidential", "Top Secret"],
+        vec![
+            ("Confidential", EncryptionHint::Classic),
+            ("Top Secret", EncryptionHint::Hybridized),
+        ],
         true,
     ))?;
 

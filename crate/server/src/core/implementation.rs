@@ -1,6 +1,6 @@
 // TODO Split this file in multiple implementations under their operations names
 
-use cosmian_cover_crypt::interfaces::statics::CoverCryptX25519Aes256;
+use cosmian_cover_crypt::statics::CoverCryptX25519Aes256;
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{Create, CreateKeyPair},
