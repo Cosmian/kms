@@ -34,7 +34,7 @@ workflow:
 # Test Postgre connection and cleanup db
 test_db_postgre_connect:
   image: postgres
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   stage: prebuild
   script:
     # official way to provide password to psql: http://www.postgresql.org/docs/9.3/static/libpq-envars.html
@@ -53,7 +53,7 @@ test_db_postgre_connect:
 # Test Maria connection and cleanup db
 test_db_mariadb_connect:
   image: mariadb
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   stage: prebuild
   script:
     - echo $MYSQL_DB
@@ -71,7 +71,7 @@ test_db_mariadb_connect:
 # because new versions of bitvec/funty are incompatible with some of our crypto dependencies.
 cargo_audit:
   stage: prebuild
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   cache: {}
   script:
     - cargo audit --ignore RUSTSEC-2020-0071
@@ -109,7 +109,7 @@ cargo_audit:
 #
 compile_and_test:
   stage: build
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     policy: pull
@@ -133,36 +133,12 @@ compile_and_test:
     - /usr/bin/time -v cargo make ci
     - sccache -s
 
-compile_release_kms_server:
-  stage: build
-  only: [master, develop, merge_requests]
-  cache:
-    key: ${CI_COMMIT_REF_SLUG}
-    policy: pull
-    paths:
-      - $CARGO_HOME
-      - $SCCACHE_DIR
-  before_script:
-    - export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
-    - cargo clippy -V
-    - sccache -s
-    - apt-get update
-    - TZ=Europe/Paris apt-get install --no-install-recommends -qq libsodium-dev libclang-dev
-  script:
-    - cat /proc/meminfo
-    - cargo build --bin cosmian_kms_server --release --no-default-features
-    - sccache -s
-  artifacts:
-    paths:
-      - target/release/cosmian_kms_server
-    expire_in: 3 mos
-
 #
 # Build python lib for linux glibc >= 2.17
 #
 build_python_manylinux:
   stage: build
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   image:
     name: gitlab.cosmian.com:5000/core/ci-python-kms
   script:
@@ -179,7 +155,7 @@ build_python_manylinux:
 #
 build_python_macos:
   stage: build
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   image:
     name: joseluisq/rust-linux-darwin-builder:1.66
   before_script:
@@ -201,7 +177,7 @@ build_python_macos:
 #
 build_python_windows:
   stage: build
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   before_script:
     - rustup target add x86_64-pc-windows-gnu
     - apt-get update
@@ -219,7 +195,7 @@ build_python_windows:
 #
 unused_deps:
   stage: build
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     policy: pull
@@ -242,7 +218,7 @@ unused_deps:
 .docker_test_build_and_deploy:
   image: docker:19.03.15
   stage: pretest
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   variables:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:test
     SHORT_IMAGE_NAME: kms_enclave
@@ -262,7 +238,7 @@ unused_deps:
 # Note: this step is hidden because the kms can't run RA with OVH yet
 .test-enclave:
   stage: test
-  only: [master, develop, merge_requests]
+  only: [main, develop, merge_requests]
   cache:
     key: ${CI_COMMIT_REF_SLUG}
     policy: pull
@@ -288,7 +264,7 @@ unused_deps:
 #
 build_dev_container:
   image: docker:19.03.15
-  only: [merge_requests]
+  only: [main, develop, merge_requests]
   except:
     - tags
   stage: build
@@ -303,6 +279,9 @@ build_dev_container:
 #
 test_python:
   stage: test
+  only: [main, develop, merge_requests]
+  except:
+    - tags
   variables:
     COSMIAN_SERVER_URL: http://localhost:9998
     KMS_PUBLIC_PATH: /tmp
@@ -314,7 +293,6 @@ test_python:
   before_script:
     - apt-get update
     - TZ=Europe/Paris apt-get install --no-install-recommends -qq git
-  only: [master, develop, merge_requests]
   script:
     # Check python code
     - pip install target/wheels/*manylinux*.whl
