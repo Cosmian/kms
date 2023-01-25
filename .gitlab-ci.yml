@@ -267,7 +267,7 @@ build_dev_container:
   only: [main, develop, merge_requests]
   except:
     - tags
-  stage: build
+  stage: pretest
   script:
     - docker build . -f delivery/Dockerfile.standalone --network=host -t cosmian/kms:${CI_COMMIT_REF_SLUG}
     # Docker hub deployment

@@ -41,3 +41,9 @@ impl From<serde_json::Error> for KmipError {
         KmipError::KmipError(ErrorReason::Codec_Error, e.to_string())
     }
 }
+
+impl From<abe_policy::Error> for KmipError {
+    fn from(e: abe_policy::Error) -> Self {
+        KmipError::KmipError(ErrorReason::Codec_Error, e.to_string())
+    }
+}

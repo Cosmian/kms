@@ -5,11 +5,11 @@ authors = ["Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>"]
 edition = "2021"
 
 [lib]
-name = "cosmian_kms"
 crate-type = ["cdylib"]
+name = "cosmian_kms"
 
 [dependencies]
-abe_policy = "3.0"
+abe_policy = { git = "https://github.com/Cosmian/abe_policy", branch = "fix/interfaces" }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_client = { path = "../client" }
 cosmian_kms_utils = { path = "../utils" }

@@ -1,4 +1,4 @@
-use abe_policy::{AccessPolicy, Policy};
+use abe_policy::Policy;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -34,7 +34,7 @@ pub fn policy_from_attributes(attributes: &Attributes) -> Result<Policy, KmipErr
     if let Some(bytes) =
         attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY)
     {
-        serde_json::from_slice(bytes).map_err(|e| {
+        Policy::parse_and_convert(bytes).map_err(|e| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
                 format!("failed deserializing the CoverCrypt Policy from the attributes: {e}"),
@@ -61,17 +61,12 @@ pub fn upsert_policy_in_attributes(
 
 /// Convert an access policy to a vendor attribute
 pub fn access_policy_as_vendor_attribute(
-    access_policy: &AccessPolicy,
+    access_policy: &str,
 ) -> Result<VendorAttribute, KmipError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY.to_owned(),
-        attribute_value: serde_json::to_vec(access_policy).map_err(|e| {
-            KmipError::InvalidKmipValue(
-                ErrorReason::Invalid_Attribute_Value,
-                format!("failed serializing the CoverCrypt access policy: {e}"),
-            )
-        })?,
+        attribute_value: access_policy.as_bytes().to_vec(),
     })
 }
 
@@ -98,12 +93,26 @@ pub fn attributes_from_attributes(
     if let Some(bytes) =
         attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ATTR)
     {
-        serde_json::from_slice(bytes).map_err(|e| {
+        let attribute_strings = serde_json::from_slice::<Vec<String>>(bytes).map_err(|e| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
-                format!("failed deserializing the CoverCrypt attributes from the attributes: {e}"),
+                format!(
+                    "failed reading the CoverCrypt attribute strings from the attributes bytes: \
+                     {e}"
+                ),
             )
-        })
+        })?;
+        let mut policy_attributes = Vec::with_capacity(attribute_strings.len());
+        for attr in attribute_strings {
+            let attr = abe_policy::Attribute::try_from(attr.as_str()).map_err(|e| {
+                KmipError::InvalidKmipValue(
+                    ErrorReason::Invalid_Attribute_Value,
+                    format!("failed deserializing the CoverCrypt attribute: {e}"),
+                )
+            })?;
+            policy_attributes.push(attr);
+        }
+        Ok(policy_attributes)
     } else {
         Err(KmipError::InvalidKmipValue(
             ErrorReason::Invalid_Attribute_Value,
@@ -113,15 +122,15 @@ pub fn attributes_from_attributes(
 }
 
 /// Extract an CoverCrypt Access policy from attributes
-pub fn access_policy_from_attributes(attributes: &Attributes) -> Result<AccessPolicy, KmipError> {
+pub fn access_policy_from_attributes(attributes: &Attributes) -> Result<String, KmipError> {
     if let Some(bytes) =
         attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY)
     {
-        serde_json::from_slice(bytes).map_err(|e| {
+        String::from_utf8(bytes.to_vec()).map_err(|e| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
                 format!(
-                    "failed deserializing the CoverCrypt Access Policy from the attributes {e}"
+                    "failed to read Access Policy string from the (vendor) attributes bytes: {e}"
                 ),
             )
         })
@@ -136,7 +145,7 @@ pub fn access_policy_from_attributes(attributes: &Attributes) -> Result<AccessPo
 /// Add or replace an access policy in attributes in place
 pub fn upsert_access_policy_in_attributes(
     attributes: &mut Attributes,
-    access_policy: &AccessPolicy,
+    access_policy: &str,
 ) -> Result<(), KmipError> {
     let va = access_policy_as_vendor_attribute(access_policy)?;
     attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY);

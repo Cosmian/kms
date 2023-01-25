@@ -220,7 +220,7 @@ impl DeCipher for CoverCryptHybridDecipher {
         );
 
         let decrypted_data = DecryptedData {
-            metadata: header_.header_metadata,
+            metadata: header_.metadata,
             plaintext: cleartext,
         };
 

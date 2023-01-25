@@ -36,7 +36,7 @@ pub async fn init_test_server() {
     // Configure the serveur
     let config = Config {
         auth: AuthConfig {
-            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
         },
         db: DBConfig {
             sqlcipher: true,

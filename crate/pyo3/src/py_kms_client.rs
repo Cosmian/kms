@@ -48,12 +48,11 @@ impl KmsClient {
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn create_cover_crypt_master_key_pair<'p>(
         &'p self,
-        policy: &str,
+        policy: &[u8],
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Parse the json policy
-        let policy: Policy =
-            serde_json::from_str(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
 
         // Create the kmip query
         let request = build_create_master_keypair_request(&policy)
@@ -222,11 +221,11 @@ impl KmsClient {
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Parse the access policy
-        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
+        let _access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
         let request = build_create_user_decryption_private_key_request(
-            &access_policy,
+            access_policy_str,
             master_secret_key_identifier,
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
@@ -267,7 +266,7 @@ impl KmsClient {
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Parse the access policy
-        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
+        let _access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
         let request = build_import_decryption_private_key_request(
@@ -275,7 +274,7 @@ impl KmsClient {
             unique_identifier,
             replace_existing,
             link_master_private_key_id,
-            &access_policy,
+            access_policy_str,
             is_wrapped,
             wrapping_password,
         )

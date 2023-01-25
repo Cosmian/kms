@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use abe_policy::{AccessPolicy, Attribute};
+use abe_policy::Attribute;
 use clap::StructOpt;
 use cosmian_kmip::kmip::kmip_operations::Get;
 use cosmian_kms_client::{kmip::kmip_types::RevocationReason, KmsRestClient};
@@ -91,17 +91,11 @@ pub struct NewUserKeyAction {
 
 impl NewUserKeyAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
-        // Parse self.access_policy
-        let policy = if self.access_policy.trim().is_empty() {
-            AccessPolicy::All
-        } else {
-            AccessPolicy::from_boolean_expression(&self.access_policy)
-                .with_context(|| "Bad access policy definition")?
-        };
-
         // Create the kmip query
-        let create_user_key =
-            cc_build_create_user_decryption_private_key_request(&policy, &self.secret_key_id)?;
+        let create_user_key = cc_build_create_user_decryption_private_key_request(
+            &self.access_policy,
+            &self.secret_key_id,
+        )?;
 
         // Query the KMS with your kmip data
         let create_response = client_connector
@@ -393,19 +387,12 @@ impl ImportKeysAction {
                 f.read_to_end(&mut user_key)
                     .with_context(|| "Fail to read the user key file")?;
 
-                let policy = if access_policy.trim().is_empty() {
-                    AccessPolicy::All
-                } else {
-                    AccessPolicy::from_boolean_expression(access_policy)
-                        .with_context(|| "Bad access policy definition")?
-                };
-
                 let import_query = cc_build_import_decryption_private_key_request(
                     &user_key,
                     None,
                     false,
                     secret_key_id,
-                    &policy,
+                    access_policy,
                     self.wrapped,
                     self.password.clone(),
                 )?;

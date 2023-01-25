@@ -1,4 +1,4 @@
-use abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy, PolicyAxis};
+use abe_policy::{Attribute, EncryptionHint, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_operations::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
@@ -25,7 +25,7 @@ async fn integration_tests() -> KResult<()> {
 
     let config = Config {
         auth: AuthConfig {
-            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
         },
         ..Default::default()
     };
@@ -79,11 +79,9 @@ async fn integration_tests() -> KResult<()> {
         .expect("There should be encrypted data");
 
     // Create a user decryption key
-    let access_policy = (AccessPolicy::new("Department", "MKG")
-        | AccessPolicy::new("Department", "FIN"))
-        & AccessPolicy::new("Level", "Top Secret");
+    let access_policy = "(Department::MKG || Department::FIN) && Level::Top Secret";
     let request = build_create_user_decryption_private_key_request(
-        &access_policy,
+        access_policy,
         private_key_unique_identifier,
     )?;
     let create_response: CreateResponse = test_utils::post(&app, request).await?;
@@ -127,11 +125,9 @@ async fn integration_tests() -> KResult<()> {
 
     //
     // Create a user decryption key
-    let access_policy = (AccessPolicy::new("Department", "MKG")
-        | AccessPolicy::new("Department", "FIN"))
-        & AccessPolicy::new("Level", "Confidential");
+    let access_policy = "(Department::MKG || Department::FIN) && Level::Confidential";
     let request = build_create_user_decryption_private_key_request(
-        &access_policy,
+        access_policy,
         private_key_unique_identifier,
     )?;
     let create_response: CreateResponse = test_utils::post(&app, &request).await?;
@@ -139,10 +135,9 @@ async fn integration_tests() -> KResult<()> {
 
     //
     // Create another user decryption key
-    let access_policy =
-        (AccessPolicy::new("Department", "MKG")) & AccessPolicy::new("Level", "Confidential");
+    let access_policy = "Department::MKG && Level::Confidential";
     let request = build_create_user_decryption_private_key_request(
-        &access_policy,
+        access_policy,
         private_key_unique_identifier,
     )?;
     let create_response2: CreateResponse = test_utils::post(&app, &request).await?;

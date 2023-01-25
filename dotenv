@@ -1,4 +1,4 @@
-KMS_DELEGATED_AUTHORITY_DOMAIN = "dev-1mbsbmin.us.auth0.com"
+KMS_DELEGATED_AUTHORITY_DOMAIN = "console-dev.eu.auth0.com"
 KMS_SSL_EMAIL = "tech@cosmian.com"
 KMS_SSL_DOMAIN_NAME = "testsgx.cosmian.com"
 KMS_PUBLIC_PATH = "data/public"

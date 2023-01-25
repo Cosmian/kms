@@ -4,7 +4,7 @@ version = "0.2.1"
 edition = "2021"
 
 [dependencies]
-abe_policy = "3.0"
+abe_policy = { git = "https://github.com/Cosmian/abe_policy", branch = "fix/interfaces" }
 bitflags = "1.2"
 hex = { version = "0.4", features = ["serde"] }
 leb128 = "0.2"

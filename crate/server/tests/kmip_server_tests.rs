@@ -25,7 +25,7 @@ use uuid::Uuid;
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let config = Config {
         auth: AuthConfig {
-            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
         },
         ..Default::default()
     };
@@ -171,7 +171,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 
     let config = Config {
         auth: AuthConfig {
-            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
         },
         ..Default::default()
     };
@@ -233,7 +233,7 @@ async fn test_database_user_tenant() -> KResult<()> {
 
     let config = Config {
         auth: AuthConfig {
-            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
         },
         ..Default::default()
     };

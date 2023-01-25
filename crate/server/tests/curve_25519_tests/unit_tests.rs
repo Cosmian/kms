@@ -26,7 +26,7 @@ use cosmian_kms_utils::crypto::curve_25519::{
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let config = Config {
         auth: AuthConfig {
-            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
         },
         ..Default::default()
     };

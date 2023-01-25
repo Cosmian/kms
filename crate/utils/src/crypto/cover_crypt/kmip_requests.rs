@@ -1,4 +1,4 @@
-use abe_policy::{AccessPolicy, Policy};
+use abe_policy::Policy;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -33,7 +33,7 @@ pub fn build_create_master_keypair_request(policy: &Policy) -> Result<CreateKeyP
 
 /// Build a `Create` request for an CoverCrypt User Decryption Key
 pub fn build_create_user_decryption_private_key_request(
-    access_policy: &AccessPolicy,
+    access_policy: &str,
     cover_crypt_master_private_key_id: &str,
 ) -> Result<Create, KmipError> {
     Ok(Create {
@@ -62,7 +62,7 @@ pub fn build_import_decryption_private_key_request(
     unique_identifier: Option<String>,
     replace_existing: bool,
     cover_crypt_master_private_key_id: &str,
-    access_policy: &AccessPolicy,
+    access_policy: &str,
     is_wrapped: bool,
     wrapping_password: Option<String>,
 ) -> Result<Import, KmipError> {
@@ -239,9 +239,7 @@ pub fn build_import_public_key_request(
 }
 
 /// Build a `Locate` request to locate an CoverCrypt Symmetric Key
-pub fn build_locate_symmetric_key_request(
-    access_policy: &AccessPolicy,
-) -> Result<Locate, KmipError> {
+pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate, KmipError> {
     Ok(Locate {
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
