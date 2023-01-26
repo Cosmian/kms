@@ -20,10 +20,10 @@ pub fn policy_as_vendor_attribute(policy: &Policy) -> Result<VendorAttribute, Km
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
         attribute_name: VENDOR_ATTR_COVER_CRYPT_POLICY.to_owned(),
-        attribute_value: serde_json::to_vec(policy).map_err(|e| {
+        attribute_value: Vec::<u8>::try_from(policy).map_err(|e| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
-                format!("failed serializing the CoverCrypt policy: {e}"),
+                format!("failed convert the CoverCrypt policy to bytes: {e}"),
             )
         })?,
     })

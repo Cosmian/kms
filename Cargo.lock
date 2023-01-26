@@ -5,7 +5,7 @@ version = 3
 [[package]]
 name = "abe_policy"
 version = "3.0.5"
-source = "git+https://github.com/Cosmian/abe_policy?branch=fix/interfaces#d2ecf3b7242c236173528b17c9b972dda8a6be98"
+source = "git+https://github.com/Cosmian/abe_policy?branch=fix/interfaces#98be0040489fbd1852d21d6fdd7b75a0c2bde43c"
 dependencies = [
  "cosmian_ffi",
  "js-sys",
@@ -888,7 +888,7 @@ checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
 [[package]]
 name = "cosmian_cover_crypt"
 version = "9.0.1"
-source = "git+https://github.com/Cosmian/cover_crypt?branch=fix/interfaces_step2#b15773934dc08e26805706840bb87afbe70e42dd"
+source = "git+https://github.com/Cosmian/cover_crypt?branch=fix/interfaces_step2#c4b583a48ce2ed9e3e3991bfc9bc5afdc2f5decd"
 dependencies = [
  "abe_policy",
  "cosmian_crypto_core 5.0.0",
@@ -975,7 +975,7 @@ dependencies = [
 [[package]]
 name = "cosmian_ffi"
 version = "1.0.0"
-source = "git+https://github.com/Cosmian/cosmian_ffi#324cf6da9862aff862f13cccd091d9ddd69eee7e"
+source = "git+https://github.com/Cosmian/cosmian_ffi#a3c4393bc5b6005da02a3eb14f3586c10dbf69a5"
 dependencies = [
  "thiserror",
 ]
@@ -1411,9 +1411,9 @@ checksum = "03d8c417d7a8cb362e0c37e5d815f5eb7c37f79ff93707329d5a194e42e54ca0"
 
 [[package]]
 name = "either"
-version = "1.8.0"
+version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90e5c1c8368803113bf0c9584fc495a58b86dc8a29edbf8fe877d21d9507e797"
+checksum = "7fcaabb2fef8c910e7f4c7ce9f67a1283a1715879a7c230ca9d6d1ae31f16d91"
 
 [[package]]
 name = "encoding_rs"

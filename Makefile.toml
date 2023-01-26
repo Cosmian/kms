@@ -68,7 +68,7 @@ cargo test --features staging --no-default-features -p cosmian_kms_cli
 # Local tests
 #
 [tasks.rust-tests]
-env = {TEST_DB = "kms", TEST_USER = "kms", TEST_PASSWORD = "kms", TEST_HOST_AUTH_METHOD = "trust", TEST_HOST = "localhost"}
+env = { TEST_DB = "kms", TEST_USER = "kms", TEST_PASSWORD = "kms", TEST_HOST_AUTH_METHOD = "trust", TEST_HOST = "localhost" }
 script.pre = '''
 #!/bin/bash
 set -ex

@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use abe_policy::Attribute;
+use abe_policy::{AccessPolicy, Attribute};
 use clap::StructOpt;
 use cosmian_kmip::kmip::kmip_operations::Get;
 use cosmian_kms_client::{kmip::kmip_types::RevocationReason, KmsRestClient};
@@ -91,6 +91,10 @@ pub struct NewUserKeyAction {
 
 impl NewUserKeyAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+        // Verify boolean expression in self.access_policy
+        AccessPolicy::from_boolean_expression(&self.access_policy)
+            .with_context(|| "Bad access policy definition")?;
+
         // Create the kmip query
         let create_user_key = cc_build_create_user_decryption_private_key_request(
             &self.access_policy,
@@ -386,6 +390,10 @@ impl ImportKeysAction {
                 let mut user_key = Vec::new();
                 f.read_to_end(&mut user_key)
                     .with_context(|| "Fail to read the user key file")?;
+
+                // Verify boolean expression in self.access_policy
+                AccessPolicy::from_boolean_expression(access_policy)
+                    .with_context(|| "Bad access policy definition")?;
 
                 let import_query = cc_build_import_decryption_private_key_request(
                     &user_key,

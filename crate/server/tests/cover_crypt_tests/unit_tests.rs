@@ -141,7 +141,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let _update_response = kms.import(request, owner, None).await?;
 
     // User decryption key
-    let access_policy = "(Department::MKG ||Department::FIN) && Level::confidential)";
+    let access_policy = "(Department::MKG ||Department::FIN) && Level::confidential";
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
@@ -196,7 +196,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
 #[test]
 pub fn access_policy_serialization() -> KResult<()> {
-    let access_policy = "(Department::MKG ||Department::FIN) && Level::confidential)";
+    let access_policy = "(Department::MKG ||Department::FIN) && Level::confidential";
     let _json = serde_json::to_string(&access_policy)?;
     // println!("{}", &json);
     Ok(())
