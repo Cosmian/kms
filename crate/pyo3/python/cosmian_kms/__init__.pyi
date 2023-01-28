@@ -35,7 +35,7 @@ class KmsClient:
             api_key (Optional[str]): to authenticate to the KMS server
         """
     def create_cover_crypt_master_key_pair(
-        self, policy: Union[Policy, str]
+        self, policy: Union[Policy, bytes]
     ) -> Future[Tuple[str, str]]:
         """Generate the master authority keys for supplied Policy.
 
@@ -50,7 +50,7 @@ class KmsClient:
         private_key: bytes,
         replace_existing: bool,
         link_master_public_key_id: str,
-        policy_json: str,
+        policy: bytes,
         is_wrapped: bool,
         wrapping_password: Optional[str] = None,
         unique_identifier: Optional[str] = None,
@@ -61,7 +61,7 @@ class KmsClient:
             private_key (bytes): key bytes
             replace_existing (bool): set to true to replace an existing key with the same identifier
             link_master_public_key_id (str): id of the matching master public key
-            policy_json (str): policy related to the key
+            policy (bytes): policy related to the key
             is_wrapped (bool): whether the key is wrapped
             wrapping_password (Optional[str]): password used to wrap the key
             unique_identifier (Optional[str]): the unique identifier of the key
@@ -73,7 +73,7 @@ class KmsClient:
         self,
         public_key: bytes,
         replace_existing: bool,
-        policy_json: str,
+        policy: bytes,
         link_master_private_key_id: str,
         unique_identifier: Optional[str] = None,
     ) -> Future[str]:
@@ -82,7 +82,7 @@ class KmsClient:
         Args:
             public_key (bytes): key bytes
             replace_existing (bool): set to true to replace an existing key with the same identifier
-            policy_json (str): policy related to the key
+            policy (bytes): policy related to the key
             link_master_private_key_id (str): id of the matching master private key
             unique_identifier (Optional[str]): the unique identifier of the key
 

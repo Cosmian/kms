@@ -24,7 +24,8 @@ impl KmsClient {
     ///
     /// Args:
     ///     server_url (str): url of the KMS server
-    ///     api_key (Optional[str]): apiKey optional, to authenticate to the KMS server
+    ///     api_key (Optional[str]): apiKey optional, to authenticate to the KMS
+    /// server
     #[new]
     pub fn new(server_url: &str, api_key: Option<&str>) -> PyResult<Self> {
         let kms_connector =
@@ -78,10 +79,10 @@ impl KmsClient {
     ///
     /// Args:
     ///     private_key (bytes): key bytes
-    ///     replace_existing (bool): set to true to replace an existing key with the same identifier
-    ///     link_master_public_key_id (str): id of the matching master public key
-    ///     policy_json (str): policy related to the key
-    ///     is_wrapped (bool): whether the key is wrapped
+    ///     replace_existing (bool): set to true to replace an existing key with
+    /// the same identifier     link_master_public_key_id (str): id of the
+    /// matching master public key     policy_json (str): policy related to
+    /// the key     is_wrapped (bool): whether the key is wrapped
     ///     wrapping_password (Optional[str]): password used to wrap the key
     ///     unique_identifier (Optional[str]): the unique identifier of the key
     ///
@@ -93,15 +94,14 @@ impl KmsClient {
         private_key: &[u8],
         replace_existing: bool,
         link_master_public_key_id: &str,
-        policy_json: &str,
+        policy: &[u8],
         is_wrapped: bool,
         wrapping_password: Option<String>,
         unique_identifier: Option<String>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        // Parse the json policy
-        let policy: Policy =
-            serde_json::from_str(policy_json).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        // Convert policy from bytes
+        let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
 
         let request = build_import_private_key_request(
             private_key,
@@ -128,10 +128,11 @@ impl KmsClient {
     ///
     /// Args:
     ///     public_key (bytes): key bytes
-    ///     replace_existing (bool): set to true to replace an existing key with the same identifier
-    ///     policy_json (str): policy related to the key
-    ///     link_master_private_key_id (str): id of the matching master private key
-    ///     unique_identifier (Optional[str]): the unique identifier of the key
+    ///     replace_existing (bool): set to true to replace an existing key with
+    /// the same identifier     policy_json (str): policy related to the key
+    ///     link_master_private_key_id (str): id of the matching master private
+    /// key     unique_identifier (Optional[str]): the unique identifier of
+    /// the key
     ///
     /// Returns:
     ///     Future[str]: the unique identifier of the key
@@ -139,14 +140,13 @@ impl KmsClient {
         &'p self,
         public_key: &[u8],
         replace_existing: bool,
-        policy_json: &str,
+        policy: &[u8],
         link_master_private_key_id: &str,
         unique_identifier: Option<String>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        // Parse the json policy
-        let policy: Policy =
-            serde_json::from_str(policy_json).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        // Convert policy from bytes
+        let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
 
         let request = build_import_public_key_request(
             public_key,
@@ -169,11 +169,13 @@ impl KmsClient {
 
     /// Rotate the given policy attributes. This will rekey in the KMS:
     /// - the Master Keys
-    /// - all User Decryption Keys that contain one of these attributes in their policy and are not rotated.
+    /// - all User Decryption Keys that contain one of these attributes in their
+    ///   policy and are not rotated.
     ///
     /// Args:
     ///     master_secret_key_identifier (str): master secret key UID
-    ///     attributes (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
+    ///     attributes (List[Union[Attribute, str]]): attributes to rotate e.g.
+    /// ["Department::HR"]
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
@@ -206,7 +208,8 @@ impl KmsClient {
     }
 
     /// Generate a user secret key.
-    ///     A new user secret key does NOT include to old (i.e. rotated) partitions.
+    ///     A new user secret key does NOT include to old (i.e. rotated)
+    /// partitions.
     ///
     ///     Args:
     ///         access_policy_str (str): user access policy
@@ -244,10 +247,10 @@ impl KmsClient {
     ///
     /// Args:
     ///     private_key (bytes): key bytes
-    ///     replace_existing (bool): set to true to replace an existing key with the same identifier
-    ///     link_master_private_key_id (str): id of the matching master private key
-    ///     access_policy_str (str): user access policy
-    ///     is_wrapped (bool): whether the key is wrapped
+    ///     replace_existing (bool): set to true to replace an existing key with
+    /// the same identifier     link_master_private_key_id (str): id of the
+    /// matching master private key     access_policy_str (str): user access
+    /// policy     is_wrapped (bool): whether the key is wrapped
     ///     wrapping_password (Optional[str]): password used to wrap the key
     ///     unique_identifier (Optional[str]): the unique identifier of the key
     ///
@@ -352,8 +355,9 @@ impl KmsClient {
     ///     public_key_identifier (str): identifier of the public key
     ///     access_policy_str (str): the access policy to use for encryption
     ///     data (bytes): data to encrypt
-    ///     header_metadata (Optional[bytes]): additional data to symmetrically encrypt in the header
-    ///     authentication_data (Optional[bytes]): authentication data to use in symmetric encryptions
+    ///     header_metadata (Optional[bytes]): additional data to symmetrically
+    /// encrypt in the header     authentication_data (Optional[bytes]):
+    /// authentication data to use in symmetric encryptions
     ///
     /// Returns:
     ///     Future[bytes]: ciphertext
@@ -390,10 +394,12 @@ impl KmsClient {
     /// Args:
     ///     user_key_identifier (str): user secret key identifier
     ///     encrypted_data (bytes): encrypted header || symmetric ciphertext
-    ///     authentication_data (Optional[bytes]): authentication data to use in symmetric decryption
+    ///     authentication_data (Optional[bytes]): authentication data to use in
+    /// symmetric decryption
     ///
     /// Returns:
-    ///     Future[Tuple[bytes, bytes]]: (plaintext bytes, header metadata bytes)
+    ///     Future[Tuple[bytes, bytes]]: (plaintext bytes, header metadata
+    /// bytes)
     pub fn cover_crypt_decryption<'p>(
         &'p self,
         user_key_identifier: &str,
