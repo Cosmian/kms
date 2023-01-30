@@ -264,7 +264,7 @@ unused_deps:
 #
 build_dev_container:
   image: docker:19.03.15
-  only: [main, develop, merge_requests]
+  only: [merge_requests]
   except:
     - tags
   stage: pretest
@@ -279,7 +279,7 @@ build_dev_container:
 #
 test_python:
   stage: test
-  only: [main, develop, merge_requests]
+  only: [merge_requests]
   except:
     - tags
   variables:
@@ -299,7 +299,7 @@ test_python:
     - pip install -r crate/pyo3/python/requirements.txt
     - git clone --branch develop https://github.com/Cosmian/cover_crypt.git /tmp/cover_crypt
     - pushd /tmp/cover_crypt
-    - git checkout 8ef0974d
+    - git checkout edb5c8e6
     - maturin build --release --features python
     - pip install --force-reinstall target/wheels/*.whl
     - popd

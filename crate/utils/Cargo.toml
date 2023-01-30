@@ -10,7 +10,7 @@ curve25519 = []
 [dependencies]
 abe_policy = { git = "https://github.com/Cosmian/abe_policy", branch = "fix/interfaces" }
 bitflags = "1.2"
-cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt", branch = "fix/interfaces_step2", features = ["interface"] }
+cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt", rev = "edb5c8e6", features = ["interface"] }
 cosmian_crypto_base = "2.1"
 cosmian_crypto_core = "5.0"
 cosmian_kmip = { path = "../kmip" }

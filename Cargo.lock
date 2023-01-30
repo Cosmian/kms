@@ -888,7 +888,7 @@ checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
 [[package]]
 name = "cosmian_cover_crypt"
 version = "9.0.1"
-source = "git+https://github.com/Cosmian/cover_crypt?branch=fix/interfaces_step2#8ef0974df653f96f1b89a5c75b8309bc48d05446"
+source = "git+https://github.com/Cosmian/cover_crypt?rev=edb5c8e6#edb5c8e6fe233399200908c286cdc0fc05d0b8e2"
 dependencies = [
  "abe_policy",
  "cosmian_crypto_core 5.0.0",
@@ -1048,7 +1048,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_python"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "abe_policy",
  "cosmian_kmip",
@@ -1063,7 +1063,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "4.1.0"
+version = "4.2.0"
 dependencies = [
  "abe_policy",
  "acme-lib",
