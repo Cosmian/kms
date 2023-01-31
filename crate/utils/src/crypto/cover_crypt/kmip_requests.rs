@@ -1,4 +1,4 @@
-use abe_policy::Policy;
+use cosmian_cover_crypt::abe_policy::Policy;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -278,7 +278,7 @@ pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, Kmi
 /// The routine will then locate and renew all user decryption keys with those CoverCrypt attributes
 pub fn build_rekey_keypair_request(
     master_private_key_unique_identifier: &str,
-    cover_crypt_policy_attributes: Vec<abe_policy::Attribute>,
+    cover_crypt_policy_attributes: Vec<cosmian_cover_crypt::abe_policy::Attribute>,
 ) -> Result<ReKeyKeyPair, KmipError> {
     Ok(ReKeyKeyPair {
         private_key_unique_identifier: Some(master_private_key_unique_identifier.to_string()),

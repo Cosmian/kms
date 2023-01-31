@@ -4,8 +4,8 @@ use std::{
     path::PathBuf,
 };
 
-use abe_policy::{AccessPolicy, Attribute};
 use clap::StructOpt;
+use cosmian_cover_crypt::abe_policy::{AccessPolicy, Attribute};
 use cosmian_kmip::kmip::kmip_operations::Get;
 use cosmian_kms_client::{kmip::kmip_types::RevocationReason, KmsRestClient};
 use cosmian_kms_utils::{

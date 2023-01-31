@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 
-use abe_policy::AccessPolicy;
 use cosmian_cover_crypt::{
+    abe_policy::AccessPolicy,
     statics::{CoverCryptX25519Aes256, PublicKey},
     CoverCrypt,
 };

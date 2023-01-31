@@ -1,5 +1,5 @@
-use abe_policy::{AccessPolicy, Policy};
 use cosmian_cover_crypt::{
+    abe_policy::{AccessPolicy, Policy},
     core::api::CoverCrypt,
     statics::{CoverCryptX25519Aes256, MasterSecretKey, UserSecretKey},
 };

@@ -4,8 +4,8 @@ version = "0.2.1"
 edition = "2021"
 
 [dependencies]
-abe_policy = { git = "https://github.com/Cosmian/abe_policy", branch = "fix/interfaces" }
 bitflags = "1.2"
+cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt", rev = "a146568b" }
 hex = { version = "0.4", features = ["serde"] }
 leb128 = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }

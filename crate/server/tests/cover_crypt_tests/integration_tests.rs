@@ -1,4 +1,4 @@
-use abe_policy::{Attribute, EncryptionHint, Policy, PolicyAxis};
+use cosmian_cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_operations::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,

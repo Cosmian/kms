@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use abe_policy::AccessPolicy;
+use cosmian_cover_crypt::abe_policy::AccessPolicy;
 use cosmian_kmip::{error::KmipError, kmip::kmip_types::Attributes};
 
 use crate::crypto::cover_crypt::attributes::{

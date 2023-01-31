@@ -1,4 +1,4 @@
-use abe_policy::{AccessPolicy, Attribute, Policy};
+use cosmian_cover_crypt::abe_policy::{AccessPolicy, Attribute, Policy};
 use cosmian_kmip::kmip::{kmip_operations::Get, kmip_types::RevocationReason};
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::cover_crypt::kmip_requests::{

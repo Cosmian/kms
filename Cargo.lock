@@ -3,19 +3,6 @@
 version = 3
 
 [[package]]
-name = "abe_policy"
-version = "3.0.5"
-source = "git+https://github.com/Cosmian/abe_policy?branch=fix/interfaces#374d06c38fbeb36b7b37a3bdce8e993bdff78ca6"
-dependencies = [
- "cosmian_ffi",
- "js-sys",
- "serde",
- "serde_json",
- "thiserror",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "acme-lib"
 version = "0.8.2"
 source = "git+https://github.com/Cosmian/acme-lib#be70edd146b2fd2e0f42078ba5ff443539fc9dae"
@@ -437,9 +424,9 @@ dependencies = [
 
 [[package]]
 name = "async-trait"
-version = "0.1.63"
+version = "0.1.64"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eff18d764974428cf3a9328e23fc5c986f5fbed46e6cd4cdf42544df5d297ec1"
+checksum = "1cd7fce9ba8c3c042128ce72d8b2ddbf3a05747efb67ea0313c635e10bda47a2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -728,9 +715,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.0.78"
+version = "1.0.79"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a20104e2335ce8a659d6dd92a51a767a0c062599c73b343fd152cb401e828c3d"
+checksum = "50d30906286121d95be3d479533b458f87493b30a4b5f79a607db8f5d11aa91f"
 dependencies = [
  "jobserver",
 ]
@@ -888,9 +875,8 @@ checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
 [[package]]
 name = "cosmian_cover_crypt"
 version = "9.0.1"
-source = "git+https://github.com/Cosmian/cover_crypt?rev=edb5c8e6#edb5c8e6fe233399200908c286cdc0fc05d0b8e2"
+source = "git+https://github.com/Cosmian/cover_crypt?rev=a146568b#a146568bb144da163d3d56d9478d0469e5847431"
 dependencies = [
- "abe_policy",
  "cosmian_crypto_core 5.0.0",
  "hex",
  "leb128",
@@ -973,19 +959,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "cosmian_ffi"
-version = "1.0.0"
-source = "git+https://github.com/Cosmian/cosmian_ffi#9523f9dda43799ba992149a5aad7fd4ce90d30b0"
-dependencies = [
- "thiserror",
-]
-
-[[package]]
 name = "cosmian_kmip"
 version = "0.2.1"
 dependencies = [
- "abe_policy",
  "bitflags",
+ "cosmian_cover_crypt",
  "hex",
  "leb128",
  "num-bigint",
@@ -1005,7 +983,6 @@ dependencies = [
 name = "cosmian_kms_cli"
 version = "0.3.0"
 dependencies = [
- "abe_policy",
  "assert_cmd",
  "base64 0.13.1",
  "base64-url",
@@ -1050,7 +1027,7 @@ dependencies = [
 name = "cosmian_kms_python"
 version = "4.2.0"
 dependencies = [
- "abe_policy",
+ "cosmian_cover_crypt",
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_utils",
@@ -1065,7 +1042,6 @@ dependencies = [
 name = "cosmian_kms_server"
 version = "4.2.0"
 dependencies = [
- "abe_policy",
  "acme-lib",
  "actix-cors",
  "actix-files",
@@ -1119,7 +1095,6 @@ dependencies = [
 name = "cosmian_kms_utils"
 version = "0.1.1"
 dependencies = [
- "abe_policy",
  "bitflags",
  "cosmian_cover_crypt",
  "cosmian_crypto_base",
@@ -1152,9 +1127,9 @@ dependencies = [
 
 [[package]]
 name = "crc"
-version = "3.0.0"
+version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53757d12b596c16c78b83458d732a5d1a17ab3f53f2f7412f6fb57cc8a140ab3"
+checksum = "86ec7a15cbe22e59248fc7eadb1907dab5ba09372595da4d73dd805ed4417dfe"
 dependencies = [
  "crc-catalog",
 ]
@@ -1602,9 +1577,9 @@ checksum = "e6d5a32815ae3f33302d95fdcb2ce17862f8c65363dcfd29360480ba1001fc9c"
 
 [[package]]
 name = "futures"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38390104763dc37a5145a53c29c63c1290b5d316d6086ec32c293f6736051bb0"
+checksum = "13e2792b0ff0340399d58445b88fd9770e3489eff258a4cbc1523418f12abf84"
 dependencies = [
  "futures-channel",
  "futures-core",
@@ -1617,9 +1592,9 @@ dependencies = [
 
 [[package]]
 name = "futures-channel"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52ba265a92256105f45b719605a571ffe2d1f0fea3807304b522c1d778f79eed"
+checksum = "2e5317663a9089767a1ec00a487df42e0ca174b61b4483213ac24448e4664df5"
 dependencies = [
  "futures-core",
  "futures-sink",
@@ -1627,15 +1602,15 @@ dependencies = [
 
 [[package]]
 name = "futures-core"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04909a7a7e4633ae6c4a9ab280aeb86da1236243a77b694a49eacd659a4bd3ac"
+checksum = "ec90ff4d0fe1f57d600049061dc6bb68ed03c7d2fbd697274c41805dcb3f8608"
 
 [[package]]
 name = "futures-executor"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7acc85df6714c176ab5edf386123fafe217be88c0840ec11f199441134a074e2"
+checksum = "e8de0a35a6ab97ec8869e32a2473f4b1324459e14c29275d14b10cb1fd19b50e"
 dependencies = [
  "futures-core",
  "futures-task",
@@ -1655,15 +1630,15 @@ dependencies = [
 
 [[package]]
 name = "futures-io"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00f5fb52a06bdcadeb54e8d3671f8888a39697dcb0b81b23b55174030427f4eb"
+checksum = "bfb8371b6fb2aeb2d280374607aeabfc99d95c72edfe51692e42d3d7f0d08531"
 
 [[package]]
 name = "futures-macro"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdfb8ce053d86b91919aad980c220b1fb8401a9394410e1c289ed7e66b61835d"
+checksum = "95a73af87da33b5acf53acfebdc339fe592ecf5357ac7c0a7734ab9d8c876a70"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1672,21 +1647,21 @@ dependencies = [
 
 [[package]]
 name = "futures-sink"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39c15cf1a4aa79df40f1bb462fb39676d0ad9e366c2a33b590d7c66f4f81fcf9"
+checksum = "f310820bb3e8cfd46c80db4d7fb8353e15dfff853a127158425f31e0be6c8364"
 
 [[package]]
 name = "futures-task"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ffb393ac5d9a6eaa9d3fdf37ae2776656b706e200c8e16b1bdb227f5198e6ea"
+checksum = "dcf79a1bf610b10f42aea489289c5a2c478a786509693b80cd39c44ccd936366"
 
 [[package]]
 name = "futures-util"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "197676987abd2f9cadff84926f410af1c183608d36641465df73ae8211dc65d6"
+checksum = "9c1d6de3acfef38d2be4b1f543f553131788603495be83da675e180c8d6b7bd1"
 dependencies = [
  "futures-channel",
  "futures-core",
@@ -1978,9 +1953,9 @@ dependencies = [
 
 [[package]]
 name = "indoc"
-version = "1.0.8"
+version = "1.0.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da2d6f23ffea9d7e76c53eee25dfb67bcd8fde7f1198b0855350698c9f07c780"
+checksum = "bfa799dd5ed20a7e349f3b4639aa80d74549c81716d9ec4f994c9b5815598306"
 
 [[package]]
 name = "inout"
@@ -3353,9 +3328,9 @@ checksum = "1c107b6f4780854c8b126e228ea8869f4d7b71260f962fefb57b996b8959ba6b"
 
 [[package]]
 name = "security-framework"
-version = "2.8.1"
+version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c4437699b6d34972de58652c68b98cb5b53a4199ab126db8e20ec8ded29a721"
+checksum = "a332be01508d814fed64bf28f798a146d73792121129962fdf335bb3c49a4254"
 dependencies = [
  "bitflags",
  "core-foundation",
@@ -3893,9 +3868,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.24.2"
+version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "597a12a59981d9e3c38d216785b0c37399f6e415e8d0712047620f189371b0bb"
+checksum = "c8e00990ebabbe4c14c08aca901caed183ecd5c09562a12c824bb53d3c3fd3af"
 dependencies = [
  "autocfg",
  "bytes",

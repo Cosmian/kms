@@ -1,4 +1,4 @@
-use abe_policy::Policy;
+use cosmian_cover_crypt::abe_policy::Policy;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -72,7 +72,7 @@ pub fn access_policy_as_vendor_attribute(
 
 /// Convert from CoverCrypt policy attributes to vendor attributes
 pub fn attributes_as_vendor_attribute(
-    attributes: Vec<abe_policy::Attribute>,
+    attributes: Vec<cosmian_cover_crypt::abe_policy::Attribute>,
 ) -> Result<VendorAttribute, KmipError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
@@ -89,7 +89,7 @@ pub fn attributes_as_vendor_attribute(
 /// Convert from vendor attributes to CoverCrypt policy attributes
 pub fn attributes_from_attributes(
     attributes: &Attributes,
-) -> Result<Vec<abe_policy::Attribute>, KmipError> {
+) -> Result<Vec<cosmian_cover_crypt::abe_policy::Attribute>, KmipError> {
     if let Some(bytes) =
         attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ATTR)
     {
@@ -104,12 +104,13 @@ pub fn attributes_from_attributes(
         })?;
         let mut policy_attributes = Vec::with_capacity(attribute_strings.len());
         for attr in attribute_strings {
-            let attr = abe_policy::Attribute::try_from(attr.as_str()).map_err(|e| {
-                KmipError::InvalidKmipValue(
-                    ErrorReason::Invalid_Attribute_Value,
-                    format!("failed deserializing the CoverCrypt attribute: {e}"),
-                )
-            })?;
+            let attr = cosmian_cover_crypt::abe_policy::Attribute::try_from(attr.as_str())
+                .map_err(|e| {
+                    KmipError::InvalidKmipValue(
+                        ErrorReason::Invalid_Attribute_Value,
+                        format!("failed deserializing the CoverCrypt attribute: {e}"),
+                    )
+                })?;
             policy_attributes.push(attr);
         }
         Ok(policy_attributes)

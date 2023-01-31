@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use abe_policy::{EncryptionHint, Policy, PolicyAxis};
+use cosmian_cover_crypt::abe_policy::{EncryptionHint, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{DecryptedData, Get, Import, Locate},
