@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 
-use abe_policy::AccessPolicy;
 use cosmian_cover_crypt::{
+    abe_policy::AccessPolicy,
     statics::{CoverCryptX25519Aes256, PublicKey},
     CoverCrypt,
 };
@@ -33,13 +33,13 @@ use crate::{
 pub fn wrapped_secret_key(
     cover_crypt: &CoverCryptX25519Aes256,
     public_key_response: &GetResponse,
-    access_policy: &AccessPolicy,
+    access_policy: &str,
     cover_crypt_header_uid: &[u8],
 ) -> Result<Object, KmipError> {
     let sk = prepare_symmetric_key(
         cover_crypt,
         public_key_response,
-        access_policy,
+        &AccessPolicy::from_boolean_expression(access_policy)?,
         cover_crypt_header_uid,
     )?;
     // Since KMIP 2.1 does not plan to locate wrapped key, we serialize vendor

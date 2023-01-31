@@ -1,4 +1,4 @@
-use abe_policy::{AccessPolicy, Attribute, Policy};
+use cosmian_cover_crypt::abe_policy::{AccessPolicy, Attribute, Policy};
 use cosmian_kmip::kmip::{kmip_operations::Get, kmip_types::RevocationReason};
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::cover_crypt::kmip_requests::{
@@ -23,8 +23,9 @@ impl KmsClient {
     /// Instantiate a KMS Client
     ///
     /// Args:
-    ///     server_url (str): url of the KMS server
-    ///     api_key (Optional[str]): apiKey optional, to authenticate to the KMS server
+    ///     - `server_url` (str): url of the KMS server
+    ///     - `api_key` (Optional[str]): apiKey optional, to authenticate to the KMS
+    /// server
     #[new]
     pub fn new(server_url: &str, api_key: Option<&str>) -> PyResult<Self> {
         let kms_connector =
@@ -41,19 +42,18 @@ impl KmsClient {
 
     /// Generate the master authority keys for supplied Policy.
     ///
-    ///     Args:
-    ///     policy (str): policy used to generate the keys
+    /// Args:
+    ///     - `policy` (bytes): policy used to generate the keys
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn create_cover_crypt_master_key_pair<'p>(
         &'p self,
-        policy: &str,
+        policy: &[u8],
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Parse the json policy
-        let policy: Policy =
-            serde_json::from_str(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
 
         // Create the kmip query
         let request = build_create_master_keypair_request(&policy)
@@ -78,13 +78,14 @@ impl KmsClient {
     /// Import a Private Master Key into the KMS.
     ///
     /// Args:
-    ///     private_key (bytes): key bytes
-    ///     replace_existing (bool): set to true to replace an existing key with the same identifier
-    ///     link_master_public_key_id (str): id of the matching master public key
-    ///     policy_json (str): policy related to the key
-    ///     is_wrapped (bool): whether the key is wrapped
-    ///     wrapping_password (Optional[str]): password used to wrap the key
-    ///     unique_identifier (Optional[str]): the unique identifier of the key
+    ///     - `private_key` (bytes): key bytes
+    ///     - `replace_existing` (bool): set to true to replace an existing key with
+    /// the same identifier
+    ///     - `link_master_public_key_id` (str): id of the matching master public key
+    ///     - `policy` (bytes): policy related to the key
+    ///     - `is_wrapped` (bool): whether the key is wrapped
+    ///     - `wrapping_password` (Optional[str]): password used to wrap the key
+    ///     - `unique_identifier` (Optional[str]): the unique identifier of the key
     ///
     /// Returns:
     ///     Future[str]: the unique identifier of the key
@@ -94,15 +95,14 @@ impl KmsClient {
         private_key: &[u8],
         replace_existing: bool,
         link_master_public_key_id: &str,
-        policy_json: &str,
+        policy: &[u8],
         is_wrapped: bool,
         wrapping_password: Option<String>,
         unique_identifier: Option<String>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        // Parse the json policy
-        let policy: Policy =
-            serde_json::from_str(policy_json).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        // Convert policy from bytes
+        let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
 
         let request = build_import_private_key_request(
             private_key,
@@ -128,11 +128,11 @@ impl KmsClient {
     /// Import a Public Master Key into the KMS.
     ///
     /// Args:
-    ///     public_key (bytes): key bytes
-    ///     replace_existing (bool): set to true to replace an existing key with the same identifier
-    ///     policy_json (str): policy related to the key
-    ///     link_master_private_key_id (str): id of the matching master private key
-    ///     unique_identifier (Optional[str]): the unique identifier of the key
+    ///     - `public_key` (bytes): key bytes
+    ///     - `replace_existing` (bool): set to true to replace an existing key with the same identifier
+    ///     - `policy` (bytes): policy related to the key
+    ///     - `link_master_private_key_id` (str): id of the matching master private key
+    ///     - ` unique_identifier` (Optional[str]): the unique identifier of the key
     ///
     /// Returns:
     ///     Future[str]: the unique identifier of the key
@@ -140,14 +140,13 @@ impl KmsClient {
         &'p self,
         public_key: &[u8],
         replace_existing: bool,
-        policy_json: &str,
+        policy: &[u8],
         link_master_private_key_id: &str,
         unique_identifier: Option<String>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        // Parse the json policy
-        let policy: Policy =
-            serde_json::from_str(policy_json).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        // Convert policy from bytes
+        let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
 
         let request = build_import_public_key_request(
             public_key,
@@ -170,11 +169,12 @@ impl KmsClient {
 
     /// Rotate the given policy attributes. This will rekey in the KMS:
     /// - the Master Keys
-    /// - all User Decryption Keys that contain one of these attributes in their policy and are not rotated.
+    /// - all User Decryption Keys that contain one of these attributes in their
+    ///   policy and are not rotated.
     ///
     /// Args:
-    ///     master_secret_key_identifier (str): master secret key UID
-    ///     attributes (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
+    ///     - `master_secret_key_identifier` (str): master secret key UID
+    ///     - `attributes` (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
@@ -207,11 +207,12 @@ impl KmsClient {
     }
 
     /// Generate a user secret key.
-    ///     A new user secret key does NOT include to old (i.e. rotated) partitions.
+    ///     A new user secret key does NOT include to old (i.e. rotated)
+    /// partitions.
     ///
-    ///     Args:
-    ///         access_policy_str (str): user access policy
-    ///         master_secret_key_identifier (str): master secret key UID
+    /// Args:
+    ///         - `access_policy_str` (str): user access policy
+    ///         - `master_secret_key_identifier` (str): master secret key UID
     ///
     ///     Returns:
     ///         Future[str]: User secret key UID
@@ -222,11 +223,11 @@ impl KmsClient {
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Parse the access policy
-        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
+        let _access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
         let request = build_create_user_decryption_private_key_request(
-            &access_policy,
+            access_policy_str,
             master_secret_key_identifier,
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
@@ -244,13 +245,13 @@ impl KmsClient {
     /// Import a user secret key into the KMS.
     ///
     /// Args:
-    ///     private_key (bytes): key bytes
-    ///     replace_existing (bool): set to true to replace an existing key with the same identifier
-    ///     link_master_private_key_id (str): id of the matching master private key
-    ///     access_policy_str (str): user access policy
-    ///     is_wrapped (bool): whether the key is wrapped
-    ///     wrapping_password (Optional[str]): password used to wrap the key
-    ///     unique_identifier (Optional[str]): the unique identifier of the key
+    ///     - `private_key` (bytes): key bytes
+    ///     - `replace_existing` (bool): set to true to replace an existing key with the same identifier
+    ///     - `link_master_private_key_id` (str): id of the matching master private key
+    ///     - `access_policy_str` (str): user access policy
+    ///     - `is_wrapped` (bool): whether the key is wrapped
+    ///     - `wrapping_password` (Optional[str]): password used to wrap the key
+    ///     - `unique_identifier` (Optional[str]): the unique identifier of the key
     ///
     /// Returns:
     ///     Future[str]: User secret key UID
@@ -267,7 +268,7 @@ impl KmsClient {
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Parse the access policy
-        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
+        let _access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
             .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
 
         let request = build_import_decryption_private_key_request(
@@ -275,7 +276,7 @@ impl KmsClient {
             unique_identifier,
             replace_existing,
             link_master_private_key_id,
-            &access_policy,
+            access_policy_str,
             is_wrapped,
             wrapping_password,
         )
@@ -294,8 +295,8 @@ impl KmsClient {
     /// Mark a CoverCrypt Key as revoked
     ///
     /// Args:
-    ///     key_identifier (str):  the key unique identifier in the KMS
-    ///     revocation_reason (str): explanation of the revocation
+    ///     - `key_identifier` (str):  the key unique identifier in the KMS
+    ///     - `revocation_reason` (str): explanation of the revocation
     ///
     /// Returns:
     ///     Future[str]: uid of the revoked key
@@ -324,7 +325,7 @@ impl KmsClient {
     /// Mark a CoverCrypt Key as destroyed
     ///
     /// Args:
-    ///     key_identifier (str):  the key unique identifier in the KMS
+    ///     - `key_identifier` (str):  the key unique identifier in the KMS
     ///
     /// Returns:
     ///     Future[str]: uid of the destroyed key
@@ -350,11 +351,11 @@ impl KmsClient {
     /// ciphertext.
     ///
     /// Args:
-    ///     public_key_identifier (str): identifier of the public key
-    ///     access_policy_str (str): the access policy to use for encryption
-    ///     data (bytes): data to encrypt
-    ///     header_metadata (Optional[bytes]): additional data to symmetrically encrypt in the header
-    ///     authentication_data (Optional[bytes]): authentication data to use in symmetric encryptions
+    ///     - `public_key_identifier` (str): identifier of the public key
+    ///     - `access_policy_str` (str): the access policy to use for encryption
+    ///     - `data` (bytes): data to encrypt
+    ///     - `header_metadata` (Optional[bytes]): additional data to symmetrically encrypt in the header
+    ///     - `authentication_data` (Optional[bytes]): authentication data to use in symmetric encryptions
     ///
     /// Returns:
     ///     Future[bytes]: ciphertext
@@ -389,12 +390,13 @@ impl KmsClient {
     /// Hybrid decryption.
     ///
     /// Args:
-    ///     user_key_identifier (str): user secret key identifier
-    ///     encrypted_data (bytes): encrypted header || symmetric ciphertext
-    ///     authentication_data (Optional[bytes]): authentication data to use in symmetric decryption
+    ///     - `user_key_identifier` (str): user secret key identifier
+    ///     - `encrypted_data` (bytes): encrypted header || symmetric ciphertext
+    ///     - `authentication_data` (Optional[bytes]): authentication data to use in symmetric decryption
     ///
     /// Returns:
-    ///     Future[Tuple[bytes, bytes]]: (plaintext bytes, header metadata bytes)
+    ///     Future[Tuple[bytes, bytes]]: (plaintext bytes, header metadata
+    /// bytes)
     pub fn cover_crypt_decryption<'p>(
         &'p self,
         user_key_identifier: &str,
@@ -427,7 +429,7 @@ impl KmsClient {
     /// Fetch KMIP object by UID.
     ///
     /// Args:
-    ///     unique_identifier (str): UID of the object on the server.
+    ///     - `unique_identifier` (str): UID of the object on the server.
     ///
     /// Returns:
     ///     Future[KmsObject]

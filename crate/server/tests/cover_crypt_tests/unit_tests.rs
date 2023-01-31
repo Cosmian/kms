@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use abe_policy::{AccessPolicy, EncryptionHint, Policy, PolicyAxis};
+use cosmian_cover_crypt::abe_policy::{EncryptionHint, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{DecryptedData, Get, Import, Locate},
@@ -30,7 +30,7 @@ use uuid::Uuid;
 async fn test_cover_crypt_keys() -> KResult<()> {
     let config = Config {
         auth: AuthConfig {
-            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
         },
         ..Default::default()
     };
@@ -141,14 +141,11 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let _update_response = kms.import(request, owner, None).await?;
 
     // User decryption key
-
-    let access_policy = (AccessPolicy::new("Department", "MKG")
-        | AccessPolicy::new("Department", "FIN"))
-        & AccessPolicy::new("Level", "confidential");
+    let access_policy = "(Department::MKG ||Department::FIN) && Level::confidential";
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
-    let request = build_create_user_decryption_private_key_request(&access_policy, &sk_uid)?;
+    let request = build_create_user_decryption_private_key_request(access_policy, &sk_uid)?;
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
@@ -172,7 +169,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via Private key
     debug!(" .... user key via Private Key");
-    let request = build_create_user_decryption_private_key_request(&access_policy, &sk_uid)?;
+    let request = build_create_user_decryption_private_key_request(access_policy, &sk_uid)?;
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
@@ -199,9 +196,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
 #[test]
 pub fn access_policy_serialization() -> KResult<()> {
-    let access_policy = (AccessPolicy::new("Department", "MKG")
-        | AccessPolicy::new("Department", "FIN"))
-        & AccessPolicy::new("Level", "confidential");
+    let access_policy = "(Department::MKG ||Department::FIN) && Level::confidential";
     let _json = serde_json::to_string(&access_policy)?;
     // println!("{}", &json);
     Ok(())
@@ -213,7 +208,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 
     let config = Config {
         auth: AuthConfig {
-            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
         },
         ..Default::default()
     };
@@ -322,13 +317,11 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     assert!(er.is_err());
 
     // Create a user decryption key MKG | FIN + secret
-    let secret_mkg_fin_access_policy = (AccessPolicy::new("Department", "MKG")
-        | AccessPolicy::new("Department", "FIN"))
-        & AccessPolicy::new("Level", "secret");
+    let secret_mkg_fin_access_policy = "(Department::MKG || Department::FIN) && Level::secret";
     let cr = kms
         .create(
             build_create_user_decryption_private_key_request(
-                &secret_mkg_fin_access_policy,
+                secret_mkg_fin_access_policy,
                 master_private_key_id,
             )?,
             owner,
@@ -418,7 +411,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 async fn test_abe_json_access() -> KResult<()> {
     let config = Config {
         auth: AuthConfig {
-            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
         },
         ..Default::default()
     };
@@ -446,9 +439,7 @@ async fn test_abe_json_access() -> KResult<()> {
         true,
     ))?;
 
-    let secret_mkg_fin_access_policy = (AccessPolicy::new("Department", "MKG")
-        | AccessPolicy::new("Department", "FIN"))
-        & AccessPolicy::new("Level", "secret");
+    let secret_mkg_fin_access_policy = "(Department::MKG||Department::FIN) && Level::secret";
 
     // Create CC master key pair
     let master_keypair = build_create_master_keypair_request(&policy)?;
@@ -463,7 +454,7 @@ async fn test_abe_json_access() -> KResult<()> {
         cryptographic_length: None,
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(
-            &secret_mkg_fin_access_policy,
+            secret_mkg_fin_access_policy,
         )?]),
         link: Some(vec![Link {
             link_type: LinkType::ParentLink,
@@ -493,7 +484,7 @@ async fn test_abe_json_access() -> KResult<()> {
     let cr = kms
         .create(
             build_create_user_decryption_private_key_request(
-                &secret_mkg_fin_access_policy,
+                secret_mkg_fin_access_policy,
                 master_private_key_uid,
             )?,
             owner,
@@ -525,7 +516,7 @@ async fn test_abe_json_access() -> KResult<()> {
 async fn test_import_decrypt() -> KResult<()> {
     let config = Config {
         auth: AuthConfig {
-            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
         },
         ..Default::default()
     };
@@ -586,13 +577,11 @@ async fn test_import_decrypt() -> KResult<()> {
     let confidential_mkg_encrypted_data = er.data.context("There should be encrypted data")?;
 
     // Create a user decryption key MKG | FIN + secret
-    let secret_mkg_fin_access_policy = (AccessPolicy::new("Department", "MKG")
-        | AccessPolicy::new("Department", "FIN"))
-        & AccessPolicy::new("Level", "secret");
+    let secret_mkg_fin_access_policy = "(Department::MKG|| Department::FIN) && Level::secret";
     let cr = kms
         .create(
             build_create_user_decryption_private_key_request(
-                &secret_mkg_fin_access_policy,
+                secret_mkg_fin_access_policy,
                 &sk_uid,
             )?,
             owner,

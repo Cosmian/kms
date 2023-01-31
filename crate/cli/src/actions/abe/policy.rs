@@ -1,6 +1,6 @@
 use std::{fs::File, io::Read, path::Path};
 
-use abe_policy::Policy;
+use cosmian_cover_crypt::abe_policy::Policy;
 use eyre::Context;
 
 pub fn policy_from_file(json_filename: &impl AsRef<Path>) -> eyre::Result<Policy> {

@@ -1,5 +1,5 @@
-use abe_policy::{AccessPolicy, Policy};
 use cosmian_cover_crypt::{
+    abe_policy::{AccessPolicy, Policy},
     core::api::CoverCrypt,
     statics::{CoverCryptX25519Aes256, MasterSecretKey, UserSecretKey},
 };
@@ -57,7 +57,11 @@ pub(crate) fn unwrap_user_decryption_key_object(
         )
     })?;
     let access_policy = access_policy_from_attributes(attributes)?;
-    Ok((bytes, access_policy, attributes.clone()))
+    Ok((
+        bytes,
+        AccessPolicy::from_boolean_expression(access_policy.as_str())?,
+        attributes.clone(),
+    ))
 }
 
 /// Handles operations on user keys, caching the engine
@@ -96,15 +100,18 @@ impl UserDecryptionKeysHandler {
     /// see `cover_crypt_unwrap_user_decryption_key` for the reverse operation
     pub fn create_user_decryption_key_object(
         &self,
-        access_policy: &AccessPolicy,
+        access_policy_str: &str,
         attributes: Option<&Attributes>,
     ) -> Result<Object, KmipError> {
         //
         // Generate a fresh user decryption key
         //
+        // let access_policy = AccessPolicy::try_from(access_policy_str)?;
+        let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)?;
+
         let uk = self
             .cover_crypt
-            .generate_user_secret_key(&self.master_private_key, access_policy, &self.policy)
+            .generate_user_secret_key(&self.master_private_key, &access_policy, &self.policy)
             .map_err(|e| {
                 KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
             })?;
@@ -124,7 +131,7 @@ impl UserDecryptionKeysHandler {
                 att
             })
             .unwrap_or_else(|| Attributes::new(ObjectType::PrivateKey));
-        upsert_access_policy_in_attributes(&mut attributes, access_policy)?;
+        upsert_access_policy_in_attributes(&mut attributes, access_policy_str)?;
         Ok(Object::PrivateKey {
             key_block: KeyBlock {
                 cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,

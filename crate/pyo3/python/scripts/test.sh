@@ -12,8 +12,8 @@ pip install --force-reinstall ../../target/wheels/*.whl
 # Clone and build CoverCrypt
 rm -rf /tmp/cover_crypt
 git clone --branch develop https://github.com/Cosmian/cover_crypt.git /tmp/cover_crypt
-git checkout 84957843
 pushd /tmp/cover_crypt
+git checkout a146568b
 maturin build --release --features python
 pip install --force-reinstall target/wheels/*.whl
 popd

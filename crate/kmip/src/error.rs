@@ -41,3 +41,9 @@ impl From<serde_json::Error> for KmipError {
         KmipError::KmipError(ErrorReason::Codec_Error, e.to_string())
     }
 }
+
+impl From<cosmian_cover_crypt::Error> for KmipError {
+    fn from(e: cosmian_cover_crypt::Error) -> Self {
+        KmipError::KmipError(ErrorReason::Codec_Error, e.to_string())
+    }
+}

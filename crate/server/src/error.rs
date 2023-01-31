@@ -40,15 +40,15 @@ pub enum KmsError {
     #[error("{0}: {1}")]
     KmipError(ErrorReason, String),
 
-    // Any errors related to a bad behaviour of the DB but not related to the user input
+    // Any errors related to a bad behavior of the DB but not related to the user input
     #[error("Database Error: {0}")]
     DatabaseError(String),
 
-    // Any errors related to a bad behaviour of the server but not related to the user input
+    // Any errors related to a bad behavior of the server but not related to the user input
     #[error("Unexpected server error: {0}")]
     ServerError(String),
 
-    // Any errors related to a bad behaviour of the server concerning the SGX environment
+    // Any errors related to a bad behavior of the server concerning the SGX environment
     #[error("Unexpected sgx error: {0}")]
     SGXError(String),
 
@@ -105,8 +105,8 @@ impl From<serde_json::Error> for KmsError {
     }
 }
 
-impl From<abe_policy::Error> for KmsError {
-    fn from(e: abe_policy::Error) -> Self {
+impl From<cosmian_cover_crypt::Error> for KmsError {
+    fn from(e: cosmian_cover_crypt::Error) -> Self {
         KmsError::InvalidRequest(e.to_string())
     }
 }

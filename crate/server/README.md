@@ -4,13 +4,13 @@
 
 The KMS server provides several features which can be enabled at compilation times. Enable/Disable these features will change the server configuration variables.
 
-| Feature  | Description                                                                                                       |  Staging | Prod 🔥 |
-| -------- | ----------------------------------------------------------------------------------------------------------------- | ----- | ------- |
-| auth     | Enable authentication. If disabled, multi-user is not supported                                                   | ✅     | ✅       |
-| enclave  | Enable the ability to run inside an enclave                                                                       | ✅     | ✅       |
-| https    | Enable https in the KMS in order to encrypt query between client and the KMS. If disabled, it uses http           | ✅     | ✅       |
-| insecure | Do not verify auth0 token expiration date and https ssl is self-signed (to avoid to be banned by letsencrypt)     | ✅     |         |
-| timeout  | The binary will stop (and won't be able to start again) after a period of time, starting from date of compilation |       |         |
+| Feature  | Description                                                                                                       | Staging | Prod 🔥 |
+|----------|-------------------------------------------------------------------------------------------------------------------|---------|---------|
+| auth     | Enable authentication. If disabled, multi-user is not supported                                                   | ✅       | ✅       |
+| enclave  | Enable the ability to run inside an enclave                                                                       | ✅       | ✅       |
+| https    | Enable https in the KMS in order to encrypt query between client and the KMS. If disabled, it uses http           | ✅       | ✅       |
+| insecure | Do not verify auth0 token expiration date and https ssl is self-signed (to avoid to be banned by letsencrypt)     | ✅       |         |
+| timeout  | The binary will stop (and won't be able to start again) after a period of time, starting from date of compilation |         |         |
 
 __Caption__:
 ✅ Enabled
@@ -82,7 +82,7 @@ The KMS server relies on an OAuth2 authentication provided by Auth0 to authentic
 
 Example of how to run for test authentication:
 ```sh
-$ KMS_DELEGATED_AUTHORITY_DOMAIN="dev-1mbsbmin.us.auth0.com" cargo run
+$ KMS_DELEGATED_AUTHORITY_DOMAIN="console-dev.eu.auth0.com" cargo run
 ```
 
 This authentication enables the KMS to deal with several users with the same database.

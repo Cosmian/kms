@@ -33,10 +33,10 @@ pub async fn start_test_server() {
 /// If staging feature is enabled, it relies on a remote server running in a enclave
 /// Otherwise it starts a local server
 pub async fn init_test_server() {
-    // Configure the serveur
+    // Configure the server
     let config = Config {
         auth: AuthConfig {
-            delegated_authority_domain: "dev-1mbsbmin.us.auth0.com".to_string(),
+            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
         },
         db: DBConfig {
             sqlcipher: true,

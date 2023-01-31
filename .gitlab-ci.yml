@@ -264,10 +264,10 @@ unused_deps:
 #
 build_dev_container:
   image: docker:19.03.15
-  only: [main, develop, merge_requests]
+  only: [merge_requests]
   except:
     - tags
-  stage: build
+  stage: pretest
   script:
     - docker build . -f delivery/Dockerfile.standalone --network=host -t cosmian/kms:${CI_COMMIT_REF_SLUG}
     # Docker hub deployment
@@ -279,7 +279,7 @@ build_dev_container:
 #
 test_python:
   stage: test
-  only: [main, develop, merge_requests]
+  only: [merge_requests]
   except:
     - tags
   variables:
@@ -299,7 +299,7 @@ test_python:
     - pip install -r crate/pyo3/python/requirements.txt
     - git clone --branch develop https://github.com/Cosmian/cover_crypt.git /tmp/cover_crypt
     - pushd /tmp/cover_crypt
-    - git checkout 84957843
+    - git checkout a146568b
     - maturin build --release --features python
     - pip install --force-reinstall target/wheels/*.whl
     - popd
@@ -445,7 +445,7 @@ documentation:
 python_publish:
   stage: deploy
   rules:
-    - if: $CI_COMMIT_TAG =~ /^v\d+.\d+.\d+$/
+    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
   script:
     - pip install twine
     - twine upload -u "${PYPI_USERNAME}" -p "${PYPI_PASSWORD}" target/wheels/cosmian_kms-${CI_COMMIT_TAG}*.whl

@@ -1,6 +1,6 @@
 use std::{fmt, str::from_utf8};
 
-use abe_policy::AccessPolicy;
+use cosmian_cover_crypt::abe_policy::AccessPolicy;
 use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize, Serialize,
