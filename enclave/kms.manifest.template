@@ -10,15 +10,15 @@ loader.argv0_override = "kms_server"
 loader.log_level = "{{ log_level }}"
 
 # Currently required for Tokio (eventfd is done by the host not the enclave, so less secure)
-sys.insecure__allow_eventfd = true 
+sys.insecure__allow_eventfd = true
 # This specifies the stack size of each thread in each Gramine process
-# Note: if you remove that, the KMS won't work. Errors you can get: 
+# Note: if you remove that, the KMS won't work. Errors you can get:
 # - "thread panicked while processing panic. aborting."
 # - "The futex facility returned an unexpected error code."
 sys.stack.size = "1G"
 
 loader.env.LD_LIBRARY_PATH = "/lib:/lib64:{{ arch_libdir }}:/usr/{{ arch_libdir }}"
-loader.env.KMS_DELEGATED_AUTHORITY_DOMAIN = "dev-1mbsbmin.us.auth0.com"
+loader.env.KMS_DELEGATED_AUTHORITY_DOMAIN = "console-dev.eu.auth0.com"
 loader.env.KMS_SSL_EMAIL = "tech@cosmian.com"
 loader.env.KMS_SSL_DOMAIN_NAME = "{{ kms_domain }}"
 loader.env.KMS_ENCLAVE_MANIFEST_FILENAME = "kms.manifest.sgx"
@@ -78,5 +78,3 @@ sgx.trusted_files = [
   "file:/usr/lib/ssl/certs/",
   "file:/etc/ssl/certs/ca-certificates.crt",
 ]
-
-

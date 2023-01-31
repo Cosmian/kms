@@ -1,6 +1,6 @@
-use abe_policy::Policy;
 use cosmian_cover_crypt::{
     self,
+    abe_policy::Policy,
     statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey, UserSecretKey},
     CoverCrypt,
 };
@@ -220,7 +220,7 @@ impl DeCipher for CoverCryptHybridDecipher {
         );
 
         let decrypted_data = DecryptedData {
-            metadata: header_.header_metadata,
+            metadata: header_.metadata,
             plaintext: cleartext,
         };
 

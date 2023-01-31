@@ -39,7 +39,7 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
         (
             self.pubkey_uid,
             self.privkey_uid,
-        ) = await self.client.create_cover_crypt_master_key_pair(self.policy.to_json())
+        ) = await self.client.create_cover_crypt_master_key_pair(self.policy.to_bytes())
 
     async def test_master_keys(self) -> None:
         # Query public key from KMS
@@ -60,7 +60,7 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
                 privkey.key_block(),
                 True,
                 self.pubkey_uid,
-                self.policy.to_json(),
+                self.policy.to_bytes(),
                 False,
                 None,
                 'my_custom_privkey',
@@ -72,7 +72,7 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
         custom_pubkey_uid = await self.client.import_cover_crypt_public_key_request(
             pubkey.key_block(),
             True,
-            self.policy.to_json(),
+            self.policy.to_bytes(),
             self.privkey_uid,
             'my_custom_pubkey',
         )

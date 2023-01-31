@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.2.0] - 2023-01-30
+
+### Features
+
+- Use CoverCrypt v9.0 (post-quantum cryptography) and AbePolicy v3.0
+  * Write `Policy` as bytes and `AccessPolicy` as string in Vendor Attributes
+
+### Ci
+
+- Fix tag matching in `python_publish`
+
 ---
 
 ## [4.1.0] - 2023-01-19

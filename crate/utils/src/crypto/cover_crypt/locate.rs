@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use abe_policy::AccessPolicy;
+use cosmian_cover_crypt::abe_policy::AccessPolicy;
 use cosmian_kmip::{error::KmipError, kmip::kmip_types::Attributes};
 
 use crate::crypto::cover_crypt::attributes::{
@@ -22,12 +22,15 @@ pub fn compare_cover_crypt_attributes(
 ) -> Result<bool, KmipError> {
     match access_policy_from_attributes(attributes) {
         Ok(access_policy) => {
+            let access_policy = AccessPolicy::from_boolean_expression(access_policy.as_str())?;
             if access_policy == AccessPolicy::All {
                 return Ok(true)
             }
 
             match access_policy_from_attributes(researched_attributes) {
                 Ok(researched_access_policy) => {
+                    let researched_access_policy =
+                        AccessPolicy::from_boolean_expression(researched_access_policy.as_str())?;
                     // println!("Compare: {access_policy:#?}  <==> {researched_access_policy:#?}");
                     if researched_access_policy == access_policy {
                         return Ok(true)
