@@ -9,7 +9,7 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_server::{
-    config::{auth::AuthConfig, init_config, Config},
+    config::{auth0::Auth0Config, init_config, Config},
     core::crud::KmipServer,
     error::KmsError,
     kms_bail,
@@ -29,8 +29,8 @@ use uuid::Uuid;
 #[actix_rt::test]
 async fn test_cover_crypt_keys() -> KResult<()> {
     let config = Config {
-        auth: AuthConfig {
-            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
+        auth0: Auth0Config {
+            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };
@@ -207,8 +207,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // cosmian_kms_common::log_utils::log_init("debug,cosmian_kms::kmip_server=trace");
 
     let config = Config {
-        auth: AuthConfig {
-            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
+        auth0: Auth0Config {
+            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };
@@ -410,8 +410,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 #[actix_rt::test]
 async fn test_abe_json_access() -> KResult<()> {
     let config = Config {
-        auth: AuthConfig {
-            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
+        auth0: Auth0Config {
+            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };
@@ -515,8 +515,8 @@ async fn test_abe_json_access() -> KResult<()> {
 #[actix_rt::test]
 async fn test_import_decrypt() -> KResult<()> {
     let config = Config {
-        auth: AuthConfig {
-            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
+        auth0: Auth0Config {
+            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };

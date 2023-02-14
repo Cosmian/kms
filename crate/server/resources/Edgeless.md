@@ -1,5 +1,3 @@
-
-
 ### EdgelessDB as database
 
 [EdgelessDB](https://docs.edgeless.systems/edgelessdb/#/) is based on MariaDB, so the MySQL connector will be used for that.
@@ -10,7 +8,7 @@ That's why two implementations are available in the KMS Server.
 
 Follow this guide to use EdgelessDB in simulation mode (without SGX): https://docs.edgeless.systems/edgelessdb/#/getting-started/quickstart-simulation
 
-Use `KMS_USER_CERT_PATH` to give the client certificate to the KMS server. 
+Use `KMS_MYSQL_USER_CERT_FILE` to give the client certificate to the KMS server.
 
 **TL;DR**
 
@@ -60,7 +58,7 @@ Note: the EdgelessDB is currently running in simulation mode (not using SGX encl
 
 ```console
 cd /home/gitlab-runner/data
-curl -k --data-binary @manifest.json https://gitlab-runner-1.cosmian.com:8080/manifest
+curl -k --data-binary @manifest.json https://gitlab-runner-1.cosmian.com:8080/enclave_manifest
 ```
 
 <u>Test it works</u>
@@ -77,4 +75,3 @@ mysql -h127.0.0.1  -uroot -e "SHOW DATABASES"  --ssl-cert $(pwd)/data/cert.pem -
 | mysql              |
 +--------------------+
 ```
-

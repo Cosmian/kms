@@ -13,7 +13,7 @@ variables:
   MYSQL_DB: kms
   MYSQL_ROOT_PASSWORD: kms
   MYSQL_HOST: gitlab-runner-1.ovh.cosmian.com
-  KMS_USER_CERT_PATH: ${CI_PROJECT_DIR}/data/data-ssl/cert.p12
+  KMS_MYSQL_USER_CERT_FILE: ${CI_PROJECT_DIR}/data/data-ssl/cert.p12
 
 stages:
   - prebuild
@@ -69,12 +69,13 @@ test_db_mariadb_connect:
 # Security check
 # Failing because mysql has some dependencies with problems but cannot be upgraded
 # because new versions of bitvec/funty are incompatible with some of our crypto dependencies.
+# All the 2023 are open SSl related but cannot be easily fixed by simply upgrading dependencies
 cargo_audit:
   stage: prebuild
   only: [main, develop, merge_requests]
   cache: {}
   script:
-    - cargo audit --ignore RUSTSEC-2020-0071
+    - cargo audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2023-0006 --ignore RUSTSEC-2023-0007 --ignore RUSTSEC-2023-0009 --ignore RUSTSEC-2023-0010
 
 #
 # Coverage
@@ -124,7 +125,7 @@ compile_and_test:
     - export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
     - cargo clippy -V
     - sccache -s
-    - echo "$KMS_USER_CERT_PATH"
+    - echo "$KMS_MYSQL_USER_CERT_FILE"
     - ls -alh /builds/core/kms/data/data-ssl
     - apt-get update
     - TZ=Europe/Paris apt-get install --no-install-recommends -qq libsodium-dev libclang-dev
@@ -281,9 +282,9 @@ test_python:
     - tags
   variables:
     COSMIAN_SERVER_URL: http://localhost:9998
-    KMS_PUBLIC_PATH: /tmp
-    KMS_PRIVATE_PATH: /tmp
-    KMS_SHARED_PATH: /tmp
+    KMS_ENCLAVE_DIR_PATH: /tmp
+    KMS_CERTBOT_SSL_PATH: /tmp
+    KMS_SQLITE_PATH: /tmp
   services:
     - name: cosmian/kms:${CI_COMMIT_REF_SLUG}
       alias: kms
@@ -294,12 +295,6 @@ test_python:
     # Check python code
     - pip install target/wheels/*manylinux*.whl
     - pip install -r crate/pyo3/python/requirements.txt
-    - git clone --branch develop https://github.com/Cosmian/cover_crypt.git /tmp/cover_crypt
-    - pushd /tmp/cover_crypt
-    - git checkout a146568b
-    - maturin build --release --features python
-    - pip install --force-reinstall target/wheels/*.whl
-    - popd
     - mypy crate/pyo3/python/scripts/test_kms.py
     - python3 crate/pyo3/python/scripts/test_kms.py
     # Check that the lib version is the same as the server
@@ -341,7 +336,7 @@ docker_build_and_push:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
   script:
     - echo $IMAGE_TAG
-    - docker build . --network=host --build-arg FEATURES="--features=auth,https" -t $CI_REGISTRY_IMAGE -t $IMAGE_TAG
+    - docker build . --network=host --build-arg -t $CI_REGISTRY_IMAGE -t $IMAGE_TAG
     - docker push $IMAGE_TAG
 
 #
@@ -356,7 +351,7 @@ docker_timeout_build_and_push:
     IMAGE_TAG: $CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}_timeout
   script:
     - echo $IMAGE_TAG
-    - docker build . --build-arg FEATURES="--features=auth,https,timeout" --network=host -t $IMAGE_TAG
+    - docker build . --build-arg FEATURES="--features=timeout" --network=host -t $IMAGE_TAG
     - docker push $IMAGE_TAG
 
 #

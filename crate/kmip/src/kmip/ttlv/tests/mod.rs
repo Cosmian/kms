@@ -1,7 +1,6 @@
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use tracing::trace;
 
 use crate::{
     kmip::{
@@ -457,9 +456,8 @@ fn test_big_int_deserialization() {
 
 #[test]
 fn test_des_aes_key() {
-    log_init("trace,hyper=info,reqwest=info");
+    log_init("debug,hyper=info,reqwest=info");
     let key_bytes: &[u8] = b"this_is_a_test";
-    trace!("HELLO");
 
     let json = serde_json::to_value(aes_key(key_bytes)).unwrap();
     let o: Object = serde_json::from_value(json).unwrap();

@@ -19,8 +19,8 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_utils::types::{
-    Access, CertificatesResponse, ObjectOwnedResponse, ObjectSharedResponse, QuoteParams,
-    SuccessResponse, UserAccessResponse,
+    Access, ObjectOwnedResponse, ObjectSharedResponse, QuoteParams, SuccessResponse,
+    UserAccessResponse,
 };
 use error::KmsClientError;
 use http::{HeaderMap, HeaderValue, StatusCode};
@@ -332,7 +332,7 @@ impl KmsRestClient {
     /// This operation requests the server to create a new database.
     /// The returned secrets could be shared between several users.
     pub async fn new_database(&self) -> Result<String, KmsClientError> {
-        self.post_no_ttlv("/register", None::<&()>).await
+        self.post_no_ttlv("/new_database", None::<&()>).await
     }
 
     /// This operation requests the server to add an access on an object to a user
@@ -379,7 +379,7 @@ impl KmsRestClient {
     /// This operation requests the server to get the sgx quote.
     pub async fn get_quote(&self, nonce: &str) -> Result<String, KmsClientError> {
         self.get_no_ttlv(
-            "/quote",
+            "/enclave_quote",
             Some(&QuoteParams {
                 nonce: nonce.to_string(),
             }),
@@ -388,13 +388,18 @@ impl KmsRestClient {
     }
 
     /// This operation requests the server to get the HTTPS certificate.
-    pub async fn get_certificates(&self) -> Result<CertificatesResponse, KmsClientError> {
-        self.get_no_ttlv("/certificates", None::<&()>).await
+    pub async fn get_certificate(&self) -> Result<Option<String>, KmsClientError> {
+        self.get_no_ttlv("/certificate", None::<&()>).await
+    }
+
+    /// This operation requests the server to get the HTTPS certificate.
+    pub async fn get_enclave_public_key(&self) -> Result<String, KmsClientError> {
+        self.get_no_ttlv("/enclave_public_key", None::<&()>).await
     }
 
     /// This operation requests the server to get the sgx manifest.
     pub async fn get_manifest(&self) -> Result<String, KmsClientError> {
-        self.get_no_ttlv("/manifest", None::<&()>).await
+        self.get_no_ttlv("/enclave_manifest", None::<&()>).await
     }
 }
 

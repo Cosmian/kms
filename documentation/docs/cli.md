@@ -236,10 +236,10 @@ To do so:
 
 ```sh
 $ cosmian_kms_cli trust /tmp
-The base64 encoded quote has been saved at "/tmp/quote.raw"
-The quote (structured) has been saved at "/tmp/quote.struct"
+The base64 encoded quote has been saved at "/tmp/enclave_quote.raw"
+The quote (structured) has been saved at "/tmp/enclave_quote.struct"
 The ssl certificate has been saved at "/tmp/ssl.cert"
-The sgx manifest has been saved at "/tmp/manifest.sgx"
+The sgx manifest has been saved at "/tmp/enclave_manifest.sgx"
 The remote attestation has been saved at "/tmp/remote_attestation"
 
 You can check all these files manually.

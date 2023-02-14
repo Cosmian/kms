@@ -1,10 +1,15 @@
-use cosmian_crypto_base::sodium_bindings;
+use cosmian_crypto_core::{
+    asymmetric_crypto::{
+        curve25519::{X25519KeyPair, X25519_PRIVATE_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH},
+        DhKeyPair,
+    },
+    CsRng, KeyTrait,
+};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
-        kmip_operations::ErrorReason,
         kmip_types::{
             Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
             CryptographicParameters, CryptographicUsageMask, KeyFormatType, RecommendedCurve,
@@ -12,12 +17,13 @@ use cosmian_kmip::{
     },
 };
 use num_bigint::BigUint;
+use rand_core::SeedableRng;
 
 use crate::KeyPair;
 
-pub const SECRET_KEY_LENGTH: usize = sodium_bindings::crypto_box_SECRETKEYBYTES as usize;
-pub const PUBLIC_KEY_LENGTH: usize = sodium_bindings::crypto_box_PUBLICKEYBYTES as usize;
-pub const Q_LENGTH_BITS: i32 = (sodium_bindings::crypto_box_SECRETKEYBYTES * 8) as i32;
+pub const SECRET_KEY_LENGTH: usize = X25519_PRIVATE_KEY_LENGTH;
+pub const PUBLIC_KEY_LENGTH: usize = X25519_PUBLIC_KEY_LENGTH;
+pub const Q_LENGTH_BITS: i32 = X25519_PRIVATE_KEY_LENGTH as i32;
 
 /// convert to a curve 25519 256 bits KMIP Public Key
 /// no check performed
@@ -93,15 +99,9 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8]) -> Object {
 
 /// Generate a key CURVE 25519 Key Pair
 pub fn generate_key_pair() -> Result<KeyPair, KmipError> {
-    let mut pk = [0_u8; PUBLIC_KEY_LENGTH];
-    let mut sk = [0_u8; SECRET_KEY_LENGTH];
-    if unsafe { sodium_bindings::crypto_kx_keypair(pk.as_mut_ptr(), sk.as_mut_ptr()) } != 0 {
-        return Err(KmipError::InvalidKmipObject(
-            ErrorReason::Invalid_Message,
-            "Failed to create a curve 25519 key pair".to_owned(),
-        ))
-    }
-    let public_key = to_curve_25519_256_public_key(&pk);
-    let private_key = to_curve_25519_256_private_key(&sk);
+    let mut rng = CsRng::from_entropy();
+    let key_pair = X25519KeyPair::new(&mut rng);
+    let public_key = to_curve_25519_256_public_key(&key_pair.public_key().to_bytes());
+    let private_key = to_curve_25519_256_private_key(&key_pair.private_key().to_bytes());
     Ok(KeyPair((private_key, public_key)))
 }

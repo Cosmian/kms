@@ -57,7 +57,7 @@ impl NewMasterKeyPairAction {
         let create_key_pair_response = client_connector
             .create_key_pair(create_key_pair)
             .await
-            .with_context(|| "Can't connect to the kms server")?;
+            .with_context(|| "failed creating a CoverCrypt Master Key Pair")?;
 
         let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
 

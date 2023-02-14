@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use openssl::x509::X509;
 use reqwest::{ClientBuilder, Url};
@@ -105,7 +106,7 @@ async fn microsoft_azure_attestation(
     user_report_data: Option<&[u8]>,
 ) -> Result<String, SgxError> {
     // Change base64 encoding
-    let raw_quote = base64::decode(b64quote)?;
+    let raw_quote = b64.decode(b64quote)?;
     let b64url_quote = base64_url::encode(&raw_quote);
 
     // Build the query to Azure RA API.
@@ -180,7 +181,7 @@ async fn verify_jws(token: &str, jwks: Value) -> Result<MicrosoftAttestation, Sg
     for jwk in jwks.iter() {
         if jwk.kid == kid {
             let x5c = &jwk.x5c[0];
-            let raw_cert = base64::decode(x5c)?;
+            let raw_cert = b64.decode(x5c)?;
             let x509 = X509::from_der(&raw_cert)?;
 
             let token_data = decode::<Value>(

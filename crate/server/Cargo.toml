@@ -6,12 +6,6 @@ edition = "2021"
 description = "Cosmian Key Management Service"
 
 [features]
-# Enable authentication (via auth0). If disabled, multi-user is not supported
-auth = []
-# Enable enclave mode
-enclave = []
-# Enable https in the KMS in order to encrypt query between client and the KMS. If disabled, use http
-https = []
 # Do not verify auth0 token expiration date and https ssl is auto-signed (to avoid to be banned by letsencrypt)
 insecure = []
 # The binary won't start after a date chosen at compile-time
@@ -19,15 +13,11 @@ timeout = ["actix-rt"]
 
 # Enable all the feature even insecure but timeout
 # To run in a test environment using a real domain name and enclaves without the rest api limit of let's encrypt
-staging = ["auth", "insecure", "https", "enclave"]
+staging = ["insecure"]
 
-# Enable all but timeout
-default = ["prod"]
-prod = ["auth", "https", "enclave"]
-
-# TODO: Remove that feature and use bundled-sqlcipher-vendored-openssl as default feature in `dependencies` for libsqlite3-sys
-# when sqlite >= 3.8 will be supported
-sqlcipher = ["libsqlite3-sys/bundled-sqlcipher-vendored-openssl"]
+# No features (insecure, timeout or staging)
+default = []
+prod = []
 
 [dependencies]
 # We use our own acme-lib. We have removed timeout set to ureq
@@ -41,37 +31,34 @@ actix-service = "2.0"
 actix-web = { version = "4.0", features = ["openssl"] }
 alcoholic_jwt = "1.0"
 async-trait = "0.1"
-base64 = "0.13"
+base64 = "0.21"
 bitflags = "1.2"
-clap = { version = "3.1", features = ["derive", "cargo", "env"] }
-cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt", rev = "a146568b" }
-cosmian_crypto_base = { version = "2.1", features = ["libsodium"] }
+clap = { version = "4.1.1", features = ["derive", "cargo", "env"] }
+cosmian_cover_crypt = "10.0.0"
+cosmian_crypto_core = "5.0"
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
+dirs = "4.0.0"
 dotenvy = "0.15.0"
-env_logger = "0.9"
+env_logger = "0.10"
 eyre = "0.6"
 futures = "0.3"
 hex = { version = "0.4", features = ["serde"] }
 http = "0.2"
 lazy_static = "1.4"
 libsgx = { path = "../libsgx" }
-libsqlite3-sys = { version = "0.24" }
+libsqlite3-sys = { version = "0.25.2", features = ["bundled-sqlcipher-vendored-openssl"] }
 mysql = "23"
-num-bigint = "0.4"
 once_cell = "1.9"
 openssl = { version = "0.10", features = ["vendored"] }
 rand_core = "0.6"
-rand_hc = "0.3"
 rawsql = "0.1.1"
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sha3 = "0.10"
-sqlx = { version = "0.6", features = ["json", "runtime-actix-native-tls", "mysql", "postgres", "sqlite"] } # Explicit import so that sqlcipher is enabled for sqlx (no pass-through feature available)
-# Should be the same version as used in SQLx
-# see: https://github.com/launchbadge/sqlx/issues/1436
-
+# this version of sqlx is overridden with our own fork in
+# the root ../Cargo.toml to accommodate libsqlite3-sys version 0.25.2
+sqlx = { version = "0.6.2", features = ["json", "runtime-actix-native-tls", "mysql", "postgres", "sqlite"] }
 thiserror = "1.0.20"
 time = { version = "0.3", features = ["local-offset", "formatting"] }
 tracing = "0.1"

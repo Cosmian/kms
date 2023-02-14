@@ -8,6 +8,10 @@ use thiserror::Error;
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug, Eq, PartialEq)]
 pub enum KmsError {
+    // When a conversion from/to bytes
+    #[error("Conversion Error: {0}")]
+    ConversionError(String),
+
     // When a user requests an endpoint which does not exist
     #[error("Not Supported route: {0}")]
     RouteNotFound(String),

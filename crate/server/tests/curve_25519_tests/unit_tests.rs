@@ -8,7 +8,7 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_server::{
-    config::{auth::AuthConfig, init_config, Config},
+    config::{auth0::Auth0Config, init_config, Config},
     core::crud::KmipServer,
     error::KmsError,
     result::KResult,
@@ -25,8 +25,8 @@ use cosmian_kms_utils::crypto::curve_25519::{
 #[actix_rt::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let config = Config {
-        auth: AuthConfig {
-            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
+        auth0: Auth0Config {
+            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };

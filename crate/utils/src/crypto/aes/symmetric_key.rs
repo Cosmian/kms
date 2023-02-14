@@ -1,6 +1,4 @@
-use cosmian_crypto_base::{
-    entropy::CsRng, symmetric_crypto::aes_256_gcm_pure::KeyLength, typenum::Unsigned,
-};
+use cosmian_crypto_core::CsRng;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -8,26 +6,37 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_types::{Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
     },
+    kmip_bail,
 };
 use rand_core::RngCore;
 
-//TODO: BGR: CsRng should be passed as a param and not instantiated on every call
-/// Generate an AES-256 bits symmetric key
-/// `cryptographic_length` is a value in bits
+use super::KEY_LENGTH;
+
+/// Create a symmetric key for the given algorithm
+/// `cryptographic_length` is a value in bits that should be a multiple of 8
 pub fn create_symmetric_key(
+    rng: &mut CsRng,
     cryptographic_algorithm: CryptographicAlgorithm,
     cryptographic_length: Option<usize>,
 ) -> Result<Object, KmipError> {
-    let mut rng = CsRng::new();
-    // this length is in bytes
-    let aes_key_len = cryptographic_length
-        .map(|v| v / 8)
-        .unwrap_or_else(KeyLength::to_usize);
+    let key_len = match cryptographic_length {
+        Some(bits) => {
+            if bits % 8 != 0 {
+                kmip_bail!(
+                    "The cryptographic length of the symmetric key must be a value in bits which \
+                     is a multiple of 8 "
+                )
+            }
+            bits / 8
+        }
+        None => KEY_LENGTH,
+    };
+
     // Generate symmetric key
-    let mut symmetric_key = vec![0; aes_key_len];
+    let mut symmetric_key = vec![0; key_len];
     rng.fill_bytes(&mut symmetric_key);
     // this length is in bits
-    let symmetric_key_len = aes_key_len as i32 * 8;
+    let symmetric_key_len = key_len as i32 * 8;
 
     Ok(Object::SymmetricKey {
         key_block: KeyBlock {

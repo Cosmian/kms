@@ -4,6 +4,7 @@ use std::{
     io::{BufReader, Read, Write},
 };
 
+use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use hex::encode;
 use openssl::{error::ErrorStack, sha::Sha256};
 use tracing::debug;
@@ -221,8 +222,8 @@ pub fn get_quote(user_report_data_slice: &[u8]) -> Result<String, SgxError> {
     }
 
     /* 2. read `quote` file */
-    debug!("Reading /dev/attestation/quote");
-    let mut reader = BufReader::new(File::open("/dev/attestation/quote")?);
+    debug!("Reading /dev/attestation/enclave_quote");
+    let mut reader = BufReader::new(File::open("/dev/attestation/enclave_quote")?);
     let mut buffer = Vec::with_capacity(SGX_QUOTE_MAX_SIZE);
     let size = reader.read_to_end(&mut buffer)?;
 
@@ -253,7 +254,7 @@ pub fn get_quote(user_report_data_slice: &[u8]) -> Result<String, SgxError> {
     }
 
     debug!("base64-encode quote");
-    Ok(base64::encode(&buffer))
+    Ok(b64.encode(&buffer))
 }
 
 #[cfg(test)]

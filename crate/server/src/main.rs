@@ -21,7 +21,8 @@ async fn main() -> eyre::Result<()> {
     if option_env!("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
-            "debug, actix_web=debug,hyper=info,reqwest=info,sqlx::query=error,mysql=debug",
+            "info,cosmian=debug,cosmian_kms_server=debug, \
+             actix_web=debug,sqlx::query=error,mysql=debug",
         );
     }
 
@@ -32,15 +33,10 @@ async fn main() -> eyre::Result<()> {
 
     // Instantiate a config object using the env variables and the args of the binary
     let conf = Config::parse();
+
     init_config(&conf).await?;
 
     info!("Enabled features:");
-    #[cfg(feature = "auth")]
-    info!("- Auth");
-    #[cfg(feature = "https")]
-    info!("- Https");
-    #[cfg(feature = "enclave")]
-    info!("- Enclave");
     #[cfg(feature = "timeout")]
     info!("- Timeout");
     #[cfg(feature = "insecure")]

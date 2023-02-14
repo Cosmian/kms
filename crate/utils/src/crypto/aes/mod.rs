@@ -1,13 +1,11 @@
 use std::{convert::TryFrom, sync::Mutex};
 
-use cosmian_crypto_base::{
-    entropy::CsRng,
+use cosmian_crypto_core::{
     symmetric_crypto::{
-        aes_256_gcm_pure::{
-            self, decrypt_in_place_detached, encrypt_in_place_detached, Key, Nonce,
-        },
-        nonce::NonceTrait,
+        aes_256_gcm_pure::{decrypt_in_place_detached, encrypt_in_place_detached},
+        nonce::{Nonce, NonceTrait},
     },
+    CsRng,
 };
 use cosmian_kmip::{
     error::KmipError,
@@ -17,14 +15,18 @@ use cosmian_kmip::{
         kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse, ErrorReason},
     },
 };
+use rand_core::SeedableRng;
 
+use crate::{DeCipher, EnCipher};
 mod symmetric_key;
 pub use symmetric_key::create_symmetric_key;
 
 #[cfg(test)]
 mod tests;
 
-use crate::{DeCipher, EnCipher};
+//TODO These should be re_exported by crypto core
+pub const KEY_LENGTH: usize = 32;
+pub const NONCE_LENGTH: usize = 12;
 
 pub struct AesGcmCipher {
     key_uid: String,
@@ -46,7 +48,7 @@ impl AesGcmCipher {
         Ok(AesGcmCipher {
             key_uid: uid.into(),
             symmetric_key_key_block: key_block,
-            rng: Mutex::new(CsRng::default()),
+            rng: Mutex::new(CsRng::from_entropy()),
         })
     }
 }
@@ -80,11 +82,10 @@ impl EnCipher for AesGcmCipher {
         };
 
         // recover key
-        let key = Key::try_from(self.symmetric_key_key_block.as_bytes()?)
-            .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
+        let key = self.symmetric_key_key_block.as_bytes()?;
 
         // supplied Nonce or fresh
-        let nonce = match request.iv_counter_nonce.as_ref() {
+        let nonce: Nonce<NONCE_LENGTH> = match request.iv_counter_nonce.as_ref() {
             Some(v) => Nonce::try_from(v.as_slice()).map_err(|e| {
                 KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string())
             })?,
@@ -106,9 +107,9 @@ impl EnCipher for AesGcmCipher {
 
         // now encrypt
         let tag = encrypt_in_place_detached(
-            &key,
+            key,
             &mut data,
-            &nonce,
+            nonce.as_bytes(),
             if ad.is_empty() { None } else { Some(&ad) },
         )
         .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
@@ -116,7 +117,7 @@ impl EnCipher for AesGcmCipher {
         Ok(EncryptResponse {
             unique_identifier: self.key_uid.clone(),
             data: Some(data.clone()),
-            iv_counter_nonce: Some(nonce.into()),
+            iv_counter_nonce: Some(nonce.as_bytes().to_vec()),
             correlation_value,
             authenticated_encryption_tag: Some(tag),
         })
@@ -148,8 +149,7 @@ impl DeCipher for AesGcmCipher {
         };
 
         // recover key
-        let key: Key = aes_256_gcm_pure::Key::try_from(self.symmetric_key_key_block.as_bytes()?)
-            .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
+        let key = self.symmetric_key_key_block.as_bytes()?;
 
         // recover tag
         let tag = request
@@ -164,7 +164,7 @@ impl DeCipher for AesGcmCipher {
                 "the nonce is mandatory for AES GCM".to_string(),
             )
         })?;
-        let nonce = aes_256_gcm_pure::Nonce::try_from(nonce_bytes.as_slice())
+        let nonce: Nonce<NONCE_LENGTH> = Nonce::try_from(nonce_bytes.as_slice())
             .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;
 
         // Additional data
@@ -178,10 +178,10 @@ impl DeCipher for AesGcmCipher {
         }
 
         decrypt_in_place_detached(
-            &key,
+            key,
             &mut bytes,
             &tag,
-            &nonce,
+            nonce.as_bytes(),
             if ad.is_empty() { None } else { Some(&ad) },
         )
         .map_err(|e| KmipError::KmipError(ErrorReason::Cryptographic_Failure, e.to_string()))?;

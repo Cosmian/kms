@@ -9,7 +9,7 @@ use actix_web::{
     App,
 };
 use cosmian_kmip::kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
-use cosmian_kms_server::{middlewares::auth::Auth, result::KResult, routes::endpoint, KMSServer};
+use cosmian_kms_server::{middlewares::auth::Auth0, result::KResult, routes::endpoint, KMSServer};
 use serde::{de::DeserializeOwned, Serialize};
 
 /// Test auth0 token (expired) -
@@ -26,7 +26,7 @@ pub async fn test_app()
 
     test::init_service(
         App::new()
-            .wrap(Auth)
+            .wrap(Auth0)
             .app_data(Data::new(kms_server.clone()))
             .service(endpoint::kmip)
             .service(endpoint::insert_access)
