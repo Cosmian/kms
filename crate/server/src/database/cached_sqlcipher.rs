@@ -33,7 +33,7 @@ pub(crate) struct CachedSqlCipher {
 }
 
 // We allow 100 opened connection
-const KMS_SQLITECACHE_SIZE: usize = 100;
+const KMS_SQLITE_CACHE_SIZE: usize = 100;
 
 impl CachedSqlCipher {
     /// Instantiate a new CachedSqlCipher
@@ -41,7 +41,7 @@ impl CachedSqlCipher {
     pub async fn instantiate(path: &Path) -> KResult<CachedSqlCipher> {
         Ok(CachedSqlCipher {
             path: path.to_path_buf(),
-            cache: KMSSqliteCache::new(KMS_SQLITECACHE_SIZE),
+            cache: KMSSqliteCache::new(KMS_SQLITE_CACHE_SIZE),
         })
     }
 
@@ -364,6 +364,7 @@ impl Database for CachedSqlCipher {
 
 #[cfg(test)]
 mod tests {
+    use cosmian_crypto_core::CsRng;
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -375,6 +376,7 @@ mod tests {
         crypto::aes::create_symmetric_key,
         types::{ExtraDatabaseParams, ObjectOperationTypes},
     };
+    use rand_core::SeedableRng;
     use tempfile::tempdir;
     use uuid::Uuid;
 
@@ -384,6 +386,7 @@ mod tests {
     #[actix_rt::test]
     #[ignore = "Waiting for SqlCipher crate upgrade to handle JSON operators"]
     pub async fn test_owner() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         log_init("info");
         let owner = "eyJhbGciOiJSUzI1Ni";
         let userid = "foo@example.org";
@@ -401,7 +404,7 @@ mod tests {
             key: String::from("password"),
         };
 
-        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(
@@ -645,6 +648,7 @@ mod tests {
     #[ignore = "Waiting for SqlCipher crate upgrade to handle JSON operators"]
     pub async fn test_json_access() -> KResult<()> {
         log_init("debug");
+        let mut rng = CsRng::from_entropy();
         let owner = "eyJhbGciOiJSUzI1Ni";
         let dir = tempdir()?;
         let file_path = dir.path().join("test_sqlite.db");
@@ -658,7 +662,7 @@ mod tests {
             key: String::from("password"),
         };
 
-        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(

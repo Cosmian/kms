@@ -1,6 +1,6 @@
 # Cosmian KMS
 
-It's the implementation of the **Key Management Services** provided by *Cosmian*.
+It's the implementation of the **Key Management Services** provided by _Cosmian_.
 
 It is broken down into several binaries:
 
@@ -10,7 +10,7 @@ It is broken down into several binaries:
 And also some libraries:
 
 - `cosmian_kms_client` to query the server
-- `cosmian_kms_utils` to create kmip requests for the crypto-systems designed by *Cosmian*
+- `cosmian_kms_utils` to create kmip requests for the crypto-systems designed by _Cosmian_
 - `cosmian_kmip` which is an implementation of the kmip standard
 - `cosmian_kms_pyo3` a KMS client in python.
 
@@ -24,7 +24,7 @@ You can build a docker containing the KMS server as follow:
 ```sh
 # Example with auth and https features
 docker build . --network=host \
-               --build-arg FEATURES="--features=auth,https" \
+               --build-arg  \
                -t kms
 ```
 
@@ -51,5 +51,5 @@ sudo su -
 su gitlab-runner
 docker run -d --restart always -p 3306:3306 --name mariadb -e MYSQL_DATABASE=kms -e MYSQL_ROOT_PASSWORD=kms mariadb:latest
 cd ~/data/
-curl -k --data-binary @manifest.json https://gitlab-runner-1.ovh.cosmian.com:8080/manifest
+curl -k --data-binary @manifest.json https://gitlab-runner-1.ovh.cosmian.com:8080/enclave_manifest
 ```

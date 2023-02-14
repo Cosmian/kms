@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use cosmian_kmip::{
     error::KmipError,
     kmip::{

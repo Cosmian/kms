@@ -47,3 +47,53 @@ impl From<cosmian_cover_crypt::Error> for KmipError {
         KmipError::KmipError(ErrorReason::Codec_Error, e.to_string())
     }
 }
+
+/// Return early with an error if a condition is not satisfied.
+///
+/// This macro is equivalent to `if !$cond { return Err(From::from($err)); }`.
+#[macro_export]
+macro_rules! kmip_ensure {
+    ($cond:expr, $msg:literal $(,)?) => {
+        if !$cond {
+            return ::core::result::Result::Err($crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, $msg.to_owned()));
+        }
+    };
+    ($cond:expr, $err:expr $(,)?) => {
+        if !$cond {
+            return ::core::result::Result::Err($err);
+        }
+    };
+    ($cond:expr, $fmt:expr, $($arg:tt)*) => {
+        if !$cond {
+            return ::core::result::Result::Err($crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, format!($fmt, $($arg)*)));
+        }
+    };
+}
+
+/// Construct a server error from a string.
+#[macro_export]
+macro_rules! kmip_error {
+    ($msg:literal $(,)?) => {
+        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, $msg.to_owned())
+    };
+    ($err:expr $(,)?) => ({
+        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, $err.to_string())
+    });
+    ($fmt:expr, $($arg:tt)*) => {
+        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, format!($fmt, $($arg)*))
+    };
+}
+
+/// Return early with an error if a condition is not satisfied.
+#[macro_export]
+macro_rules! kmip_bail {
+    ($msg:literal $(,)?) => {
+        return ::core::result::Result::Err($crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, $msg.to_owned()))
+    };
+    ($err:expr $(,)?) => {
+        return ::core::result::Result::Err($err)
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        return ::core::result::Result::Err($crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, format!($fmt, $($arg)*)))
+    };
+}

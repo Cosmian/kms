@@ -26,7 +26,8 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
-  - pymdownx.emoji
+  - pymdownx.emoji:
+      emoji_index: !!python/name:pymdownx.emoji.gemoji
   - pymdownx.details
   - pymdownx.arithmatex
   - pymdownx.tasklist
@@ -47,8 +48,7 @@ extra_javascript:
   - javascripts/extra.js
 nav:
   - Home: index.md
-  - SaaS: saas.md
-  - On premise: on_premise.md
+  - Installing and running: installing.md
   - API: api.md
   - Authorization: authorization.md
   - CLI: cli.md
@@ -57,3 +57,4 @@ nav:
       - Objects: kmip_2_1/objects.md
       - Attributes: kmip_2_1/attributes.md
       - Operations: kmip_2_1/operations.md
+  # - SaaS: saas.md

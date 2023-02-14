@@ -18,9 +18,9 @@ use tracing::{debug, error};
 
 use super::jwt::decode_jwt_new;
 
-pub struct Auth;
+pub struct Auth0;
 
-impl<S, B> Transform<S, ServiceRequest> for Auth
+impl<S, B> Transform<S, ServiceRequest> for Auth0
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,

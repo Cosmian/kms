@@ -19,10 +19,7 @@ script = '''
 set -ex
 cargo check --all-targets --no-default-features
 cargo check --all-targets --no-default-features --features insecure
-cargo check --all-targets --no-default-features --features https
-cargo check --all-targets --no-default-features --features auth
 cargo check --all-targets --no-default-features --features timeout
-cargo check --all-targets --no-default-features --features enclave
 cargo build --all-targets --all-features
 '''
 
@@ -43,7 +40,7 @@ description = "Run Rust tests"
 script = '''
 #!/bin/bash
 set -ex
-cargo test --workspace --features auth,insecure --no-default-features -- --nocapture
+cargo test --workspace --features insecure --no-default-features -- --nocapture
 cargo test --bins -- --nocapture
 '''
 
@@ -98,7 +95,7 @@ sudo docker run -d --rm --name my-edb -p3306:3306 -p8080:8080 -e OE_SIMULATION=1
 # inject manifest into EdgelessDB
 sleep 20
 pushd "$data_path"
-curl -k --data-binary @manifest.json https://localhost:8080/manifest
+curl -k --data-binary @manifest.json https://localhost:8080/enclave_manifest
 popd
 '''
 script.main = '''
@@ -107,15 +104,15 @@ set -ex
 export KMS_POSTGRES_URL="postgres://$TEST_USER:$TEST_PASSWORD@$TEST_HOST/$TEST_DB"
 # export KMS_MYSQL_URL="mysql://root:$TEST_PASSWORD@$TEST_HOST/$TEST_DB"
 export KMS_MYSQL_URL="mysql://root@$TEST_HOST/$TEST_DB"
-export KMS_USER_CERT_PATH="$(pwd)/$data_path/cert.p12"
+export KMS_MYSQL_USER_CERT_FILE="$(pwd)/$data_path/cert.p12"
 export KMS_DELEGATED_AUTHORITY_DOMAIN="console-dev.eu.auth0.com"
-export KMS_PUBLIC_PATH="data/public"
-export KMS_SHARED_PATH="data/shared"
-export KMS_PRIVATE_PATH="data/private"
+export KMS_ENCLAVE_DIR_PATH="data/public"
+export KMS_SQLITE_PATH="data/shared"
+export KMS_CERTBOT_SSL_PATH="data/private"
 
 cargo build --bin cosmian_kms_cli
 
-cargo test --workspace --features auth,insecure --no-default-features -- --nocapture
+cargo test --workspace --features insecure --no-default-features -- --nocapture
 cargo test --bins -- --nocapture
 '''
 script.post = '''

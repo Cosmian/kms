@@ -1,104 +1,202 @@
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    time::Duration,
+};
+
+use actix_cors::Cors;
+use actix_web::{
+    middleware::Condition,
+    rt::{spawn, time::sleep},
+    web::{Data, JsonConfig, PayloadConfig},
+    App, HttpServer,
+};
+use config::SharedConfig;
+use libsgx::utils::is_running_inside_enclave;
+use middlewares::auth::Auth0;
+use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod};
+use result::KResult;
+use tracing::{debug, error, info};
+
+use crate::{
+    core::{certbot::Certbot, KMS},
+    error::KmsError,
+    routes::endpoint,
+};
+
 pub mod config;
 pub mod core;
 pub mod database;
 pub mod error;
-
-#[cfg(feature = "auth")]
+pub mod log_utils;
 pub mod middlewares;
 pub mod result;
 pub mod routes;
-
-use std::sync::Arc;
-
-#[cfg(feature = "auth")]
-use middlewares::auth::Auth;
-#[cfg(feature = "https")]
-use {
-    crate::core::certbot::Certbot,
-    actix_files as fs,
-    actix_web::rt::{spawn, time::sleep},
-    config::certbot,
-    openssl::ssl::{SslAcceptor, SslMethod},
-    std::sync::{
-        atomic::{AtomicBool, Ordering},
-        Mutex,
-    },
-    std::time::Duration,
-    tracing::{debug, error, info},
-};
-
-use crate::core::KMS;
-pub mod log_utils;
-
-use actix_cors::Cors;
-use actix_web::{
-    web::{Data, JsonConfig, PayloadConfig},
-    App, HttpServer,
-};
-use config::kms_url;
 pub use database::KMSServer;
-use openssl::ssl::SslAcceptorBuilder;
 
-use crate::routes::endpoint;
-
-/// A factory to configure the server
+/**
+ * This function prepares a server for the application. It creates an `HttpServer` instance,
+ * configures the routes for the application, and sets the request timeout. The server can be
+ * configured to use OpenSSL for SSL encryption by providing an `SslAcceptorBuilder`.
+ *
+ * # Arguments
+ *
+ * * `kms_server`: A shared reference to the `KMS` instance to be used by the application.
+ * * `builder`: An optional `SslAcceptorBuilder` to configure the SSL encryption for the server.
+ *
+ * # Returns
+ *
+ * Returns a `Result` type that contains a `Server` instance if successful, or an error if
+ * something went wrong.
+ *
+ */
 pub fn prepare_server(
     kms_server: Arc<KMS>,
     builder: Option<SslAcceptorBuilder>,
-) -> eyre::Result<actix_web::dev::Server> {
+) -> KResult<actix_web::dev::Server> {
+    // Determine if Auth0 should be used for authentication.
+    let use_auth0 = SharedConfig::auth0_authority_domain().is_some();
+    // Determine if the application is running inside an enclave.
+    let is_running_inside_enclave = is_running_inside_enclave();
+    // Determine if the application is using an encrypted SQLite database.
+    let is_using_sqlite_enc = matches!(SharedConfig::db_params(), config::DbParams::SqliteEnc(_));
+
+    // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
+        // Create an `App` instance and configure the routes.
         let app = App::new()
-            .wrap(Cors::permissive())
-            .app_data(Data::new(kms_server.clone()))
-            .app_data(PayloadConfig::new(10_000_000_000))
-            .app_data(JsonConfig::default().limit(10_000_000_000))
+            .wrap(Cors::permissive()) // Enable CORS for the application.
+            .wrap(Condition::new(use_auth0, Auth0)) // Use Auth0 for authentication if necessary.
+            .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
+            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
+            .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
             .service(endpoint::kmip)
             .service(endpoint::list_owned_objects)
             .service(endpoint::list_shared_objects)
             .service(endpoint::list_accesses)
             .service(endpoint::insert_access)
             .service(endpoint::delete_access)
-            .service(endpoint::add_new_database)
-            .service(endpoint::get_version);
+            .service(endpoint::get_version)
+            .service(endpoint::get_certificate);
 
-        #[cfg(feature = "auth")]
-        let app = app.wrap(Auth);
+        let app = if is_using_sqlite_enc {
+            app.service(endpoint::add_new_database)
+        } else {
+            app
+        };
 
-        #[cfg(feature = "enclave")]
-        let app = app.service(endpoint::get_quote);
-        #[cfg(feature = "https")]
-        let app = app.service(endpoint::get_certificates);
-        #[cfg(feature = "enclave")]
-        let app = app.service(endpoint::get_manifest);
-
-        app
+        if is_running_inside_enclave {
+            app.service(endpoint::get_enclave_quote)
+                .service(endpoint::get_enclave_manifest)
+                .service(endpoint::get_enclave_public_key)
+        } else {
+            app
+        }
     })
     .client_request_timeout(std::time::Duration::from_secs(10));
 
     Ok(match builder {
-        Some(b) => server.bind_openssl(kms_url(), b)?.run(),
-        _ => server.bind(kms_url())?.run(),
+        Some(b) => server.bind_openssl(SharedConfig::hostname_port(), b)?.run(),
+        _ => server.bind(SharedConfig::hostname_port())?.run(),
     })
 }
 
-#[cfg(not(feature = "https"))]
-// Start the kms server
-pub async fn start_kms_server() -> eyre::Result<()> {
+/// Start the KMS server using the specified configuration
+///
+/// This function will start either a plain HTTP, an HTTPS with PKCS#12, or an HTTPS with certbot server
+/// depending on the config settings.
+///
+/// # Arguments
+///
+/// * `conf` - A reference to the Config struct that contains the server settings
+///
+/// # Errors
+///
+/// This function returns an error if any of the sub-functions fail to start the server
+pub async fn start_kms_server() -> KResult<()> {
+    if SharedConfig::certbot().is_some() {
+        // Start an HTTPS server with certbot
+        start_certbot_https_kms_server().await
+    } else if SharedConfig::server_pkcs12().is_some() {
+        // Start an HTTPS server with PKCS#12
+        start_https_kms_server().await
+    } else {
+        // Start a plain HTTP server
+        start_plain_http_kms_server().await
+    }
+}
+
+/// Start a plain HTTP KMS server
+///
+/// This function will instantiate and prepare the KMS server and run it on a plain HTTP connection
+///
+/// # Arguments
+///
+/// * `conf` - A reference to the Config struct that contains the server settings
+///
+/// # Errors
+///
+/// This function returns an error if:
+/// - The KMS server cannot be instantiated or prepared
+/// - The server fails to run
+async fn start_plain_http_kms_server() -> KResult<()> {
+    // Instantiate and prepare the KMS server
     let kms_server = Arc::new(KMSServer::instantiate().await?);
     let server = prepare_server(kms_server, None)?;
+
+    // Run the server and return the result
     server.await.map_err(Into::into)
 }
 
-#[cfg(feature = "https")]
+/// Start an HTTPS KMS server using a PKCS#12 certificate file
+///
+/// # Arguments
+///
+/// * `conf` - A reference to the Config struct that contains the server settings
+///
+/// # Errors
+///
+/// This function returns an error if:
+/// - The path to the PKCS#12 certificate file is not provided in the config
+/// - The file cannot be opened or read
+/// - The file is not a valid PKCS#12 format or the password is incorrect
+/// - The SSL acceptor cannot be created or configured with the certificate and key
+/// - The KMS server cannot be instantiated or prepared
+/// - The server fails to run
+async fn start_https_kms_server() -> KResult<()> {
+    let p12 = SharedConfig::server_pkcs12()
+        .as_ref()
+        .ok_or_else(|| eyre::eyre!("http/s: a PKCS#12 file must be provided"))?;
+
+    // Create and configure an SSL acceptor with the certificate and key
+    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
+    builder.set_private_key(&p12.pkey)?;
+    builder.set_certificate(&p12.cert)?;
+    if let Some(chain) = &p12.chain {
+        for x in chain {
+            builder.add_extra_chain_cert(x.to_owned())?;
+        }
+    }
+
+    // Instantiate and prepare the KMS server
+    let kms_server = Arc::new(KMSServer::instantiate().await?);
+    let server = prepare_server(kms_server, Some(builder))?;
+
+    // Run the server and return the result
+    server.await.map_err(Into::into)
+}
+
 /// Start and https server with the ability to renew its certificates
-async fn start_https(cert: &Arc<Mutex<Certbot>>) -> eyre::Result<()> {
+async fn start_auto_renew_https(certbot: &Arc<Mutex<Certbot>>) -> KResult<()> {
     let kms_server = Arc::new(KMSServer::instantiate().await?);
 
     // The loop is designed to restart the server in case it stops.
     // It stops when we renew the certificates
     loop {
         // Define an HTTPS server
-        let (pk, x509) = cert
+        let (pk, x509) = certbot
             .lock()
             .expect("can't lock certificate mutex")
             .get_cert()?;
@@ -116,7 +214,7 @@ async fn start_https(cert: &Arc<Mutex<Certbot>>) -> eyre::Result<()> {
         let restart = Arc::new(AtomicBool::new(false));
         let restart_me = Arc::clone(&restart);
         let srv = server.handle();
-        let cert_copy = Arc::clone(cert);
+        let cert_copy = Arc::clone(certbot);
 
         // Define and start the thread renewing the certificate
         spawn(async move {
@@ -168,7 +266,7 @@ async fn start_https(cert: &Arc<Mutex<Certbot>>) -> eyre::Result<()> {
             // If we reach that point, we don't want to restart.
             // Contact the administrator
             error!("Can't restart the HTTPS server (no valid certificate)...");
-            eyre::bail!("Can't restart the HTTPS server (no valid certificate)...")
+            kms_bail!("Can't restart the HTTPS server (no valid certificate)...")
 
             // Note: we could decide another behavior such as:
             // Let the server up. Then the web browser or the wget will raise a security error the user can ignore
@@ -177,19 +275,26 @@ async fn start_https(cert: &Arc<Mutex<Certbot>>) -> eyre::Result<()> {
     }
 }
 
-#[cfg(feature = "https")]
-pub async fn start_kms_server() -> eyre::Result<()> {
+async fn start_certbot_https_kms_server() -> KResult<()> {
     // Before starting any servers, check the status of our SSL certificates
-    let cert = certbot();
+    let certbot = SharedConfig::certbot().clone().ok_or_else(|| {
+        KmsError::ServerError("trying to start a TLS server but certbot is not used !".to_string())
+    })?;
 
     debug!("Initializing certbot");
     // Recover the previous certificate if exist
-    cert.lock().expect("can't lock certificate mutex").init()?;
+    certbot
+        .lock()
+        .expect("can't lock certificate mutex")
+        .init()?;
 
     debug!("Checking certificates...");
-    let mut has_valid_cert = cert.lock().expect("can't lock certificate mutex").check();
+    let mut has_valid_cert = certbot
+        .lock()
+        .expect("can't lock certificate mutex")
+        .check();
 
-    let http_root_path = cert
+    let http_root_path = certbot
         .lock()
         .expect("can't lock certificate mutex")
         .http_root_path
@@ -201,7 +306,7 @@ pub async fn start_kms_server() -> eyre::Result<()> {
 
         // Start a HTTP server, to negotiate a certificate
         let server = HttpServer::new(move || {
-            App::new().service(fs::Files::new("/", &http_root_path).use_hidden_files())
+            App::new().service(actix_files::Files::new("/", &http_root_path).use_hidden_files())
         })
         .workers(1)
         .bind(("0.0.0.0", 80))?
@@ -211,7 +316,7 @@ pub async fn start_kms_server() -> eyre::Result<()> {
         let succeed = Arc::new(AtomicBool::new(false));
         let succeed_me = Arc::clone(&succeed);
         let srv = server.handle();
-        let cert_copy = Arc::clone(cert);
+        let cert_copy = Arc::clone(&certbot);
 
         spawn(async move {
             // Generate the certificate in another thread
@@ -239,7 +344,10 @@ pub async fn start_kms_server() -> eyre::Result<()> {
         // Note: cert_copy is a ref to cert. So `cert.certificates` contains the new certificates
         // Therefore, we do not need to call `cert.init()`. That way, we avoid several acme useless queries
         has_valid_cert = succeed.load(Ordering::Relaxed)
-            && cert.lock().expect("can't lock certificate mutex").check();
+            && certbot
+                .lock()
+                .expect("can't lock certificate mutex")
+                .check();
 
         info!("Stop the HTTP server");
     }
@@ -247,10 +355,10 @@ pub async fn start_kms_server() -> eyre::Result<()> {
     if has_valid_cert {
         // Use it and start SSL Server
         info!("Certificate is valid");
-        start_https(cert).await?
+        start_auto_renew_https(&certbot).await?
     } else {
         error!("Abort program, failed to get a valid certificate");
-        eyre::bail!("Abort program, failed to get a valid certificate")
+        kms_bail!("Abort program, failed to get a valid certificate")
     }
 
     Ok(())

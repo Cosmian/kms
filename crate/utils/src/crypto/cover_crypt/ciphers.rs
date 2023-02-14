@@ -84,12 +84,13 @@ impl EnCipher for CoverCryptHybridCipher {
             .as_slice()
             .try_into()?;
 
-        let public_key = PublicKey::try_from_bytes(&self.public_key_bytes).map_err(|e| {
-            KmipError::KmipError(
-                ErrorReason::Codec_Error,
-                format!("cover crypt encipher: failed recovering the public key: {e}"),
-            )
-        })?;
+        let public_key =
+            PublicKey::try_from_bytes(self.public_key_bytes.as_slice()).map_err(|e| {
+                KmipError::KmipError(
+                    ErrorReason::Codec_Error,
+                    format!("cover crypt encipher: failed recovering the public key: {e}"),
+                )
+            })?;
 
         let (symmetric_key, encrypted_header) = EncryptedHeader::generate(
             &self.cover_crypt,

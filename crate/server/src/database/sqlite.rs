@@ -654,6 +654,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use cosmian_crypto_core::CsRng;
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -662,6 +663,7 @@ mod tests {
         },
     };
     use cosmian_kms_utils::{crypto::aes::create_symmetric_key, types::ObjectOperationTypes};
+    use rand_core::SeedableRng;
     use tempfile::tempdir;
     use uuid::Uuid;
 
@@ -671,6 +673,7 @@ mod tests {
     #[actix_rt::test]
     pub async fn test_owner() -> KResult<()> {
         log_init("info");
+        let mut rng = CsRng::from_entropy();
         let owner = "eyJhbGciOiJSUzI1Ni";
         let userid = "foo@example.org";
         let userid2 = "bar@example.org";
@@ -683,7 +686,7 @@ mod tests {
 
         let db = SqlitePool::instantiate(&file_path).await?;
 
-        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -910,6 +913,7 @@ mod tests {
     #[cfg_attr(feature = "sqlcipher", ignore)]
     pub async fn test_json_access() -> KResult<()> {
         log_init("debug");
+        let mut rng = CsRng::from_entropy();
         let owner = "eyJhbGciOiJSUzI1Ni";
         let dir = tempdir()?;
         let file_path = dir.path().join("test_sqlite.db");
@@ -921,7 +925,7 @@ mod tests {
 
         //
 
-        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -1069,6 +1073,7 @@ mod tests {
     #[actix_rt::test]
     #[cfg_attr(feature = "sqlcipher", ignore)]
     pub async fn test_find_attrs() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let owner = "eyJhbGciOiJSUzI1Ni";
         let dir = tempdir()?;
         let file_path = dir.path().join("test_sqlite.db");
@@ -1080,7 +1085,7 @@ mod tests {
 
         //
 
-        let mut symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         // Define the link vector

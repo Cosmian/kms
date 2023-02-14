@@ -1,11 +1,22 @@
 {
   "cSpell.words": [
+    "canonicalize",
+    "certbot",
+    "Certbot",
     "cosmian",
     "Cosmian",
     "gpsw",
     "Gpsw",
+    "jwks",
     "kmip",
     "KMIP",
+    "mysql",
+    "pkcs",
+    "postgres",
+    "postgresql",
+    "sqlcipher",
+    "sqlite",
+    "Sqlite",
     "structopt",
     "TFHE",
     "ttlv"
@@ -14,8 +25,19 @@
     "editor.formatOnSave": false,
     "editor.tabSize": 4
   },
+  "[markdown]": {
+    "editor.formatOnSave": false,
+    "editor.tabSize": 4
+  },
   "[html]": {
     "editor.formatOnSave": false
   },
-  "python.analysis.typeCheckingMode": "basic"
+  "python.analysis.typeCheckingMode": "basic",
+  "prettier.proseWrap": "preserve",
+  "grammarly.files.include": [
+    "**/readme.md",
+    "**/README.md",
+    "**/*.txt",
+    "**/*.md"
+  ]
 }

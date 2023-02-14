@@ -3,10 +3,10 @@ name = "libsgx"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/enclave_manifest.html
 
 [dependencies]
-base64 = "0.13"
+base64 = "0.21"
 base64-url = "1.4"
 hex = "0.4"
 jsonwebtoken = { version = "8.1", features = ["use_pem"] }

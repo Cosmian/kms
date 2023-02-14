@@ -1,7 +1,7 @@
 use alcoholic_jwt::token_kid;
 use serde::{Deserialize, Serialize};
 
-use crate::{config, error::KmsError, kms_ensure, result::KResult};
+use crate::{config::SharedConfig, error::KmsError, kms_ensure, result::KResult};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserClaim {
@@ -29,8 +29,12 @@ pub(crate) fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> 
     );
     tracing::trace!("token {}", &token);
 
-    let authority = config::delegated_authority_domain();
-    let jwks = config::jwks();
+    let authority = SharedConfig::auth0_authority_domain().ok_or_else(|| {
+        KmsError::ServerError("decode JWT token requested but Auth0 not enabled".to_string())
+    })?;
+    let jwks = SharedConfig::jwks().ok_or_else(|| {
+        KmsError::ServerError("decode JWT token requested but Auth0 not enabled".to_string())
+    })?;
 
     let validations = vec![
         alcoholic_jwt::Validation::Issuer(format!("https://{authority}/")),
