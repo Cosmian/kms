@@ -35,7 +35,7 @@ pub struct AesGcmCipher {
 }
 
 impl AesGcmCipher {
-    pub fn instantiate(uid: &str, symmetric_key: &Object) -> Result<AesGcmCipher, KmipError> {
+    pub fn instantiate(uid: &str, symmetric_key: &Object) -> Result<Self, KmipError> {
         let key_block = match symmetric_key {
             Object::SymmetricKey { key_block } => key_block.clone(),
             _ => {
@@ -45,7 +45,7 @@ impl AesGcmCipher {
                 ))
             }
         };
-        Ok(AesGcmCipher {
+        Ok(Self {
             key_uid: uid.into(),
             symmetric_key_key_block: key_block,
             rng: Mutex::new(CsRng::from_entropy()),

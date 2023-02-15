@@ -27,6 +27,7 @@ pub const Q_LENGTH_BITS: i32 = X25519_PRIVATE_KEY_LENGTH as i32;
 
 /// convert to a curve 25519 256 bits KMIP Public Key
 /// no check performed
+#[must_use]
 pub fn to_curve_25519_256_public_key(bytes: &[u8]) -> Object {
     Object::PublicKey {
         key_block: KeyBlock {
@@ -63,6 +64,7 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8]) -> Object {
 
 /// convert to a curve 25519 256 bits KMIP Private Key
 /// no check performed
+#[must_use]
 pub fn to_curve_25519_256_private_key(bytes: &[u8]) -> Object {
     Object::PrivateKey {
         key_block: KeyBlock {

@@ -33,7 +33,7 @@ pub struct EnclaveConfig {
 
 impl Default for EnclaveConfig {
     fn default() -> Self {
-        EnclaveConfig {
+        Self {
             enclave_dir_path: PathBuf::from("./enclave"),
             manifest_filename: PathBuf::from("kms.manifest.sgx"),
             public_key_filename: PathBuf::from("mr-signer-key.pub"),
@@ -44,7 +44,7 @@ impl Default for EnclaveConfig {
 impl EnclaveConfig {
     pub fn init(&self, workspace: &WorkspaceConfig) -> eyre::Result<EnclaveParams> {
         if !is_running_inside_enclave() {
-            let default = EnclaveConfig::default();
+            let default = Self::default();
             // these paths are never used nor created
             return Ok(EnclaveParams {
                 manifest_path: default.enclave_dir_path.join(default.manifest_filename),

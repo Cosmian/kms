@@ -12,6 +12,7 @@ use cosmian_kmip::{
 
 use crate::crypto::key_wrapping;
 
+#[must_use]
 pub fn tag_from_object(object: &Object) -> String {
     // this is required to match the Java library behavior which expects
     // the first tag to describe the type of object and not simply equal 'Object'

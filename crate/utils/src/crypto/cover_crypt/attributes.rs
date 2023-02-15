@@ -29,7 +29,7 @@ pub fn policy_as_vendor_attribute(policy: &Policy) -> Result<VendorAttribute, Km
     })
 }
 
-/// Extract an CoverCrypt policy from attributes
+/// Extract an `CoverCrypt` policy from attributes
 pub fn policy_from_attributes(attributes: &Attributes) -> Result<Policy, KmipError> {
     if let Some(bytes) =
         attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY)
@@ -48,7 +48,7 @@ pub fn policy_from_attributes(attributes: &Attributes) -> Result<Policy, KmipErr
     }
 }
 
-/// Add or replace an CoverCrypt policy in attributes in place
+/// Add or replace an `CoverCrypt` policy in attributes in place
 pub fn upsert_policy_in_attributes(
     attributes: &mut Attributes,
     policy: &Policy,
@@ -70,7 +70,7 @@ pub fn access_policy_as_vendor_attribute(
     })
 }
 
-/// Convert from CoverCrypt policy attributes to vendor attributes
+/// Convert from `CoverCrypt` policy attributes to vendor attributes
 pub fn attributes_as_vendor_attribute(
     attributes: Vec<cosmian_cover_crypt::abe_policy::Attribute>,
 ) -> Result<VendorAttribute, KmipError> {
@@ -86,7 +86,7 @@ pub fn attributes_as_vendor_attribute(
     })
 }
 
-/// Convert from vendor attributes to CoverCrypt policy attributes
+/// Convert from vendor attributes to `CoverCrypt` policy attributes
 pub fn attributes_from_attributes(
     attributes: &Attributes,
 ) -> Result<Vec<cosmian_cover_crypt::abe_policy::Attribute>, KmipError> {
@@ -122,7 +122,7 @@ pub fn attributes_from_attributes(
     }
 }
 
-/// Extract an CoverCrypt Access policy from attributes
+/// Extract an `CoverCrypt` Access policy from attributes
 pub fn access_policy_from_attributes(attributes: &Attributes) -> Result<String, KmipError> {
     if let Some(bytes) =
         attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY)
@@ -154,7 +154,8 @@ pub fn upsert_access_policy_in_attributes(
     Ok(())
 }
 
-/// Convert an cover_crypt master private key id to a vendor attribute
+/// Convert an `cover_crypt` master private key id to a vendor attribute
+#[must_use]
 pub fn master_private_key_id_as_vendor_attribute(
     cover_crypt_master_private_key_id: &str,
 ) -> VendorAttribute {
@@ -185,7 +186,8 @@ pub fn master_private_key_id_from_attributes(attributes: &Attributes) -> Result<
     }
 }
 
-/// Convert an cover_crypt master public key id to a vendor attribute
+/// Convert an `cover_crypt` master public key id to a vendor attribute
+#[must_use]
 pub fn master_public_key_id_to_vendor_attribute(
     cover_crypt_master_public_key_id: &str,
 ) -> VendorAttribute {
@@ -215,7 +217,8 @@ pub fn master_public_key_id_from_attributes(attributes: &Attributes) -> Result<&
     }
 }
 
-/// This UID is used to build the asymmetric CoverCrypt Header object
+/// This UID is used to build the asymmetric `CoverCrypt` Header object
+#[must_use]
 pub fn header_uid_to_vendor_attribute(uid: &[u8]) -> VendorAttribute {
     VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),

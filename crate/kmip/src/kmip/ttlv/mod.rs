@@ -42,8 +42,8 @@ impl Serialize for TTLVEnumeration {
         S: Serializer,
     {
         match &self {
-            TTLVEnumeration::Integer(i) => serializer.serialize_i32(*i),
-            TTLVEnumeration::Name(s) => serializer.serialize_str(s),
+            Self::Integer(i) => serializer.serialize_i32(*i),
+            Self::Name(s) => serializer.serialize_str(s),
         }
     }
 }
@@ -115,7 +115,7 @@ pub enum TTLValue {
 
 impl Default for TTLValue {
     fn default() -> Self {
-        TTLValue::TextString(String::default())
+        Self::TextString(String::default())
     }
 }
 

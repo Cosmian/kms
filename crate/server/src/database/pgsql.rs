@@ -22,12 +22,12 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub(crate) struct Pgsql {
+pub struct Pgsql {
     pool: Pool<Postgres>,
 }
 
 impl Pgsql {
-    pub async fn instantiate(connection_url: &str) -> KResult<Pgsql> {
+    pub async fn instantiate(connection_url: &str) -> KResult<Self> {
         let mut options = PgConnectOptions::from_str(connection_url)?;
         // disable logging of each query
         options.disable_statement_logging();
@@ -53,7 +53,7 @@ impl Pgsql {
         .execute(&pool)
         .await?;
 
-        Ok(Pgsql { pool })
+        Ok(Self { pool })
     }
 
     #[cfg(test)]
@@ -521,7 +521,7 @@ impl Database for Pgsql {
         let mut res = vec![];
         let mut tx = self.pool.begin().await?;
         for (uid, object) in objects {
-            match create_(uid.to_owned(), owner, object, &mut tx).await {
+            match create_(uid.clone(), owner, object, &mut tx).await {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;

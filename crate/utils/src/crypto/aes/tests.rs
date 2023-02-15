@@ -33,12 +33,12 @@ pub fn test_aes() {
                 initial_counter_value: Some(42),
                 ..Default::default()
             }),
-            data: Some(data.to_vec()),
+            data: Some(data.clone()),
             iv_counter_nonce: Some(nonce.as_bytes().to_vec()),
             correlation_value: None,
             init_indicator: None,
             final_indicator: None,
-            authenticated_encryption_additional_data: Some(uid.to_vec()),
+            authenticated_encryption_additional_data: Some(uid.clone()),
         })
         .unwrap();
     // decrypt
@@ -54,10 +54,10 @@ pub fn test_aes() {
             iv_counter_nonce: Some(enc_res.iv_counter_nonce.unwrap()),
             init_indicator: None,
             final_indicator: None,
-            authenticated_encryption_additional_data: Some(uid.to_vec()),
+            authenticated_encryption_additional_data: Some(uid.clone()),
             authenticated_encryption_tag: Some(enc_res.authenticated_encryption_tag.unwrap()),
         })
         .unwrap();
 
-    assert_eq!(&data.to_vec(), &dec_res.data.unwrap());
+    assert_eq!(&data.clone(), &dec_res.data.unwrap());
 }

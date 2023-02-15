@@ -175,7 +175,7 @@ pub struct CryptographicDomainParameters {
 
 impl Default for CryptographicDomainParameters {
     fn default() -> Self {
-        CryptographicDomainParameters {
+        Self {
             q_length: Some(256),
             recommended_curve: Some(RecommendedCurve::default()),
         }
@@ -259,7 +259,7 @@ pub enum RecommendedCurve {
 
 impl Default for RecommendedCurve {
     fn default() -> Self {
-        RecommendedCurve::CURVE25519
+        Self::CURVE25519
     }
 }
 
@@ -614,7 +614,7 @@ pub enum LinkedObjectIdentifier {
     Enumeration(UniqueIdentifierEnumeration),
     /// Zero based nth Unique Identifier in the response. If
     /// negative the count is backwards from the beginning
-    /// of the current operation’s batch item.
+    /// of the current operation's batch item.
     Index(i64),
 }
 
@@ -632,13 +632,13 @@ pub enum RevocationReasonEnumeration {
 }
 
 /// The Revocation Reason attribute is a structure used to indicate why the
-/// Managed Cryptographic Object was revoked (e.g., “compromised”, “expired”,
-/// “no longer used”, etc.). This attribute is only set by the server as a part
+/// Managed Cryptographic Object was revoked (e.g., "compromised", "expired",
+/// "no longer used", etc.). This attribute is only set by the server as a part
 /// of the Revoke Operation.
 /// The Revocation Message is an OPTIONAL field that is used exclusively for
 /// audit trail/logging purposes and MAY contain additional information about
-/// why the object was revoked (e.g., “Laptop stolen”, or “Machine
-/// decommissioned”).
+/// why the object was revoked (e.g., "Laptop stolen", or "Machine
+/// decommissioned").
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum RevocationReason {
@@ -686,14 +686,14 @@ pub struct Link {
 /// and Attribute Name are text-strings that are used to identify the attribute.
 /// The Attribute Value is either a primitive data type or structured object,
 /// depending on the attribute.
-/// Vendor identification values “x” and “y” are reserved for KMIP v2.0 and
+/// Vendor identification values "x" and "y" are reserved for KMIP v2.0 and
 /// later implementations referencing KMIP v1.x Custom Attributes.
 ///
-/// Vendor Attributes created by the client with Vendor Identification “x”
+/// Vendor Attributes created by the client with Vendor Identification "x"
 /// are not created (provided during object creation), set, added, adjusted,
 /// modified or deleted by the server.
 ///
-/// Vendor Attributes created by the server with Vendor Identification “y”
+/// Vendor Attributes created by the server with Vendor Identification "y"
 /// are not created (provided during object creation), set, added, adjusted,
 /// modified or deleted by the client.
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
@@ -779,7 +779,7 @@ pub struct Attributes {
     /// Format Type MAY be requested by the client if the cryptographic material
     /// is produced by the server (i.e., Create, Create Key Pair, Create
     /// Split Key, Re-key, Re-key Key Pair, Derive Key) on the
-    /// client’s behalf. The server SHALL comply with the client’s requested
+    /// client's behalf. The server SHALL comply with the client's requested
     /// format or SHALL fail the request. When the server calculates a
     /// Digest for the object, it SHALL compute the digest on the data in the
     /// assigned Key Format Type, as well as a digest in the default KMIP Key
@@ -821,13 +821,13 @@ pub struct Attributes {
     /// receiving a Managed Object attribute. The Vendor Identification and
     /// Attribute Name are text-strings that are used to identify the attribute.
     /// The Attribute Value is either a primitive data type or structured
-    /// object, depending on the attribute. Vendor identification values “x”
-    /// and “y” are reserved for KMIP v2.0 and later implementations referencing
+    /// object, depending on the attribute. Vendor identification values "x"
+    /// and "y" are reserved for KMIP v2.0 and later implementations referencing
     /// KMIP v1.x Custom Attributes.
-    /// Vendor Attributes created by the client with Vendor Identification “x”
+    /// Vendor Attributes created by the client with Vendor Identification "x"
     /// are not created (provided during object creation), set, added,
     /// adjusted, modified or deleted by the server. Vendor Attributes
-    /// created by the server with Vendor Identification “y” are not created
+    /// created by the server with Vendor Identification "y" are not created
     /// (provided during object creation), set, added, adjusted, modified or
     /// deleted by the client.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -837,7 +837,7 @@ pub struct Attributes {
 impl Attributes {
     #[must_use]
     pub fn new(object_type: ObjectType) -> Self {
-        Attributes {
+        Self {
             activation_date: None,
             cryptographic_algorithm: None,
             cryptographic_length: None,
@@ -885,13 +885,14 @@ impl Attributes {
         }
     }
 
+    #[must_use]
     pub fn get_parent_id(&self) -> Option<String> {
         if let Some(links) = &self.link {
             links
                 .iter()
                 .find(|&l| l.link_type == LinkType::ParentLink)
                 .and_then(|l| match &l.linked_object_identifier {
-                    LinkedObjectIdentifier::TextString(s) => Some(s.to_owned()),
+                    LinkedObjectIdentifier::TextString(s) => Some(s.clone()),
                     LinkedObjectIdentifier::Enumeration(_e) => None,
                     LinkedObjectIdentifier::Index(i) => Some(i.to_string()),
                 })

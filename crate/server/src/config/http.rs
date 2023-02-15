@@ -26,11 +26,11 @@ pub struct HTTPConfig {
 
 impl Default for HTTPConfig {
     fn default() -> Self {
-        HTTPConfig {
+        Self {
             port: 9998,
             hostname: "0.0.0.0".to_string(),
             https_p12_file: None,
-            https_p12_password: "".to_string(),
+            https_p12_password: String::new(),
         }
     }
 }

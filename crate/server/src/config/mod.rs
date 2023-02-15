@@ -238,7 +238,7 @@ pub async fn init_config(conf: &Config) -> eyre::Result<()> {
 
     let shared_conf = SharedConfig {
         jwks: conf.auth0.init().await?,
-        auth0_authority_domain: conf.auth0.auth0_authority_domain.to_owned(),
+        auth0_authority_domain: conf.auth0.auth0_authority_domain.clone(),
         db_params: conf.db.init(&workspace)?,
         hostname_port,
         enclave_params: conf.enclave.init(&workspace)?,

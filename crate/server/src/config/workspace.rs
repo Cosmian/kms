@@ -20,7 +20,7 @@ pub struct WorkspaceConfig {
 
 impl Default for WorkspaceConfig {
     fn default() -> Self {
-        WorkspaceConfig {
+        Self {
             root_data_path: std::env::temp_dir(),
             tmp_path: std::env::temp_dir(),
         }
@@ -28,7 +28,7 @@ impl Default for WorkspaceConfig {
 }
 
 impl WorkspaceConfig {
-    pub fn init(&self) -> eyre::Result<WorkspaceConfig> {
+    pub fn init(&self) -> eyre::Result<Self> {
         let root_data_path = Self::finalize_directory_path(
             &self.root_data_path,
             &dirs::home_dir().ok_or_else(|| {
@@ -36,7 +36,7 @@ impl WorkspaceConfig {
             })?,
         )?;
         let tmp_path = Self::finalize_directory_path(&self.tmp_path, &root_data_path)?;
-        Ok(WorkspaceConfig {
+        Ok(Self {
             root_data_path,
             tmp_path,
         })

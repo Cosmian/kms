@@ -70,10 +70,10 @@ cargo run --no-default-features -- --public-path /tmp --shared-path /tmp --priva
 or:
 
 ```sh
-$ export KMS_ENCLAVE_DIR_PATH=/tmp
-$ export KMS_CERTBOT_SSL_PATH=/tmp
-$ export KMS_SQLITE_PATH=/tmp
-$ cargo run --no-default-features
+export KMS_ENCLAVE_DIR_PATH=/tmp
+export KMS_CERTBOT_SSL_PATH=/tmp
+export KMS_SQLITE_PATH=/tmp
+cargo run --no-default-features
 ```
 
 The 3 parameters `public-path`, `shared-path` and `private-path` are related to certificate generation in the Secure Enclave. Outside of the enclave, the value of these parameters can be set to `/tmp`.
@@ -85,7 +85,7 @@ The KMS server relies on an OAuth2 authentication provided by Auth0 to authentic
 Example of how to run for test authentication:
 
 ```sh
-$ KMS_DELEGATED_AUTHORITY_DOMAIN="console-dev.eu.auth0.com" cargo run
+KMS_DELEGATED_AUTHORITY_DOMAIN="console-dev.eu.auth0.com" cargo run
 ```
 
 This authentication enables the KMS to deal with several users with the same database.

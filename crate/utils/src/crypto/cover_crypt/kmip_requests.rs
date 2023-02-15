@@ -18,7 +18,7 @@ use super::attributes::{
     access_policy_as_vendor_attribute, attributes_as_vendor_attribute, policy_as_vendor_attribute,
 };
 use crate::kmip_utils::wrap_key_bytes;
-/// Build a `CreateKeyPair` request for an CoverCrypt Master Key
+/// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
 pub fn build_create_master_keypair_request(policy: &Policy) -> Result<CreateKeyPair, KmipError> {
     Ok(CreateKeyPair {
         common_attributes: Some(Attributes {
@@ -31,7 +31,7 @@ pub fn build_create_master_keypair_request(policy: &Policy) -> Result<CreateKeyP
     })
 }
 
-/// Build a `Create` request for an CoverCrypt User Decryption Key
+/// Build a `Create` request for an `CoverCrypt` User Decryption Key
 pub fn build_create_user_decryption_private_key_request(
     access_policy: &str,
     cover_crypt_master_private_key_id: &str,
@@ -54,7 +54,7 @@ pub fn build_create_user_decryption_private_key_request(
     })
 }
 
-/// Build a `Import` request for an CoverCrypt User Decryption Key
+/// Build a `Import` request for an `CoverCrypt` User Decryption Key
 ///
 /// A unique identifier will be generated if none is supplied
 pub fn build_import_decryption_private_key_request(
@@ -91,7 +91,7 @@ pub fn build_import_decryption_private_key_request(
     };
 
     Ok(Import {
-        unique_identifier: unique_identifier.unwrap_or_else(|| "".to_owned()),
+        unique_identifier: unique_identifier.unwrap_or_default(),
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(replace_existing),
         // We don't deal with the case we need to unwrapped before storing
@@ -161,7 +161,7 @@ pub fn build_import_private_key_request(
     };
 
     Ok(Import {
-        unique_identifier: unique_identifier.unwrap_or_else(|| "".to_owned()),
+        unique_identifier: unique_identifier.unwrap_or_default(),
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(replace_existing),
         key_wrap_type: if is_wrapped {
@@ -176,7 +176,7 @@ pub fn build_import_private_key_request(
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: KeyValue {
-                    key_material: KeyMaterial::ByteString(key.to_vec()),
+                    key_material: KeyMaterial::ByteString(key),
                     attributes: Some(attributes),
                 },
                 cryptographic_length: private_key.len() as i32,
@@ -217,7 +217,7 @@ pub fn build_import_public_key_request(
     };
 
     Ok(Import {
-        unique_identifier: unique_identifier.unwrap_or_else(|| "".to_owned()),
+        unique_identifier: unique_identifier.unwrap_or_default(),
         object_type: ObjectType::PublicKey,
         replace_existing: Some(replace_existing),
         key_wrap_type: None,
@@ -238,7 +238,7 @@ pub fn build_import_public_key_request(
     })
 }
 
-/// Build a `Locate` request to locate an CoverCrypt Symmetric Key
+/// Build a `Locate` request to locate an `CoverCrypt` Symmetric Key
 pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate, KmipError> {
     Ok(Locate {
         attributes: Attributes {
@@ -252,7 +252,7 @@ pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate,
     })
 }
 
-/// Build a `Revoke` request to locate an CoverCrypt User Decryption Key
+/// Build a `Revoke` request to locate an `CoverCrypt` User Decryption Key
 pub fn build_revoke_user_decryption_key_request(
     unique_identifier: &str,
     revocation_reason: RevocationReason,
@@ -264,18 +264,18 @@ pub fn build_revoke_user_decryption_key_request(
     })
 }
 
-/// Build a `Revoke` request to locate an CoverCrypt User Decryption Key
+/// Build a `Revoke` request to locate an `CoverCrypt` User Decryption Key
 pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, KmipError> {
     Ok(Destroy {
         unique_identifier: Some(unique_identifier.to_string()),
     })
 }
 
-/// Build a `ReKeyKeyPair` request to locate an CoverCrypt User Decryption Key
+/// Build a `ReKeyKeyPair` request to locate an `CoverCrypt` User Decryption Key
 /// To rekey an attribute of a user decryption key, we first need:
 /// - the master private key uid
-/// - the CoverCrypt attributes to revoke
-/// The routine will then locate and renew all user decryption keys with those CoverCrypt attributes
+/// - the `CoverCrypt` attributes to revoke
+/// The routine will then locate and renew all user decryption keys with those `CoverCrypt` attributes
 pub fn build_rekey_keypair_request(
     master_private_key_unique_identifier: &str,
     cover_crypt_policy_attributes: Vec<cosmian_cover_crypt::abe_policy::Attribute>,
@@ -294,7 +294,7 @@ pub fn build_rekey_keypair_request(
     })
 }
 
-/// Build an CoverCrypt Encryption Request to encrypt the provided `data`
+/// Build an `CoverCrypt` Encryption Request to encrypt the provided `data`
 /// with the given `policy attributes` using the public key identified by
 /// `public_key_identifier`
 pub fn build_hybrid_encryption_request(
@@ -328,6 +328,7 @@ pub fn build_hybrid_encryption_request(
     })
 }
 
+#[must_use]
 pub fn build_decryption_request(
     user_decryption_key_identifier: &str,
     encrypted_data: Vec<u8>,

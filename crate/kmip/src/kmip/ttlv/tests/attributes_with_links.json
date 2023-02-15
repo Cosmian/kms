@@ -1,55 +1,55 @@
 {
-    "tag": "Attributes",
-    "value": [
+  "tag": "Attributes",
+  "value": [
+    {
+      "tag": "Link",
+      "value": [
         {
-            "tag": "Link",
-            "value": [
-                {
-                    "tag": "Link",
-                    "value": [
-                        {
-                            "tag": "LinkType",
-                            "type": "Enumeration",
-                            "value": "PrivateKeyLink"
-                        },
-                        {
-                            "tag": "LinkedObjectIdentifier",
-                            "type": "TextString",
-                            "value": "9948"
-                        }
-                    ]
-                }
-            ]
-        },
-        {
-            "tag": "ObjectType",
-            "type": "Enumeration",
-            "value": "PublicKey"
-        },
-        {
-            "tag": "VendorAttributes",
-            "value": [
-                {
-                    "tag": "VendorAttributes",
-                    "value": [
-                        {
-                            "tag": "VendorIdentification",
-                            "type": "TextString",
-                            "value": "cosmian"
-                        },
-                        {
-                            "tag": "AttributeName",
-                            "type": "TextString",
-                            "value": "abe_policy"
-                        },
-                        {
-                            "tag": "AttributeValue",
-                            "type": "ByteString",
-                            "value": "7B226C6173745F617474726962757465223A312C226D61785F617474726962757465223A312C2273746F7265223A7B225365637572697479204C6576656C223A5B5B226C6576656C2031225D2C66616C73655D7D2C226174747269627574655F746F5F696E74223A7B225365637572697479204C6576656C3A3A6C6576656C2031223A5B315D7D7D"
-                        }
-                    ]
-                }
-            ]
+          "tag": "Link",
+          "value": [
+            {
+              "tag": "LinkType",
+              "type": "Enumeration",
+              "value": "PrivateKeyLink"
+            },
+            {
+              "tag": "LinkedObjectIdentifier",
+              "type": "TextString",
+              "value": "9948"
+            }
+          ]
         }
-    ]
+      ]
+    },
+    {
+      "tag": "ObjectType",
+      "type": "Enumeration",
+      "value": "PublicKey"
+    },
+    {
+      "tag": "VendorAttributes",
+      "value": [
+        {
+          "tag": "VendorAttributes",
+          "value": [
+            {
+              "tag": "VendorIdentification",
+              "type": "TextString",
+              "value": "cosmian"
+            },
+            {
+              "tag": "AttributeName",
+              "type": "TextString",
+              "value": "abe_policy"
+            },
+            {
+              "tag": "AttributeValue",
+              "type": "ByteString",
+              "value": "7B226C6173745F617474726962757465223A312C226D61785F617474726962757465223A312C2273746F7265223A7B225365637572697479204C6576656C223A5B5B226C6576656C2031225D2C66616C73655D7D2C226174747269627574655F746F5F696E74223A7B225365637572697479204C6576656C3A3A6C6576656C2031223A5B315D7D7D"
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

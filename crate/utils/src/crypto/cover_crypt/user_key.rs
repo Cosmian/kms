@@ -76,7 +76,7 @@ impl UserDecryptionKeysHandler {
     pub fn instantiate(
         cover_crypt: CoverCryptX25519Aes256,
         master_private_key: &Object,
-    ) -> Result<UserDecryptionKeysHandler, KmipError> {
+    ) -> Result<Self, KmipError> {
         let msk_key_block = master_private_key.key_block()?;
         let msk_key_bytes = msk_key_block.as_bytes()?;
         let msk = MasterSecretKey::try_from_bytes(msk_key_bytes).map_err(|e| {
@@ -87,7 +87,7 @@ impl UserDecryptionKeysHandler {
         })?;
         let private_key_attributes = master_private_key.attributes()?;
         let policy = policy_from_attributes(private_key_attributes)?;
-        Ok(UserDecryptionKeysHandler {
+        Ok(Self {
             cover_crypt,
             master_private_key: msk,
             policy,

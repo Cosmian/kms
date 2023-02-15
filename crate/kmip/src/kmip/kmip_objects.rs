@@ -121,27 +121,27 @@ impl Object {
     #[must_use]
     pub fn object_type(&self) -> ObjectType {
         match self {
-            Object::Certificate { .. } => ObjectType::Certificate,
-            Object::CertificateRequest { .. } => ObjectType::CertificateRequest,
-            Object::OpaqueObject { .. } => ObjectType::OpaqueObject,
-            Object::PGPKey { .. } => ObjectType::PGPKey,
-            Object::PrivateKey { .. } => ObjectType::PrivateKey,
-            Object::PublicKey { .. } => ObjectType::PublicKey,
-            Object::SecretData { .. } => ObjectType::SecretData,
-            Object::SplitKey { .. } => ObjectType::SplitKey,
-            Object::SymmetricKey { .. } => ObjectType::SymmetricKey,
+            Self::Certificate { .. } => ObjectType::Certificate,
+            Self::CertificateRequest { .. } => ObjectType::CertificateRequest,
+            Self::OpaqueObject { .. } => ObjectType::OpaqueObject,
+            Self::PGPKey { .. } => ObjectType::PGPKey,
+            Self::PrivateKey { .. } => ObjectType::PrivateKey,
+            Self::PublicKey { .. } => ObjectType::PublicKey,
+            Self::SecretData { .. } => ObjectType::SecretData,
+            Self::SplitKey { .. } => ObjectType::SplitKey,
+            Self::SymmetricKey { .. } => ObjectType::SymmetricKey,
         }
     }
 
     /// Returns the `KeyBlock` of that object if any, an error otherwise
     pub fn key_block(&self) -> Result<&KeyBlock, KmipError> {
         match self {
-            Object::PublicKey { key_block }
-            | Object::PrivateKey { key_block }
-            | Object::SecretData { key_block, .. }
-            | Object::PGPKey { key_block, .. }
-            | Object::SymmetricKey { key_block }
-            | Object::SplitKey { key_block, .. } => Ok(key_block),
+            Self::PublicKey { key_block }
+            | Self::PrivateKey { key_block }
+            | Self::SecretData { key_block, .. }
+            | Self::PGPKey { key_block, .. }
+            | Self::SymmetricKey { key_block }
+            | Self::SplitKey { key_block, .. } => Ok(key_block),
             _ => Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Object_Type,
                 "This object does not have a key block".to_string(),
@@ -167,12 +167,12 @@ impl Object {
     /// Returns the `KeyBlock` of that object if any, an error otherwise
     pub fn key_block_mut(&mut self) -> Result<&mut KeyBlock, KmipError> {
         match self {
-            Object::PublicKey { key_block }
-            | Object::PrivateKey { key_block }
-            | Object::SecretData { key_block, .. }
-            | Object::PGPKey { key_block, .. }
-            | Object::SymmetricKey { key_block }
-            | Object::SplitKey { key_block, .. } => Ok(key_block),
+            Self::PublicKey { key_block }
+            | Self::PrivateKey { key_block }
+            | Self::SecretData { key_block, .. }
+            | Self::PGPKey { key_block, .. }
+            | Self::SymmetricKey { key_block }
+            | Self::SplitKey { key_block, .. } => Ok(key_block),
             _ => Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Object_Type,
                 "This object does not have a key block".to_string(),
@@ -185,23 +185,23 @@ impl Object {
     /// run post-serialization
     /// see `Object` for details
     #[must_use]
-    pub fn post_fix(object_type: ObjectType, object: Object) -> Object {
+    pub fn post_fix(object_type: ObjectType, object: Self) -> Self {
         match object_type {
             ObjectType::SymmetricKey => match object {
-                Object::PrivateKey { key_block } | Object::PublicKey { key_block } => {
-                    Object::SymmetricKey { key_block }
+                Self::PrivateKey { key_block } | Self::PublicKey { key_block } => {
+                    Self::SymmetricKey { key_block }
                 }
                 _ => object,
             },
             ObjectType::PublicKey => match object {
-                Object::SymmetricKey { key_block } | Object::PrivateKey { key_block } => {
-                    Object::PublicKey { key_block }
+                Self::SymmetricKey { key_block } | Self::PrivateKey { key_block } => {
+                    Self::PublicKey { key_block }
                 }
                 _ => object,
             },
             ObjectType::PrivateKey => match object {
-                Object::SymmetricKey { key_block } | Object::PublicKey { key_block } => {
-                    Object::PrivateKey { key_block }
+                Self::SymmetricKey { key_block } | Self::PublicKey { key_block } => {
+                    Self::PrivateKey { key_block }
                 }
                 _ => object,
             },

@@ -19,6 +19,7 @@ fn _is_running_inside_enclave() -> Result<bool, SgxError> {
 }
 
 /// Check if the current program is running inside an enclave
+#[must_use]
 pub fn is_running_inside_enclave() -> bool {
     _is_running_inside_enclave().unwrap_or(false)
 }

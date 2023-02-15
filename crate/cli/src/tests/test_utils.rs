@@ -48,7 +48,7 @@ pub async fn init_test_server() {
     };
     init_config(&config)
         .await
-        .map_err(|e| format!("failed initializing the config: {}", e))
+        .map_err(|e| format!("failed initializing the config: {e}"))
         .unwrap();
 
     // Read the conf. We will update it later by appending the secret token

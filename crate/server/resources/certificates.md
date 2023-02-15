@@ -3,12 +3,14 @@
 
 ### Install
 
-**MacOS**
+#### MacOS
+
 ```sh
 brew install certbot
 ```
 
-**Linux**
+#### Linux
+
 ```sh
 apt install certbot
 ```
@@ -21,6 +23,7 @@ Run:
 ```sh
 sudo certbot certonly -d test.cosmian.net --manual --preferred-challenges dns
 ```
+
 and follow the printed instructions.
 
 ## Generating a PKCS#12 from the PEMs

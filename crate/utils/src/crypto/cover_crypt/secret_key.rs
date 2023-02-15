@@ -28,7 +28,7 @@ use crate::{
 // ------------------------------------------------------------------------------
 
 /// The whole Key Value structure is wrapped
-/// A reference to the CoverCrypt master public key is kept to access the policy later
+/// A reference to the `CoverCrypt` master public key is kept to access the policy later
 /// when locating symmetric keys
 pub fn wrapped_secret_key(
     cover_crypt: &CoverCryptX25519Aes256,
@@ -143,7 +143,7 @@ impl TryFrom<&KeyBlock> for CoverCryptSymmetricKey {
                 "unwrapping an CoverCrypt Secret Key is not yet supported".to_string(),
             ))
         }
-        serde_json::from_slice::<CoverCryptSymmetricKey>(match &sk.key_value.key_material {
+        serde_json::from_slice::<Self>(match &sk.key_value.key_material {
             KeyMaterial::TransparentSymmetricKey { key } => key,
             other => {
                 return Err(KmipError::InvalidKmipObject(

@@ -3,12 +3,13 @@
 Cosmian has designed a command line to use the KMS in order to manage keys, encrypt or decrypt data.
 
 This CLI supports several crypto-systems listed below:
+
 - [X] Attribute-Based Encryption
 - [X] Cover Crypt
 
 ## Compiling
 
-```
+```sh
 cargo run
 ```
 
@@ -28,13 +29,13 @@ Note: `insecure` needs to be `true` if `kms_server_url` uses https and the serve
 
 Then from the same directory as the `kms.json` file, run:
 
-```
+```sh
 cosmian_kms_cli --help
 ```
 
 If you wish to use a different configuration file, set its full path in the `KMS_CLI_CONF` environment variable e.g.
 
-```
+```sh
 KMS_CLI_CONF=kms.json cosmian_kms_cli --help
 ```
 
@@ -42,7 +43,7 @@ If the server is running without Auth0, you can let `kms_access_token` empty. In
 
 If the server is running with cached sqlcipher as the KMS database, you also need to specify `kms_database_secret`. The first time, your organisation uses the KMS, you will run the following command to get the `kms_database_secret`. Save the output because the KMS won't remember it !
 
-```
+```sh
 KMS_CLI_CONF=kms.json cosmian_kms_cli configure
 ```
 
@@ -50,18 +51,18 @@ KMS_CLI_CONF=kms.json cosmian_kms_cli configure
 
 You can perform the following ABE operations by taking advantage of the KMS.
 
-__On master keys__
+#### On master keys
 
 - `init` Generate a new master key pair
 - `rotate` Rotate an attribute
 
-__On user keys__
+#### On user keys
 
 - `new` Generate a decrypt key for a new user
 - `revoke` Revoke a user decryption key
 - `destroy` Remove the user decryption key from the kms
 
-__On both user or master keys__
+#### On both user or master keys
 
 - `export` Export a key using its uid from the KMS. The key is exported serialized in KMIP TTLV format.
 - `import` Import a key to the KMS. The key to import must be serialized in KMIP TTLV format
@@ -69,13 +70,14 @@ __On both user or master keys__
 - `export-keys` Export a raw key using its uid from the KMS. If a password is passed through and the key has been previously wrapped by the cli, the key will also be unwrapped by the cli
 - `import-keys` Import a raw key to the KMS. If a password is passed through, the key will be wrapped by the cli. Otherwise, you can transparently import a plain text key or an already wrapped key done by a key the KMS doesn't know.
 
-__On user data__
+#### On user data
 
 - `encrypt` Encrypt data using the public key
 - `decrypt` Decrypt data using the user decryption key
 
 For more details, run:
-```
+
+```sh
 cosmian_kms_cli cc --help
 ```
 
@@ -102,17 +104,17 @@ To do so, use `trust` subcommand. Doing that, the `cli` will:
 
 From [gramine docs](https://gramine.readthedocs.io/en/latest/sgx-intro.html#term-sgx-quote), you can read: "*The SGX quote is the proof of trustworthiness of the enclave and is used during Remote Attestation. The attesting enclave generates the enclave-specific SGX Report, sends the request to the Quoting Enclave using Local Attestation, and the Quoting Enclave returns back the SGX quote with the SGX report embedded in it. The resulting SGX quote contains the enclave's measurement, attributes and other security-relevant fields, and is tied to the identity of the Quoting Enclave to prove its authenticity. The obtained SGX quote may be later sent to the verifying remote party, which examines the SGX quote and gains trust in the remote enclave.*"
 
-
 #### Quote report data
 
 The report data contains attributes smartly chosen to make a decision on the trustworthiness of the enclave.
 
-- The **ssl certificate**. This certificate is encrypted using the `mr_enclave` key. Therefore if the server is updated, the certificates will be also updated and the quote will vary. Moreover this parameter is public, so you are plenty aware when the certificate changes.
-- The **nonce** to make the quote unique each time the user want a proof of trust. It uses an arbitrary and non predictable string. The kms server can't therefore send a previous verify version of the quote.
+- The __ssl certificate__. This certificate is encrypted using the `mr_enclave` key. Therefore if the server is updated, the certificates will be also updated and the quote will vary. Moreover this parameter is public, so you are plenty aware when the certificate changes.
+- The __nonce__ to make the quote unique each time the user want a proof of trust. It uses an arbitrary and non predictable string. The kms server can't therefore send a previous verify version of the quote.
 
 #### Automatic trust checks
 
 The cli automatically checks:
+
 - If the kms server runs inside an sgx enclave known by *Intel*
 - If the quote inside the remote attestation is the same than the quote returning by the enclave
 - If the `mr_enclave` and `mr_signer` are the same between the remote attestation and the quote
@@ -147,7 +149,7 @@ The files you can manually verify are:
 
 ## Testing
 
-```
+```sh
 cargo build --bin cosmian_kms_cli
 cargo test -p cosmian_kms_cli
 ```
@@ -158,7 +160,7 @@ You can also test using a remote kms running inside an enclave. First, generate 
 
 Then:
 
-```
+```sh
 cargo build --bin cosmian_kms_cli
 cargo test --features staging --no-default-features -p cosmian_kms_cli
 ```

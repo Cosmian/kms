@@ -20,14 +20,14 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-/// The MySQL connector is also compatible to connect a MariaDB
+/// The `MySQL` connector is also compatible to connect a `MariaDB`
 /// see: https://mariadb.com/kb/en/mariadb-vs-mysql-compatibility/
-pub(crate) struct Sql {
+pub struct Sql {
     pool: Pool,
 }
 
 impl Sql {
-    pub async fn instantiate(connection_url: &str, user_cert: Option<PathBuf>) -> KResult<Sql> {
+    pub async fn instantiate(connection_url: &str, user_cert: Option<PathBuf>) -> KResult<Self> {
         let client = SslOpts::default();
         let ssl_opts = client
             .with_client_identity(user_cert.map(ClientIdentity::new))
@@ -51,7 +51,7 @@ impl Sql {
                 .get("create-table-read_access")
                 .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         )?;
-        Ok(Sql { pool })
+        Ok(Self { pool })
     }
 
     #[cfg(test)]
@@ -500,7 +500,7 @@ impl Database for Sql {
         let mut res = vec![];
         // let mut tx = self.pool.begin().await?;
         for (uid, object) in objects {
-            match create_(uid.to_owned(), owner, object, &self.pool).await {
+            match create_(uid.clone(), owner, object, &self.pool).await {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
                     // tx.rollback().await.context("transaction failed")?;

@@ -40,6 +40,7 @@ pub fn build_hybrid_encryption_request(
 
 /// Build a Decryption Request to decrypt the provided `data`
 /// the user key identified by `user_decryption_key_identifier`
+#[must_use]
 pub fn build_decryption_request(
     user_decryption_key_identifier: &str,
     resource_uid: Vec<u8>,
@@ -58,6 +59,7 @@ pub fn build_decryption_request(
 }
 
 /// Build a `Import` request for a generic Object
+#[must_use]
 pub fn build_import_object_request(
     object: Object,
     object_type: ObjectType,

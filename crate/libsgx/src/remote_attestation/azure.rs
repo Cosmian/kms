@@ -178,7 +178,7 @@ async fn verify_jws(token: &str, jwks: Value) -> Result<MicrosoftAttestation, Sg
     let jwks: Vec<MicrosoftJwk> = serde_json::from_value(jwks["keys"].clone())?;
 
     // Find the certificate to decode the token
-    for jwk in jwks.iter() {
+    for jwk in &jwks {
         if jwk.kid == kid {
             let x5c = &jwk.x5c[0];
             let raw_cert = b64.decode(x5c)?;

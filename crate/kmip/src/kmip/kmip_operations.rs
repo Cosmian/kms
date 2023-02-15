@@ -349,7 +349,7 @@ pub struct Get {
 impl From<String> for Get {
     // Create a GetRequest for an object to be returned "as is"
     fn from(uid: String) -> Self {
-        Get {
+        Self {
             unique_identifier: Some(uid),
             key_format_type: None,
             key_wrap_type: None,
@@ -395,7 +395,7 @@ pub struct GetAttributes {
 }
 impl From<String> for GetAttributes {
     fn from(uid: String) -> Self {
-        GetAttributes {
+        Self {
             unique_identifier: Some(uid),
             attribute_references: None,
         }
@@ -870,8 +870,8 @@ pub struct Locate {
 /// Status Mask field includes the Archived Storage indicator.
 impl Locate {
     #[must_use]
-    pub fn new(object_type: ObjectType) -> Locate {
-        Locate {
+    pub fn new(object_type: ObjectType) -> Self {
+        Self {
             maximum_items: None,
             offset_items: None,
             storage_status_mask: None,

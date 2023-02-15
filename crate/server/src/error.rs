@@ -63,78 +63,78 @@ pub enum KmsError {
 
 impl From<TtlvError> for KmsError {
     fn from(e: TtlvError) -> Self {
-        KmsError::KmipError(ErrorReason::Codec_Error, e.to_string())
+        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
     }
 }
 
 impl From<sqlx::Error> for KmsError {
     fn from(e: sqlx::Error) -> Self {
-        KmsError::DatabaseError(e.to_string())
+        Self::DatabaseError(e.to_string())
     }
 }
 
 impl From<mysql::Error> for KmsError {
     fn from(e: mysql::Error) -> Self {
-        KmsError::DatabaseError(e.to_string())
+        Self::DatabaseError(e.to_string())
     }
 }
 
 impl From<std::io::Error> for KmsError {
     fn from(e: std::io::Error) -> Self {
-        KmsError::ServerError(e.to_string())
+        Self::ServerError(e.to_string())
     }
 }
 
 impl From<openssl::error::ErrorStack> for KmsError {
     fn from(e: openssl::error::ErrorStack) -> Self {
-        KmsError::ServerError(e.to_string())
+        Self::ServerError(e.to_string())
     }
 }
 
 impl From<eyre::Report> for KmsError {
     fn from(e: eyre::Report) -> Self {
-        KmsError::ServerError(e.to_string())
+        Self::ServerError(e.to_string())
     }
 }
 
 impl From<acme_lib::Error> for KmsError {
     fn from(e: acme_lib::Error) -> Self {
-        KmsError::ServerError(e.to_string())
+        Self::ServerError(e.to_string())
     }
 }
 
 impl From<serde_json::Error> for KmsError {
     fn from(e: serde_json::Error) -> Self {
-        KmsError::InvalidRequest(e.to_string())
+        Self::InvalidRequest(e.to_string())
     }
 }
 
 impl From<cosmian_cover_crypt::Error> for KmsError {
     fn from(e: cosmian_cover_crypt::Error) -> Self {
-        KmsError::InvalidRequest(e.to_string())
+        Self::InvalidRequest(e.to_string())
     }
 }
 
 impl From<libsgx::error::SgxError> for KmsError {
     fn from(e: libsgx::error::SgxError) -> Self {
-        KmsError::SGXError(e.to_string())
+        Self::SGXError(e.to_string())
     }
 }
 
 impl From<QueryPayloadError> for KmsError {
     fn from(e: QueryPayloadError) -> Self {
-        KmsError::InvalidRequest(e.to_string())
+        Self::InvalidRequest(e.to_string())
     }
 }
 
 impl From<KmipError> for KmsError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s) => KmsError::KmipError(r, s),
-            KmipError::InvalidKmipObject(r, s) => KmsError::KmipError(r, s),
-            KmipError::KmipNotSupported(_, s) => KmsError::NotSupported(s),
-            KmipError::NotSupported(s) => KmsError::NotSupported(s),
-            KmipError::KmipError(r, s) => KmsError::KmipError(r, s),
+            KmipError::InvalidKmipValue(r, s) => Self::KmipError(r, s),
+            KmipError::InvalidKmipObject(r, s) => Self::KmipError(r, s),
+            KmipError::KmipNotSupported(_, s) => Self::NotSupported(s),
+            KmipError::NotSupported(s) => Self::NotSupported(s),
+            KmipError::KmipError(r, s) => Self::KmipError(r, s),
         }
     }
 }
@@ -143,8 +143,8 @@ impl KmsError {
     #[must_use]
     pub fn reason(&self, reason: ErrorReason) -> Self {
         match self {
-            KmsError::KmipError(_r, e) => KmsError::KmipError(reason, e.clone()),
-            e => KmsError::KmipError(reason, e.to_string()),
+            Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
+            e => Self::KmipError(reason, e.to_string()),
         }
     }
 }
