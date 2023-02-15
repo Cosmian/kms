@@ -14,7 +14,7 @@ pub struct UserClaim {
 }
 
 /// Decode a json web token (JWT)
-pub(crate) fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> {
+pub fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> {
     let bearer: Vec<&str> = authorization_content.splitn(2, ' ').collect();
     kms_ensure!(
         bearer.len() == 2 && bearer[0] == "Bearer",

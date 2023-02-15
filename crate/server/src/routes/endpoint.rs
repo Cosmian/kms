@@ -50,19 +50,19 @@ impl actix_web::error::ResponseError for KmsError {
 
     fn status_code(&self) -> StatusCode {
         match self {
-            KmsError::RouteNotFound(_) => StatusCode::NOT_FOUND,
-            KmsError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            KmsError::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            KmsError::KmipError(..) => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::NotSupported(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::UnsupportedProtectionMasks => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::UnsupportedPlaceholder => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::InconsistentOperation(..) => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::InvalidRequest(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            KmsError::SGXError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            KmsError::ConversionError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::RouteNotFound(_) => StatusCode::NOT_FOUND,
+            Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            Self::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::KmipError(..) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::NotSupported(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::UnsupportedProtectionMasks => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::UnsupportedPlaceholder => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::InconsistentOperation(..) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::InvalidRequest(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Self::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::SGXError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::ConversionError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -348,7 +348,7 @@ fn get_database_secrets(req_http: &HttpRequest) -> KResult<Option<ExtraDatabaseP
             let secrets = req_http
                 .headers()
                 .get("KmsDatabaseSecret")
-                .and_then(|h| h.to_str().ok().map(|h| h.to_string()))
+                .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
                 .ok_or_else(|| {
                     KmsError::Unauthorized(
                         "Missing KmsDatabaseSecret header in the query".to_owned(),
@@ -356,7 +356,7 @@ fn get_database_secrets(req_http: &HttpRequest) -> KResult<Option<ExtraDatabaseP
                 })?;
 
             let secrets = general_purpose::STANDARD.decode(secrets).map_err(|e| {
-                KmsError::Unauthorized(format!("KmsDatabaseSecret header cannot be decoded: {}", e))
+                KmsError::Unauthorized(format!("KmsDatabaseSecret header cannot be decoded: {e}"))
             })?;
 
             Some(

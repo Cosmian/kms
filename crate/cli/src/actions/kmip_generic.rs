@@ -80,7 +80,7 @@ pub struct ImportAction {
 
     /// The Unique identifier to use when inserting the object in the KMS.
     /// Will fail if the identifier already exists and the `--replace-existing` option is not set.
-    ///  
+    ///
     /// When not specified, a unique identifier will be created
     #[structopt(required = false, long = "unique-id", short = 'i', default_value = "")]
     unique_identifier: String,
@@ -136,7 +136,10 @@ impl ImportAction {
             .with_context(|| format!("failed importing the object with type {object_type}"))?;
         println!(
             "The object in {:?} of type {} was imported with id: {}",
-            &self.object_file.file_name().and_then(|s| s.to_str()),
+            &self
+                .object_file
+                .file_name()
+                .and_then(std::ffi::OsStr::to_str),
             &object_type,
             &import_response.unique_identifier
         );

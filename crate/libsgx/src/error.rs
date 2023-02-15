@@ -32,42 +32,42 @@ pub enum SgxError {
 
 impl From<base64::DecodeError> for SgxError {
     fn from(e: base64::DecodeError) -> Self {
-        SgxError::QuoteMalformed(e.to_string())
+        Self::QuoteMalformed(e.to_string())
     }
 }
 
 impl From<ParseError> for SgxError {
     fn from(e: ParseError) -> Self {
-        SgxError::QuoteMalformed(e.to_string())
+        Self::QuoteMalformed(e.to_string())
     }
 }
 
 impl From<Error> for SgxError {
     fn from(e: Error) -> Self {
-        SgxError::RemoteAttesterRequestFailed(e.to_string())
+        Self::RemoteAttesterRequestFailed(e.to_string())
     }
 }
 
 impl From<jsonwebtoken::errors::Error> for SgxError {
     fn from(e: jsonwebtoken::errors::Error) -> Self {
-        SgxError::RemoteAttesterTokenMalformed(e.to_string())
+        Self::RemoteAttesterTokenMalformed(e.to_string())
     }
 }
 
 impl From<serde_json::Error> for SgxError {
     fn from(e: serde_json::Error) -> Self {
-        SgxError::RemoteAttesterTokenMalformed(e.to_string())
+        Self::RemoteAttesterTokenMalformed(e.to_string())
     }
 }
 
 impl From<openssl::error::ErrorStack> for SgxError {
     fn from(e: openssl::error::ErrorStack) -> Self {
-        SgxError::RemoteAttesterCertsMalformed(e.to_string())
+        Self::RemoteAttesterCertsMalformed(e.to_string())
     }
 }
 
 impl From<std::io::Error> for SgxError {
     fn from(e: std::io::Error) -> Self {
-        SgxError::EnclaveIOError(e.to_string())
+        Self::EnclaveIOError(e.to_string())
     }
 }

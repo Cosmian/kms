@@ -459,7 +459,7 @@ async fn test_abe_json_access() -> KResult<()> {
         link: Some(vec![Link {
             link_type: LinkType::ParentLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString(
-                master_private_key_uid.to_owned(),
+                master_private_key_uid.clone(),
             ),
         }]),
         ..Attributes::new(ObjectType::PrivateKey)

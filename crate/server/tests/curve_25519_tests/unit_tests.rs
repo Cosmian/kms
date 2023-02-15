@@ -134,7 +134,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let pk_bytes = extract_key_bytes(pk)?;
     let pk = parse_public_key(&pk_bytes)?;
     let request = Import {
-        unique_identifier: "".to_string(),
+        unique_identifier: String::new(),
         object_type: ObjectType::PublicKey,
         replace_existing: None,
         key_wrap_type: None,

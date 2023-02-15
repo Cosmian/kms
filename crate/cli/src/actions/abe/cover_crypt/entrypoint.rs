@@ -15,7 +15,7 @@ use crate::actions::{
     kmip_generic::{ExportAction, ImportAction},
 };
 
-/// Use CoverCrypt encryption attributes.
+/// Use `CoverCrypt` encryption attributes.
 #[derive(StructOpt, Debug)]
 pub enum CoverCryptAction {
     Init(NewMasterKeyPairAction),
@@ -36,21 +36,19 @@ pub enum CoverCryptAction {
 impl CoverCryptAction {
     pub async fn process(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         match self {
-            CoverCryptAction::Init(action) => action.run(client_connector).await?,
-            CoverCryptAction::Rotate(action) => action.run(client_connector).await?,
-            CoverCryptAction::New(action) => action.run(client_connector).await?,
-            CoverCryptAction::Export(action) => action.run(client_connector).await?,
-            CoverCryptAction::Import(action) => {
-                action.run(client_connector, determine_object_type).await?
-            }
-            CoverCryptAction::ImportKeys(action) => action.run(client_connector).await?,
-            CoverCryptAction::ExportKeys(action) => action.run(client_connector).await?,
+            Self::Init(action) => action.run(client_connector).await?,
+            Self::Rotate(action) => action.run(client_connector).await?,
+            Self::New(action) => action.run(client_connector).await?,
+            Self::Export(action) => action.run(client_connector).await?,
+            Self::Import(action) => action.run(client_connector, determine_object_type).await?,
+            Self::ImportKeys(action) => action.run(client_connector).await?,
+            Self::ExportKeys(action) => action.run(client_connector).await?,
             // For the time being, Revoke an user decryption key is not possible. We dismiss the action in the cli.
             // Uncomment the followings to activate that command.
-            CoverCryptAction::Revoke(_) => eyre::bail!("Revocation is not supported yet"), // action.run(client_connector).await?,
-            CoverCryptAction::Destroy(action) => action.run(client_connector).await?,
-            CoverCryptAction::Encrypt(action) => action.run(client_connector).await?,
-            CoverCryptAction::Decrypt(action) => action.run(client_connector).await?,
+            Self::Revoke(_) => eyre::bail!("Revocation is not supported yet"), // action.run(client_connector).await?,
+            Self::Destroy(action) => action.run(client_connector).await?,
+            Self::Encrypt(action) => action.run(client_connector).await?,
+            Self::Decrypt(action) => action.run(client_connector).await?,
         };
 
         Ok(())

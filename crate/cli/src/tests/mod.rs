@@ -3,9 +3,9 @@ mod cover_crypt;
 mod permission;
 mod sgx;
 
-pub(crate) mod utils;
+pub mod utils;
 
-pub(crate) mod test_utils;
+pub mod test_utils;
 
 const PROG_NAME: &str = "cosmian_kms_cli";
 #[cfg(feature = "staging")]

@@ -1,12 +1,12 @@
 {
-    "cSpell.words": [
-        "keypair",
-        "kmip",
-        "mcfe",
-        "newtype",
-        "PKCS",
-        "serializers",
-        "thiserror",
-        "Ttlv"
-    ]
+  "cSpell.words": [
+    "keypair",
+    "kmip",
+    "mcfe",
+    "newtype",
+    "PKCS",
+    "serializers",
+    "thiserror",
+    "Ttlv"
+  ]
 }

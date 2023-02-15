@@ -19,7 +19,6 @@ KMIP states that a number of the operations are affected by a mechanism referred
     );
     ```
 
-
 === "Rust"
 
     Coming soon…
@@ -161,7 +160,6 @@ Destroyed keys are set in the state `destroyed` on the Cosmian KMS Server.
 
 #### specification
 
-
 This operation requests the server to perform an encryption operation on the provided data using a Managed Cryptographic Object as the key for the encryption operation.
 
 The request contains information about the cryptographic parameters (mode and padding method), the data to be encrypted, and the IV/Counter/Nonce to use. The cryptographic parameters MAY be omitted from the request as they can be specified as associated attributes of the Managed Cryptographic Object. The IV/Counter/Nonce MAY also be omitted from the request if the cryptographic parameters indicate that the server shall generate a Random IV on behalf of the client or the encryption algorithm does not need an IV/Counter/Nonce. The server does not store or otherwise manage the IV/Counter/Nonce.
@@ -202,9 +200,9 @@ This operation requests that the server returns the Managed Object specified by 
 The response contains the Unique Identifier of the object, along with the object itself, which MAY be wrapped using a wrapping key as specified in the request. The following key format capabilities SHALL be assumed by the client; restrictions apply when the client requests the server to return an object in a particular
 format:
 
- - If a client registered a key in a given format, the server SHALL be able to return the key during the Get operation in the same format that was used when the key was registered.
+- If a client registered a key in a given format, the server SHALL be able to return the key during the Get operation in the same format that was used when the key was registered.
 
- - Any other format conversion MAY be supported by the server.
+- Any other format conversion MAY be supported by the server.
 
  If Key Format Type is specified to be PKCS#12 then the response payload shall be a PKCS#12 container as specified by [RFC7292].
 
@@ -275,8 +273,8 @@ An Offset MAY be used to indicate the difference between the Initial Date and th
 
 The Re-Key Key Pair Operation is the main mechanism to rotate ABE attributes on the Cosmian KMS Server. By updating, through this operation, the Policy held by a Master Private Key in it Vendor Attributes, the Cosmian KMS Server will automatically
 
- - update the Policy held by the Master Public Key
- - and re-key all non revoked User Decryption Keys holding the rotated policy attributes in a way that they will now be able to decrypt cipher texts encrypted with attributes before and after the rotation.
+- update the Policy held by the Master Public Key
+- and re-key all non revoked User Decryption Keys holding the rotated policy attributes in a way that they will now be able to decrypt cipher texts encrypted with attributes before and after the rotation.
 
  The operation has currently no other usages on the Cosmian server.
 

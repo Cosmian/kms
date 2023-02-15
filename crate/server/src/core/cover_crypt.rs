@@ -28,9 +28,9 @@ use tracing::trace;
 
 use crate::{core::crud::KmipServer, error::KmsError, kms_bail, result::KResult};
 
-/// `Re_key` a CoverCrypt master Key for the given attributes, which in CoverCrypt terms
+/// `Re_key` a `CoverCrypt` master Key for the given attributes, which in `CoverCrypt` terms
 /// is to "revoke" the list of given attributes by increasing their value
-pub(crate) async fn rekey_keypair_cover_crypt<K>(
+pub async fn rekey_keypair_cover_crypt<K>(
     kmip_server: &K,
     cover_crypt: CoverCryptX25519Aes256,
     master_private_key_uid: &str,
@@ -189,7 +189,7 @@ where
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: updated_private_key.attributes()?.to_owned(),
+        attributes: updated_private_key.attributes()?.clone(),
         object: updated_private_key,
     };
     let _import_response = kmip_server.import(import_request, owner, params).await?;
@@ -201,7 +201,7 @@ where
         object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: updated_public_key.attributes()?.to_owned(),
+        attributes: updated_public_key.attributes()?.clone(),
         object: updated_public_key,
     };
     let _import_response = kmip_server.import(import_request, owner, params).await?;
@@ -259,7 +259,7 @@ where
             attributes: updated_user_decryption_key
                 .attributes()
                 .map_err(|e| KmsError::KmipError(ErrorReason::Attribute_Not_Found, e.to_string()))?
-                .to_owned(),
+                .clone(),
             object: updated_user_decryption_key,
         };
         let _import_response = kmip_server.import(import_request, owner, params).await?;
@@ -272,7 +272,7 @@ where
 ///
 /// The attributes of the `Create` request must contain the
 /// `Access Policy`
-pub(crate) async fn create_user_decryption_key<K>(
+pub async fn create_user_decryption_key<K>(
     kmip_server: &K,
     cover_crypt: CoverCryptX25519Aes256,
     create_request: &Create,
@@ -332,7 +332,7 @@ where
 #[allow(unused)]
 //TODO: there is noway to distinguish between the creation of a user decryption key pair and a master key pair
 /// Create a KMIP tuple (`Object::PrivateKey`, `Object::PublicKey`)
-pub(crate) async fn create_user_decryption_key_pair<K>(
+pub async fn create_user_decryption_key_pair<K>(
     kmip_server: &K,
     cover_crypt: CoverCryptX25519Aes256,
     create_key_pair_request: &CreateKeyPair,

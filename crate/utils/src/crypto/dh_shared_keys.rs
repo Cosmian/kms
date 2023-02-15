@@ -22,7 +22,7 @@ impl TryFrom<&EnclaveSharedKeyCreateRequest> for VendorAttribute {
     type Error = KmipError;
 
     fn try_from(request: &EnclaveSharedKeyCreateRequest) -> Result<Self, KmipError> {
-        Ok(VendorAttribute {
+        Ok(Self {
             vendor_identification: "cosmian".to_owned(),
             attribute_name: "enclave_shared_key_create_request".to_owned(),
             attribute_value: serde_json::to_vec(&request).map_err(|_| {
@@ -47,14 +47,12 @@ impl TryFrom<&VendorAttribute> for EnclaveSharedKeyCreateRequest {
                 "the attributes in not a shared key create request".to_string(),
             ))
         }
-        serde_json::from_slice::<EnclaveSharedKeyCreateRequest>(&attribute.attribute_value).map_err(
-            |_| {
-                KmipError::InvalidKmipObject(
-                    ErrorReason::Invalid_Attribute_Value,
-                    "failed deserializing the Shared Key Create Request".to_string(),
-                )
-            },
-        )
+        serde_json::from_slice::<Self>(&attribute.attribute_value).map_err(|_| {
+            KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Attribute_Value,
+                "failed deserializing the Shared Key Create Request".to_string(),
+            )
+        })
     }
 }
 
@@ -85,6 +83,6 @@ impl TryFrom<&Attributes> for EnclaveSharedKeyCreateRequest {
                         .to_string(),
                 )
             })?;
-        EnclaveSharedKeyCreateRequest::try_from(va)
+        Self::try_from(va)
     }
 }

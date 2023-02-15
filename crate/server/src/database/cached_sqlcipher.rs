@@ -27,7 +27,7 @@ use crate::{
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
-pub(crate) struct CachedSqlCipher {
+pub struct CachedSqlCipher {
     path: PathBuf,
     cache: KMSSqliteCache,
 }
@@ -36,10 +36,10 @@ pub(crate) struct CachedSqlCipher {
 const KMS_SQLITE_CACHE_SIZE: usize = 100;
 
 impl CachedSqlCipher {
-    /// Instantiate a new CachedSqlCipher
+    /// Instantiate a new `CachedSqlCipher`
     /// and create the appropriate table(s) if need be
-    pub async fn instantiate(path: &Path) -> KResult<CachedSqlCipher> {
-        Ok(CachedSqlCipher {
+    pub async fn instantiate(path: &Path) -> KResult<Self> {
+        Ok(Self {
             path: path.to_path_buf(),
             cache: KMSSqliteCache::new(KMS_SQLITE_CACHE_SIZE),
         })
@@ -108,7 +108,7 @@ impl CachedSqlCipher {
     async fn pre_query(&self, group_id: u128, key: &str) -> KResult<Arc<Pool<Sqlite>>> {
         if !self.cache.exists(group_id) {
             let pool = self.instantiate_group_database(group_id, key).await?;
-            CachedSqlCipher::create_tables(&pool).await?;
+            Self::create_tables(&pool).await?;
             self.cache.save(group_id, key, pool).await?;
         } else if !self.cache.opened(group_id) {
             let pool = self.instantiate_group_database(group_id, key).await?;
@@ -154,7 +154,7 @@ impl Database for CachedSqlCipher {
             let mut res = vec![];
             let mut tx = pool.begin().await?;
             for (uid, object) in objects {
-                match create_(uid.to_owned(), owner, object, &mut tx).await {
+                match create_(uid.clone(), owner, object, &mut tx).await {
                     Ok(uid) => res.push(uid),
                     Err(e) => {
                         tx.rollback().await.context("transaction failed")?;

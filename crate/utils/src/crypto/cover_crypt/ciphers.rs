@@ -40,7 +40,7 @@ impl CoverCryptHybridCipher {
         cover_crypt: CoverCryptX25519Aes256,
         public_key_uid: &str,
         public_key: &Object,
-    ) -> Result<CoverCryptHybridCipher, KmipError> {
+    ) -> Result<Self, KmipError> {
         let (public_key_bytes, public_key_attributes) =
             key_bytes_and_attributes_from_key_block(public_key.key_block()?, public_key_uid)?;
 
@@ -56,7 +56,7 @@ impl CoverCryptHybridCipher {
              {policy:#?}"
         );
 
-        Ok(CoverCryptHybridCipher {
+        Ok(Self {
             cover_crypt,
             public_key_uid: public_key_uid.into(),
             public_key_bytes: public_key_bytes.to_vec(),
@@ -131,7 +131,7 @@ impl EnCipher for CoverCryptHybridCipher {
             data: Some(ciphertext),
             iv_counter_nonce: None,
             correlation_value: None,
-            authenticated_encryption_tag: Some(authenticated_encryption_additional_data.to_vec()),
+            authenticated_encryption_tag: Some(authenticated_encryption_additional_data.clone()),
         })
     }
 }
@@ -149,7 +149,7 @@ impl CoverCryptHybridDecipher {
         cover_crypt: CoverCryptX25519Aes256,
         user_decryption_key_uid: &str,
         user_decryption_key: &Object,
-    ) -> Result<CoverCryptHybridDecipher, KmipError> {
+    ) -> Result<Self, KmipError> {
         let (user_decryption_key_bytes, _access_policy, _attributes) =
             unwrap_user_decryption_key_object(user_decryption_key)?;
 
@@ -158,7 +158,7 @@ impl CoverCryptHybridDecipher {
              {user_decryption_key_uid}"
         );
 
-        Ok(CoverCryptHybridDecipher {
+        Ok(Self {
             cover_crypt,
             user_decryption_key_uid: user_decryption_key_uid.into(),
             user_decryption_key_bytes,

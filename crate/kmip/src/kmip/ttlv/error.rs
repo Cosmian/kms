@@ -9,8 +9,8 @@ pub struct TtlvError {
 
 impl TtlvError {
     #[must_use]
-    pub fn new(s: &str) -> TtlvError {
-        TtlvError {
+    pub fn new(s: &str) -> Self {
+        Self {
             error: s.to_owned(),
         }
     }
@@ -29,7 +29,7 @@ impl ser::Error for TtlvError {
     where
         T: Display,
     {
-        TtlvError {
+        Self {
             error: format!("{msg}"),
         }
     }
@@ -40,7 +40,7 @@ impl de::Error for TtlvError {
     where
         T: Display,
     {
-        TtlvError {
+        Self {
             error: format!("{msg}"),
         }
     }
@@ -48,6 +48,6 @@ impl de::Error for TtlvError {
 
 impl From<time::Error> for TtlvError {
     fn from(err: time::error::Error) -> Self {
-        TtlvError::new(&err.to_string())
+        Self::new(&err.to_string())
     }
 }

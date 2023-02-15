@@ -5,16 +5,15 @@ Extensions in KMIP consist mostly in augmenting enumerations with new values and
 
 The Cosmian extensions are listed below. They can also be viewed in the open sourced [Cloudproof Java library](https://github.com/Cosmian/cloudproof_java/) which implements the KMIP specifications required to interact with the Cosmian KMS server. For instance, the `CryptographicAlgorithm` enumeration extensions can be viewed in [this java source code](https://github.com/Cosmian/cloudproof_java/blob/main/src/main/java/com/cosmian/rest/kmip/types/CryptographicAlgorithm.java)
 
-
 #### KeyFormatType
 
 The Key Format Type attribute is a required attribute of a Cryptographic Object.
 
-It is set by the server, but a particular Key Format Type MAY be requested by the client if the cryptographic material is produced by the server (i.e., Create, Create Key Pair, Create Split Key, Re-key, Re-key Key Pair, Derive Key) on the client’s behalf. The server SHALL comply with the client’s requested format or SHALL fail the request. When the server calculates a Digest for the object, it SHALL compute the digest on the data in the assigned Key Format Type, as well as a digest in the default KMIP Key Format Type for that type of key and the algorithm requested (if a non-default value is specified).
+It is set by the server, but a particular Key Format Type MAY be requested by the client if the cryptographic material is produced by the server (i.e., Create, Create Key Pair, Create Split Key, Re-key, Re-key Key Pair, Derive Key) on the client's behalf. The server SHALL comply with the client's requested format or SHALL fail the request. When the server calculates a Digest for the object, it SHALL compute the digest on the data in the assigned Key Format Type, as well as a digest in the default KMIP Key Format Type for that type of key and the algorithm requested (if a non-default value is specified).
 
-*Extensions*
+##### Extensions
 
-```
+```c
 EnclaveECKeyPair = 0x8880_0005,
 EnclaveECSharedKey = 0x8880_0006,
 CoverCryptSecretKey = 0x8880_000C,
@@ -37,9 +36,9 @@ The IV used with counter modes of operation (e.g., CTR and GCM) cannot repeat fo
 
 Initial Counter Value is the starting counter value for CTR mode (for [RFC3686] it is 1).
 
-*Extensions*
+##### Extensions
 
-```
+```c
 CoverCrypt = 0x8880_0004,
 ```
 
@@ -53,9 +52,8 @@ The different attribute names can be seen in the [VendorAttributes.java](https:/
 The attributes names and corresponding values used for a given `KeyFormatType` are as follows:
 
 - `AbeMasterSecretKey` and `AbeMasterPublicKey`:
-    - `VENDOR_ATTR_ABE_POLICY = "abe_policy"` : the JSONified Policy
+  - `VENDOR_ATTR_ABE_POLICY = "abe_policy"` : the JSONified Policy
 - `AbeUserDecryptionKey`:
-    - `VENDOR_ATTR_ABE_ACCESS_POLICY = "abe_access_policy"`: The JSONified boolean Access Policy of the key
-
+  - `VENDOR_ATTR_ABE_ACCESS_POLICY = "abe_access_policy"`: The JSONified boolean Access Policy of the key
 
 In addition the `VENDOR_ATTR_ABE_ATTR = "abe_attributes"` name is used in Locate requests to identify User Decryption Keys holding certain Policy Attributes.

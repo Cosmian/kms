@@ -10,7 +10,7 @@ pub struct DBConfig {
     /// The type of database used as backend
     /// - postgresql: PostgreSQL. The database url must be provided
     /// - mysql: MySql or MariaDB. The database url must be provided
-    /// - sqlite: SQLite. The data wil be stored at the sqlite_path directory
+    /// - sqlite: SQLite. The data will be stored at the sqlite_path directory
     /// - sqlite-enc: SQLite encrypted at rest. the data will be stored at the sqlite_path directory.
     ///   A key must be supplied on every call
     ///
@@ -59,7 +59,7 @@ impl DBConfig {
     ///
     /// # Errors
     /// - If both Postgres and MariaDB/MySQL URL are set
-    /// - If SQLCipher is set along with Postgres or MariaDB/MySQL URL
+    /// - If `SQLCipher` is set along with Postgres or MariaDB/MySQL URL
     pub fn init(&self, workspace: &WorkspaceConfig) -> eyre::Result<DbParams> {
         match self.database_type.as_str() {
             "postgresql" => {
@@ -90,7 +90,7 @@ impl DBConfig {
 
 fn ensure_url(database_url: &Option<String>, alternate_env_variable: &str) -> eyre::Result<String> {
     if let Some(url) = database_url {
-        Ok(url.to_owned())
+        Ok(url.clone())
     } else {
         std::env::var(alternate_env_variable).map_err(|_e| {
             eyre::eyre!(

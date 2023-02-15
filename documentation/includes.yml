@@ -40,5 +40,3 @@ pandoc-latex-admonition:
     classes: [admonition, note]
   - color: orange
     classes: [admonition, warning]
----
-

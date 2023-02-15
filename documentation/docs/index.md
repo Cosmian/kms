@@ -26,7 +26,7 @@ The curve implementation is from the [curve25519-dalek](https://github.com/dalek
 #### Multi-user Encryption: CoverCrypt
 
 The KMS encryption implementation is based on [CoverCrypt](https://github.com/Cosmian/cover_crypt) which is a multi‑user encryption solution which provides access rights to users with respect to
-an access policy where the policy over attributes can be expressed as a union of users’ rights. **CoverCrypt** has been proposed as a more efficient alternative to [Attribute-Based Encryption for Fine-Grained Access Control of Encrypted Data](https://eprint.iacr.org/2006/309.pdf) by vipul Goyal, Omkant Pandey, Amit Sahai, Brent Waters.
+an access policy where the policy over attributes can be expressed as a union of users' rights. **CoverCrypt** has been proposed as a more efficient alternative to [Attribute-Based Encryption for Fine-Grained Access Control of Encrypted Data](https://eprint.iacr.org/2006/309.pdf) by vipul Goyal, Omkant Pandey, Amit Sahai, Brent Waters.
 
 Please refer to the [Cosmian CoverCrypt documentation](https://github.com/Cosmian/cover_crypt/blob/develop/bib/CoverCrypt.pdf) for more details.
 

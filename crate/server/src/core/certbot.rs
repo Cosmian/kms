@@ -41,9 +41,9 @@ impl fmt::Debug for Certbot {
 
 impl Default for Certbot {
     fn default() -> Self {
-        Certbot::new(
-            String::from(""),
-            String::from(""),
+        Self::new(
+            String::new(),
+            String::new(),
             PathBuf::from(""),
             PathBuf::from(""),
         )
@@ -56,8 +56,8 @@ impl Certbot {
         common_name: String,
         http_root_path: PathBuf,
         keys_path: PathBuf,
-    ) -> Certbot {
-        Certbot {
+    ) -> Self {
+        Self {
             days_threshold_before_renew: 15,
             email,
             common_name,

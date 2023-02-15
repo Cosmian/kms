@@ -76,7 +76,7 @@ impl NewMasterKeyPairAction {
 /// as a boolean expression. The user decryption key can decrypt files with
 /// attributes matching its access policy (i.e. the access policy is true).
 ///
-/// Example: cosmian_kms_cli cc new -s abf0e213-59c1-4acf-bb93-8ab4bedfa2f5 "department::marketing && level::secret"
+/// Example: `cosmian_kms_cli` cc new -s abf0e213-59c1-4acf-bb93-8ab4bedfa2f5 "`department::marketing` && `level::secret`"
 #[derive(StructOpt, Debug)]
 pub struct NewUserKeyAction {
     /// The private master key unique identifier stored in the KMS
@@ -138,7 +138,7 @@ impl RevokeUserKeyAction {
         // Create the kmip query
         let revoke_query = cc_build_revoke_user_decryption_key_request(
             &self.user_key_id,
-            RevocationReason::TextString(self.revocation_reason.to_owned()),
+            RevocationReason::TextString(self.revocation_reason.clone()),
         )?;
 
         // Query the KMS with your kmip data

@@ -23,7 +23,6 @@ curl http://localhost:9998/version
 
     Most of these options can be passed on the command line or using the environment variables listed by the `--help` command.
 
-
 ## Single server mode
 
 The single server mode uses an embedded SQLite database stored on a filesystem and therefore does not require access to an external database.
@@ -79,17 +78,16 @@ curl \
 
 Each encrypted database owns its encrypted file. Encrypted databases can be used concurrently on the same KMS server.
 
-
 ## Replicated mode
 
 In replicated mode, the server can use PostgreSQL, Maria DB, or MySQL. Since the KMS servers are stateless, they can be scaled horizontally by connecting to the same database.
 
 With the correct `database-type`, a `database-url` must also be provided
 
-For 
+For
 
- - PostgreSQL, use `--database-type=postgresql`
- - MySQL or MariaDB, use `--database-type=mysql`
+- PostgreSQL, use `--database-type=postgresql`
+- MySQL or MariaDB, use `--database-type=mysql`
 
 e.g.
 
@@ -134,7 +132,6 @@ docker run --rm -p 9998:9998 \
   --mysql-user-cert-file=cert.p12
 ```
 
-
 ## Enabling HTTPS
 
 The server may be started using http/s by either installing certificates or using `certbot`.
@@ -160,7 +157,7 @@ docker run --rm -p 443:9998 \
     To generate a PKCS12 from PEM files, you can use `openssl`:
 
     ```sh
-    openssl pkcs12 -export \           
+    openssl pkcs12 -export \
     -in server.mydomain.com.fullchain.pem \
     -inkey server.mydomain.com.privkey.pem \
     -out server.mydomain.com.p12
@@ -170,10 +167,10 @@ docker run --rm -p 443:9998 \
 
 The Cosmian KMS server has support for a certificate bot that can automatically obtain and renew its certificates from Let's Encrypt using the acme protocol.
 
-To enable the use of the certificate bot, enable the `--use-certbot` switch then specify 
+To enable the use of the certificate bot, enable the `--use-certbot` switch then specify
 
- - the KMS hostname (Common Name in the certificate) using the `--certbot-hostname` option 
- - and the domain name owner email using the `--certbot-email` option, e.g.
+- the KMS hostname (Common Name in the certificate) using the `--certbot-hostname` option
+- and the domain name owner email using the `--certbot-email` option, e.g.
 
 The hostname must be a valid DNS A or AAAA record pointing to the IP address of this server as the Let's Encrypt server will attempt to connect to the server during the process.
 
@@ -192,8 +189,7 @@ docker run --rm -p 443:9998 \
   --certbot-email admin@mydomain.com
 ```
 
-
-<!-- 
+<!--
 
 #### Note
 

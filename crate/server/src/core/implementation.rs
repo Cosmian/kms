@@ -33,7 +33,7 @@ use crate::{
 };
 
 impl KMS {
-    pub async fn instantiate() -> KResult<KMS> {
+    pub async fn instantiate() -> KResult<Self> {
         let db: Box<dyn Database + Sync + Send> = match SharedConfig::db_params() {
             DbParams::SqliteEnc(db_path) => Box::new(CachedSqlCipher::instantiate(&db_path).await?),
             DbParams::Sqlite(db_path) => {
@@ -43,7 +43,7 @@ impl KMS {
             DbParams::Mysql(url, user_cert) => Box::new(Sql::instantiate(&url, user_cert).await?),
         };
 
-        Ok(KMS {
+        Ok(Self {
             db,
             rng: Arc::new(Mutex::new(CsRng::from_entropy())),
         })

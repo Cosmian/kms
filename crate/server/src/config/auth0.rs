@@ -22,7 +22,7 @@ impl Auth0Config {
                     .with_context(|| "Unable to connect to retrieve JWKS")?
                     .json::<JWKS>()
                     .await
-                    .map_err(|e| eyre::eyre!(format!("Unable to get JWKS as a JSON: {}", e)))
+                    .map_err(|e| eyre::eyre!(format!("Unable to get JWKS as a JSON: {e}")))
                     .map(Option::Some)
             }
         }

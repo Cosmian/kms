@@ -45,10 +45,10 @@ pub struct HttpsCertbotConfig {
 
 impl Default for HttpsCertbotConfig {
     fn default() -> Self {
-        HttpsCertbotConfig {
+        Self {
             use_certbot: false,
-            certbot_email: "".to_string(),
-            certbot_hostname: "".to_string(),
+            certbot_email: String::new(),
+            certbot_hostname: String::new(),
             certbot_ssl_path: std::env::temp_dir(),
         }
     }
@@ -66,8 +66,8 @@ impl HttpsCertbotConfig {
         }
 
         Ok(Certbot::new(
-            self.certbot_email.to_owned(),
-            self.certbot_hostname.to_owned(),
+            self.certbot_email.clone(),
+            self.certbot_hostname.clone(),
             std::fs::canonicalize(http_root_path).map_err(|e| eyre::eyre!(e))?,
             std::fs::canonicalize(certbot_ssl_path).map_err(|e| eyre::eyre!(e))?,
         ))

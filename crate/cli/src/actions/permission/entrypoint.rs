@@ -21,11 +21,11 @@ pub enum PermissionAction {
 impl PermissionAction {
     pub async fn process(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         match self {
-            PermissionAction::Add(action) => action.run(client_connector).await?,
-            PermissionAction::Remove(action) => action.run(client_connector).await?,
-            PermissionAction::List(action) => action.run(client_connector).await?,
-            PermissionAction::Owned(action) => action.run(client_connector).await?,
-            PermissionAction::Shared(action) => action.run(client_connector).await?,
+            Self::Add(action) => action.run(client_connector).await?,
+            Self::Remove(action) => action.run(client_connector).await?,
+            Self::List(action) => action.run(client_connector).await?,
+            Self::Owned(action) => action.run(client_connector).await?,
+            Self::Shared(action) => action.run(client_connector).await?,
         };
 
         Ok(())
@@ -51,8 +51,8 @@ pub struct AddPermission {
 impl AddPermission {
     pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         let access = Access {
-            unique_identifier: Some(self.object_uid.to_owned()),
-            user_id: self.user.to_owned(),
+            unique_identifier: Some(self.object_uid.clone()),
+            user_id: self.user.clone(),
             operation_type: self.operation,
         };
 
@@ -86,8 +86,8 @@ pub struct RemovePermission {
 impl RemovePermission {
     pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
         let access = Access {
-            unique_identifier: Some(self.object_uid.to_owned()),
-            user_id: self.user.to_owned(),
+            unique_identifier: Some(self.object_uid.clone()),
+            user_id: self.user.clone(),
             operation_type: self.operation,
         };
 

@@ -16,8 +16,8 @@ You can also add `"insecure': true` to allow the CLI to connect to a KMS using a
 
 The CLI expects to find a file named `kms.json` in the current directory or a path set in the `KMS_CLI_CONF` environment variable.
 
-```
-$ KMS_CLI_CONF=kms.json cosmian_kms_cli --help
+```sh
+KMS_CLI_CONF=kms.json cosmian_kms_cli --help
 ```
 
 ## ABE Covercrypt
@@ -225,7 +225,7 @@ $ cosmian_kms_cli permission list  b7c0e623-7800-4f87-a347-63bcf22cbd04
 The permissions are:
 
 > test@google.com
-	Encrypt
+ Encrypt
 ```
 
 # Enclave

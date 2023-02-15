@@ -19,7 +19,7 @@ The KMS enables you to check its trustworthiness. To do so, three routes are use
 
 With these three routes, you can proceed a remote attestation on Microsoft Azure Service. Note that the report data of the quote is generated has follow:
 
-```
+```c
 report_data = Sha256( certificate + nounce )
 ```
 
@@ -59,7 +59,7 @@ sudo docker run \
 
 The `mr_enclave` can be read from the output of the docker itself.
 
-```
+```c
 Measurement:
     c8e0ac76ee1b9416e53890677cbbce8a5f1d8bf2f1c7ab208c1e0efa56e8cea2
 
