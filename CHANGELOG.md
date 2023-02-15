@@ -2,12 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+---
+
+## [4.3.0] - 2023-02-15
+
+### Documentation
+
+- Improves the install doc and details the important options
+- Makes wording coherent between doc and code
+
+### Features
+
+- adds native HTTP/S support by providing certificates
+- improves encrypted SQLite support
+
+### Miscellaneous Tasks
+
+- removes multiple features on the KMS server and makes them command-line options.
+- There is now a single docker (115MB) that covers all cases (except SGX, which will come later)
+- removes the use of crypto_base and makes use of cover-crypt 10.0
+
+---
+
 ## [4.2.0] - 2023-01-30
 
 ### Features
 
 - Use CoverCrypt v9.0 (post-quantum cryptography) and AbePolicy v3.0
-  * Write `Policy` as bytes and `AccessPolicy` as string in Vendor Attributes
+  - Write `Policy` as bytes and `AccessPolicy` as string in Vendor Attributes
 
 ### Ci
 
