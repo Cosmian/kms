@@ -22,12 +22,12 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-pub(crate) struct Pgsql {
+pub struct Pgsql {
     pool: Pool<Postgres>,
 }
 
 impl Pgsql {
-    pub async fn instantiate(connection_url: &str) -> KResult<Pgsql> {
+    pub async fn instantiate(connection_url: &str) -> KResult<Self> {
         let mut options = PgConnectOptions::from_str(connection_url)?;
         // disable logging of each query
         options.disable_statement_logging();
@@ -53,7 +53,7 @@ impl Pgsql {
         .execute(&pool)
         .await?;
 
-        Ok(Pgsql { pool })
+        Ok(Self { pool })
     }
 
     #[cfg(test)]
@@ -521,7 +521,7 @@ impl Database for Pgsql {
         let mut res = vec![];
         let mut tx = self.pool.begin().await?;
         for (uid, object) in objects {
-            match create_(uid.to_owned(), owner, object, &mut tx).await {
+            match create_(uid.clone(), owner, object, &mut tx).await {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
@@ -653,6 +653,7 @@ impl Database for Pgsql {
 //
 #[cfg(test)]
 mod tests {
+    use cosmian_crypto_core::CsRng;
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -661,6 +662,7 @@ mod tests {
         },
     };
     use cosmian_kms_utils::{crypto::aes::create_symmetric_key, types::ObjectOperationTypes};
+    use rand_core::SeedableRng;
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -674,6 +676,7 @@ mod tests {
     #[actix_rt::test]
     #[serial(pgsql)]
     pub async fn test_crud() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let postgres_url = std::option_env!("KMS_POSTGRES_URL")
             .ok_or_else(|| kms_error!("No PostgreSQL database configured"))?;
         let pg = Pgsql::instantiate(postgres_url).await?;
@@ -696,7 +699,7 @@ mod tests {
         }
 
         // Insert an object and query it, update it, delete it, query it
-        let mut symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         let uid_ = pg
@@ -777,6 +780,7 @@ mod tests {
     #[actix_rt::test]
     #[serial(pgsql)]
     pub async fn test_upsert() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let postgres_url = std::option_env!("KMS_POSTGRES_URL")
             .ok_or_else(|| kms_error!("No PostgreSQL database configured"))?;
         let pg = Pgsql::instantiate(postgres_url).await?;
@@ -786,7 +790,7 @@ mod tests {
 
         // Create key
 
-        let mut symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         pg.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -858,6 +862,7 @@ mod tests {
     #[actix_rt::test]
     #[serial(pgsql)]
     pub async fn test_tx_and_list() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let postgres_url = std::option_env!("KMS_POSTGRES_URL")
             .ok_or_else(|| kms_error!("No PostgreSQL database configured"))?;
         let pg = Pgsql::instantiate(postgres_url).await?;
@@ -867,10 +872,10 @@ mod tests {
 
         // Create key
 
-        let symmetric_key_1 = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let symmetric_key_1 = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid_1 = Uuid::new_v4().to_string();
 
-        let symmetric_key_2 = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let symmetric_key_2 = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid_2 = Uuid::new_v4().to_string();
 
         let ids = pg
@@ -939,6 +944,7 @@ mod tests {
     #[actix_rt::test]
     #[serial(pgsql)]
     pub async fn test_owner() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let postgres_url = std::option_env!("KMS_POSTGRES_URL")
             .ok_or_else(|| kms_error!("No PostgreSQL database configured"))?;
         let pg = Pgsql::instantiate(postgres_url).await?;
@@ -951,7 +957,7 @@ mod tests {
 
         // Create key
 
-        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         // test non existent row (with very high probability)
@@ -1184,6 +1190,7 @@ mod tests {
     #[actix_rt::test]
     #[serial(pgsql)]
     pub async fn test_json_access() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let postgres_url = std::option_env!("KMS_POSTGRES_URL")
             .ok_or_else(|| kms_error!("No PostgreSQL database configured"))?;
         let db = Pgsql::instantiate(postgres_url).await?;
@@ -1193,7 +1200,7 @@ mod tests {
 
         // Create key
 
-        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -1341,6 +1348,7 @@ mod tests {
     #[actix_rt::test]
     #[serial(pgsql)]
     pub async fn test_find_attrs() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let postgres_url = std::option_env!("KMS_POSTGRES_URL")
             .ok_or_else(|| kms_error!("No PostgreSQL database configured"))?;
         let pg = Pgsql::instantiate(postgres_url).await?;
@@ -1350,7 +1358,7 @@ mod tests {
 
         //
 
-        let mut symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         // Define the link vector

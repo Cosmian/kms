@@ -213,6 +213,7 @@ pub trait PlaceholderTrait {
 
     /// Handle different placeholders (`?`, `$1`) in SQL queries
     /// to bind value into a query
+    #[must_use]
     fn binder(param_number: usize) -> String {
         format!("${param_number}")
     }

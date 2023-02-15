@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 bitflags = "1.2"
-cosmian_cover_crypt = { git = "https://github.com/Cosmian/cover_crypt", rev = "a146568b" }
+cosmian_cover_crypt = "10.0.0"
 hex = { version = "0.4", features = ["serde"] }
 leb128 = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }

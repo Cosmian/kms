@@ -12,10 +12,10 @@ use crate::crypto::cover_crypt::attributes::{
 ///   compare only access policies of the 2 `Attributes` input parameters
 /// second:
 ///   return `true` if both `Attributes` contains the same master private key
-/// unique identifier and if one of the CoverCrypt attributes (found in
+/// unique identifier and if one of the `CoverCrypt` attributes (found in
 /// `researched_attributes` through vendor attributes) is found in `attributes`
 /// /// TODO: BGR: it would be better, faster, safer to reconstruct the partitions list and check for intersections
-/// TODO: this code should be in the abe_policy crate
+/// TODO: this code should be in the `abe_policy` crate
 pub fn compare_cover_crypt_attributes(
     attributes: &Attributes,
     researched_attributes: &Attributes,

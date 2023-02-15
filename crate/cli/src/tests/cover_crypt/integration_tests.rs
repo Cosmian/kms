@@ -113,6 +113,7 @@ pub async fn test_secrets_group_id_bad() -> Result<(), Box<dyn std::error::Error
 
     cmd.arg(SUB_COMMAND)
         .args(vec!["init", "--policy", "test_data/policy.json"]);
+
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("unable to open database file"));

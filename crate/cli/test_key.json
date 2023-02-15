@@ -1,54 +1,54 @@
 {
-    "tag": "PrivateKey",
-    "type": "Structure",
-    "value": [
+  "tag": "PrivateKey",
+  "type": "Structure",
+  "value": [
+    {
+      "tag": "KeyBlock",
+      "type": "Structure",
+      "value": [
         {
-            "tag": "KeyBlock",
-            "type": "Structure",
-            "value": [
+          "tag": "KeyFormatType",
+          "type": "Enumeration",
+          "value": "CoverCryptSecretKey"
+        },
+        {
+          "tag": "KeyValue",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "KeyMaterial",
+              "type": "ByteString",
+              "value": "0201052024CABF83C8B1D99581F862D1BFA156D56F4D7327540A5C9B58C45351BF5AD70302010420CD01F3E0E037357586BACE93883A2BE80ABDBEBE618409290B2A87BE704A160302030420C6FB1608E95B5C5B72E01A4FB6D4FEAB85ABC9175D4152C1383479D83047A40302020520768E9D34DFBC804332C1E37DEFD06CC279438489AE0DA8BAB0FF16B6EB8E930702030620BEE58349144EEAF929A50F8B0CEEEE529EEADA19E8EA7C23D9EC47175F01C80402030520B478D0C48F2DC8AC6F6CC925162FD9D50BFDA3BB8FC1E92E83741EB2F5C7670F0201062038C55C575E4DFFDE1EA54D380A16F64848A893DC333F27C6009EA482C57B3D06020206206CE5A6BAD0FB34C28F9F6EDD1DB8FF37283A0C03307FB4CE6DA2D4A694362E0402020420274C5419DEEDDB8C2BE99579D5BAA7664FC84D3E91E0B269E793053CB5E1A80300"
+            },
+            {
+              "tag": "Attributes",
+              "type": "Structure",
+              "value": [
                 {
-                    "tag": "KeyFormatType",
-                    "type": "Enumeration",
-                    "value": "CoverCryptSecretKey"
+                  "tag": "Link",
+                  "type": "Structure",
+                  "value": []
                 },
                 {
-                    "tag": "KeyValue",
-                    "type": "Structure",
-                    "value": [
-                        {
-                            "tag": "KeyMaterial",
-                            "type": "ByteString",
-                            "value": "0201052024CABF83C8B1D99581F862D1BFA156D56F4D7327540A5C9B58C45351BF5AD70302010420CD01F3E0E037357586BACE93883A2BE80ABDBEBE618409290B2A87BE704A160302030420C6FB1608E95B5C5B72E01A4FB6D4FEAB85ABC9175D4152C1383479D83047A40302020520768E9D34DFBC804332C1E37DEFD06CC279438489AE0DA8BAB0FF16B6EB8E930702030620BEE58349144EEAF929A50F8B0CEEEE529EEADA19E8EA7C23D9EC47175F01C80402030520B478D0C48F2DC8AC6F6CC925162FD9D50BFDA3BB8FC1E92E83741EB2F5C7670F0201062038C55C575E4DFFDE1EA54D380A16F64848A893DC333F27C6009EA482C57B3D06020206206CE5A6BAD0FB34C28F9F6EDD1DB8FF37283A0C03307FB4CE6DA2D4A694362E0402020420274C5419DEEDDB8C2BE99579D5BAA7664FC84D3E91E0B269E793053CB5E1A80300"
-                        },
-                        {
-                            "tag": "Attributes",
-                            "type": "Structure",
-                            "value": [
-                                {
-                                    "tag": "Link",
-                                    "type": "Structure",
-                                    "value": []
-                                },
-                                {
-                                    "tag": "ObjectType",
-                                    "type": "Enumeration",
-                                    "value": "PublicKey"
-                                }
-                            ]
-                        }
-                    ]
-                },
-                {
-                    "tag": "CryptographicAlgorithm",
-                    "type": "Enumeration",
-                    "value": "CoverCrypt"
-                },
-                {
-                    "tag": "CryptographicLength",
-                    "type": "Integer",
-                    "value": 325
+                  "tag": "ObjectType",
+                  "type": "Enumeration",
+                  "value": "PublicKey"
                 }
-            ]
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "CryptographicAlgorithm",
+          "type": "Enumeration",
+          "value": "CoverCrypt"
+        },
+        {
+          "tag": "CryptographicLength",
+          "type": "Integer",
+          "value": 325
         }
-    ]
+      ]
+    }
+  ]
 }

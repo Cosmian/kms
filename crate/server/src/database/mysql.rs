@@ -20,14 +20,14 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
-/// The MySQL connector is also compatible to connect a MariaDB
+/// The `MySQL` connector is also compatible to connect a `MariaDB`
 /// see: https://mariadb.com/kb/en/mariadb-vs-mysql-compatibility/
-pub(crate) struct Sql {
+pub struct Sql {
     pool: Pool,
 }
 
 impl Sql {
-    pub async fn instantiate(connection_url: &str, user_cert: Option<PathBuf>) -> KResult<Sql> {
+    pub async fn instantiate(connection_url: &str, user_cert: Option<PathBuf>) -> KResult<Self> {
         let client = SslOpts::default();
         let ssl_opts = client
             .with_client_identity(user_cert.map(ClientIdentity::new))
@@ -51,7 +51,7 @@ impl Sql {
                 .get("create-table-read_access")
                 .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         )?;
-        Ok(Sql { pool })
+        Ok(Self { pool })
     }
 
     #[cfg(test)]
@@ -500,7 +500,7 @@ impl Database for Sql {
         let mut res = vec![];
         // let mut tx = self.pool.begin().await?;
         for (uid, object) in objects {
-            match create_(uid.to_owned(), owner, object, &self.pool).await {
+            match create_(uid.clone(), owner, object, &self.pool).await {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
                     // tx.rollback().await.context("transaction failed")?;
@@ -629,6 +629,7 @@ impl Database for Sql {
 // Run these tests using: `cargo make rust-tests`
 #[cfg(test)]
 mod tests {
+    use cosmian_crypto_core::CsRng;
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -637,6 +638,7 @@ mod tests {
         },
     };
     use cosmian_kms_utils::{crypto::aes::create_symmetric_key, types::ObjectOperationTypes};
+    use rand_core::SeedableRng;
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -646,8 +648,10 @@ mod tests {
     #[actix_rt::test]
     #[serial(mysql)]
     pub async fn test_crud() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert = std::option_env!("KMS_USER_CERT_PATH").expect("No user cert configured");
+        let user_cert =
+            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
         let mysql = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
         mysql.clean_database().await;
 
@@ -668,7 +672,7 @@ mod tests {
         }
 
         // Insert an object and query it, update it, delete it, query it
-        let mut symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
         let uid_ = mysql
             .create(Some(uid.clone()), owner, &symmetric_key, None)
@@ -746,8 +750,10 @@ mod tests {
     #[actix_rt::test]
     #[serial(mysql)]
     pub async fn test_upsert() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert = std::option_env!("KMS_USER_CERT_PATH").expect("No user cert configured");
+        let user_cert =
+            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
         let mysql = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
         mysql.clean_database().await;
 
@@ -755,7 +761,7 @@ mod tests {
 
         // Create key
 
-        let mut symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         mysql
@@ -825,8 +831,10 @@ mod tests {
     #[actix_rt::test]
     #[serial(mysql)]
     pub async fn test_tx_and_list() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert = std::option_env!("KMS_USER_CERT_PATH").expect("No user cert configured");
+        let user_cert =
+            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
         let mysql = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
         mysql.clean_database().await;
 
@@ -834,10 +842,10 @@ mod tests {
 
         // Create key
 
-        let symmetric_key_1 = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let symmetric_key_1 = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid_1 = Uuid::new_v4().to_string();
 
-        let symmetric_key_2 = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let symmetric_key_2 = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid_2 = Uuid::new_v4().to_string();
 
         let ids = mysql
@@ -902,8 +910,10 @@ mod tests {
     #[actix_rt::test]
     #[serial(mysql)]
     pub async fn test_owner() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert = std::option_env!("KMS_USER_CERT_PATH").expect("No user cert configured");
+        let user_cert =
+            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
         let mysql = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
         mysql.clean_database().await;
 
@@ -914,7 +924,7 @@ mod tests {
 
         // Create key
 
-        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         // test non existent row (with very high probability)
@@ -1078,7 +1088,8 @@ mod tests {
         let userid = "foo@example.org";
         let userid2 = "bar@example.org";
         let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert = std::option_env!("KMS_USER_CERT_PATH").expect("No user cert configured");
+        let user_cert =
+            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
         let mysql = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
         mysql.clean_database().await;
 
@@ -1159,8 +1170,10 @@ mod tests {
     // MySQL part is tested on an EdgelessDB, which doesn't currently support JSON, so this test can't pass.
     #[ignore]
     pub async fn test_json_access() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert = std::option_env!("KMS_USER_CERT_PATH").expect("No user cert configured");
+        let user_cert =
+            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
         let db = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
         db.clean_database().await;
 
@@ -1168,7 +1181,7 @@ mod tests {
 
         // Create key
 
-        let symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -1318,8 +1331,10 @@ mod tests {
     // MySQL part is tested on an EdgelessDB, which doesn't currently support JSON, so this test can't pass.
     #[ignore]
     pub async fn test_find_attrs() -> KResult<()> {
+        let mut rng = CsRng::from_entropy();
         let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert = std::option_env!("KMS_USER_CERT_PATH").expect("No user cert configured");
+        let user_cert =
+            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
         let db = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
         db.clean_database().await;
 
@@ -1327,7 +1342,7 @@ mod tests {
 
         //
 
-        let mut symmetric_key = create_symmetric_key(CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 
         // Define the link vector

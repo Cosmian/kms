@@ -7,7 +7,7 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-exclude: crate/cli/test_data|documentation/pandoc|crate/cli/kms.json|enclave|crate/server/tests/test_utils.rs
+exclude: crate/cli/test_data|crate/cli/demo.sh|scripts/deploy_sgx.sh|documentation/pandoc|documentation/overrides|documentation/mkdocs.yml|crate/cli/kms.json|enclave|crate/server/tests/test_utils.rs
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v2.1.1
@@ -29,7 +29,7 @@ repos:
     rev: v0.32.2
     hooks:
       - id: markdownlint-fix
-        args: [--disable=MD013, --disable=MD024, --disable=MD041]
+        args: [--disable=MD013, --disable=MD024, --disable=MD029, --disable=MD041, --disable=MD046]
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
     rev: v1.1.2
@@ -87,7 +87,7 @@ repos:
       - id: clippy-autofix-pedantic
       - id: clippy-autofix-nursery
       - id: clippy-autofix-others
-      - id: cargo-format
+      - id: unstable-cargo-format
       - id: dprint-toml-fix
 
   - repo: https://github.com/pre-commit/pre-commit-hooks

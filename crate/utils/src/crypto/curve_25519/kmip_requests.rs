@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -19,6 +17,7 @@ use crate::crypto::curve_25519::operation::{
 };
 
 /// Build a `CreateKeyPairRequest` for a curve 25519 key pair
+#[must_use]
 pub fn create_key_pair_request() -> CreateKeyPair {
     CreateKeyPair {
         common_attributes: Some(Attributes {
@@ -44,6 +43,7 @@ pub fn create_key_pair_request() -> CreateKeyPair {
     }
 }
 
+#[must_use]
 pub fn get_private_key_request(uid: &str) -> Get {
     Get {
         unique_identifier: Some(uid.to_string()),
@@ -54,6 +54,7 @@ pub fn get_private_key_request(uid: &str) -> Get {
     }
 }
 
+#[must_use]
 pub fn get_public_key_request(uid: &str) -> Get {
     Get {
         unique_identifier: Some(uid.to_string()),

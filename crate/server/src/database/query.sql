@@ -27,8 +27,8 @@ INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4);
 SELECT object, state FROM objects WHERE id=$1 AND owner=$2;
 
 -- name: select-row-objects-join-read_access
-SELECT objects.object, objects.state, read_access.permissions 
-        FROM objects, read_access 
+SELECT objects.object, objects.state, read_access.permissions
+        FROM objects, read_access
         WHERE objects.id=$1 AND read_access.id=$1 AND read_access.userid=$2;
 
 -- name: update-rows-objects-with-object
@@ -47,8 +47,8 @@ INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4)
         WHERE objects.owner=$4;
 
 -- name: select-row-read_access
-SELECT permissions 
-        FROM read_access 
+SELECT permissions
+        FROM read_access
         WHERE id=$1 AND userid=$2;
 
 -- name: upsert-row-read_access
@@ -64,17 +64,17 @@ DELETE FROM read_access WHERE id=$1 AND userid=$2;
 SELECT 1 FROM objects WHERE id=$1 AND owner=$2;
 
 -- name: update-rows-read_access-with-permission
-UPDATE read_access SET permissions=$3 
+UPDATE read_access SET permissions=$3
         WHERE id=$1 AND userid=$2;
 
 -- name: select-rows-read_access-with-object-id
-SELECT userid, permissions 
-        FROM read_access 
+SELECT userid, permissions
+        FROM read_access
         WHERE id=$1;
 
 -- name: select-rows-objects-shared
-SELECT objects.id, owner, state, permissions 
-        FROM objects 
-        INNER JOIN read_access 
-        ON objects.id = read_access.id 
+SELECT objects.id, owner, state, permissions
+        FROM objects
+        INNER JOIN read_access
+        ON objects.id = read_access.id
         WHERE read_access.userid=$1;

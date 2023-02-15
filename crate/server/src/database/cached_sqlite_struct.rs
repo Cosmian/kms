@@ -58,12 +58,8 @@ pub fn _now() -> u64 {
 
 impl KMSSqliteCacheItem {
     #[must_use]
-    pub fn new(
-        sqlite: Pool<Sqlite>,
-        key: String,
-        freeable_cache_index: usize,
-    ) -> KMSSqliteCacheItem {
-        KMSSqliteCacheItem {
+    pub fn new(sqlite: Pool<Sqlite>, key: String, freeable_cache_index: usize) -> Self {
+        Self {
             sqlite: Arc::new(sqlite),
             key,
             inserted_at: _now(),
@@ -101,8 +97,8 @@ pub struct KMSSqliteCache {
 
 impl KMSSqliteCache {
     #[must_use]
-    pub fn new(size: usize) -> KMSSqliteCache {
-        KMSSqliteCache {
+    pub fn new(size: usize) -> Self {
+        Self {
             sqlites: RwLock::new(HashMap::with_capacity(size)),
             freeable_sqlites: RwLock::new(FreeableSqliteCache::new(size)),
             max_size: size,
@@ -315,8 +311,8 @@ pub struct FSCEntry {
 
 impl FSCEntry {
     /// Create an entry as a last item of a chain
-    pub fn last(value: u128, last_index: usize) -> FSCEntry {
-        FSCEntry {
+    pub fn last(value: u128, last_index: usize) -> Self {
+        Self {
             val: value,
             prev: FSCNeighborEntry::Chained(last_index),
             next: FSCNeighborEntry::Nil,
@@ -325,8 +321,8 @@ impl FSCEntry {
     }
 
     /// Create an entry as the first item of a new chain
-    pub fn singleton(value: u128) -> FSCEntry {
-        FSCEntry {
+    pub fn singleton(value: u128) -> Self {
+        Self {
             val: value,
             prev: FSCNeighborEntry::Nil,
             next: FSCNeighborEntry::Nil,
@@ -350,8 +346,8 @@ pub struct FreeableSqliteCache {
 }
 
 impl FreeableSqliteCache {
-    pub fn new(capacity: usize) -> FreeableSqliteCache {
-        FreeableSqliteCache {
+    pub fn new(capacity: usize) -> Self {
+        Self {
             entries: Vec::with_capacity(capacity),
             head: 0,
             tail: 0,

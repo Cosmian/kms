@@ -17,7 +17,7 @@ use crate::{error::KmsError, kms_bail, result::KResult};
 pub struct Certbot {
     pub days_threshold_before_renew: i64,
     pub email: String,
-    pub domain: String,
+    pub common_name: String,
     pub http_root_path: PathBuf,
     pub keys_path: PathBuf,
     account: Option<Account<FilePersist>>,
@@ -32,7 +32,7 @@ impl fmt::Debug for Certbot {
                 &self.days_threshold_before_renew,
             )
             .field("email", &self.email)
-            .field("domain", &self.domain)
+            .field("common name", &self.common_name)
             .field("http_root_path", &self.http_root_path)
             .field("keys_path", &self.keys_path)
             .finish()
@@ -41,9 +41,9 @@ impl fmt::Debug for Certbot {
 
 impl Default for Certbot {
     fn default() -> Self {
-        Certbot::new(
-            String::from(""),
-            String::from(""),
+        Self::new(
+            String::new(),
+            String::new(),
             PathBuf::from(""),
             PathBuf::from(""),
         )
@@ -53,14 +53,14 @@ impl Default for Certbot {
 impl Certbot {
     pub fn new(
         email: String,
-        domain: String,
+        common_name: String,
         http_root_path: PathBuf,
         keys_path: PathBuf,
-    ) -> Certbot {
-        Certbot {
+    ) -> Self {
+        Self {
             days_threshold_before_renew: 15,
             email,
-            domain,
+            common_name,
             http_root_path,
             keys_path,
             account: None,
@@ -83,7 +83,7 @@ impl Certbot {
 
         let acc = dir.account(&self.email)?;
 
-        self.certificate = acc.certificate(&self.domain)?;
+        self.certificate = acc.certificate(&self.common_name)?;
 
         self.account = Some(acc);
 
@@ -137,7 +137,7 @@ impl Certbot {
             .ok_or_else(|| KmsError::ServerError("Account shouldn't be None".to_string()))?;
 
         // Order a new TLS certificate for a domain.
-        let mut ord_new = acc.new_order(&self.domain, &[])?;
+        let mut ord_new = acc.new_order(&self.common_name, &[])?;
 
         let target = Path::new(&self.http_root_path).join(".well-known/acme-challenge/");
         let target_parent = Path::new(&self.http_root_path).join(".well-known");

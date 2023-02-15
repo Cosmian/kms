@@ -39,7 +39,7 @@ pub async fn test_secrets_bad() -> Result<(), Box<dyn std::error::Error>> {
     cmd.arg(SUB_COMMAND)
         .args(vec!["init", "--policy", "test_data/policy.json"]);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "Access denied: KmsDatabaseSecret header can't be read",
+        "Access denied: KmsDatabaseSecret header cannot be decoded",
     ));
 
     Ok(())

@@ -1,6 +1,6 @@
 use regex::{Regex, RegexBuilder};
 
-/// Extract the key_uid (prefixed by a pattern) from a text
+/// Extract the `key_uid` (prefixed by a pattern) from a text
 fn extract_uid<'a>(text: &'a str, pattern: &'a str) -> Option<&'a str> {
     let formatted = format!(r"^  {pattern}: (?P<uid>[a-z0-9-]+)$");
     let uid_regex: Regex = RegexBuilder::new(formatted.as_str())

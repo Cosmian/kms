@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
     kmip_types::RevocationReason,
 };
 use cosmian_kms_server::{
-    config::{auth::AuthConfig, init_config, Config},
+    config::{auth0::Auth0Config, init_config, Config},
     log_utils,
     result::{KResult, KResultHelper},
 };
@@ -24,8 +24,8 @@ async fn integration_tests() -> KResult<()> {
     log_utils::log_init("cosmian_kms_server=trace");
 
     let config = Config {
-        auth: AuthConfig {
-            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
+        auth0: Auth0Config {
+            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };

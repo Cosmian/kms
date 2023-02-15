@@ -1,7 +1,6 @@
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use tracing::trace;
 
 use crate::{
     kmip::{
@@ -17,13 +16,13 @@ use crate::{
     log_utils::log_init,
 };
 
-pub(crate) fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
+pub fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
     KeyMaterial::TransparentSymmetricKey {
         key: key_value.to_vec(),
     }
 }
 
-pub(crate) fn aes_key_value(key_value: &[u8]) -> KeyValue {
+pub fn aes_key_value(key_value: &[u8]) -> KeyValue {
     KeyValue {
         key_material: aes_key_material(key_value),
         attributes: Some(Attributes {
@@ -36,7 +35,7 @@ pub(crate) fn aes_key_value(key_value: &[u8]) -> KeyValue {
     }
 }
 
-pub(crate) fn aes_key_block(key_value: &[u8]) -> KeyBlock {
+pub fn aes_key_block(key_value: &[u8]) -> KeyBlock {
     KeyBlock {
         key_format_type: KeyFormatType::TransparentSymmetricKey,
         key_compression_type: None,
@@ -47,13 +46,13 @@ pub(crate) fn aes_key_block(key_value: &[u8]) -> KeyBlock {
     }
 }
 
-pub(crate) fn aes_key(key_value: &[u8]) -> Object {
+pub fn aes_key(key_value: &[u8]) -> Object {
     Object::SymmetricKey {
         key_block: aes_key_block(key_value),
     }
 }
 
-pub(crate) fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
+pub fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "KeyMaterial".to_string(),
         value: TTLValue::Structure(vec![TTLV {
@@ -63,7 +62,7 @@ pub(crate) fn aes_key_material_ttlv(key_value: &[u8]) -> TTLV {
     }
 }
 
-pub(crate) fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
+pub fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "KeyValue".to_string(),
         value: TTLValue::Structure(vec![
@@ -101,7 +100,7 @@ pub(crate) fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
     }
 }
 
-pub(crate) fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
+pub fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "KeyBlock".to_string(),
         value: TTLValue::Structure(vec![
@@ -124,7 +123,7 @@ pub(crate) fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
     }
 }
 
-pub(crate) fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
+pub fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
         tag: "Object".to_string(),
         value: TTLValue::Structure(vec![aes_key_block_ttlv(key_value)]),
@@ -457,9 +456,8 @@ fn test_big_int_deserialization() {
 
 #[test]
 fn test_des_aes_key() {
-    log_init("trace,hyper=info,reqwest=info");
+    log_init("debug,hyper=info,reqwest=info");
     let key_bytes: &[u8] = b"this_is_a_test";
-    trace!("HELLO");
 
     let json = serde_json::to_value(aes_key(key_bytes)).unwrap();
     let o: Object = serde_json::from_value(json).unwrap();

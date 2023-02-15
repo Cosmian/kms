@@ -1,75 +1,113 @@
 use std::{
-    env,
+    fs,
     path::{Path, PathBuf},
 };
 
 use clap::Args;
+use dirs;
 
 #[derive(Debug, Args)]
 pub struct WorkspaceConfig {
-    /// The folder to store public data (plain text and readable by anyone)
-    #[clap(long, env = "KMS_PUBLIC_PATH", parse(from_os_str))]
-    pub public_path: PathBuf,
-
-    /// The folder to store data to share between KMS instance (encrypted and readable by any KMS)
-    #[clap(long, env = "KMS_SHARED_PATH", parse(from_os_str))]
-    pub shared_path: PathBuf,
-
-    /// The folder to store private data (encrypted and readable by none but the current instance)
-    #[clap(long, env = "KMS_PRIVATE_PATH", parse(from_os_str))]
-    pub private_path: PathBuf,
+    /// The root folder where the KMS will store its data
+    /// A relative path is taken relative to the user HOME directory
+    #[clap(long, env = "KMS_ROOT_DATA_PATH", default_value = "./cosmian-kms")]
+    pub root_data_path: PathBuf,
 
     /// The folder to store temporary data (non-persistent data readable by no-one but the current instance during the current execution)
-    #[clap(long, env = "KMS_TMP_PATH", parse(from_os_str), default_value = "/tmp")]
+    #[clap(long, env = "KMS_TMP_PATH", default_value = "/tmp")]
     pub tmp_path: PathBuf,
 }
 
 impl Default for WorkspaceConfig {
     fn default() -> Self {
-        WorkspaceConfig {
-            public_path: std::env::temp_dir(),
-            shared_path: std::env::temp_dir(),
-            private_path: std::env::temp_dir(),
+        Self {
+            root_data_path: std::env::temp_dir(),
             tmp_path: std::env::temp_dir(),
         }
     }
 }
 
 impl WorkspaceConfig {
-    pub fn init(&self) -> eyre::Result<WorkspaceConfig> {
-        let path = env::current_dir()?;
-
-        let workspace = WorkspaceConfig {
-            public_path: normalize_path(&path, &self.public_path),
-            shared_path: normalize_path(&path, &self.shared_path),
-            private_path: normalize_path(&path, &self.private_path),
-            tmp_path: normalize_path(&path, &self.tmp_path),
-        };
-
-        if !Path::new(&workspace.public_path).exists() {
-            eyre::bail!("Can't find '{:?}' as public_path", workspace.public_path);
-        }
-
-        if !Path::new(&workspace.shared_path).exists() {
-            eyre::bail!("Can't find '{:?}' as shared_path", workspace.shared_path);
-        }
-
-        if !Path::new(&workspace.private_path).exists() {
-            eyre::bail!("Can't find '{:?}' as private_path", workspace.private_path);
-        }
-
-        if !Path::new(&workspace.tmp_path).exists() {
-            eyre::bail!("Can't find '{:?}' as tmp_path", workspace.tmp_path);
-        }
-
-        Ok(workspace)
+    pub fn init(&self) -> eyre::Result<Self> {
+        let root_data_path = Self::finalize_directory_path(
+            &self.root_data_path,
+            &dirs::home_dir().ok_or_else(|| {
+                eyre::eyre!("Unable to get the user home to set the KMS data path")
+            })?,
+        )?;
+        let tmp_path = Self::finalize_directory_path(&self.tmp_path, &root_data_path)?;
+        Ok(Self {
+            root_data_path,
+            tmp_path,
+        })
     }
-}
 
-fn normalize_path(current_path: &Path, target: &Path) -> PathBuf {
-    if target.is_absolute() {
-        target.to_owned()
-    } else {
-        current_path.join(target)
+    /// Transform a relative path to `root_data_path` to an absolute path and ensure that the directory exists.
+    /// An absolute path is left unchanged.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to be transformed.
+    /// * `relative_root` - The root directory that will be used to make `path` absolute if it's relative.
+    ///
+    /// # Returns
+    ///
+    /// Returns the canonicalized path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the directory can't be created or if an error occurs while calling `std::fs::canonicalize`
+    pub fn finalize_directory(&self, path: &PathBuf) -> eyre::Result<PathBuf> {
+        Self::finalize_directory_path(path, &self.root_data_path)
+    }
+
+    /// Transform a relative path to `root_data_path` to an absolute path and ensure that the directory exists.
+    /// An absolute path is left unchanged.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to be transformed.
+    /// * `relative_root` - The root directory that will be used to make `path` absolute if it's relative.
+    ///
+    /// # Returns
+    ///
+    /// Returns the canonicalized path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the directory can't be created or if an error occurs while calling `std::fs::canonicalize`
+    pub fn finalize_directory_path(path: &PathBuf, relative_root: &Path) -> eyre::Result<PathBuf> {
+        let path = if path.is_relative() {
+            relative_root.join(path)
+        } else {
+            path.clone()
+        };
+        if !path.exists() {
+            fs::create_dir_all(&path)?;
+        }
+        fs::canonicalize(path).map_err(|e| eyre::eyre!(e))
+    }
+
+    /// Transform a relative path to `root_data_path` to an absolute path.
+    /// An absolute path is left unchanged.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to be transformed.
+    ///
+    /// # Returns
+    ///
+    /// Returns the canonicalized path.
+    ///
+    /// # Errors
+    ///
+    /// Returns if an error occurs while calling `std::fs::canonicalize`
+    pub fn finalize_file_path(&self, path: &PathBuf) -> eyre::Result<PathBuf> {
+        let path = if path.is_relative() {
+            self.root_data_path.join(path)
+        } else {
+            path.clone()
+        };
+        fs::canonicalize(path).map_err(|e| eyre::eyre!(e))
     }
 }

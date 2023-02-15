@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use actix_web::{
     delete, get, post,
-    web::{Data, Json, Path},
-    HttpRequest, HttpResponse, HttpResponseBuilder,
+    web::{Data, Json, Path, Query},
+    HttpMessage, HttpRequest, HttpResponse, HttpResponseBuilder,
 };
+use base64::{engine::general_purpose, Engine as _};
 use clap::crate_version;
 use cosmian_kmip::kmip::{
     kmip_operations::{
@@ -14,27 +15,20 @@ use cosmian_kmip::kmip::{
     kmip_types::UniqueIdentifier,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-#[cfg(any(feature = "https", feature = "enclave"))]
-use cosmian_kms_utils::types::CertificatesResponse;
 use cosmian_kms_utils::types::{
-    Access, ExtraDatabaseParams, ObjectOwnedResponse, ObjectSharedResponse, SuccessResponse,
-    UserAccessResponse,
+    Access, ExtraDatabaseParams, ObjectOwnedResponse, ObjectSharedResponse, QuoteParams,
+    SuccessResponse, UserAccessResponse,
 };
 use http::{header, StatusCode};
 use tracing::{debug, error, warn};
-#[cfg(feature = "auth")]
-use {crate::middlewares::auth::AuthClaim, actix_web::HttpMessage};
-#[cfg(feature = "enclave")]
-use {actix_web::web::Query, cosmian_kms_utils::types::QuoteParams};
 
-#[cfg(not(feature = "auth"))]
-use crate::config;
 use crate::{
-    config::{db_params, DbParams},
+    config::{DbParams, SharedConfig},
     core::crud::KmipServer,
     database::KMSServer,
     error::KmsError,
     kms_bail,
+    middlewares::auth::AuthClaim,
     result::KResult,
 };
 
@@ -68,6 +62,7 @@ impl actix_web::error::ResponseError for KmsError {
             Self::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
             Self::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::SGXError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::ConversionError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -263,42 +258,55 @@ pub async fn delete_access(
     }))
 }
 
-#[cfg(feature = "enclave")]
+/// Get the the server X09 certificate in PEM format
+#[get("/certificate")]
+pub async fn get_certificate(
+    _req: HttpRequest,
+    kms_client: Data<Arc<KMSServer>>,
+) -> KResult<Json<Option<String>>> {
+    debug!("Requesting the X509 certificate");
+    Ok(Json(kms_client.get_server_x509_certificate()?))
+}
+
 /// Get the quote of the server running inside an enclave
-#[get("/quote")]
-pub async fn get_quote(
+///
+/// This service is only enabled when the server is running SGX
+#[get("/enclave_quote")]
+pub async fn get_enclave_quote(
     req: HttpRequest,
     kms_client: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
-    debug!("Requesting the quote");
+    debug!("Requesting the enclave quote");
     let params = Query::<QuoteParams>::from_query(req.query_string())?;
-    Ok(Json(kms_client.get_quote(&params.nonce).await?))
+    Ok(Json(kms_client.get_quote(&params.nonce)?))
 }
 
-#[cfg(any(feature = "https", feature = "enclave"))]
-/// Get the quote of the server running inside an enclave
-#[get("/certificates")]
-pub async fn get_certificates(
+/// Get the public key of the  enclave
+///
+/// This service is only enabled when the server is running SGX
+#[get("/enclave_public_key")]
+pub async fn get_enclave_public_key(
     _req: HttpRequest,
     kms_client: Data<Arc<KMSServer>>,
-) -> KResult<Json<CertificatesResponse>> {
-    debug!("Requesting the certificate");
-    Ok(Json(kms_client.get_certificates().await?))
+) -> KResult<Json<String>> {
+    debug!("Requesting the enclave public key");
+    Ok(Json(kms_client.get_enclave_public_key()?))
 }
 
-#[cfg(feature = "enclave")]
-/// Get the quote of the server running inside an enclave
-#[get("/manifest")]
-pub async fn get_manifest(
+/// Get the manifest of the server running inside an enclave
+///
+/// This service is only enabled when the server is running SGX
+#[get("/enclave_manifest")]
+pub async fn get_enclave_manifest(
     _req: HttpRequest,
     kms_client: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
     debug!("Requesting the manifest");
-    Ok(Json(kms_client.get_manifest().await?))
+    Ok(Json(kms_client.get_manifest()?))
 }
 
 /// Add a new group to the KMS = add a new database
-#[post("/register")]
+#[post("/new_database")]
 pub async fn add_new_database(
     _req: HttpRequest,
     kms_client: Data<Arc<KMSServer>>,
@@ -317,41 +325,46 @@ pub async fn get_version(
     Ok(Json(crate_version!().to_string()))
 }
 
-#[cfg(not(feature = "auth"))]
-fn get_owner(_req_http: HttpRequest) -> KResult<String> {
-    return Ok(config::default_username())
-}
-
-#[cfg(feature = "auth")]
 fn get_owner(req_http: HttpRequest) -> KResult<String> {
-    match req_http.extensions().get::<AuthClaim>() {
-        Some(claim) => Ok(claim.email.clone()),
-        None => Err(KmsError::Unauthorized(
-            "No valid auth claim owner (email) from JWT".to_owned(),
-        )),
+    match SharedConfig::auth0_authority_domain() {
+        Some(_) => match req_http.extensions().get::<AuthClaim>() {
+            Some(claim) => Ok(claim.email.clone()),
+            None => Err(KmsError::Unauthorized(
+                "No valid auth claim owner (email) from JWT".to_owned(),
+            )),
+        },
+        None => match SharedConfig::default_username() {
+            Some(username) => Ok(username),
+            None => Err(KmsError::Unauthorized(
+                "Authentication incorrectly set-up on KMS server".to_owned(),
+            )),
+        },
     }
 }
 
 fn get_database_secrets(req_http: &HttpRequest) -> KResult<Option<ExtraDatabaseParams>> {
-    Ok(match db_params() {
-        DbParams::SqlCipher(_) => {
+    Ok(match SharedConfig::db_params() {
+        DbParams::SqliteEnc(_) => {
             let secrets = req_http
                 .headers()
                 .get("KmsDatabaseSecret")
-                .and_then(|h| h.to_str().ok().map(|h| h.to_string()))
+                .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
                 .ok_or_else(|| {
                     KmsError::Unauthorized(
                         "Missing KmsDatabaseSecret header in the query".to_owned(),
                     )
                 })?;
 
-            let secrets = base64::decode(secrets).map_err(|_| {
-                KmsError::Unauthorized("KmsDatabaseSecret header can't be read".to_owned())
+            let secrets = general_purpose::STANDARD.decode(secrets).map_err(|e| {
+                KmsError::Unauthorized(format!("KmsDatabaseSecret header cannot be decoded: {e}"))
             })?;
 
             Some(
-                serde_json::from_slice::<ExtraDatabaseParams>(&secrets).map_err(|_| {
-                    KmsError::Unauthorized("KMS_DATABASE_SECRET header can't be read".to_owned())
+                serde_json::from_slice::<ExtraDatabaseParams>(&secrets).map_err(|e| {
+                    KmsError::Unauthorized(format!(
+                        "KmsDatabaseSecret header cannot be read: {}",
+                        e
+                    ))
                 })?,
             )
         }

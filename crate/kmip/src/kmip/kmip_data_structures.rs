@@ -301,13 +301,13 @@ impl Serialize for KeyMaterial {
         S: serde::Serializer,
     {
         match self {
-            KeyMaterial::ByteString(bytes) => serializer.serialize_bytes(bytes),
-            KeyMaterial::TransparentSymmetricKey { key } => {
+            Self::ByteString(bytes) => serializer.serialize_bytes(bytes),
+            Self::TransparentSymmetricKey { key } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
                 st.serialize_field("Key", key)?;
                 st.end()
             }
-            KeyMaterial::TransparentDHPrivateKey { p, q, g, j, x } => {
+            Self::TransparentDHPrivateKey { p, q, g, j, x } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
                 st.serialize_field("P", p)?;
                 if let Some(q) = q {
@@ -320,7 +320,7 @@ impl Serialize for KeyMaterial {
                 st.serialize_field("X", x)?;
                 st.end()
             }
-            KeyMaterial::TransparentDHPublicKey { p, q, g, j, y } => {
+            Self::TransparentDHPublicKey { p, q, g, j, y } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
                 st.serialize_field("P", p)?;
                 if let Some(q) = q {
@@ -333,7 +333,7 @@ impl Serialize for KeyMaterial {
                 st.serialize_field("Y", y)?;
                 st.end()
             }
-            KeyMaterial::TransparentDSAPrivateKey { p, q, g, x } => {
+            Self::TransparentDSAPrivateKey { p, q, g, x } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 4)?;
                 st.serialize_field("P", p)?;
                 st.serialize_field("Q", q)?;
@@ -341,7 +341,7 @@ impl Serialize for KeyMaterial {
                 st.serialize_field("X", x)?;
                 st.end()
             }
-            KeyMaterial::TransparentDSAPublicKey { p, q, g, y } => {
+            Self::TransparentDSAPublicKey { p, q, g, y } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 4)?;
                 st.serialize_field("P", p)?;
                 st.serialize_field("Q", q)?;
@@ -349,7 +349,7 @@ impl Serialize for KeyMaterial {
                 st.serialize_field("Y", y)?;
                 st.end()
             }
-            KeyMaterial::TransparentRSAPrivateKey {
+            Self::TransparentRSAPrivateKey {
                 modulus,
                 private_exponent,
                 public_exponent,
@@ -384,7 +384,7 @@ impl Serialize for KeyMaterial {
                 };
                 st.end()
             }
-            KeyMaterial::TransparentRSAPublicKey {
+            Self::TransparentRSAPublicKey {
                 modulus,
                 public_exponent,
             } => {
@@ -393,7 +393,7 @@ impl Serialize for KeyMaterial {
                 st.serialize_field("PublicExponent", public_exponent)?;
                 st.end()
             }
-            KeyMaterial::TransparentECPrivateKey {
+            Self::TransparentECPrivateKey {
                 recommended_curve,
                 d,
             } => {
@@ -402,7 +402,7 @@ impl Serialize for KeyMaterial {
                 st.serialize_field("D", d)?;
                 st.end()
             }
-            KeyMaterial::TransparentECPublicKey {
+            Self::TransparentECPublicKey {
                 recommended_curve,
                 q_string,
             } => {

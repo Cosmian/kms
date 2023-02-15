@@ -37,30 +37,30 @@ pub enum KmsClientError {
 
 impl From<TtlvError> for KmsClientError {
     fn from(e: TtlvError) -> Self {
-        KmsClientError::TtlvError(e.to_string())
+        Self::TtlvError(e.to_string())
     }
 }
 
 impl From<InvalidHeaderValue> for KmsClientError {
     fn from(e: InvalidHeaderValue) -> Self {
-        KmsClientError::UnexpectedError(e.to_string())
+        Self::UnexpectedError(e.to_string())
     }
 }
 
 impl From<reqwest::Error> for KmsClientError {
     fn from(e: reqwest::Error) -> Self {
-        KmsClientError::UnexpectedError(e.to_string())
+        Self::UnexpectedError(e.to_string())
     }
 }
 
 impl From<KmipError> for KmsClientError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s) => KmsClientError::InvalidKmipValue(r, s),
-            KmipError::InvalidKmipObject(r, s) => KmsClientError::InvalidKmipObject(r, s),
-            KmipError::KmipNotSupported(r, s) => KmsClientError::KmipNotSupported(r, s),
-            KmipError::NotSupported(s) => KmsClientError::NotSupported(s),
-            KmipError::KmipError(r, s) => KmsClientError::KmipError(r, s),
+            KmipError::InvalidKmipValue(r, s) => Self::InvalidKmipValue(r, s),
+            KmipError::InvalidKmipObject(r, s) => Self::InvalidKmipObject(r, s),
+            KmipError::KmipNotSupported(r, s) => Self::KmipNotSupported(r, s),
+            KmipError::NotSupported(s) => Self::NotSupported(s),
+            KmipError::KmipError(r, s) => Self::KmipError(r, s),
         }
     }
 }

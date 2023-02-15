@@ -4,6 +4,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use clap::StructOpt;
 use colored::Colorize;
 use cosmian_kms_client::KmsRestClient;
@@ -50,7 +51,7 @@ impl SgxAction {
         println!("The base64 encoded quote has been saved at {quote_raw_path:?}");
 
         // Convert the quote from bytes to struct
-        let typed_quote = base64::decode(&quote)?;
+        let typed_quote = b64.decode(&quote)?;
         let typed_quote: &Quote = unsafe { from_bytes(&typed_quote) };
 
         // Save the structured quote
@@ -62,23 +63,28 @@ impl SgxAction {
         );
 
         // Get the certificate
-        let certificates = client_connector
-            .get_certificates()
+        let certificate = client_connector
+            .get_certificate()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
         // Save the certificates
-        if let Some(ssl) = &certificates.ssl {
+        if let Some(ssl) = &certificate {
             let cert_path = self.export_path.join("ssl.cert");
             fs::write(&cert_path, ssl)?;
             println!("The ssl certificate has been saved at {cert_path:?}");
         }
 
-        if let Some(enclave) = &certificates.enclave {
-            let cert_path = self.export_path.join("enclave.pub");
-            fs::write(&cert_path, enclave)?;
-            println!("The enclave certificate has been saved at {cert_path:?}");
-        }
+        // Get the Public key
+        let public_key = client_connector
+            .get_enclave_public_key()
+            .await
+            .with_context(|| "Can't execute the query on the kms server")?;
+
+        // save the public key
+        let cert_path = self.export_path.join("enclave.pub");
+        fs::write(&cert_path, public_key.clone())?;
+        println!("The enclave certificate has been saved at {cert_path:?}");
 
         // Get the manifest
         let manifest = client_connector
@@ -92,7 +98,7 @@ impl SgxAction {
         println!("The sgx manifest has been saved at {manifest_path:?}");
 
         // Proceed the remote attestation
-        let user_report_data = prepare_report_data(certificates.ssl, nonce);
+        let user_report_data = prepare_report_data(certificate, nonce);
 
         let remote_attestation = remote_attestation(&quote, Some(&user_report_data)).await?;
 
@@ -123,12 +129,7 @@ impl SgxAction {
         println!(
             "... MR signer checking {} ",
             bool_to_color(
-                compute_mr_signer(&certificates.enclave.ok_or_else(|| {
-                    eyre::eyre!(
-                        "The server didn't return the enclave public certificate".to_string()
-                    )
-                })?)?
-                    == typed_quote.report_body.mr_signer
+                compute_mr_signer(&public_key)? == typed_quote.report_body.mr_signer
                     && encode(typed_quote.report_body.mr_signer) == remote_attestation.sgx_mrsigner
                     && encode(typed_quote.report_body.mr_signer)
                         == remote_attestation.x_ms_sgx_mrsigner
@@ -138,7 +139,7 @@ impl SgxAction {
         println!(
             "... Quote checking {} ",
             bool_to_color(
-                encode(hash(&base64::decode(&quote)?))
+                encode(hash(&b64.decode(&quote)?))
                     == remote_attestation.maa_attestationcollateral.quotehash
             )
         );

@@ -25,7 +25,7 @@ echo "Exporting the master keys..."
 res=$($BINARY cc export -i $private_key_id -o /tmp/master_private_key.json)
 res=$($BINARY cc export -i $public_key_id -o /tmp/master_public_key.json)
 echo " => OK"
-echo 
+echo
 echo "Re-importing the master keys as master_private_key/master_public_key..."
 res=$($BINARY cc import -i master_private_key -f /tmp/master_private_key.json -r)
 res=$($BINARY cc import -i master_public_key -f /tmp/master_public_key.json -r)
@@ -99,7 +99,7 @@ res=$($BINARY cc decrypt  -u $marketing_secret_key_id /tmp/policy_mkg_secret_new
 echo "   2- with user key with access policy '(department::marketing || department::finance) && level::top-secret'... $marketing_fin_top_secret_key_id ..."
 res=$($BINARY cc decrypt  -u $marketing_fin_top_secret_key_id /tmp/policy_mkg_secret_new.enc -o /tmp/policy_mkg_secret.json)
 echo " => OK"
-echo 
+echo
 echo "Re-import the OLD user key with access policy '(department::marketing || department::finance) && level::top-secret'... marketing_fin_top_secret_key_old_id ..."
 res=$($BINARY cc import -i marketing_fin_top_secret_key_old_id -f /tmp/marketing_fin_top_secret_key_old.json -r)
 echo " => OK"

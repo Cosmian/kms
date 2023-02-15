@@ -5,7 +5,8 @@ use std::{
 };
 
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
-use cosmian_kms_server::config::{auth::AuthConfig, db::DBConfig, init_config, Config};
+use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
+use cosmian_kms_server::config::{auth0::Auth0Config, db::DBConfig, init_config, Config};
 use cosmian_kms_utils::types::ExtraDatabaseParams;
 use tokio::sync::OnceCell;
 #[cfg(not(feature = "staging"))]
@@ -33,18 +34,22 @@ pub async fn start_test_server() {
 /// If staging feature is enabled, it relies on a remote server running in a enclave
 /// Otherwise it starts a local server
 pub async fn init_test_server() {
-    // Configure the server
+    let _ = env_logger::builder().is_test(true).try_init();
+    // Configure the serveur
     let config = Config {
-        auth: AuthConfig {
-            delegated_authority_domain: "console-dev.eu.auth0.com".to_string(),
+        auth0: Auth0Config {
+            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
         },
         db: DBConfig {
-            sqlcipher: true,
+            database_type: "sqlite-enc".to_string(),
             ..Default::default()
         },
         ..Default::default()
     };
-    init_config(&config).await.unwrap();
+    init_config(&config)
+        .await
+        .map_err(|e| format!("failed initializing the config: {e}"))
+        .unwrap();
 
     // Read the conf. We will update it later by appending the secret token
     let file = File::open(PATTERN_CONF_PATH).expect("");
@@ -56,7 +61,7 @@ pub async fn init_test_server() {
     #[cfg(not(feature = "staging"))]
     {
         // Start the server on a independent thread
-        thread::spawn(start_test_server);
+        thread::spawn(|| start_test_server());
 
         // Depending on the running environment, the server could take a bit of time to start
         // We try to query it with a dummy request until be sure it is started.
@@ -109,11 +114,11 @@ pub async fn init_test_server() {
     serde_json::to_writer(BufWriter::new(file), &cli_conf).expect("Can't write CONF_PATH");
 
     // Generate a wrong token with valid group id
-    let secrets = base64::decode(token).expect("Can't decode token");
+    let secrets = b64.decode(token).expect("Can't decode token");
     let mut secrets =
         serde_json::from_slice::<ExtraDatabaseParams>(&secrets).expect("Can't deserialized token");
     secrets.key = String::from("bad");
-    let token = base64::encode(serde_json::to_string(&secrets).expect("Can't encode token"));
+    let token = b64.encode(serde_json::to_string(&secrets).expect("Can't encode token"));
     cli_conf.kms_database_secret = Some(token);
     let file = File::create(CONF_PATH_BAD_KEY).expect("Can't create CONF_PATH_BAD_KEY");
     serde_json::to_writer(BufWriter::new(file), &cli_conf).expect("can't write CONF_PATH_BAD_KEY");

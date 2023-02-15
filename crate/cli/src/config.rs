@@ -18,9 +18,9 @@ pub struct CliConf {
 ///
 /// {
 ///     "insecure": false
-///     "kms_server_url": "http://127.0.0.1:9998",
-///     "kms_access_token": "AA...AAA"
-///     "kms_database_secret": "BB...BBB"
+///     "`kms_server_url"`: "http://127.0.0.1:9998",
+///     "`kms_access_token"`: "AA...AAA"
+///     "`kms_database_secret"`: "BB...BBB"
 /// }
 ///
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
@@ -33,7 +33,7 @@ impl CliConf {
         let file = File::open(&cli_conf_filename)
             .with_context(|| format!("Can't read {cli_conf_filename}"))?;
 
-        let conf: CliConf = serde_json::from_reader(BufReader::new(file))
+        let conf: Self = serde_json::from_reader(BufReader::new(file))
             .with_context(|| format!("Config JSON malformed in {cli_conf_filename}"))?;
 
         // Create a client to query the KMS

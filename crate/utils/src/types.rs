@@ -44,15 +44,15 @@ impl FromStr for ObjectOperationTypes {
 
     fn from_str(op: &str) -> Result<Self, Self::Err> {
         match op {
-            "create" => Ok(ObjectOperationTypes::Create),
-            "get" => Ok(ObjectOperationTypes::Get),
-            "encrypt" => Ok(ObjectOperationTypes::Encrypt),
-            "decrypt" => Ok(ObjectOperationTypes::Decrypt),
-            "import" => Ok(ObjectOperationTypes::Import),
-            "revoke" => Ok(ObjectOperationTypes::Revoke),
-            "locate" => Ok(ObjectOperationTypes::Locate),
-            "rekey" => Ok(ObjectOperationTypes::Rekey),
-            "destroy" => Ok(ObjectOperationTypes::Destroy),
+            "create" => Ok(Self::Create),
+            "get" => Ok(Self::Get),
+            "encrypt" => Ok(Self::Encrypt),
+            "decrypt" => Ok(Self::Decrypt),
+            "import" => Ok(Self::Import),
+            "revoke" => Ok(Self::Revoke),
+            "locate" => Ok(Self::Locate),
+            "rekey" => Ok(Self::Rekey),
+            "destroy" => Ok(Self::Destroy),
             _ => Err("Could not parse an operation {op}"),
         }
     }
@@ -65,8 +65,8 @@ pub struct UserAccessResponse {
 }
 
 impl From<(String, Vec<ObjectOperationTypes>)> for UserAccessResponse {
-    fn from(e: (String, Vec<ObjectOperationTypes>)) -> UserAccessResponse {
-        UserAccessResponse {
+    fn from(e: (String, Vec<ObjectOperationTypes>)) -> Self {
+        Self {
             user_id: e.0,
             operations: e.1,
         }
@@ -94,15 +94,15 @@ impl fmt::Display for ObjectOwnedResponse {
             if let Some(format) = self.attributes.key_format_type {
                 format.to_string()
             } else {
-                "".to_string()
+                String::new()
             }
         )
     }
 }
 
 impl From<(String, StateEnumeration, Attributes, IsWrapped)> for ObjectOwnedResponse {
-    fn from(e: (String, StateEnumeration, Attributes, IsWrapped)) -> ObjectOwnedResponse {
-        ObjectOwnedResponse {
+    fn from(e: (String, StateEnumeration, Attributes, IsWrapped)) -> Self {
+        Self {
             object_id: e.0,
             state: e.1,
             attributes: e.2,
@@ -151,8 +151,8 @@ impl
             Vec<ObjectOperationTypes>,
             IsWrapped,
         ),
-    ) -> ObjectSharedResponse {
-        ObjectSharedResponse {
+    ) -> Self {
+        Self {
             object_id: e.0,
             owner_id: e.1,
             state: e.2,
@@ -171,8 +171,7 @@ pub struct SuccessResponse {
 // Response when querying the KMS certificates
 #[derive(Deserialize, Serialize, Debug)]
 pub struct CertificatesResponse {
-    pub ssl: Option<String>,
-    pub enclave: Option<String>,
+    pub certificate: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

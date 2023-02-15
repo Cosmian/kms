@@ -1,6 +1,9 @@
 // TODO Split this file in multiple implementations under their operations names
 
+use std::sync::{Arc, Mutex};
+
 use cosmian_cover_crypt::statics::CoverCryptX25519Aes256;
+use cosmian_crypto_core::CsRng;
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{Create, CreateKeyPair},
@@ -15,11 +18,12 @@ use cosmian_kms_utils::{
     types::{ExtraDatabaseParams, ObjectOperationTypes},
     DeCipher, EnCipher, KeyPair,
 };
+use rand_core::SeedableRng;
 use tracing::trace;
 
 use super::KMS;
 use crate::{
-    config::{db_params, DbParams},
+    config::{DbParams, SharedConfig},
     database::{
         cached_sqlcipher::CachedSqlCipher, mysql::Sql, pgsql::Pgsql, sqlite::SqlitePool, Database,
     },
@@ -29,9 +33,9 @@ use crate::{
 };
 
 impl KMS {
-    pub async fn instantiate() -> KResult<KMS> {
-        let db: Box<dyn Database + Sync + Send> = match db_params() {
-            DbParams::SqlCipher(db_path) => Box::new(CachedSqlCipher::instantiate(&db_path).await?),
+    pub async fn instantiate() -> KResult<Self> {
+        let db: Box<dyn Database + Sync + Send> = match SharedConfig::db_params() {
+            DbParams::SqliteEnc(db_path) => Box::new(CachedSqlCipher::instantiate(&db_path).await?),
             DbParams::Sqlite(db_path) => {
                 Box::new(SqlitePool::instantiate(&db_path.join("kms.db")).await?)
             }
@@ -39,7 +43,10 @@ impl KMS {
             DbParams::Mysql(url, user_cert) => Box::new(Sql::instantiate(&url, user_cert).await?),
         };
 
-        Ok(KMS { db })
+        Ok(Self {
+            db,
+            rng: Arc::new(Mutex::new(CsRng::from_entropy())),
+        })
     }
 
     pub async fn get_encipher(
@@ -151,8 +158,9 @@ impl KMS {
         }
     }
 
-    pub(crate) async fn create_symmetric_key(
+    pub(crate) fn create_symmetric_key(
         &self,
+        rng: &mut CsRng,
         request: &Create,
         _owner: &str,
     ) -> KResult<Object> {
@@ -171,6 +179,7 @@ impl KMS {
                         .to_string()
                 )),
                 Some(KeyFormatType::TransparentSymmetricKey) => create_symmetric_key(
+                    rng,
                     *cryptographic_algorithm,
                     attributes.cryptographic_length.map(|v| v as usize),
                 )

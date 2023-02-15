@@ -1,6 +1,7 @@
 use std::fs;
 
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cosmian_cover_crypt::statics::CoverCryptX25519Aes256;
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyValue,
@@ -17,8 +18,6 @@ use cosmian_kmip::kmip::{
         Tag, UniqueIdentifier,
     },
 };
-#[cfg(any(feature = "https", feature = "enclave"))]
-use cosmian_kms_utils::types::CertificatesResponse;
 use cosmian_kms_utils::{
     crypto::cover_crypt::locate::compare_cover_crypt_attributes,
     types::{
@@ -27,19 +26,14 @@ use cosmian_kms_utils::{
     },
 };
 use hex::encode;
-#[cfg(feature = "enclave")]
 use libsgx::quote::{get_quote, hash, prepare_report_data};
 use openssl::rand::rand_bytes;
 use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
 use super::KMS;
-#[cfg(feature = "https")]
-use crate::certbot;
-#[cfg(feature = "enclave")]
-use crate::config::enclave_params;
 use crate::{
-    config::{db_params, DbParams},
+    config::{DbParams, SharedConfig},
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -407,17 +401,25 @@ pub trait KmipServer {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectSharedResponse>>;
 
-    #[cfg(feature = "enclave")]
     /// Get the SGX quote of a KMS running inside the enclave
-    async fn get_quote(&self, nonce: &str) -> KResult<String>;
+    fn get_quote(&self, nonce: &str) -> KResult<String>;
 
-    #[cfg(any(feature = "https", feature = "enclave"))]
-    /// Get the certificates of a KMS (HTTPS and enclave)
-    async fn get_certificates(&self) -> KResult<CertificatesResponse>;
+    /// Get the server X509 certificate
+    ///
+    /// # Errors
+    /// Returns a `KResult` with a `Error` if
+    ///  - the server is not running TLS
+    ///  - the server  server certificate cannot be read
+    fn get_server_x509_certificate(&self) -> KResult<Option<String>>;
 
-    #[cfg(feature = "enclave")]
+    /// Get the enclave public key
+    ///
+    /// # Errors
+    /// Returns a `KResult` with a `Error` if the enclave public key file cannot be read
+    fn get_enclave_public_key(&self) -> KResult<String>;
+
     /// Get the manifest of the KMS running inside the enclave
-    async fn get_manifest(&self) -> KResult<String>;
+    fn get_manifest(&self) -> KResult<String>;
 
     /// Add a new database for a new group_id
     async fn add_new_database(&self) -> KResult<String>;
@@ -427,33 +429,49 @@ pub trait KmipServer {
 /// to the implementation module or ciphers for encryption/decryption
 #[async_trait]
 impl KmipServer for KMS {
-    #[cfg(any(feature = "https", feature = "enclave"))]
-    async fn get_certificates(&self) -> KResult<CertificatesResponse> {
-        // Get the SSL cert
-        #[cfg(feature = "https")]
-        let ssl = {
-            let cert = certbot().lock().expect("can't lock certificate mutex");
+    /// Get the server X509 certificate
+    ///
+    /// # Errors
+    /// Returns a `KResult` with a `Error` if
+    ///  - the server is not running TLS
+    ///  - the server server certificate cannot be read
+    fn get_server_x509_certificate(&self) -> KResult<Option<String>> {
+        if let Some(certbot) = SharedConfig::certbot() {
+            let cert = certbot.lock().expect("can't lock certificate mutex");
             let (_, certificate) = cert.get_raw_cert()?;
-            Some(certificate.to_string())
-        };
-        #[cfg(not(feature = "https"))]
-        let ssl = None;
+            return Ok(Some(certificate.to_string()))
+        }
 
-        #[cfg(feature = "enclave")]
-        let enclave = Some(fs::read_to_string(enclave_params().public_key_path)?);
-        #[cfg(not(feature = "enclave"))]
-        let enclave = None;
+        if let Some(p12) = SharedConfig::server_pkcs12() {
+            let pem = String::from_utf8(p12.cert.to_text()?)
+                .map_err(|e| KmsError::ConversionError(e.to_string()))?;
+            return Ok(Some(pem))
+        }
 
-        Ok(CertificatesResponse { ssl, enclave })
+        Ok(None)
     }
 
-    #[cfg(feature = "enclave")]
-    async fn get_manifest(&self) -> KResult<String> {
-        Ok(fs::read_to_string(enclave_params().manifest_path)?)
+    /// Get the enclave public key
+    ///
+    /// # Errors
+    /// Returns a `KResult` with a `Error` if the enclave public key file cannot be read
+    fn get_enclave_public_key(&self) -> KResult<String> {
+        Ok(fs::read_to_string(
+            SharedConfig::enclave_params().public_key_path,
+        )?)
+    }
+
+    /// Return the enclave manifest
+    ///
+    /// This service is not available if the server is not running inside an enclave
+    fn get_manifest(&self) -> KResult<String> {
+        Ok(fs::read_to_string(
+            SharedConfig::enclave_params().manifest_path,
+        )?)
     }
 
     async fn add_new_database(&self) -> KResult<String> {
-        if let DbParams::SqlCipher(_) = db_params() {
+        if let DbParams::SqliteEnc(_) = SharedConfig::db_params() {
             // Generate a new group id
             let uid: u128 = loop {
                 let uid = Uuid::new_v4().to_u128_le();
@@ -475,7 +493,7 @@ impl KmipServer for KMS {
                 key: encode(key),
             };
 
-            let token = base64::encode(serde_json::to_string(&params)?);
+            let token = b64.encode(&serde_json::to_vec(&params)?);
 
             // Create a dummy query to initialize the database
             // Note: if we don't proceed like that, the password will be set at the first query of the user
@@ -486,15 +504,18 @@ impl KmipServer for KMS {
         }
 
         kms_bail!(KmsError::InvalidRequest(
-            "This server does not allowed this operation".to_owned()
+            "add_new_database: not an encrypted sqlite: this server does not allow this operation"
+                .to_owned()
         ));
     }
 
-    #[cfg(feature = "enclave")]
-    async fn get_quote(&self, nonce: &str) -> KResult<String> {
+    /// Return the enclave quote
+    ///
+    /// This service is not available if the server is not running inside an enclave
+    fn get_quote(&self, nonce: &str) -> KResult<String> {
         // Hash the user nonce, the cert and the hash of the manifest
         let data = hash(&prepare_report_data(
-            self.get_certificates().await?.ssl,
+            self.get_server_x509_certificate()?,
             nonce.to_string(),
         ));
 
@@ -571,7 +592,10 @@ impl KmipServer for KMS {
             kms_bail!(KmsError::UnsupportedPlaceholder)
         }
         let object = match &request.object_type {
-            ObjectType::SymmetricKey => self.create_symmetric_key(&request, owner).await?,
+            ObjectType::SymmetricKey => {
+                let mut rng = self.rng.lock().expect("failed locking the CsRng");
+                self.create_symmetric_key(&mut rng, &request, owner)?
+            }
             ObjectType::PrivateKey => self.create_private_key(&request, owner, params).await?,
             _ => {
                 kms_bail!(KmsError::NotSupported(format!(

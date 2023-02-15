@@ -1,26 +1,29 @@
-pub mod auth;
+pub mod auth0;
+mod certbot_https;
 pub mod db;
 mod enclave;
 pub mod http;
-mod https;
 mod workspace;
 
-use std::{fmt, path::PathBuf};
-
-#[cfg(feature = "auth")]
-use alcoholic_jwt::JWKS;
-use clap::Parser;
-use once_cell::sync::OnceCell;
-use tracing::{debug, info};
-#[cfg(feature = "https")]
-use {
-    crate::core::certbot::Certbot,
-    std::sync::{Arc, Mutex},
+use std::{
+    fmt,
+    path::PathBuf,
+    sync::{Arc, Mutex},
 };
 
-use crate::config::{
-    auth::AuthConfig, db::DBConfig, enclave::EnclaveConfig, http::HTTPConfig, https::HTTPSConfig,
-    workspace::WorkspaceConfig,
+use alcoholic_jwt::JWKS;
+use clap::Parser;
+use libsgx::utils::is_running_inside_enclave;
+use once_cell::sync::OnceCell;
+use openssl::pkcs12::ParsedPkcs12;
+use tracing::{debug, info};
+
+use crate::{
+    config::{
+        auth0::Auth0Config, certbot_https::HttpsCertbotConfig, db::DBConfig,
+        enclave::EnclaveConfig, http::HTTPConfig, workspace::WorkspaceConfig,
+    },
+    core::certbot::Certbot,
 };
 
 static INSTANCE_CONFIG: OnceCell<SharedConfig> = OnceCell::new();
@@ -28,23 +31,19 @@ static INSTANCE_CONFIG: OnceCell<SharedConfig> = OnceCell::new();
 #[derive(Parser, Default)]
 #[clap(version, about, long_about = None)]
 pub struct Config {
-    #[cfg_attr(not(feature = "auth"), clap(skip))]
-    #[cfg_attr(feature = "auth", clap(flatten))]
-    pub auth: AuthConfig,
+    #[clap(flatten)]
+    pub auth0: Auth0Config,
 
     #[clap(flatten)]
     pub db: DBConfig,
 
-    #[cfg_attr(not(feature = "enclave"), clap(skip))]
-    #[cfg_attr(feature = "enclave", clap(flatten))]
+    #[clap(flatten)]
     pub enclave: EnclaveConfig,
 
-    #[cfg_attr(not(feature = "https"), clap(skip))]
-    #[cfg_attr(feature = "https", clap(flatten))]
-    pub https: HTTPSConfig,
+    #[clap(flatten)]
+    pub certbot_https: HttpsCertbotConfig,
 
-    #[cfg_attr(not(feature = "https"), clap(flatten))]
-    #[cfg_attr(feature = "https", clap(skip))]
+    #[clap(flatten)]
     pub http: HTTPConfig,
 
     #[clap(flatten)]
@@ -55,15 +54,22 @@ impl fmt::Debug for Config {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("Config");
         let x = x.field("db", &self.db);
-
-        #[cfg(feature = "auth")]
-        let x = x.field("auth", &self.auth);
-        #[cfg(feature = "enclave")]
-        let x = x.field("enclave", &self.enclave);
-        #[cfg(not(feature = "https"))]
+        let x = if self.auth0.auth0_authority_domain.is_some() {
+            x.field("auth0", &self.auth0)
+        } else {
+            x
+        };
+        let x = if is_running_inside_enclave() {
+            x.field("enclave", &self.enclave)
+        } else {
+            x
+        };
         let x = x.field("http", &self.http);
-        #[cfg(feature = "https")]
-        let x = x.field("https", &self.https);
+        let x = if self.certbot_https.use_certbot {
+            x.field("certbot", &self.certbot_https)
+        } else {
+            x
+        };
         let x = x.field("workspace", &self.workspace);
         x.finish()
     }
@@ -74,7 +80,7 @@ pub enum DbParams {
     // contains the dir of the sqlite db file (not the db file itself)
     Sqlite(PathBuf),
     // contains the dir of the sqlcipher db file (not the db file itself)
-    SqlCipher(PathBuf),
+    SqliteEnc(PathBuf),
     // contains the postgres connection URL
     Postgres(String),
     // contains the mysql connection URL
@@ -89,133 +95,166 @@ pub struct EnclaveParams {
     pub public_key_path: PathBuf,
 }
 
-#[derive(Clone, Debug)]
+/// This structure is the context used by the server
+/// while it is running. There is a singleton instance
+/// shared between all threads.
 pub struct SharedConfig {
-    #[cfg(feature = "auth")]
-    pub delegated_authority_domain: String,
+    // The security domain if Auth0 is enabled
+    pub auth0_authority_domain: Option<String>,
 
-    #[cfg(feature = "auth")]
-    pub jwks: JWKS,
+    // The JWKS if Auth0 is enabled
+    pub jwks: Option<JWKS>,
 
     /// The username if Auth0 is disabled
-    #[cfg(not(feature = "auth"))]
-    pub default_username: String,
+    pub default_username: Option<String>,
 
     pub db_params: DbParams,
 
-    pub kms_url: String,
+    pub hostname_port: String,
 
-    #[cfg(feature = "https")]
-    pub certbot: Arc<Mutex<Certbot>>,
+    /// The provided PKCS#12 when HTTPS is enabled
+    pub server_pkcs_12: Option<ParsedPkcs12>,
 
-    #[cfg(feature = "enclave")]
+    /// The certbot engine if certbot is enabled
+    pub certbot: Option<Arc<Mutex<Certbot>>>,
+
+    /// The enclave parameters when running inside an enclave
     pub enclave_params: EnclaveParams,
+}
+
+impl fmt::Debug for SharedConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut x = f.debug_struct("SharedConfig");
+        let x = x
+            .field("kms_url", &self.hostname_port)
+            .field("db_params", &self.db_params);
+        let x = if let Some(authority_domain) = &self.auth0_authority_domain {
+            x.field("auth0_authority_domain", &authority_domain)
+                .field("jwks", &self.jwks)
+        } else {
+            x.field("default_username", &self.default_username)
+        };
+        let x = if let Some(pkcs_12) = &self.server_pkcs_12 {
+            x.field("certificate CN", &pkcs_12.cert.subject_name())
+        } else {
+            x
+        };
+        let x = if self.certbot.is_some() {
+            x.field("certbot", &self.certbot)
+        } else {
+            x
+        };
+        let x = if is_running_inside_enclave() {
+            x.field("enclave_params", &self.enclave_params)
+        } else {
+            x
+        };
+        x.finish()
+    }
 }
 
 pub(crate) fn init(conf: SharedConfig) {
     let _ = INSTANCE_CONFIG.set(conf);
 }
 
-#[inline(always)]
-#[cfg(feature = "auth")]
-pub(crate) fn delegated_authority_domain() -> String {
-    INSTANCE_CONFIG
-        .get()
-        .expect("config must be initialised")
-        .delegated_authority_domain
-        .clone()
-}
+impl SharedConfig {
+    #[inline(always)]
+    pub(crate) fn auth0_authority_domain() -> Option<String> {
+        INSTANCE_CONFIG
+            .get()
+            .expect("config must be initialized")
+            .auth0_authority_domain
+            .clone()
+    }
 
-#[inline(always)]
-#[cfg(feature = "auth")]
-pub(crate) fn jwks() -> JWKS {
-    INSTANCE_CONFIG
-        .get()
-        .expect("config must be initialised")
-        .jwks
-        .clone()
-}
+    #[inline(always)]
+    pub(crate) fn jwks() -> Option<JWKS> {
+        INSTANCE_CONFIG
+            .get()
+            .expect("config must be initialized")
+            .jwks
+            .clone()
+    }
 
-#[inline(always)]
-#[cfg(not(feature = "auth"))]
-pub(crate) fn default_username() -> String {
-    INSTANCE_CONFIG
-        .get()
-        .expect("config must be initialised")
-        .default_username
-        .clone()
-}
+    #[inline(always)]
+    pub(crate) fn default_username() -> Option<String> {
+        INSTANCE_CONFIG
+            .get()
+            .expect("config must be initialized")
+            .default_username
+            .clone()
+    }
 
-#[inline(always)]
-pub(crate) fn db_params() -> DbParams {
-    INSTANCE_CONFIG
-        .get()
-        .expect("config must be initialised")
-        .db_params
-        .clone()
-}
+    #[inline(always)]
+    pub(crate) fn db_params() -> DbParams {
+        INSTANCE_CONFIG
+            .get()
+            .expect("config must be initialized")
+            .db_params
+            .clone()
+    }
 
-#[inline(always)]
-#[cfg(feature = "enclave")]
-pub(crate) fn enclave_params() -> EnclaveParams {
-    INSTANCE_CONFIG
-        .get()
-        .expect("config must be initialised")
-        .enclave_params
-        .clone()
-}
+    #[inline(always)]
+    pub(crate) fn enclave_params() -> EnclaveParams {
+        INSTANCE_CONFIG
+            .get()
+            .expect("config must be initialized")
+            .enclave_params
+            .clone()
+    }
 
-#[inline(always)]
-pub(crate) fn kms_url() -> String {
-    INSTANCE_CONFIG
-        .get()
-        .expect("config must be initialised")
-        .kms_url
-        .clone()
-}
+    #[inline(always)]
+    pub(crate) fn hostname_port() -> String {
+        INSTANCE_CONFIG
+            .get()
+            .expect("config must be initialized")
+            .hostname_port
+            .clone()
+    }
 
-#[inline(always)]
-#[cfg(feature = "https")]
-pub(crate) fn certbot() -> &'static Arc<Mutex<Certbot>> {
-    &INSTANCE_CONFIG
-        .get()
-        .expect("config must be initialised")
-        .certbot
+    #[inline(always)]
+    pub(crate) fn certbot() -> &'static Option<Arc<Mutex<Certbot>>> {
+        &INSTANCE_CONFIG
+            .get()
+            .expect("config must be initialized")
+            .certbot
+    }
+
+    #[inline(always)]
+    pub(crate) fn server_pkcs12() -> &'static Option<ParsedPkcs12> {
+        &INSTANCE_CONFIG
+            .get()
+            .expect("config must be initialized")
+            .server_pkcs_12
+    }
 }
 
 pub async fn init_config(conf: &Config) -> eyre::Result<()> {
-    info!("initialising with configuration: {conf:#?}");
+    info!("initializing with configuration: {conf:#?}");
 
     let workspace = conf.workspace.init()?;
 
-    // In case of HTTPS, we build the http_url by ourself
-    let http_url = {
-        #[cfg(not(feature = "https"))]
-        {
-            conf.http.clone()
-        }
-        #[cfg(feature = "https")]
-        {
-            HTTPConfig {
-                hostname: String::from("0.0.0.0"),
-                port: 443,
-            }
-        }
-    };
+    let (hostname_port, server_pkcs_12) = conf.http.init()?;
 
     let shared_conf = SharedConfig {
-        #[cfg(feature = "auth")]
-        jwks: conf.auth.init().await?,
-        #[cfg(feature = "auth")]
-        delegated_authority_domain: conf.auth.delegated_authority_domain.to_owned(),
+        jwks: conf.auth0.init().await?,
+        auth0_authority_domain: conf.auth0.auth0_authority_domain.clone(),
         db_params: conf.db.init(&workspace)?,
-        kms_url: http_url.init(),
-        #[cfg(feature = "enclave")]
+        hostname_port,
         enclave_params: conf.enclave.init(&workspace)?,
-        #[cfg(feature = "https")]
-        certbot: Arc::new(Mutex::new(HTTPSConfig::init(&conf.https, &workspace)?)),
-        #[cfg(not(feature = "auth"))]
-        default_username: "admin".to_string(),
+        certbot: if conf.certbot_https.use_certbot {
+            Some(Arc::new(Mutex::new(HttpsCertbotConfig::init(
+                &conf.certbot_https,
+                &workspace,
+            )?)))
+        } else {
+            None
+        },
+        default_username: match conf.auth0.auth0_authority_domain {
+            Some(_) => None,
+            None => Some("admin".to_string()),
+        },
+        server_pkcs_12,
     };
 
     debug!("generated shared conf: {shared_conf:#?}");

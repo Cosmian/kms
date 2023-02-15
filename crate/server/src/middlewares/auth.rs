@@ -18,9 +18,9 @@ use tracing::{debug, error};
 
 use super::jwt::decode_jwt_new;
 
-pub struct Auth;
+pub struct Auth0;
 
-impl<S, B> Transform<S, ServiceRequest> for Auth
+impl<S, B> Transform<S, ServiceRequest> for Auth0
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
@@ -61,7 +61,7 @@ where
             .or_else(|| {
                 req.headers()
                     .get("Authorization")
-                    .and_then(|h| h.to_str().ok().map(|h| h.to_string()))
+                    .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
             })
             .unwrap_or_default();
 
@@ -112,6 +112,6 @@ pub struct AuthClaim {
 
 impl AuthClaim {
     fn new(email: String) -> Self {
-        AuthClaim { email }
+        Self { email }
     }
 }

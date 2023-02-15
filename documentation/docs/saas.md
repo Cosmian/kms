@@ -13,13 +13,13 @@ Compared to the on-premise self-installation, this service is configured using:
 
 The KMS enables you to check its trustworthiness. To do so, three routes are useful, using `GET` method:
 
-- `/quote?nonce=<nonce>` returning the quote of the KMS running inside the enclave. It takes a nonce as parameter which is an arbitrary and non predictable string. The returning quote is base64 encoded.
-- `/certificates` returning the SSL certificate and the enclave public key of the HTTPS server
-- `/manifest` returning the manifest of the enclave. You can therefore analyse the hashes of the trusted files and the execution context such as env variables or enclave parameters
+- `/enclave_quote?nonce=<nonce>` returning the quote of the KMS running inside the enclave. It takes a nonce as parameter which is an arbitrary and non predictable string. The returning quote is base64 encoded.
+- `/certificate` returning the SSL certificate and the enclave public key of the HTTPS server
+- `/enclave_manifest` returning the manifest of the enclave. You can therefore analyse the hashes of the trusted files and the execution context such as env variables or enclave parameters
 
 With these three routes, you can proceed a remote attestation on Microsoft Azure Service. Note that the report data of the quote is generated has follow:
 
-```
+```c
 report_data = Sha256( certificate + nounce )
 ```
 
@@ -59,7 +59,7 @@ sudo docker run \
 
 The `mr_enclave` can be read from the output of the docker itself.
 
-```
+```c
 Measurement:
     c8e0ac76ee1b9416e53890677cbbce8a5f1d8bf2f1c7ab208c1e0efa56e8cea2
 
@@ -78,7 +78,7 @@ The key was firstly provided to the user by the KMS when the user registers a ne
 - The users belonging to the same group share the same key to decrypt the database. That is to say, the KMS splits the database into independent databases.
 - These same users can share KMS objects between each other.
 
-You can create a new group and getting the key by querying the KMS using `POST` method to the endpoint `/register`.
+You can create a new group and getting the key by querying the KMS using `POST` method to the endpoint `/new_database`.
 
 _Cosmian_ can't get the database keys at any point because of the three following properties:
 

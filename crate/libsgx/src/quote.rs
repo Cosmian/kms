@@ -4,6 +4,7 @@ use std::{
     io::{BufReader, Read, Write},
 };
 
+use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use hex::encode;
 use openssl::{error::ErrorStack, sha::Sha256};
 use tracing::debug;
@@ -96,21 +97,21 @@ impl fmt::Debug for ReportBody {
 
 #[repr(C)]
 pub struct Quote {
-    /// 0   
+    /// 0
     pub version: u16,
-    /// 2   
+    /// 2
     pub sign_type: u16,
-    /// 4   
+    /// 4
     pub epid_group_id: [u8; 4],
-    /// 8   
+    /// 8
     pub qe_svn: u16,
-    /// 10  
+    /// 10
     pub pce_svn: u16,
-    /// 12  
+    /// 12
     pub xeid: u32,
-    /// 16  
+    /// 16
     pub basename: [u8; 32],
-    /// 48  
+    /// 48
     pub report_body: ReportBody,
     /// 432
     pub signature_len: u32,
@@ -154,6 +155,7 @@ pub struct TargetInfo {
 }
 
 /// Hash the quote
+#[must_use]
 pub fn hash(quote: &[u8]) -> [u8; 32] {
     let mut hash = Sha256::new();
     hash.update(quote);
@@ -161,6 +163,7 @@ pub fn hash(quote: &[u8]) -> [u8; 32] {
 }
 
 /// Build the report data to use in the quote
+#[must_use]
 pub fn prepare_report_data(certificate: Option<String>, nonce: String) -> Vec<u8> {
     match certificate {
         Some(a) => [a.as_bytes(), nonce.as_bytes()].concat(),
@@ -171,6 +174,7 @@ pub fn prepare_report_data(certificate: Option<String>, nonce: String) -> Vec<u8
 /// # Safety
 ///
 /// Convert a C-struct as bytes array to a rust struct
+#[must_use]
 pub unsafe fn from_bytes(quote: &[u8]) -> &Quote {
     let typed_quote: &Quote = std::mem::transmute_copy(&quote);
     typed_quote
@@ -221,8 +225,8 @@ pub fn get_quote(user_report_data_slice: &[u8]) -> Result<String, SgxError> {
     }
 
     /* 2. read `quote` file */
-    debug!("Reading /dev/attestation/quote");
-    let mut reader = BufReader::new(File::open("/dev/attestation/quote")?);
+    debug!("Reading /dev/attestation/enclave_quote");
+    let mut reader = BufReader::new(File::open("/dev/attestation/enclave_quote")?);
     let mut buffer = Vec::with_capacity(SGX_QUOTE_MAX_SIZE);
     let size = reader.read_to_end(&mut buffer)?;
 
@@ -253,7 +257,7 @@ pub fn get_quote(user_report_data_slice: &[u8]) -> Result<String, SgxError> {
     }
 
     debug!("base64-encode quote");
-    Ok(base64::encode(&buffer))
+    Ok(b64.encode(&buffer))
 }
 
 #[cfg(test)]
@@ -265,7 +269,7 @@ mod tests {
     #[test]
     pub fn test_hash() {
         assert_eq!(
-            hash("123456".as_bytes()),
+            hash(b"123456"),
             hex::decode("8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92")
                 .unwrap()
                 .as_slice()
