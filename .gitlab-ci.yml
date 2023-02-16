@@ -213,49 +213,49 @@ unused_deps:
 # Build a docker to test the staging feature and start it remotely
 #
 # Note: this step is hidden because the kms can't run RA with OVH yet
-.docker_test_build_and_deploy:
-  image: docker:19.03.15
-  stage: pretest
-  only: [main, develop, merge_requests]
-  variables:
-    IMAGE_TAG: $CI_REGISTRY_IMAGE:test
-    SHORT_IMAGE_NAME: kms_enclave
-    SGX_REMOTE: cosmian@sgx2-1.sc.ci.cosmian.com
-    KMS_DOMAIN: testsgx.cosmian.com
-  script:
-    - echo $IMAGE_TAG
-    - echo $SGX_REMOTE
-    - docker build --network=host -f enclave/Dockerfile.sgx --build-arg FEATURES="--features=staging" --build-arg KMS_DOMAIN="$KMS_DOMAIN" -t $IMAGE_TAG
-      .
-    - docker push $IMAGE_TAG
-    - ./scripts/deploy_sgx.sh
+# .docker_test_build_and_deploy:
+#   image: docker:19.03.15
+#   stage: pretest
+#   only: [main, develop, merge_requests]
+#   variables:
+#     IMAGE_TAG: $CI_REGISTRY_IMAGE:test
+#     SHORT_IMAGE_NAME: kms_enclave
+#     SGX_REMOTE: cosmian@sgx2-1.sc.ci.cosmian.com
+#     KMS_DOMAIN: testsgx.cosmian.com
+#   script:
+#     - echo $IMAGE_TAG
+#     - echo $SGX_REMOTE
+#     - docker build --network=host -f enclave/Dockerfile.sgx --build-arg FEATURES="--features=staging" --build-arg KMS_DOMAIN="$KMS_DOMAIN" -t $IMAGE_TAG
+#       .
+#     - docker push $IMAGE_TAG
+#     - ./scripts/deploy_sgx.sh
 
 #
 # Test staging on the enclave
 #
 # Note: this step is hidden because the kms can't run RA with OVH yet
-.test-enclave:
-  stage: test
-  only: [main, develop, merge_requests]
-  cache:
-    key: ${CI_COMMIT_REF_SLUG}
-    policy: pull
-    paths:
-      - $CARGO_HOME
-      - $SCCACHE_DIR
-  variables:
-    KMS_POSTGRES_URL: postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST/$POSTGRES_DB
-    KMS_MYSQL_URL: mysql://root@$MYSQL_HOST/$MYSQL_DB
-  before_script:
-    - export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
-    - cargo clippy -V
-    - sccache -s
-    - apt-get update
-    - TZ=Europe/Paris apt-get install --no-install-recommends -qq libsodium-dev libclang-dev
-  script:
-    - cat /proc/meminfo
-    - /usr/bin/time -v cargo make ci-enclave-tests
-    - sccache -s
+# .test-enclave:
+#   stage: test
+#   only: [main, develop, merge_requests]
+#   cache:
+#     key: ${CI_COMMIT_REF_SLUG}
+#     policy: pull
+#     paths:
+#       - $CARGO_HOME
+#       - $SCCACHE_DIR
+#   variables:
+#     KMS_POSTGRES_URL: postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST/$POSTGRES_DB
+#     KMS_MYSQL_URL: mysql://root@$MYSQL_HOST/$MYSQL_DB
+#   before_script:
+#     - export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
+#     - cargo clippy -V
+#     - sccache -s
+#     - apt-get update
+#     - TZ=Europe/Paris apt-get install --no-install-recommends -qq libsodium-dev libclang-dev
+#   script:
+#     - cat /proc/meminfo
+#     - /usr/bin/time -v cargo make ci-enclave-tests
+#     - sccache -s
 
 #
 # Build a dev container
@@ -306,72 +306,41 @@ test_python:
 # Build a docker and deploy it (for demo)
 #
 # Note: this step is hidden because kms.demo.cosmian.com doesn't exist yet
-.docker_demo_build_and_deploy:
-  image: docker:19.03.15
-  stage: deploy
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
-  variables:
-    IMAGE_TAG: $CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}_staging
-    SHORT_IMAGE_NAME: kms_enclave
-    KMS_DOMAIN: kms.demo.cosmian.com
-    SGX_REMOTE: cosmian@${KMS_DOMAIN}
-  script:
-    - echo $IMAGE_TAG
-    - echo $SGX_REMOTE
-    - docker build --network=host --build-arg FEATURES="--features=staging" --build-arg KMS_DOMAIN="$KMS_DOMAIN" -f enclave/Dockerfile.sgx  -t $IMAGE_TAG
-      .
-    - docker push $IMAGE_TAG
-    - ./scripts/deploy_sgx.sh
-
-#
-# Build and push a docker with prod feature but no enclave
-#
-docker_build_and_push:
-  image: docker:19.03.15
-  stage: build_docker
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
-  variables:
-    IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME
-  script:
-    - echo $IMAGE_TAG
-    - docker build . --network=host --build-arg -t $CI_REGISTRY_IMAGE -t $IMAGE_TAG
-    - docker push $IMAGE_TAG
+# .docker_demo_build_and_deploy:
+#   image: docker:19.03.15
+#   stage: deploy
+#   rules:
+#     - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
+#   variables:
+#     IMAGE_TAG: $CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}_staging
+#     SHORT_IMAGE_NAME: kms_enclave
+#     KMS_DOMAIN: kms.demo.cosmian.com
+#     SGX_REMOTE: cosmian@${KMS_DOMAIN}
+#   script:
+#     - echo $IMAGE_TAG
+#     - echo $SGX_REMOTE
+#     - docker build --network=host --build-arg FEATURES="--features=staging" --build-arg KMS_DOMAIN="$KMS_DOMAIN" -f enclave/Dockerfile.sgx  -t $IMAGE_TAG
+#       .
+#     - docker push $IMAGE_TAG
+#     - ./scripts/deploy_sgx.sh
 
 #
 # Build and push a docker with timeout feature (no enclave)
 #
-docker_timeout_build_and_push:
-  image: docker:19.03.15
-  stage: build_docker
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
-  variables:
-    IMAGE_TAG: $CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}_timeout
-  script:
-    - echo $IMAGE_TAG
-    - docker build . --build-arg FEATURES="--features=timeout" --network=host -t $IMAGE_TAG
-    - docker push $IMAGE_TAG
+# docker_timeout_build_and_push:
+#   image: docker:19.03.15
+#   stage: build_docker
+#   rules:
+#     - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
+#   variables:
+#     IMAGE_TAG: $CI_REGISTRY_IMAGE:${CI_COMMIT_REF_NAME}_timeout
+#   script:
+#     - echo $IMAGE_TAG
+#     - docker build . --build-arg FEATURES="--features=timeout" --network=host -t $IMAGE_TAG
+#     - docker push $IMAGE_TAG
 
 #
-# This image is used by the CI of projects using the KMS. For example cloudproof_java.
-#
-docker_lib_ci_build_and_push:
-  image: docker:19.03.15
-  stage: build_docker
-  rules:
-    - if: $CI_COMMIT_TAG =~ /^\d+.\d+.\d+$/
-    - if: $CI_COMMIT_REF_NAME == "develop"
-  variables:
-    IMAGE_TAG: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_REF_NAME}_ci
-  script:
-    - echo $IMAGE_TAG
-    - docker build . --network=host -t $IMAGE_TAG
-    - docker push $IMAGE_TAG
-
-#
-# Build a delivery archive as a Gitlab artifact.
+# Build a delivery archive as a Gitlab artifact and push it on Github
 # This artifact contains:
 # - a KMS Docker container (no authentication support, no HTTPS support)
 # - a Postgres Docker container
