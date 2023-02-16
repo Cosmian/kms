@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [4.3.1] - 2023-02-16
+
+### Ci
+
+- Remove unused docker builds
+
+---
+
 ## [4.3.0] - 2023-02-15
 
 ### Documentation
