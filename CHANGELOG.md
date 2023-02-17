@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.3.2] - 2023-02-17
+
+### Documentation
+
+- mkdocs-merge could not run with `emoji_index` url
+
 ---
 
 ## [4.3.1] - 2023-02-16
