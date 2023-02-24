@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use clap::StructOpt;
+use clap::Parser;
 use cosmian_cover_crypt::abe_policy::{AccessPolicy, Attribute};
 use cosmian_kmip::kmip::kmip_operations::Get;
 use cosmian_kms_client::{kmip::kmip_types::RevocationReason, KmsRestClient};
@@ -30,7 +30,7 @@ use uuid::Uuid;
 /// kept confidential.
 /// Both of them are stored inside the KMS.
 /// This command returns a couple of ID referring to this new key pair.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct NewMasterKeyPairAction {
     /// The policy filename. The policy is expressed as a JSON object
     /// describing the Policy axes and attributes. See the documentation for
@@ -39,7 +39,6 @@ pub struct NewMasterKeyPairAction {
         required = false,
         long = "policy",
         short = 'p',
-        parse(from_os_str),
         default_value = "policy.json"
     )]
     policy_file: PathBuf,
@@ -77,15 +76,15 @@ impl NewMasterKeyPairAction {
 /// attributes matching its access policy (i.e. the access policy is true).
 ///
 /// Example: `cosmian_kms_cli` cc new -s abf0e213-59c1-4acf-bb93-8ab4bedfa2f5 "`department::marketing` && `level::secret`"
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct NewUserKeyAction {
     /// The private master key unique identifier stored in the KMS
-    #[structopt(required = true, long = "secret-key-id", short = 's')]
+    #[clap(required = true, long = "secret-key-id", short = 's')]
     secret_key_id: String,
 
     /// The access policy is a boolean expression combining policy attributes.
     /// Example: `(department::marketing || department::finance) && level::secret`
-    #[structopt(required = true)]
+    #[clap(required = true)]
     access_policy: String,
 }
 
@@ -118,15 +117,15 @@ impl NewUserKeyAction {
 }
 
 /// Revoke a user decryption key.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct RevokeUserKeyAction {
     /// The user decryption key unique identifier stored in the KMS
     /// to revoke
-    #[structopt(required = true, long = "user-key-id", short = 'u')]
+    #[clap(required = true, long = "user-key-id", short = 'u')]
     user_key_id: String,
 
     /// The reason of this revocation
-    #[structopt(required = true, long = "revocation-reason", short = 'r')]
+    #[clap(required = true, long = "revocation-reason", short = 'r')]
     revocation_reason: String,
     // /// Compromission date if it occurs
     // #[structopt(long = "compromission-date", short = "d")]
@@ -159,15 +158,15 @@ impl RevokeUserKeyAction {
 /// Rotate an attribute and update the master public key file.
 /// New files encrypted with the rotated attribute
 /// cannot be decrypted by user decryption keys until they have been re-keyed.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct RotateAttributeAction {
     /// The private master key unique identifier stored in the KMS
-    #[structopt(required = true, long = "secret-key-id", short = 's')]
+    #[clap(required = true, long = "secret-key-id", short = 's')]
     secret_key_id: String,
 
     /// The policy attributes to rotate.
     /// Example: `-a department::marketing -a level::confidential`
-    #[structopt(required = true, long, short)]
+    #[clap(required = true, long, short)]
     attributes: Vec<String>,
 }
 
@@ -199,11 +198,11 @@ impl RotateAttributeAction {
 }
 
 /// Destroy the decryption key for a given user.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct DestroyUserKeyAction {
     /// The user decryption key unique identifier stored in the KMS
     /// to destroy
-    #[structopt(required = true, long = "user-key-id", short = 'u')]
+    #[clap(required = true, long = "user-key-id", short = 'u')]
     user_key_id: String,
 }
 
@@ -230,57 +229,53 @@ impl DestroyUserKeyAction {
 /// Import (wrapped, to wrap or unwrapped) ABE raw keys for a given user.
 /// Note: the keys import must be in raw format.
 /// If you want to import keys serialized in TTLV format, please use `import` subcommand.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct ImportKeysAction {
     /// The private master key file (hint: raw binary file) (to set if `public-key-file` is set). [Wrappable]
-    #[structopt(
+    #[clap(
         name = "secret_key_file",
         required_unless_present = "user_key_file",
         requires_all = &["public_key_file", "policy"],
         long = "secret-key-file",
-        short = 'S',
-        parse(from_os_str)
+        short = 'S'
     )]
     secret_key_file: Option<PathBuf>,
 
     /// The public master key file (hint: raw binary file) (to set if `secret-key-file` is set). [Not wrappable].
-    #[structopt(
+    #[clap(
         name = "public_key_file",
         required_unless_present = "user_key_file",
         requires_all = &["secret_key_file", "policy"],
         long = "public-key-file",
-        short = 'P',
-        parse(from_os_str)
+        short = 'P'
     )]
     public_key_file: Option<PathBuf>,
 
     /// The policy filename. The policy is expressed as a JSON object
     /// describing the Policy axes and attributes.
     /// See the documentation for details.
-    #[structopt(
+    #[clap(
         name = "policy",
         required_unless_present = "user_key_file",
         requires_all = &["secret_key_file", "public_key_file"],
         long = "policy",
-        short = 'p',
-        parse(from_os_str)
+        short = 'p'
     )]
     policy_file: Option<PathBuf>,
 
     /// The user decryption key file (hint: raw binary file) (can't be set if `secret-key-file`/`public-key-file` are set). [Wrappable]
-    #[structopt(
+    #[clap(
         name = "user_key_file",
         required_unless_present_any = ["secret_key_file", "public_key_file"],
         requires_all = &["access_policy", "secret_key_id"],
         long = "user-key-file",
-        short = 'U',
-        parse(from_os_str)
+        short = 'U'
     )]
     user_key_file: Option<PathBuf>,
 
     /// The access policy is a boolean expression combining policy attributes.
     /// Example: `(department::marketing || department::finance) && level::secret`
-    #[structopt(
+    #[clap(
         required_unless_present_any = ["secret_key_file", "public_key_file"],
         requires_all = &["user_key_file", "secret_key_id"],
         name = "access_policy",
@@ -290,7 +285,7 @@ pub struct ImportKeysAction {
     access_policy: Option<String>,
 
     /// The private master key unique identifier stored in the KMS linked to the user decryption key
-    #[structopt(
+    #[clap(
         required_unless_present_any = ["secret_key_file", "public_key_file"],
         requires_all = &["user_key_file", "access_policy"],
         name = "secret_key_id",
@@ -300,11 +295,11 @@ pub struct ImportKeysAction {
     secret_key_id: Option<String>,
 
     /// Wrap the key (if [Wrappable]) using a password before importing it
-    #[structopt(required = false, long, short = 'W')]
+    #[clap(required = false, long, short = 'W')]
     password: Option<String>,
 
     /// The provided key is already wrapped. If false, it is imported in plain text. Is ignored if password is set.
-    #[structopt(long = "wrapped", short = 'w')]
+    #[clap(long = "wrapped", short = 'w')]
     wrapped: bool,
 }
 
@@ -432,18 +427,18 @@ impl ImportKeysAction {
 /// Export a key by its id.
 /// Note: the exported key is in raw format.
 /// If you want to export a key serialized in TTLV format, please use `export` subcommand
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct ExportKeysAction {
     /// The output file to write the key
-    #[structopt(required = true, name = "FILE", parse(from_os_str))]
+    #[clap(required = true, name = "FILE")]
     output_file: PathBuf,
 
     /// The key unique identifier stored in the KMS
-    #[structopt(required = true, long = "key-id", short = 'k')]
+    #[clap(required = true, long = "key-id", short = 'k')]
     key_id: String,
 
     /// Unwrap the key using a password before writing it
-    #[structopt(required = false, long, short = 'W')]
+    #[clap(required = false, long, short = 'W')]
     password: Option<String>,
 }
 

@@ -5,7 +5,7 @@ use std::{
 };
 
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
-use clap::StructOpt;
+use clap::Parser;
 use colored::Colorize;
 use cosmian_kms_client::KmsRestClient;
 use eyre::Context;
@@ -17,14 +17,14 @@ use libsgx::{
 use rand::Rng;
 
 /// Query the enclave to check its trustworthiness
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct SgxAction {
     /// The path to store exported files (quote, manifest, certificate, remote attestation, ...)
-    #[structopt(required = true, parse(from_os_str))]
+    #[clap(required = true)]
     export_path: PathBuf,
 
     /// The value of the MR_ENCLAVE obtained by running the KMS docker on your local machine
-    #[structopt(required = true, long = "mr-enclave")]
+    #[clap(required = true, long = "mr-enclave")]
     mr_enclave: String,
 }
 

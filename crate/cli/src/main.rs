@@ -1,4 +1,4 @@
-use clap::{crate_description, crate_name, crate_version, StructOpt};
+use clap::Parser;
 use cosmian_kms_cli::{
     actions::{
         abe::cover_crypt::entrypoint::CoverCryptAction, configure::entrypoint::ConfigureAction,
@@ -7,16 +7,12 @@ use cosmian_kms_cli::{
     config::CliConf,
 };
 
-#[derive(StructOpt, Debug)]
-#[structopt(
-    name = crate_name!(),
-    version = crate_version!(),
-    about = crate_description!()
-)]
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
 enum CliCommands {
-    #[clap(subcommand)]
+    #[command(subcommand)]
     Cc(CoverCryptAction),
-    #[clap(subcommand)]
+    #[command(subcommand)]
     Permission(PermissionAction),
     Trust(SgxAction),
     Configure(ConfigureAction),
