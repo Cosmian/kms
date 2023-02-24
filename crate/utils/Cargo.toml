@@ -9,21 +9,21 @@ curve25519 = []
 
 [dependencies]
 aes = "0.8"
-bitflags = "1.2"
-cosmian_cover_crypt = { version = "10.0.0", features = ["interface"] }
-cosmian_crypto_core = "5.0"
+bitflags = { workspace = true }
+cosmian_cover_crypt = { workspace = true, features = ["interface"] }
+cosmian_crypto_core = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
-leb128 = "0.2"
-num-bigint = { version = "0.4", features = ["rand", "serde"] }
-rand_core = "0.6"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-strum = "0.24"
-strum_macros = "0.24"
-thiserror = "1.0.20"
-tracing = "0.1"
+leb128 = { workspace = true }
+num-bigint = { workspace = true }
+rand_core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
-tracing-log = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-tree = "0.2"
+tracing-log = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-tree = { workspace = true }

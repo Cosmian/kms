@@ -1,10 +1,10 @@
-use clap::StructOpt;
+use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::types::{Access, ObjectOperationTypes};
 use eyre::Context;
 
 /// Manage the permission of objects.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub enum PermissionAction {
     /// Remove an access authorization for an object to a user
     Remove(RemovePermission),
@@ -33,18 +33,18 @@ impl PermissionAction {
 }
 
 /// Add a new permission to an object for the current user.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct AddPermission {
     /// The object unique identifier stored in the KMS
-    #[structopt(required = true)]
+    #[clap(required = true)]
     object_uid: String,
 
     /// The user to allow
-    #[structopt(required = true, long, short = 'u')]
+    #[clap(required = true, long, short = 'u')]
     user: String,
 
     /// The operation to allow (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
-    #[structopt(required = true, long, short = 'o')]
+    #[clap(required = true, long, short = 'o')]
     operation: ObjectOperationTypes,
 }
 
@@ -68,18 +68,18 @@ impl AddPermission {
 }
 
 /// Remove a permission to an object for the current user.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct RemovePermission {
     /// The object unique identifier stored in the KMS
-    #[structopt(required = true)]
+    #[clap(required = true)]
     object_uid: String,
 
     /// The user to ungrant
-    #[structopt(required = true, long, short = 'u')]
+    #[clap(required = true, long, short = 'u')]
     user: String,
 
     /// The operation to remove (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
-    #[structopt(required = true, long, short = 'o')]
+    #[clap(required = true, long, short = 'o')]
     operation: ObjectOperationTypes,
 }
 
@@ -103,10 +103,10 @@ impl RemovePermission {
 }
 
 /// List the permissions of an object.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct ListPermissions {
     /// The object unique identifier stored in the KMS
-    #[structopt(required = true)]
+    #[clap(required = true)]
     object_uid: String,
 }
 
@@ -130,7 +130,7 @@ impl ListPermissions {
 }
 
 /// List the object owned by a user.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct ListOwnedObjects;
 
 impl ListOwnedObjects {
@@ -149,7 +149,7 @@ impl ListOwnedObjects {
 }
 
 /// List the shared objects of a user.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct ListSharedObjects;
 
 impl ListSharedObjects {

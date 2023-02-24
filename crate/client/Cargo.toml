@@ -7,10 +7,10 @@ edition = "2021"
 [dependencies]
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils" }
-hex = { version = "0.4", features = ["serde"] }
-http = "0.2"
-reqwest = { version = "0.11.10", features = ["json"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-thiserror = "1.0"
-tracing = "0.1"
+hex = { workspace = true, features = ["serde"] }
+http = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

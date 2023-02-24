@@ -6,14 +6,14 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/enclave_manifest.html
 
 [dependencies]
-base64 = "0.21"
-base64-url = "1.4"
-hex = "0.4"
-jsonwebtoken = { version = "8.1", features = ["use_pem"] }
-openssl = { version = "0.10", features = ["vendored"] }
-reqwest = { version = "0.11", features = ["json"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-thiserror = "1.0"
-tracing = "0.1"
-url = "2.2"
+base64 = { workspace = true }
+base64-url = { workspace = true }
+hex = { workspace = true }
+jsonwebtoken = { version = "8.2", features = ["use_pem"] }
+openssl = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+url = "2.3"

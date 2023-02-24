@@ -1,33 +1,33 @@
 use std::{fs::File, io::prelude::*, path::PathBuf};
 
-use clap::StructOpt;
+use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_hybrid_encryption_request;
 use eyre::Context;
 
 /// Encrypts a file with the given policy attributes
 /// and the public key stored in the KMS.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct EncryptAction {
     /// The file to encrypt
-    #[structopt(required = true, name = "FILE", parse(from_os_str))]
+    #[clap(required = true, name = "FILE")]
     input_file: PathBuf,
 
     /// The access policy to encrypt the file with
     /// Example: `--access-policy "department::marketing && level::confidential"`
-    #[structopt(required = true, long, short)]
+    #[clap(required = true, long, short)]
     access_policy: String,
 
     /// The encrypted output file path
-    #[structopt(required = false, parse(from_os_str), long, short = 'o')]
+    #[clap(required = false, long, short = 'o')]
     output_file: PathBuf,
 
     /// The optional resource_uid. It's an extra encryption parameter to increase the security level
-    #[structopt(required = false, long, short, default_value = "")]
+    #[clap(required = false, long, short, default_value = "")]
     resource_uid: String,
 
     /// The public key unique identifier stored in the KMS
-    #[structopt(required = true, long, short = 'p')]
+    #[clap(required = true, long, short = 'p')]
     public_key_id: String,
 }
 

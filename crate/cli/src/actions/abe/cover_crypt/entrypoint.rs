@@ -1,4 +1,4 @@
-use clap::StructOpt;
+use clap::Parser;
 use cosmian_kmip::kmip::kmip_objects::{Object, ObjectType};
 use cosmian_kms_client::KmsRestClient;
 use eyre::{bail, Context};
@@ -16,7 +16,7 @@ use crate::actions::{
 };
 
 /// Use `CoverCrypt` encryption attributes.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub enum CoverCryptAction {
     Init(NewMasterKeyPairAction),
     Rotate(RotateAttributeAction),
