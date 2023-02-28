@@ -40,7 +40,7 @@ impl KMS {
                 Box::new(SqlitePool::instantiate(&db_path.join("kms.db")).await?)
             }
             DbParams::Postgres(url) => Box::new(Pgsql::instantiate(&url).await?),
-            DbParams::Mysql(url, user_cert) => Box::new(Sql::instantiate(&url, user_cert).await?),
+            DbParams::Mysql(url) => Box::new(Sql::instantiate(&url).await?),
         };
 
         Ok(Self {

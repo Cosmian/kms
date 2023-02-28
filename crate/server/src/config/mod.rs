@@ -84,7 +84,7 @@ pub enum DbParams {
     // contains the postgres connection URL
     Postgres(String),
     // contains the mysql connection URL
-    Mysql(String, Option<PathBuf>),
+    Mysql(String),
 }
 
 #[derive(Clone, Debug)]

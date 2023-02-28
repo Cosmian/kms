@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [X.X.X] - 2023-XX-XX
+
+### Internal
+
+- Removed `mysql` crate used for EdgelessDB (compatible with client SSL connection)
+- Use workspace dependencies to ease maintenance
+
+---
+
 ## [4.3.2] - 2023-02-17
 
 ### Documentation
