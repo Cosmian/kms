@@ -13,7 +13,6 @@ variables:
   MYSQL_DB: kms
   MYSQL_ROOT_PASSWORD: kms
   MYSQL_HOST: gitlab-runner-1.ovh.cosmian.com
-  KMS_MYSQL_USER_CERT_FILE: ${CI_PROJECT_DIR}/data/data-ssl/cert.p12
 
 stages:
   - prebuild
@@ -57,14 +56,11 @@ test_db_mariadb_connect:
   stage: prebuild
   script:
     - echo $MYSQL_DB
-    #    - echo $MYSQL_ROOT_PASSWORD
+    - echo $MYSQL_ROOT_PASSWORD
     - echo $KMS_MYSQL_URL
-    #    - mysql -h "$MYSQL_HOST" -uroot -pkms -e "SHOW DATABASES"
-    #    - mysql -h "$MYSQL_HOST" -uroot -pkms -e "DROP DATABASE IF EXISTS kms"
-    #    - mysql -h "$MYSQL_HOST" -uroot -pkms -e "CREATE DATABASE kms"
-    - mysql -h "$MYSQL_HOST" -uroot -e "SHOW DATABASES" --ssl-cert "${CI_PROJECT_DIR}/data/data-ssl/cert.pem" --ssl-key "${CI_PROJECT_DIR}/data/data-ssl/key.pem"
-    - mysql -h "$MYSQL_HOST" -uroot -e "DROP DATABASE IF EXISTS kms" --ssl-cert "${CI_PROJECT_DIR}/data/data-ssl/cert.pem" --ssl-key "${CI_PROJECT_DIR}/data/data-ssl/key.pem"
-    - mysql -h "$MYSQL_HOST" -uroot -e "CREATE DATABASE kms" --ssl-cert "${CI_PROJECT_DIR}/data/data-ssl/cert.pem" --ssl-key "${CI_PROJECT_DIR}/data/data-ssl/key.pem"
+    - mysql -h "$MYSQL_HOST" -uroot -pkms -e "SHOW DATABASES"
+    - mysql -h "$MYSQL_HOST" -uroot -pkms -e "DROP DATABASE IF EXISTS kms"
+    - mysql -h "$MYSQL_HOST" -uroot -pkms -e "CREATE DATABASE kms"
 
 # Security check
 # Failing because mysql has some dependencies with problems but cannot be upgraded
@@ -119,14 +115,11 @@ compile_and_test:
       - $SCCACHE_DIR
   variables:
     KMS_POSTGRES_URL: postgres://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST/$POSTGRES_DB
-    #  KMS_MYSQL_URL: mysql://root:$MYSQL_ROOT_PASSWORD@$MYSQL_HOST/$MYSQL_DB
-    KMS_MYSQL_URL: mysql://root@$MYSQL_HOST/$MYSQL_DB
+    KMS_MYSQL_URL: mysql://root:$MYSQL_ROOT_PASSWORD@$MYSQL_HOST/$MYSQL_DB
   before_script:
     - export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
     - cargo clippy -V
     - sccache -s
-    - echo "$KMS_MYSQL_USER_CERT_FILE"
-    - ls -alh /builds/core/kms/data/data-ssl
     - apt-get update
     - TZ=Europe/Paris apt-get install --no-install-recommends -qq libsodium-dev libclang-dev
   script:

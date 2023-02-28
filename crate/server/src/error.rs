@@ -73,12 +73,6 @@ impl From<sqlx::Error> for KmsError {
     }
 }
 
-impl From<mysql::Error> for KmsError {
-    fn from(e: mysql::Error) -> Self {
-        Self::DatabaseError(e.to_string())
-    }
-}
-
 impl From<std::io::Error> for KmsError {
     fn from(e: std::io::Error) -> Self {
         Self::ServerError(e.to_string())
