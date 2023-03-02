@@ -1,6 +1,6 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
-use clap::StructOpt;
+use clap::Parser;
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::Get,
@@ -16,18 +16,17 @@ use eyre::Context;
 /// Export an object from the KMS, returning it in KMIP JSON TTLV format.
 /// Note: the exported key is serialized in KMIP TTLV format.
 /// If you want to export a key in raw format, please use `get` subcommand
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct ExportAction {
     /// The object unique identifier stored in the KMS
-    #[structopt(required = true, long = "object-id", short = 'i')]
+    #[clap(required = true, long = "object-id", short = 'i')]
     object_id: String,
 
     /// The JSON file to export the object to
-    #[structopt(
+    #[clap(
         required = false,
         long = "object-file",
         short = 'o',
-        parse(from_os_str),
         default_value = "object.json"
     )]
     object_file: PathBuf,
@@ -66,14 +65,13 @@ impl ExportAction {
 /// The object must be already serialized using KMIP TTLV.
 /// Note: the key to import must be serialized in KMIP TTLV format.
 /// If you want to import a key in raw format, please use `import-keys` subcommand.
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub struct ImportAction {
     /// The KMIP TTLV JSON file containing the object. Defaults to `object.json`
-    #[structopt(
+    #[clap(
         required = false,
         long = "object-file",
         short = 'f',
-        parse(from_os_str),
         default_value = "object.json"
     )]
     object_file: PathBuf,
@@ -82,12 +80,12 @@ pub struct ImportAction {
     /// Will fail if the identifier already exists and the `--replace-existing` option is not set.
     ///
     /// When not specified, a unique identifier will be created
-    #[structopt(required = false, long = "unique-id", short = 'i', default_value = "")]
+    #[clap(required = false, long = "unique-id", short = 'i', default_value = "")]
     unique_identifier: String,
 
     /// Replace the object if an object with the same identifier already exists.
     /// Defaults to false.
-    #[structopt(long = "replace-existing", short = 'r')]
+    #[clap(long = "replace-existing", short = 'r')]
     replace_existing: bool,
 }
 

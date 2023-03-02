@@ -80,14 +80,14 @@ repos:
       - id: cargo-check
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.5
+    rev: v1.0.7
     hooks:
       - id: cargo-update
       - id: clippy-autofix-all
       - id: clippy-autofix-pedantic
       - id: clippy-autofix-nursery
       - id: clippy-autofix-others
-      - id: unstable-cargo-format
+      - id: cargo-format
       - id: dprint-toml-fix
 
   - repo: https://github.com/pre-commit/pre-commit-hooks

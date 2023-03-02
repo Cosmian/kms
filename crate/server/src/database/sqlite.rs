@@ -654,7 +654,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::CsRng;
+    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -663,7 +663,6 @@ mod tests {
         },
     };
     use cosmian_kms_utils::{crypto::aes::create_symmetric_key, types::ObjectOperationTypes};
-    use rand_core::SeedableRng;
     use tempfile::tempdir;
     use uuid::Uuid;
 

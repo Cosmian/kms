@@ -3,6 +3,7 @@ use cosmian_crypto_core::{
         curve25519::{X25519KeyPair, X25519_PRIVATE_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH},
         DhKeyPair,
     },
+    reexport::rand_core::SeedableRng,
     CsRng, KeyTrait,
 };
 use cosmian_kmip::{
@@ -17,7 +18,6 @@ use cosmian_kmip::{
     },
 };
 use num_bigint::BigUint;
-use rand_core::SeedableRng;
 
 use crate::KeyPair;
 

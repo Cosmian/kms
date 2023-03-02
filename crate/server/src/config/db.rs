@@ -31,10 +31,6 @@ pub struct DBConfig {
     /// The directory path of the sqlite or sqlite-enc
     #[clap(long, env = "KMS_SQLITE_PATH", default_value = "./sqlite-data")]
     pub sqlite_path: PathBuf,
-
-    /// The client certificate file if key-file is the authentication method for MySql/Maria DB
-    #[clap(long, env = "KMS_MYSQL_USER_CERT_FILE")]
-    pub mysql_user_cert_file: Option<PathBuf>,
 }
 
 impl Default for DBConfig {
@@ -43,7 +39,6 @@ impl Default for DBConfig {
             database_type: "sqlite".to_string(),
             database_url: None,
             sqlite_path: PathBuf::from("./sqlite-data"),
-            mysql_user_cert_file: None,
         }
     }
 }
@@ -68,12 +63,7 @@ impl DBConfig {
             }
             "mysql" => {
                 let url = ensure_url(&self.database_url, "KMS_MYSQL_URL")?;
-                let cert_path = if let Some(cert) = &self.mysql_user_cert_file {
-                    Some(workspace.finalize_file_path(cert)?)
-                } else {
-                    None
-                };
-                Ok(DbParams::Mysql(url, cert_path))
+                Ok(DbParams::Mysql(url))
             }
             "sqlite" => {
                 let path = workspace.finalize_directory(&self.sqlite_path)?;

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
@@ -7,14 +7,18 @@ use cosmian_kmip::kmip::{
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_utils::types::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
-use mysql::{prelude::*, ClientIdentity, Opts, OptsBuilder, Pool, Row, SslOpts};
 use serde_json::Value;
-use tracing::{debug, trace};
+use sqlx::{
+    mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow},
+    ConnectOptions, Executor, MySql, Pool, Row,
+};
+use tracing::trace;
 use uuid::Uuid;
 
-use super::{query_from_attributes, state_from_string, DBObject, Database, MySqlPlaceholder};
+use super::{
+    query_from_attributes, state_from_string, DBObject, Database, MySqlPlaceholder, MYSQL_QUERIES,
+};
 use crate::{
-    database::MYSQL_QUERIES,
     error::KmsError,
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
@@ -23,58 +27,58 @@ use crate::{
 /// The `MySQL` connector is also compatible to connect a `MariaDB`
 /// see: https://mariadb.com/kb/en/mariadb-vs-mysql-compatibility/
 pub struct Sql {
-    pool: Pool,
+    pool: Pool<MySql>,
 }
 
 impl Sql {
-    pub async fn instantiate(connection_url: &str, user_cert: Option<PathBuf>) -> KResult<Self> {
-        let client = SslOpts::default();
-        let ssl_opts = client
-            .with_client_identity(user_cert.map(ClientIdentity::new))
-            .with_danger_accept_invalid_certs(true);
-        debug!("{ssl_opts:#?}");
+    pub async fn instantiate(connection_url: &str) -> KResult<Self> {
+        let mut options = MySqlConnectOptions::from_str(connection_url)?;
+        // disable logging of each query
+        options.disable_statement_logging();
 
-        let opts =
-            Opts::from_url(connection_url).map_err(|e| KmsError::DatabaseError(e.to_string()))?;
-        let builder = OptsBuilder::from_opts(opts).ssl_opts(ssl_opts);
+        let pool = MySqlPoolOptions::new()
+            .max_connections(5)
+            .connect_with(options)
+            .await?;
 
-        let pool = Pool::new(builder)?;
-        let mut conn = pool.get_conn()?;
-
-        conn.query_drop(
+        sqlx::query(
             MYSQL_QUERIES
                 .get("create-table-objects")
                 .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )?;
-        conn.query_drop(
+        )
+        .execute(&pool)
+        .await?;
+
+        sqlx::query(
             MYSQL_QUERIES
                 .get("create-table-read_access")
                 .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )?;
+        )
+        .execute(&pool)
+        .await?;
+
         Ok(Self { pool })
     }
 
     #[cfg(test)]
     pub async fn clean_database(&self) {
-        let mut conn = self
-            .pool
-            .get_conn()
-            .expect("cannot get connection from pool");
-
         // Erase `objects` table
-        conn.query_drop(
+        sqlx::query(
             MYSQL_QUERIES
                 .get("clean-table-objects")
                 .expect("SQL query can't be found"),
         )
+        .execute(&self.pool)
+        .await
         .expect("cannot truncate objects table");
-
         // Erase `read_access` table
-        conn.query_drop(
+        sqlx::query(
             MYSQL_QUERIES
                 .get("clean-table-read_access")
                 .expect("SQL query can't be found"),
         )
+        .execute(&self.pool)
+        .await
         .expect("cannot truncate read_access table");
     }
 
@@ -84,12 +88,15 @@ impl Sql {
     }
 }
 
-async fn create_(
+async fn create_<'e, E>(
     uid: Option<String>,
     owner: &str,
     object: &kmip_objects::Object,
-    executor: &Pool,
-) -> KResult<UniqueIdentifier> {
+    executor: E,
+) -> KResult<UniqueIdentifier>
+where
+    E: Executor<'e, Database = MySql>,
+{
     let object_json = serde_json::to_value(&DBObject {
         object_type: object.object_type(),
         object: object.clone(),
@@ -99,62 +106,62 @@ async fn create_(
 
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    let mut conn = executor.get_conn()?;
-    conn.exec_drop(
+    sqlx::query(
         MYSQL_QUERIES
             .get("insert-row-objects")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (
-            uid.clone(),
-            object_json,
-            StateEnumeration::Active.to_string(),
-            owner,
-        ),
-    )?;
+    )
+    .bind(uid.clone())
+    .bind(object_json)
+    .bind(StateEnumeration::Active.to_string())
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(uid)
 }
 
-async fn retrieve_(
+async fn retrieve_<'e, E>(
     uid: &str,
     owner_or_userid: &str,
     operation_type: ObjectOperationTypes,
-    executor: &Pool,
-) -> KResult<Option<(kmip_objects::Object, StateEnumeration)>> {
-    let mut conn = executor.get_conn()?;
-
-    let row: Option<Row> = conn.exec_first(
+    executor: E,
+) -> KResult<Option<(kmip_objects::Object, StateEnumeration)>>
+where
+    E: Executor<'e, Database = MySql> + Copy,
+{
+    let row: Option<MySqlRow> = sqlx::query(
         MYSQL_QUERIES
             .get("select-row-objects")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (uid, owner_or_userid),
-    )?;
+    )
+    .bind(uid)
+    .bind(owner_or_userid)
+    .fetch_optional(executor)
+    .await?;
 
     if let Some(row) = row {
-        let json = row
-            .get::<Value, _>(0)
-            .ok_or_else(|| kms_error!("no value in field 0 (object)"))?;
+        let json = row.get::<Value, _>(0);
         let db_object: DBObject = serde_json::from_value(json)
             .context("failed deserializing the object")
             .reason(ErrorReason::Internal_Server_Error)?;
         let object = Object::post_fix(db_object.object_type, db_object.object);
-        let state = state_from_string(
-            &row.get::<String, _>(1)
-                .ok_or_else(|| kms_error!("no value in field 1 (state)"))?,
-        )?;
+        let state = state_from_string(&row.get::<String, _>(1))?;
         return Ok(Some((object, state)))
     }
 
-    let row: Option<Row> = conn.exec_first(
+    let row: Option<MySqlRow> = sqlx::query(
         MYSQL_QUERIES
             .get("select-row-objects-join-read_access")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (uid, uid, owner_or_userid),
-    )?;
+    )
+    .bind(uid)
+    .bind(uid)
+    .bind(owner_or_userid)
+    .fetch_optional(executor)
+    .await?;
 
     row.map_or(Ok(None), |row| {
-        let perms_raw = row
-            .get::<Value, _>(2)
-            .ok_or_else(|| kms_error!("no value in field 2 (permissions)"))?;
+        let perms_raw = row.get::<Value, _>(2);
         let perms: Vec<ObjectOperationTypes> = serde_json::from_value(perms_raw)
             .context("failed deserializing the permissions")
             .reason(ErrorReason::Internal_Server_Error)?;
@@ -164,30 +171,26 @@ async fn retrieve_(
             kms_bail!("No authorization to perform this operation");
         }
 
-        let json = row
-            .get::<Value, _>(0)
-            .ok_or_else(|| kms_error!("no value in field 0 (object)"))?;
+        let json = row.get::<Value, _>(0);
         let db_object: DBObject = serde_json::from_value(json)
             .context("failed deserializing the object")
             .reason(ErrorReason::Internal_Server_Error)?;
         let object = Object::post_fix(db_object.object_type, db_object.object);
-        let state = state_from_string(
-            &row.get::<String, _>(1)
-                .ok_or_else(|| kms_error!("no value in field 1 (state)"))?,
-        )?;
+        let state = state_from_string(&row.get::<String, _>(1))?;
 
         Ok(Some((object, state)))
     })
 }
 
-async fn update_object_(
+async fn update_object_<'e, E>(
     uid: &str,
     owner: &str,
     object: &kmip_objects::Object,
-    executor: &Pool,
-) -> KResult<()> {
-    let mut conn = executor.get_conn()?;
-
+    executor: E,
+) -> KResult<()>
+where
+    E: Executor<'e, Database = MySql>,
+{
     let object_json = serde_json::to_value(&DBObject {
         object_type: object.object_type(),
         object: object.clone(),
@@ -195,53 +198,67 @@ async fn update_object_(
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
 
-    conn.exec_drop(
+    sqlx::query(
         MYSQL_QUERIES
             .get("update-rows-objects-with-object")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (object_json, uid, owner),
-    )?;
+    )
+    .bind(object_json)
+    .bind(uid)
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(())
 }
 
-async fn update_state_(
+async fn update_state_<'e, E>(
     uid: &str,
     owner: &str,
     state: StateEnumeration,
-    executor: &Pool,
-) -> KResult<()> {
-    let mut conn = executor.get_conn()?;
-
-    conn.exec_drop(
+    executor: E,
+) -> KResult<()>
+where
+    E: Executor<'e, Database = MySql>,
+{
+    sqlx::query(
         MYSQL_QUERIES
             .get("update-rows-objects-with-state")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (state.to_string(), uid, owner),
-    )?;
+    )
+    .bind(state.to_string())
+    .bind(uid)
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(())
 }
 
-async fn delete_(uid: &str, owner: &str, executor: &Pool) -> KResult<()> {
-    let mut conn = executor.get_conn()?;
-
-    conn.exec_drop(
+async fn delete_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<()>
+where
+    E: Executor<'e, Database = MySql>,
+{
+    sqlx::query(
         MYSQL_QUERIES
             .get("delete-rows-objects")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (uid, owner),
-    )?;
+    )
+    .bind(uid)
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(())
 }
 
-async fn upsert_(
+async fn upsert_<'e, E>(
     uid: &str,
     owner: &str,
     object: &kmip_objects::Object,
     state: StateEnumeration,
-    executor: &Pool,
-) -> KResult<()> {
-    let mut conn = executor.get_conn()?;
-
+    executor: E,
+) -> KResult<()>
+where
+    E: Executor<'e, Database = MySql>,
+{
     let object_json = serde_json::to_value(&DBObject {
         object_type: object.object_type(),
         object: object.clone(),
@@ -249,18 +266,50 @@ async fn upsert_(
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
 
-    conn.exec_drop(
+    sqlx::query(
         MYSQL_QUERIES
             .get("upsert-row-objects")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (uid, object_json, state.to_string(), owner, owner, owner),
-    )?;
+    )
+    .bind(uid)
+    .bind(object_json)
+    .bind(state.to_string())
+    .bind(owner)
+    .bind(owner)
+    .bind(owner)
+    .execute(executor)
+    .await?;
     Ok(())
 }
 
-async fn list_shared_objects_(
+async fn list_accesses_<'e, E>(
+    uid: &str,
+    executor: E,
+) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>
+where
+    E: Executor<'e, Database = MySql>,
+{
+    let list = sqlx::query(
+        MYSQL_QUERIES
+            .get("select-rows-read_access-with-object-id")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .fetch_all(executor)
+    .await?;
+    let mut ids: Vec<(String, Vec<ObjectOperationTypes>)> = Vec::with_capacity(list.len());
+    for row in list {
+        ids.push((
+            row.get::<String, _>(0),
+            serde_json::from_value(row.get::<Value, _>(1))?,
+        ))
+    }
+    Ok(ids)
+}
+
+async fn list_shared_objects_<'e, E>(
     user: &str,
-    executor: &Pool,
+    executor: E,
 ) -> KResult<
     Vec<(
         UniqueIdentifier,
@@ -269,83 +318,57 @@ async fn list_shared_objects_(
         Vec<ObjectOperationTypes>,
         IsWrapped,
     )>,
-> {
-    let mut conn = executor.get_conn()?;
-
-    let list = conn.exec_iter(
+>
+where
+    E: Executor<'e, Database = MySql>,
+{
+    let list = sqlx::query(
         MYSQL_QUERIES
             .get("select-rows-objects-shared")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (user,),
-    )?;
-    let mut ids = Vec::new();
+    )
+    .bind(user)
+    .fetch_all(executor)
+    .await?;
+    let mut ids: Vec<(
+        UniqueIdentifier,
+        String,
+        StateEnumeration,
+        Vec<ObjectOperationTypes>,
+        IsWrapped,
+    )> = Vec::with_capacity(list.len());
     for row in list {
-        let row = row?;
         ids.push((
-            row.get::<String, _>(0)
-                .ok_or_else(|| kms_error!("no value in field 0 (object_id)"))?,
-            row.get::<String, _>(1)
-                .ok_or_else(|| kms_error!("no value in field 1 (owner_id)"))?,
-            state_from_string(
-                &row.get::<String, _>(2)
-                    .ok_or_else(|| kms_error!("no value in field 2 (state)"))?,
-            )?,
-            serde_json::from_value(
-                row.get::<Value, _>(3)
-                    .ok_or_else(|| kms_error!("no value in field 3 (permissions)"))?,
-            )?,
+            row.get::<String, _>(0),
+            row.get::<String, _>(1),
+            state_from_string(&row.get::<String, _>(2))?,
+            serde_json::from_value(row.get::<Value, _>(3))?,
             false, // TODO: unharcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
         ));
     }
     Ok(ids)
 }
 
-async fn list_accesses_(
-    executor: &Pool,
-    uid: &str,
-) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>> {
-    let mut conn = executor.get_conn()?;
-
-    let list = conn.exec_iter(
-        MYSQL_QUERIES
-            .get("select-rows-read_access-with-object-id")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (uid,),
-    )?;
-
-    let mut ids = Vec::new();
-    for row in list {
-        let row = row?;
-        ids.push((
-            row.get::<String, _>(0)
-                .ok_or_else(|| kms_error!("no value in field 0 (user_id)"))?,
-            serde_json::from_value(
-                row.get::<Value, _>(1)
-                    .ok_or_else(|| kms_error!("no value in field 1 (permissions)"))?,
-            )?,
-        ));
-    }
-    Ok(ids)
-}
-
-async fn fetch_permissions_(
+async fn fetch_permissions_<'e, E>(
     uid: &str,
     userid: &str,
-    executor: &Pool,
-) -> KResult<Vec<ObjectOperationTypes>> {
-    let mut conn = executor.get_conn()?;
-
-    let row: Option<Row> = conn.exec_first(
+    executor: E,
+) -> KResult<Vec<ObjectOperationTypes>>
+where
+    E: Executor<'e, Database = MySql>,
+{
+    let row: Option<MySqlRow> = sqlx::query(
         MYSQL_QUERIES
             .get("select-row-read_access")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (uid, userid),
-    )?;
+    )
+    .bind(uid)
+    .bind(userid)
+    .fetch_optional(executor)
+    .await?;
 
     row.map_or(Ok(vec![]), |row| {
-        let perms_raw = row
-            .get::<Value, _>(0)
-            .ok_or_else(|| kms_error!("no value in field 0 (permissions)"))?;
+        let perms_raw = row.get::<Value, _>(0);
         let perms: Vec<ObjectOperationTypes> = serde_json::from_value(perms_raw)
             .context("failed deserializing the permissions")
             .reason(ErrorReason::Internal_Server_Error)?;
@@ -353,12 +376,15 @@ async fn fetch_permissions_(
     })
 }
 
-async fn insert_access_(
+async fn insert_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_type: ObjectOperationTypes,
-    executor: &Pool,
-) -> KResult<()> {
+    executor: E,
+) -> KResult<()>
+where
+    E: Executor<'e, Database = MySql> + Copy,
+{
     // Retrieve existing permissions if any
     let mut perms = fetch_permissions_(uid, userid, executor).await?;
     if perms.contains(&operation_type) {
@@ -372,39 +398,45 @@ async fn insert_access_(
         .context("failed serializing the permissions to JSON")
         .reason(ErrorReason::Internal_Server_Error)?;
 
-    let mut conn = executor.get_conn()?;
-
     // Upsert the DB
-    conn.exec_drop(
+    sqlx::query(
         MYSQL_QUERIES
             .get("upsert-row-read_access")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (uid, userid, json),
-    )?;
+    )
+    .bind(uid)
+    .bind(userid)
+    .bind(json)
+    .execute(executor)
+    .await?;
     trace!("Insert read access right in DB: {uid} / {userid}");
     Ok(())
 }
 
-async fn delete_access_(
+async fn delete_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_type: ObjectOperationTypes,
-    executor: &Pool,
-) -> KResult<()> {
-    let mut conn = executor.get_conn()?;
-
+    executor: E,
+) -> KResult<()>
+where
+    E: Executor<'e, Database = MySql> + Copy,
+{
     // Retrieve existing permissions if any
     let mut perms = fetch_permissions_(uid, userid, executor).await?;
     perms.retain(|p| *p != operation_type);
 
     // No remaining permissions, delete the row
     if perms.is_empty() {
-        conn.exec_drop(
+        sqlx::query(
             MYSQL_QUERIES
                 .get("delete-rows-read_access")
                 .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-            (uid, userid),
-        )?;
+        )
+        .bind(uid)
+        .bind(userid)
+        .execute(executor)
+        .await?;
         return Ok(())
     }
 
@@ -414,62 +446,65 @@ async fn delete_access_(
         .reason(ErrorReason::Internal_Server_Error)?;
 
     // Update the DB
-    conn.exec_drop(
+    sqlx::query(
         MYSQL_QUERIES
             .get("update-rows-read_access-with-permission")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (json, uid, userid),
-    )?;
+    )
+    .bind(json)
+    .bind(uid)
+    .bind(userid)
+    .execute(executor)
+    .await?;
     trace!("Deleted in DB: {uid} / {userid}");
     Ok(())
 }
 
-async fn is_object_owned_by_(uid: &str, owner: &str, executor: &Pool) -> KResult<bool> {
-    let mut conn = executor.get_conn()?;
-
-    let row: Option<Row> = conn.exec_first(
+async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<bool>
+where
+    E: Executor<'e, Database = MySql> + Copy,
+{
+    let row: Option<MySqlRow> = sqlx::query(
         MYSQL_QUERIES
             .get("has-row-objects")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        (uid, owner),
-    )?;
+    )
+    .bind(uid)
+    .bind(owner)
+    .fetch_optional(executor)
+    .await?;
 
     Ok(row.is_some())
 }
 
-async fn find_(
+async fn find_<'e, E>(
     researched_attributes: Option<&Attributes>,
     state: Option<StateEnumeration>,
     owner: &str,
-    executor: &Pool,
-) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
+    executor: E,
+) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>
+where
+    E: Executor<'e, Database = MySql> + Copy,
+{
     let query = query_from_attributes::<MySqlPlaceholder>(researched_attributes, state, owner)?;
 
-    let mut conn = executor.get_conn()?;
-    let list = conn.exec_iter(&query, ())?;
+    let query = sqlx::query(&query);
+    let list = query.fetch_all(executor).await?;
 
-    let mut uids = Vec::new();
+    let mut uids = Vec::with_capacity(list.len());
     for row in list {
-        let row = row?;
-        let uid = row
-            .get::<String, _>(0)
-            .ok_or_else(|| kms_error!("no value in field 0 (user_id)"))?;
-        let state = state_from_string(
-            &row.get::<String, _>(1)
-                .ok_or_else(|| kms_error!("no value in field 1 (state)"))?,
-        )?;
-        let value = row
-            .get::<Value, _>(2)
-            .ok_or_else(|| kms_error!("no value in field 2 (attributes)"))?;
-        let attrs: Attributes = serde_json::from_value(value)
+        let raw = row.get::<serde_json::Value, _>(2);
+
+        let attrs: Attributes = serde_json::from_value(raw)
             .context("failed deserializing attributes")
             .map_err(|e| KmsError::DatabaseError(e.to_string()))?;
 
-        let is_wrapped = row
-            .get::<IsWrapped, _>(3)
-            .ok_or_else(|| kms_error!("no value in field 3 (is_wrapped)"))?;
-
-        uids.push((uid, state, attrs, is_wrapped));
+        uids.push((
+            row.get::<String, _>(0),
+            state_from_string(&row.get::<String, _>(1))?,
+            attrs,
+            row.get::<IsWrapped, _>(3),
+        ));
     }
 
     Ok(uids)
@@ -498,17 +533,17 @@ impl Database for Sql {
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         let mut res = vec![];
-        // let mut tx = self.pool.begin().await?;
+        let mut tx = self.pool.begin().await?;
         for (uid, object) in objects {
-            match create_(uid.clone(), owner, object, &self.pool).await {
+            match create_(uid.clone(), owner, object, &mut tx).await {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
-                    // tx.rollback().await.context("transaction failed")?;
+                    tx.rollback().await.context("transaction failed")?;
                     kms_bail!("creation of objects failed: {}", e);
                 }
             };
         }
-        // tx.commit().await?;
+        tx.commit().await?;
         Ok(res)
     }
 
@@ -583,7 +618,7 @@ impl Database for Sql {
         uid: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>> {
-        list_accesses_(&self.pool, uid).await
+        list_accesses_(uid, &self.pool).await
     }
 
     async fn insert_access(
@@ -629,7 +664,7 @@ impl Database for Sql {
 // Run these tests using: `cargo make rust-tests`
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::CsRng;
+    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -638,21 +673,19 @@ mod tests {
         },
     };
     use cosmian_kms_utils::{crypto::aes::create_symmetric_key, types::ObjectOperationTypes};
-    use rand_core::SeedableRng;
     use serial_test::serial;
     use uuid::Uuid;
 
     use super::Sql;
-    use crate::{database::Database, error::KmsError, kms_bail, result::KResult};
+    use crate::{database::Database, error::KmsError, kms_bail, kms_error, result::KResult};
 
     #[actix_rt::test]
     #[serial(mysql)]
     pub async fn test_crud() -> KResult<()> {
         let mut rng = CsRng::from_entropy();
-        let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert =
-            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
-        let mysql = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
+        let mysql_url = std::option_env!("KMS_MYSQL_URL")
+            .ok_or_else(|| kms_error!("No MySQL database configured"))?;
+        let mysql = Sql::instantiate(mysql_url).await?;
         mysql.clean_database().await;
 
         let owner = "eyJhbGciOiJSUzI1Ni";
@@ -674,10 +707,12 @@ mod tests {
         // Insert an object and query it, update it, delete it, query it
         let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
+
         let uid_ = mysql
             .create(Some(uid.clone()), owner, &symmetric_key, None)
             .await?;
         assert_eq!(&uid, &uid_);
+
         match mysql
             .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
             .await?
@@ -751,10 +786,9 @@ mod tests {
     #[serial(mysql)]
     pub async fn test_upsert() -> KResult<()> {
         let mut rng = CsRng::from_entropy();
-        let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert =
-            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
-        let mysql = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
+        let mysql_url = std::option_env!("KMS_MYSQL_URL")
+            .ok_or_else(|| kms_error!("No MySQL database configured"))?;
+        let mysql = Sql::instantiate(mysql_url).await?;
         mysql.clean_database().await;
 
         let owner = "eyJhbGciOiJSUzI1Ni";
@@ -832,10 +866,9 @@ mod tests {
     #[serial(mysql)]
     pub async fn test_tx_and_list() -> KResult<()> {
         let mut rng = CsRng::from_entropy();
-        let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert =
-            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
-        let mysql = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
+        let mysql_url = std::option_env!("KMS_MYSQL_URL")
+            .ok_or_else(|| kms_error!("No MySQL database configured"))?;
+        let mysql = Sql::instantiate(mysql_url).await?;
         mysql.clean_database().await;
 
         let owner = "eyJhbGciOiJSUzI1Ni";
@@ -911,10 +944,9 @@ mod tests {
     #[serial(mysql)]
     pub async fn test_owner() -> KResult<()> {
         let mut rng = CsRng::from_entropy();
-        let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert =
-            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
-        let mysql = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
+        let mysql_url = std::option_env!("KMS_MYSQL_URL")
+            .ok_or_else(|| kms_error!("No MySQL database configured"))?;
+        let mysql = Sql::instantiate(mysql_url).await?;
         mysql.clean_database().await;
 
         let owner = "eyJhbGciOiJSUzI1Ni";
@@ -1087,10 +1119,9 @@ mod tests {
     pub async fn test_permissions() -> KResult<()> {
         let userid = "foo@example.org";
         let userid2 = "bar@example.org";
-        let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert =
-            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
-        let mysql = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
+        let mysql_url = std::option_env!("KMS_MYSQL_URL")
+            .ok_or_else(|| kms_error!("No MySQL database configured"))?;
+        let mysql = Sql::instantiate(mysql_url).await?;
         mysql.clean_database().await;
 
         let uid = Uuid::new_v4().to_string();
@@ -1167,14 +1198,11 @@ mod tests {
 
     #[actix_rt::test]
     #[serial(mysql)]
-    // MySQL part is tested on an EdgelessDB, which doesn't currently support JSON, so this test can't pass.
-    #[ignore]
     pub async fn test_json_access() -> KResult<()> {
         let mut rng = CsRng::from_entropy();
-        let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert =
-            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
-        let db = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
+        let mysql_url = std::option_env!("KMS_MYSQL_URL")
+            .ok_or_else(|| kms_error!("No MySQL database configured"))?;
+        let db = Sql::instantiate(mysql_url).await?;
         db.clean_database().await;
 
         let owner = "eyJhbGciOiJSUzI1Ni";
@@ -1328,20 +1356,16 @@ mod tests {
 
     #[actix_rt::test]
     #[serial(mysql)]
-    // MySQL part is tested on an EdgelessDB, which doesn't currently support JSON, so this test can't pass.
-    #[ignore]
     pub async fn test_find_attrs() -> KResult<()> {
         let mut rng = CsRng::from_entropy();
-        let mysql_url = std::option_env!("KMS_MYSQL_URL").expect("No MySQL database configured");
-        let user_cert =
-            std::option_env!("KMS_MYSQL_USER_CERT_FILE").expect("No user cert configured");
-        let db = Sql::instantiate(mysql_url, Some(std::path::PathBuf::from(user_cert))).await?;
+        let mysql_url = std::option_env!("KMS_MYSQL_URL")
+            .ok_or_else(|| kms_error!("No MySQL database configured"))?;
+        let db = Sql::instantiate(mysql_url).await?;
         db.clean_database().await;
 
         let owner = "eyJhbGciOiJSUzI1Ni";
 
-        //
-
+        // Insert an object and query it, update it, delete it, query it
         let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
         let uid = Uuid::new_v4().to_string();
 

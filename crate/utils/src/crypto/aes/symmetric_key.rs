@@ -1,4 +1,4 @@
-use cosmian_crypto_core::CsRng;
+use cosmian_crypto_core::{reexport::rand_core::RngCore, CsRng};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -8,7 +8,6 @@ use cosmian_kmip::{
     },
     kmip_bail,
 };
-use rand_core::RngCore;
 
 use super::KEY_LENGTH;
 

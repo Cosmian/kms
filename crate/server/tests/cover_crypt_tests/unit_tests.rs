@@ -204,7 +204,7 @@ pub fn access_policy_serialization() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
-    // cosmian_kms_common::log_utils::log_init("debug,cosmian_kms::kmip_server=trace");
+    // cosmian_kms_server::log_utils::log_init("debug,cosmian_kms::kmip_server=trace");
 
     let config = Config {
         auth0: Auth0Config {
@@ -514,6 +514,8 @@ async fn test_abe_json_access() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_import_decrypt() -> KResult<()> {
+    // cosmian_kms_server::log_utils::log_init("debug,cosmian_kms::kmip_server=trace");
+
     let config = Config {
         auth0: Auth0Config {
             auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),

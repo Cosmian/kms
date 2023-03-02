@@ -15,16 +15,13 @@ use serde::{Deserialize, Serialize};
 use crate::{kms_bail, result::KResult};
 
 pub type KMSServer = crate::core::KMS;
+
 pub(crate) mod cached_sqlcipher;
 pub(crate) mod cached_sqlite_struct;
 pub(crate) mod pgsql;
 pub mod sqlite;
 
-// the `sqlx` connector for MySQL is unable to connect
-// using key-file (instead of password) for EdgelessDB
 pub(crate) mod mysql;
-#[allow(dead_code)]
-pub(crate) mod mysql_sqlx;
 
 const PGSQL_FILE_QUERIES: &str = include_str!("query.sql");
 const MYSQL_FILE_QUERIES: &str = include_str!("query_mysql.sql");
@@ -210,6 +207,7 @@ pub trait PlaceholderTrait {
     const JSON_NODE_LINK: &'static str = "'$.object.KeyBlock.KeyValue.Attributes.Link'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$.LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$.LinkType'";
+    const TYPE_INTEGER: &'static str = "INTEGER";
 
     /// Handle different placeholders (`?`, `$1`) in SQL queries
     /// to bind value into a query
@@ -217,12 +215,78 @@ pub trait PlaceholderTrait {
     fn binder(param_number: usize) -> String {
         format!("${param_number}")
     }
+
+    /// In `PostgreSQL` and Sqlite, finding link attributes is different and
+    /// needs an additional `FROM` component, which is later used as `value`
+    /// when looping using `json_each`
+    #[must_use]
+    fn additional_rq_from() -> Option<String> {
+        Some(format!(
+            "{}({}(objects.object, {}))",
+            Self::JSON_FN_EACH_ELEMENT,
+            Self::JSON_FN_EXTRACT_PATH,
+            Self::JSON_NODE_LINK
+        ))
+    }
+
+    /// Build the query part that evaluates link, depending on the SQL engine.
+    /// Searching and evaluating nodes can't be unified between MySQL/MariaDB and others
+    #[must_use]
+    fn link_evaluation(node_name: &str, node_value: &str) -> String {
+        format!(
+            "{}(value, {}) = '{}'",
+            Self::JSON_FN_EXTRACT_TEXT,
+            node_name,  // `P::JSON_TEXT_LINK_TYPE` or `P::JSON_TEXT_LINK_OBJ_ID`
+            node_value  // `link.link_type` or `uid`
+        )
+    }
+
+    /// Get node specifier depending on `key_name` (ie: `CryptographicAlgorithm`)
+    #[must_use]
+    fn extract_path_text(key_name: &str) -> String {
+        format!("object -> 'object' -> 'KeyBlock' ->> '{key_name}'")
+    }
 }
 
 pub enum MySqlPlaceholder {}
 impl PlaceholderTrait for MySqlPlaceholder {
+    const JSON_FN_EACH_ELEMENT: &'static str = "json_search";
+    const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$[*].LinkedObjectIdentifier'";
+    const JSON_TEXT_LINK_TYPE: &'static str = "'$[*].LinkType'";
+    const TYPE_INTEGER: &'static str = "SIGNED";
+
     fn binder(_param_number: usize) -> String {
         "?".to_string()
+    }
+
+    fn additional_rq_from() -> Option<String> {
+        None
+    }
+
+    fn link_evaluation(node_name: &str, node_value: &str) -> String {
+        // built evaluation is going to be like:
+        // json_search(
+        //      json_extract(objects.object, '$.object.KeyBlock.KeyValue.Attributes.Link'),
+        //      'one',          -> need at most 1 match
+        //      'ParentLink',   -> `node_value` (from either `link.link_type` or `uid`)
+        //      NULL,
+        //      '$[*].LinkType' -> `node_name` (from either `P::JSON_TEXT_LINK_TYPE` or `P::JSON_TEXT_LINK_OBJ_ID`)
+        // )
+        format!(
+            "{}({}(objects.object, {}), 'one', '{}', NULL, {}) IS NOT NULL",
+            Self::JSON_FN_EACH_ELEMENT,
+            Self::JSON_FN_EXTRACT_PATH,
+            Self::JSON_NODE_LINK,
+            node_value,
+            node_name,
+        )
+    }
+
+    fn extract_path_text(key_name: &str) -> String {
+        format!(
+            "{}(object, '$.object.KeyBlock.{key_name}')",
+            Self::JSON_FN_EXTRACT_TEXT
+        )
     }
 }
 pub enum PgsqlPlaceholder {}
@@ -259,12 +323,9 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
     if let Some(attributes) = attributes {
         if let Some(links) = &attributes.link {
             if !links.is_empty() {
-                query = format!(
-                    "{query}, {}({}(objects.object, {}))",
-                    P::JSON_FN_EACH_ELEMENT,
-                    P::JSON_FN_EXTRACT_PATH,
-                    P::JSON_NODE_LINK
-                )
+                if let Some(additional_rq_from) = P::additional_rq_from() {
+                    query = format!("{query}, {additional_rq_from}");
+                }
             }
         }
     }
@@ -279,25 +340,25 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
         // CryptographicAlgorithm
         if let Some(cryptographic_algorithm) = attributes.cryptographic_algorithm {
             query = format!(
-                "{query} AND object -> 'object' -> 'KeyBlock' ->> 'CryptographicAlgorithm' = \
-                 '{cryptographic_algorithm}'",
+                "{query} AND {} = '{cryptographic_algorithm}'",
+                P::extract_path_text("CryptographicAlgorithm")
             );
         };
 
         // CryptographicLength
         if let Some(cryptographic_length) = attributes.cryptographic_length {
             query = format!(
-                "{query} AND
-            CAST (object -> 'object' -> 'KeyBlock' ->> 'CryptographicLength' AS integer) = {}",
-                cryptographic_length
+                "{query} AND CAST ({} AS {}) = {cryptographic_length}",
+                P::extract_path_text("CryptographicLength"),
+                P::TYPE_INTEGER
             );
         };
 
         // KeyFormatType
         if let Some(key_format_type) = attributes.key_format_type {
             query = format!(
-                "{query} AND object -> 'object' -> 'KeyBlock' ->> 'KeyFormatType' = \
-                 '{key_format_type}'"
+                "{query} AND {} = '{key_format_type}'",
+                P::extract_path_text("KeyFormatType")
             );
         };
 
@@ -306,22 +367,20 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
             for link in links {
                 // LinkType
                 query = format!(
-                    "{query} AND {}(value, {}) = '{}'",
-                    P::JSON_FN_EXTRACT_TEXT,
-                    P::JSON_TEXT_LINK_TYPE,
-                    link.link_type
+                    "{query} AND {}",
+                    P::link_evaluation(P::JSON_TEXT_LINK_TYPE, &link.link_type.to_string())
                 );
 
                 // LinkedObjectIdentifier
                 if let TextString(uid) = &link.linked_object_identifier {
                     query = format!(
-                        "{query} AND {}(value, {}) = '{uid}'",
-                        P::JSON_FN_EXTRACT_TEXT,
-                        P::JSON_TEXT_LINK_OBJ_ID,
+                        "{query} AND {}",
+                        P::link_evaluation(P::JSON_TEXT_LINK_OBJ_ID, uid)
                     );
                 }
             }
         }
     }
+
     Ok(query)
 }
