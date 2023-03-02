@@ -216,9 +216,10 @@ pub trait PlaceholderTrait {
         format!("${param_number}")
     }
 
-    /// In PostgreSQL and Sqlite, finding link attributes is different and
+    /// In `PostgreSQL` and Sqlite, finding link attributes is different and
     /// needs an additional `FROM` component, which is later used as `value`
     /// when looping using `json_each`
+    #[must_use]
     fn additional_rq_from() -> Option<String> {
         Some(format!(
             "{}({}(objects.object, {}))",
@@ -230,6 +231,7 @@ pub trait PlaceholderTrait {
 
     /// Build the query part that evaluates link, depending on the SQL engine.
     /// Searching and evaluating nodes can't be unified between MySQL/MariaDB and others
+    #[must_use]
     fn link_evaluation(node_name: &str, node_value: &str) -> String {
         format!(
             "{}(value, {}) = '{}'",
@@ -240,6 +242,7 @@ pub trait PlaceholderTrait {
     }
 
     /// Get node specifier depending on `key_name` (ie: `CryptographicAlgorithm`)
+    #[must_use]
     fn extract_path_text(key_name: &str) -> String {
         format!("object -> 'object' -> 'KeyBlock' ->> '{key_name}'")
     }
