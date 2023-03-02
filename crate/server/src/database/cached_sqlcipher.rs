@@ -364,7 +364,7 @@ impl Database for CachedSqlCipher {
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::CsRng;
+    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -376,7 +376,6 @@ mod tests {
         crypto::aes::create_symmetric_key,
         types::{ExtraDatabaseParams, ObjectOperationTypes},
     };
-    use rand_core::SeedableRng;
     use tempfile::tempdir;
     use uuid::Uuid;
 

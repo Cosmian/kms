@@ -1,4 +1,5 @@
 use cosmian_crypto_core::{
+    reexport::rand_core::{RngCore, SeedableRng},
     symmetric_crypto::nonce::{Nonce, NonceTrait},
     CsRng,
 };
@@ -6,7 +7,6 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Decrypt, Encrypt},
     kmip_types::{CryptographicAlgorithm, CryptographicParameters},
 };
-use rand_core::{RngCore, SeedableRng};
 
 use super::AesGcmCipher;
 use crate::{
