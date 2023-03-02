@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex};
 
 use cosmian_cover_crypt::statics::CoverCryptX25519Aes256;
-use cosmian_crypto_core::CsRng;
+use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{Create, CreateKeyPair},
@@ -18,7 +18,6 @@ use cosmian_kms_utils::{
     types::{ExtraDatabaseParams, ObjectOperationTypes},
     DeCipher, EnCipher, KeyPair,
 };
-use rand_core::SeedableRng;
 use tracing::trace;
 
 use super::KMS;

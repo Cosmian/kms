@@ -1,8 +1,11 @@
 use std::{convert::TryFrom, sync::Mutex};
 
 use cosmian_crypto_core::{
+    reexport::rand_core::SeedableRng,
     symmetric_crypto::{
-        aes_256_gcm_pure::{decrypt_in_place_detached, encrypt_in_place_detached},
+        aes_256_gcm_pure::{
+            decrypt_in_place_detached, encrypt_in_place_detached, KEY_LENGTH, NONCE_LENGTH,
+        },
         nonce::{Nonce, NonceTrait},
     },
     CsRng,
@@ -15,7 +18,6 @@ use cosmian_kmip::{
         kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse, ErrorReason},
     },
 };
-use rand_core::SeedableRng;
 
 use crate::{DeCipher, EnCipher};
 mod symmetric_key;
@@ -23,10 +25,6 @@ pub use symmetric_key::create_symmetric_key;
 
 #[cfg(test)]
 mod tests;
-
-//TODO These should be re_exported by crypto core
-pub const KEY_LENGTH: usize = 32;
-pub const NONCE_LENGTH: usize = 12;
 
 pub struct AesGcmCipher {
     key_uid: String,

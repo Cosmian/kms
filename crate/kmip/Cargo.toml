@@ -1,12 +1,12 @@
 [package]
 name = "cosmian_kmip"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 
 [dependencies]
 bitflags = { workspace = true }
 cosmian_cover_crypt = { workspace = true }
-hex = { workspace = true, features = ["serde"] }
+hex = { workspace = true }
 leb128 = { workspace = true }
 num-bigint = { workspace = true }
 serde = { workspace = true }

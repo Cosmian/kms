@@ -25,11 +25,11 @@ base64 = "0.21"
 base64-url = "1.4"
 bitflags = "1.3"
 clap = { version = "4.1", default-features = false, features = ["help", "usage", "error-context", "derive", "cargo"] }
-cosmian_cover_crypt = "10.0"
-cosmian_crypto_core = "5.0"
+cosmian_cover_crypt = "11.0"
+cosmian_crypto_core = "7.0"
 env_logger = "0.10"
 eyre = "0.6"
-hex = { version = "0.4", default-features = false }
+hex = "0.4"
 http = "0.2"
 leb128 = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }

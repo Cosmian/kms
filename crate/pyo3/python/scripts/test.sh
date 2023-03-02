@@ -3,6 +3,12 @@ set -eux
 
 cd "$(dirname "$0")/../.."
 
+# Setup python virtual environment
+venv_dir=../../target/venv
+mkdir -p $venv_dir
+python3 -m venv $venv_dir
+export PATH=$venv_dir/bin:$PATH
+
 pip install -r python/requirements.txt
 
 rm -f ../../target/wheels/*.whl
