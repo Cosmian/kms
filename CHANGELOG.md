@@ -2,9 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## [X.X.X] - 2023-XX-XX
+---
 
-### Internal
+## [4.3.3] - 2023-03-02
+
+### Features
+
+- Use CoverCrypt v11
+
+### Refactor
 
 - Removed `mysql` crate used for EdgelessDB (compatible with client SSL connection)
 - Use workspace dependencies to ease maintenance
