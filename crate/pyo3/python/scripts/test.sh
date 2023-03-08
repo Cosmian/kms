@@ -4,10 +4,12 @@ set -eux
 cd "$(dirname "$0")/../.."
 
 # Setup python virtual environment
-venv_dir=../../target/venv
-mkdir -p $venv_dir
-python3 -m venv $venv_dir
-export PATH=$venv_dir/bin:$PATH
+venv_dir="$(pwd)/target/venv"
+rm -rf "$venv_dir"
+mkdir -p "$venv_dir"
+python3 -m venv "$venv_dir"
+
+export PATH="$venv_dir/bin:$PATH"
 
 pip install -r python/requirements.txt
 
