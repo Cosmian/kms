@@ -23,20 +23,24 @@ impl KmsClient {
     /// Instantiate a KMS Client
     ///
     /// Args:
-    ///     - `server_url` (str): url of the KMS server
-    ///     - `api_key` (Optional[str]): apiKey optional, to authenticate to the KMS
-    /// server
+    ///     - `server_url` (str)        : url of the KMS server
+    ///     - `api_key` (Optional[str]) : apiKey optional, to authenticate to the KMS
+    ///     - `insecure_mode` (bool)    : accept invalid ssl cert. defaults to False
     #[new]
-    pub fn new(server_url: &str, api_key: Option<&str>) -> PyResult<Self> {
+    #[pyo3(signature = (
+        server_url,
+        api_key = None,
+        insecure_mode = false,
+    ))]
+    pub fn new(server_url: &str, api_key: Option<&str>, insecure_mode: bool) -> PyResult<Self> {
         let kms_connector =
-            KmsRestClient::instantiate(server_url, api_key.unwrap_or(""), None, false).map_err(
-                |_| {
+            KmsRestClient::instantiate(server_url, api_key.unwrap_or(""), None, insecure_mode)
+                .map_err(|_| {
                     PyException::new_err(format!(
                         "Can't build the query to connect to the kms server {}",
                         server_url
                     ))
-                },
-            )?;
+                })?;
         Ok(Self(kms_connector))
     }
 
