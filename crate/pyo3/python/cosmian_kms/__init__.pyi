@@ -1,10 +1,11 @@
-from typing import Optional, Tuple, Union, List
 from asyncio import Future
-from cosmian_cover_crypt import (
-    Policy,
+from typing import List, Optional, Tuple, Union
+
+from cloudproof_cover_crypt import (
     Attribute,
-    PublicKey,
     MasterSecretKey,
+    Policy,
+    PublicKey,
     UserSecretKey,
 )
 
@@ -27,12 +28,20 @@ class KmsClient:
     can be used to track and manage the status of the requests asynchronously.
     """
 
-    def __init__(self, server_url: str, api_key: Optional[str] = "") -> None:
+    def __init__(
+        self,
+        server_url: str,
+        api_key: Optional[str] = "",
+        database_secret: Optional[str] = "",
+        insecure_mode: bool = False,
+    ) -> None:
         """Instantiate a KMS Client
 
         Args:
             server_url (str): url of the KMS server
-            api_key (Optional[str]): to authenticate to the KMS server
+            api_key (str, optional): to authenticate to the KMS server
+            database_secret (str, optional): to authenticate to the KMS database
+            insecure_mode (bool, optional): accept self signed ssl cert. Defaults to False.
         """
     def create_cover_crypt_master_key_pair(
         self, policy: Union[Policy, bytes]
