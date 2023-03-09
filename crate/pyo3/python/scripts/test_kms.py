@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 import unittest
-from cosmian_kms import KmsClient
-from cosmian_cover_crypt import (
+
+from cloudproof_cover_crypt import (
+    MasterSecretKey,
     Policy,
     PolicyAxis,
     PublicKey,
-    MasterSecretKey,
     UserSecretKey,
 )
+from cosmian_kms import KmsClient
 
 
 class TestKMS(unittest.IsolatedAsyncioTestCase):
