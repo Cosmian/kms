@@ -1,7 +1,7 @@
 from asyncio import Future
 from typing import List, Optional, Tuple, Union
 
-from cosmian_cover_crypt import (
+from cloudproof_cover_crypt import (
     Attribute,
     MasterSecretKey,
     Policy,
@@ -41,7 +41,7 @@ class KmsClient:
             server_url (str): url of the KMS server
             api_key (str, optional): to authenticate to the KMS server
             database_secret (str, optional): to authenticate to the KMS database
-            insecure_mode (bool, optional): accept invalid ssl cert. Defaults to False.
+            insecure_mode (bool, optional): accept self signed ssl cert. Defaults to False.
         """
     def create_cover_crypt_master_key_pair(
         self, policy: Union[Policy, bytes]

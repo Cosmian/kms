@@ -26,7 +26,7 @@ impl KmsClient {
     ///     - `server_url` (str)                : url of the KMS server
     ///     - `api_key` (Optional[str])         : apiKey optional, to authenticate to the KMS
     ///     - `database_secret` (Optional[str]) : secret to authenticate to the KMS database
-    ///     - `insecure_mode` (bool)            : accept invalid ssl cert. defaults to False
+    ///     - `insecure_mode` (bool)            : accept self signed ssl cert. defaults to False
     #[new]
     #[pyo3(signature = (
         server_url,
