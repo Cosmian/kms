@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [4.3.4] - 2023-03-09
+
+### Features
+
+- Python KMS client (pyo3): export `database_secret` and `insecure` as parameters
+
+### Testing
+
+- Update cover crypt in python tests
+
+---
+
 ## [4.3.3] - 2023-03-02
 
 ### Features
