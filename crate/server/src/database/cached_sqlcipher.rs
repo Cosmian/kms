@@ -47,14 +47,14 @@ impl CachedSqlCipher {
 
     async fn instantiate_group_database(&self, group_id: u128, key: &str) -> KResult<Pool<Sqlite>> {
         let path = self.filename(group_id);
-        let mut options = SqliteConnectOptions::new()
+        let options = SqliteConnectOptions::new()
             .pragma("key", format!("\"x'{key}'\""))
             .pragma("journal_mode", "OFF")
             .filename(path)
             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
-            .busy_timeout(Duration::from_secs(120));
-        // disable logging of each query
-        options.disable_statement_logging();
+            .busy_timeout(Duration::from_secs(120))
+            // disable logging of each query
+            .disable_statement_logging();
 
         Ok(SqlitePoolOptions::new()
             .max_connections(1)
@@ -154,7 +154,7 @@ impl Database for CachedSqlCipher {
             let mut res = vec![];
             let mut tx = pool.begin().await?;
             for (uid, object) in objects {
-                match create_(uid.clone(), owner, object, &mut tx).await {
+                match create_(uid.clone(), owner, object, &mut *tx).await {
                     Ok(uid) => res.push(uid),
                     Err(e) => {
                         tx.rollback().await.context("transaction failed")?;

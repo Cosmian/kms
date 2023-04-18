@@ -9,7 +9,7 @@ edition = "2021"
 base64 = { workspace = true }
 base64-url = { workspace = true }
 hex = { workspace = true }
-jsonwebtoken = { version = "8.2", features = ["use_pem"] }
+jsonwebtoken = { version = "8.3", features = ["use_pem"] }
 openssl = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }

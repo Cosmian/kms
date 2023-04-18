@@ -27,7 +27,7 @@ use cosmian_kms_utils::{
 };
 use hex::encode;
 use libsgx::quote::{get_quote, hash, prepare_report_data};
-use openssl::rand::rand_bytes;
+use openssl::{pkcs12::ParsedPkcs12_2, rand::rand_bytes};
 use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
@@ -442,8 +442,11 @@ impl KmipServer for KMS {
             return Ok(Some(certificate.to_string()))
         }
 
-        if let Some(p12) = SharedConfig::server_pkcs12() {
-            let pem = String::from_utf8(p12.cert.to_text()?)
+        if let Some(ParsedPkcs12_2 {
+            cert: Some(x509), ..
+        }) = SharedConfig::server_pkcs12()
+        {
+            let pem = String::from_utf8(x509.to_text()?)
                 .map_err(|e| KmsError::ConversionError(e.to_string()))?;
             return Ok(Some(pem))
         }

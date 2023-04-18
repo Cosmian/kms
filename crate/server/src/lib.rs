@@ -172,9 +172,13 @@ async fn start_https_kms_server() -> KResult<()> {
 
     // Create and configure an SSL acceptor with the certificate and key
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-    builder.set_private_key(&p12.pkey)?;
-    builder.set_certificate(&p12.cert)?;
-    if let Some(chain) = &p12.chain {
+    if let Some(pkey) = &p12.pkey {
+        builder.set_private_key(pkey)?;
+    }
+    if let Some(cert) = &p12.cert {
+        builder.set_certificate(cert)?;
+    }
+    if let Some(chain) = &p12.ca {
         for x in chain {
             builder.add_extra_chain_cert(x.to_owned())?;
         }

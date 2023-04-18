@@ -36,13 +36,13 @@ impl SqlitePool {
     /// Instantiate a new `SQLite` database
     /// and create the appropriate table(s) if need be
     pub async fn instantiate(path: &Path) -> KResult<Self> {
-        let mut options = SqliteConnectOptions::new()
+        let options = SqliteConnectOptions::new()
             .filename(path)
             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
             .busy_timeout(Duration::from_secs(120))
-            .create_if_missing(true);
-        // disable logging of each query
-        options.disable_statement_logging();
+            .create_if_missing(true)
+            // disable logging of each query
+            .disable_statement_logging();
 
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
@@ -99,7 +99,7 @@ impl Database for SqlitePool {
         let mut res = vec![];
         let mut tx = self.pool.begin().await?;
         for (uid, object) in objects {
-            match create_(uid.clone(), owner, object, &mut tx).await {
+            match create_(uid.clone(), owner, object, &mut *tx).await {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
