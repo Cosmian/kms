@@ -749,12 +749,12 @@ mod tests {
     }
 
     async fn connect() -> std::result::Result<sqlx::Pool<sqlx::Sqlite>, sqlx::Error> {
-        let mut options = SqliteConnectOptions::from_str("sqlite::memory:")?
+        let options = SqliteConnectOptions::from_str("sqlite::memory:")?
             .pragma("journal_mode", "OFF")
             .busy_timeout(Duration::from_secs(120))
-            .create_if_missing(true);
-        // disable logging of each query
-        options.disable_statement_logging();
+            .create_if_missing(true)
+            // disable logging of each query
+            .disable_statement_logging();
 
         SqlitePoolOptions::new()
             .max_connections(1)

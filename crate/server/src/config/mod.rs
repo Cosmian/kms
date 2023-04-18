@@ -15,7 +15,7 @@ use alcoholic_jwt::JWKS;
 use clap::Parser;
 use libsgx::utils::is_running_inside_enclave;
 use once_cell::sync::OnceCell;
-use openssl::pkcs12::ParsedPkcs12;
+use openssl::pkcs12::ParsedPkcs12_2;
 use tracing::{debug, info};
 
 use crate::{
@@ -113,7 +113,7 @@ pub struct SharedConfig {
     pub hostname_port: String,
 
     /// The provided PKCS#12 when HTTPS is enabled
-    pub server_pkcs_12: Option<ParsedPkcs12>,
+    pub server_pkcs_12: Option<ParsedPkcs12_2>,
 
     /// The certbot engine if certbot is enabled
     pub certbot: Option<Arc<Mutex<Certbot>>>,
@@ -134,8 +134,11 @@ impl fmt::Debug for SharedConfig {
         } else {
             x.field("default_username", &self.default_username)
         };
-        let x = if let Some(pkcs_12) = &self.server_pkcs_12 {
-            x.field("certificate CN", &pkcs_12.cert.subject_name())
+        let x = if let Some(ParsedPkcs12_2 {
+            cert: Some(x509), ..
+        }) = &self.server_pkcs_12
+        {
+            x.field("certificate CN", &x509.subject_name())
         } else {
             x
         };
@@ -221,7 +224,7 @@ impl SharedConfig {
     }
 
     #[inline(always)]
-    pub(crate) fn server_pkcs12() -> &'static Option<ParsedPkcs12> {
+    pub(crate) fn server_pkcs12() -> &'static Option<ParsedPkcs12_2> {
         &INSTANCE_CONFIG
             .get()
             .expect("config must be initialized")

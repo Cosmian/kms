@@ -1,7 +1,7 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
 use clap::Args;
-use openssl::pkcs12::{ParsedPkcs12, Pkcs12};
+use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 
 use crate::result::KResult;
 
@@ -36,7 +36,7 @@ impl Default for HTTPConfig {
 }
 
 impl HTTPConfig {
-    pub fn init(&self) -> KResult<(String, Option<ParsedPkcs12>)> {
+    pub fn init(&self) -> KResult<(String, Option<ParsedPkcs12_2>)> {
         let host_port = format!("{}:{}", self.hostname, self.port);
 
         let p12 = if let Some(p12_file) = &self.https_p12_file {
@@ -47,7 +47,7 @@ impl HTTPConfig {
 
             // Parse the byte vector as a PKCS#12 object
             let sealed_p12 = Pkcs12::from_der(der_bytes.as_slice())?;
-            let p12 = sealed_p12.parse(&self.https_p12_password)?;
+            let p12 = sealed_p12.parse2(&self.https_p12_password)?;
             Some(p12)
         } else {
             None
