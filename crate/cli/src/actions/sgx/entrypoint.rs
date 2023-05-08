@@ -8,13 +8,14 @@ use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use clap::Parser;
 use colored::Colorize;
 use cosmian_kms_client::KmsRestClient;
-use eyre::Context;
 use hex::encode;
 use libsgx::{
     quote::{compute_mr_signer, from_bytes, hash, prepare_report_data, Quote},
     remote_attestation::azure::remote_attestation,
 };
 use rand::Rng;
+
+use crate::error::{result::CliResultHelper, CliError};
 
 /// Query the enclave to check its trustworthiness
 #[derive(Parser, Debug)]
@@ -29,7 +30,7 @@ pub struct SgxAction {
 }
 
 impl SgxAction {
-    pub async fn process(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+    pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         // Create the export directory if it does not exist
         if !Path::new(&self.export_path).exists() {
             fs::create_dir_all(&self.export_path)?;
@@ -129,7 +130,9 @@ impl SgxAction {
         println!(
             "... MR signer checking {} ",
             bool_to_color(
-                compute_mr_signer(&public_key)? == typed_quote.report_body.mr_signer
+                compute_mr_signer(&public_key)
+                    .map_err(|e| CliError::Default(format!("SSL Error: {:?}", e)))?
+                    == typed_quote.report_body.mr_signer
                     && encode(typed_quote.report_body.mr_signer) == remote_attestation.sgx_mrsigner
                     && encode(typed_quote.report_body.mr_signer)
                         == remote_attestation.x_ms_sgx_mrsigner

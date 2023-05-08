@@ -234,7 +234,7 @@ pub(crate) async fn create_<'e, E>(
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    let object_json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
@@ -328,7 +328,7 @@ pub(crate) async fn update_object_<'e, E>(
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    let object_json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
@@ -399,7 +399,7 @@ pub(crate) async fn upsert_<'e, E>(
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    let object_json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
@@ -654,7 +654,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+    use cloudproof::reexport::crypto_core::{
+        reexport::rand_core::{RngCore, SeedableRng},
+        CsRng,
+    };
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -662,7 +665,7 @@ mod tests {
             LinkType, LinkedObjectIdentifier, StateEnumeration,
         },
     };
-    use cosmian_kms_utils::{crypto::aes::create_symmetric_key, types::ObjectOperationTypes};
+    use cosmian_kms_utils::{crypto::symmetric::create_symmetric_key, types::ObjectOperationTypes};
     use tempfile::tempdir;
     use uuid::Uuid;
 
@@ -684,8 +687,9 @@ mod tests {
         }
 
         let db = SqlitePool::instantiate(&file_path).await?;
-
-        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key_bytes = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key_bytes);
+        let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -924,7 +928,10 @@ mod tests {
 
         //
 
-        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key_bytes = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key_bytes);
+        let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -1084,7 +1091,11 @@ mod tests {
 
         //
 
-        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key_bytes = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key_bytes);
+        let mut symmetric_key =
+            create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         // Define the link vector

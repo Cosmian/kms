@@ -5,7 +5,7 @@ It's the implementation of the **Key Management Services** provided by _Cosmian_
 It is broken down into several binaries:
 
 - A server (`cosmian_kms_server`) which is the KMS itself
-- A CLI (`cosmian_kms_cli`) to interact with this server
+- A CLI (`ckms`) to interact with this server
 
 And also some libraries:
 

@@ -14,8 +14,6 @@ It is set by the server, but a particular Key Format Type MAY be requested by th
 ##### Extensions
 
 ```c
-EnclaveECKeyPair = 0x8880_0005,
-EnclaveECSharedKey = 0x8880_0006,
 CoverCryptSecretKey = 0x8880_000C,
 CoverCryptPublicKey = 0x8880_000D,
 ```
@@ -51,9 +49,10 @@ The different attribute names can be seen in the [VendorAttributes.java](https:/
 
 The attributes names and corresponding values used for a given `KeyFormatType` are as follows:
 
-- `AbeMasterSecretKey` and `AbeMasterPublicKey`:
-  - `VENDOR_ATTR_ABE_POLICY = "abe_policy"` : the JSONified Policy
-- `AbeUserDecryptionKey`:
-  - `VENDOR_ATTR_ABE_ACCESS_POLICY = "abe_access_policy"`: The JSONified boolean Access Policy of the key
+- `CovercryptMasterSecretKey` and `CovercryptMasterPublicKey`:
+  - `VENDOR_ATTR_COVER_CRYPT_POLICY = "cover_crypt_policy"` : the JSONified Policy
 
-In addition the `VENDOR_ATTR_ABE_ATTR = "abe_attributes"` name is used in Locate requests to identify User Decryption Keys holding certain Policy Attributes.
+- `AbeUserDecryptionKey`:
+  - `VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY = "cover_crypt_access_policy"`: The JSONified boolean Access Policy of the key
+
+In addition, the `VENDOR_ATTR_COVER_CRYPT_ATTR = "cover_crypt_attributes"` name is used in Locate requests to identify User Decryption Keys holding certain Policy Attributes.

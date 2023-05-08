@@ -149,8 +149,8 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
         Ok(())
     }
 
-    /// Copied from https://github.com/NLnetLabs/kmip-ttlv/blob/main/src/ser.rs
-    /// Serializing `None` values, e.g. `Option::`<TypeName>`::None`, is not
+    /// Copied from `https://github.com/NLnetLabs/kmip-ttlv/blob/main/src/ser.rs`
+    /// Serializing `None` values, e.g. `Option::TypeName::None`, is not
     /// supported.
     ///
     /// TTLV doesn't support the notion of a serialized value that indicates the

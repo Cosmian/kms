@@ -1,16 +1,21 @@
-use cosmian_cover_crypt::{
-    abe_policy::{AccessPolicy, Policy},
-    core::api::CoverCrypt,
-    statics::{CoverCryptX25519Aes256, MasterSecretKey, UserSecretKey},
+use cloudproof::reexport::{
+    cover_crypt::{
+        abe_policy::{AccessPolicy, Policy},
+        core::api::CoverCrypt,
+        statics::{CoverCryptX25519Aes256, MasterSecretKey, UserSecretKey},
+    },
+    crypto_core::bytes_ser_de::Serializable,
 };
-use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_operations::ErrorReason,
-        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier,
+        },
     },
 };
 use tracing::trace;
@@ -78,8 +83,8 @@ impl UserDecryptionKeysHandler {
         master_private_key: &Object,
     ) -> Result<Self, KmipError> {
         let msk_key_block = master_private_key.key_block()?;
-        let msk_key_bytes = msk_key_block.as_bytes()?;
-        let msk = MasterSecretKey::try_from_bytes(msk_key_bytes).map_err(|e| {
+        let msk_key_bytes = msk_key_block.key_bytes()?;
+        let msk = MasterSecretKey::try_from_bytes(&msk_key_bytes).map_err(|e| {
             KmipError::KmipError(
                 ErrorReason::Codec_Error,
                 format!("cover crypt: failed deserializing the master private key: {e}"),
@@ -102,6 +107,7 @@ impl UserDecryptionKeysHandler {
         &self,
         access_policy_str: &str,
         attributes: Option<&Attributes>,
+        master_private_key_id: &str,
     ) -> Result<Object, KmipError> {
         //
         // Generate a fresh user decryption key
@@ -131,7 +137,15 @@ impl UserDecryptionKeysHandler {
                 att
             })
             .unwrap_or_else(|| Attributes::new(ObjectType::PrivateKey));
+        // Add the access policy to the attributes
         upsert_access_policy_in_attributes(&mut attributes, access_policy_str)?;
+        // Add the link to the master private key
+        attributes.link = Some(vec![Link {
+            link_type: LinkType::ParentLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(
+                master_private_key_id.to_string(),
+            ),
+        }]);
         Ok(Object::PrivateKey {
             key_block: KeyBlock {
                 cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,

@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_server"
-version = "4.3.4"
+version = "4.4.0"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 description = "Cosmian Key Management Service"
@@ -34,8 +34,7 @@ async-trait = "0.1"
 base64 = { workspace = true }
 bitflags = { workspace = true }
 clap = { workspace = true, features = ["env", "std"] }
-cosmian_cover_crypt = { workspace = true }
-cosmian_crypto_core = { workspace = true }
+cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
 dirs = "4.0"
@@ -47,14 +46,22 @@ hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 lazy_static = "1.4"
 libsgx = { path = "../libsgx" }
-libsqlite3-sys = { version = "0.25.2", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
+libsqlite3-sys = { version = "0.25.2", default-features = false, features = [
+    "bundled-sqlcipher-vendored-openssl",
+] }
 once_cell = "1.17"
 openssl = { workspace = true }
 rawsql = "0.1"
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sqlx = { version = "0.7.0-alpha.2", default-features = false, features = ["json", "runtime-tokio-native-tls", "mysql", "postgres", "sqlite"] }
+sqlx = { version = "0.7.0-alpha.2", default-features = false, features = [
+    "json",
+    "runtime-tokio-native-tls",
+    "mysql",
+    "postgres",
+    "sqlite",
+] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
 tracing = { workspace = true }

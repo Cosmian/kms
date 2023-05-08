@@ -48,11 +48,24 @@ extra_javascript:
 nav:
   - Home: index.md
   - Installing and running: installing.md
-  - API: api.md
-  - Authorization: authorization.md
-  - CLI: cli.md
+  - Authentication & Authorization: auth.md
+  - cKMS command line interface: 
+      - Getting started: cli/cli.md
+      - Covercrypt: 
+        - Commands: cli/covercrypt/covercrypt.md
+        - Keys management: cli/covercrypt/keys.md
+        - Policy management: cli/covercrypt/policy.md
+      - Elliptic Curves Encryption:
+        - Commands: cli/ec/ec.md
+        - Keys management: cli/ec/keys.md
+      - Symmetric Encryption:
+        - Commands: cli/sym/sym.md
+        - Keys management: cli/sym/keys.md
+      - Permissions: cli/permissions.md
+      - Enclaves: cli/enclaves.md
+
   - KMIP 2.1:
-      - Home: kmip_2_1/index.md
+      - Specifications: kmip_2_1/index.md
       - Objects: kmip_2_1/objects.md
       - Attributes: kmip_2_1/attributes.md
       - Operations: kmip_2_1/operations.md

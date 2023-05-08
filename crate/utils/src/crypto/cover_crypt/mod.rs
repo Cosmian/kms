@@ -1,5 +1,6 @@
 pub mod attributes;
-pub mod ciphers;
+pub mod decryption;
+pub mod encryption;
 pub mod kmip_requests;
 pub mod locate;
 pub mod master_keys;

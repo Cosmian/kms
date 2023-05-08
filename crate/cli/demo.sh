@@ -15,7 +15,7 @@ echo
 echo "This runs a complete demo from the command line"
 echo
 echo "Generating the master keys:..."
-res=$($BINARY cc init -p policy.json)
+res=$($BINARY cc init -p policy.bin)
 private_key_id=$(echo "$res" | awk -F 'Private key unique identifier: ' '{print $2}' | awk 'BEGIN {RS=""} {print $0}')
 public_key_id=$(echo "$res" | awk -F 'Public key unique identifier: ' '{print $2}' | awk 'BEGIN {RS=""} {print $0}')
 echo "Master keys: private: $private_key_id, public: $public_key_id"
@@ -50,9 +50,9 @@ echo "//  Encryption / Decryption"
 echo "////////////////////////////////////////////////////////////////////////////////////"
 echo
 echo "Encrypting a message with attributes: department::marketing, level::secret ..."
-res=$($BINARY cc encrypt --access-policy "department::marketing && level::secret" -p $public_key_id policy.json -o /tmp/policy_mkg_secret.enc)
+res=$($BINARY cc encrypt --access-policy "department::marketing && level::secret" -p $public_key_id policy.bin -o /tmp/policy_mkg_secret.enc)
 echo "... and a message with attributes: department::marketing, level::top-secret."
-res=$($BINARY cc encrypt --access-policy "department::marketing && level::top-secret" -p $public_key_id policy.json -o /tmp/policy_mkg_top_secret.enc)
+res=$($BINARY cc encrypt --access-policy "department::marketing && level::top-secret" -p $public_key_id policy.bin -o /tmp/policy_mkg_top_secret.enc)
 echo " => OK"
 echo
 echo "Decrypting the message with attributes: department::marketing, level::secret"
@@ -90,7 +90,7 @@ res=$($BINARY cc rotate -s $private_key_id -a department::marketing)
 echo " => OK"
 echo
 echo "Encrypting a NEW message with attributes: department::marketing, level::secret ..."
-res=$($BINARY cc encrypt --access-policy "department::marketing && level::secret" -p $public_key_id policy.json -o /tmp/policy_mkg_secret_new.enc)
+res=$($BINARY cc encrypt --access-policy "department::marketing && level::secret" -p $public_key_id policy.bin -o /tmp/policy_mkg_secret_new.enc)
 echo " => OK"
 echo
 echo "Decrypt the NEW message with attributes: department::marketing, level::secret"

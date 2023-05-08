@@ -1,13 +1,14 @@
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
-use eyre::Context;
 
-/// Query the KMS to initialize a new database [enclave mode only]
+use crate::error::{result::CliResultHelper, CliError};
+
+/// Initialize a new database on the KMS [enclave mode only]
 #[derive(Parser, Debug)]
-pub struct ConfigureAction;
+pub struct NewDatabaseAction;
 
-impl ConfigureAction {
-    pub async fn process(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+impl NewDatabaseAction {
+    pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         // Query the KMS to get a new database
         let token = client_connector
             .new_database()

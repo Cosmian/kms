@@ -1,7 +1,8 @@
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::types::{Access, ObjectOperationTypes};
-use eyre::Context;
+
+use crate::error::{result::CliResultHelper, CliError};
 
 /// Manage the permission of objects.
 #[derive(Parser, Debug)]
@@ -19,7 +20,7 @@ pub enum PermissionAction {
 }
 
 impl PermissionAction {
-    pub async fn process(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+    pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         match self {
             Self::Add(action) => action.run(client_connector).await?,
             Self::Remove(action) => action.run(client_connector).await?,
@@ -49,7 +50,7 @@ pub struct AddPermission {
 }
 
 impl AddPermission {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let access = Access {
             unique_identifier: Some(self.object_uid.clone()),
             user_id: self.user.clone(),
@@ -84,7 +85,7 @@ pub struct RemovePermission {
 }
 
 impl RemovePermission {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let access = Access {
             unique_identifier: Some(self.object_uid.clone()),
             user_id: self.user.clone(),
@@ -111,7 +112,7 @@ pub struct ListPermissions {
 }
 
 impl ListPermissions {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let accesses = client_connector
             .list_access(&self.object_uid)
             .await
@@ -134,7 +135,7 @@ impl ListPermissions {
 pub struct ListOwnedObjects;
 
 impl ListOwnedObjects {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let objects = client_connector
             .list_owned_objects()
             .await
@@ -153,7 +154,7 @@ impl ListOwnedObjects {
 pub struct ListSharedObjects;
 
 impl ListSharedObjects {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> eyre::Result<()> {
+    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let objects = client_connector
             .list_shared_objects()
             .await

@@ -1,0 +1,103 @@
+# Elliptic Curve Encryption Commands
+
+Manage elliptic curve keys. Encrypt and decrypt data using ECIES.
+
+```
+ckms ec <COMMAND>
+```
+
+### [keys](./keys.md)
+
+Create, destroy, import, and export elliptic curve key pairs.
+
+```
+ckms ec keys [SUBCOMMAND]
+```
+
+**subcommands:**
+
+```
+create   Create a new X25519 key pair
+export   Export a key from the KMS
+import   Import a key in the KMS.
+wrap     Locally wrap a key in KMIP JSON TTLV format.
+unwrap   Locally unwrap a key in KMIP JSON TTLV format.
+revoke   Revoke a public or private key
+destroy  Destroy a public or private key
+help     Print this message or the help of the given subcommand(s)
+```
+
+[> view subcommands details](./keys.md)
+
+### encrypt
+
+Encrypt a file with the given public key using ECIES.
+
+Note: this is not a streaming call: the file is entirely loaded in memory before being sent for encryption.
+
+**Usage:**
+```
+ckms ec encrypt [OPTIONS] <FILE> <PUBLIC_KEY_ID>
+```
+
+**Arguments:**
+```
+<FILE>
+        The file to encrypt
+
+<PUBLIC_KEY_ID>
+        The public key unique identifier stored in the KMS
+```
+
+**Options:**
+```
+-o, --output-file <OUTPUT_FILE>
+        The encrypted output file path
+
+-a, --authentication-data <AUTHENTICATION_DATA>
+        Optional authentication data. This data needs to be provided back for decryption
+
+-h, --help
+        Print help (see a summary with '-h')
+```
+
+### decrypt
+
+Decrypt a file with the given private key using ECIES.
+
+Note: this is not a streaming call: the file is entirely loaded in memory before being sent for decryption.
+
+**Usage:**
+```
+ckms ec decrypt [OPTIONS] <FILE> <PRIVATE_KEY_ID>
+```
+
+**Arguments:**
+```
+<FILE>
+        The file to decrypt
+
+<PRIVATE_KEY_ID>
+        The private key unique identifier stored in the KMS
+```
+
+**Options:**
+```
+-o, --output-file <OUTPUT_FILE>
+        The encrypted output file path
+
+-a, --authentication-data <AUTHENTICATION_DATA>
+        Optional authentication data that was supplied during encryption
+
+-h, --help
+        Print help (see a summary with '-h')
+```
+
+### help
+
+Print the help message or the help of the given subcommand(s).
+
+```
+ckms ec help [SUBCOMMAND]
+```
+

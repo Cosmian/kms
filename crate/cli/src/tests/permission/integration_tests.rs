@@ -5,31 +5,29 @@ use predicates::prelude::*;
 
 use crate::{
     config::KMS_CLI_CONF_ENV,
+    error::CliError,
     tests::{
-        cover_crypt::integration_tests::SUB_COMMAND as CC_SUB_COMMAND,
+        cover_crypt::master_key_pair::create_cc_master_key_pair,
         test_utils::{init_test_server, ONCE},
-        utils::extract_uids::extract_private_key,
         CONF_PATH, PROG_NAME,
     },
 };
 
 const SUB_COMMAND: &str = "permission";
 
-fn gen_object() -> String {
-    let mut cmd = Command::cargo_bin(PROG_NAME).unwrap();
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
-    cmd.arg(CC_SUB_COMMAND).args(vec!["init"]);
-    let success = cmd.assert().success();
-    let output = success.get_output();
-    let stdout: &str = std::str::from_utf8(&output.stdout).unwrap();
-
-    String::from(extract_private_key(stdout).unwrap())
+async fn gen_object() -> Result<String, CliError> {
+    let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
+        "--policy-specifications",
+        "test_data/policy_specifications.json",
+    )
+    .await?;
+    Ok(master_private_key_id)
 }
 
 #[tokio::test]
-pub async fn test_add() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn test_add() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
-    let object_id = gen_object();
+    let object_id = gen_object().await?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
@@ -56,11 +54,11 @@ pub async fn test_add() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
-pub async fn test_add_error() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn test_add_error() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
 
     // Bad operation
-    let object_id = gen_object();
+    let object_id = gen_object().await?;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
@@ -109,9 +107,9 @@ pub async fn test_add_error() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
-pub async fn test_remove() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn test_remove() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
-    let object_id = gen_object();
+    let object_id = gen_object().await?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
@@ -150,9 +148,9 @@ pub async fn test_remove() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
-pub async fn test_remove_error() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn test_remove_error() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
-    let object_id = gen_object();
+    let object_id = gen_object().await?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
@@ -167,7 +165,7 @@ pub async fn test_remove_error() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert().success();
 
     // Bad operation
-    let object_id = gen_object();
+    let object_id = gen_object().await?;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec![
@@ -216,7 +214,7 @@ pub async fn test_remove_error() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
-pub async fn test_list_error() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn test_list_error() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
 
     // Bad object_id
@@ -231,10 +229,10 @@ pub async fn test_list_error() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
-pub async fn test_owned() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn test_owned() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
 
-    let object_id = gen_object();
+    let object_id = gen_object().await?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
@@ -247,7 +245,7 @@ pub async fn test_owned() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[tokio::test]
-pub async fn test_shared() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn test_shared() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
 
     // TODO: need a test with another user sharing his/her key with us

@@ -18,14 +18,15 @@ pub struct Access {
 #[derive(Eq, PartialEq, Serialize, Deserialize, Debug, Copy, Clone)]
 pub enum ObjectOperationTypes {
     Create,
-    Get,
-    Encrypt,
     Decrypt,
-    Import,
-    Revoke,
-    Locate,
-    Rekey,
     Destroy,
+    Encrypt,
+    Export,
+    Get,
+    Import,
+    Locate,
+    Revoke,
+    Rekey,
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -45,14 +46,15 @@ impl FromStr for ObjectOperationTypes {
     fn from_str(op: &str) -> Result<Self, Self::Err> {
         match op {
             "create" => Ok(Self::Create),
-            "get" => Ok(Self::Get),
-            "encrypt" => Ok(Self::Encrypt),
             "decrypt" => Ok(Self::Decrypt),
+            "destroy" => Ok(Self::Destroy),
+            "encrypt" => Ok(Self::Encrypt),
+            "export" => Ok(Self::Export),
+            "get" => Ok(Self::Get),
             "import" => Ok(Self::Import),
-            "revoke" => Ok(Self::Revoke),
             "locate" => Ok(Self::Locate),
             "rekey" => Ok(Self::Rekey),
-            "destroy" => Ok(Self::Destroy),
+            "revoke" => Ok(Self::Revoke),
             _ => Err("Could not parse an operation {op}"),
         }
     }

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use cloudproof::reexport::crypto_core::asymmetric_crypto::curve25519::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType},
@@ -11,13 +12,15 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_server::{
     config::{auth0::Auth0Config, init_config, Config},
-    core::crud::KmipServer,
     error::KmsError,
     log_utils::log_init,
     result::KResult,
     KMSServer,
 };
-use cosmian_kms_utils::crypto::curve_25519;
+use cosmian_kms_utils::crypto::curve_25519::{
+    kmip_requests::{create_key_pair_request, get_private_key_request, get_public_key_request},
+    operation::{to_curve_25519_256_public_key, Q_LENGTH_BITS},
+};
 use tracing::trace;
 use uuid::Uuid;
 
@@ -35,19 +38,18 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = curve_25519::kmip_requests::create_key_pair_request();
+    let request = create_key_pair_request();
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
     let sk_response = kms
         .get(
-            curve_25519::kmip_requests::get_private_key_request(
-                &response.private_key_unique_identifier,
-            ),
+            get_private_key_request(&response.private_key_unique_identifier),
             owner,
             None,
         )
         .await?;
+    let sk_uid = &sk_response.unique_identifier;
     let sk = &sk_response.object;
     let sk_key_block = match sk {
         Object::PrivateKey { key_block } => key_block.clone(),
@@ -59,12 +61,9 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     };
     assert_eq!(
         sk_key_block.cryptographic_algorithm,
-        CryptographicAlgorithm::EC,
+        CryptographicAlgorithm::ECDH,
     );
-    assert_eq!(
-        sk_key_block.cryptographic_length,
-        curve_25519::operation::Q_LENGTH_BITS,
-    );
+    assert_eq!(sk_key_block.cryptographic_length, Q_LENGTH_BITS,);
     assert_eq!(
         sk_key_block.key_format_type,
         KeyFormatType::TransparentECPrivateKey
@@ -91,9 +90,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // check public key
     let pk_response = kms
         .get(
-            curve_25519::kmip_requests::get_public_key_request(
-                &response.public_key_unique_identifier,
-            ),
+            get_public_key_request(&response.public_key_unique_identifier),
             owner,
             None,
         )
@@ -109,12 +106,9 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     };
     assert_eq!(
         pk_key_block.cryptographic_algorithm,
-        CryptographicAlgorithm::EC,
+        CryptographicAlgorithm::ECDH,
     );
-    assert_eq!(
-        pk_key_block.cryptographic_length,
-        curve_25519::operation::Q_LENGTH_BITS,
-    );
+    assert_eq!(pk_key_block.cryptographic_length, Q_LENGTH_BITS,);
     assert_eq!(
         pk_key_block.key_format_type,
         KeyFormatType::TransparentECPublicKey
@@ -138,20 +132,20 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         LinkedObjectIdentifier::TextString(response.private_key_unique_identifier)
     );
     // test import of public key
-    let pk_bytes = curve_25519::kmip_requests::extract_key_bytes(pk)?;
-    let pk = curve_25519::kmip_requests::parse_public_key(&pk_bytes)?;
+    let pk_bytes = pk_key_block.key_bytes()?;
+    assert_eq!(pk_bytes.len(), X25519_PUBLIC_KEY_LENGTH);
+    let pk = to_curve_25519_256_public_key(&pk_bytes, sk_uid);
     let request = Import {
         unique_identifier: String::new(),
         object_type: ObjectType::PublicKey,
         replace_existing: None,
         key_wrap_type: None,
         attributes: Attributes::new(ObjectType::PublicKey),
-        object: pk,
+        object: pk.clone(),
     };
     let new_uid = kms.import(request, owner, None).await?.unique_identifier;
     // update
 
-    let pk = curve_25519::kmip_requests::parse_public_key(&pk_bytes)?;
     let request = Import {
         unique_identifier: new_uid.clone(),
         object_type: ObjectType::PublicKey,
@@ -243,15 +237,13 @@ async fn test_database_user_tenant() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = curve_25519::kmip_requests::create_key_pair_request();
+    let request = create_key_pair_request();
     let response = kms.create_key_pair(request, owner, None).await?;
 
     // check that we can get the private and public key
     // check secret key
     kms.get(
-        curve_25519::kmip_requests::get_private_key_request(
-            &response.private_key_unique_identifier,
-        ),
+        get_private_key_request(&response.private_key_unique_identifier),
         owner,
         None,
     )
@@ -259,7 +251,7 @@ async fn test_database_user_tenant() -> KResult<()> {
 
     // check public key
     kms.get(
-        curve_25519::kmip_requests::get_public_key_request(&response.public_key_unique_identifier),
+        get_public_key_request(&response.public_key_unique_identifier),
         owner,
         None,
     )
@@ -270,9 +262,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     // check public key
     let sk_response = kms
         .get(
-            curve_25519::kmip_requests::get_private_key_request(
-                &response.private_key_unique_identifier,
-            ),
+            get_private_key_request(&response.private_key_unique_identifier),
             owner,
             None,
         )
@@ -281,9 +271,7 @@ async fn test_database_user_tenant() -> KResult<()> {
 
     let pk_response = kms
         .get(
-            curve_25519::kmip_requests::get_public_key_request(
-                &response.public_key_unique_identifier,
-            ),
+            get_public_key_request(&response.public_key_unique_identifier),
             owner,
             None,
         )

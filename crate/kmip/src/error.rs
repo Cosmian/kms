@@ -1,3 +1,4 @@
+use cloudproof::reexport::crypto_core::CryptoCoreError;
 use thiserror::Error;
 
 use crate::kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError};
@@ -42,8 +43,14 @@ impl From<serde_json::Error> for KmipError {
     }
 }
 
-impl From<cosmian_cover_crypt::Error> for KmipError {
-    fn from(e: cosmian_cover_crypt::Error) -> Self {
+impl From<cloudproof::reexport::cover_crypt::Error> for KmipError {
+    fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
+        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+    }
+}
+
+impl From<CryptoCoreError> for KmipError {
+    fn from(e: CryptoCoreError) -> Self {
         Self::KmipError(ErrorReason::Codec_Error, e.to_string())
     }
 }

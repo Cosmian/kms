@@ -1,10 +1,10 @@
-use cosmian_crypto_core::{
+use cloudproof::reexport::crypto_core::{
     asymmetric_crypto::{
-        curve25519::{X25519KeyPair, X25519_PRIVATE_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH},
+        curve25519::{X25519KeyPair, X25519_PRIVATE_KEY_LENGTH},
         DhKeyPair,
     },
-    reexport::rand_core::SeedableRng,
-    CsRng, KeyTrait,
+    reexport::rand_core::CryptoRngCore,
+    KeyTrait,
 };
 use cosmian_kmip::{
     error::KmipError,
@@ -13,7 +13,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_types::{
             Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicParameters, CryptographicUsageMask, KeyFormatType, RecommendedCurve,
+            CryptographicParameters, CryptographicUsageMask, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, RecommendedCurve,
         },
     },
 };
@@ -22,16 +23,15 @@ use num_bigint::BigUint;
 use crate::KeyPair;
 
 pub const SECRET_KEY_LENGTH: usize = X25519_PRIVATE_KEY_LENGTH;
-pub const PUBLIC_KEY_LENGTH: usize = X25519_PUBLIC_KEY_LENGTH;
 pub const Q_LENGTH_BITS: i32 = X25519_PRIVATE_KEY_LENGTH as i32;
 
 /// convert to a curve 25519 256 bits KMIP Public Key
 /// no check performed
 #[must_use]
-pub fn to_curve_25519_256_public_key(bytes: &[u8]) -> Object {
+pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Object {
     Object::PublicKey {
         key_block: KeyBlock {
-            cryptographic_algorithm: CryptographicAlgorithm::EC,
+            cryptographic_algorithm: CryptographicAlgorithm::ECDH,
             key_format_type: KeyFormatType::TransparentECPublicKey,
             key_compression_type: None,
             key_value: KeyValue {
@@ -40,19 +40,25 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8]) -> Object {
                     q_string: bytes.to_vec(),
                 },
                 attributes: Some(Attributes {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                     cryptographic_length: Some(Q_LENGTH_BITS),
                     cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                     cryptographic_parameters: Some(CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         ..CryptographicParameters::default()
                     }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
                         q_length: Some(Q_LENGTH_BITS),
                         recommended_curve: Some(RecommendedCurve::CURVE25519),
                     }),
+                    link: Some(vec![Link {
+                        link_type: LinkType::PrivateKeyLink,
+                        linked_object_identifier: LinkedObjectIdentifier::TextString(
+                            private_key_uid.to_string(),
+                        ),
+                    }]),
                     ..Attributes::new(ObjectType::PublicKey)
                 }),
             },
@@ -65,10 +71,10 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8]) -> Object {
 /// convert to a curve 25519 256 bits KMIP Private Key
 /// no check performed
 #[must_use]
-pub fn to_curve_25519_256_private_key(bytes: &[u8]) -> Object {
+pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Object {
     Object::PrivateKey {
         key_block: KeyBlock {
-            cryptographic_algorithm: CryptographicAlgorithm::EC,
+            cryptographic_algorithm: CryptographicAlgorithm::ECDH,
             key_format_type: KeyFormatType::TransparentECPrivateKey,
             key_compression_type: None,
             key_value: KeyValue {
@@ -77,19 +83,25 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8]) -> Object {
                     d: BigUint::from_bytes_be(bytes),
                 },
                 attributes: Some(Attributes {
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                     cryptographic_length: Some(Q_LENGTH_BITS),
                     cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
                     cryptographic_parameters: Some(CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::EC),
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         ..CryptographicParameters::default()
                     }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
                         q_length: Some(Q_LENGTH_BITS),
                         recommended_curve: Some(RecommendedCurve::CURVE25519),
                     }),
+                    link: Some(vec![Link {
+                        link_type: LinkType::PublicKeyLink,
+                        linked_object_identifier: LinkedObjectIdentifier::TextString(
+                            public_key_uid.to_string(),
+                        ),
+                    }]),
                     ..Attributes::new(ObjectType::PrivateKey)
                 }),
             },
@@ -100,10 +112,18 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8]) -> Object {
 }
 
 /// Generate a key CURVE 25519 Key Pair
-pub fn generate_key_pair() -> Result<KeyPair, KmipError> {
-    let mut rng = CsRng::from_entropy();
-    let key_pair = X25519KeyPair::new(&mut rng);
-    let public_key = to_curve_25519_256_public_key(&key_pair.public_key().to_bytes());
-    let private_key = to_curve_25519_256_private_key(&key_pair.private_key().to_bytes());
-    Ok(KeyPair((private_key, public_key)))
+pub fn create_ec_key_pair<R>(
+    rng: &mut R,
+    private_key_uid: &str,
+    public_key_uid: &str,
+) -> Result<KeyPair, KmipError>
+where
+    R: CryptoRngCore,
+{
+    let key_pair = X25519KeyPair::new(rng);
+    let private_key =
+        to_curve_25519_256_private_key(&key_pair.private_key().to_bytes(), public_key_uid);
+    let public_key =
+        to_curve_25519_256_public_key(&key_pair.public_key().to_bytes(), private_key_uid);
+    Ok(KeyPair::new(private_key, public_key))
 }

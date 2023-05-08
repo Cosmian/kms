@@ -202,13 +202,13 @@ The `cosmian/kms` Docker image also contains the KMS client `cosmian_kms_cli`. T
 The KMS CLI can be used as follows:
 
 ```bash
-docker run --network=host -it --entrypoint /bin/cosmian_kms_cli -v $PWD/conf:/conf -e KMS_CLI_CONF=/conf/kms.json cosmian/kms:latest cc init --policy /conf/policy.json
+docker run --network=host -it --entrypoint /bin/cosmian_kms_cli -v $PWD/conf:/conf -e KMS_CLI_CONF=/conf/kms.json cosmian/kms:latest cc init --policy /conf/policy.bin
 ```
 
 where `$PWD/conf` is a folder containing the following files:
 
 - kms.json
-- policy.json: The JSON file refers to [CoverCrypt](https://github.com/Cosmian/cover_crypt) which is a Cosmian encryption scheme which allows creating ciphertexts for a set of attributes and issuing user keys with access policies over these attributes.
+- policy.bin: The JSON file refers to [CoverCrypt](https://github.com/Cosmian/cover_crypt) which is a Cosmian encryption scheme which allows creating ciphertexts for a set of attributes and issuing user keys with access policies over these attributes.
 
 As example:
 
@@ -218,7 +218,7 @@ kms.json:
 { "kms_server_url": "http://127.0.0.1:9998", "kms_access_token": "" }
 ```
 
-policy.json:
+policy.bin:
 
 ```json
 {
