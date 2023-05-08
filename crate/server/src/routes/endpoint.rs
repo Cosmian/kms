@@ -9,8 +9,8 @@ use base64::{engine::general_purpose, Engine as _};
 use clap::crate_version;
 use cosmian_kmip::kmip::{
     kmip_operations::{
-        Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Get, GetAttributes, Import, Locate,
-        ReKeyKeyPair, Revoke,
+        Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Export, Get, GetAttributes, Import,
+        Locate, ReKeyKeyPair, Revoke,
     },
     kmip_types::UniqueIdentifier,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
@@ -24,7 +24,6 @@ use tracing::{debug, error, warn};
 
 use crate::{
     config::{DbParams, SharedConfig},
-    core::crud::KmipServer,
     database::KMSServer,
     error::KmsError,
     kms_bail,
@@ -63,6 +62,7 @@ impl actix_web::error::ResponseError for KmsError {
             Self::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::SGXError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::ConversionError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::CryptographicError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -102,10 +102,24 @@ pub async fn kmip(
                 .await?;
             to_ttlv(&resp)?
         }
+        "Destroy" => {
+            let req = from_ttlv::<Destroy>(&ttlv_req)?;
+            let resp = kms_client
+                .destroy(req, &owner, database_params.as_ref())
+                .await?;
+            to_ttlv(&resp)?
+        }
         "Encrypt" => {
             let req = from_ttlv::<Encrypt>(&ttlv_req)?;
             let resp = kms_client
                 .encrypt(req, &owner, database_params.as_ref())
+                .await?;
+            to_ttlv(&resp)?
+        }
+        "Export" => {
+            let req = from_ttlv::<Export>(&ttlv_req)?;
+            let resp = kms_client
+                .export(req, &owner, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
@@ -130,13 +144,6 @@ pub async fn kmip(
                 .await?;
             to_ttlv(&resp)?
         }
-        "Revoke" => {
-            let req = from_ttlv::<Revoke>(&ttlv_req)?;
-            let resp = kms_client
-                .revoke(req, &owner, database_params.as_ref())
-                .await?;
-            to_ttlv(&resp)?
-        }
         "Locate" => {
             let req = from_ttlv::<Locate>(&ttlv_req)?;
             let resp = kms_client
@@ -151,10 +158,10 @@ pub async fn kmip(
                 .await?;
             to_ttlv(&resp)?
         }
-        "Destroy" => {
-            let req = from_ttlv::<Destroy>(&ttlv_req)?;
+        "Revoke" => {
+            let req = from_ttlv::<Revoke>(&ttlv_req)?;
             let resp = kms_client
-                .destroy(req, &owner, database_params.as_ref())
+                .revoke(req, &owner, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }

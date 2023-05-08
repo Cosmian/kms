@@ -364,7 +364,10 @@ impl Database for CachedSqlCipher {
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+    use cloudproof::reexport::crypto_core::{
+        reexport::rand_core::{RngCore, SeedableRng},
+        CsRng,
+    };
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -373,7 +376,7 @@ mod tests {
         },
     };
     use cosmian_kms_utils::{
-        crypto::aes::create_symmetric_key,
+        crypto::symmetric::create_symmetric_key,
         types::{ExtraDatabaseParams, ObjectOperationTypes},
     };
     use tempfile::tempdir;
@@ -403,7 +406,11 @@ mod tests {
             key: String::from("password"),
         };
 
-        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let symmetric_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(
@@ -661,7 +668,11 @@ mod tests {
             key: String::from("password"),
         };
 
-        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let symmetric_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(

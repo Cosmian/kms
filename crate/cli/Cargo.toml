@@ -1,44 +1,45 @@
 [package]
 name = "cosmian_kms_cli"
-version = "0.3.1"
+version = "4.4.0"
 edition = "2021"
 description = "CLI used to manage the Cosmian KMS."
 
 [[bin]]
-name = "cosmian_kms_cli"
+name = "ckms"
 path = "src/main.rs"
 
 [features]
 # Staging is used to run tests with the remote kms test server. Otherwise, the test runs a local kms server.
 staging = []
-# TODO: Remove these both features when sqlite >= 3.8 will be supported
-dev = []
-sqlcipher = []
+
 
 [dependencies]
 base64 = { workspace = true }
 base64-url = { workspace = true }
 clap = { workspace = true }
 colored = "2.0"
-cosmian_cover_crypt = { workspace = true }
+cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_client = { path = "../client" }
 cosmian_kms_utils = { path = "../utils" }
-eyre = { workspace = true }
 hex = { workspace = true }
 libsgx = { path = "../libsgx" }
 rand = "0.8"
 serde = { workspace = true }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 tokio = { version = "1.25", features = ["full"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
 assert_cmd = "2.0"
+# cosmian_crypto_core = { workspace = true }
 cosmian_kms_client = { path = "../client", default-features = false }
-cosmian_kms_server = { path = "../server", features = ["insecure"], default-features = false }
+cosmian_kms_server = { path = "../server", features = [
+    "insecure",
+], default-features = false }
 env_logger = { workspace = true }
-file_diff = "1.0"
 predicates = "2.1"
 regex = { version = "1.7", default-features = false }
 reqwest = { workspace = true }
+tempfile = "3.2"

@@ -1,33 +1,41 @@
-// TODO Split this file in multiple implementations under their operations names
-
 use std::sync::{Arc, Mutex};
 
-use cosmian_cover_crypt::statics::CoverCryptX25519Aes256;
-use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+use cloudproof::reexport::{
+    cover_crypt::statics::CoverCryptX25519Aes256,
+    crypto_core::{
+        reexport::rand_core::{RngCore, SeedableRng},
+        symmetric_crypto::aes_256_gcm_pure,
+        CsRng,
+    },
+};
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{Create, CreateKeyPair},
-    kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+    kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve, StateEnumeration},
 };
 use cosmian_kms_utils::{
     crypto::{
-        aes::{create_symmetric_key, AesGcmCipher},
-        cover_crypt::ciphers::{CoverCryptHybridCipher, CoverCryptHybridDecipher},
-        curve_25519::operation::generate_key_pair,
+        cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
+        curve_25519::{
+            encryption_decryption::{EciesDecryption, EciesEncryption},
+            operation::create_ec_key_pair,
+        },
+        symmetric::{create_symmetric_key, AesGcmSystem},
     },
     types::{ExtraDatabaseParams, ObjectOperationTypes},
-    DeCipher, EnCipher, KeyPair,
+    DecryptionSystem, EncryptionSystem, KeyPair,
 };
 use tracing::trace;
 
-use super::KMS;
+use super::{cover_crypt::create_user_decryption_key, KMS};
 use crate::{
     config::{DbParams, SharedConfig},
+    core::operations::unwrap_key,
     database::{
         cached_sqlcipher::CachedSqlCipher, mysql::Sql, pgsql::Pgsql, sqlite::SqlitePool, Database,
     },
     error::KmsError,
-    kms_bail, kms_error,
+    kms_bail, kms_not_supported,
     result::KResult,
 };
 
@@ -48,112 +56,140 @@ impl KMS {
         })
     }
 
-    pub async fn get_encipher(
+    /// Get the CS-RNG
+    pub fn rng(&self) -> Arc<Mutex<CsRng>> {
+        self.rng.clone()
+    }
+
+    /// Return an encryption system based on the type of key
+    pub async fn get_encryption_system(
+        &self,
+        key_uid: &str,
+        owner: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<Box<dyn EncryptionSystem>> {
+        let (mut object, state) = self
+            .db
+            .retrieve(key_uid, owner, ObjectOperationTypes::Encrypt, params)
+            .await?
+            .ok_or_else(|| {
+                KmsError::ItemNotFound(format!("object with uid: {key_uid} not found"))
+            })?;
+
+        // the key must be active
+        if state != StateEnumeration::Active {
+            kms_bail!(KmsError::InconsistentOperation(
+                "the server can't encrypt: the key is not active".to_owned()
+            ));
+        }
+
+        // unwrap if wrapped
+        if object.key_wrapping_data().is_some() {
+            let object_type = object.object_type();
+            let key_block = object.key_block_mut()?;
+            unwrap_key(object_type, key_block, self, owner, params).await?;
+        }
+
+        match &object {
+            Object::SymmetricKey { key_block } => match &key_block.key_format_type {
+                KeyFormatType::TransparentSymmetricKey => {
+                    match &key_block.cryptographic_algorithm {
+                        CryptographicAlgorithm::AES => {
+                            Ok(Box::new(AesGcmSystem::instantiate(key_uid, &object)?)
+                                as Box<dyn EncryptionSystem>)
+                        }
+                        other => {
+                            kms_not_supported!("symmetric encryption with algorithm: {other:?}")
+                        }
+                    }
+                }
+                other => kms_not_supported!("encryption with keys of format: {other}"),
+            },
+            Object::PublicKey { key_block } => match &key_block.key_format_type {
+                KeyFormatType::CoverCryptPublicKey => {
+                    Ok(Box::new(CoverCryptEncryption::instantiate(
+                        CoverCryptX25519Aes256::default(),
+                        key_uid,
+                        &object,
+                    )?) as Box<dyn EncryptionSystem>)
+                }
+                KeyFormatType::TransparentECPublicKey => match key_block.cryptographic_algorithm {
+                    CryptographicAlgorithm::ECDH => {
+                        Ok(Box::new(EciesEncryption::instantiate(key_uid, &object)?)
+                            as Box<dyn EncryptionSystem>)
+                    }
+                    x => kms_not_supported!(
+                        "EC public keys with cryptographic algorithm {:?} not supported",
+                        x
+                    ),
+                },
+                other => kms_not_supported!("encryption with public keys of format: {other}"),
+            },
+            other => kms_not_supported!("encryption with keys of type: {}", other.object_type()),
+        }
+    }
+
+    /// Return a decryption system based on the type of key
+    pub(crate) async fn get_decryption_system(
         &self,
         cover_crypt: CoverCryptX25519Aes256,
         key_uid: &str,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Box<dyn EnCipher>> {
-        let (object, _state) = self
+    ) -> KResult<Box<dyn DecryptionSystem>> {
+        let (mut object, state) = self
             .db
-            .retrieve(key_uid, owner, ObjectOperationTypes::Encrypt, params)
+            .retrieve(key_uid, owner, ObjectOperationTypes::Decrypt, params)
             .await?
             .ok_or_else(|| {
                 KmsError::ItemNotFound(format!("Object with uid: {key_uid} not found"))
             })?;
 
-        // Be aware that if `object` is a public key, it is not wrapped even if the private key is
-        if object.is_wrapped()? {
+        // the key must be active
+        if state != StateEnumeration::Active {
             kms_bail!(KmsError::InconsistentOperation(
-                "The server can't encrypt: the key is wrapped".to_owned()
+                "the server can't encrypt: the key is not active".to_owned()
             ));
         }
 
-        match &object {
-            Object::SymmetricKey { key_block } => match &key_block.key_format_type {
-                KeyFormatType::TransparentSymmetricKey => {
-                    match &key_block.cryptographic_algorithm {
-                        CryptographicAlgorithm::AES => {
-                            Ok(Box::new(AesGcmCipher::instantiate(key_uid, &object)?)
-                                as Box<dyn EnCipher>)
-                        }
-                        other => kms_bail!(KmsError::NotSupported(format!(
-                            "This server does not yet support symmetric encryption with \
-                             algorithm: {other:?}"
-                        ))),
-                    }
-                }
-                other => kms_bail!(KmsError::NotSupported(format!(
-                    "This server does not yet support encryption with keys of format: {other}"
-                ))),
-            },
-            Object::PublicKey { key_block } => match &key_block.key_format_type {
-                KeyFormatType::CoverCryptPublicKey => Ok(Box::new(
-                    CoverCryptHybridCipher::instantiate(cover_crypt, key_uid, &object)?,
-                ) as Box<dyn EnCipher>),
-                other => kms_bail!(KmsError::NotSupported(format!(
-                    "This server does not yet support encryption with public keys of format: \
-                     {other}"
-                ))),
-            },
-            other => kms_bail!(KmsError::NotSupported(format!(
-                "This server does not support encryption with keys of type: {}",
-                other.object_type()
-            ))),
-        }
-    }
-
-    pub(crate) async fn get_decipher(
-        &self,
-        cover_crypt: CoverCryptX25519Aes256,
-        object_uid: &str,
-        owner: &str,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Box<dyn DeCipher>> {
-        let (object, _state) = self
-            .db
-            .retrieve(object_uid, owner, ObjectOperationTypes::Decrypt, params)
-            .await?
-            .ok_or_else(|| {
-                KmsError::ItemNotFound(format!("Object with uid: {object_uid} not found"))
-            })?;
-
-        if object.is_wrapped()? {
-            kms_bail!(KmsError::InconsistentOperation(
-                "The server can't decrypt: the key is wrapped".to_owned()
-            ));
+        // unwrap if wrapped
+        if object.key_wrapping_data().is_some() {
+            let object_type = object.object_type();
+            let key_block = object.key_block_mut()?;
+            unwrap_key(object_type, key_block, self, owner, params).await?;
         }
 
         match &object {
             Object::PrivateKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::CoverCryptSecretKey => Ok(Box::new(
-                    CoverCryptHybridDecipher::instantiate(cover_crypt, object_uid, &object)?,
+                    CovercryptDecryption::instantiate(cover_crypt, key_uid, &object)?,
                 )),
-                other => kms_bail!(KmsError::NotSupported(format!(
-                    "This server does not yet support decryption with keys of format: {other}"
-                ))),
+                KeyFormatType::TransparentECPrivateKey => match key_block.cryptographic_algorithm {
+                    CryptographicAlgorithm::ECDH => {
+                        Ok(Box::new(EciesDecryption::instantiate(key_uid, &object)?)
+                            as Box<dyn DecryptionSystem>)
+                    }
+                    x => kms_not_supported!(
+                        "EC public keys with cryptographic algorithm {:?} not supported",
+                        x
+                    ),
+                },
+                other => kms_not_supported!("decryption with keys of format: {other}"),
             },
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => {
                     match &key_block.cryptographic_algorithm {
                         CryptographicAlgorithm::AES => {
-                            Ok(Box::new(AesGcmCipher::instantiate(object_uid, &object)?))
+                            Ok(Box::new(AesGcmSystem::instantiate(key_uid, &object)?))
                         }
-                        other => kms_bail!(KmsError::NotSupported(format!(
-                            "This server does not yet support symmetric decryption with \
-                             algorithm: {other:?}"
-                        ))),
+                        other => {
+                            kms_not_supported!("symmetric decryption with algorithm: {other:?}")
+                        }
                     }
                 }
-                other => kms_bail!(KmsError::NotSupported(format!(
-                    "This server does not yet support decryption with keys of format: {other}"
-                ))),
+                other => kms_not_supported!("decryption with keys of format: {other}"),
             },
-            other => kms_bail!(KmsError::NotSupported(format!(
-                "This server does not support decryption with keys of type: {}",
-                other.object_type()
-            ))),
+            other => kms_not_supported!("decryption with keys of type: {}", other.object_type()),
         }
     }
 
@@ -165,31 +201,43 @@ impl KMS {
     ) -> KResult<Object> {
         let attributes = &request.attributes;
         let cryptographic_algorithm = &attributes.cryptographic_algorithm.ok_or_else(|| {
-            kms_error!(
-                "The cryptographic algorithm must be specified for secret key creation".to_string()
+            KmsError::InvalidRequest(
+                "the cryptographic algorithm must be specified for secret key creation".to_string(),
             )
         })?;
         match cryptographic_algorithm {
             CryptographicAlgorithm::AES
             | CryptographicAlgorithm::ChaCha20
-            | CryptographicAlgorithm::ChaCha20Poly1305 => match attributes.key_format_type {
+            | CryptographicAlgorithm::ChaCha20Poly1305
+            | CryptographicAlgorithm::SHA3224
+            | CryptographicAlgorithm::SHA3256
+            | CryptographicAlgorithm::SHA3384
+            | CryptographicAlgorithm::SHA3512
+            | CryptographicAlgorithm::SHAKE128
+            | CryptographicAlgorithm::SHAKE256 => match attributes.key_format_type {
                 None => kms_bail!(KmsError::InvalidRequest(
                     "Unable to create a symmetric key, the format type is not specified"
                         .to_string()
                 )),
-                Some(KeyFormatType::TransparentSymmetricKey) => create_symmetric_key(
-                    rng,
-                    *cryptographic_algorithm,
-                    attributes.cryptographic_length.map(|v| v as usize),
-                )
-                .map_err(Into::into),
+                Some(KeyFormatType::TransparentSymmetricKey) => {
+                    let key_len: usize = attributes
+                        .cryptographic_length
+                        .map(|v| v as usize / 8)
+                        .unwrap_or(aes_256_gcm_pure::KEY_LENGTH);
+                    let mut symmetric_key = vec![0; key_len];
+                    rng.fill_bytes(&mut symmetric_key);
+                    Ok(create_symmetric_key(
+                        &symmetric_key,
+                        *cryptographic_algorithm,
+                    ))
+                }
                 Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
-                    "Unable to generate a symmetric key for format: {other}"
+                    "unable to generate a symmetric key for format: {other}"
                 ))),
             },
-            other => kms_bail!(KmsError::NotSupported(format!(
-                "The creation of secret key for algorithm: {other:?} is not supported"
-            ))),
+            other => kms_not_supported!(
+                "the creation of secret key for algorithm: {other:?} is not supported"
+            ),
         }
     }
 
@@ -203,7 +251,7 @@ impl KMS {
         let attributes = &create_request.attributes;
         match &attributes.cryptographic_algorithm {
             Some(CryptographicAlgorithm::CoverCrypt) => {
-                super::cover_crypt::create_user_decryption_key(
+                create_user_decryption_key(
                     self,
                     CoverCryptX25519Aes256::default(),
                     create_request,
@@ -212,17 +260,22 @@ impl KMS {
                 )
                 .await
             }
-            Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                "The creation of a private key for algorithm: {other:?} is not supported"
-            ))),
+            Some(other) => kms_not_supported!(
+                "the creation of a private key for algorithm: {other:?} is not supported"
+            ),
             None => kms_bail!(KmsError::InvalidRequest(
-                "The cryptographic algorithm must be specified for private key creation"
+                "the cryptographic algorithm must be specified for private key creation"
                     .to_string()
             )),
         }
     }
 
-    pub(crate) async fn create_key_pair_(&self, request: &CreateKeyPair) -> KResult<KeyPair> {
+    pub(crate) async fn create_key_pair_(
+        &self,
+        request: &CreateKeyPair,
+        private_key_uid: &str,
+        public_key_uid: &str,
+    ) -> KResult<KeyPair> {
         trace!("Internal create key pair");
         let attributes = request
             .common_attributes
@@ -235,7 +288,7 @@ impl KMS {
                 )
             })?;
         match &attributes.cryptographic_algorithm {
-            Some(CryptographicAlgorithm::EC) => match attributes.key_format_type {
+            Some(CryptographicAlgorithm::ECDH) => match attributes.key_format_type {
                 None => kms_bail!(KmsError::InvalidRequest(
                     "Unable to create a EC key, the format type is not specified".to_string()
                 )),
@@ -244,26 +297,32 @@ impl KMS {
                         .cryptographic_domain_parameters
                         .unwrap_or_default();
                     match dp.recommended_curve.unwrap_or_default() {
-                        RecommendedCurve::CURVE25519 => generate_key_pair().map_err(Into::into),
-                        other => kms_bail!(KmsError::NotSupported(format!(
+                        RecommendedCurve::CURVE25519 => {
+                            let mut rng = self.rng.lock().expect("RNG lock poisoned");
+                            create_ec_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                                .map_err(Into::into)
+                        }
+                        other => kms_not_supported!(
                             "Generation of Key Pair for curve: {other:?}, is not supported"
-                        ))),
+                        ),
                     }
                 }
-                Some(other) => kms_bail!(KmsError::NotSupported(format!(
-                    "Unable to generate an DH keypair for format: {other}"
-                ))),
+                Some(other) => {
+                    kms_not_supported!("Unable to generate an DH key pair for format: {other}")
+                }
             },
             Some(CryptographicAlgorithm::CoverCrypt) => {
                 cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
                     &CoverCryptX25519Aes256::default(),
                     request,
+                    private_key_uid,
+                    public_key_uid,
                 )
                 .map_err(Into::into)
             }
-            Some(other) => kms_bail!(KmsError::NotSupported(format!(
+            Some(other) => kms_not_supported!(
                 "The creation of a key pair for algorithm: {other:?} is not supported"
-            ))),
+            ),
             None => kms_bail!(KmsError::InvalidRequest(
                 "The cryptographic algorithm must be specified for key pair creation".to_string()
             )),

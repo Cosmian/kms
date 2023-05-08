@@ -12,9 +12,9 @@ pub use cosmian_kmip::kmip;
 use cosmian_kmip::kmip::{
     kmip_operations::{
         Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
-        Destroy, DestroyResponse, Encrypt, EncryptResponse, Get, GetAttributes,
-        GetAttributesResponse, GetResponse, Import, ImportResponse, Locate, LocateResponse,
-        ReKeyKeyPair, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        Destroy, DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get,
+        GetAttributes, GetAttributesResponse, GetResponse, Import, ImportResponse, Locate,
+        LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
@@ -130,6 +130,18 @@ impl KmsRestClient {
         self.post_ttlv::<Encrypt, EncryptResponse>(&request).await
     }
 
+    /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
+    /// together with its attributes.
+    /// The Key Format Type, Key Wrap Type, Key Compression Type and Key Wrapping Specification
+    /// SHALL have the same semantics as for the Get operation.  
+    /// If the Managed Object has been Destroyed then the key material for the specified managed object
+    /// SHALL not be returned in the response.
+    /// The server SHALL copy the Unique Identifier returned by this operations
+    /// into the ID Placeholder variable.
+    pub async fn export(&self, request: Export) -> Result<ExportResponse, KmsClientError> {
+        self.post_ttlv::<Export, ExportResponse>(&request).await
+    }
+
     /// This operation requests that the server returns the Managed Object
     /// specified by its Unique Identifier. Only a single object is
     /// returned. The response contains the Unique Identifier of the object,
@@ -142,7 +154,7 @@ impl KmsRestClient {
     /// format that was used when the key was registered. • Any other format
     /// conversion MAY be supported by the server. If Key Format Type is
     /// specified to be PKCS#12 then the response payload shall be a PKCS#12
-    /// container as specified by [RFC7292]. The Unique Identifier shall be
+    /// container as specified by RFC7292. The Unique Identifier shall be
     /// either that of a private key or certificate to be included in the
     /// response. The container shall be protected using the Secret Data object
     /// specified via the private key or certificate's PKCS#12 Password
@@ -410,7 +422,7 @@ impl KmsRestClient {
         server_url: &str,
         bearer_token: &str,
         database_secret: Option<&str>,
-        insecure: bool,
+        accept_invalid_certs: bool,
     ) -> Result<Self, KmsClientError> {
         let server_url = match server_url.strip_suffix('/') {
             Some(s) => s.to_string(),
@@ -425,7 +437,7 @@ impl KmsRestClient {
             headers.insert("KmsDatabaseSecret", HeaderValue::from_str(database_secret)?);
         }
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-        let builder = ClientBuilder::new().danger_accept_invalid_certs(insecure);
+        let builder = ClientBuilder::new().danger_accept_invalid_certs(accept_invalid_certs);
 
         Ok(Self {
             client: builder

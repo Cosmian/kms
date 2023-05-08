@@ -1,13 +1,14 @@
 mod configure;
 mod cover_crypt;
+mod elliptic_curve;
 mod permission;
 mod sgx;
-
+mod shared;
+mod symmetric;
+pub mod test_utils;
 pub mod utils;
 
-pub mod test_utils;
-
-const PROG_NAME: &str = "cosmian_kms_cli";
+const PROG_NAME: &str = "ckms";
 #[cfg(feature = "staging")]
 const PATTERN_CONF_PATH: &str = "test_data/kms-staging.json";
 #[cfg(not(feature = "staging"))]

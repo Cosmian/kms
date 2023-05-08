@@ -1,11 +1,13 @@
 use std::convert::TryFrom;
 
-use cosmian_cover_crypt::{
-    abe_policy::AccessPolicy,
-    statics::{CoverCryptX25519Aes256, PublicKey},
-    CoverCrypt,
+use cloudproof::reexport::{
+    cover_crypt::{
+        abe_policy::AccessPolicy,
+        statics::{CoverCryptX25519Aes256, PublicKey},
+        CoverCrypt,
+    },
+    crypto_core::bytes_ser_de::Serializable,
 };
-use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -18,9 +20,8 @@ use cosmian_kmip::{
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
 
-use crate::{
-    crypto::cover_crypt::attributes::{access_policy_as_vendor_attribute, policy_from_attributes},
-    kmip_utils::key_bytes_and_attributes_from_key_block,
+use crate::crypto::cover_crypt::attributes::{
+    access_policy_as_vendor_attribute, policy_from_attributes,
 };
 
 // ------------------------------------------------------------------------------
@@ -87,11 +88,12 @@ fn prepare_symmetric_key(
 ) -> Result<CoverCryptSymmetricKey, KmipError> {
     trace!("Starting create secret key");
 
-    let (public_key_bytes, public_key_attributes) = key_bytes_and_attributes_from_key_block(
-        public_key_response.object.key_block()?,
-        &public_key_response.unique_identifier,
-    )?;
-    let public_key = PublicKey::try_from_bytes(public_key_bytes).map_err(|e| {
+    let (public_key_bytes, public_key_attributes) = public_key_response
+        .object
+        .key_block()?
+        .key_bytes_and_attributes()?;
+
+    let public_key = PublicKey::try_from_bytes(&public_key_bytes).map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Codec_Error,
             format!("cover crypt: failed deserializing the master public key: {e}"),

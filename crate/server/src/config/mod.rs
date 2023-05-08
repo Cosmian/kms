@@ -24,6 +24,7 @@ use crate::{
         enclave::EnclaveConfig, http::HTTPConfig, workspace::WorkspaceConfig,
     },
     core::certbot::Certbot,
+    result::KResult,
 };
 
 static INSTANCE_CONFIG: OnceCell<SharedConfig> = OnceCell::new();
@@ -232,7 +233,7 @@ impl SharedConfig {
     }
 }
 
-pub async fn init_config(conf: &Config) -> eyre::Result<()> {
+pub async fn init_config(conf: &Config) -> KResult<()> {
     info!("initializing with configuration: {conf:#?}");
 
     let workspace = conf.workspace.init()?;

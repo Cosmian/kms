@@ -60,8 +60,24 @@ pub async fn init_test_server() {
 
     #[cfg(not(feature = "staging"))]
     {
+        async fn fetch_version(kms_server_url: &str) -> Result<reqwest::Response, reqwest::Error> {
+            ClientBuilder::new()
+                .build()
+                .unwrap()
+                .post(format!("{}/version", kms_server_url))
+                .json("{}")
+                .send()
+                .await
+        }
+
+        if fetch_version(&cli_conf.kms_server_url).await.is_ok() {
+            // a server is already running, use that
+            println!("Using already running server");
+            return
+        }
+
         // Start the server on a independent thread
-        thread::spawn(|| start_test_server());
+        thread::spawn(start_test_server);
 
         // Depending on the running environment, the server could take a bit of time to start
         // We try to query it with a dummy request until be sure it is started.
@@ -69,13 +85,7 @@ pub async fn init_test_server() {
         let mut timeout = 5;
         let mut waiting = 1;
         while retry {
-            let result = ClientBuilder::new()
-                .build()
-                .unwrap()
-                .post(format!("{}/version", cli_conf.kms_server_url))
-                .json("{}")
-                .send()
-                .await;
+            let result = fetch_version(&cli_conf.kms_server_url).await;
 
             if result.is_err() {
                 timeout -= 1;
@@ -98,7 +108,7 @@ pub async fn init_test_server() {
     // Configure a database and create the kms json file
     let mut cmd = Command::cargo_bin(PROG_NAME).expect("Can't execute configure command");
     cmd.env(KMS_CLI_CONF_ENV, PATTERN_CONF_PATH);
-    cmd.arg("configure");
+    cmd.arg("new-database");
 
     let success = cmd.assert().success();
     let output = success.get_output();

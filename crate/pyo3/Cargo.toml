@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_python"
-version = "4.3.4"
+version = "4.4.0"
 authors = ["Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>"]
 edition = "2021"
 
@@ -9,12 +9,17 @@ crate-type = ["cdylib"]
 name = "cosmian_kms"
 
 [dependencies]
-cosmian_cover_crypt = { workspace = true }
+cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_client = { path = "../client" }
 cosmian_kms_utils = { path = "../utils" }
 leb128 = { workspace = true }
-pyo3 = { version = "0.18", features = ["extension-module", "abi3", "abi3-py37", "generate-import-lib"] }
+pyo3 = { version = "0.18", features = [
+    "extension-module",
+    "abi3",
+    "abi3-py37",
+    "generate-import-lib",
+] }
 pyo3-asyncio = { version = "0.18", features = ["tokio-runtime"] }
 serde_json = { workspace = true }
 

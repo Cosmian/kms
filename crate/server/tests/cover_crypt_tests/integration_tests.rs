@@ -1,4 +1,6 @@
-use cosmian_cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy, PolicyAxis};
+use cloudproof::reexport::cover_crypt::abe_policy::{
+    Attribute, EncryptionHint, Policy, PolicyAxis,
+};
 use cosmian_kmip::kmip::{
     kmip_operations::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
@@ -11,10 +13,12 @@ use cosmian_kms_server::{
     log_utils,
     result::{KResult, KResultHelper},
 };
-use cosmian_kms_utils::crypto::cover_crypt::kmip_requests::{
-    build_create_master_keypair_request, build_create_user_decryption_private_key_request,
-    build_decryption_request, build_destroy_key_request, build_hybrid_encryption_request,
-    build_rekey_keypair_request,
+use cosmian_kms_utils::crypto::{
+    cover_crypt::kmip_requests::{
+        build_create_master_keypair_request, build_create_user_decryption_private_key_request,
+        build_destroy_key_request, build_rekey_keypair_request,
+    },
+    generic::kmip_requests::{build_decryption_request, build_encryption_request},
 };
 
 use crate::test_utils;
@@ -63,11 +67,11 @@ async fn integration_tests() -> KResult<()> {
     // Encrypt
     let authentication_data = "cc the uid".as_bytes().to_vec();
     let data = "Confidential MKG Data".as_bytes();
-    let policy_attributes = "Level::Confidential && Department::MKG";
+    let encryption_policy = "Level::Confidential && Department::MKG";
     let header_metadata = vec![1, 2, 3];
-    let request = build_hybrid_encryption_request(
+    let request = build_encryption_request(
         public_key_unique_identifier,
-        policy_attributes,
+        Some(encryption_policy.to_string()),
         data.to_vec(),
         Some(header_metadata.clone()),
         Some(authentication_data.clone()),
@@ -90,7 +94,9 @@ async fn integration_tests() -> KResult<()> {
     // decrypt
     let request = build_decryption_request(
         user_decryption_key_identifier,
+        None,
         encrypted_data.clone(),
+        None,
         Some(authentication_data.clone()),
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, request).await?;
@@ -110,10 +116,10 @@ async fn integration_tests() -> KResult<()> {
     // Encrypt
     let authentication_data = "cc the uid".as_bytes().to_vec();
     let data = "Voilà voilà".as_bytes();
-    let policy_attributes = "Level::Confidential && Department::MKG";
-    let request = build_hybrid_encryption_request(
+    let encryption_policy = "Level::Confidential && Department::MKG";
+    let request = build_encryption_request(
         public_key_unique_identifier,
-        policy_attributes,
+        Some(encryption_policy.to_string()),
         data.to_vec(),
         None,
         Some(authentication_data.clone()),
@@ -146,7 +152,9 @@ async fn integration_tests() -> KResult<()> {
     // test user1 can decrypt
     let request = build_decryption_request(
         user_decryption_key_identifier_1,
+        None,
         encrypted_data.clone(),
+        None,
         Some(authentication_data.clone()),
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
@@ -164,7 +172,9 @@ async fn integration_tests() -> KResult<()> {
     // test user2 can decrypt
     let request = build_decryption_request(
         user_decryption_key_identifier_2,
+        None,
         encrypted_data.clone(),
+        None,
         Some(authentication_data.clone()),
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
@@ -209,10 +219,10 @@ async fn integration_tests() -> KResult<()> {
     // ReEncrypt with same ABE attribute (which has been previously incremented)
     let authentication_data = "cc the uid".as_bytes().to_vec();
     let data = "Voilà voilà".as_bytes();
-    let policy_attributes = "Level::Confidential && Department::MKG";
-    let request = build_hybrid_encryption_request(
+    let encryption_policy = "Level::Confidential && Department::MKG";
+    let request = build_encryption_request(
         public_key_unique_identifier,
-        policy_attributes,
+        Some(encryption_policy.to_string()),
         data.to_vec(),
         None,
         Some(authentication_data.clone()),
@@ -225,7 +235,9 @@ async fn integration_tests() -> KResult<()> {
     // Make sure first user decryption key cannot decrypt new encrypted message (message being encrypted with new `MKG` value)
     let request = build_decryption_request(
         user_decryption_key_identifier_1,
+        None,
         encrypted_data.clone(),
+        None,
         Some(authentication_data.clone()),
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
@@ -234,7 +246,9 @@ async fn integration_tests() -> KResult<()> {
     // decrypt
     let request = build_decryption_request(
         user_decryption_key_identifier_2,
+        None,
         encrypted_data,
+        None,
         Some(authentication_data.clone()),
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;

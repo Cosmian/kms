@@ -71,7 +71,7 @@ cargo_audit:
   only: [main, develop, merge_requests]
   cache: {}
   script:
-    - cargo audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2023-0006 --ignore RUSTSEC-2023-0007 --ignore RUSTSEC-2023-0009 --ignore RUSTSEC-2023-0010
+    - cargo audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2023-0006 --ignore RUSTSEC-2023-0007 --ignore RUSTSEC-2023-0009 --ignore RUSTSEC-2023-0010 --ignore RUSTSEC-2023-0018 --ignore RUSTSEC-2023-0034
 
 #
 # Coverage
@@ -373,15 +373,15 @@ build_cli_windows_linux:
   before_script:
     - rustup target add x86_64-pc-windows-gnu
   script:
-    - cargo build --release --bin cosmian_kms_cli --target x86_64-pc-windows-gnu
+    - cargo build --release --bin ckms --target x86_64-pc-windows-gnu
     - apt-get update
     - TZ=Europe/Paris apt-get install --no-install-recommends -qq libsodium-dev libclang-dev
-    - cargo build --release --bin cosmian_kms_cli
+    - cargo build --release --bin ckms
   artifacts:
     name: kms_cli_${CI_COMMIT_TAG}_$(date +"%Y%m%d")
     paths:
-      - target/x86_64-pc-windows-gnu/release/cosmian_kms_cli.exe
-      - target/release/cosmian_kms_cli
+      - target/x86_64-pc-windows-gnu/release/ckms.exe
+      - target/release/ckms
 
 # Triggers public_documentation to rebuild the doc
 documentation:

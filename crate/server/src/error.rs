@@ -3,6 +3,7 @@ use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
+use cosmian_kms_utils::crypto::error::CryptoError;
 use thiserror::Error;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
@@ -59,6 +60,10 @@ pub enum KmsError {
     // Any actions of the user which is not allowed
     #[error("Access denied: {0}")]
     Unauthorized(String),
+
+    // A failure originating from one of the cryptographic algorithms
+    #[error("Cryptographic error: {0}")]
+    CryptographicError(String),
 }
 
 impl From<TtlvError> for KmsError {
@@ -103,8 +108,8 @@ impl From<serde_json::Error> for KmsError {
     }
 }
 
-impl From<cosmian_cover_crypt::Error> for KmsError {
-    fn from(e: cosmian_cover_crypt::Error) -> Self {
+impl From<cloudproof::reexport::cover_crypt::Error> for KmsError {
+    fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
         Self::InvalidRequest(e.to_string())
     }
 }
@@ -118,6 +123,12 @@ impl From<libsgx::error::SgxError> for KmsError {
 impl From<QueryPayloadError> for KmsError {
     fn from(e: QueryPayloadError) -> Self {
         Self::InvalidRequest(e.to_string())
+    }
+}
+
+impl From<CryptoError> for KmsError {
+    fn from(e: CryptoError) -> Self {
+        Self::CryptographicError(e.to_string())
     }
 }
 
@@ -168,8 +179,8 @@ macro_rules! kms_ensure {
 /// Construct a server error from a string.
 #[macro_export]
 macro_rules! kms_error {
-    ($msg:literal $(,)?) => {
-        $crate::error::KmsError::ServerError($msg.to_owned())
+    ($msg:literal) => {
+        $crate::error::KmsError::ServerError(format!($msg))
     };
     ($err:expr $(,)?) => ({
         $crate::error::KmsError::ServerError($err.to_string())
@@ -182,13 +193,24 @@ macro_rules! kms_error {
 /// Return early with an error if a condition is not satisfied.
 #[macro_export]
 macro_rules! kms_bail {
-    ($msg:literal $(,)?) => {
-        return ::core::result::Result::Err($crate::error::KmsError::ServerError($msg.to_owned()))
+    ($msg:literal) => {
+        return ::core::result::Result::Err($crate::error::KmsError::ServerError(format!($msg)))
     };
     ($err:expr $(,)?) => {
         return ::core::result::Result::Err($err)
     };
     ($fmt:expr, $($arg:tt)*) => {
         return ::core::result::Result::Err($crate::error::KmsError::ServerError(format!($fmt, $($arg)*)))
+    };
+}
+
+/// Return early with an Unsupported error
+#[macro_export]
+macro_rules! kms_not_supported {
+    ($msg:literal) => {
+        return ::core::result::Result::Err($crate::error::KmsError::NotSupported(format!($msg)))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        return ::core::result::Result::Err($crate::error::KmsError::NotSupported(format!($fmt, $($arg)*)))
     };
 }

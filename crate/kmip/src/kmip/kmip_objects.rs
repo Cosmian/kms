@@ -4,7 +4,7 @@ use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 
-use super::kmip_types::Attributes;
+use super::{kmip_data_structures::KeyWrappingData, kmip_types::Attributes};
 use crate::{
     error::KmipError,
     kmip::{
@@ -21,7 +21,7 @@ use crate::{
 ///
 /// A KMIP Object. The top level structure
 /// Serialization is carried out internally tagged :
-/// https://serde.rs/enum-representations.html#internally-tagged
+/// `https://serde.rs/enum-representations.html#internally-tagged`
 /// This is likely not KMIP compliant therefore
 /// some JSON gimmicks may be required in and out
 ///
@@ -149,19 +149,23 @@ impl Object {
         }
     }
 
-    /// Check if the key is wrapped
-    pub fn is_wrapped(&self) -> Result<bool, KmipError> {
-        Ok(self.key_block()?.key_wrapping_data.as_ref().is_some())
+    /// Return the `KeyWrappingData` of that object if any
+    pub fn key_wrapping_data(&self) -> Option<&KeyWrappingData> {
+        match self.key_block() {
+            Ok(kb) => kb.key_wrapping_data.as_ref(),
+            // only keys can be wrapped
+            Err(_e) => None,
+        }
     }
 
     /// Returns the `Attributes` of that object if any, an error otherwise
     pub fn attributes(&self) -> Result<&Attributes, KmipError> {
-        self.key_block()?.key_value.attributes()
+        self.key_block()?.attributes()
     }
 
     /// Returns the `Attributes` of that object if any, an error otherwise
     pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
-        self.key_block_mut()?.key_value.attributes_mut()
+        self.key_block_mut()?.attributes_mut()
     }
 
     /// Returns the `KeyBlock` of that object if any, an error otherwise

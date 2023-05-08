@@ -1,6 +1,8 @@
-pub(crate) mod kmip_generic;
+pub(crate) mod shared;
 
-pub mod abe;
 pub mod configure;
+pub mod cover_crypt;
+pub mod elliptic_curves;
 pub mod permission;
 pub mod sgx;
+pub mod symmetric;

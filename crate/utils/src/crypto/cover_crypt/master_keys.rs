@@ -1,16 +1,21 @@
-use cosmian_cover_crypt::{
-    abe_policy::Policy,
-    core::api::CoverCrypt,
-    statics::{CoverCryptX25519Aes256, MasterSecretKey, PublicKey},
+use cloudproof::reexport::{
+    cover_crypt::{
+        abe_policy::Policy,
+        core::api::CoverCrypt,
+        statics::{CoverCryptX25519Aes256, MasterSecretKey, PublicKey},
+    },
+    crypto_core::bytes_ser_de::Serializable,
 };
-use cosmian_crypto_core::bytes_ser_de::Serializable;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{CreateKeyPair, ErrorReason},
-        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier,
+        },
     },
 };
 
@@ -24,6 +29,8 @@ use crate::{
 pub fn create_master_keypair(
     cover_crypt: &CoverCryptX25519Aes256,
     request: &CreateKeyPair,
+    private_key_uid: &str,
+    public_key_uid: &str,
 ) -> Result<KeyPair, KmipError> {
     let attributes = request
         .common_attributes
@@ -57,7 +64,12 @@ pub fn create_master_keypair(
             format!("cover crypt: failed serializing the master private key: {e}"),
         )
     })?;
-    let private_key = create_master_private_key_object(&sk_bytes, &policy, private_key_attributes)?;
+    let private_key = create_master_private_key_object(
+        &sk_bytes,
+        &policy,
+        private_key_attributes,
+        public_key_uid,
+    )?;
 
     // Public Key generation
     // First generate fresh attributes with that policy
@@ -71,7 +83,12 @@ pub fn create_master_keypair(
             format!("cover crypt: failed serializing the master public key: {e}"),
         )
     })?;
-    let public_key = create_master_public_key_object(&pk_bytes, &policy, public_key_attributes)?;
+    let public_key = create_master_public_key_object(
+        &pk_bytes,
+        &policy,
+        public_key_attributes,
+        private_key_uid,
+    )?;
 
     Ok(KeyPair((private_key, public_key)))
 }
@@ -80,6 +97,7 @@ fn create_master_private_key_object(
     key: &[u8],
     policy: &Policy,
     attributes: Option<&Attributes>,
+    master_public_key_uid: &str,
 ) -> Result<Object, KmipError> {
     let mut attributes = attributes
         .map(|att| {
@@ -88,7 +106,15 @@ fn create_master_private_key_object(
             att
         })
         .unwrap_or_else(|| Attributes::new(ObjectType::PrivateKey));
+    // add the policy to the attributes
     upsert_policy_in_attributes(&mut attributes, policy)?;
+    // link the private key to the public key
+    attributes.link = Some(vec![Link {
+        link_type: LinkType::PublicKeyLink,
+        linked_object_identifier: LinkedObjectIdentifier::TextString(
+            master_public_key_uid.to_string(),
+        ),
+    }]);
     Ok(Object::PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
@@ -112,6 +138,7 @@ fn create_master_public_key_object(
     key: &[u8],
     policy: &Policy,
     attributes: Option<&Attributes>,
+    master_private_key_uid: &str,
 ) -> Result<Object, KmipError> {
     let mut attributes = attributes
         .map(|att| {
@@ -120,7 +147,15 @@ fn create_master_public_key_object(
             att
         })
         .unwrap_or_else(|| Attributes::new(ObjectType::PublicKey));
+    // add the policy to the attributes
     upsert_policy_in_attributes(&mut attributes, policy)?;
+    // link the public key to the private key
+    attributes.link = Some(vec![Link {
+        link_type: LinkType::PrivateKeyLink,
+        linked_object_identifier: LinkedObjectIdentifier::TextString(
+            master_private_key_uid.to_string(),
+        ),
+    }]);
     Ok(Object::PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
@@ -142,13 +177,15 @@ pub fn update_master_keys(
     cover_crypt: &CoverCryptX25519Aes256,
     policy: &Policy,
     master_private_key: &Object,
+    master_private_key_uid: &str,
     master_public_key: &Object,
+    master_public_key_uid: &str,
 ) -> Result<(Object, Object), KmipError> {
     // Recover the CoverCrypt PrivateKey Object
     let msk_key_block = master_private_key.key_block()?;
-    let msk_key_bytes = msk_key_block.as_bytes()?;
+    let msk_key_bytes = msk_key_block.key_bytes()?;
     let msk_attributes = msk_key_block.key_value.attributes()?;
-    let mut msk = MasterSecretKey::try_from_bytes(msk_key_bytes).map_err(|e| {
+    let mut msk = MasterSecretKey::try_from_bytes(&msk_key_bytes).map_err(|e| {
         KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
             format!(
@@ -160,9 +197,9 @@ pub fn update_master_keys(
 
     // Recover the CoverCrypt PublicKey Object
     let mpk_key_block = master_public_key.key_block()?;
-    let mpk_key_bytes = mpk_key_block.as_bytes()?;
+    let mpk_key_bytes = mpk_key_block.key_bytes()?;
     let mpk_attributes = mpk_key_block.key_value.attributes()?;
-    let mut mpk = PublicKey::try_from_bytes(mpk_key_bytes).map_err(|e| {
+    let mut mpk = PublicKey::try_from_bytes(&mpk_key_bytes).map_err(|e| {
         KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
             format!(
@@ -199,6 +236,7 @@ pub fn update_master_keys(
         updated_master_private_key_bytes,
         policy,
         Some(msk_attributes),
+        master_public_key_uid,
     )?;
     let updated_master_public_key_bytes = &mpk.try_to_bytes().map_err(|e| {
         KmipError::KmipError(
@@ -210,6 +248,7 @@ pub fn update_master_keys(
         updated_master_public_key_bytes,
         policy,
         Some(mpk_attributes),
+        master_private_key_uid,
     )?;
 
     Ok((updated_master_private_key, updated_master_public_key))

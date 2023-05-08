@@ -97,7 +97,7 @@ async fn create_<'e, E>(
 where
     E: Executor<'e, Database = MySql>,
 {
-    let object_json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
@@ -191,7 +191,7 @@ async fn update_object_<'e, E>(
 where
     E: Executor<'e, Database = MySql>,
 {
-    let object_json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
@@ -259,7 +259,7 @@ async fn upsert_<'e, E>(
 where
     E: Executor<'e, Database = MySql>,
 {
-    let object_json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
@@ -664,7 +664,10 @@ impl Database for Sql {
 // Run these tests using: `cargo make rust-tests`
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+    use cloudproof::reexport::crypto_core::{
+        reexport::rand_core::{RngCore, SeedableRng},
+        CsRng,
+    };
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -672,7 +675,7 @@ mod tests {
             LinkType, LinkedObjectIdentifier, StateEnumeration,
         },
     };
-    use cosmian_kms_utils::{crypto::aes::create_symmetric_key, types::ObjectOperationTypes};
+    use cosmian_kms_utils::{crypto::symmetric::create_symmetric_key, types::ObjectOperationTypes};
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -705,7 +708,11 @@ mod tests {
         }
 
         // Insert an object and query it, update it, delete it, query it
-        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let mut symmetric_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         let uid_ = mysql
@@ -795,7 +802,11 @@ mod tests {
 
         // Create key
 
-        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let mut symmetric_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         mysql
@@ -875,10 +886,18 @@ mod tests {
 
         // Create key
 
-        let symmetric_key_1 = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let symmetric_key_1 =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid_1 = Uuid::new_v4().to_string();
 
-        let symmetric_key_2 = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let symmetric_key_2 =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid_2 = Uuid::new_v4().to_string();
 
         let ids = mysql
@@ -956,7 +975,11 @@ mod tests {
 
         // Create key
 
-        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let symmetric_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         // test non existent row (with very high probability)
@@ -1209,7 +1232,11 @@ mod tests {
 
         // Create key
 
-        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let symmetric_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -1366,7 +1393,11 @@ mod tests {
         let owner = "eyJhbGciOiJSUzI1Ni";
 
         // Insert an object and query it, update it, delete it, query it
-        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let mut symmetric_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         // Define the link vector

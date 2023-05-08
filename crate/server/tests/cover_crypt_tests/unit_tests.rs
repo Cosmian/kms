@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cosmian_cover_crypt::abe_policy::{EncryptionHint, Policy, PolicyAxis};
+use cloudproof::reexport::cover_crypt::abe_policy::{EncryptionHint, Policy, PolicyAxis};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{DecryptedData, Get, Import, Locate},
@@ -10,18 +10,19 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_server::{
     config::{auth0::Auth0Config, init_config, Config},
-    core::crud::KmipServer,
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
     KMSServer,
 };
-use cosmian_kms_utils::crypto::cover_crypt::{
-    attributes::access_policy_as_vendor_attribute,
-    kmip_requests::{
-        build_create_master_keypair_request, build_create_user_decryption_private_key_request,
-        build_decryption_request, build_hybrid_encryption_request,
+use cosmian_kms_utils::crypto::{
+    cover_crypt::{
+        attributes::access_policy_as_vendor_attribute,
+        kmip_requests::{
+            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
+        },
     },
+    generic::kmip_requests::{build_decryption_request, build_encryption_request},
 };
 use tracing::debug;
 use uuid::Uuid;
@@ -250,9 +251,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
     let er = kms
         .encrypt(
-            build_hybrid_encryption_request(
+            build_encryption_request(
                 master_public_key_id,
-                confidential_mkg_policy_attributes,
+                Some(confidential_mkg_policy_attributes.to_owned()),
                 confidential_mkg_data.to_vec(),
                 None,
                 Some(confidential_authentication_data.clone()),
@@ -267,9 +268,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // check it doesn't work with invalid tenant
     let er = kms
         .encrypt(
-            build_hybrid_encryption_request(
+            build_encryption_request(
                 master_public_key_id,
-                confidential_mkg_policy_attributes,
+                Some(confidential_mkg_policy_attributes.to_owned()),
                 confidential_mkg_data.to_vec(),
                 None,
                 Some(confidential_authentication_data.clone()),
@@ -286,9 +287,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let secret_fin_policy_attributes = "Level::secret && Department::FIN";
     let er = kms
         .encrypt(
-            build_hybrid_encryption_request(
+            build_encryption_request(
                 master_public_key_id,
-                secret_fin_policy_attributes,
+                Some(secret_fin_policy_attributes.to_owned()),
                 secret_fin_data.to_vec(),
                 None,
                 Some(secret_authentication_data.clone()),
@@ -303,9 +304,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // check it doesn't work with invalid tenant
     let er = kms
         .encrypt(
-            build_hybrid_encryption_request(
+            build_encryption_request(
                 master_public_key_id,
-                secret_fin_policy_attributes,
+                Some(secret_fin_policy_attributes.to_owned()),
                 secret_fin_data.to_vec(),
                 None,
                 Some(secret_authentication_data.clone()),
@@ -335,7 +336,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .decrypt(
             build_decryption_request(
                 secret_mkg_fin_user_key,
+                None,
                 confidential_mkg_encrypted_data.clone(),
+                None,
                 Some(confidential_authentication_data.clone()),
             ),
             owner,
@@ -358,7 +361,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .decrypt(
             build_decryption_request(
                 secret_mkg_fin_user_key,
+                None,
                 confidential_mkg_encrypted_data,
+                None,
                 Some(confidential_authentication_data),
             ),
             nonexistent_owner,
@@ -372,7 +377,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .decrypt(
             build_decryption_request(
                 secret_mkg_fin_user_key,
+                None,
                 secret_fin_encrypted_data.clone(),
+                None,
                 Some(secret_authentication_data.clone()),
             ),
             owner,
@@ -395,7 +402,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .decrypt(
             build_decryption_request(
                 secret_mkg_fin_user_key,
+                None,
                 secret_fin_encrypted_data,
+                None,
                 Some(secret_authentication_data),
             ),
             nonexistent_owner,
@@ -564,9 +573,9 @@ async fn test_import_decrypt() -> KResult<()> {
     let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
     let er = kms
         .encrypt(
-            build_hybrid_encryption_request(
+            build_encryption_request(
                 &pk_uid,
-                confidential_mkg_policy_attributes,
+                Some(confidential_mkg_policy_attributes.to_owned()),
                 confidential_mkg_data.to_vec(),
                 None,
                 Some(confidential_authentication_data.clone()),
@@ -619,7 +628,9 @@ async fn test_import_decrypt() -> KResult<()> {
         .decrypt(
             build_decryption_request(
                 &custom_sk_uid,
+                None,
                 confidential_mkg_encrypted_data.clone(),
+                None,
                 Some(confidential_authentication_data.clone()),
             ),
             owner,
@@ -652,7 +663,9 @@ async fn test_import_decrypt() -> KResult<()> {
             build_decryption_request(
                 // secret_mkg_fin_user_key,
                 &custom_sk_uid,
+                None,
                 confidential_mkg_encrypted_data.clone(),
+                None,
                 Some(confidential_authentication_data.clone()),
             ),
             owner,
