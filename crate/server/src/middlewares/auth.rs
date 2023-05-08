@@ -14,13 +14,13 @@ use futures::{
     future::{ok, Ready},
     Future,
 };
-use tracing::{debug, error};
+use tracing::{error, trace};
 
 use super::jwt::decode_jwt_new;
 
-pub struct Auth0;
+pub struct Auth;
 
-impl<S, B> Transform<S, ServiceRequest> for Auth0
+impl<S, B> Transform<S, ServiceRequest> for Auth
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
@@ -55,8 +55,9 @@ where
     }
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        debug!("Authentication...");
+        trace!("Authentication...");
 
+        // get the identity from the authorization header
         let identity = RequestIdentity::get_identity(&req)
             .or_else(|| {
                 req.headers()
@@ -65,7 +66,8 @@ where
             })
             .unwrap_or_default();
 
-        debug!("Checking JWT");
+        // decode the JWT
+        trace!("Checking JWT");
         let private_claim = decode_jwt_new(&identity).map(|claim| claim.email);
         match private_claim {
             Err(e) => Box::pin(async move {
@@ -93,7 +95,7 @@ where
                 // forward to the endpoint the email got from this JWT
                 req.extensions_mut().insert(AuthClaim::new(email));
 
-                debug!("access granted !");
+                trace!("access granted !");
 
                 let fut = self.service.call(req);
                 Box::pin(async move {

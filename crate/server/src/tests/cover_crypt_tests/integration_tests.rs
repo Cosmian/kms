@@ -8,11 +8,6 @@ use cosmian_kmip::kmip::{
     },
     kmip_types::RevocationReason,
 };
-use cosmian_kms_server::{
-    config::{auth0::Auth0Config, init_config, Config},
-    log_utils,
-    result::{KResult, KResultHelper},
-};
 use cosmian_kms_utils::crypto::{
     cover_crypt::kmip_requests::{
         build_create_master_keypair_request, build_create_user_decryption_private_key_request,
@@ -21,16 +16,20 @@ use cosmian_kms_utils::crypto::{
     generic::kmip_requests::{build_decryption_request, build_encryption_request},
 };
 
-use crate::test_utils;
+#[cfg(test)]
+use crate::tests::test_utils;
+use crate::{
+    config::{init_config, Config},
+    log_utils,
+    result::{KResult, KResultHelper},
+};
 
 #[actix_web::test]
 async fn integration_tests() -> KResult<()> {
     log_utils::log_init("cosmian_kms_server=trace");
 
     let config = Config {
-        auth0: Auth0Config {
-            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
-        },
+        auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
     init_config(&config).await?;

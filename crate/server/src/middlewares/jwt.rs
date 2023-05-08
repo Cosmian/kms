@@ -1,7 +1,12 @@
 use alcoholic_jwt::token_kid;
 use serde::{Deserialize, Serialize};
 
-use crate::{config::SharedConfig, error::KmsError, kms_ensure, result::KResult};
+use crate::{
+    config::SharedConfig,
+    error::KmsError,
+    kms_ensure,
+    result::{KResult, KResultHelper},
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserClaim {
@@ -29,22 +34,21 @@ pub fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> {
     );
     tracing::trace!("token {}", &token);
 
-    let authority = SharedConfig::auth0_authority_domain().ok_or_else(|| {
-        KmsError::ServerError("decode JWT token requested but Auth0 not enabled".to_string())
-    })?;
-    let jwks = SharedConfig::jwks().ok_or_else(|| {
-        KmsError::ServerError("decode JWT token requested but Auth0 not enabled".to_string())
-    })?;
+    let jwt_issuer_uri = SharedConfig::jwt_issuer_uri()
+        .context("decode JWT token requested but JWT Auth is not enabled")?;
+    let jwks =
+        SharedConfig::jwks().context("decode JWT token requested but JWT Auth is not enabled")?;
+    let jwt_audience = SharedConfig::jwt_audience();
 
-    let validations = vec![
-        alcoholic_jwt::Validation::Issuer(format!("https://{authority}/")),
+    let mut validations = vec![
+        alcoholic_jwt::Validation::Issuer(jwt_issuer_uri),
         alcoholic_jwt::Validation::SubjectPresent,
         #[cfg(not(feature = "insecure"))]
         alcoholic_jwt::Validation::NotExpired,
-        /* Validate Audience would imply to keep track of all existing audiences.
-         * It could be done via Auth0-API-call: https://manage.auth0.com/dashboard/us/dev-1mbsbmin/apis/management/explorer
-         * using `/api/v2/clients`. Then add to this vector: `Validation::Audience(audience)` */
     ];
+    if let Some(jwt_audience) = jwt_audience {
+        validations.push(alcoholic_jwt::Validation::Audience(jwt_audience));
+    }
 
     // If a JWKS contains multiple keys, the correct KID first
     // needs to be fetched from the token headers.

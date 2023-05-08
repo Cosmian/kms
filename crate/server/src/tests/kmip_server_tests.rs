@@ -10,13 +10,6 @@ use cosmian_kmip::kmip::{
         LinkedObjectIdentifier, WrappingMethod,
     },
 };
-use cosmian_kms_server::{
-    config::{auth0::Auth0Config, init_config, Config},
-    error::KmsError,
-    log_utils::log_init,
-    result::KResult,
-    KMSServer,
-};
 use cosmian_kms_utils::crypto::curve_25519::{
     kmip_requests::{create_key_pair_request, get_private_key_request, get_public_key_request},
     operation::{to_curve_25519_256_public_key, Q_LENGTH_BITS},
@@ -24,12 +17,20 @@ use cosmian_kms_utils::crypto::curve_25519::{
 use tracing::trace;
 use uuid::Uuid;
 
+#[cfg(test)]
+use crate::tests::test_utils;
+use crate::{
+    config::{init_config, Config},
+    error::KmsError,
+    log_utils::log_init,
+    result::KResult,
+    KMSServer,
+};
+
 #[actix_rt::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let config = Config {
-        auth0: Auth0Config {
-            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
-        },
+        auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
     init_config(&config).await?;
@@ -164,9 +165,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     log_init("info");
 
     let config = Config {
-        auth0: Auth0Config {
-            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
-        },
+        auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
     init_config(&config).await?;
@@ -226,9 +225,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     log_init("info");
 
     let config = Config {
-        auth0: Auth0Config {
-            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
-        },
+        auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
     init_config(&config).await?;

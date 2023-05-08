@@ -9,7 +9,7 @@ The authority domain is configured on the server using the option:
 --auth0-authority-domain <AUTH0_AUTHORITY_DOMAIN>
     Enable the use of Auth0 by specifying the delegated authority domain configured on Auth0
     
-    [env: KMS_AUTH0_AUTHORITY_DOMAIN=]
+    [env: KMS_JWT_ISSUER_URI=]
 ```
 
 The token is passed to the `/kmip_2_1` endpoint using the Authorization header:

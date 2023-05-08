@@ -333,7 +333,7 @@ pub async fn get_version(
 }
 
 fn get_owner(req_http: HttpRequest) -> KResult<String> {
-    match SharedConfig::auth0_authority_domain() {
+    match SharedConfig::jwt_issuer_uri() {
         Some(_) => match req_http.extensions().get::<AuthClaim>() {
             Some(claim) => Ok(claim.email.clone()),
             None => Err(KmsError::Unauthorized(

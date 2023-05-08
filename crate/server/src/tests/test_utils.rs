@@ -9,8 +9,23 @@ use actix_web::{
     App,
 };
 use cosmian_kmip::kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
-use cosmian_kms_server::{middlewares::auth::Auth0, result::KResult, routes::endpoint, KMSServer};
 use serde::{de::DeserializeOwned, Serialize};
+
+use crate::{
+    config::jwt_auth_config::JwtAuthConfig, middlewares::auth::Auth, result::KResult,
+    routes::endpoint, KMSServer,
+};
+
+// Test auth0 Config
+const AUTH0_JWT_ISSUER_URI: &str = "https://console-dev.eu.auth0.com";
+
+pub fn get_auth0_jwt_config() -> JwtAuthConfig {
+    JwtAuthConfig {
+        jwt_issuer_uri: Some(AUTH0_JWT_ISSUER_URI.to_owned()),
+        jwks_uri: None,
+        jwt_audience: None,
+    }
+}
 
 /// Test auth0 token (expired) -
 /// bnjjj: I know it's ugly but it's easy and sufficient for now
@@ -26,7 +41,7 @@ pub async fn test_app()
 
     test::init_service(
         App::new()
-            .wrap(Auth0)
+            .wrap(Auth)
             .app_data(Data::new(kms_server.clone()))
             .service(endpoint::kmip)
             .service(endpoint::insert_access)

@@ -1,8 +1,8 @@
-pub mod auth0;
 mod certbot_https;
 pub mod db;
 mod enclave;
 pub mod http;
+pub mod jwt_auth_config;
 mod workspace;
 
 use std::{
@@ -20,8 +20,8 @@ use tracing::{debug, info};
 
 use crate::{
     config::{
-        auth0::Auth0Config, certbot_https::HttpsCertbotConfig, db::DBConfig,
-        enclave::EnclaveConfig, http::HTTPConfig, workspace::WorkspaceConfig,
+        certbot_https::HttpsCertbotConfig, db::DBConfig, enclave::EnclaveConfig, http::HTTPConfig,
+        jwt_auth_config::JwtAuthConfig, workspace::WorkspaceConfig,
     },
     core::certbot::Certbot,
     result::KResult,
@@ -33,7 +33,7 @@ static INSTANCE_CONFIG: OnceCell<SharedConfig> = OnceCell::new();
 #[clap(version, about, long_about = None)]
 pub struct Config {
     #[clap(flatten)]
-    pub auth0: Auth0Config,
+    pub auth: JwtAuthConfig,
 
     #[clap(flatten)]
     pub db: DBConfig,
@@ -55,8 +55,8 @@ impl fmt::Debug for Config {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("Config");
         let x = x.field("db", &self.db);
-        let x = if self.auth0.auth0_authority_domain.is_some() {
-            x.field("auth0", &self.auth0)
+        let x = if self.auth.jwt_issuer_uri.is_some() {
+            x.field("auth0", &self.auth)
         } else {
             x
         };
@@ -100,11 +100,14 @@ pub struct EnclaveParams {
 /// while it is running. There is a singleton instance
 /// shared between all threads.
 pub struct SharedConfig {
-    // The security domain if Auth0 is enabled
-    pub auth0_authority_domain: Option<String>,
+    // The JWT issuer URI if Auth is enabled
+    pub jwt_issuer_uri: Option<String>,
 
-    // The JWKS if Auth0 is enabled
+    // The JWKS if Auth is enabled
     pub jwks: Option<JWKS>,
+
+    /// The JWT audience if Auth is enabled
+    pub jwt_audience: Option<String>,
 
     /// The username if Auth0 is disabled
     pub default_username: Option<String>,
@@ -129,9 +132,10 @@ impl fmt::Debug for SharedConfig {
         let x = x
             .field("kms_url", &self.hostname_port)
             .field("db_params", &self.db_params);
-        let x = if let Some(authority_domain) = &self.auth0_authority_domain {
-            x.field("auth0_authority_domain", &authority_domain)
+        let x = if let Some(jwt_issuer_uri) = &self.jwt_issuer_uri {
+            x.field("jwt_issuer_uri", &jwt_issuer_uri)
                 .field("jwks", &self.jwks)
+                .field("jwt_audience", &self.jwt_audience)
         } else {
             x.field("default_username", &self.default_username)
         };
@@ -163,11 +167,11 @@ pub(crate) fn init(conf: SharedConfig) {
 
 impl SharedConfig {
     #[inline(always)]
-    pub(crate) fn auth0_authority_domain() -> Option<String> {
+    pub(crate) fn jwt_issuer_uri() -> Option<String> {
         INSTANCE_CONFIG
             .get()
             .expect("config must be initialized")
-            .auth0_authority_domain
+            .jwt_issuer_uri
             .clone()
     }
 
@@ -177,6 +181,15 @@ impl SharedConfig {
             .get()
             .expect("config must be initialized")
             .jwks
+            .clone()
+    }
+
+    #[inline(always)]
+    pub(crate) fn jwt_audience() -> Option<String> {
+        INSTANCE_CONFIG
+            .get()
+            .expect("config must be initialized")
+            .jwt_audience
             .clone()
     }
 
@@ -241,8 +254,9 @@ pub async fn init_config(conf: &Config) -> KResult<()> {
     let (hostname_port, server_pkcs_12) = conf.http.init()?;
 
     let shared_conf = SharedConfig {
-        jwks: conf.auth0.init().await?,
-        auth0_authority_domain: conf.auth0.auth0_authority_domain.clone(),
+        jwks: conf.auth.fetch_jwks().await?,
+        jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
+        jwt_audience: conf.auth.jwt_audience.clone(),
         db_params: conf.db.init(&workspace)?,
         hostname_port,
         enclave_params: conf.enclave.init(&workspace)?,
@@ -254,7 +268,7 @@ pub async fn init_config(conf: &Config) -> KResult<()> {
         } else {
             None
         },
-        default_username: match conf.auth0.auth0_authority_domain {
+        default_username: match conf.auth.jwt_issuer_uri {
             Some(_) => None,
             None => Some("admin".to_string()),
         },

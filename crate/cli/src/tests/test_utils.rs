@@ -6,7 +6,9 @@ use std::{
 
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
-use cosmian_kms_server::config::{auth0::Auth0Config, db::DBConfig, init_config, Config};
+use cosmian_kms_server::config::{
+    db::DBConfig, init_config, jwt_auth_config::JwtAuthConfig, Config,
+};
 use cosmian_kms_utils::types::ExtraDatabaseParams;
 use tokio::sync::OnceCell;
 #[cfg(not(feature = "staging"))]
@@ -20,6 +22,16 @@ use crate::{
     tests::CONF_PATH_BAD_KEY,
 };
 
+// Test auth0 Config
+const AUTH0_JWT_ISSUER_URI: &str = "https://kms-cosmian.eu.auth0.com";
+
+pub fn get_auth0_jwt_config() -> JwtAuthConfig {
+    JwtAuthConfig {
+        jwt_issuer_uri: Some(AUTH0_JWT_ISSUER_URI.to_owned()),
+        jwks_uri: None,
+        jwt_audience: None,
+    }
+}
 /// We use that to avoid to try to start N servers (one per test)
 /// Otherwise we got: "Address already in use (os error 98)"
 /// for N-1 tests.
@@ -37,9 +49,7 @@ pub async fn init_test_server() {
     let _ = env_logger::builder().is_test(true).try_init();
     // Configure the serveur
     let config = Config {
-        auth0: Auth0Config {
-            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
-        },
+        auth: get_auth0_jwt_config(),
         db: DBConfig {
             database_type: "sqlite-enc".to_string(),
             ..Default::default()

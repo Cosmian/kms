@@ -8,13 +8,6 @@ use cosmian_kmip::kmip::{
         Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
     },
 };
-use cosmian_kms_server::{
-    config::{auth0::Auth0Config, init_config, Config},
-    error::KmsError,
-    kms_bail,
-    result::{KResult, KResultHelper},
-    KMSServer,
-};
 use cosmian_kms_utils::crypto::{
     cover_crypt::{
         attributes::access_policy_as_vendor_attribute,
@@ -27,12 +20,20 @@ use cosmian_kms_utils::crypto::{
 use tracing::debug;
 use uuid::Uuid;
 
+#[cfg(test)]
+use crate::tests::test_utils;
+use crate::{
+    config::{init_config, Config},
+    error::KmsError,
+    kms_bail,
+    result::{KResult, KResultHelper},
+    KMSServer,
+};
+
 #[actix_rt::test]
 async fn test_cover_crypt_keys() -> KResult<()> {
     let config = Config {
-        auth0: Auth0Config {
-            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
-        },
+        auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
     init_config(&config).await?;
@@ -208,9 +209,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // cosmian_kms_server::log_utils::log_init("debug,cosmian_kms::kmip_server=trace");
 
     let config = Config {
-        auth0: Auth0Config {
-            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
-        },
+        auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
     init_config(&config).await?;
@@ -419,9 +418,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 #[actix_rt::test]
 async fn test_abe_json_access() -> KResult<()> {
     let config = Config {
-        auth0: Auth0Config {
-            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
-        },
+        auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
     init_config(&config).await?;
@@ -526,9 +523,7 @@ async fn test_import_decrypt() -> KResult<()> {
     // cosmian_kms_server::log_utils::log_init("debug,cosmian_kms::kmip_server=trace");
 
     let config = Config {
-        auth0: Auth0Config {
-            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
-        },
+        auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
     init_config(&config).await?;

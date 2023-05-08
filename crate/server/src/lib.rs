@@ -15,7 +15,7 @@ use actix_web::{
 };
 use config::SharedConfig;
 use libsgx::utils::is_running_inside_enclave;
-use middlewares::auth::Auth0;
+use middlewares::auth::Auth;
 use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod};
 use result::KResult;
 use tracing::{debug, error, info};
@@ -35,6 +35,9 @@ pub mod middlewares;
 pub mod result;
 pub mod routes;
 pub use database::KMSServer;
+
+#[cfg(test)]
+mod tests;
 
 /**
  * This function prepares a server for the application. It creates an `HttpServer` instance,
@@ -57,7 +60,7 @@ pub fn prepare_server(
     builder: Option<SslAcceptorBuilder>,
 ) -> KResult<actix_web::dev::Server> {
     // Determine if Auth0 should be used for authentication.
-    let use_auth0 = SharedConfig::auth0_authority_domain().is_some();
+    let use_auth0 = SharedConfig::jwt_issuer_uri().is_some();
     // Determine if the application is running inside an enclave.
     let is_running_inside_enclave = is_running_inside_enclave();
     // Determine if the application is using an encrypted SQLite database.
@@ -68,7 +71,7 @@ pub fn prepare_server(
         // Create an `App` instance and configure the routes.
         let app = App::new()
             .wrap(Cors::permissive()) // Enable CORS for the application.
-            .wrap(Condition::new(use_auth0, Auth0)) // Use Auth0 for authentication if necessary.
+            .wrap(Condition::new(use_auth0, Auth)) // Use Auth0 for authentication if necessary.
             .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
