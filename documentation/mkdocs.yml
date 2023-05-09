@@ -46,10 +46,11 @@ extra_javascript:
   - https://unpkg.com/mermaid@8.7.0/dist/mermaid.min.js
   - javascripts/extra.js
 nav:
-  - Home: index.md
+  - Getting started: index.md
   - Installing and running: installing.md
-  - Authentication & Authorization: auth.md
-  - cKMS command line interface: 
+  - Authenticating to the server: authentication.md
+  - Authorizing and sharing objects: authorization.md
+  - Using the cKMS command line interface: 
       - Getting started: cli/cli.md
       - Covercrypt: 
         - Commands: cli/covercrypt/covercrypt.md

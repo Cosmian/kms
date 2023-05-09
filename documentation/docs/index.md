@@ -4,9 +4,3 @@ The Cosmian KMS server exposes a **KMIP 2.1** API that follows the [JSON profile
 
 The server is usually queried using the **`ckms`** [Command Line Interface](./cli/cli.md) or one of the Java, Javascript, or Python **Cloudproof libraries**. Check the [Cloudproof documentation](https://docs.cosmian.com/cloudproof_encryption/application_level_encryption/) and the [Cosmian Github](https://github.com/Cosmian) for details.
 
-
-
-1. [Installation](./installing.md)
-2. [Authentication and Authorization](./auth.md)
-3. [The ckms Command Line Interface](./cli/cli.md)
-4. [KMIP 2.1 implementation](./kmip_2_1/index.md)
