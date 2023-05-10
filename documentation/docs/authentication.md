@@ -16,7 +16,7 @@ The JWT token should contain the following claims:
 
 - `iss`: The issuer of the token. This should be the authorization server URL.
 - `sub`: The subject of the token. This should be the email address of the user.
-- `aud`: The audience of the token. OPTIONAL: this should be identical the one set on the KMS server.
+- `aud`: The audience of the token. OPTIONAL: this should be identical to the one set on the KMS server.
 - `exp`: The expiration time of the token. This should be a timestamp in the future.
 - `iat`: The time the token was issued. This should be a timestamp in the past.
 
@@ -25,7 +25,7 @@ On the `cKMS` command line interface, the token is configured in the client conf
 
 ## KMS server side
 
-The KMS server JWT authentication is configured using the following 3 command line options (or corresponding environment variables):
+The KMS server JWT authentication is configured using the following three command line options (or corresponding environment variables):
 
 ### JWT issuer URI
 
@@ -58,7 +58,7 @@ Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set.
 Use `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
 
 ##### Google ID tokens
-Use `https://www.googleapis.com/oauth2/v3/cert`
+Use `https://www.googleapis.com/oauth2/v3/certs`
 
 ##### Google Firebase
 Use `https://www.googleapis.com/service_accounts/v1/metadata/x509/securetoken@system.gserviceaccount.com`

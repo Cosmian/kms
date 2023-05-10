@@ -41,7 +41,7 @@ pub fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> {
     let jwt_audience = SharedConfig::jwt_audience();
 
     let mut validations = vec![
-        alcoholic_jwt::Validation::Issuer(jwt_issuer_uri + "/"),
+        alcoholic_jwt::Validation::Issuer(jwt_issuer_uri),
         alcoholic_jwt::Validation::SubjectPresent,
         #[cfg(not(feature = "insecure"))]
         alcoholic_jwt::Validation::NotExpired,
