@@ -1,7 +1,7 @@
 
 The KMS server provides an authentication system using [JWT access tokens](https://jwt.io/)  compatible with [Open ID Connect](https://openid.net/connect/).
 
-JWT tokens are validated using the token issuer [JSON Web Key Set (JWKS)](https://datatracker.ietf.org/doc/html/rfc7517.)
+JWT tokens signatures are validated using the token issuer [JSON Web Key Set (JWKS)](https://datatracker.ietf.org/doc/html/rfc7517.) which is pulled on server start.
 
 
 ## Client side
