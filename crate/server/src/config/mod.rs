@@ -276,6 +276,7 @@ pub async fn init_config(conf: &Config) -> KResult<()> {
     };
 
     debug!("generated shared conf: {shared_conf:#?}");
+    println!("generated shared conf: {shared_conf:#?}");
 
     init(shared_conf);
 

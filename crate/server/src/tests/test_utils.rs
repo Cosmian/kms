@@ -17,7 +17,7 @@ use crate::{
 };
 
 // Test auth0 Config
-const AUTH0_JWT_ISSUER_URI: &str = "https://console-dev.eu.auth0.com";
+const AUTH0_JWT_ISSUER_URI: &str = "https://console-dev.eu.auth0.com/";
 
 pub fn get_auth0_jwt_config() -> JwtAuthConfig {
     JwtAuthConfig {

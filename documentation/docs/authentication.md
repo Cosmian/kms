@@ -35,7 +35,9 @@ The KMS server JWT authentication is configured using the following three comman
  The issuer URI of the JWT token.
 
 ##### Auth0    
-The delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com`
+The delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
+
+Note: the `/` is mandatory at the end of the URL; if not present the `iss` will not validate
 
 ##### Google ID tokens
 Use `https://accounts.google.com`
