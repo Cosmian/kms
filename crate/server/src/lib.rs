@@ -15,8 +15,14 @@ use actix_web::{
 };
 use config::SharedConfig;
 use libsgx::utils::is_running_inside_enclave;
-use middlewares::auth::Auth;
-use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod};
+use middlewares::{
+    jwt_auth::JwtAuth,
+    ssl_auth::{extract_peer_certificate, SslAuth},
+};
+use openssl::{
+    ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
+    x509::store::X509StoreBuilder,
+};
 use result::KResult;
 use tracing::{debug, error, info};
 
@@ -59,8 +65,10 @@ pub fn prepare_server(
     kms_server: Arc<KMS>,
     builder: Option<SslAcceptorBuilder>,
 ) -> KResult<actix_web::dev::Server> {
-    // Determine if Auth0 should be used for authentication.
-    let use_auth0 = SharedConfig::jwt_issuer_uri().is_some();
+    // Determine if JWT Auth should be used for authentication.
+    let use_jwt_auth = SharedConfig::jwt_issuer_uri().is_some();
+    // Determine if Client Cert Auth should be used for authentication.
+    let use_cert_auth = SharedConfig::verify_cert().is_some();
     // Determine if the application is running inside an enclave.
     let is_running_inside_enclave = is_running_inside_enclave();
     // Determine if the application is using an encrypted SQLite database.
@@ -71,7 +79,8 @@ pub fn prepare_server(
         // Create an `App` instance and configure the routes.
         let app = App::new()
             .wrap(Cors::permissive()) // Enable CORS for the application.
-            .wrap(Condition::new(use_auth0, Auth)) // Use Auth0 for authentication if necessary.
+            .wrap(Condition::new(use_jwt_auth, JwtAuth)) // Use Auth0 for authentication if necessary.
+            .wrap(Condition::new(use_cert_auth, SslAuth)) // Use Auth0 for authentication if necessary.
             .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
@@ -101,7 +110,20 @@ pub fn prepare_server(
     .client_request_timeout(std::time::Duration::from_secs(10));
 
     Ok(match builder {
-        Some(b) => server.bind_openssl(SharedConfig::hostname_port(), b)?.run(),
+        Some(b) => {
+            // Determine if Client Cert Auth should be used for authentication.
+            let use_cert_auth = SharedConfig::verify_cert().is_some();
+            if use_cert_auth {
+                // Start an HTTPS server with PKCS#12 with client cert auth
+                server
+                    .on_connect(extract_peer_certificate)
+                    .bind_openssl(SharedConfig::hostname_port(), b)?
+                    .run()
+            } else {
+                // Start an HTTPS server with PKCS#12 but not client cert auth
+                server.bind_openssl(SharedConfig::hostname_port(), b)?.run()
+            }
+        }
         _ => server.bind(SharedConfig::hostname_port())?.run(),
     })
 }
@@ -185,6 +207,14 @@ async fn start_https_kms_server() -> KResult<()> {
         for x in chain {
             builder.add_extra_chain_cert(x.to_owned())?;
         }
+    }
+
+    if let Some(verify_cert) = SharedConfig::verify_cert() {
+        // This line sets the mode to verify peer (client) certificates
+        builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
+        let mut store_builder = X509StoreBuilder::new()?;
+        store_builder.add_cert(verify_cert.clone()).unwrap();
+        builder.set_verify_cert_store(store_builder.build())?;
     }
 
     // Instantiate and prepare the KMS server

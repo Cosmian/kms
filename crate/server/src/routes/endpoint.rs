@@ -27,7 +27,7 @@ use crate::{
     database::KMSServer,
     error::KmsError,
     kms_bail,
-    middlewares::auth::AuthClaim,
+    middlewares::{jwt_auth::JwtAuthClaim, ssl_auth::PeerCommonName},
     result::KResult,
 };
 
@@ -76,7 +76,7 @@ pub async fn kmip(
 ) -> KResult<Json<TTLV>> {
     let ttlv_req = item.into_inner();
     let database_params = get_database_secrets(&req_http)?;
-    let owner = get_owner(req_http)?;
+    let owner = get_user(req_http)?;
 
     debug!("POST /kmip. Request: {:?}", ttlv_req.tag.as_str());
 
@@ -177,9 +177,9 @@ pub async fn list_owned_objects(
     kms_client: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<ObjectOwnedResponse>>> {
     let database_params = get_database_secrets(&req)?;
-    let owner = get_owner(req)?;
+    let user = get_user(req)?;
     let list = kms_client
-        .list_owned_objects(&owner, database_params.as_ref())
+        .list_owned_objects(&user, database_params.as_ref())
         .await?;
 
     Ok(Json(list))
@@ -192,9 +192,9 @@ pub async fn list_shared_objects(
     kms_client: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<ObjectSharedResponse>>> {
     let database_params = get_database_secrets(&req)?;
-    let owner = get_owner(req)?;
+    let user = get_user(req)?;
     let list = kms_client
-        .list_shared_objects(&owner, database_params.as_ref())
+        .list_shared_objects(&user, database_params.as_ref())
         .await?;
 
     Ok(Json(list))
@@ -208,10 +208,10 @@ pub async fn list_accesses(
     kms_client: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<UserAccessResponse>>> {
     let database_params = get_database_secrets(&req)?;
-    let owner = get_owner(req)?;
+    let user = get_user(req)?;
     let object_id = object_id.to_owned().0;
     let list = kms_client
-        .list_accesses(&object_id, &owner, database_params.as_ref())
+        .list_accesses(&object_id, &user, database_params.as_ref())
         .await?;
 
     Ok(Json(list))
@@ -226,10 +226,10 @@ pub async fn insert_access(
 ) -> KResult<Json<SuccessResponse>> {
     let access = access.into_inner();
     let database_params = get_database_secrets(&req)?;
-    let owner = get_owner(req)?;
+    let user = get_user(req)?;
 
     kms_client
-        .insert_access(&access, &owner, database_params.as_ref())
+        .insert_access(&access, &user, database_params.as_ref())
         .await?;
     debug!(
         "Access granted on {:?} for {:?} to {}",
@@ -250,10 +250,10 @@ pub async fn delete_access(
 ) -> KResult<Json<SuccessResponse>> {
     let access = access.into_inner();
     let database_params = get_database_secrets(&req)?;
-    let owner = get_owner(req)?;
+    let user = get_user(req)?;
 
     kms_client
-        .delete_access(&access, &owner, database_params.as_ref())
+        .delete_access(&access, &user, database_params.as_ref())
         .await?;
     debug!(
         "Access revoke on {:?} for {:?} to {}",
@@ -332,23 +332,36 @@ pub async fn get_version(
     Ok(Json(crate_version!().to_string()))
 }
 
-fn get_owner(req_http: HttpRequest) -> KResult<String> {
-    match SharedConfig::jwt_issuer_uri() {
-        Some(_) => match req_http.extensions().get::<AuthClaim>() {
-            Some(claim) => Ok(claim.email.clone()),
-            None => Err(KmsError::Unauthorized(
-                "No valid auth claim owner (email) from JWT".to_owned(),
-            )),
-        },
-        None => match SharedConfig::default_username() {
-            Some(username) => Ok(username),
-            None => Err(KmsError::Unauthorized(
-                "Authentication incorrectly set-up on KMS server".to_owned(),
-            )),
-        },
+/// Get the user from the request depending on the authentication method
+/// The user is encoded in the JWT `Authorization` header
+/// If the header is not present, the user is extracted from the client certificate
+/// If the client certificate is not present, the user is extracted from the configuration file
+fn get_user(req_http: HttpRequest) -> KResult<String> {
+    if SharedConfig::force_default_username() {
+        debug!(
+            "Authenticated using forced default user: {}",
+            SharedConfig::default_username()
+        );
+        return Ok(SharedConfig::default_username())
     }
+    // if there is a JWT token, use it in priority
+    let user = match req_http.extensions().get::<JwtAuthClaim>() {
+        Some(claim) => claim.email.clone(),
+        None => {
+            // check for client certificate authentication
+            match req_http.extensions().get::<PeerCommonName>() {
+                Some(claim) => claim.common_name.clone(),
+                // if no client certificate, use the default username
+                None => SharedConfig::default_username(),
+            }
+        }
+    };
+    debug!("Authenticated User: {}", user);
+    Ok(user)
 }
 
+/// Get the database secrets from the request
+/// The secrets are encoded in the `KmsDatabaseSecret` header
 fn get_database_secrets(req_http: &HttpRequest) -> KResult<Option<ExtraDatabaseParams>> {
     Ok(match SharedConfig::db_params() {
         DbParams::SqliteEnc(_) => {

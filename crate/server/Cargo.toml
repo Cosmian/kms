@@ -28,6 +28,7 @@ actix-files = "0.6"
 actix-identity = "0.4"
 actix-rt = { version = "2.8", optional = true }
 actix-service = "2.0"
+actix-tls = "3.0.3"
 actix-web = { version = "4.3", features = ["openssl"] }
 alcoholic_jwt = "1.0"
 async-trait = "0.1"

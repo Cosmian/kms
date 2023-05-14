@@ -1,12 +1,53 @@
 
-The KMS server provides an authentication system using [JWT access tokens](https://jwt.io/)  compatible with [Open ID Connect](https://openid.net/connect/).
+The KMS server is started in authenticated or non-authenticated mode (default).
+
+
+In non-authenticated mode, the server maps all requests to the default user, configured using the `--default-username` option (or the `KMS_DEFAULT_USERNAME` environment variable). This user will default to `admin` if not set.
+
+```sh
+--default-username <DEFAULT_USERNAME>
+    The default username to use when no authentication method is provided
+    
+    [env: KMS_DEFAULT_USERNAME=]
+    [default: admin]
+```
+
+
+In authenticated mode, the server requires authentication for all requests. The authentication method can be either:
+
+ - a TLS client certificate and the server extracts the username from the certificate's subject common name (CN)
+ - or a JWT access token and the server extracts the username from the token's subject (sub) claim
+
+ However, If the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment variable) is set, the server still performs the authentication but maps all requests to the default username.
+
+
+## Using TLS client certificates
+
+The server must be started using TLS, and the certificate used to verify the clients' certificate must be provided in PEM format using the `--authority-cert-file` option.
+
+!!! info "Example client TLS authentification."
+
+    ```sh
+    docker run -p 9998:9998 --name kms cosmian/kms \
+        --https-p12-file kms.server.p12  --https-p12-password password \
+        --authority-cert-file verifier.cert.pem
+    ```
+
+The server extracts the username from the client certificate's subject common name (CN) unless the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment variable) is set, in which case the server uses the default username.
+
+
+## Using JWT access tokens
+
+The server supports  [JWT access tokens](https://jwt.io/) which are compatible with [Open ID Connect](https://openid.net/connect/).
 
 JWT tokens signatures are validated using the token issuer [JSON Web Key Set (JWKS)](https://datatracker.ietf.org/doc/html/rfc7517.) which is pulled on server start.
 
 
-## Client side
 
-The JWT token must be passed to the `/kmip_2_1` endpoint of the KMS server using the HTTP Authorization header:
+
+### The JWT token
+
+The JWT token must be passed to the endpoints of the KMS server using the HTTP Authorization header:
 
 ```
 Authorization: Bearer <TOKEN>
@@ -23,11 +64,22 @@ The JWT token should contain the following claims:
 
 On the `cKMS` command line interface, the token is configured in the client configuration. Please refer to the [CLI documentation](cli/cli.md) for more details.
 
-## KMS server side
+### Configuring the KMS server for JWT authentication
 
-The KMS server JWT authentication is configured using the following three command line options (or corresponding environment variables):
+The KMS server JWT authentication is configured using three command line options (or corresponding environment variables):
 
-### JWT issuer URI
+!!! info "Example of JWT Configuration"
+    Below is an example of a JWT configuration for the KMS server using Google as the authorization server.
+
+    ```sh
+    docker run -p 9998:9998 --name kms cosmian/kms \
+        --jwt-issuer-uri=https://accounts.google.com \
+        --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
+        --jwt-audience=cosmian_kms
+    ```
+
+
+#### JWT issuer URI
 
  - server option: `--jwt-issuer-uri <JWT_ISSUER_URI>`
  - env. variable: `KMS_JWT_ISSUER_URI=<JWT_ISSUER_URI>`
@@ -48,7 +100,7 @@ Use `https://securetoken.google.com/<YOUR-PROJECT-ID>`
 ##### Okta
 Use `https://OKTA_TENANT_NAME.com`
 
-### JWKS URI
+#### JWKS URI
 
  - server option: `--jwks-uri <JWKS_URI>`
  - env. variable: `KMS_JWKS_URI=<JWKS_URI>`
@@ -68,7 +120,7 @@ Use `https://www.googleapis.com/service_accounts/v1/metadata/x509/securetoken@sy
 ##### Okta
 Use `https://<OKTA_TENANT_NAME>.com`
 
-### JWT audience
+#### JWT audience
 
  - server option: `--jwt-audience <JWT_AUDIENCE>`
  - env. variable: `KMS_JWT_AUDIENCE=<JWT_AUDIENCE>`

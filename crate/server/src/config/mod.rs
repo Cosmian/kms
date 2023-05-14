@@ -15,7 +15,7 @@ use alcoholic_jwt::JWKS;
 use clap::Parser;
 use libsgx::utils::is_running_inside_enclave;
 use once_cell::sync::OnceCell;
-use openssl::pkcs12::ParsedPkcs12_2;
+use openssl::{pkcs12::ParsedPkcs12_2, x509::X509};
 use tracing::{debug, info};
 
 use crate::{
@@ -49,6 +49,15 @@ pub struct Config {
 
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
+
+    /// The default username to use when no authentication method is provided
+    #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = "admin")]
+    pub default_username: String,
+
+    /// When an authentication method is provided, perform the authentication
+    /// but always use the default username instead of the one provided by the authentication method
+    #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME", default_value = "false")]
+    pub force_default_username: bool,
 }
 
 impl fmt::Debug for Config {
@@ -109,8 +118,12 @@ pub struct SharedConfig {
     /// The JWT audience if Auth is enabled
     pub jwt_audience: Option<String>,
 
-    /// The username if Auth0 is disabled
-    pub default_username: Option<String>,
+    /// The username to use if not authentication method is provided
+    pub default_username: String,
+
+    /// When an authentication method is provided, perform the authentication
+    /// but always use the default username instead of the one provided by the authentication method
+    pub force_default_username: bool,
 
     pub db_params: DbParams,
 
@@ -124,6 +137,46 @@ pub struct SharedConfig {
 
     /// The enclave parameters when running inside an enclave
     pub enclave_params: EnclaveParams,
+
+    /// The certificate used to verify the client TLS certificates
+    /// used for authentication
+    pub verify_cert: Option<X509>,
+}
+
+pub async fn init_config(conf: &Config) -> KResult<()> {
+    info!("initializing with configuration: {conf:#?}");
+
+    let workspace = conf.workspace.init()?;
+
+    let (hostname_port, server_pkcs_12, verify_cert) = conf.http.init()?;
+
+    let shared_conf = SharedConfig {
+        jwks: conf.auth.fetch_jwks().await?,
+        jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
+        jwt_audience: conf.auth.jwt_audience.clone(),
+        db_params: conf.db.init(&workspace)?,
+        hostname_port,
+        enclave_params: conf.enclave.init(&workspace)?,
+        certbot: if conf.certbot_https.use_certbot {
+            Some(Arc::new(Mutex::new(HttpsCertbotConfig::init(
+                &conf.certbot_https,
+                &workspace,
+            )?)))
+        } else {
+            None
+        },
+        default_username: conf.default_username.clone(),
+        force_default_username: conf.force_default_username,
+        server_pkcs_12,
+        verify_cert,
+    };
+
+    debug!("generated shared conf: {shared_conf:#?}");
+
+    // Set the singleton instance that holds the SharedConfig
+    let _ = INSTANCE_CONFIG.set(shared_conf);
+
+    Ok(())
 }
 
 impl fmt::Debug for SharedConfig {
@@ -137,13 +190,21 @@ impl fmt::Debug for SharedConfig {
                 .field("jwks", &self.jwks)
                 .field("jwt_audience", &self.jwt_audience)
         } else {
-            x.field("default_username", &self.default_username)
+            x
         };
+        let x = if let Some(verify_cert) = &self.verify_cert {
+            x.field("verify_cert CN", verify_cert.subject_name())
+        } else {
+            x
+        };
+        let x = x
+            .field("default_username", &self.default_username)
+            .field("force_default_username", &self.force_default_username);
         let x = if let Some(ParsedPkcs12_2 {
             cert: Some(x509), ..
         }) = &self.server_pkcs_12
         {
-            x.field("certificate CN", &x509.subject_name())
+            x.field("server certificate CN", &x509.subject_name())
         } else {
             x
         };
@@ -159,10 +220,6 @@ impl fmt::Debug for SharedConfig {
         };
         x.finish()
     }
-}
-
-pub(crate) fn init(conf: SharedConfig) {
-    let _ = INSTANCE_CONFIG.set(conf);
 }
 
 impl SharedConfig {
@@ -194,12 +251,20 @@ impl SharedConfig {
     }
 
     #[inline(always)]
-    pub(crate) fn default_username() -> Option<String> {
+    pub(crate) fn default_username() -> String {
         INSTANCE_CONFIG
             .get()
             .expect("config must be initialized")
             .default_username
             .clone()
+    }
+
+    #[inline(always)]
+    pub(crate) fn force_default_username() -> bool {
+        INSTANCE_CONFIG
+            .get()
+            .expect("config must be initialized")
+            .force_default_username
     }
 
     #[inline(always)]
@@ -244,41 +309,12 @@ impl SharedConfig {
             .expect("config must be initialized")
             .server_pkcs_12
     }
-}
 
-pub async fn init_config(conf: &Config) -> KResult<()> {
-    info!("initializing with configuration: {conf:#?}");
-
-    let workspace = conf.workspace.init()?;
-
-    let (hostname_port, server_pkcs_12) = conf.http.init()?;
-
-    let shared_conf = SharedConfig {
-        jwks: conf.auth.fetch_jwks().await?,
-        jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
-        jwt_audience: conf.auth.jwt_audience.clone(),
-        db_params: conf.db.init(&workspace)?,
-        hostname_port,
-        enclave_params: conf.enclave.init(&workspace)?,
-        certbot: if conf.certbot_https.use_certbot {
-            Some(Arc::new(Mutex::new(HttpsCertbotConfig::init(
-                &conf.certbot_https,
-                &workspace,
-            )?)))
-        } else {
-            None
-        },
-        default_username: match conf.auth.jwt_issuer_uri {
-            Some(_) => None,
-            None => Some("admin".to_string()),
-        },
-        server_pkcs_12,
-    };
-
-    debug!("generated shared conf: {shared_conf:#?}");
-    println!("generated shared conf: {shared_conf:#?}");
-
-    init(shared_conf);
-
-    Ok(())
+    #[inline(always)]
+    pub(crate) fn verify_cert() -> &'static Option<X509> {
+        &INSTANCE_CONFIG
+            .get()
+            .expect("config must be initialized")
+            .verify_cert
+    }
 }

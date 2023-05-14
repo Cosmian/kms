@@ -12,7 +12,7 @@ use cosmian_kmip::kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTL
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
-    config::jwt_auth_config::JwtAuthConfig, middlewares::auth::Auth, result::KResult,
+    config::jwt_auth_config::JwtAuthConfig, middlewares::jwt_auth::JwtAuth, result::KResult,
     routes::endpoint, KMSServer,
 };
 
@@ -41,7 +41,7 @@ pub async fn test_app()
 
     test::init_service(
         App::new()
-            .wrap(Auth)
+            .wrap(JwtAuth)
             .app_data(Data::new(kms_server.clone()))
             .service(endpoint::kmip)
             .service(endpoint::insert_access)

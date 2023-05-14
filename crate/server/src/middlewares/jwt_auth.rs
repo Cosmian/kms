@@ -14,13 +14,13 @@ use futures::{
     future::{ok, Ready},
     Future,
 };
-use tracing::{error, trace};
+use tracing::{debug, error, trace};
 
 use super::jwt::decode_jwt_new;
 
-pub struct Auth;
+pub struct JwtAuth;
 
-impl<S, B> Transform<S, ServiceRequest> for Auth
+impl<S, B> Transform<S, ServiceRequest> for JwtAuth
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
@@ -29,18 +29,18 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
     type InitError = ();
     type Response = ServiceResponse<EitherBody<B, BoxBody>>;
-    type Transform = AuthMiddleware<S>;
+    type Transform = JwtAuthMiddleware<S>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        ok(AuthMiddleware { service })
+        ok(JwtAuthMiddleware { service })
     }
 }
 
-pub struct AuthMiddleware<S> {
+pub struct JwtAuthMiddleware<S> {
     service: S,
 }
 
-impl<S, B> Service<ServiceRequest> for AuthMiddleware<S>
+impl<S, B> Service<ServiceRequest> for JwtAuthMiddleware<S>
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
     S::Future: 'static,
@@ -55,7 +55,7 @@ where
     }
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        trace!("Authentication...");
+        trace!("JWT Authentication...");
 
         // get the identity from the authorization header
         let identity = RequestIdentity::get_identity(&req)
@@ -93,9 +93,8 @@ where
             }),
             Ok(Some(email)) => {
                 // forward to the endpoint the email got from this JWT
-                req.extensions_mut().insert(AuthClaim::new(email));
-
-                trace!("access granted !");
+                debug!("JWT Access granted to {email} !");
+                req.extensions_mut().insert(JwtAuthClaim::new(email));
 
                 let fut = self.service.call(req);
                 Box::pin(async move {
@@ -108,12 +107,12 @@ where
 }
 
 #[derive(Debug)]
-pub struct AuthClaim {
+pub struct JwtAuthClaim {
     pub email: String,
 }
 
-impl AuthClaim {
-    fn new(email: String) -> Self {
+impl JwtAuthClaim {
+    pub fn new(email: String) -> Self {
         Self { email }
     }
 }
