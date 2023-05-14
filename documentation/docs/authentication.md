@@ -40,9 +40,7 @@ The server extracts the username from the client certificate's subject common na
 
 The server supports  [JWT access tokens](https://jwt.io/) which are compatible with [Open ID Connect](https://openid.net/connect/).
 
-JWT tokens signatures are validated using the token issuer [JSON Web Key Set (JWKS)](https://datatracker.ietf.org/doc/html/rfc7517.) which is pulled on server start.
-
-
+The server validates the JWT tokens signatures using the token issuer [JSON Web Key Set (JWKS)](https://datatracker.ietf.org/doc/html/rfc7517.) that is pulled on server start.
 
 
 ### The JWT token
@@ -81,51 +79,63 @@ The KMS server JWT authentication is configured using three command line options
 
 #### JWT issuer URI
 
+ The issuer URI of the JWT token is called to validate the token signature.
+
  - server option: `--jwt-issuer-uri <JWT_ISSUER_URI>`
  - env. variable: `KMS_JWT_ISSUER_URI=<JWT_ISSUER_URI>`
 
- The issuer URI of the JWT token.
-
-##### Auth0    
-The delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
-
-Note: the `/` is mandatory at the end of the URL; if not present the `iss` will not validate
-
-##### Google ID tokens
-Use `https://accounts.google.com`
-
-##### Google Firebase
-Use `https://securetoken.google.com/<YOUR-PROJECT-ID>`
-
-##### Okta
-Use `https://OKTA_TENANT_NAME.com`
 
 #### JWKS URI
+
+The optional JWKS (JSON Web Key Set) URI of the JWT token is called to retrieve the keyset on server start.
+Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set.
 
  - server option: `--jwks-uri <JWKS_URI>`
  - env. variable: `KMS_JWKS_URI=<JWKS_URI>`
 
-The optional JWKS (JSON Web Key Set) URI of the JWT token that is called to retrieve the keyset on server start.
-Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set.
 
-##### Auth0    
-Use `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
-
-##### Google ID tokens
-Use `https://www.googleapis.com/oauth2/v3/certs`
-
-##### Google Firebase
-Use `https://www.googleapis.com/service_accounts/v1/metadata/x509/securetoken@system.gserviceaccount.com`
-
-##### Okta
-Use `https://<OKTA_TENANT_NAME>.com`
-
-#### JWT audience
+#### JWT audience      
+The KMS server validates the JWT `aud` claim against this value if set
 
  - server option: `--jwt-audience <JWT_AUDIENCE>`
  - env. variable: `KMS_JWT_AUDIENCE=<JWT_AUDIENCE>`
 
-The optional audience of the JWT token
-      
-The KMS server will validate the JWT `aud` claim against this value if set
 
+#### Using Google ID tokens
+
+Use the following options to configure the KMS server for Google ID tokens:
+
+```sh
+--jwt-issuer-uri=https://accounts.google.com 
+--jwks-uri=https://www.googleapis.com/oauth2/v3/certs 
+```
+
+#### Using Auth0
+
+Use the following options to configure the KMS server for Auth0:
+
+```sh
+--jwt-issuer-uri=https://<your-tenant>.<region>.auth0.com/
+--jwks-uri=https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json
+```
+
+Note: the `/` is mandatory at the end of the issuer URL; if not present the `iss` will not validate
+
+#### Using Google Firebase
+
+Use the following options to configure the KMS server for Google Firebase:
+
+```sh
+--jwt-issuer-uri=https://securetoken.google.com/<YOUR-PROJECT-ID>
+--jwks-uri=https://www.googleapis.com/service_accounts/v1/metadata/x509/securetoken@system.gserviceaccount.com
+```
+
+#### Using Okta
+
+Use the following options to configure the KMS server for Okta:
+
+```sh
+--jwt-issuer-uri=https://<OKTA_TENANT_NAME>.com
+--jwks-uri=https://<OKTA_TENANT_NAME>.com/oauth2/v1/keys
+--jwt-audience=<OKTA_CLIENT_ID>
+```
