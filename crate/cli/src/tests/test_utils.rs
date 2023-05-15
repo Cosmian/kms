@@ -16,9 +16,7 @@ use tokio::sync::OnceCell;
 #[cfg(not(feature = "staging"))]
 use {cosmian_kms_server::start_kms_server, reqwest::ClientBuilder, std::thread};
 
-use super::{
-    utils::extract_uids::extract_database_secret, CONF_PATH, PATTERN_CONF_PATH, PROG_NAME,
-};
+use super::{utils::extract_uids::extract_database_secret, CONF_PATH, PROG_NAME};
 use crate::{
     config::{CliConf, KMS_CLI_CONF_ENV},
     error::CliError,

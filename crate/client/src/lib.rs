@@ -426,7 +426,8 @@ impl KmsRestClient {
     pub fn instantiate(
         server_url: &str,
         bearer_token: Option<&str>,
-        ssl_client_pkcs12: Option<&str>,
+        ssl_client_pkcs12_path: Option<&str>,
+        ssl_client_pkcs12_password: Option<&str>,
         database_secret: Option<&str>,
         accept_invalid_certs: bool,
     ) -> Result<Self, KmsClientError> {
@@ -450,12 +451,15 @@ impl KmsRestClient {
         let builder = ClientBuilder::new().danger_accept_invalid_certs(accept_invalid_certs);
 
         // If a PKCS12 file is provided, use it to build the client
-        let builder = match ssl_client_pkcs12 {
+        let builder = match ssl_client_pkcs12_path {
             Some(ssl_client_pkcs12) => {
                 let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
                 let mut pkcs12_bytes = vec![];
                 pkcs12.read_to_end(&mut pkcs12_bytes)?;
-                let pkcs12 = Identity::from_pkcs12_der(&pkcs12_bytes, "")?;
+                let pkcs12 = Identity::from_pkcs12_der(
+                    &pkcs12_bytes,
+                    ssl_client_pkcs12_password.unwrap_or(""),
+                )?;
                 builder.identity(pkcs12)
             }
             None => builder,

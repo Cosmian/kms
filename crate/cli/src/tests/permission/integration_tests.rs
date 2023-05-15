@@ -8,12 +8,11 @@ use crate::{
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
+        permission::SUB_COMMAND,
         test_utils::{init_test_server, ONCE},
         CONF_PATH, PROG_NAME,
     },
 };
-
-const SUB_COMMAND: &str = "permission";
 
 async fn gen_object() -> Result<String, CliError> {
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(

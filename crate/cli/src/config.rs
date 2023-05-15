@@ -146,6 +146,7 @@ impl CliConf {
             &conf.kms_server_url,
             conf.kms_access_token.as_deref(),
             conf.ssl_client_pkcs12_path.as_deref(),
+            conf.ssl_client_pkcs12_password.as_deref(),
             conf.kms_database_secret.as_deref(),
             conf.accept_invalid_certs,
         )
