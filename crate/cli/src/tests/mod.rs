@@ -4,6 +4,7 @@ mod elliptic_curve;
 mod permission;
 mod sgx;
 mod shared;
+mod ssl_tests;
 mod symmetric;
 pub mod test_utils;
 pub mod utils;

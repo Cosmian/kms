@@ -55,14 +55,18 @@ fn not(b: &bool) -> bool {
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug)]
 pub struct CliConf {
-    // Insecure is useful if the cli needs to connect to an HTTPS KMS using unsecured SSL certificate
+    // accept_invalid_certs is useful if the cli needs to connect to an HTTPS KMS server
+    // running an invalid or unsecure SSL certificate
     #[serde(default)]
     #[serde(skip_serializing_if = "not")]
-    pub accept_invalid_certs: bool,
-    pub kms_server_url: String,
-    kms_access_token: String,
+    pub(crate) accept_invalid_certs: bool,
+    pub(crate) kms_server_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub kms_database_secret: Option<String>,
+    pub(crate) kms_access_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) ssl_client_pkcs12: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) kms_database_secret: Option<String>,
 }
 
 impl Default for CliConf {
@@ -70,8 +74,9 @@ impl Default for CliConf {
         Self {
             accept_invalid_certs: false,
             kms_server_url: "http://localhost:9998".to_string(),
-            kms_access_token: "".to_string(),
+            kms_access_token: None,
             kms_database_secret: None,
+            ssl_client_pkcs12: None,
         }
     }
 }
@@ -133,7 +138,8 @@ impl CliConf {
         // Create a client to query the KMS
         let kms_connector = KmsRestClient::instantiate(
             &conf.kms_server_url,
-            &conf.kms_access_token,
+            conf.kms_access_token.as_deref(),
+            conf.ssl_client_pkcs12.as_deref(),
             conf.kms_database_secret.as_deref(),
             conf.accept_invalid_certs,
         )

@@ -29,24 +29,28 @@ impl KmsClient {
     /// Args:
     ///     - `server_url` (str)                : url of the KMS server
     ///     - `api_key` (Optional[str])         : apiKey optional, to authenticate to the KMS
+    ///     - `client_pkcs12` (Optional[str])   : optional client PKCS12, to authenticate to the KMS
     ///     - `database_secret` (Optional[str]) : secret to authenticate to the KMS database
     ///     - `insecure_mode` (bool)            : accept self signed ssl cert. defaults to False
     #[new]
     #[pyo3(signature = (
         server_url,
         api_key = None,
+        client_pkcs12 = None,
         database_secret = None,
         insecure_mode = false,
     ))]
     pub fn new(
         server_url: &str,
         api_key: Option<&str>,
+        client_pkcs12: Option<&str>,
         database_secret: Option<&str>,
         insecure_mode: bool,
     ) -> PyResult<Self> {
         let kms_connector = KmsRestClient::instantiate(
             server_url,
-            api_key.unwrap_or(""),
+            api_key,
+            client_pkcs12,
             database_secret,
             insecure_mode,
         )

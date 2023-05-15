@@ -4,8 +4,13 @@
 #![allow(dead_code)]
 
 pub mod error;
+pub mod result;
 
-use std::time::Duration;
+use std::{
+    fs::File,
+    io::{BufReader, Read},
+    time::Duration,
+};
 
 // re-export the kmip module as kmip
 pub use cosmian_kmip::kmip;
@@ -24,7 +29,7 @@ use cosmian_kms_utils::types::{
 };
 use error::KmsClientError;
 use http::{HeaderMap, HeaderValue, StatusCode};
-use reqwest::{Client, ClientBuilder, Response};
+use reqwest::{Client, ClientBuilder, Identity, Response};
 use serde::{Deserialize, Serialize};
 
 /// A struct implementing some of the 50+ operations a KMIP client should implement:
@@ -420,7 +425,8 @@ impl KmsRestClient {
     #[allow(dead_code)]
     pub fn instantiate(
         server_url: &str,
-        bearer_token: &str,
+        bearer_token: Option<&str>,
+        ssl_client_pkcs12: Option<&str>,
         database_secret: Option<&str>,
         accept_invalid_certs: bool,
     ) -> Result<Self, KmsClientError> {
@@ -429,16 +435,33 @@ impl KmsRestClient {
             None => server_url.to_string(),
         };
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "Authorization",
-            HeaderValue::from_str(format!("Bearer {bearer_token}").as_str())?,
-        );
+        if let Some(bearer_token) = bearer_token {
+            headers.insert(
+                "Authorization",
+                HeaderValue::from_str(format!("Bearer {bearer_token}").as_str())?,
+            );
+        }
         if let Some(database_secret) = database_secret {
             headers.insert("KmsDatabaseSecret", HeaderValue::from_str(database_secret)?);
         }
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+
+        // Create a client builder
         let builder = ClientBuilder::new().danger_accept_invalid_certs(accept_invalid_certs);
 
+        // If a PKCS12 file is provided, use it to build the client
+        let builder = match ssl_client_pkcs12 {
+            Some(ssl_client_pkcs12) => {
+                let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
+                let mut pkcs12_bytes = vec![];
+                pkcs12.read_to_end(&mut pkcs12_bytes)?;
+                let pkcs12 = Identity::from_pkcs12_der(&pkcs12_bytes, "")?;
+                builder.identity(pkcs12)
+            }
+            None => builder,
+        };
+
+        // Build the client
         Ok(Self {
             client: builder
                 .connect_timeout(Duration::from_secs(5))

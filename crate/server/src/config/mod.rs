@@ -143,6 +143,7 @@ pub struct SharedConfig {
     pub verify_cert: Option<X509>,
 }
 
+/// Initialize the configuration and set the singleton instance
 pub async fn init_config(conf: &Config) -> KResult<()> {
     info!("initializing with configuration: {conf:#?}");
 

@@ -102,6 +102,13 @@ impl From<Utf8Error> for CliError {
 }
 
 #[cfg(test)]
+impl From<reqwest::Error> for CliError {
+    fn from(e: reqwest::Error) -> Self {
+        CliError::Default(e.to_string())
+    }
+}
+
+#[cfg(test)]
 impl From<CargoError> for CliError {
     fn from(e: CargoError) -> Self {
         CliError::Default(e.to_string())

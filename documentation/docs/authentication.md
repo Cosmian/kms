@@ -127,5 +127,5 @@ Use `https://<OKTA_TENANT_NAME>.com`
 
 The optional audience of the JWT token
       
-TheKMS server will validate the JWT `aud` claim against this value if set
+The KMS server will validate the JWT `aud` claim against this value if set
 

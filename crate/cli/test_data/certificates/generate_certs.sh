@@ -18,8 +18,8 @@ openssl req -new -key kmserver.cosmian.com.key -subj "/C=FR/ST=IdF/L=Paris/O=Cos
 # Generate certificate for kmserver.cosmian.com signed by our own CA
 openssl x509 -req -days 3650 -in kmserver.cosmian.com.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out kmserver.cosmian.com.crt
 
-# Generate PKCS12 file without password
-openssl pkcs12 -export -out kmserver.cosmian.com.p12 -inkey kmserver.cosmian.com.key -in kmserver.cosmian.com.crt -certfile ca.crt
+# Generate a PKCS12 file 
+openssl pkcs12 -export -out kmserver.cosmian.com.p12 -inkey kmserver.cosmian.com.key -in kmserver.cosmian.com.crt -certfile ca.crt -password pass:password
 
 
 ## Client cert
@@ -32,3 +32,6 @@ openssl req -new -key client.cosmian.com.key -subj "/C=FR/ST=IdF/L=Paris/O=Cosmi
 
 # Generate certificate for client.cosmian.com signed by our own CA
 openssl x509 -req -days 3650 -in client.cosmian.com.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.cosmian.com.crt
+
+# Generate a PKCS12 file 
+openssl pkcs12 -export -out client.cosmian.com.p12 -inkey client.cosmian.com.key -in client.cosmian.com.crt -certfile ca.crt -password pass:password

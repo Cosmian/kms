@@ -1,3 +1,5 @@
+use std::io;
+
 use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
@@ -33,6 +35,9 @@ pub enum KmsClientError {
 
     #[error("{0}: {1}")]
     KmipError(ErrorReason, String),
+
+    #[error("{0}")]
+    Default(String),
 }
 
 impl From<TtlvError> for KmsClientError {
@@ -43,13 +48,19 @@ impl From<TtlvError> for KmsClientError {
 
 impl From<InvalidHeaderValue> for KmsClientError {
     fn from(e: InvalidHeaderValue) -> Self {
-        Self::UnexpectedError(e.to_string())
+        Self::Default(e.to_string())
     }
 }
 
 impl From<reqwest::Error> for KmsClientError {
     fn from(e: reqwest::Error) -> Self {
-        Self::UnexpectedError(e.to_string())
+        Self::Default(e.to_string())
+    }
+}
+
+impl From<io::Error> for KmsClientError {
+    fn from(e: io::Error) -> Self {
+        Self::Default(e.to_string())
     }
 }
 
