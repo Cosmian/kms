@@ -64,7 +64,9 @@ pub struct CliConf {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) kms_access_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) ssl_client_pkcs12: Option<String>,
+    pub(crate) ssl_client_pkcs12_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) ssl_client_pkcs12_password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) kms_database_secret: Option<String>,
 }
@@ -76,7 +78,8 @@ impl Default for CliConf {
             kms_server_url: "http://localhost:9998".to_string(),
             kms_access_token: None,
             kms_database_secret: None,
-            ssl_client_pkcs12: None,
+            ssl_client_pkcs12_path: None,
+            ssl_client_pkcs12_password: None,
         }
     }
 }
@@ -87,7 +90,9 @@ impl Default for CliConf {
 ///     "accept_invalid_certs": false
 ///     "`kms_server_url"`: "http://127.0.0.1:9998",
 ///     "`kms_access_token"`: "AA...AAA"
-///     "`kms_database_secret"`: "BB...BBB"
+///     "`kms_database_secret"`: "BB...BBB",
+///     "ssl_client_pkcs12_path": "/path/to/client.p12",
+///     "ssl_client_pkcs12_password": "password"
 /// }
 ///
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
@@ -108,8 +113,9 @@ impl CliConf {
             true => {
                 let file = File::open(&cli_conf_filename)
                     .with_context(|| format!("Can't read {:?}", cli_conf_filename))?;
-                serde_json::from_reader(BufReader::new(file))
-                    .with_context(|| format!("Config JSON malformed in {:?}", cli_conf_filename))?
+                serde_json::from_reader(BufReader::new(file)).with_context(|| {
+                    format!("Config JSON malformed reading {:?}", cli_conf_filename)
+                })?
             }
             // If the configuration file doesn't exist, create it with default values and serialize it
             false => {
@@ -139,7 +145,7 @@ impl CliConf {
         let kms_connector = KmsRestClient::instantiate(
             &conf.kms_server_url,
             conf.kms_access_token.as_deref(),
-            conf.ssl_client_pkcs12.as_deref(),
+            conf.ssl_client_pkcs12_path.as_deref(),
             conf.kms_database_secret.as_deref(),
             conf.accept_invalid_certs,
         )

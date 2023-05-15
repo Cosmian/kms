@@ -111,8 +111,13 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
         } else {
             None
         },
-        ssl_client_pkcs12: if use_client_cert {
+        ssl_client_pkcs12_path: if use_client_cert {
             Some("test_data/certificates/client.cosmian.com.p12".to_string())
+        } else {
+            None
+        },
+        ssl_client_pkcs12_password: if use_client_cert {
+            Some("password".to_string())
         } else {
             None
         },
@@ -127,12 +132,15 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
         async fn fetch_version(cli_conf: &CliConf) -> Result<reqwest::Response, CliError> {
             let builder = ClientBuilder::new();
             // If a PKCS12 file is provided, use it to build the client
-            let builder = match &cli_conf.ssl_client_pkcs12 {
+            let builder = match &cli_conf.ssl_client_pkcs12_path {
                 Some(ssl_client_pkcs12) => {
                     let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
                     let mut pkcs12_bytes = vec![];
                     pkcs12.read_to_end(&mut pkcs12_bytes)?;
-                    let pkcs12 = Identity::from_pkcs12_der(&pkcs12_bytes, "")?;
+                    let pkcs12 = Identity::from_pkcs12_der(
+                        &pkcs12_bytes,
+                        cli_conf.ssl_client_pkcs12_password.as_deref().unwrap_or(""),
+                    )?;
                     builder.identity(pkcs12)
                 }
                 None => builder,
@@ -183,9 +191,13 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
         }
     }
 
+    // Create a json
+    let file = File::create(CONF_PATH).expect("Can't create CONF_PATH");
+    serde_json::to_writer(BufWriter::new(file), &cli_conf).expect("Can't write CONF_PATH");
+
     // Configure a database and create the kms json file
     let mut cmd = Command::cargo_bin(PROG_NAME).expect("Can't execute new database command");
-    cmd.env(KMS_CLI_CONF_ENV, PATTERN_CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg("new-database");
 
     let success = cmd.assert().success();
@@ -196,7 +208,7 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
     let database_secret =
         extract_database_secret(stdout).expect("Can't extract database secret from cmd output");
 
-    // Create a json
+    // Rewrite the conf with the correct database secret
     cli_conf.kms_database_secret = Some(database_secret.to_string());
     let file = File::create(CONF_PATH).expect("Can't create CONF_PATH");
     serde_json::to_writer(BufWriter::new(file), &cli_conf).expect("Can't write CONF_PATH");
