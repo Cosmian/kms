@@ -49,6 +49,7 @@ impl HTTPConfig {
     pub fn init(&self) -> KResult<(String, Option<ParsedPkcs12_2>, Option<X509>)> {
         let host_port = format!("{}:{}", self.hostname, self.port);
 
+        // If the server is running in TLS mode, we need to load the PKCS#12 certificate
         let p12 = if let Some(p12_file) = &self.https_p12_file {
             // Open and read the file into a byte vector
             let mut file = File::open(p12_file)?;
@@ -63,6 +64,7 @@ impl HTTPConfig {
             None
         };
 
+        // If the server is authenticating users using a certificate, we need to load the authority certificate
         if let Some(authority_cert_file) = &self.authority_cert_file {
             if p12.is_none() {
                 kms_bail!(

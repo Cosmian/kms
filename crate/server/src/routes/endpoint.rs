@@ -20,7 +20,7 @@ use cosmian_kms_utils::types::{
     SuccessResponse, UserAccessResponse,
 };
 use http::{header, StatusCode};
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     config::{DbParams, SharedConfig},
@@ -338,7 +338,7 @@ pub async fn get_version(
 /// If the client certificate is not present, the user is extracted from the configuration file
 fn get_user(req_http: HttpRequest) -> KResult<String> {
     if SharedConfig::force_default_username() {
-        debug!(
+        info!(
             "Authenticated using forced default user: {}",
             SharedConfig::default_username()
         );
@@ -356,7 +356,7 @@ fn get_user(req_http: HttpRequest) -> KResult<String> {
             }
         }
     };
-    debug!("Authenticated User: {}", user);
+    info!("Authenticated user: {}", user);
     Ok(user)
 }
 

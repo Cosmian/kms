@@ -80,7 +80,7 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
             } else {
                 HTTPConfig {
                     https_p12_file: Some(PathBuf::from(
-                        "tests/certificates/kmserver.cosmian.com.p12",
+                        "test_data/certificates/kmserver.cosmian.com.p12",
                     )),
                     https_p12_password: "password".to_string(),
                     ..Default::default()
@@ -93,7 +93,7 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
     };
     init_config(&config)
         .await
-        .map_err(|e| format!("failed initializing the config: {e}"))
+        .map_err(|e| format!("failed initializing the server config: {e}"))
         .unwrap();
 
     // Read the conf. We will update it later by appending the secret token

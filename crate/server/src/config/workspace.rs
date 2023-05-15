@@ -6,6 +6,8 @@ use std::{
 use clap::Args;
 use dirs;
 
+use crate::{kms_error, result::KResult};
+
 #[derive(Debug, Args)]
 pub struct WorkspaceConfig {
     /// The root folder where the KMS will store its data
@@ -28,11 +30,11 @@ impl Default for WorkspaceConfig {
 }
 
 impl WorkspaceConfig {
-    pub fn init(&self) -> eyre::Result<Self> {
+    pub fn init(&self) -> KResult<Self> {
         let root_data_path = Self::finalize_directory_path(
             &self.root_data_path,
             &dirs::home_dir().ok_or_else(|| {
-                eyre::eyre!("Unable to get the user home to set the KMS data path")
+                kms_error!("Unable to get the user home to set the KMS data path")
             })?,
         )?;
         let tmp_path = Self::finalize_directory_path(&self.tmp_path, &root_data_path)?;
@@ -57,7 +59,7 @@ impl WorkspaceConfig {
     /// # Errors
     ///
     /// Returns an error if the directory can't be created or if an error occurs while calling `std::fs::canonicalize`
-    pub fn finalize_directory(&self, path: &PathBuf) -> eyre::Result<PathBuf> {
+    pub fn finalize_directory(&self, path: &PathBuf) -> KResult<PathBuf> {
         Self::finalize_directory_path(path, &self.root_data_path)
     }
 
@@ -76,7 +78,7 @@ impl WorkspaceConfig {
     /// # Errors
     ///
     /// Returns an error if the directory can't be created or if an error occurs while calling `std::fs::canonicalize`
-    pub fn finalize_directory_path(path: &PathBuf, relative_root: &Path) -> eyre::Result<PathBuf> {
+    pub fn finalize_directory_path(path: &PathBuf, relative_root: &Path) -> KResult<PathBuf> {
         let path = if path.is_relative() {
             relative_root.join(path)
         } else {
@@ -85,7 +87,7 @@ impl WorkspaceConfig {
         if !path.exists() {
             fs::create_dir_all(&path)?;
         }
-        fs::canonicalize(path).map_err(|e| eyre::eyre!(e))
+        fs::canonicalize(path).map_err(|e| kms_error!(e))
     }
 
     /// Transform a relative path to `root_data_path` to an absolute path.
@@ -102,12 +104,12 @@ impl WorkspaceConfig {
     /// # Errors
     ///
     /// Returns if an error occurs while calling `std::fs::canonicalize`
-    pub fn finalize_file_path(&self, path: &PathBuf) -> eyre::Result<PathBuf> {
+    pub fn finalize_file_path(&self, path: &PathBuf) -> KResult<PathBuf> {
         let path = if path.is_relative() {
             self.root_data_path.join(path)
         } else {
             path.clone()
         };
-        fs::canonicalize(path).map_err(|e| eyre::eyre!(e))
+        fs::canonicalize(path).map_err(|e| kms_error!(e))
     }
 }

@@ -147,9 +147,13 @@ pub struct SharedConfig {
 pub async fn init_config(conf: &Config) -> KResult<()> {
     info!("initializing with configuration: {conf:#?}");
 
+    // Initialize the workspace
     let workspace = conf.workspace.init()?;
 
+    // Initialize the HTTP server
     let (hostname_port, server_pkcs_12, verify_cert) = conf.http.init()?;
+
+    info!("http: ");
 
     let shared_conf = SharedConfig {
         jwks: conf.auth.fetch_jwks().await?,
