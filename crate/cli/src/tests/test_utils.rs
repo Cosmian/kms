@@ -1,9 +1,6 @@
-use std::{
-    fs::File,
-    io::{BufReader, BufWriter, Read},
-    path::PathBuf,
-    process::Command,
-};
+#[cfg(not(feature = "staging"))]
+use std::io::{BufReader, Read};
+use std::{fs::File, io::BufWriter, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
@@ -11,15 +8,17 @@ use cosmian_kms_server::config::{
     db::DBConfig, http::HTTPConfig, init_config, jwt_auth_config::JwtAuthConfig, Config,
 };
 use cosmian_kms_utils::types::ExtraDatabaseParams;
+#[cfg(not(feature = "staging"))]
 use reqwest::Identity;
 use tokio::sync::OnceCell;
 #[cfg(not(feature = "staging"))]
 use {cosmian_kms_server::start_kms_server, reqwest::ClientBuilder, std::thread};
 
 use super::{utils::extract_uids::extract_database_secret, CONF_PATH, PROG_NAME};
+#[cfg(not(feature = "staging"))]
+use crate::error::CliError;
 use crate::{
     config::{CliConf, KMS_CLI_CONF_ENV},
-    error::CliError,
     tests::CONF_PATH_BAD_KEY,
 };
 
