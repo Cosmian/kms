@@ -53,7 +53,7 @@ pub async fn test_bad_conf() -> Result<(), CliError> {
         "test_data/policy.bin",
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "ERROR: Config JSON malformed in \"test_data/kms.bad\"",
+        "ERROR: Config JSON malformed reading \"test_data/kms.bad\"",
     ));
 
     Ok(())

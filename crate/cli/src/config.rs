@@ -186,6 +186,6 @@ mod tests {
         // invalid conf
         env::set_var(KMS_CLI_CONF_ENV, "test_data/kms.bad");
         let e = CliConf::load().err().unwrap().to_string();
-        assert!(e.contains("Config JSON malformed in \"test_data/kms.bad\""));
+        assert!(e.contains("Config JSON malformed reading \"test_data/kms.bad\""));
     }
 }
