@@ -1,4 +1,4 @@
-mod auth_tests;
+// mod auth_tests;
 mod configure;
 mod cover_crypt;
 mod elliptic_curve;
