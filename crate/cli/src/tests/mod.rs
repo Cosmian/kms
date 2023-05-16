@@ -1,10 +1,10 @@
+mod auth_tests;
 mod configure;
 mod cover_crypt;
 mod elliptic_curve;
 mod permission;
 mod sgx;
 mod shared;
-mod auth_tests;
 mod symmetric;
 pub mod test_utils;
 pub mod utils;
