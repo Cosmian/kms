@@ -14,7 +14,6 @@ use std::{
 use alcoholic_jwt::JWKS;
 use clap::Parser;
 use libsgx::utils::is_running_inside_enclave;
-use once_cell::sync::OnceCell;
 use openssl::{pkcs12::ParsedPkcs12_2, x509::X509};
 use tracing::{debug, info};
 
@@ -27,7 +26,7 @@ use crate::{
     result::KResult,
 };
 
-static INSTANCE_CONFIG: OnceCell<SharedConfig> = OnceCell::new();
+// static INSTANCE_CONFIG: OnceCell<SharedConfig> = OnceCell::new();
 
 #[derive(Parser, Default)]
 #[clap(version, about, long_about = None)]
@@ -144,7 +143,7 @@ pub struct SharedConfig {
 }
 
 /// Initialize the configuration and set the singleton instance
-pub async fn init_config(conf: &Config) -> KResult<()> {
+pub async fn init_config(conf: &Config) -> KResult<SharedConfig> {
     info!("initializing with configuration: {conf:#?}");
 
     // Initialize the workspace
@@ -178,10 +177,7 @@ pub async fn init_config(conf: &Config) -> KResult<()> {
 
     debug!("generated shared conf: {shared_conf:#?}");
 
-    // Set the singleton instance that holds the SharedConfig
-    let _ = INSTANCE_CONFIG.set(shared_conf);
-
-    Ok(())
+    Ok(shared_conf)
 }
 
 impl fmt::Debug for SharedConfig {
@@ -227,99 +223,99 @@ impl fmt::Debug for SharedConfig {
     }
 }
 
-impl SharedConfig {
-    #[inline(always)]
-    pub(crate) fn jwt_issuer_uri() -> Option<String> {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .jwt_issuer_uri
-            .clone()
-    }
+// impl SharedConfig {
+//     #[inline(always)]
+//     pub(crate) fn jwt_issuer_uri() -> Option<String> {
+//         INSTANCE_CONFIG
+//             .get()
+//             .expect("config must be initialized")
+//             .jwt_issuer_uri
+//             .clone()
+//     }
 
-    #[inline(always)]
-    pub(crate) fn jwks() -> Option<JWKS> {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .jwks
-            .clone()
-    }
+//     #[inline(always)]
+//     pub(crate) fn jwks() -> Option<JWKS> {
+//         INSTANCE_CONFIG
+//             .get()
+//             .expect("config must be initialized")
+//             .jwks
+//             .clone()
+//     }
 
-    #[inline(always)]
-    pub(crate) fn jwt_audience() -> Option<String> {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .jwt_audience
-            .clone()
-    }
+//     #[inline(always)]
+//     pub(crate) fn jwt_audience() -> Option<String> {
+//         INSTANCE_CONFIG
+//             .get()
+//             .expect("config must be initialized")
+//             .jwt_audience
+//             .clone()
+//     }
 
-    #[inline(always)]
-    pub(crate) fn default_username() -> String {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .default_username
-            .clone()
-    }
+//     #[inline(always)]
+//     pub(crate) fn default_username() -> String {
+//         INSTANCE_CONFIG
+//             .get()
+//             .expect("config must be initialized")
+//             .default_username
+//             .clone()
+//     }
 
-    #[inline(always)]
-    pub(crate) fn force_default_username() -> bool {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .force_default_username
-    }
+//     #[inline(always)]
+//     pub(crate) fn force_default_username() -> bool {
+//         INSTANCE_CONFIG
+//             .get()
+//             .expect("config must be initialized")
+//             .force_default_username
+//     }
 
-    #[inline(always)]
-    pub(crate) fn db_params() -> DbParams {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .db_params
-            .clone()
-    }
+//     #[inline(always)]
+//     pub(crate) fn db_params() -> DbParams {
+//         INSTANCE_CONFIG
+//             .get()
+//             .expect("config must be initialized")
+//             .db_params
+//             .clone()
+//     }
 
-    #[inline(always)]
-    pub(crate) fn enclave_params() -> EnclaveParams {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .enclave_params
-            .clone()
-    }
+//     #[inline(always)]
+//     pub(crate) fn enclave_params() -> EnclaveParams {
+//         INSTANCE_CONFIG
+//             .get()
+//             .expect("config must be initialized")
+//             .enclave_params
+//             .clone()
+//     }
 
-    #[inline(always)]
-    pub(crate) fn hostname_port() -> String {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .hostname_port
-            .clone()
-    }
+//     #[inline(always)]
+//     pub(crate) fn hostname_port() -> String {
+//         INSTANCE_CONFIG
+//             .get()
+//             .expect("config must be initialized")
+//             .hostname_port
+//             .clone()
+//     }
 
-    #[inline(always)]
-    pub(crate) fn certbot() -> &'static Option<Arc<Mutex<Certbot>>> {
-        &INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .certbot
-    }
+//     #[inline(always)]
+//     pub(crate) fn certbot() -> &'static Option<Arc<Mutex<Certbot>>> {
+//         &INSTANCE_CONFIG
+//             .get()
+//             .expect("config must be initialized")
+//             .certbot
+//     }
 
-    #[inline(always)]
-    pub(crate) fn server_pkcs12() -> &'static Option<ParsedPkcs12_2> {
-        &INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .server_pkcs_12
-    }
+//     #[inline(always)]
+//     pub(crate) fn server_pkcs12() -> &'static Option<ParsedPkcs12_2> {
+//         &INSTANCE_CONFIG
+//             .get()
+//             .expect("config must be initialized")
+//             .server_pkcs_12
+//     }
 
-    #[inline(always)]
-    pub(crate) fn verify_cert() -> &'static Option<X509> {
-        &INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .verify_cert
-    }
-}
+//     #[inline(always)]
+//     pub(crate) fn verify_cert() -> &'static Option<X509> {
+//         &INSTANCE_CONFIG
+//             .get()
+//             .expect("config must be initialized")
+//             .verify_cert
+//     }
+// }

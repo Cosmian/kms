@@ -28,9 +28,8 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
-    init_config(&config).await?;
 
-    let kms = Arc::new(KMSServer::instantiate().await?);
+    let kms = Arc::new(KMSServer::instantiate(init_config(&config).await?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation

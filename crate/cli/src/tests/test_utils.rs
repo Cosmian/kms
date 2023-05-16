@@ -1,24 +1,29 @@
-#[cfg(not(feature = "staging"))]
-use std::io::{BufReader, Read};
-use std::{fs::File, io::BufWriter, path::PathBuf, process::Command};
+use std::{
+    fs::File,
+    io::{BufReader, BufWriter, Read},
+    path::PathBuf,
+    process::Command,
+    sync::mpsc,
+    thread,
+    time::Duration,
+};
 
+use actix_server::ServerHandle;
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
-use cosmian_kms_server::config::{
-    db::DBConfig, http::HTTPConfig, init_config, jwt_auth_config::JwtAuthConfig, Config,
+use cosmian_kms_server::{
+    config::{db::DBConfig, http::HTTPConfig, init_config, jwt_auth_config::JwtAuthConfig, Config},
+    result::KResult,
+    start_kms_server,
 };
 use cosmian_kms_utils::types::ExtraDatabaseParams;
-#[cfg(not(feature = "staging"))]
-use reqwest::Identity;
+use reqwest::{ClientBuilder, Identity};
 use tokio::sync::OnceCell;
-#[cfg(not(feature = "staging"))]
-use {cosmian_kms_server::start_kms_server, reqwest::ClientBuilder, std::thread};
 
-use super::{utils::extract_uids::extract_database_secret, CONF_PATH, PROG_NAME};
-#[cfg(not(feature = "staging"))]
-use crate::error::CliError;
+use super::{utils::extract_uids::extract_database_secret, PROG_NAME};
 use crate::{
     config::{CliConf, KMS_CLI_CONF_ENV},
+    error::CliError,
     tests::CONF_PATH_BAD_KEY,
 };
 
@@ -42,19 +47,29 @@ pub fn get_auth0_jwt_config() -> JwtAuthConfig {
 /// for N-1 tests.
 pub static ONCE: OnceCell<()> = OnceCell::const_new();
 
-#[cfg(not(feature = "staging"))]
-#[tokio::main]
-pub async fn start_test_server() {
-    start_kms_server().await.unwrap();
-}
+// #[tokio::main]
+// pub async fn start_test_server() {
+//     start_kms_server().await.unwrap();
+// }
 
 /// If staging feature is enabled, it relies on a remote server running in a enclave
 /// Otherwise it starts a local server
 pub async fn init_test_server() {
-    init_test_server_options(true, false, false).await
+    let _ = init_test_server_options(9998, true, false, false).await;
 }
-pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_client_cert: bool) {
+pub async fn init_test_server_options(
+    port: u16,
+    use_jwt_token: bool,
+    use_https: bool,
+    use_client_cert: bool,
+) -> Option<ServerHandler> {
     let _ = env_logger::builder().is_test(true).try_init();
+    let conf_path = if port == 9998 {
+        // this is to ensure that CONF_PATH is the same value
+        "/tmp/tmp.json".to_string()
+    } else {
+        format!("/tmp/kms_{port}.json")
+    };
     // Configure the serveur
     let config = Config {
         auth: if use_jwt_token {
@@ -69,6 +84,7 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
         http: if use_https {
             if use_client_cert {
                 HTTPConfig {
+                    port,
                     https_p12_file: Some(PathBuf::from(
                         "test_data/certificates/kmserver.cosmian.com.p12",
                     )),
@@ -78,6 +94,7 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
                 }
             } else {
                 HTTPConfig {
+                    port,
                     https_p12_file: Some(PathBuf::from(
                         "test_data/certificates/kmserver.cosmian.com.p12",
                     )),
@@ -86,11 +103,14 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
                 }
             }
         } else {
-            HTTPConfig::default()
+            HTTPConfig {
+                port,
+                ..Default::default()
+            }
         },
         ..Default::default()
     };
-    init_config(&config)
+    let shared_config = init_config(&config)
         .await
         .map_err(|e| format!("failed initializing the server config: {e}"))
         .unwrap();
@@ -98,9 +118,9 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
     // Read the conf. We will update it later by appending the secret token
     let mut cli_conf = CliConf {
         kms_server_url: if use_https {
-            "https://localhost:9998".to_string()
+            format!("https://0.0.0.0:{port}")
         } else {
-            "http://localhost:9998".to_string()
+            format!("http://0.0.0.0:{port}")
         },
         accept_invalid_certs: true,
         kms_access_token: if use_jwt_token {
@@ -120,81 +140,88 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
         },
         ..Default::default()
     };
-    //serde_json::from_reader(BufReader::new(file)).expect("cannot deserialize CLI cfg");
+    // Create a json
+    let file = File::create(conf_path.clone()).expect("Can't create CONF_PATH");
+    serde_json::to_writer(BufWriter::new(file), &cli_conf).expect("Can't write CONF_PATH");
 
-    println!("Using: {}", cli_conf.kms_server_url);
-
-    #[cfg(not(feature = "staging"))]
-    {
-        async fn fetch_version(cli_conf: &CliConf) -> Result<reqwest::Response, CliError> {
-            let builder = ClientBuilder::new();
-            // If a PKCS12 file is provided, use it to build the client
-            let builder = match &cli_conf.ssl_client_pkcs12_path {
-                Some(ssl_client_pkcs12) => {
-                    let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
-                    let mut pkcs12_bytes = vec![];
-                    pkcs12.read_to_end(&mut pkcs12_bytes)?;
-                    let pkcs12 = Identity::from_pkcs12_der(
-                        &pkcs12_bytes,
-                        cli_conf.ssl_client_pkcs12_password.as_deref().unwrap_or(""),
-                    )?;
-                    builder.identity(pkcs12)
-                }
-                None => builder,
-            };
-            let response = builder
-                .danger_accept_invalid_certs(true)
-                .build()
-                .unwrap()
-                .post(format!("{}/version", &cli_conf.kms_server_url))
-                .json("{}")
-                .send()
-                .await?;
-            Ok(response)
-        }
-
-        if fetch_version(&cli_conf).await.is_ok() {
-            // a server is already running, use that
-            println!("Using already running server");
-            return
-        }
-
-        // Start the server on a independent thread
-        thread::spawn(start_test_server);
-
-        // Depending on the running environment, the server could take a bit of time to start
-        // We try to query it with a dummy request until be sure it is started.
-        let mut retry = true;
-        let mut timeout = 5;
-        let mut waiting = 1;
-        while retry {
-            let result = fetch_version(&cli_conf).await;
-
-            if result.is_err() {
-                timeout -= 1;
-                retry = timeout >= 0;
-                if retry {
-                    println!("The server is not up yet, retrying in {waiting}s... ({result:?}) ",);
-                    thread::sleep(std::time::Duration::from_secs(waiting));
-                    waiting *= 2;
-                } else {
-                    println!("The server is still not up, stop trying");
-                    panic!("Can't start the kms server to run tests");
-                }
-            } else {
-                println!("The server is up!");
-                retry = false
+    async fn fetch_version(cli_conf: &CliConf) -> Result<reqwest::Response, CliError> {
+        let builder = ClientBuilder::new();
+        // If a PKCS12 file is provided, use it to build the client
+        let builder = match &cli_conf.ssl_client_pkcs12_path {
+            Some(ssl_client_pkcs12) => {
+                let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
+                let mut pkcs12_bytes = vec![];
+                pkcs12.read_to_end(&mut pkcs12_bytes)?;
+                let pkcs12 = Identity::from_pkcs12_der(
+                    &pkcs12_bytes,
+                    cli_conf.ssl_client_pkcs12_password.as_deref().unwrap_or(""),
+                )?;
+                builder.identity(pkcs12)
             }
+            None => builder,
+        };
+        let response = builder
+            .danger_accept_invalid_certs(true)
+            .build()
+            .unwrap()
+            .post(format!("{}/version", &cli_conf.kms_server_url))
+            .json("{}")
+            .send()
+            .await?;
+        Ok(response)
+    }
+
+    if fetch_version(&cli_conf).await.is_ok() {
+        // a server is already running, use that
+        println!("Using already running server");
+        return None
+    }
+
+    // Start the server on a independent thread
+    println!(
+        "Starting test server at URL: {} with server config {:?}",
+        cli_conf.kms_server_url, &config
+    );
+    let (tx, rx) = mpsc::channel::<ServerHandle>();
+    let tokio_handle = tokio::runtime::Handle::current();
+    let thread_handle =
+        thread::spawn(move || tokio_handle.block_on(start_kms_server(shared_config, Some(tx))));
+    println!("Waiting for server to start...");
+    let server_handle = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    println!("... got handle ...");
+
+    // Depending on the running environment, the server could take a bit of time to start
+    // We try to query it with a dummy request until be sure it is started.
+    let mut retry = true;
+    let mut timeout = 5;
+    let mut waiting = 1;
+    while retry {
+        println!(
+            "Checking if the server is up with config: {:?}...",
+            cli_conf
+        );
+        let result = fetch_version(&cli_conf).await;
+
+        if result.is_err() {
+            timeout -= 1;
+            retry = timeout >= 0;
+            if retry {
+                println!("The server is not up yet, retrying in {waiting}s... ({result:?}) ",);
+                thread::sleep(std::time::Duration::from_secs(waiting));
+                waiting *= 2;
+            } else {
+                println!("The server is still not up, stop trying");
+                panic!("Can't start the kms server to run tests");
+            }
+        } else {
+            println!("The server is up!");
+            retry = false
         }
     }
 
-    // Create a json
-    let file = File::create(CONF_PATH).expect("Can't create CONF_PATH");
-    serde_json::to_writer(BufWriter::new(file), &cli_conf).expect("Can't write CONF_PATH");
-
     // Configure a database and create the kms json file
     let mut cmd = Command::cargo_bin(PROG_NAME).expect("Can't execute new database command");
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, conf_path.clone());
     cmd.arg("new-database");
 
     let success = cmd.assert().success();
@@ -207,7 +234,7 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
 
     // Rewrite the conf with the correct database secret
     cli_conf.kms_database_secret = Some(database_secret.to_string());
-    let file = File::create(CONF_PATH).expect("Can't create CONF_PATH");
+    let file = File::create(conf_path.clone()).expect("Can't create CONF_PATH");
     serde_json::to_writer(BufWriter::new(file), &cli_conf).expect("Can't write CONF_PATH");
 
     // Generate a wrong token with valid group id
@@ -219,4 +246,22 @@ pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_
     cli_conf.kms_database_secret = Some(token);
     let file = File::create(CONF_PATH_BAD_KEY).expect("Can't create CONF_PATH_BAD_KEY");
     serde_json::to_writer(BufWriter::new(file), &cli_conf).expect("can't write CONF_PATH_BAD_KEY");
+
+    Some(ServerHandler {
+        server_handle,
+        thread_handle,
+    })
+}
+
+pub struct ServerHandler {
+    server_handle: ServerHandle,
+    thread_handle: thread::JoinHandle<KResult<()>>,
+}
+
+impl ServerHandler {
+    pub async fn stop(self) {
+        self.server_handle.stop(false).await;
+        self.thread_handle.join().unwrap().unwrap();
+        println!("Server stopped\n");
+    }
 }

@@ -34,8 +34,7 @@ async fn main() -> KResult<()> {
 
     // Instantiate a config object using the env variables and the args of the binary
     let conf = Config::parse();
-
-    init_config(&conf).await?;
+    let shared_config = init_config(&conf).await?;
 
     info!("Enabled features:");
     #[cfg(feature = "timeout")]
@@ -47,12 +46,12 @@ async fn main() -> KResult<()> {
     {
         warn!("This is a demo version, the server will stop in 3 months");
         let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(Box::pin(start_kms_server()), demo).await;
+        futures::future::select(Box::pin(start_kms_server(shared_config, None)), demo).await;
     }
 
     // Start the KMS
     #[cfg(not(feature = "timeout"))]
-    start_kms_server().await?;
+    start_kms_server(shared_config, None).await?;
 
     Ok(())
 }

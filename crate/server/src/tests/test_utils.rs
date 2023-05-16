@@ -12,8 +12,11 @@ use cosmian_kmip::kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTL
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
-    config::jwt_auth_config::JwtAuthConfig, middlewares::jwt_auth::JwtAuth, result::KResult,
-    routes::endpoint, KMSServer,
+    config::{init_config, jwt_auth_config::JwtAuthConfig, Config},
+    middlewares::jwt_auth::JwtAuth,
+    result::KResult,
+    routes::endpoint,
+    KMSServer,
 };
 
 // Test auth0 Config
@@ -33,15 +36,23 @@ pub static AUTH0_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjVV
 
 pub async fn test_app()
 -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
+    let config = Config {
+        auth: get_auth0_jwt_config(),
+        ..Default::default()
+    };
+    let shared_config = init_config(&config).await.unwrap();
+
+    let jwt_auth = JwtAuth::new(&shared_config);
+
     let kms_server = Arc::new(
-        KMSServer::instantiate()
+        KMSServer::instantiate(shared_config)
             .await
             .expect("cannot instantiate KMS server"),
     );
 
     test::init_service(
         App::new()
-            .wrap(JwtAuth)
+            .wrap(jwt_auth)
             .app_data(Data::new(kms_server.clone()))
             .service(endpoint::kmip)
             .service(endpoint::insert_access)

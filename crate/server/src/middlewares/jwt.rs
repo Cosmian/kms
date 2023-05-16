@@ -1,12 +1,14 @@
-use alcoholic_jwt::token_kid;
+use alcoholic_jwt::{token_kid, JWKS};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    config::SharedConfig,
-    error::KmsError,
-    kms_ensure,
-    result::{KResult, KResultHelper},
-};
+use crate::{error::KmsError, kms_ensure, result::KResult};
+
+#[derive(Clone)]
+pub struct JwtConfig {
+    pub jwt_issuer_uri: String,
+    pub jwks: JWKS,
+    pub jwt_audience: Option<String>,
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserClaim {
@@ -19,7 +21,7 @@ pub struct UserClaim {
 }
 
 /// Decode a json web token (JWT)
-pub fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> {
+pub fn decode_jwt(jwt_config: &JwtConfig, authorization_content: &str) -> KResult<UserClaim> {
     let bearer: Vec<&str> = authorization_content.splitn(2, ' ').collect();
     kms_ensure!(
         bearer.len() == 2 && bearer[0] == "Bearer",
@@ -34,20 +36,16 @@ pub fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> {
     );
     tracing::trace!("token {}", &token);
 
-    let jwt_issuer_uri = SharedConfig::jwt_issuer_uri()
-        .context("decode JWT token requested but JWT Auth is not enabled")?;
-    let jwks =
-        SharedConfig::jwks().context("decode JWT token requested but JWT Auth is not enabled")?;
-    let jwt_audience = SharedConfig::jwt_audience();
-
     let mut validations = vec![
-        alcoholic_jwt::Validation::Issuer(jwt_issuer_uri),
+        alcoholic_jwt::Validation::Issuer(jwt_config.jwt_issuer_uri.to_string()),
         alcoholic_jwt::Validation::SubjectPresent,
         #[cfg(not(feature = "insecure"))]
         alcoholic_jwt::Validation::NotExpired,
     ];
-    if let Some(jwt_audience) = jwt_audience {
-        validations.push(alcoholic_jwt::Validation::Audience(jwt_audience));
+    if let Some(jwt_audience) = &jwt_config.jwt_audience {
+        validations.push(alcoholic_jwt::Validation::Audience(
+            jwt_audience.to_string(),
+        ));
     }
 
     // If a JWKS contains multiple keys, the correct KID first
@@ -56,7 +54,8 @@ pub fn decode_jwt_new(authorization_content: &str) -> KResult<UserClaim> {
         .map_err(|_| KmsError::Unauthorized("Failed to decode token headers".to_string()))?
         .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_string()))?;
 
-    let jwk = jwks
+    let jwk = jwt_config
+        .jwks
         .find(&kid)
         .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_string()))?;
 

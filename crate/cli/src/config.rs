@@ -75,7 +75,7 @@ impl Default for CliConf {
     fn default() -> Self {
         Self {
             accept_invalid_certs: false,
-            kms_server_url: "http://localhost:9998".to_string(),
+            kms_server_url: "http://0.0.0.0:9998".to_string(),
             kms_access_token: None,
             kms_database_secret: None,
             ssl_client_pkcs12_path: None,

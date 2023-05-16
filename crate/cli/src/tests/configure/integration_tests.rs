@@ -32,9 +32,6 @@ pub async fn test_secrets_bad() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    #[cfg(feature = "staging")]
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms_bad_secret-staging.bad"); // Token can't be deserialized
-    #[cfg(not(feature = "staging"))]
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms_bad_secret.bad"); // Token can't be deserialized
 
     cmd.arg(SUB_COMMAND).args(vec![
@@ -55,9 +52,6 @@ pub async fn test_secrets_group_id_bad() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    #[cfg(feature = "staging")]
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms_bad_group_id-staging.bad");
-    #[cfg(not(feature = "staging"))]
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms_bad_group_id.bad");
 
     cmd.arg(SUB_COMMAND).args(vec![

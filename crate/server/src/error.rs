@@ -1,4 +1,6 @@
-use actix_web::error::QueryPayloadError;
+use std::sync::mpsc::SendError;
+
+use actix_web::{dev::ServerHandle, error::QueryPayloadError};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
@@ -141,6 +143,12 @@ impl From<KmipError> for KmsError {
             KmipError::NotSupported(s) => Self::NotSupported(s),
             KmipError::KmipError(r, s) => Self::KmipError(r, s),
         }
+    }
+}
+
+impl From<SendError<ServerHandle>> for KmsError {
+    fn from(e: SendError<ServerHandle>) -> Self {
+        Self::ServerError(format!("Failed to to send the server handle: {}", e))
     }
 }
 

@@ -820,6 +820,8 @@ dependencies = [
 name = "cosmian_kms_cli"
 version = "4.4.0"
 dependencies = [
+ "actix-rt",
+ "actix-server",
  "assert_cmd",
  "base64 0.21.0",
  "base64-url",

@@ -31,6 +31,8 @@ tokio = { version = "1.25", features = ["full"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
+actix-rt = { version = "2.0", default-features = false }
+actix-server = { version = "2.0", default-features = false }
 assert_cmd = "2.0"
 # cosmian_crypto_core = { workspace = true }
 cosmian_kms_client = { path = "../client", default-features = false }

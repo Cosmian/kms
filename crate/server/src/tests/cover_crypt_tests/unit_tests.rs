@@ -36,9 +36,8 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
-    init_config(&config).await?;
 
-    let kms = Arc::new(KMSServer::instantiate().await?);
+    let kms = Arc::new(KMSServer::instantiate(init_config(&config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     //
@@ -212,9 +211,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
-    init_config(&config).await?;
 
-    let kms = Arc::new(KMSServer::instantiate().await?);
+    let kms = Arc::new(KMSServer::instantiate(init_config(&config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
     //
@@ -421,9 +419,8 @@ async fn test_abe_json_access() -> KResult<()> {
         auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
-    init_config(&config).await?;
 
-    let kms = Arc::new(KMSServer::instantiate().await?);
+    let kms = Arc::new(KMSServer::instantiate(init_config(&config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     //
     let mut policy = Policy::new(10);
@@ -526,9 +523,8 @@ async fn test_import_decrypt() -> KResult<()> {
         auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
-    init_config(&config).await?;
 
-    let kms = Arc::new(KMSServer::instantiate().await?);
+    let kms = Arc::new(KMSServer::instantiate(init_config(&config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     let mut policy = Policy::new(10);

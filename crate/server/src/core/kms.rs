@@ -3,7 +3,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
+use actix_web::{HttpMessage, HttpRequest};
+use base64::{
+    engine::general_purpose::{self, STANDARD as b64},
+    Engine as _,
+};
 use cloudproof::reexport::crypto_core::{reexport::rand_core::RngCore, CsRng};
 use cosmian_kmip::kmip::{
     kmip_operations::{
@@ -19,6 +23,7 @@ use cosmian_kms_utils::types::{
 };
 use hex::encode;
 use libsgx::quote::{get_quote, hash, prepare_report_data};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::{
@@ -27,12 +32,14 @@ use crate::{
     database::Database,
     error::KmsError,
     kms_bail,
+    middlewares::{jwt_auth::JwtAuthClaim, ssl_auth::PeerCommonName},
     result::KResult,
 };
 
 /// A Simple Key Management System that partially implements KMIP 2.1:
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
 pub struct KMS {
+    pub(crate) config: SharedConfig,
     pub(crate) rng: Arc<Mutex<CsRng>>,
     pub(crate) db: Box<dyn Database + Sync + Send>,
 }
@@ -47,13 +54,13 @@ impl KMS {
     ///  - the server is not running TLS
     ///  - the server server certificate cannot be read
     pub fn get_server_x509_certificate(&self) -> KResult<Option<String>> {
-        if let Some(certbot) = SharedConfig::certbot() {
+        if let Some(certbot) = &self.config.certbot {
             let cert = certbot.lock().expect("can't lock certificate mutex");
             let (_, certificate) = cert.get_raw_cert()?;
             return Ok(Some(certificate.to_string()))
         }
 
-        if let Some(p12) = SharedConfig::server_pkcs12() {
+        if let Some(p12) = &self.config.server_pkcs_12 {
             let pem = String::from_utf8(
                 p12.cert
                     .as_ref()
@@ -75,7 +82,7 @@ impl KMS {
     /// Returns a `KResult` with a `Error` if the enclave public key file cannot be read
     pub fn get_enclave_public_key(&self) -> KResult<String> {
         Ok(fs::read_to_string(
-            SharedConfig::enclave_params().public_key_path,
+            &self.config.enclave_params.public_key_path,
         )?)
     }
 
@@ -84,7 +91,7 @@ impl KMS {
     /// This service is not available if the server is not running inside an enclave
     pub fn get_manifest(&self) -> KResult<String> {
         Ok(fs::read_to_string(
-            SharedConfig::enclave_params().manifest_path,
+            &self.config.enclave_params.manifest_path,
         )?)
     }
 
@@ -99,7 +106,7 @@ impl KMS {
     /// Returns an error if the KMS server does not allow this operation or if an error occurs while
     /// generating the new database or key.
     pub async fn add_new_database(&self) -> KResult<String> {
-        if let DbParams::SqliteEnc(_) = SharedConfig::db_params() {
+        if let DbParams::SqliteEnc(_) = self.config.db_params {
             // Generate a new group id
             let uid: u128 = loop {
                 let uid = Uuid::new_v4().to_u128_le();
@@ -622,5 +629,72 @@ impl KMS {
         let list = self.db.list_shared_objects(owner, params).await?;
         let ids = list.into_iter().map(ObjectSharedResponse::from).collect();
         Ok(ids)
+    }
+
+    /// Get the user from the request depending on the authentication method
+    /// The user is encoded in the JWT `Authorization` header
+    /// If the header is not present, the user is extracted from the client certificate
+    /// If the client certificate is not present, the user is extracted from the configuration file
+    pub fn get_user(&self, req_http: HttpRequest) -> KResult<String> {
+        let default_username = self.config.default_username.clone();
+
+        if self.config.force_default_username {
+            info!(
+                "Authenticated using forced default user: {}",
+                default_username
+            );
+            return Ok(default_username)
+        }
+        // if there is a JWT token, use it in priority
+        let user = match req_http.extensions().get::<JwtAuthClaim>() {
+            Some(claim) => claim.email.clone(),
+            None => {
+                // check for client certificate authentication
+                match req_http.extensions().get::<PeerCommonName>() {
+                    Some(claim) => claim.common_name.clone(),
+                    // if no client certificate, use the default username
+                    None => default_username,
+                }
+            }
+        };
+        info!("Authenticated user: {}", user);
+        Ok(user)
+    }
+
+    /// Get the database secrets from the request
+    /// The secrets are encoded in the `KmsDatabaseSecret` header
+    pub fn get_database_secrets(
+        &self,
+        req_http: &HttpRequest,
+    ) -> KResult<Option<ExtraDatabaseParams>> {
+        Ok(match self.config.db_params {
+            DbParams::SqliteEnc(_) => {
+                let secrets = req_http
+                    .headers()
+                    .get("KmsDatabaseSecret")
+                    .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
+                    .ok_or_else(|| {
+                        KmsError::Unauthorized(
+                            "Missing KmsDatabaseSecret header in the query".to_owned(),
+                        )
+                    })?;
+
+                let secrets = general_purpose::STANDARD.decode(secrets).map_err(|e| {
+                    KmsError::Unauthorized(format!(
+                        "KmsDatabaseSecret header cannot be decoded: {e}"
+                    ))
+                })?;
+
+                Some(
+                    serde_json::from_slice::<ExtraDatabaseParams>(&secrets).map_err(|e| {
+                        KmsError::Unauthorized(format!(
+                            "KmsDatabaseSecret header cannot be read: {}",
+                            e
+                        ))
+                    })?,
+                )
+            }
+            _ => None,
+        })
     }
 }
