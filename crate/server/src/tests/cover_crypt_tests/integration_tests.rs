@@ -19,7 +19,6 @@ use cosmian_kms_utils::crypto::{
 #[cfg(test)]
 use crate::tests::test_utils;
 use crate::{
-    config::{init_config, Config},
     log_utils,
     result::{KResult, KResultHelper},
 };
@@ -27,12 +26,6 @@ use crate::{
 #[actix_web::test]
 async fn integration_tests() -> KResult<()> {
     log_utils::log_init("cosmian_kms_server=trace");
-
-    let config = Config {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
-    init_config(&config).await?;
 
     let app = test_utils::test_app().await;
 

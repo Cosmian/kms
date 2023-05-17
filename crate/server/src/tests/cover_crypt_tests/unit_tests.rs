@@ -23,7 +23,7 @@ use uuid::Uuid;
 #[cfg(test)]
 use crate::tests::test_utils;
 use crate::{
-    config::{init_config, Config},
+    config::{ClapConfig, ServerConfig},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -32,12 +32,12 @@ use crate::{
 
 #[actix_rt::test]
 async fn test_cover_crypt_keys() -> KResult<()> {
-    let config = Config {
+    let config = ClapConfig {
         auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
 
-    let kms = Arc::new(KMSServer::instantiate(init_config(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     //
@@ -207,12 +207,12 @@ pub fn access_policy_serialization() -> KResult<()> {
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // cosmian_kms_server::log_utils::log_init("debug,cosmian_kms::kmip_server=trace");
 
-    let config = Config {
+    let config = ClapConfig {
         auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
 
-    let kms = Arc::new(KMSServer::instantiate(init_config(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
     //
@@ -415,12 +415,12 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_abe_json_access() -> KResult<()> {
-    let config = Config {
+    let config = ClapConfig {
         auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
 
-    let kms = Arc::new(KMSServer::instantiate(init_config(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     //
     let mut policy = Policy::new(10);
@@ -519,12 +519,12 @@ async fn test_abe_json_access() -> KResult<()> {
 async fn test_import_decrypt() -> KResult<()> {
     // cosmian_kms_server::log_utils::log_init("debug,cosmian_kms::kmip_server=trace");
 
-    let config = Config {
+    let config = ClapConfig {
         auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
     };
 
-    let kms = Arc::new(KMSServer::instantiate(init_config(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     let mut policy = Policy::new(10);

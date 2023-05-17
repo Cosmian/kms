@@ -14,7 +14,7 @@ use actix_web::{
     web::{Data, JsonConfig, PayloadConfig},
     App, HttpServer,
 };
-use config::SharedConfig;
+use config::ServerConfig;
 use libsgx::utils::is_running_inside_enclave;
 use middlewares::{
     jwt_auth::JwtAuth,
@@ -143,7 +143,7 @@ pub fn prepare_server(
 ///
 /// This function returns an error if any of the sub-functions fail to start the server
 pub async fn start_kms_server(
-    shared_config: SharedConfig,
+    shared_config: ServerConfig,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     if shared_config.certbot.is_some() {
@@ -172,7 +172,7 @@ pub async fn start_kms_server(
 /// - The KMS server cannot be instantiated or prepared
 /// - The server fails to run
 async fn start_plain_http_kms_server(
-    shared_config: SharedConfig,
+    shared_config: ServerConfig,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // Instantiate and prepare the KMS server
@@ -206,7 +206,7 @@ async fn start_plain_http_kms_server(
 /// - The KMS server cannot be instantiated or prepared
 /// - The server fails to run
 async fn start_https_kms_server(
-    shared_config: SharedConfig,
+    shared_config: ServerConfig,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     let p12 = shared_config
@@ -251,7 +251,7 @@ async fn start_https_kms_server(
 
 /// Start and https server with the ability to renew its certificates
 async fn start_auto_renew_https(
-    shared_config: SharedConfig,
+    shared_config: ServerConfig,
     certbot: &Arc<Mutex<Certbot>>,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
@@ -346,7 +346,7 @@ async fn start_auto_renew_https(
 }
 
 async fn start_certbot_https_kms_server(
-    shared_config: SharedConfig,
+    shared_config: ServerConfig,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // Before starting any servers, check the status of our SSL certificates

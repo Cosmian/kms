@@ -17,7 +17,7 @@ use futures::{
 use tracing::{debug, error, trace};
 
 use crate::{
-    config::SharedConfig,
+    config::ServerConfig,
     middlewares::jwt::{decode_jwt, JwtConfig},
 };
 
@@ -27,7 +27,7 @@ pub struct JwtAuth {
 }
 
 impl JwtAuth {
-    pub fn new(config: &SharedConfig) -> Self {
+    pub fn new(config: &ServerConfig) -> Self {
         if let Some(jwt_issuer_uri) = &config.jwt_issuer_uri {
             if let Some(jwks) = &config.jwks {
                 return JwtAuth {

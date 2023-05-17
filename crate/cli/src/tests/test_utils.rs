@@ -12,7 +12,9 @@ use actix_server::ServerHandle;
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cosmian_kms_server::{
-    config::{db::DBConfig, http::HTTPConfig, init_config, jwt_auth_config::JwtAuthConfig, Config},
+    config::{
+        db::DBConfig, http::HTTPConfig, jwt_auth_config::JwtAuthConfig, ClapConfig, ServerConfig,
+    },
     result::KResult,
     start_kms_server,
 };
@@ -71,7 +73,7 @@ pub async fn init_test_server_options(
         format!("/tmp/kms_{port}.json")
     };
     // Configure the serveur
-    let config = Config {
+    let clap_config = ClapConfig {
         auth: if use_jwt_token {
             get_auth0_jwt_config()
         } else {
@@ -110,7 +112,7 @@ pub async fn init_test_server_options(
         },
         ..Default::default()
     };
-    let shared_config = init_config(&config)
+    let server_config = ServerConfig::try_from(&clap_config)
         .await
         .map_err(|e| format!("failed initializing the server config: {e}"))
         .unwrap();
@@ -180,12 +182,12 @@ pub async fn init_test_server_options(
     // Start the server on a independent thread
     println!(
         "Starting test server at URL: {} with server config {:?}",
-        cli_conf.kms_server_url, &config
+        cli_conf.kms_server_url, &clap_config
     );
     let (tx, rx) = mpsc::channel::<ServerHandle>();
     let tokio_handle = tokio::runtime::Handle::current();
     let thread_handle =
-        thread::spawn(move || tokio_handle.block_on(start_kms_server(shared_config, Some(tx))));
+        thread::spawn(move || tokio_handle.block_on(start_kms_server(server_config, Some(tx))));
     println!("Waiting for server to start...");
     let server_handle = rx.recv_timeout(Duration::from_secs(10)).unwrap();
     println!("... got handle ...");

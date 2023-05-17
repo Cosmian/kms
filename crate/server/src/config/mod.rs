@@ -30,7 +30,7 @@ use crate::{
 
 #[derive(Parser, Default)]
 #[clap(version, about, long_about = None)]
-pub struct Config {
+pub struct ClapConfig {
     #[clap(flatten)]
     pub auth: JwtAuthConfig,
 
@@ -59,7 +59,7 @@ pub struct Config {
     pub force_default_username: bool,
 }
 
-impl fmt::Debug for Config {
+impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("Config");
         let x = x.field("db", &self.db);
@@ -107,7 +107,7 @@ pub struct EnclaveParams {
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
 /// shared between all threads.
-pub struct SharedConfig {
+pub struct ServerConfig {
     // The JWT issuer URI if Auth is enabled
     pub jwt_issuer_uri: Option<String>,
 
@@ -142,45 +142,46 @@ pub struct SharedConfig {
     pub verify_cert: Option<X509>,
 }
 
-/// Initialize the configuration and set the singleton instance
-pub async fn init_config(conf: &Config) -> KResult<SharedConfig> {
-    info!("initializing with configuration: {conf:#?}");
+impl ServerConfig {
+    pub async fn try_from(conf: &ClapConfig) -> KResult<Self> {
+        info!("initializing the server with user configuration: {conf:#?}");
 
-    // Initialize the workspace
-    let workspace = conf.workspace.init()?;
+        // Initialize the workspace
+        let workspace = conf.workspace.init()?;
 
-    // Initialize the HTTP server
-    let (hostname_port, server_pkcs_12, verify_cert) = conf.http.init()?;
+        // Initialize the HTTP server
+        let (hostname_port, server_pkcs_12, verify_cert) = conf.http.init()?;
 
-    info!("http: ");
+        info!("http: ");
 
-    let shared_conf = SharedConfig {
-        jwks: conf.auth.fetch_jwks().await?,
-        jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
-        jwt_audience: conf.auth.jwt_audience.clone(),
-        db_params: conf.db.init(&workspace)?,
-        hostname_port,
-        enclave_params: conf.enclave.init(&workspace)?,
-        certbot: if conf.certbot_https.use_certbot {
-            Some(Arc::new(Mutex::new(HttpsCertbotConfig::init(
-                &conf.certbot_https,
-                &workspace,
-            )?)))
-        } else {
-            None
-        },
-        default_username: conf.default_username.clone(),
-        force_default_username: conf.force_default_username,
-        server_pkcs_12,
-        verify_cert,
-    };
+        let server_conf = ServerConfig {
+            jwks: conf.auth.fetch_jwks().await?,
+            jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
+            jwt_audience: conf.auth.jwt_audience.clone(),
+            db_params: conf.db.init(&workspace)?,
+            hostname_port,
+            enclave_params: conf.enclave.init(&workspace)?,
+            certbot: if conf.certbot_https.use_certbot {
+                Some(Arc::new(Mutex::new(HttpsCertbotConfig::init(
+                    &conf.certbot_https,
+                    &workspace,
+                )?)))
+            } else {
+                None
+            },
+            default_username: conf.default_username.clone(),
+            force_default_username: conf.force_default_username,
+            server_pkcs_12,
+            verify_cert,
+        };
 
-    debug!("generated shared conf: {shared_conf:#?}");
+        debug!("generated server conf: {server_conf:#?}");
 
-    Ok(shared_conf)
+        Ok(server_conf)
+    }
 }
 
-impl fmt::Debug for SharedConfig {
+impl fmt::Debug for ServerConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("SharedConfig");
         let x = x
@@ -222,100 +223,3 @@ impl fmt::Debug for SharedConfig {
         x.finish()
     }
 }
-
-// impl SharedConfig {
-//     #[inline(always)]
-//     pub(crate) fn jwt_issuer_uri() -> Option<String> {
-//         INSTANCE_CONFIG
-//             .get()
-//             .expect("config must be initialized")
-//             .jwt_issuer_uri
-//             .clone()
-//     }
-
-//     #[inline(always)]
-//     pub(crate) fn jwks() -> Option<JWKS> {
-//         INSTANCE_CONFIG
-//             .get()
-//             .expect("config must be initialized")
-//             .jwks
-//             .clone()
-//     }
-
-//     #[inline(always)]
-//     pub(crate) fn jwt_audience() -> Option<String> {
-//         INSTANCE_CONFIG
-//             .get()
-//             .expect("config must be initialized")
-//             .jwt_audience
-//             .clone()
-//     }
-
-//     #[inline(always)]
-//     pub(crate) fn default_username() -> String {
-//         INSTANCE_CONFIG
-//             .get()
-//             .expect("config must be initialized")
-//             .default_username
-//             .clone()
-//     }
-
-//     #[inline(always)]
-//     pub(crate) fn force_default_username() -> bool {
-//         INSTANCE_CONFIG
-//             .get()
-//             .expect("config must be initialized")
-//             .force_default_username
-//     }
-
-//     #[inline(always)]
-//     pub(crate) fn db_params() -> DbParams {
-//         INSTANCE_CONFIG
-//             .get()
-//             .expect("config must be initialized")
-//             .db_params
-//             .clone()
-//     }
-
-//     #[inline(always)]
-//     pub(crate) fn enclave_params() -> EnclaveParams {
-//         INSTANCE_CONFIG
-//             .get()
-//             .expect("config must be initialized")
-//             .enclave_params
-//             .clone()
-//     }
-
-//     #[inline(always)]
-//     pub(crate) fn hostname_port() -> String {
-//         INSTANCE_CONFIG
-//             .get()
-//             .expect("config must be initialized")
-//             .hostname_port
-//             .clone()
-//     }
-
-//     #[inline(always)]
-//     pub(crate) fn certbot() -> &'static Option<Arc<Mutex<Certbot>>> {
-//         &INSTANCE_CONFIG
-//             .get()
-//             .expect("config must be initialized")
-//             .certbot
-//     }
-
-//     #[inline(always)]
-//     pub(crate) fn server_pkcs12() -> &'static Option<ParsedPkcs12_2> {
-//         &INSTANCE_CONFIG
-//             .get()
-//             .expect("config must be initialized")
-//             .server_pkcs_12
-//     }
-
-//     #[inline(always)]
-//     pub(crate) fn verify_cert() -> &'static Option<X509> {
-//         &INSTANCE_CONFIG
-//             .get()
-//             .expect("config must be initialized")
-//             .verify_cert
-//     }
-// }

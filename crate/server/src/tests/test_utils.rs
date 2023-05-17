@@ -12,7 +12,7 @@ use cosmian_kmip::kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTL
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{
-    config::{init_config, jwt_auth_config::JwtAuthConfig, Config},
+    config::{jwt_auth_config::JwtAuthConfig, ClapConfig, ServerConfig},
     middlewares::jwt_auth::JwtAuth,
     result::KResult,
     routes::endpoint,
@@ -36,16 +36,16 @@ pub static AUTH0_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjVV
 
 pub async fn test_app()
 -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
-    let config = Config {
+    let clap_config = ClapConfig {
         auth: get_auth0_jwt_config(),
         ..Default::default()
     };
-    let shared_config = init_config(&config).await.unwrap();
+    let server_config = ServerConfig::try_from(&clap_config).await.unwrap();
 
-    let jwt_auth = JwtAuth::new(&shared_config);
+    let jwt_auth = JwtAuth::new(&server_config);
 
     let kms_server = Arc::new(
-        KMSServer::instantiate(shared_config)
+        KMSServer::instantiate(server_config)
             .await
             .expect("cannot instantiate KMS server"),
     );

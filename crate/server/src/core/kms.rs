@@ -27,7 +27,7 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::{
-    config::{DbParams, SharedConfig},
+    config::{DbParams, ServerConfig},
     core::operations,
     database::Database,
     error::KmsError,
@@ -39,7 +39,7 @@ use crate::{
 /// A Simple Key Management System that partially implements KMIP 2.1:
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
 pub struct KMS {
-    pub(crate) config: SharedConfig,
+    pub(crate) config: ServerConfig,
     pub(crate) rng: Arc<Mutex<CsRng>>,
     pub(crate) db: Box<dyn Database + Sync + Send>,
 }

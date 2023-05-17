@@ -1,5 +1,5 @@
 use cosmian_kms_server::{
-    config::{init_config, Config},
+    config::{ClapConfig, ServerConfig},
     result::KResult,
     start_kms_server,
 };
@@ -33,14 +33,13 @@ async fn main() -> KResult<()> {
     env_logger::init();
 
     // Instantiate a config object using the env variables and the args of the binary
-    let conf = Config::parse();
-    let shared_config = init_config(&conf).await?;
+    let clap_config = ClapConfig::parse();
+    let server_config = ServerConfig::try_from(&clap_config).await?;
 
-    info!("Enabled features:");
     #[cfg(feature = "timeout")]
-    info!("- Timeout");
+    info!("Feature Timeout enabled");
     #[cfg(feature = "insecure")]
-    info!("- Insecure");
+    info!("Feature Insecure enabled");
 
     #[cfg(feature = "timeout")]
     {
@@ -51,7 +50,7 @@ async fn main() -> KResult<()> {
 
     // Start the KMS
     #[cfg(not(feature = "timeout"))]
-    start_kms_server(shared_config, None).await?;
+    start_kms_server(server_config, None).await?;
 
     Ok(())
 }
