@@ -4,6 +4,7 @@ use cosmian_kms_server::{
     start_kms_server,
 };
 use dotenvy::dotenv;
+#[cfg(any(feature = "timeout", feature = "insecure"))]
 use tracing::info;
 #[cfg(feature = "timeout")]
 use tracing::warn;
@@ -45,7 +46,7 @@ async fn main() -> KResult<()> {
     {
         warn!("This is a demo version, the server will stop in 3 months");
         let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(Box::pin(start_kms_server(shared_config, None)), demo).await;
+        futures::future::select(Box::pin(start_kms_server(server_config, None)), demo).await;
     }
 
     // Start the KMS
