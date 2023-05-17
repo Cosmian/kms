@@ -14,15 +14,15 @@ use crate::{
 };
 
 #[tokio::test]
-pub async fn test_configure() -> Result<(), CliError> {
+pub async fn test_new_database() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg("new-database");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("New database configured"));
+    cmd.assert().success().stdout(predicate::str::contains(
+        "A new encrypted database is configured",
+    ));
 
     Ok(())
 }

@@ -915,7 +915,7 @@ mod tests {
     #[actix_rt::test]
     #[cfg_attr(feature = "sqlcipher", ignore)]
     pub async fn test_json_access() -> KResult<()> {
-        log_init("debug");
+        log_init("info");
         let mut rng = CsRng::from_entropy();
         let owner = "eyJhbGciOiJSUzI1Ni";
         let dir = tempdir()?;

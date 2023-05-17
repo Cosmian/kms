@@ -214,7 +214,7 @@ fn test_serialization_deserialization() {
 
 #[test]
 fn test_ser_int() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -234,7 +234,7 @@ fn test_ser_int() {
 
 #[test]
 fn test_ser_array() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -253,7 +253,7 @@ fn test_ser_array() {
 
 #[test]
 fn test_ser_big_int() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -285,7 +285,7 @@ fn test_ser_big_int() {
 
 #[test]
 fn test_ser_aes_key() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
@@ -294,7 +294,7 @@ fn test_ser_aes_key() {
 
 #[test]
 fn test_des_int() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
@@ -329,7 +329,7 @@ fn test_des_int() {
 
 #[test]
 fn test_des_array() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
@@ -360,7 +360,7 @@ fn test_des_array() {
 
 #[test]
 fn test_des_enum() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
 
     #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "PascalCase")]
@@ -387,7 +387,7 @@ fn test_des_enum() {
 
 #[test]
 fn test_key_material_vec_deserialization() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     let bytes = vec![
         116, 104, 105, 115, 95, 105, 115, 95, 97, 95, 116, 101, 115, 116,
     ];
@@ -405,7 +405,7 @@ fn test_key_material_vec_deserialization() {
 
 #[test]
 fn test_key_material_big_int_deserialization() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     let ttlv = TTLV {
         tag: "KeyMaterial".to_string(),
         value: TTLValue::Structure(vec![
@@ -456,7 +456,7 @@ fn test_big_int_deserialization() {
 
 #[test]
 fn test_des_aes_key() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     let key_bytes: &[u8] = b"this_is_a_test";
 
     let json = serde_json::to_value(aes_key(key_bytes)).unwrap();
@@ -480,7 +480,7 @@ fn test_des_aes_key() {
 
 #[test]
 fn test_aes_key_block() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_block(key_bytes)).unwrap();
@@ -509,7 +509,7 @@ fn test_aes_key_value() {
 
 #[test]
 fn test_aes_key_material() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     let key_bytes: &[u8] = b"this_is_a_test";
     let ttlv = aes_key_material_ttlv(key_bytes);
     let rec: KeyMaterial = from_ttlv(&ttlv).unwrap();
@@ -519,7 +519,7 @@ fn test_aes_key_material() {
 #[test]
 #[allow(clippy::large_enum_variant)]
 fn test_some_attributes() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
     #[serde(untagged)]
     enum Wrapper {
@@ -547,7 +547,7 @@ fn test_some_attributes() {
 
 #[test]
 fn test_java_import_request() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     let ir_java = r#"
 {
   "tag" : "Import",
