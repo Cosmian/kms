@@ -9,7 +9,7 @@ KMIP is a massive specification, and support is limited to the requirements of C
 
 ### Example API calls
 
-Querying the KMS server is normally done using the [ckms](./cli/cli.md) command line interface or one of the [Cloudproof libraries](https://docs.cosmian.com/cloudproof_encryption/application_level_encryption/).
+Querying the KMS server is normally done using the [ckms](../cli/cli.md) command line interface or one of the [Cloudproof libraries](https://docs.cosmian.com/cloudproof_encryption/application_level_encryption/).
 
 The following KMIP TTLV JSON examples are provided for reference only.
 

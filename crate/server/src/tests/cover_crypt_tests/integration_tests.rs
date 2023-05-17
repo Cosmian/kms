@@ -25,7 +25,7 @@ use crate::{
 
 #[actix_web::test]
 async fn integration_tests() -> KResult<()> {
-    log_utils::log_init("cosmian_kms_server=trace");
+    log_utils::log_init("cosmian_kms_server=info");
 
     let app = test_utils::test_app().await;
 

@@ -23,8 +23,8 @@ async fn main() -> KResult<()> {
     if option_env!("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
-            "info,cosmian=debug,cosmian_kms_server=debug, \
-             actix_web=debug,sqlx::query=error,mysql=debug",
+            "info,cosmian=info,cosmian_kms_server=info, \
+             actix_web=info,sqlx::query=error,mysql=info",
         );
     }
 

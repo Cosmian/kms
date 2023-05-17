@@ -16,13 +16,13 @@ impl NewDatabaseAction {
             .with_context(|| "Can't execute the query on the kms server")?;
 
         println!(
-            "New database configured. Use the following token (by adding it in your KMS_CLI_CONF) \
-             for further uses: {token}"
+            "The encrypted database is configured. Use the following token (by adding it to the \
+             'kms_database_secret' entry of your KMS_CLI_CONF ): {token}"
         );
 
         println!(
-            "You need to remember it. The KMS does not! If you loose it, your KMS database can't \
-             be recovered"
+            "Do not loose it: there is not other copy. It is impossible to recover the database \
+             without the token."
         );
 
         Ok(())

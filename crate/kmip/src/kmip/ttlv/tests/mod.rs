@@ -661,7 +661,7 @@ pub fn test_attributes_with_links() {
 
 #[test]
 pub fn test_import_correct_object() {
-    log_init("debug,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
 
     // This file was migrated from GPSW without touching the keys (just changing the `CryptographicAlgorithm` and `KeyFormatType`)
     // It cannot be used to do crypto stuff, it's just for testing the serialization/deserialisation of TTLV.

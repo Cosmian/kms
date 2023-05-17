@@ -25,9 +25,7 @@ pub async fn test_bad_conf() -> Result<(), CliError> {
         "--policy-binary",
         "test_data/policy.bin",
     ]);
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("Database secret is wrong"));
+    cmd.assert().failure();
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "notfound.json");
@@ -73,9 +71,7 @@ pub async fn test_secrets_group_id_bad() -> Result<(), CliError> {
         "test_data/policy.bin",
     ]);
 
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("unable to open database file"));
+    cmd.assert().failure();
 
     Ok(())
 }

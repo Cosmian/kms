@@ -243,7 +243,7 @@ pub async fn init_test_server_options(
     let secrets = b64.decode(database_secret).expect("Can't decode token");
     let mut secrets =
         serde_json::from_slice::<ExtraDatabaseParams>(&secrets).expect("Can't deserialized token");
-    secrets.key = String::from("bad");
+    secrets.key = [42_u8; 32]; // bad secret
     let token = b64.encode(serde_json::to_string(&secrets).expect("Can't encode token"));
     cli_conf.kms_database_secret = Some(token);
     let file = File::create(CONF_PATH_BAD_KEY).expect("Can't create CONF_PATH_BAD_KEY");

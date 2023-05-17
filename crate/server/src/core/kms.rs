@@ -21,7 +21,6 @@ use cosmian_kmip::kmip::{
 use cosmian_kms_utils::types::{
     Access, ExtraDatabaseParams, ObjectOwnedResponse, ObjectSharedResponse, UserAccessResponse,
 };
-use hex::encode;
 use libsgx::quote::{get_quote, hash, prepare_report_data};
 use tracing::info;
 use uuid::Uuid;
@@ -126,10 +125,7 @@ impl KMS {
             }
 
             // Encode ExtraDatabaseParams
-            let params = ExtraDatabaseParams {
-                group_id: uid,
-                key: encode(key),
-            };
+            let params = ExtraDatabaseParams { group_id: uid, key };
 
             let token = b64.encode(serde_json::to_vec(&params)?);
 

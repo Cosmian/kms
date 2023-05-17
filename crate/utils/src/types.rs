@@ -32,7 +32,7 @@ pub enum ObjectOperationTypes {
 #[derive(Deserialize, Serialize, Clone)]
 pub struct ExtraDatabaseParams {
     pub group_id: u128,
-    pub key: String,
+    pub key: [u8; 32],
 }
 
 use std::{fmt, str::FromStr};

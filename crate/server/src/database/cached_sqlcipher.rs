@@ -45,10 +45,14 @@ impl CachedSqlCipher {
         })
     }
 
-    async fn instantiate_group_database(&self, group_id: u128, key: &str) -> KResult<Pool<Sqlite>> {
+    async fn instantiate_group_database(
+        &self,
+        group_id: u128,
+        key: &[u8; 32],
+    ) -> KResult<Pool<Sqlite>> {
         let path = self.filename(group_id);
         let options = SqliteConnectOptions::new()
-            .pragma("key", format!("\"x'{key}'\""))
+            .pragma("key", format!("\"x'{}'\"", hex::encode(key)))
             .pragma("journal_mode", "OFF")
             .filename(path)
             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
@@ -105,7 +109,7 @@ impl CachedSqlCipher {
         self.cache.release(group_id)
     }
 
-    async fn pre_query(&self, group_id: u128, key: &str) -> KResult<Arc<Pool<Sqlite>>> {
+    async fn pre_query(&self, group_id: u128, key: &[u8; 32]) -> KResult<Arc<Pool<Sqlite>>> {
         if !self.cache.exists(group_id) {
             let pool = self.instantiate_group_database(group_id, key).await?;
             Self::create_tables(&pool).await?;
@@ -403,7 +407,7 @@ mod tests {
         let db = CachedSqlCipher::instantiate(&file_path).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
-            key: String::from("password"),
+            key: [3_u8; 32],
         };
 
         let mut symmetric_key = vec![0; 32];
@@ -580,7 +584,7 @@ mod tests {
         let db = CachedSqlCipher::instantiate(&file_path).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
-            key: String::from("password"),
+            key: [1_u8; 32],
         };
 
         let uid = Uuid::new_v4().to_string();
@@ -653,7 +657,7 @@ mod tests {
     #[actix_rt::test]
     #[ignore = "Waiting for SqlCipher crate upgrade to handle JSON operators"]
     pub async fn test_json_access() -> KResult<()> {
-        log_init("debug");
+        log_init("info");
         let mut rng = CsRng::from_entropy();
         let owner = "eyJhbGciOiJSUzI1Ni";
         let dir = tempdir()?;
@@ -665,7 +669,7 @@ mod tests {
         let db = CachedSqlCipher::instantiate(&file_path).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
-            key: String::from("password"),
+            key: [2_u8; 32],
         };
 
         let mut symmetric_key = vec![0; 32];

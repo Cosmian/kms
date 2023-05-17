@@ -205,8 +205,6 @@ pub fn access_policy_serialization() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
-    // cosmian_kms_server::log_utils::log_init("debug,cosmian_kms::kmip_server=trace");
-
     let config = ClapConfig {
         auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
@@ -517,8 +515,6 @@ async fn test_abe_json_access() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_import_decrypt() -> KResult<()> {
-    // cosmian_kms_server::log_utils::log_init("debug,cosmian_kms::kmip_server=trace");
-
     let config = ClapConfig {
         auth: test_utils::get_auth0_jwt_config(),
         ..Default::default()
@@ -600,7 +596,7 @@ async fn test_import_decrypt() -> KResult<()> {
     assert_eq!(ObjectType::PrivateKey, gr_sk.object_type);
 
     // ...and reimport it under custom uid (won't work)
-    let custom_sk_uid = "cc sk_custom_id_fail".to_string();
+    let custom_sk_uid = uuid::Uuid::new_v4().to_string();
     let request = Import {
         unique_identifier: custom_sk_uid.clone(),
         object_type: ObjectType::PrivateKey,
@@ -634,7 +630,7 @@ async fn test_import_decrypt() -> KResult<()> {
     assert!(dr.is_err());
 
     // ...and reimport it under custom uid (will work)
-    let custom_sk_uid = "cc sk_custom_id_ok".to_string();
+    let custom_sk_uid = uuid::Uuid::new_v4().to_string();
     let request = Import {
         unique_identifier: custom_sk_uid.clone(),
         object_type: ObjectType::PrivateKey,

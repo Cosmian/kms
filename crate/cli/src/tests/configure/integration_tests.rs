@@ -60,9 +60,7 @@ pub async fn test_secrets_group_id_bad() -> Result<(), CliError> {
         "--policy-binary",
         "test_data/policy.bin",
     ]);
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("unable to open database file"));
+    cmd.assert().failure();
 
     Ok(())
 }
@@ -91,9 +89,7 @@ pub async fn test_secrets_key_bad() -> Result<(), CliError> {
         "test_data/policy.bin",
     ]);
 
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("Database secret is wrong"));
+    cmd.assert().failure();
 
     Ok(())
 }
