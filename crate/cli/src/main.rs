@@ -28,8 +28,8 @@ enum CliCommands {
     Sym(SymmetricCommands),
     #[command(subcommand)]
     Permission(PermissionAction),
-    Trust(SgxAction),
     NewDatabase(NewDatabaseAction),
+    Trust(SgxAction),
 }
 
 #[tokio::main]

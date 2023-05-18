@@ -1,12 +1,11 @@
 
-#### High performance
 
-The Cosmian Key Management System (KMS) is a high-performance server application written in [**Rust**](https://www.rust-lang.org/) that provides an API to store and manage keys and secrets used with Cosmian cryptographic stacks. 
+The Cosmian Key Management System (KMS) is a high-performance server application written in [**Rust**](https://www.rust-lang.org/) that provides a KMIP REST API to store and manage keys and secrets used with Cosmian cryptographic stacks. 
 
 
 #### Open source
 
-The server's code is [open-sourced](https://github.com/Cosmian/kms) on Github](https://github.com/Cosmian/kms) so that it can be audited and improved by the community.
+The server's code is open-sourced on [Github](https://github.com/Cosmian/kms) so that it can be audited and improved by the community.
 
 
 #### KMIP 2.1 API
@@ -58,6 +57,7 @@ The KMS has an easy-to-use command line interface client for many operating syst
 
 
 #### Integrated with Cloudproof libraries
+
 To build the next generation of privacy-by-design applications with end-to-end encryption, the KMS server is integrated with the [**Cloudproof**](https://docs.cosmian.com/cloudproof_encryption/use_cases_benefits/) libraries to deliver keys and secrets to the client-side cryptographic stacks or perform delegated encryption and decryption.
 
 The libraries are available in many languages, including Javascript, Java, Dart, and Python. Check their [documentation](https://docs.cosmian.com/cloudproof_encryption/application_level_encryption/) for details.

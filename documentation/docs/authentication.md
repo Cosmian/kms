@@ -1,6 +1,7 @@
 
-The KMS server is started in authenticated or non-authenticated mode (default).
+The KMS server can start in authenticated or non-authenticated mode (the default).
 
+## Determining the user
 
 In non-authenticated mode, the server maps all requests to the default user, configured using the `--default-username` option (or the `KMS_DEFAULT_USERNAME` environment variable). This user will default to `admin` if not set.
 

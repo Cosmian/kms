@@ -1,5 +1,5 @@
 ---
-site_name: Secure KMS
+site_name: Cosmian Key Management System
 site_url: https://docs.cosmian.com/
 copyright: © Copyright 2018-2022 Cosmian. All rights reserved
 dev_addr: localhost:8003
@@ -53,7 +53,8 @@ nav:
   - Authenticating to the server: authentication.md
   - Authorizing and sharing objects: authorization.md
   - Using the cKMS command line interface: 
-      - Getting started: cli/cli.md
+      - Installing and configuring: cli/cli.md
+      - Using the CLI: cli/main_commands.md
       - Covercrypt: 
         - Commands: cli/covercrypt/covercrypt.md
         - Keys management: cli/covercrypt/keys.md
