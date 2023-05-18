@@ -3,8 +3,20 @@ use cosmian_kms_client::KmsRestClient;
 
 use crate::error::{result::CliResultHelper, CliError};
 
-/// Initialize a new database on the KMS [enclave mode only]
+/// Initialize a new client-secret encrypted database and return the secret.
+///
+/// This secret is only displayed once and is not stored anywhere on the server.
+/// To use the encrypte database, the secret must be set in `kms_database_secret`
+/// property of the CLI `kms.json` configuration file.
+///
+/// This action will not return the secret of the last created database,
+/// and it will not overwrite the last created database.
+///
+/// Passing the correct secret "auto-selects" the correct encrypted database:
+/// multiple encrypted databases can be used concurrently on the same KMS server.
+///
 #[derive(Parser, Debug)]
+#[clap(verbatim_doc_comment)]
 pub struct NewDatabaseAction;
 
 impl NewDatabaseAction {

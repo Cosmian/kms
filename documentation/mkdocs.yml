@@ -47,7 +47,9 @@ extra_javascript:
   - javascripts/extra.js
 nav:
   - Getting started: index.md
-  - Installing and running: installing.md
+  - Enabling TLS: tls.md
+  - Deploying in single server mode: single_server_mode.md
+  - Deploying in replicated mode: replicated_mode.md
   - Authenticating to the server: authentication.md
   - Authorizing and sharing objects: authorization.md
   - Using the cKMS command line interface: 
@@ -64,8 +66,7 @@ nav:
         - Keys management: cli/sym/keys.md
       - Permissions: cli/permissions.md
       - Enclaves: cli/enclaves.md
-
-  - KMIP 2.1:
+  - KMIP 2.1 support:
       - Specifications: kmip_2_1/index.md
       - Objects: kmip_2_1/objects.md
       - Attributes: kmip_2_1/attributes.md
