@@ -49,8 +49,8 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Ec(action) => action.process(&conf).await?,
         CliCommands::Sym(action) => action.process(&conf).await?,
         CliCommands::Permission(action) => action.process(&conf).await?,
-        CliCommands::Trust(action) => action.process(&conf).await?,
         CliCommands::NewDatabase(action) => action.process(&conf).await?,
+        CliCommands::Trust(action) => action.process(&conf).await?,
     };
 
     Ok(())

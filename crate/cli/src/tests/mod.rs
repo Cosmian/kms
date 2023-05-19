@@ -1,7 +1,7 @@
 mod auth_tests;
-mod configure;
 mod cover_crypt;
 mod elliptic_curve;
+mod new_database;
 mod permission;
 mod sgx;
 mod shared;
@@ -10,6 +10,3 @@ pub mod test_utils;
 pub mod utils;
 
 const PROG_NAME: &str = "ckms";
-
-const CONF_PATH: &str = "/tmp/tmp.json";
-const CONF_PATH_BAD_KEY: &str = "/tmp/kms_bad_key.bad";

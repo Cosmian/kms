@@ -16,36 +16,28 @@ fn run_cli_command() {
 }
 
 #[tokio::test]
-pub async fn test_plain_no_authentication() -> Result<(), CliError> {
+pub async fn test_various_authentication() -> Result<(), CliError> {
     // let us not make other test cases fail
     const PORT: u16 = 9999;
     // plaintext no auth
-    let server_handle = init_test_server_options(PORT, false, false, false)
-        .await
-        .unwrap();
+    let ctx = init_test_server_options(PORT, false, false, false).await;
     run_cli_command();
-    server_handle.stop().await;
+    ctx.stop_server().await;
 
     // plaintext token auth
-    let server_handle = init_test_server_options(PORT, true, false, false)
-        .await
-        .unwrap();
+    let ctx = init_test_server_options(PORT, true, false, false).await;
     run_cli_command();
-    server_handle.stop().await;
-
-    // tls client cert auth
-    let server_handle = init_test_server_options(PORT, false, true, true)
-        .await
-        .unwrap();
-    run_cli_command();
-    server_handle.stop().await;
+    ctx.stop_server().await;
 
     // tls token auth
-    let server_handle = init_test_server_options(PORT, true, true, false)
-        .await
-        .unwrap();
+    let ctx = init_test_server_options(PORT, true, true, false).await;
     run_cli_command();
-    server_handle.stop().await;
+    ctx.stop_server().await;
+
+    // tls client cert auth
+    let ctx = init_test_server_options(PORT, false, true, true).await;
+    run_cli_command();
+    ctx.stop_server().await;
 
     Ok(())
 }

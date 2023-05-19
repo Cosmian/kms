@@ -14,11 +14,12 @@ use crate::{
         symmetric::create_key::create_symmetric_key,
         test_utils::{init_test_server, ONCE},
         utils::extract_uids::extract_imported_key_id,
-        CONF_PATH, PROG_NAME,
+        PROG_NAME,
     },
 };
 
-pub async fn import(
+pub fn import(
+    cli_conf_path: &str,
     sub_command: &str,
     key_file: &str,
     key_id: Option<String>,
@@ -26,7 +27,7 @@ pub async fn import(
     replace_existing: bool,
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     let mut args: Vec<String> = vec!["keys".to_owned(), "import".to_owned(), key_file.to_owned()];
     if let Some(key_id) = key_id {
         args.push(key_id);
@@ -53,33 +54,40 @@ pub async fn import(
 
 #[tokio::test]
 pub async fn test_import_cover_crypt() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
-    let uid: String = import("cc", "test_data/ttlv_public_key.json", None, false, false).await?;
+    let uid: String = import(
+        &ctx.cli_conf_path,
+        "cc",
+        "test_data/ttlv_public_key.json",
+        None,
+        false,
+        false,
+    )?;
     assert_eq!(uid.len(), 36);
 
     // reimporting the same key  with the same id should fail
     assert!(
         import(
+            &ctx.cli_conf_path,
             "cc",
             "test_data/ttlv_public_key.json",
             Some(uid.clone()),
             false,
             false,
         )
-        .await
         .is_err()
     );
 
     //...unless we force it with replace_existing
     let uid_: String = import(
+        &ctx.cli_conf_path,
         "cc",
         "test_data/ttlv_public_key.json",
         Some(uid.clone()),
         false,
         true,
-    )
-    .await?;
+    )?;
     assert_eq!(uid_, uid);
 
     Ok(())
@@ -87,34 +95,51 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_generate_export_import() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
     // Generate
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
+        &ctx.cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
-    )
-    .await?;
-    export_import_test("cc", &private_key_id, CryptographicAlgorithm::CoverCrypt).await?;
+    )?;
+    export_import_test(
+        &ctx.cli_conf_path,
+        "cc",
+        &private_key_id,
+        CryptographicAlgorithm::CoverCrypt,
+    )?;
 
     // generate a new key pair
-    let (private_key_id, _public_key_id) = create_ec_key_pair().await?;
-    export_import_test("ec", &private_key_id, CryptographicAlgorithm::ECDH).await?;
+    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.cli_conf_path)?;
+    export_import_test(
+        &ctx.cli_conf_path,
+        "ec",
+        &private_key_id,
+        CryptographicAlgorithm::ECDH,
+    )?;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(None, None, None).await?;
-    export_import_test("sym", &key_id, CryptographicAlgorithm::AES).await?;
+    let key_id = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+    export_import_test(
+        &ctx.cli_conf_path,
+        "sym",
+        &key_id,
+        CryptographicAlgorithm::AES,
+    )?;
 
     Ok(())
 }
 
-pub async fn export_import_test(
+pub fn export_import_test(
+    cli_conf_path: &str,
     sub_command: &str,
     private_key_id: &str,
     algorithm: CryptographicAlgorithm,
 ) -> Result<(), CliError> {
     // Export
     export(
+        cli_conf_path,
         sub_command,
         private_key_id,
         "/tmp/output.export",
@@ -122,14 +147,21 @@ pub async fn export_import_test(
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
     let object = read_key_from_file(&PathBuf::from("/tmp/output.export"))?;
-    let key_bytes = object.key_block()?.key_bytes()?.to_owned();
+    let key_bytes = object.key_block()?.key_bytes()?;
 
     // import and re-export
-    let uid: String = import(sub_command, "/tmp/output.export", None, false, false).await?;
+    let uid: String = import(
+        cli_conf_path,
+        sub_command,
+        "/tmp/output.export",
+        None,
+        false,
+        false,
+    )?;
     export(
+        cli_conf_path,
         sub_command,
         &uid,
         "/tmp/output.export",
@@ -137,8 +169,7 @@ pub async fn export_import_test(
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
     let object = read_key_from_file(&PathBuf::from("/tmp/output.export"))?;
     assert_eq!(object.key_block()?.key_bytes()?, key_bytes);
     assert_eq!(object.key_block()?.cryptographic_algorithm, algorithm);

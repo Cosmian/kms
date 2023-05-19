@@ -15,11 +15,13 @@ use crate::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         symmetric::create_key::create_symmetric_key,
         test_utils::{init_test_server, ONCE},
-        CONF_PATH, PROG_NAME,
+        PROG_NAME,
     },
 };
 
-pub async fn export(
+#[allow(clippy::too_many_arguments)]
+pub fn export(
+    cli_conf_path: &str,
     sub_command: &str,
     key_id: &str,
     key_file: &str,
@@ -46,7 +48,7 @@ pub async fn export(
         args.push("--allow-revoked".to_owned());
     }
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.arg(sub_command).args(args);
     let output = cmd.output()?;
     if output.status.success() {
@@ -63,16 +65,17 @@ pub async fn test_export_cover_crypt() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
+        &ctx.cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
-    )
-    .await?;
+    )?;
     // Export
     export(
+        &ctx.cli_conf_path,
         "cc",
         &master_private_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -80,9 +83,9 @@ pub async fn test_export_cover_crypt() -> Result<(), CliError> {
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
     export(
+        &ctx.cli_conf_path,
         "cc",
         &master_public_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -90,16 +93,16 @@ pub async fn test_export_cover_crypt() -> Result<(), CliError> {
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
 
     // generate a user key
     let user_key_id = create_user_decryption_key(
+        &ctx.cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
-    )
-    .await?;
+    )?;
     export(
+        &ctx.cli_conf_path,
         "cc",
         &user_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -107,8 +110,7 @@ pub async fn test_export_cover_crypt() -> Result<(), CliError> {
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
 
     Ok(())
 }
@@ -119,12 +121,13 @@ pub async fn test_export_ec() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a new key pair
-    let (private_key_id, public_key_id) = create_ec_key_pair().await?;
+    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.cli_conf_path)?;
     // Export
     export(
+        &ctx.cli_conf_path,
         "ec",
         &private_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -132,9 +135,9 @@ pub async fn test_export_ec() -> Result<(), CliError> {
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
     export(
+        &ctx.cli_conf_path,
         "ec",
         &public_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -142,8 +145,7 @@ pub async fn test_export_ec() -> Result<(), CliError> {
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
 
     Ok(())
 }
@@ -154,12 +156,13 @@ pub async fn test_export_sym() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(None, None, None).await?;
+    let key_id = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
     // Export
     export(
+        &ctx.cli_conf_path,
         "sym",
         &key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -167,8 +170,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
 
     Ok(())
 }
@@ -179,12 +181,13 @@ pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(None, None, None).await?;
+    let key_id = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
     // Export
     export(
+        &ctx.cli_conf_path,
         "sym",
         &key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -192,8 +195,7 @@ pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
         false,
         None,
         true,
-    )
-    .await?;
+    )?;
 
     Ok(())
 }
@@ -204,10 +206,11 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
     // key does not exist
     export(
+        &ctx.cli_conf_path,
         "cc",
         "does_not_exist",
         tmp_path.join("output.export").to_str().unwrap(),
@@ -216,19 +219,19 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
         None,
         false,
     )
-    .await
     .err()
     .unwrap();
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
+        &ctx.cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
-    )
-    .await?;
+    )?;
 
     // Export to non existing dir
     export(
+        &ctx.cli_conf_path,
         "cc",
         &master_private_key_id,
         "/does_not_exist/output.export",
@@ -237,7 +240,6 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
         None,
         false,
     )
-    .await
     .err()
     .unwrap();
 
@@ -250,16 +252,17 @@ pub async fn test_export_bytes_cover_crypt() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
+        &ctx.cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
-    )
-    .await?;
+    )?;
     // Export
     export(
+        &ctx.cli_conf_path,
         "cc",
         &master_private_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -267,15 +270,15 @@ pub async fn test_export_bytes_cover_crypt() -> Result<(), CliError> {
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
 
     // read the bytes from the exported file
     let object = read_key_from_file(&tmp_path.join("output.export"))?;
-    let key_bytes = object.key_block()?.key_bytes()?.to_owned();
+    let key_bytes = object.key_block()?.key_bytes()?;
 
     // Export the bytes only
     export(
+        &ctx.cli_conf_path,
         "cc",
         &master_private_key_id,
         tmp_path.join("output.export.bytes").to_str().unwrap(),
@@ -283,8 +286,7 @@ pub async fn test_export_bytes_cover_crypt() -> Result<(), CliError> {
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
 
     assert_eq!(key_bytes, bytes);
@@ -298,12 +300,13 @@ pub async fn test_export_bytes_ec() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a new key pair
-    let (private_key_id, _public_key_id) = create_ec_key_pair().await?;
+    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.cli_conf_path)?;
     // Export
     export(
+        &ctx.cli_conf_path,
         "ec",
         &private_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -311,15 +314,15 @@ pub async fn test_export_bytes_ec() -> Result<(), CliError> {
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
 
     // read the bytes from the exported file
     let object = read_key_from_file(&tmp_path.join("output.export"))?;
-    let key_bytes = object.key_block()?.key_bytes()?.to_owned();
+    let key_bytes = object.key_block()?.key_bytes()?;
 
     // Export the bytes only
     export(
+        &ctx.cli_conf_path,
         "ec",
         &private_key_id,
         tmp_path.join("output.export.bytes").to_str().unwrap(),
@@ -327,8 +330,7 @@ pub async fn test_export_bytes_ec() -> Result<(), CliError> {
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
 
     assert_eq!(key_bytes, bytes);
@@ -342,12 +344,13 @@ pub async fn test_export_bytes_sym() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(None, None, None).await?;
+    let key_id = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
     // Export
     export(
+        &ctx.cli_conf_path,
         "sym",
         &key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -355,15 +358,15 @@ pub async fn test_export_bytes_sym() -> Result<(), CliError> {
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
 
     // read the bytes from the exported file
     let object = read_key_from_file(&tmp_path.join("output.export"))?;
-    let key_bytes = object.key_block()?.key_bytes()?.to_owned();
+    let key_bytes = object.key_block()?.key_bytes()?;
 
     // Export the bytes only
     export(
+        &ctx.cli_conf_path,
         "sym",
         &key_id,
         tmp_path.join("output.export.bytes").to_str().unwrap(),
@@ -371,8 +374,7 @@ pub async fn test_export_bytes_sym() -> Result<(), CliError> {
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
 
     assert_eq!(key_bytes, bytes);

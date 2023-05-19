@@ -10,26 +10,26 @@ use crate::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         permission::SUB_COMMAND,
         test_utils::{init_test_server, ONCE},
-        CONF_PATH, PROG_NAME,
+        PROG_NAME,
     },
 };
 
-async fn gen_object() -> Result<String, CliError> {
+fn gen_object(cli_conf_path: &str) -> Result<String, CliError> {
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
+        cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
-    )
-    .await?;
+    )?;
     Ok(master_private_key_id)
 }
 
 #[tokio::test]
 pub async fn test_add() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
-    let object_id = gen_object().await?;
+    let ctx = ONCE.get_or_init(init_test_server).await;
+    let object_id = gen_object(&ctx.cli_conf_path)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "add",
         object_id.as_str(),
@@ -43,7 +43,7 @@ pub async fn test_add() -> Result<(), CliError> {
     ));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec!["list", object_id.as_str()]);
     cmd.assert()
         .success()
@@ -54,12 +54,12 @@ pub async fn test_add() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_add_error() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
     // Bad operation
-    let object_id = gen_object().await?;
+    let object_id = gen_object(&ctx.cli_conf_path)?;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "add",
         object_id.as_str(),
@@ -74,7 +74,7 @@ pub async fn test_add_error() -> Result<(), CliError> {
 
     // Bad object id
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "add",
         "bad-object-id",
@@ -89,7 +89,7 @@ pub async fn test_add_error() -> Result<(), CliError> {
 
     // User_id = owner_id
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "add",
         object_id.as_str(),
@@ -107,11 +107,11 @@ pub async fn test_add_error() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_remove() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
-    let object_id = gen_object().await?;
+    let ctx = ONCE.get_or_init(init_test_server).await;
+    let object_id = gen_object(&ctx.cli_conf_path)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "add",
         object_id.as_str(),
@@ -123,7 +123,7 @@ pub async fn test_remove() -> Result<(), CliError> {
     cmd.assert().success();
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "remove",
         object_id.as_str(),
@@ -137,7 +137,7 @@ pub async fn test_remove() -> Result<(), CliError> {
     ));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec!["list", object_id.as_str()]);
     cmd.assert()
         .success()
@@ -148,11 +148,11 @@ pub async fn test_remove() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_remove_error() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
-    let object_id = gen_object().await?;
+    let ctx = ONCE.get_or_init(init_test_server).await;
+    let object_id = gen_object(&ctx.cli_conf_path)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "add",
         object_id.as_str(),
@@ -164,9 +164,9 @@ pub async fn test_remove_error() -> Result<(), CliError> {
     cmd.assert().success();
 
     // Bad operation
-    let object_id = gen_object().await?;
+    let object_id = gen_object(&ctx.cli_conf_path)?;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "remove",
         object_id.as_str(),
@@ -181,7 +181,7 @@ pub async fn test_remove_error() -> Result<(), CliError> {
 
     // Bad object id
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "remove",
         "bad-object-id",
@@ -196,7 +196,7 @@ pub async fn test_remove_error() -> Result<(), CliError> {
 
     // User_id = owner_id
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "remove",
         object_id.as_str(),
@@ -214,11 +214,11 @@ pub async fn test_remove_error() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_list_error() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
     // Bad object_id
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec!["list", "bad_object_id"]);
     cmd.assert().failure().stderr(predicate::str::contains(
         "Object with uid `bad_object_id` is not owned by owner `tech@cosmian.com`",
@@ -229,12 +229,12 @@ pub async fn test_list_error() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_owned() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
-    let object_id = gen_object().await?;
+    let object_id = gen_object(&ctx.cli_conf_path)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
     cmd.assert()
         .success()

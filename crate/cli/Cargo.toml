@@ -42,3 +42,4 @@ predicates = "2.1"
 regex = { version = "1.7", default-features = false }
 reqwest = { workspace = true }
 tempfile = "3.2"
+tracing = { version = "0.1" }

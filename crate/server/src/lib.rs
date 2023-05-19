@@ -130,31 +130,36 @@ pub fn prepare_server(
     })
 }
 
-/// Start the KMS server using the specified configuration
+/// Starts the Key Management System (KMS) server based on the provided configuration.
 ///
-/// This function will start either a plain HTTP, an HTTPS with PKCS#12, or an HTTPS with certbot server
-/// depending on the config settings.
+/// The server is started using one of three methods:
+/// 1. Plain HTTP,
+/// 2. HTTPS with PKCS#12,
+/// 3. HTTPS with certbot.
+///
+/// The method used depends on the server settings specified in the `ServerConfig` instance provided.
 ///
 /// # Arguments
 ///
-/// * `conf` - A reference to the Config struct that contains the server settings
+/// * `server_config` - An instance of `ServerConfig` that contains the settings for the server.
+/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
 ///
 /// # Errors
 ///
-/// This function returns an error if any of the sub-functions fail to start the server
+/// This function will return an error if any of the server starting methods fails.
 pub async fn start_kms_server(
-    shared_config: ServerConfig,
+    server_config: ServerConfig,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
-    if shared_config.certbot.is_some() {
+    if server_config.certbot.is_some() {
         // Start an HTTPS server with certbot
-        start_certbot_https_kms_server(shared_config, server_handle_transmitter).await
-    } else if shared_config.server_pkcs_12.is_some() {
+        start_certbot_https_kms_server(server_config, server_handle_transmitter).await
+    } else if server_config.server_pkcs_12.is_some() {
         // Start an HTTPS server with PKCS#12
-        start_https_kms_server(shared_config, server_handle_transmitter).await
+        start_https_kms_server(server_config, server_handle_transmitter).await
     } else {
         // Start a plain HTTP server
-        start_plain_http_kms_server(shared_config, server_handle_transmitter).await
+        start_plain_http_kms_server(server_config, server_handle_transmitter).await
     }
 }
 
@@ -164,7 +169,8 @@ pub async fn start_kms_server(
 ///
 /// # Arguments
 ///
-/// * `conf` - A reference to the Config struct that contains the server settings
+/// * `server_config` - An instance of `ServerConfig` that contains the settings for the server.
+/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
 ///
 /// # Errors
 ///
@@ -194,7 +200,8 @@ async fn start_plain_http_kms_server(
 ///
 /// # Arguments
 ///
-/// * `conf` - A reference to the Config struct that contains the server settings
+/// * `server_config` - An instance of `ServerConfig` that contains the settings for the server.
+/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
 ///
 /// # Errors
 ///

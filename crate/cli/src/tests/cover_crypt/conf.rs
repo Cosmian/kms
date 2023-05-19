@@ -8,17 +8,18 @@ use crate::{
     error::CliError,
     tests::{
         cover_crypt::SUB_COMMAND,
-        test_utils::{init_test_server, ONCE},
-        CONF_PATH_BAD_KEY, PROG_NAME,
+        test_utils::{generate_invalid_conf, init_test_server, ONCE},
+        PROG_NAME,
     },
 };
 
 #[tokio::test]
 pub async fn test_bad_conf() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
+    let invalid_conf_path = generate_invalid_conf(&ctx.cli_conf);
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH_BAD_KEY);
+    cmd.env(KMS_CLI_CONF_ENV, invalid_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "keys",
         "create-master-key-pair",

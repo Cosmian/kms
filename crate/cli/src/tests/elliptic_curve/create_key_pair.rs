@@ -9,13 +9,13 @@ use crate::{
     tests::{
         test_utils::{init_test_server, ONCE},
         utils::extract_uids::{extract_private_key, extract_public_key},
-        CONF_PATH, PROG_NAME,
+        PROG_NAME,
     },
 };
 
-pub async fn create_ec_key_pair() -> Result<(String, String), CliError> {
+pub fn create_ec_key_pair(cli_conf_path: &str) -> Result<(String, String), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec!["keys", "create"]);
 
     let output = cmd.output()?;
@@ -42,7 +42,7 @@ pub async fn create_ec_key_pair() -> Result<(String, String), CliError> {
 #[tokio::test]
 pub async fn test_create_key_pair() -> Result<(), CliError> {
     // from specs
-    ONCE.get_or_init(init_test_server).await;
-    create_ec_key_pair().await?;
+    let ctx = ONCE.get_or_init(init_test_server).await;
+    create_ec_key_pair(&ctx.cli_conf_path)?;
     Ok(())
 }

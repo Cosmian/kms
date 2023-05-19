@@ -53,7 +53,7 @@ fn not(b: &bool) -> bool {
     !*b
 }
 
-#[derive(Serialize, Deserialize, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
 pub struct CliConf {
     // accept_invalid_certs is useful if the cli needs to connect to an HTTPS KMS server
     // running an invalid or unsecure SSL certificate

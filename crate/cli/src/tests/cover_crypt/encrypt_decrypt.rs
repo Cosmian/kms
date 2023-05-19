@@ -14,12 +14,13 @@ use crate::{
             user_decryption_keys::create_user_decryption_key, SUB_COMMAND,
         },
         test_utils::{init_test_server, ONCE},
-        CONF_PATH, PROG_NAME,
+        PROG_NAME,
     },
 };
 
 /// Encrypts a file using the given public key and access policy.
 pub fn encrypt(
+    cli_conf_path: &str,
     input_file: &str,
     public_key_id: &str,
     access_policy: &str,
@@ -27,7 +28,7 @@ pub fn encrypt(
     authentication_data: Option<&str>,
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     let mut args = vec!["encrypt", input_file, public_key_id, access_policy];
     if let Some(output_file) = output_file {
         args.push("-o");
@@ -46,13 +47,14 @@ pub fn encrypt(
 
 /// Decrypt a file using the given private key
 pub fn decrypt(
+    cli_conf_path: &str,
     input_file: &str,
     private_key_id: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     let mut args = vec!["decrypt", input_file, private_key_id];
     if let Some(output_file) = output_file {
         args.push("-o");
@@ -74,7 +76,7 @@ pub fn decrypt(
 
 #[tokio::test]
 async fn test_encrypt_decrypt() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -87,12 +89,13 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
     assert!(!output_file.exists());
 
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
+        &ctx.cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
-    )
-    .await?;
+    )?;
 
     encrypt(
+        &ctx.cli_conf_path,
         input_file.to_str().unwrap(),
         &master_public_key_id,
         "Department::MKG && Security Level::Confidential",
@@ -102,13 +105,14 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
 
     // create a user decryption key
     let user_ok_key_id = create_user_decryption_key(
+        &ctx.cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
-    )
-    .await?;
+    )?;
 
     // the user key should be able to decrypt the file
     decrypt(
+        &ctx.cli_conf_path,
         output_file.to_str().unwrap(),
         &user_ok_key_id,
         Some(recovered_file.to_str().unwrap()),
@@ -122,12 +126,13 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
 
     // this user key should not be able to decrypt the file
     let user_ko_key_id = create_user_decryption_key(
+        &ctx.cli_conf_path,
         &master_private_key_id,
         "Department::FIN && Security Level::Top Secret",
-    )
-    .await?;
+    )?;
     assert!(
         decrypt(
+            &ctx.cli_conf_path,
             output_file.to_str().unwrap(),
             &user_ko_key_id,
             Some(recovered_file.to_str().unwrap()),
