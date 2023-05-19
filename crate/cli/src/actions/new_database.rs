@@ -3,7 +3,7 @@ use cosmian_kms_client::KmsRestClient;
 
 use crate::error::{result::CliResultHelper, CliError};
 
-/// Initialize a new client-secret encrypted database and return the secret.
+/// Initialize a new client-secret encrypted database and return the secret
 ///
 /// This secret is only displayed once and is not stored anywhere on the server.
 /// To use the encrypted database, the secret must be set in the `kms_database_secret`

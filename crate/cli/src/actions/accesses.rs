@@ -4,22 +4,22 @@ use cosmian_kms_utils::types::{Access, ObjectOperationTypes};
 
 use crate::error::{result::CliResultHelper, CliError};
 
-/// Manage the permission of objects.
+/// Manage the users' access rights to the cryptographic objects
 #[derive(Parser, Debug)]
-pub enum PermissionAction {
-    /// Remove an access authorization for an object to a user
-    Remove(RemovePermission),
-    /// Add an access authorization for an object to a user
-    Add(AddPermission),
-    /// List granted access authorizations for an object
-    List(ListPermissions),
+pub enum AccessesAction {
+    /// Remove another user access right to an object
+    Remove(RemoveAccess),
+    /// Add another user an access right to an object
+    Add(AddAccess),
+    /// List access rights to an object
+    List(ListAccesses),
     /// List objects owned by the current user
     Owned(ListOwnedObjects),
-    /// List objects shared for the current user
+    /// List objects shared to the current user
     Shared(ListSharedObjects),
 }
 
-impl PermissionAction {
+impl AccessesAction {
     pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         match self {
             Self::Add(action) => action.run(client_connector).await?,
@@ -35,7 +35,7 @@ impl PermissionAction {
 
 /// Add a new permission to an object for the current user.
 #[derive(Parser, Debug)]
-pub struct AddPermission {
+pub struct AddAccess {
     /// The object unique identifier stored in the KMS
     #[clap(required = true)]
     object_uid: String,
@@ -49,7 +49,7 @@ pub struct AddPermission {
     operation: ObjectOperationTypes,
 }
 
-impl AddPermission {
+impl AddAccess {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let access = Access {
             unique_identifier: Some(self.object_uid.clone()),
@@ -70,7 +70,7 @@ impl AddPermission {
 
 /// Remove a permission to an object for the current user.
 #[derive(Parser, Debug)]
-pub struct RemovePermission {
+pub struct RemoveAccess {
     /// The object unique identifier stored in the KMS
     #[clap(required = true)]
     object_uid: String,
@@ -84,7 +84,7 @@ pub struct RemovePermission {
     operation: ObjectOperationTypes,
 }
 
-impl RemovePermission {
+impl RemoveAccess {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let access = Access {
             unique_identifier: Some(self.object_uid.clone()),
@@ -105,13 +105,13 @@ impl RemovePermission {
 
 /// List the permissions of an object.
 #[derive(Parser, Debug)]
-pub struct ListPermissions {
+pub struct ListAccesses {
     /// The object unique identifier stored in the KMS
     #[clap(required = true)]
     object_uid: String,
 }
 
-impl ListPermissions {
+impl ListAccesses {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let accesses = client_connector
             .list_access(&self.object_uid)

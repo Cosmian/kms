@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{BufReader, BufWriter, Read},
+    io::BufWriter,
     path::PathBuf,
     process::Command,
     sync::mpsc,
@@ -20,7 +20,6 @@ use cosmian_kms_server::{
     start_kms_server,
 };
 use cosmian_kms_utils::types::ExtraDatabaseParams;
-use reqwest::{ClientBuilder, Identity};
 use tokio::sync::OnceCell;
 use tracing::trace;
 
@@ -82,36 +81,50 @@ async fn start_server(
     Ok((server_handle, thread_handle))
 }
 
-/// Fetch the version of the server
-async fn fetch_version(cli_conf: &CliConf) -> Result<reqwest::Response, CliError> {
-    let builder = ClientBuilder::new();
-    // If a PKCS12 file is provided, use it to build the client
-    let builder = match &cli_conf.ssl_client_pkcs12_path {
-        Some(ssl_client_pkcs12) => {
-            let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
-            let mut pkcs12_bytes = vec![];
-            pkcs12.read_to_end(&mut pkcs12_bytes)?;
-            let pkcs12 = Identity::from_pkcs12_der(
-                &pkcs12_bytes,
-                cli_conf.ssl_client_pkcs12_password.as_deref().unwrap_or(""),
-            )?;
-            builder.identity(pkcs12)
-        }
-        None => builder,
-    };
-    let response = builder
-        .danger_accept_invalid_certs(true)
-        .build()
-        .unwrap()
-        .post(format!("{}/version", &cli_conf.kms_server_url))
-        .json("{}")
-        .send()
-        .await?;
-    Ok(response)
+/// Create a new database and return the database secret
+pub fn fetch_version(cli_conf_path: &str) -> Result<String, CliError> {
+    // Configure a database and create the kms json file
+    let mut cmd = Command::cargo_bin(PROG_NAME).expect("Can't execute the server-version command");
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.arg("server-version");
+
+    let success = cmd.assert().success();
+    let output = success.get_output();
+    let version: &str = std::str::from_utf8(&output.stdout).expect("Can't recover command output");
+
+    Ok(version.to_owned())
 }
 
+// /// Fetch the version of the server
+// async fn fetch_version(cli_conf: &CliConf) -> Result<reqwest::Response, CliError> {
+//     let builder = ClientBuilder::new();
+//     // If a PKCS12 file is provided, use it to build the client
+//     let builder = match &cli_conf.ssl_client_pkcs12_path {
+//         Some(ssl_client_pkcs12) => {
+//             let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
+//             let mut pkcs12_bytes = vec![];
+//             pkcs12.read_to_end(&mut pkcs12_bytes)?;
+//             let pkcs12 = Identity::from_pkcs12_der(
+//                 &pkcs12_bytes,
+//                 cli_conf.ssl_client_pkcs12_password.as_deref().unwrap_or(""),
+//             )?;
+//             builder.identity(pkcs12)
+//         }
+//         None => builder,
+//     };
+//     let response = builder
+//         .danger_accept_invalid_certs(true)
+//         .build()
+//         .unwrap()
+//         .post(format!("{}/version", &cli_conf.kms_server_url))
+//         .json("{}")
+//         .send()
+//         .await?;
+//     Ok(response)
+// }
+
 /// Wait for the server to start by reading the version
-async fn wait_for_server_to_start(cli_conf: &CliConf) -> Result<(), CliError> {
+async fn wait_for_server_to_start(cli_conf_path: &str, cli_conf: &CliConf) -> Result<(), CliError> {
     // Depending on the running environment, the server could take a bit of time to start
     // We try to query it with a dummy request until be sure it is started.
     let mut retry = true;
@@ -122,7 +135,7 @@ async fn wait_for_server_to_start(cli_conf: &CliConf) -> Result<(), CliError> {
             "Checking if the server is up with config: {:?}...",
             cli_conf
         );
-        let result = fetch_version(cli_conf).await;
+        let result = fetch_version(cli_conf_path);
 
         if result.is_err() {
             timeout -= 1;
@@ -260,7 +273,7 @@ pub async fn init_test_server_options(
         .expect("Can't start server");
 
     // wait for the server to be up
-    wait_for_server_to_start(&cli_conf)
+    wait_for_server_to_start(&cli_conf_path, &cli_conf)
         .await
         .expect("server timeout");
 

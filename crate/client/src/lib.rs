@@ -418,6 +418,11 @@ impl KmsRestClient {
     pub async fn get_manifest(&self) -> Result<String, KmsClientError> {
         self.get_no_ttlv("/enclave_manifest", None::<&()>).await
     }
+
+    /// This operation requests the version of the server
+    pub async fn version(&self) -> Result<String, KmsClientError> {
+        self.get_no_ttlv("/version", None::<&()>).await
+    }
 }
 
 impl KmsRestClient {

@@ -8,11 +8,12 @@ use crate::{
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
-        permission::SUB_COMMAND,
         test_utils::{init_test_server, ONCE},
         PROG_NAME,
     },
 };
+
+pub const SUB_COMMAND: &str = "accesses";
 
 fn gen_object(cli_conf_path: &str) -> Result<String, CliError> {
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(

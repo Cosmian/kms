@@ -1,8 +1,9 @@
 pub(crate) mod shared;
 
-pub mod configure;
+pub mod accesses;
 pub mod cover_crypt;
 pub mod elliptic_curves;
-pub mod permission;
+pub mod new_database;
 pub mod sgx;
 pub mod symmetric;
+pub mod version;
