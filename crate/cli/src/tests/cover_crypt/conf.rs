@@ -8,7 +8,7 @@ use crate::{
     error::CliError,
     tests::{
         cover_crypt::SUB_COMMAND,
-        test_utils::{generate_invalid_conf, init_test_server, ONCE},
+        utils::{generate_invalid_conf, init_test_server, ONCE},
         PROG_NAME,
     },
 };

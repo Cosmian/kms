@@ -5,7 +5,7 @@ use assert_cmd::prelude::*;
 use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
-    tests::{accesses::SUB_COMMAND, test_utils::init_test_server_options, PROG_NAME},
+    tests::{accesses::SUB_COMMAND, utils::init_test_server_options, PROG_NAME},
 };
 
 fn run_cli_command() {
@@ -16,7 +16,7 @@ fn run_cli_command() {
 }
 
 #[tokio::test]
-pub async fn test_various_authentication() -> Result<(), CliError> {
+pub async fn test_all_authentications() -> Result<(), CliError> {
     // let us not make other test cases fail
     const PORT: u16 = 9999;
     // plaintext no auth

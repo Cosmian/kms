@@ -12,7 +12,7 @@ use crate::{
         cover_crypt::SUB_COMMAND,
         shared::export,
         symmetric::create_key::create_symmetric_key,
-        test_utils::{
+        utils::{
             create_new_database, generate_invalid_conf, init_test_server, init_test_server_options,
             ONCE,
         },

@@ -16,5 +16,5 @@ RUST_LOG="cosmian=debug" cargo run --bin cosmian_kms_server -- \
 The following command will test a client connection with client cert authentication:
 
 ```sh
-curl -k --cert ./crate/cli/test_data/certificates/client.cosmian.com.crt --key ./crate/cli/test_data/certificates/client.cosmian.com.key  https://localhost:9998/objects/owned 
+curl -k --cert ./crate/cli/test_data/certificates/owner.client.cosmian.com.crt --key ./crate/cli/test_data/certificates/owner.client.cosmian.com.key  https://localhost:9998/objects/owned 
 ```

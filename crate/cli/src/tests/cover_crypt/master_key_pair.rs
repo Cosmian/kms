@@ -7,8 +7,10 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        test_utils::{init_test_server, ONCE},
-        utils::extract_uids::{extract_private_key, extract_public_key},
+        utils::{
+            extract_uids::{extract_private_key, extract_public_key},
+            init_test_server, ONCE,
+        },
         PROG_NAME,
     },
 };

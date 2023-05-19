@@ -6,7 +6,6 @@ mod new_database;
 mod sgx;
 mod shared;
 mod symmetric;
-pub mod test_utils;
-pub mod utils;
+pub(crate) mod utils;
 
 const PROG_NAME: &str = "ckms";

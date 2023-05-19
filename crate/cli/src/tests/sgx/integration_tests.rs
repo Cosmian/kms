@@ -7,7 +7,7 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        test_utils::{init_test_server, ONCE},
+        utils::{init_test_server, ONCE},
         CONF_PATH, PROG_NAME,
     },
 };

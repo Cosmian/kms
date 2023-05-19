@@ -4,7 +4,7 @@ use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 
 use crate::{
-    actions::shared::utils::{export_object, write_bytes_to_file, write_object_to_file},
+    actions::shared::utils::{export_object, write_bytes_to_file, write_kmip_object_to_file},
     error::CliError,
 };
 
@@ -80,7 +80,7 @@ impl ExportKeyAction {
             write_bytes_to_file(&key_bytes, &self.key_file)?;
         } else {
             // save it to a file
-            write_object_to_file(&object, &self.key_file)?;
+            write_kmip_object_to_file(&object, &self.key_file)?;
         }
 
         println!(

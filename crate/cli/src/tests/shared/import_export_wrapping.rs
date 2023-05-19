@@ -13,14 +13,14 @@ use cosmian_kms_utils::crypto::{
 use tempfile::TempDir;
 
 use crate::{
-    actions::shared::utils::{read_key_from_file, write_object_to_file},
+    actions::shared::utils::{read_key_from_file, write_kmip_object_to_file},
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve,
         shared::{export::export, import::import},
         symmetric,
-        test_utils::{init_test_server, ONCE},
+        utils::{init_test_server, ONCE},
     },
 };
 
@@ -37,7 +37,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     let mut wrap_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut wrap_key_bytes);
     let wrap_key = create_symmetric_key(&wrap_key_bytes, CryptographicAlgorithm::AES);
-    write_object_to_file(&wrap_key, &wrap_key_path)?;
+    write_kmip_object_to_file(&wrap_key, &wrap_key_path)?;
     let wrap_key_uid = import(
         &ctx.cli_conf_path,
         "sym",
@@ -97,7 +97,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     let wrap_key_pair = create_ec_key_pair(&mut rng, wrap_private_key_uid, wrap_public_key_uid)?;
     // Write the private key to a file
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
-    write_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;
+    write_kmip_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;
     import(
         &ctx.cli_conf_path,
         "ec",
@@ -108,7 +108,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     )?;
     // Write the public key to a file
     let wrap_public_key_path = tmp_path.join("wrap.public.key");
-    write_object_to_file(wrap_key_pair.public_key(), &wrap_public_key_path)?;
+    write_kmip_object_to_file(wrap_key_pair.public_key(), &wrap_public_key_path)?;
     import(
         &ctx.cli_conf_path,
         "ec",

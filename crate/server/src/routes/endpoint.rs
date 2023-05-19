@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use actix_web::{
-    delete, get, post,
+    get, post,
     web::{Data, Json, Path, Query},
     HttpRequest, HttpResponse, HttpResponseBuilder,
 };
@@ -19,7 +19,7 @@ use cosmian_kms_utils::types::{
     UserAccessResponse,
 };
 use http::{header, StatusCode};
-use tracing::{debug, error, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{database::KMSServer, error::KmsError, kms_bail, result::KResult};
 
@@ -68,75 +68,74 @@ pub async fn kmip(
 ) -> KResult<Json<TTLV>> {
     let ttlv_req = item.into_inner();
     let database_params = kms.get_database_secrets(&req_http)?;
-    let owner = kms.get_user(req_http)?;
-
-    debug!("POST /kmip. Request: {:?}", ttlv_req.tag.as_str());
+    let user = kms.get_user(req_http)?;
+    info!("POST /kmip. Request: {:?} {}", ttlv_req.tag.as_str(), user);
 
     let ttlv_resp = match ttlv_req.tag.as_str() {
         "Create" => {
             let req = from_ttlv::<Create>(&ttlv_req)?;
-            let resp = kms.create(req, &owner, database_params.as_ref()).await?;
+            let resp = kms.create(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "CreateKeyPair" => {
             let req = from_ttlv::<CreateKeyPair>(&ttlv_req)?;
             let resp = kms
-                .create_key_pair(req, &owner, database_params.as_ref())
+                .create_key_pair(req, &user, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
         "Decrypt" => {
             let req = from_ttlv::<Decrypt>(&ttlv_req)?;
-            let resp = kms.decrypt(req, &owner, database_params.as_ref()).await?;
+            let resp = kms.decrypt(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Destroy" => {
             let req = from_ttlv::<Destroy>(&ttlv_req)?;
-            let resp = kms.destroy(req, &owner, database_params.as_ref()).await?;
+            let resp = kms.destroy(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Encrypt" => {
             let req = from_ttlv::<Encrypt>(&ttlv_req)?;
-            let resp = kms.encrypt(req, &owner, database_params.as_ref()).await?;
+            let resp = kms.encrypt(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Export" => {
             let req = from_ttlv::<Export>(&ttlv_req)?;
-            let resp = kms.export(req, &owner, database_params.as_ref()).await?;
+            let resp = kms.export(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Get" => {
             let req = from_ttlv::<Get>(&ttlv_req)?;
-            let resp = kms.get(req, &owner, database_params.as_ref()).await?;
+            let resp = kms.get(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "GetAttributes" => {
             let req = from_ttlv::<GetAttributes>(&ttlv_req)?;
             let resp = kms
-                .get_attributes(req, &owner, database_params.as_ref())
+                .get_attributes(req, &user, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
         "Import" => {
             let req = from_ttlv::<Import>(&ttlv_req)?;
-            let resp = kms.import(req, &owner, database_params.as_ref()).await?;
+            let resp = kms.import(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Locate" => {
             let req = from_ttlv::<Locate>(&ttlv_req)?;
-            let resp = kms.locate(req, &owner, database_params.as_ref()).await?;
+            let resp = kms.locate(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "ReKeyKeyPair" => {
             let req = from_ttlv::<ReKeyKeyPair>(&ttlv_req)?;
             let resp = kms
-                .rekey_keypair(req, &owner, database_params.as_ref())
+                .rekey_keypair(req, &user, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
         "Revoke" => {
             let req = from_ttlv::<Revoke>(&ttlv_req)?;
-            let resp = kms.revoke(req, &owner, database_params.as_ref()).await?;
+            let resp = kms.revoke(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         x => kms_bail!(KmsError::RouteNotFound(format!("Operation: {x}"))),
@@ -152,6 +151,8 @@ pub async fn list_owned_objects(
 ) -> KResult<Json<Vec<ObjectOwnedResponse>>> {
     let database_params = kms.get_database_secrets(&req)?;
     let user = kms.get_user(req)?;
+    info!("GET /object/owned {user}");
+
     let list = kms
         .list_owned_objects(&user, database_params.as_ref())
         .await?;
@@ -167,6 +168,8 @@ pub async fn list_shared_objects(
 ) -> KResult<Json<Vec<ObjectSharedResponse>>> {
     let database_params = kms.get_database_secrets(&req)?;
     let user = kms.get_user(req)?;
+    info!("GET /object/shared {user}");
+
     let list = kms
         .list_shared_objects(&user, database_params.as_ref())
         .await?;
@@ -174,16 +177,18 @@ pub async fn list_shared_objects(
     Ok(Json(list))
 }
 
-/// List access authorization for an object
+/// List access right for an object
 #[get("/accesses/{object_id}")]
 pub async fn list_accesses(
     req: HttpRequest,
     object_id: Path<(UniqueIdentifier,)>,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<UserAccessResponse>>> {
+    let object_id = object_id.to_owned().0;
     let database_params = kms.get_database_secrets(&req)?;
     let user = kms.get_user(req)?;
-    let object_id = object_id.to_owned().0;
+    info!("GET /accesses/{object_id} {user}");
+
     let list = kms
         .list_accesses(&object_id, &user, database_params.as_ref())
         .await?;
@@ -191,9 +196,9 @@ pub async fn list_accesses(
     Ok(Json(list))
 }
 
-/// Add an access authorization for an object, given a `userid`
-#[post("/accesses/{object_id}")]
-pub async fn insert_access(
+/// Grant an access right for an object, given a `userid`
+#[post("/access/grant")]
+pub async fn grant_access(
     req: HttpRequest,
     access: Json<Access>,
     kms: Data<Arc<KMSServer>>,
@@ -201,6 +206,7 @@ pub async fn insert_access(
     let access = access.into_inner();
     let database_params = kms.get_database_secrets(&req)?;
     let user = kms.get_user(req)?;
+    info!("POST /access/grant {access:?} {user}");
 
     kms.insert_access(&access, &user, database_params.as_ref())
         .await?;
@@ -215,7 +221,7 @@ pub async fn insert_access(
 }
 
 /// Revoke an access authorization for an object, given a `userid`
-#[delete("/accesses/{object_id}")]
+#[post("/access/revoke")]
 pub async fn delete_access(
     req: HttpRequest,
     access: Json<Access>,
@@ -224,6 +230,7 @@ pub async fn delete_access(
     let access = access.into_inner();
     let database_params = kms.get_database_secrets(&req)?;
     let user = kms.get_user(req)?;
+    info!("DELETE /accesses {access:?} {user}");
 
     kms.delete_access(&access, &user, database_params.as_ref())
         .await?;
@@ -240,10 +247,10 @@ pub async fn delete_access(
 /// Get the the server X09 certificate in PEM format
 #[get("/certificate")]
 pub async fn get_certificate(
-    _req: HttpRequest,
+    req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Option<String>>> {
-    debug!("Requesting the X509 certificate");
+    info!("GET /certificate {}", kms.get_user(req)?);
     Ok(Json(kms.get_server_x509_certificate()?))
 }
 
@@ -255,8 +262,8 @@ pub async fn get_enclave_quote(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
-    debug!("Requesting the enclave quote");
     let params = Query::<QuoteParams>::from_query(req.query_string())?;
+    info!("GET /enclave_quote {}", kms.get_user(req)?);
     Ok(Json(kms.get_quote(&params.nonce)?))
 }
 
@@ -265,10 +272,10 @@ pub async fn get_enclave_quote(
 /// This service is only enabled when the server is running SGX
 #[get("/enclave_public_key")]
 pub async fn get_enclave_public_key(
-    _req: HttpRequest,
+    req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
-    debug!("Requesting the enclave public key");
+    info!("GET /enclave_public_key {}", kms.get_user(req)?);
     Ok(Json(kms.get_enclave_public_key()?))
 }
 
@@ -277,26 +284,26 @@ pub async fn get_enclave_public_key(
 /// This service is only enabled when the server is running SGX
 #[get("/enclave_manifest")]
 pub async fn get_enclave_manifest(
-    _req: HttpRequest,
+    req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
-    debug!("Requesting the manifest");
+    info!("GET /enclave_manifest {}", kms.get_user(req)?);
     Ok(Json(kms.get_manifest()?))
 }
 
 /// Add a new group to the KMS = add a new database
 #[post("/new_database")]
 pub async fn add_new_database(
-    _req: HttpRequest,
+    req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
-    debug!("Requesting a new database creation");
+    info!("GET /new_database {}", kms.get_user(req)?);
     Ok(Json(kms.add_new_database().await?))
 }
 
 /// Get the KMS version
 #[get("/version")]
-pub async fn get_version(_req: HttpRequest, _kms: Data<Arc<KMSServer>>) -> KResult<Json<String>> {
-    debug!("Requesting the version");
+pub async fn get_version(req: HttpRequest, kms: Data<Arc<KMSServer>>) -> KResult<Json<String>> {
+    info!("GET /version {}", kms.get_user(req)?);
     Ok(Json(crate_version!().to_string()))
 }

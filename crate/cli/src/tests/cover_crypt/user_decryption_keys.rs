@@ -8,8 +8,7 @@ use crate::{
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
-        test_utils::{init_test_server, ONCE},
-        utils::extract_uids::extract_user_key,
+        utils::{extract_uids::extract_user_key, init_test_server, ONCE},
         PROG_NAME,
     },
 };

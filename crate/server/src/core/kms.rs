@@ -22,7 +22,7 @@ use cosmian_kms_utils::types::{
     Access, ExtraDatabaseParams, ObjectOwnedResponse, ObjectSharedResponse, UserAccessResponse,
 };
 use libsgx::quote::{get_quote, hash, prepare_report_data};
-use tracing::info;
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
@@ -635,7 +635,7 @@ impl KMS {
         let default_username = self.config.default_username.clone();
 
         if self.config.force_default_username {
-            info!(
+            debug!(
                 "Authenticated using forced default user: {}",
                 default_username
             );
@@ -653,7 +653,7 @@ impl KMS {
                 }
             }
         };
-        info!("Authenticated user: {}", user);
+        debug!("Authenticated user: {}", user);
         Ok(user)
     }
 

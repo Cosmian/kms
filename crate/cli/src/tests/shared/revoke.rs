@@ -14,13 +14,13 @@ use crate::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::export::export,
         symmetric::create_key::create_symmetric_key,
-        test_utils::{init_test_server, ONCE},
+        utils::{init_test_server, ONCE},
         PROG_NAME,
     },
 };
 
 pub fn revoke(
-    cli_conf_oath: &str,
+    cli_conf_path: &str,
     sub_command: &str,
     key_id: &str,
     revocation_reason: &str,
@@ -30,7 +30,7 @@ pub fn revoke(
         .map(|s| s.to_string())
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, cli_conf_oath);
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.arg(sub_command).args(args);
     let output = cmd.output()?;
     if output.status.success() {

@@ -9,8 +9,7 @@ use crate::error::{result::CliResultHelper, CliError};
 pub enum AccessesAction {
     /// Remove another user access right to an object
     Remove(RemoveAccess),
-    /// Add another user an access right to an object
-    Add(AddAccess),
+    Grant(GrantAccess),
     /// List access rights to an object
     List(ListAccesses),
     /// List objects owned by the current user
@@ -22,7 +21,7 @@ pub enum AccessesAction {
 impl AccessesAction {
     pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         match self {
-            Self::Add(action) => action.run(client_connector).await?,
+            Self::Grant(action) => action.run(client_connector).await?,
             Self::Remove(action) => action.run(client_connector).await?,
             Self::List(action) => action.run(client_connector).await?,
             Self::Owned(action) => action.run(client_connector).await?,
@@ -33,23 +32,27 @@ impl AccessesAction {
     }
 }
 
-/// Add a new permission to an object for the current user.
+/// Grant another user an access right to an object
+///
+/// The right is granted for one of the supported KMIP operations:
+/// create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy
+///
 #[derive(Parser, Debug)]
-pub struct AddAccess {
+pub struct GrantAccess {
+    /// The user identifier to allow
+    #[clap(required = true)]
+    user: String,
+
     /// The object unique identifier stored in the KMS
     #[clap(required = true)]
     object_uid: String,
 
-    /// The user to allow
-    #[clap(required = true, long, short = 'u')]
-    user: String,
-
-    /// The operation to allow (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
-    #[clap(required = true, long, short = 'o')]
+    /// The KMIP operation to allow
+    #[clap(required = true)]
     operation: ObjectOperationTypes,
 }
 
-impl AddAccess {
+impl GrantAccess {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let access = Access {
             unique_identifier: Some(self.object_uid.clone()),
@@ -58,24 +61,28 @@ impl AddAccess {
         };
 
         client_connector
-            .add_access(access)
+            .grant(access)
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        println!("The permission has been properly set");
+        println!(
+            "The {} access right was successfully granted to {}",
+            self.operation.to_string().to_lowercase(),
+            self.user
+        );
 
         Ok(())
     }
 }
 
-/// Remove a permission to an object for the current user.
+/// Remove another user access right to an object
 #[derive(Parser, Debug)]
 pub struct RemoveAccess {
     /// The object unique identifier stored in the KMS
     #[clap(required = true)]
     object_uid: String,
 
-    /// The user to ungrant
+    /// The user to remove access to
     #[clap(required = true, long, short = 'u')]
     user: String,
 
@@ -93,7 +100,7 @@ impl RemoveAccess {
         };
 
         client_connector
-            .remove_access(access)
+            .revoke_access(access)
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 

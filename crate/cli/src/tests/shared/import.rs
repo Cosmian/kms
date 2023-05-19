@@ -12,8 +12,7 @@ use crate::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::export::export,
         symmetric::create_key::create_symmetric_key,
-        test_utils::{init_test_server, ONCE},
-        utils::extract_uids::extract_imported_key_id,
+        utils::{extract_uids::extract_imported_key_id, init_test_server, ONCE},
         PROG_NAME,
     },
 };

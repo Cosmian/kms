@@ -15,7 +15,7 @@ use crate::{
         },
         shared::{export, import},
         symmetric::create_key::create_symmetric_key,
-        test_utils::{init_test_server, ONCE},
+        utils::{init_test_server, ONCE},
         PROG_NAME,
     },
 };

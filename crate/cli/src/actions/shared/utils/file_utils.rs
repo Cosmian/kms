@@ -87,21 +87,24 @@ pub fn write_bytes_to_file(bytes: &[u8], file: &impl AsRef<Path>) -> Result<(), 
 }
 
 /// Write an object T from a JSON file
-pub fn write_to_json_file<T>(object: &T, file: &impl AsRef<Path>) -> Result<(), CliError>
+pub fn write_to_json_file<T>(json_object: &T, file: &impl AsRef<Path>) -> Result<(), CliError>
 where
     T: Serialize,
 {
-    let bytes = serde_json::to_vec::<T>(object)
+    let bytes = serde_json::to_vec::<T>(json_object)
         .with_context(|| "failed parsing the object from the json file")?;
     write_bytes_to_file(&bytes, file)
 }
 
 // Export a KMS Object to a JSON TTLV in a file
-pub fn write_object_to_file(object: &Object, object_file: &PathBuf) -> Result<(), CliError> {
+pub fn write_kmip_object_to_file(
+    kmip_object: &Object,
+    object_file: &PathBuf,
+) -> Result<(), CliError> {
     // serialize the returned object to JSON TTLV
-    let mut ttlv = to_ttlv(object)?;
+    let mut ttlv = to_ttlv(kmip_object)?;
     // set the top tag to the object type
-    ttlv.tag = tag_from_object(object);
+    ttlv.tag = tag_from_object(kmip_object);
     // write the JSON TTLV to a file
     write_to_json_file(&ttlv, object_file)?;
     Ok(())

@@ -352,29 +352,21 @@ impl KmsRestClient {
         self.post_no_ttlv("/new_database", None::<&()>).await
     }
 
-    /// This operation requests the server to add an access on an object to a user
+    /// This operation requests the server to grant an access on an object to a user
     /// The user could be unknown from the database.
     /// The object uid must be known from the database.
     /// If the user already has access, nothing is done. No error is returned.
     /// The user (owner) can't grant access to himself/herself.
-    pub async fn add_access(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
-        self.post_no_ttlv(
-            &format!("/accesses/{}", access.unique_identifier.clone().unwrap()),
-            Some(&access),
-        )
-        .await
+    pub async fn grant(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
+        self.post_no_ttlv("/access/grant", Some(&access)).await
     }
 
     /// This operation requests the server to revoke an access on an object to a user
     /// The user could be unknown from the database.
     /// The object uid must be known from the database.
     /// If the user already has no access, nothing is done. No error is returned.
-    pub async fn remove_access(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
-        self.delete_no_ttlv(
-            &format!("/accesses/{}", &access.unique_identifier.clone().unwrap()),
-            &access,
-        )
-        .await
+    pub async fn revoke_access(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
+        self.post_no_ttlv("/access/revoke", Some(&access)).await
     }
 
     /// This operation requests the server to list all the granted access on a object

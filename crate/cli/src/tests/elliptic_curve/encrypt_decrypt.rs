@@ -11,7 +11,7 @@ use crate::{
     error::CliError,
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        test_utils::{init_test_server, ONCE},
+        utils::{init_test_server, ONCE},
         PROG_NAME,
     },
 };

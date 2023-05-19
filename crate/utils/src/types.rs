@@ -1,5 +1,6 @@
 use cosmian_kmip::kmip::kmip_types::{Attributes, StateEnumeration, UniqueIdentifier};
 use serde::{Deserialize, Serialize};
+use strum_macros::Display;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Access {
@@ -15,7 +16,7 @@ pub struct Access {
 
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
-#[derive(Eq, PartialEq, Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Serialize, Deserialize, Debug, Copy, Clone, Display)]
 pub enum ObjectOperationTypes {
     Create,
     Decrypt,

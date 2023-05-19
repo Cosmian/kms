@@ -13,7 +13,7 @@ use cosmian_kms_utils::crypto::{
 use rand::SeedableRng;
 
 use crate::{
-    actions::shared::utils::{export_object, read_key_from_file, write_object_to_file},
+    actions::shared::utils::{export_object, read_key_from_file, write_kmip_object_to_file},
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -98,7 +98,7 @@ impl WrapKeyAction {
             .unwrap_or(&self.key_file_in)
             .to_path_buf();
 
-        write_object_to_file(&object, &output_file)?;
+        write_kmip_object_to_file(&object, &output_file)?;
 
         println!(
             "The key of type {:?} in file {:?} was wrapped in file: {:?}",

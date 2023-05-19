@@ -12,8 +12,7 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        test_utils::{init_test_server, ONCE},
-        utils::extract_uids::extract_uid,
+        utils::{extract_uids::extract_uid, init_test_server, ONCE},
         PROG_NAME,
     },
 };

@@ -23,12 +23,13 @@ use cosmian_kms_utils::types::ExtraDatabaseParams;
 use tokio::sync::OnceCell;
 use tracing::trace;
 
-use super::{utils::extract_uids::extract_database_secret, PROG_NAME};
+use super::extract_uids::extract_database_secret;
 use crate::{
     actions::shared::utils::write_to_json_file,
     cli_bail,
     config::{CliConf, KMS_CLI_CONF_ENV},
     error::CliError,
+    tests::PROG_NAME,
 };
 
 // Test auth0 Config
@@ -95,34 +96,6 @@ pub fn fetch_version(cli_conf_path: &str) -> Result<String, CliError> {
     Ok(version.to_owned())
 }
 
-// /// Fetch the version of the server
-// async fn fetch_version(cli_conf: &CliConf) -> Result<reqwest::Response, CliError> {
-//     let builder = ClientBuilder::new();
-//     // If a PKCS12 file is provided, use it to build the client
-//     let builder = match &cli_conf.ssl_client_pkcs12_path {
-//         Some(ssl_client_pkcs12) => {
-//             let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
-//             let mut pkcs12_bytes = vec![];
-//             pkcs12.read_to_end(&mut pkcs12_bytes)?;
-//             let pkcs12 = Identity::from_pkcs12_der(
-//                 &pkcs12_bytes,
-//                 cli_conf.ssl_client_pkcs12_password.as_deref().unwrap_or(""),
-//             )?;
-//             builder.identity(pkcs12)
-//         }
-//         None => builder,
-//     };
-//     let response = builder
-//         .danger_accept_invalid_certs(true)
-//         .build()
-//         .unwrap()
-//         .post(format!("{}/version", &cli_conf.kms_server_url))
-//         .json("{}")
-//         .send()
-//         .await?;
-//     Ok(response)
-// }
-
 /// Wait for the server to start by reading the version
 async fn wait_for_server_to_start(cli_conf_path: &str, cli_conf: &CliConf) -> Result<(), CliError> {
     // Depending on the running environment, the server could take a bit of time to start
@@ -176,7 +149,7 @@ pub fn create_new_database(cli_conf_path: &str) -> Result<String, CliError> {
 
 /// Start a test server with the default options: JWT authentication and encrypted database, no TLS
 pub async fn init_test_server() -> TestsContext {
-    init_test_server_options(9998, true, false, false).await
+    init_test_server_options(9990, true, false, false).await
 }
 
 /// Start a server in a thread with the given options
@@ -205,7 +178,7 @@ pub async fn init_test_server_options(
                 HTTPConfig {
                     port,
                     https_p12_file: Some(PathBuf::from(
-                        "test_data/certificates/kmserver.cosmian.com.p12",
+                        "test_data/certificates/kmserver.acme.com.p12",
                     )),
                     https_p12_password: "password".to_string(),
                     authority_cert_file: Some(PathBuf::from("test_data/certificates/ca.crt")),
@@ -215,7 +188,7 @@ pub async fn init_test_server_options(
                 HTTPConfig {
                     port,
                     https_p12_file: Some(PathBuf::from(
-                        "test_data/certificates/kmserver.cosmian.com.p12",
+                        "test_data/certificates/kmserver.acme.com.p12",
                     )),
                     https_p12_password: "password".to_string(),
                     ..Default::default()
@@ -249,7 +222,7 @@ pub async fn init_test_server_options(
             None
         },
         ssl_client_pkcs12_path: if use_client_cert {
-            Some("test_data/certificates/client.cosmian.com.p12".to_string())
+            Some("test_data/certificates/owner.client.acme.com.p12".to_string())
         } else {
             None
         },

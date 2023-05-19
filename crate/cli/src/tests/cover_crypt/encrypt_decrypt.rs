@@ -13,7 +13,7 @@ use crate::{
             master_key_pair::create_cc_master_key_pair,
             user_decryption_keys::create_user_decryption_key, SUB_COMMAND,
         },
-        test_utils::{init_test_server, ONCE},
+        utils::{init_test_server, ONCE},
         PROG_NAME,
     },
 };

@@ -43,3 +43,6 @@ regex = { version = "1.7", default-features = false }
 reqwest = { workspace = true }
 tempfile = "3.2"
 tracing = { version = "0.1" }
+tracing-log = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-tree = { workspace = true }

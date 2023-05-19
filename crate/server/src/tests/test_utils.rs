@@ -55,7 +55,7 @@ pub async fn test_app()
             .wrap(jwt_auth)
             .app_data(Data::new(kms_server.clone()))
             .service(endpoint::kmip)
-            .service(endpoint::insert_access)
+            .service(endpoint::grant_access)
             .service(endpoint::delete_access),
     )
     .await

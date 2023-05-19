@@ -92,7 +92,7 @@ pub fn prepare_server(
             .service(endpoint::list_owned_objects)
             .service(endpoint::list_shared_objects)
             .service(endpoint::list_accesses)
-            .service(endpoint::insert_access)
+            .service(endpoint::grant_access)
             .service(endpoint::delete_access)
             .service(endpoint::get_version)
             .service(endpoint::get_certificate);
