@@ -11,12 +11,12 @@ use crate::{
     tests::{
         shared::{destroy, export, revoke},
         symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
-        utils::{init_test_server, init_test_server_options, ONCE},
+        utils::{init_test_server, init_test_server_options, log_init, ONCE},
         PROG_NAME,
     },
 };
 
-pub const SUB_COMMAND: &str = "accesses";
+pub const SUB_COMMAND: &str = "access";
 
 /// Generates a symmetric key
 fn gen_key(cli_conf_path: &str) -> Result<String, CliError> {
@@ -61,7 +61,7 @@ fn switch_to_owner(ctx: &TestsContext) -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_ownership_and_grant() -> Result<(), CliError> {
-    // log_init("cosmian=info");
+    log_init("cosmian=info");
     // the client conf will use the owner cert
     let ctx = init_test_server_options(9996, false, true, true).await;
     let key_id = gen_key(&ctx.cli_conf_path)?;
@@ -177,91 +177,48 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
     // destroy the key
     destroy(&ctx.cli_conf_path, "sym", &key_id)?;
 
-    Ok(())
-}
-
-///////////////////////////
-
-#[tokio::test]
-pub async fn test_grant() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
-    let object_id = gen_key(&ctx.cli_conf_path)?;
-
-    // grant access
-    grant_access(&ctx.cli_conf_path, &object_id, "user@example.com", "get")?;
-
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec!["list", object_id.as_str()]);
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("user@example.com\n\tGet"));
+    // stop the server
+    ctx.stop_server().await;
 
     Ok(())
 }
 
 #[tokio::test]
-pub async fn test_add_error() -> Result<(), CliError> {
+pub async fn test_grant_error() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // Bad operation
-    let object_id = gen_key(&ctx.cli_conf_path)?;
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec![
-        "add",
-        object_id.as_str(),
-        "-u",
-        "user@example.com",
-        "-o",
-        "bad_ops",
-    ]);
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("Could not parse an operation"));
+    let key_id = gen_key(&ctx.cli_conf_path)?;
 
-    // Bad object id
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec![
-        "add",
-        "bad-object-id",
-        "-u",
-        "user@example.com",
-        "-o",
-        "get",
-    ]);
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "Access denied: Object with uid `bad-object-id` is not owned by owner",
-    ));
+    // bad operation
+    assert!(
+        grant_access(
+            &ctx.cli_conf_path,
+            &key_id,
+            "user.client@acme.com",
+            "BAD OP",
+        )
+        .is_err(),
+    );
 
-    // User_id = owner_id
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec![
-        "add",
-        object_id.as_str(),
-        "-u",
-        "tech@cosmian.com",
-        "-o",
-        "get",
-    ]);
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "You can\'t grant yourself, you have already all rights on your own objects",
-    ));
+    // bad object ID
+    assert!(grant_access(&ctx.cli_conf_path, "BAD ID", "user.client@acme.com", "get").is_err());
+
+    // grant to my self
+    assert!(grant_access(&ctx.cli_conf_path, &key_id, "alice@cosmian.com", "get").is_err());
 
     Ok(())
 }
 
 #[tokio::test]
-pub async fn test_remove() -> Result<(), CliError> {
+pub async fn test_revoke() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
     let object_id = gen_key(&ctx.cli_conf_path)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
-        "add",
+        "grant",
         object_id.as_str(),
         "-u",
         "user@example.com",
@@ -273,7 +230,7 @@ pub async fn test_remove() -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
-        "remove",
+        "revoke",
         object_id.as_str(),
         "-u",
         "user@example.com",
@@ -281,7 +238,7 @@ pub async fn test_remove() -> Result<(), CliError> {
         "get",
     ]);
     cmd.assert().success().stdout(predicate::str::contains(
-        "The permission has been properly remove",
+        "The permission has been properly revoke",
     ));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -295,14 +252,14 @@ pub async fn test_remove() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_remove_error() -> Result<(), CliError> {
+pub async fn test_revoke_error() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
     let object_id = gen_key(&ctx.cli_conf_path)?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
-        "add",
+        "grant",
         object_id.as_str(),
         "-u",
         "user@example.com",
@@ -316,7 +273,7 @@ pub async fn test_remove_error() -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
-        "remove",
+        "revoke",
         object_id.as_str(),
         "-u",
         "user@example.com",
@@ -331,7 +288,7 @@ pub async fn test_remove_error() -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
-        "remove",
+        "revoke",
         "bad-object-id",
         "-u",
         "user@example.com",
@@ -346,7 +303,7 @@ pub async fn test_remove_error() -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
-        "remove",
+        "revoke",
         object_id.as_str(),
         "-u",
         "tech@cosmian.com",

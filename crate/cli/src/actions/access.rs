@@ -6,10 +6,9 @@ use crate::error::{result::CliResultHelper, CliError};
 
 /// Manage the users' access rights to the cryptographic objects
 #[derive(Parser, Debug)]
-pub enum AccessesAction {
-    /// Remove another user access right to an object
-    Remove(RemoveAccess),
+pub enum AccessAction {
     Grant(GrantAccess),
+    Revoke(RevokeAccess),
     /// List access rights to an object
     List(ListAccesses),
     /// List objects owned by the current user
@@ -18,11 +17,11 @@ pub enum AccessesAction {
     Shared(ListSharedObjects),
 }
 
-impl AccessesAction {
+impl AccessAction {
     pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         match self {
             Self::Grant(action) => action.run(client_connector).await?,
-            Self::Remove(action) => action.run(client_connector).await?,
+            Self::Revoke(action) => action.run(client_connector).await?,
             Self::List(action) => action.run(client_connector).await?,
             Self::Owned(action) => action.run(client_connector).await?,
             Self::Shared(action) => action.run(client_connector).await?,
@@ -77,21 +76,21 @@ impl GrantAccess {
 
 /// Remove another user access right to an object
 #[derive(Parser, Debug)]
-pub struct RemoveAccess {
+pub struct RevokeAccess {
     /// The object unique identifier stored in the KMS
     #[clap(required = true)]
     object_uid: String,
 
-    /// The user to remove access to
+    /// The user to revoke access to
     #[clap(required = true, long, short = 'u')]
     user: String,
 
-    /// The operation to remove (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
+    /// The operation to revoke (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
     #[clap(required = true, long, short = 'o')]
     operation: ObjectOperationTypes,
 }
 
-impl RemoveAccess {
+impl RevokeAccess {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let access = Access {
             unique_identifier: Some(self.object_uid.clone()),

@@ -1,6 +1,6 @@
 pub(crate) mod shared;
 
-pub mod accesses;
+pub mod access;
 pub mod cover_crypt;
 pub mod elliptic_curves;
 pub mod new_database;

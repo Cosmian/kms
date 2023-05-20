@@ -3,7 +3,7 @@ use std::process;
 use clap::{Parser, Subcommand};
 use cosmian_kms_cli::{
     actions::{
-        accesses::AccessesAction, cover_crypt::CoverCryptCommands,
+        access::AccessAction, cover_crypt::CoverCryptCommands,
         elliptic_curves::EllipticCurveCommands, new_database::NewDatabaseAction,
         sgx::entrypoint::SgxAction, symmetric::SymmetricCommands, version::ServerVersionAction,
     },
@@ -27,7 +27,7 @@ enum CliCommands {
     #[command(subcommand)]
     Sym(SymmetricCommands),
     #[command(subcommand)]
-    Accesses(AccessesAction),
+    Access(AccessAction),
     NewDatabase(NewDatabaseAction),
     Trust(SgxAction),
     ServerVersion(ServerVersionAction),
@@ -49,7 +49,7 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Cc(action) => action.process(&conf).await?,
         CliCommands::Ec(action) => action.process(&conf).await?,
         CliCommands::Sym(action) => action.process(&conf).await?,
-        CliCommands::Accesses(action) => action.process(&conf).await?,
+        CliCommands::Access(action) => action.process(&conf).await?,
         CliCommands::NewDatabase(action) => action.process(&conf).await?,
         CliCommands::Trust(action) => action.process(&conf).await?,
         CliCommands::ServerVersion(action) => action.process(&conf).await?,
