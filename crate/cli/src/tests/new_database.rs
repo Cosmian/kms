@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::{process::Command, thread, time::Duration};
 
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
@@ -39,7 +39,7 @@ pub async fn test_secrets_bad() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms_bad_secret.bad"); // Token can't be deserialized
+    cmd.env(KMS_CLI_CONF_ENV, "test_data/configs/kms_bad_secret.bad"); // Token can't be deserialized
 
     cmd.arg(SUB_COMMAND).args(vec![
         "keys",
@@ -55,7 +55,7 @@ pub async fn test_secrets_bad() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_secrets_group_id_bad() -> Result<(), CliError> {
+pub async fn test_bad_database_secrets() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -67,7 +67,12 @@ pub async fn test_secrets_group_id_bad() -> Result<(), CliError> {
         "--policy-binary",
         "test_data/policy.bin",
     ]);
-    cmd.assert().failure();
+    let output = cmd.output()?;
+    println!("ERR: {}", String::from_utf8_lossy(&output.stderr));
+
+    assert!(!output.status.success());
+
+    thread::sleep(Duration::from_secs(5));
 
     Ok(())
 }

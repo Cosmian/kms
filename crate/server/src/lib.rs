@@ -192,6 +192,7 @@ async fn start_plain_http_kms_server(
         tx.send(server.handle())?;
     }
 
+    info!("Starting the HTTP server...");
     // Run the server and return the result
     server.await.map_err(Into::into)
 }

@@ -1,3 +1,6 @@
+// we may not use log_init att all in tests
+#![allow(dead_code)]
+
 use std::sync::Once;
 
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter};

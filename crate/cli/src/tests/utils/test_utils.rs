@@ -1,6 +1,4 @@
 use std::{
-    fs::File,
-    io::BufWriter,
     path::PathBuf,
     process::Command,
     sync::mpsc,
@@ -97,17 +95,14 @@ pub fn fetch_version(cli_conf_path: &str) -> Result<String, CliError> {
 }
 
 /// Wait for the server to start by reading the version
-async fn wait_for_server_to_start(cli_conf_path: &str, cli_conf: &CliConf) -> Result<(), CliError> {
+async fn wait_for_server_to_start(cli_conf_path: &str) -> Result<(), CliError> {
     // Depending on the running environment, the server could take a bit of time to start
     // We try to query it with a dummy request until be sure it is started.
     let mut retry = true;
     let mut timeout = 5;
     let mut waiting = 1;
     while retry {
-        println!(
-            "Checking if the server is up with config: {:?}...",
-            cli_conf
-        );
+        print!("...checking if the server is up...");
         let result = fetch_version(cli_conf_path);
 
         if result.is_err() {
@@ -122,7 +117,7 @@ async fn wait_for_server_to_start(cli_conf_path: &str, cli_conf: &CliConf) -> Re
                 cli_bail!("Can't start the kms server to run tests");
             }
         } else {
-            println!("The server is up!");
+            println!("UP!");
             retry = false;
         }
     }
@@ -246,7 +241,7 @@ pub async fn init_test_server_options(
         .expect("Can't start server");
 
     // wait for the server to be up
-    wait_for_server_to_start(&cli_conf_path, &cli_conf)
+    wait_for_server_to_start(&cli_conf_path)
         .await
         .expect("server timeout");
 
@@ -285,8 +280,7 @@ pub(crate) fn generate_invalid_conf(correct_conf: &CliConf) -> String {
     secrets.key = [42_u8; 32]; // bad secret
     let token = b64.encode(serde_json::to_string(&secrets).expect("Can't encode token"));
     invalid_conf.kms_database_secret = Some(token);
-    let file = File::create(invalid_conf_path).expect("Can't create CONF_PATH_BAD_KEY");
-    serde_json::to_writer(BufWriter::new(file), &invalid_conf)
-        .expect("can't write CONF_PATH_BAD_KEY");
+    write_to_json_file(&invalid_conf, &invalid_conf_path.to_string())
+        .expect("Can't write CONF_PATH_BAD_KEY");
     invalid_conf_path.to_string()
 }

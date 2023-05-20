@@ -84,64 +84,82 @@ impl Default for CliConf {
     }
 }
 
-/// Define the configuration of the CLI reading a json
+/// This method is used to configure the KMS CLI by reading a JSON configuration file.
 ///
+/// The method looks for a JSON configuration file with the following structure:
+///
+/// ```json
 /// {
-///     "accept_invalid_certs": false
-///     "`kms_server_url"`: "http://127.0.0.1:9998",
-///     "`kms_access_token"`: "AA...AAA"
-///     "`kms_database_secret"`: "BB...BBB",
+///     "accept_invalid_certs": false,
+///     "kms_server_url": "http://127.0.0.1:9998",
+///     "kms_access_token": "AA...AAA",
+///     "kms_database_secret": "BB...BBB",
 ///     "ssl_client_pkcs12_path": "/path/to/client.p12",
 ///     "ssl_client_pkcs12_password": "password"
 /// }
+/// ```
+/// The path to the configuration file is specified through the `KMS_CLI_CONF` environment variable.
+/// If the environment variable is not set, a default path is used.
+/// If the configuration file does not exist at the path, a new file is created with default values.
 ///
+/// This function returns a KMS client configured according to the settings specified in the configuration file.
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
 
 impl CliConf {
     pub fn load() -> Result<KmsRestClient, CliError> {
-        // Read the configuration file path from the environment variable or use a default value
-        let cli_conf_filename = env::var(KMS_CLI_CONF_ENV)
-            .map(PathBuf::from)
-            .or_else(|_| get_default_conf_path())?;
-
-        // Convert the configuration file path to a PathBuf
-        let conf_path = PathBuf::from(&cli_conf_filename);
-
-        // Check if the configuration file exists
-        let conf = match conf_path.exists() {
-            // If the configuration file exists, read it and deserialize it
-            true => {
-                let file = File::open(&cli_conf_filename)
-                    .with_context(|| format!("Can't read {:?}", cli_conf_filename))?;
-                serde_json::from_reader(BufReader::new(file)).with_context(|| {
-                    format!("Config JSON malformed reading {:?}", cli_conf_filename)
-                })?
+        // Obtain the configuration file path from the environment variable or default to a pre-determined path
+        let conf_path = if let Ok(conf_path) = env::var(KMS_CLI_CONF_ENV).map(PathBuf::from) {
+            // Error if the specified file does not exist
+            if !conf_path.exists() {
+                return Err(CliError::NotSupported(format!(
+                    "Configuration file {:?} does not exist",
+                    conf_path
+                )))
             }
-            // If the configuration file doesn't exist, create it with default values and serialize it
-            false => {
-                let parent = conf_path
-                    .parent()
-                    .with_context(|| format!("cannot get parent of {:?}", conf_path))?;
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("cannot create all directories of {:?}", parent))?;
-                let default_conf = CliConf::default();
-                fs::write(
-                    &conf_path,
-                    serde_json::to_string(&default_conf).with_context(|| {
-                        format!(
-                            "cannot serialize the default configuration {:?}",
-                            &default_conf
-                        )
-                    })?,
-                )
-                .with_context(|| {
-                    format!("cannot write the default configuration to {:?}", conf_path)
-                })?;
-                default_conf
-            }
+            conf_path
+        } else {
+            get_default_conf_path()?
         };
 
-        // Create a client to query the KMS
+        // Deserialize the configuration from the file, or create a default configuration if none exists
+        let conf = if conf_path.exists() {
+            // Configuration file exists, read and deserialize it
+            let file = File::open(&conf_path)
+                .with_context(|| format!("Unable to read configuration file {:?}", conf_path))?;
+            serde_json::from_reader(BufReader::new(file)).with_context(|| {
+                format!("Error while parsing configuration file {:?}", conf_path)
+            })?
+        } else {
+            // Configuration file doesn't exist, create it with default values and serialize it
+            let parent = conf_path
+                .parent()
+                .with_context(|| format!("Unable to get parent directory of {:?}", conf_path))?;
+            fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "Unable to create directory for configuration file {:?}",
+                    parent
+                )
+            })?;
+            let default_conf = CliConf::default();
+            fs::write(
+                &conf_path,
+                serde_json::to_string(&default_conf).with_context(|| {
+                    format!(
+                        "Unable to serialize default configuration {:?}",
+                        default_conf
+                    )
+                })?,
+            )
+            .with_context(|| {
+                format!(
+                    "Unable to write default configuration to file {:?}",
+                    conf_path
+                )
+            })?;
+            default_conf
+        };
+
+        // Initialize a KMS client with the given configuration
         let kms_connector = KmsRestClient::instantiate(
             &conf.kms_server_url,
             conf.kms_access_token.as_deref(),
@@ -152,7 +170,7 @@ impl CliConf {
         )
         .with_context(|| {
             format!(
-                "Can't build the query to connect to the kms server {}",
+                "Unable to establish connection to KMS server {}",
                 &conf.kms_server_url
             )
         })?;
@@ -170,11 +188,11 @@ mod tests {
     #[test]
     pub fn test_load() {
         // valid conf
-        env::set_var(KMS_CLI_CONF_ENV, "test_data/kms.json");
+        env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms.json");
         assert!(CliConf::load().is_ok());
 
         // another valid conf
-        env::set_var(KMS_CLI_CONF_ENV, "test_data/kms_partial.json");
+        env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms_partial.json");
         assert!(CliConf::load().is_ok());
 
         // Default conf file
@@ -184,8 +202,8 @@ mod tests {
         assert!(get_default_conf_path().unwrap().exists());
 
         // invalid conf
-        env::set_var(KMS_CLI_CONF_ENV, "test_data/kms.bad");
+        env::set_var(KMS_CLI_CONF_ENV, "test_data/configs/kms.bad");
         let e = CliConf::load().err().unwrap().to_string();
-        assert!(e.contains("Config JSON malformed reading \"test_data/kms.bad\""));
+        assert!(e.contains("missing field `kms_server_url`"));
     }
 }

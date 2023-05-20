@@ -11,7 +11,7 @@ use crate::{
     tests::{
         shared::{destroy, export, revoke},
         symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
-        utils::{init_test_server, init_test_server_options, log_init, ONCE},
+        utils::{init_test_server, init_test_server_options, ONCE},
         PROG_NAME,
     },
 };
@@ -61,7 +61,7 @@ fn switch_to_owner(ctx: &TestsContext) -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_ownership_and_grant() -> Result<(), CliError> {
-    log_init("cosmian=info");
+    // log_init("cosmian=info");
     // the client conf will use the owner cert
     let ctx = init_test_server_options(9996, false, true, true).await;
     let key_id = gen_key(&ctx.cli_conf_path)?;
@@ -138,44 +138,44 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
     // the user should now be able to encrypt or decrypt
     run_encrypt_decrypt_test(&ctx.cli_conf_path, &key_id)?;
 
-    // // switch back to owner
-    // switch_to_owner(&ctx)?;
-    // // grant encrypt and decrypt access to user
-    // grant_access(&ctx.cli_conf_path, &key_id, "user.client@acme.com", "get")?;
+    // switch back to owner
+    switch_to_owner(&ctx)?;
+    // grant encrypt and decrypt access to user
+    grant_access(&ctx.cli_conf_path, &key_id, "user.client@acme.com", "get")?;
 
-    // // switch to user
-    // switch_to_user(&ctx)?;
-    // // the user should now be able to export
-    // export(
-    //     &ctx.cli_conf_path,
-    //     "sym",
-    //     &key_id,
-    //     "output.json",
-    //     false,
-    //     false,
-    //     None,
-    //     false,
-    // )?;
+    // switch to user
+    switch_to_user(&ctx)?;
+    // the user should now be able to export
+    export(
+        &ctx.cli_conf_path,
+        "sym",
+        &key_id,
+        "output.json",
+        false,
+        false,
+        None,
+        false,
+    )?;
 
-    // // switch back to owner
-    // switch_to_owner(&ctx)?;
-    // // grant encrypt and decrypt access to user
-    // grant_access(
-    //     &ctx.cli_conf_path,
-    //     &key_id,
-    //     "user.client@acme.com",
-    //     "revoke",
-    // )?;
+    // switch back to owner
+    switch_to_owner(&ctx)?;
+    // grant encrypt and decrypt access to user
+    grant_access(
+        &ctx.cli_conf_path,
+        &key_id,
+        "user.client@acme.com",
+        "revoke",
+    )?;
 
-    // // switch to user
-    // switch_to_user(&ctx)?;
-    // // the user should now be able to revoke the key
-    // revoke(&ctx.cli_conf_path, "sym", &key_id, "user revoke")?;
+    // switch to user
+    switch_to_user(&ctx)?;
+    // the user should now be able to revoke the key
+    revoke(&ctx.cli_conf_path, "sym", &key_id, "user revoke")?;
 
-    // // switch back to owner
-    // switch_to_owner(&ctx)?;
-    // // destroy the key
-    // destroy(&ctx.cli_conf_path, "sym", &key_id)?;
+    // switch back to owner
+    switch_to_owner(&ctx)?;
+    // destroy the key
+    destroy(&ctx.cli_conf_path, "sym", &key_id)?;
 
     Ok(())
 }

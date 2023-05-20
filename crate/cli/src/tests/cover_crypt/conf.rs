@@ -15,6 +15,7 @@ use crate::{
 
 #[tokio::test]
 pub async fn test_bad_conf() -> Result<(), CliError> {
+    // log_init("cosmian=info");
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     let invalid_conf_path = generate_invalid_conf(&ctx.cli_conf);
@@ -36,24 +37,24 @@ pub async fn test_bad_conf() -> Result<(), CliError> {
         "--policy-binary",
         "test_data/policy.bin",
     ]);
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("Bad authorization token"));
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "Configuration file \"notfound.json\" does not exist",
+    ));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.arg(SUB_COMMAND).args(vec!["--help"]);
     cmd.assert().success();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms.bad");
+    cmd.env(KMS_CLI_CONF_ENV, "test_data/configs/kms.bad");
     cmd.arg(SUB_COMMAND).args(vec![
         "keys",
         "create-master-key-pair",
         "--policy-binary",
         "test_data/policy.bin",
     ]);
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "ERROR: Config JSON malformed reading \"test_data/kms.bad\"",
-    ));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("missing field `kms_server_url`"));
 
     Ok(())
 }

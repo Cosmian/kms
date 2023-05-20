@@ -15,7 +15,7 @@ use alcoholic_jwt::JWKS;
 use clap::Parser;
 use libsgx::utils::is_running_inside_enclave;
 use openssl::{pkcs12::ParsedPkcs12_2, x509::X509};
-use tracing::{debug, info};
+use tracing::info;
 
 use crate::{
     config::{
@@ -61,7 +61,7 @@ pub struct ClapConfig {
 
 impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut x = f.debug_struct("Config");
+        let mut x = f.debug_struct("");
         let x = x.field("db", &self.db);
         let x = if self.auth.jwt_issuer_uri.is_some() {
             x.field("auth0", &self.auth)
@@ -80,6 +80,8 @@ impl fmt::Debug for ClapConfig {
             x
         };
         let x = x.field("workspace", &self.workspace);
+        let x = x.field("default username", &self.default_username);
+        let x = x.field("force default username", &self.force_default_username);
         x.finish()
     }
 }
@@ -152,8 +154,6 @@ impl ServerConfig {
         // Initialize the HTTP server
         let (hostname_port, server_pkcs_12, verify_cert) = conf.http.init()?;
 
-        info!("http: ");
-
         let server_conf = ServerConfig {
             jwks: conf.auth.fetch_jwks().await?,
             jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
@@ -175,7 +175,7 @@ impl ServerConfig {
             verify_cert,
         };
 
-        debug!("generated server conf: {server_conf:#?}");
+        info!("generated server conf: {server_conf:#?}");
 
         Ok(server_conf)
     }
@@ -183,7 +183,7 @@ impl ServerConfig {
 
 impl fmt::Debug for ServerConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut x = f.debug_struct("SharedConfig");
+        let mut x = f.debug_struct("");
         let x = x
             .field("kms_url", &self.hostname_port)
             .field("db_params", &self.db_params);
