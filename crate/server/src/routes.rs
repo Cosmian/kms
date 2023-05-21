@@ -232,7 +232,7 @@ pub async fn revoke_access(
     let access = access.into_inner();
     let database_params = kms.get_database_secrets(&req)?;
     let user = kms.get_user(req)?;
-    info!("DELETE /accesses {access:?} {user}");
+    info!("POST /access/revoke {access:?} {user}");
 
     kms.revoke_access(&access, &user, database_params.as_ref())
         .await?;

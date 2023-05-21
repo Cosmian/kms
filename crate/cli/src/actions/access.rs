@@ -77,16 +77,16 @@ impl GrantAccess {
 /// Remove another user access right to an object
 #[derive(Parser, Debug)]
 pub struct RevokeAccess {
+    /// The user to revoke access to
+    #[clap(required = true)]
+    user: String,
+
     /// The object unique identifier stored in the KMS
     #[clap(required = true)]
     object_uid: String,
 
-    /// The user to revoke access to
-    #[clap(required = true, long, short = 'u')]
-    user: String,
-
     /// The operation to revoke (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
-    #[clap(required = true, long, short = 'o')]
+    #[clap(required = true)]
     operation: ObjectOperationTypes,
 }
 

@@ -43,6 +43,26 @@ fn grant_access(
     ))
 }
 
+/// Revoke access to a user
+fn revoke_access(
+    cli_conf_path: &str,
+    object_id: &str,
+    user: &str,
+    operation: &str,
+) -> Result<(), CliError> {
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.arg(SUB_COMMAND)
+        .args(vec!["revoke", user, object_id, operation]);
+    let output = cmd.output()?;
+    if output.status.success() {
+        return Ok(())
+    }
+    Err(CliError::Default(
+        std::str::from_utf8(&output.stderr)?.to_owned(),
+    ))
+}
+
 fn switch_to_user(ctx: &TestsContext) -> Result<(), CliError> {
     let mut user_conf = ctx.cli_conf.clone();
     user_conf.ssl_client_pkcs12_path =
@@ -61,9 +81,8 @@ fn switch_to_owner(ctx: &TestsContext) -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_ownership_and_grant() -> Result<(), CliError> {
-    log_init("cosmian=info");
     // the client conf will use the owner cert
-    let ctx = init_test_server_options(9996, false, true, true).await;
+    let ctx = init_test_server_options(9991, false, true, true).await;
     let key_id = gen_key(&ctx.cli_conf_path)?;
 
     // the owner should have access
@@ -230,108 +249,79 @@ pub async fn test_grant_error() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_revoke() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
-    let object_id = gen_key(&ctx.cli_conf_path)?;
+pub async fn test_revoke_access() -> Result<(), CliError> {
+    log_init("cosmian=info");
+    // the client conf will use the owner cert
+    let ctx = init_test_server_options(9992, false, true, true).await;
+    let key_id = gen_key(&ctx.cli_conf_path)?;
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec![
-        "grant",
-        object_id.as_str(),
-        "-u",
-        "user@example.com",
-        "-o",
-        "get",
-    ]);
-    cmd.assert().success();
+    switch_to_user(&ctx)?;
+    // the user should not be able to export
+    assert!(
+        export(
+            &ctx.cli_conf_path,
+            "sym",
+            &key_id,
+            "output.json",
+            false,
+            false,
+            None,
+            false,
+        )
+        .is_err()
+    );
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec![
-        "revoke",
-        object_id.as_str(),
-        "-u",
-        "user@example.com",
-        "-o",
-        "get",
-    ]);
-    cmd.assert().success().stdout(predicate::str::contains(
-        "The permission has been properly revoke",
-    ));
+    // switch back to owner
+    switch_to_owner(&ctx)?;
+    // grant encrypt and decrypt access to user
+    grant_access(&ctx.cli_conf_path, &key_id, "user.client@acme.com", "get")?;
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec!["list", object_id.as_str()]);
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::ends_with("The permissions are:\n\n"));
+    // switch to user
+    switch_to_user(&ctx)?;
+    // the user should now be able to export
+    export(
+        &ctx.cli_conf_path,
+        "sym",
+        &key_id,
+        "output.json",
+        false,
+        false,
+        None,
+        false,
+    )?;
 
-    Ok(())
-}
+    // switch back to owner
+    switch_to_owner(&ctx)?;
+    // revoke access to user
+    revoke_access(&ctx.cli_conf_path, &key_id, "user.client@acme.com", "get")?;
 
-#[tokio::test]
-pub async fn test_revoke_error() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
-    let object_id = gen_key(&ctx.cli_conf_path)?;
+    switch_to_user(&ctx)?;
+    // the user should not be able to export anymore
+    assert!(
+        export(
+            &ctx.cli_conf_path,
+            "sym",
+            &key_id,
+            "output.json",
+            false,
+            false,
+            None,
+            false,
+        )
+        .is_err()
+    );
 
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec![
-        "grant",
-        object_id.as_str(),
-        "-u",
-        "user@example.com",
-        "-o",
-        "get",
-    ]);
-    cmd.assert().success();
+    // revoke errors
+    // switch back to owner
+    switch_to_owner(&ctx)?;
+    assert!(revoke_access(&ctx.cli_conf_path, &key_id, "user.client@acme.com", "BAD").is_err());
+    assert!(revoke_access(&ctx.cli_conf_path, "BAD KEY", "user.client@acme.com", "get").is_err());
 
-    // Bad operation
-    let object_id = gen_key(&ctx.cli_conf_path)?;
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec![
-        "revoke",
-        object_id.as_str(),
-        "-u",
-        "user@example.com",
-        "-o",
-        "bad_ops",
-    ]);
-    cmd.assert()
-        .failure()
-        .stderr(predicate::str::contains("Could not parse an operation"));
+    // this will not error
+    revoke_access(&ctx.cli_conf_path, &key_id, "BAD USER", "get")?;
 
-    // Bad object id
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec![
-        "revoke",
-        "bad-object-id",
-        "-u",
-        "user@example.com",
-        "-o",
-        "get",
-    ]);
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "Access denied: Object with uid `bad-object-id` is not owned by owner",
-    ));
-
-    // User_id = owner_id
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec![
-        "revoke",
-        object_id.as_str(),
-        "-u",
-        "tech@cosmian.com",
-        "-o",
-        "get",
-    ]);
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "Access denied: You can\'t revoke yourself, you should keep all rights on your own objects",
-    ));
+    // stop the server
+    ctx.stop_server().await;
 
     Ok(())
 }
