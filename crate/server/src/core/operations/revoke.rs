@@ -21,7 +21,7 @@ use crate::{
 pub async fn revoke_operation(
     kms: &KMS,
     request: Revoke,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<RevokeResponse> {
     //TODO http://gitlab.cosmian.com/core/cosmian_server/-/issues/131  Reasons should be kept
@@ -36,9 +36,9 @@ pub async fn revoke_operation(
         unique_identifier,
         None,
         None,
-        owner,
+        user,
         params,
-        ObjectOperationTypes::Export,
+        ObjectOperationTypes::Revoke,
     )
     .await?;
 
@@ -53,7 +53,6 @@ pub async fn revoke_operation(
                 request.revocation_reason,
                 request.compromise_occurrence_date,
                 kms,
-                owner,
                 params,
             )
             .await?;
@@ -66,7 +65,6 @@ pub async fn revoke_operation(
                 request.revocation_reason.clone(),
                 request.compromise_occurrence_date,
                 kms,
-                owner,
                 params,
             )
             .await?;
@@ -77,7 +75,7 @@ pub async fn revoke_operation(
                     request.revocation_reason.clone(),
                     request.compromise_occurrence_date,
                     kms,
-                    owner,
+                    user,
                     params,
                 )
                 .await;
@@ -88,7 +86,7 @@ pub async fn revoke_operation(
                     request.revocation_reason,
                     request.compromise_occurrence_date,
                     kms,
-                    owner,
+                    user,
                     params,
                 )
                 .await?
@@ -103,7 +101,6 @@ pub async fn revoke_operation(
                 request.revocation_reason.clone(),
                 request.compromise_occurrence_date,
                 kms,
-                owner,
                 params,
             )
             .await?;
@@ -115,7 +112,7 @@ pub async fn revoke_operation(
                     request.revocation_reason.clone(),
                     request.compromise_occurrence_date,
                     kms,
-                    owner,
+                    user,
                     params,
                 )
                 .await
@@ -128,7 +125,7 @@ pub async fn revoke_operation(
                             request.revocation_reason,
                             request.compromise_occurrence_date,
                             kms,
-                            owner,
+                            user,
                             params,
                         )
                         .await?
@@ -156,7 +153,6 @@ async fn revoke_key_core(
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<u64>,
     kms: &KMS,
-    owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object> {
     //
@@ -183,7 +179,7 @@ async fn revoke_key_core(
         RevocationReason::TextString(_) => StateEnumeration::Deactivated,
     };
     kms.db
-        .update_state(unique_identifier, owner, state, params)
+        .update_state(unique_identifier, state, params)
         .await?;
 
     Ok(object)
@@ -195,7 +191,7 @@ pub(crate) async fn revoke_key(
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<u64>,
     kms: &KMS,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object> {
     // retrieve the object
@@ -204,9 +200,9 @@ pub(crate) async fn revoke_key(
         unique_identifier,
         None,
         None,
-        owner,
+        user,
         params,
-        ObjectOperationTypes::Export,
+        ObjectOperationTypes::Revoke,
     )
     .await?;
 
@@ -217,7 +213,6 @@ pub(crate) async fn revoke_key(
         revocation_reason,
         compromise_occurrence_date,
         kms,
-        owner,
         params,
     )
     .await

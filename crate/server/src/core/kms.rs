@@ -169,10 +169,10 @@ impl KMS {
     pub async fn import(
         &self,
         request: Import,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ImportResponse> {
-        operations::import(self, request, owner, params).await
+        operations::import(self, request, user, params).await
     }
 
     /// This operation requests the server to generate a new symmetric key or
@@ -186,10 +186,10 @@ impl KMS {
     pub async fn create(
         &self,
         request: Create,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<CreateResponse> {
-        operations::create(self, request, owner, params).await
+        operations::create(self, request, user, params).await
     }
 
     /// This operation requests the server to generate a new public/private key
@@ -210,10 +210,10 @@ impl KMS {
     pub async fn create_key_pair(
         &self,
         request: CreateKeyPair,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<CreateKeyPairResponse> {
-        operations::create_key_pair(self, request, owner, params).await
+        operations::create_key_pair(self, request, user, params).await
     }
 
     /// This operation requests the server to perform a decryption operation on
@@ -237,10 +237,10 @@ impl KMS {
     pub async fn decrypt(
         &self,
         request: Decrypt,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<DecryptResponse> {
-        operations::decrypt(self, request, owner, params).await
+        operations::decrypt(self, request, user, params).await
     }
 
     /// This operation is used to indicate to the server that the key material
@@ -251,10 +251,10 @@ impl KMS {
     pub async fn destroy(
         &self,
         request: Destroy,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<DestroyResponse> {
-        operations::destroy_operation(self, request, owner, params).await
+        operations::destroy_operation(self, request, user, params).await
     }
 
     /// This operation requests the server to perform an encryption operation on
@@ -288,10 +288,10 @@ impl KMS {
     pub async fn encrypt(
         &self,
         request: Encrypt,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<EncryptResponse> {
-        operations::encrypt(self, request, owner, params).await
+        operations::encrypt(self, request, user, params).await
     }
 
     /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
@@ -305,10 +305,10 @@ impl KMS {
     pub async fn export(
         &self,
         request: Export,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ExportResponse> {
-        operations::export(self, request, owner, params).await
+        operations::export(self, request, user, params).await
     }
 
     /// This operation requests that the server returns the Managed Object
@@ -335,10 +335,10 @@ impl KMS {
     pub async fn get(
         &self,
         request: Get,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<GetResponse> {
-        operations::get(self, request, owner, params).await
+        operations::get(self, request, user, params).await
     }
 
     /// This operation requests one or more attributes associated with a Managed
@@ -354,10 +354,10 @@ impl KMS {
     pub async fn get_attributes(
         &self,
         request: GetAttributes,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<GetAttributesResponse> {
-        operations::get_attributes(self, request, owner, params).await
+        operations::get_attributes(self, request, user, params).await
     }
 
     /// This operation requests that the server search for one or more Managed
@@ -453,10 +453,10 @@ impl KMS {
     pub async fn locate(
         &self,
         request: Locate,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<LocateResponse> {
-        operations::locate(self, request, Some(StateEnumeration::Active), owner, params).await
+        operations::locate(self, request, Some(StateEnumeration::Active), user, params).await
     }
 
     // This request is used to generate a replacement key pair for an existing
@@ -487,10 +487,10 @@ impl KMS {
     pub async fn rekey_keypair(
         &self,
         request: ReKeyKeyPair,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ReKeyKeyPairResponse> {
-        operations::rekey_keypair(self, request, owner, params).await
+        operations::rekey_keypair(self, request, user, params).await
     }
 
     /// This operation requests the server to revoke a Managed Cryptographic
@@ -508,10 +508,10 @@ impl KMS {
     pub async fn revoke(
         &self,
         request: Revoke,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<RevokeResponse> {
-        operations::revoke_operation(self, request, owner, params).await
+        operations::revoke_operation(self, request, user, params).await
     }
 
     /// Insert an access authorization for a user (identified by `access.userid`)
@@ -552,7 +552,7 @@ impl KMS {
     /// Remove an access authorization for a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    pub async fn delete_access(
+    pub async fn revoke_access(
         &self,
         access: &Access,
         owner: &str,
@@ -570,7 +570,7 @@ impl KMS {
             )))
         }
 
-        // check if owner is trying to grant themself
+        // check if owner is trying to revoke itself
         if owner == access.user_id {
             kms_bail!(KmsError::Unauthorized(
                 "You can't revoke yourself, you should keep all rights on your own objects"

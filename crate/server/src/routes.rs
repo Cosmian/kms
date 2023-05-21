@@ -144,14 +144,15 @@ pub async fn kmip(
 }
 
 /// List objects owned by the current user
-#[get("/objects/owned")]
+/// i.e. objects for which the user has full access
+#[get("/access/owned")]
 pub async fn list_owned_objects(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<ObjectOwnedResponse>>> {
     let database_params = kms.get_database_secrets(&req)?;
     let user = kms.get_user(req)?;
-    info!("GET /object/owned {user}");
+    info!("GET /access/owned {user}");
 
     let list = kms
         .list_owned_objects(&user, database_params.as_ref())
@@ -160,8 +161,9 @@ pub async fn list_owned_objects(
     Ok(Json(list))
 }
 
-/// List objects owned by the current user
-#[get("/objects/shared")]
+/// List objects  not owned by the user but for which an access
+/// has been shared to the user
+#[get("/access/shared")]
 pub async fn list_shared_objects(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
@@ -177,8 +179,8 @@ pub async fn list_shared_objects(
     Ok(Json(list))
 }
 
-/// List access right for an object
-#[get("/accesses/{object_id}")]
+/// List access rights for an object
+#[get("/access/list/{object_id}")]
 pub async fn list_accesses(
     req: HttpRequest,
     object_id: Path<(UniqueIdentifier,)>,
@@ -222,7 +224,7 @@ pub async fn grant_access(
 
 /// Revoke an access authorization for an object, given a `userid`
 #[post("/access/revoke")]
-pub async fn delete_access(
+pub async fn revoke_access(
     req: HttpRequest,
     access: Json<Access>,
     kms: Data<Arc<KMSServer>>,
@@ -232,7 +234,7 @@ pub async fn delete_access(
     let user = kms.get_user(req)?;
     info!("DELETE /accesses {access:?} {user}");
 
-    kms.delete_access(&access, &user, database_params.as_ref())
+    kms.revoke_access(&access, &user, database_params.as_ref())
         .await?;
     debug!(
         "Access revoke on {:?} for {:?} to {}",

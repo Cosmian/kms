@@ -75,7 +75,9 @@ async fn start_server(
     let thread_handle =
         thread::spawn(move || tokio_handle.block_on(start_kms_server(server_config, Some(tx))));
     trace!("Waiting for server to start...");
-    let server_handle = rx.recv_timeout(Duration::from_secs(10)).unwrap();
+    let server_handle = rx
+        .recv_timeout(Duration::from_secs(25))
+        .expect("Can't get server handle after 25 seconds");
     trace!("... got handle ...");
     Ok((server_handle, thread_handle))
 }

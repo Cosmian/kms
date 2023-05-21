@@ -168,7 +168,10 @@ where
 
         // Check this operation is legit to fetch this object
         if perms.into_iter().all(|p| p != operation_type) {
-            kms_bail!("No authorization to perform this operation");
+            return Err(KmsError::Unauthorized(format!(
+                "No authorization to perform the operation {operation_type} on the object {uid} / \
+                 {owner_or_userid}"
+            )))
         }
 
         let json = row.get::<Value, _>(0);
@@ -182,12 +185,7 @@ where
     })
 }
 
-async fn update_object_<'e, E>(
-    uid: &str,
-    owner: &str,
-    object: &kmip_objects::Object,
-    executor: E,
-) -> KResult<()>
+async fn update_object_<'e, E>(uid: &str, object: &kmip_objects::Object, executor: E) -> KResult<()>
 where
     E: Executor<'e, Database = MySql>,
 {
@@ -205,18 +203,12 @@ where
     )
     .bind(object_json)
     .bind(uid)
-    .bind(owner)
     .execute(executor)
     .await?;
     Ok(())
 }
 
-async fn update_state_<'e, E>(
-    uid: &str,
-    owner: &str,
-    state: StateEnumeration,
-    executor: E,
-) -> KResult<()>
+async fn update_state_<'e, E>(uid: &str, state: StateEnumeration, executor: E) -> KResult<()>
 where
     E: Executor<'e, Database = MySql>,
 {
@@ -227,7 +219,6 @@ where
     )
     .bind(state.to_string())
     .bind(uid)
-    .bind(owner)
     .execute(executor)
     .await?;
     Ok(())
@@ -560,21 +551,19 @@ impl Database for Sql {
     async fn update_object(
         &self,
         uid: &str,
-        owner: &str,
         object: &kmip_objects::Object,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        update_object_(uid, owner, object, &self.pool).await
+        update_object_(uid, object, &self.pool).await
     }
 
     async fn update_state(
         &self,
         uid: &str,
-        owner: &str,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        update_state_(uid, owner, state, &self.pool).await
+        update_state_(uid, state, &self.pool).await
     }
 
     async fn upsert(
@@ -737,9 +726,7 @@ mod tests {
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
         }]);
 
-        mysql
-            .update_object(&uid, owner, &symmetric_key, None)
-            .await?;
+        mysql.update_object(&uid, &symmetric_key, None).await?;
 
         match mysql
             .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
@@ -762,7 +749,7 @@ mod tests {
         }
 
         mysql
-            .update_state(&uid, owner, StateEnumeration::Deactivated, None)
+            .update_state(&uid, StateEnumeration::Deactivated, None)
             .await?;
 
         match mysql

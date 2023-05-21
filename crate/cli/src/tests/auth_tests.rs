@@ -5,7 +5,7 @@ use assert_cmd::prelude::*;
 use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
-    tests::{accesses::SUB_COMMAND, utils::init_test_server_options, PROG_NAME},
+    tests::{access::SUB_COMMAND, utils::init_test_server_options, PROG_NAME},
 };
 
 fn run_cli_command() {

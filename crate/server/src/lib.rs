@@ -30,7 +30,6 @@ use tracing::{debug, error, info};
 use crate::{
     core::{certbot::Certbot, KMS},
     error::KmsError,
-    routes::endpoint,
 };
 
 pub mod config;
@@ -88,25 +87,25 @@ pub fn prepare_server(
             .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
-            .service(endpoint::kmip)
-            .service(endpoint::list_owned_objects)
-            .service(endpoint::list_shared_objects)
-            .service(endpoint::list_accesses)
-            .service(endpoint::grant_access)
-            .service(endpoint::delete_access)
-            .service(endpoint::get_version)
-            .service(endpoint::get_certificate);
+            .service(routes::kmip)
+            .service(routes::list_owned_objects)
+            .service(routes::list_shared_objects)
+            .service(routes::list_accesses)
+            .service(routes::grant_access)
+            .service(routes::revoke_access)
+            .service(routes::get_version)
+            .service(routes::get_certificate);
 
         let app = if is_using_sqlite_enc {
-            app.service(endpoint::add_new_database)
+            app.service(routes::add_new_database)
         } else {
             app
         };
 
         if is_running_inside_enclave {
-            app.service(endpoint::get_enclave_quote)
-                .service(endpoint::get_enclave_manifest)
-                .service(endpoint::get_enclave_public_key)
+            app.service(routes::get_enclave_quote)
+                .service(routes::get_enclave_manifest)
+                .service(routes::get_enclave_public_key)
         } else {
             app
         }

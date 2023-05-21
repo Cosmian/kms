@@ -32,10 +32,10 @@ SELECT objects.object, objects.state, read_access.permissions
         WHERE objects.id=? AND read_access.id=? AND read_access.userid=?;
 
 -- name: update-rows-objects-with-object
-UPDATE objects SET object=? WHERE id=? AND owner=?;
+UPDATE objects SET object=? WHERE id=?;
 
 -- name: update-rows-objects-with-state
-UPDATE objects SET state=? WHERE id=? AND owner=?;
+UPDATE objects SET state=? WHERE id=?;
 
 -- name: delete-rows-objects
 DELETE FROM objects WHERE id=? AND owner=?;

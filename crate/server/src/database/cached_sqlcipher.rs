@@ -195,13 +195,12 @@ impl Database for CachedSqlCipher {
     async fn update_object(
         &self,
         uid: &str,
-        owner: &str,
         object: &kmip_objects::Object,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = update_object_(uid, owner, object, &*pool).await;
+            let ret = update_object_(uid, object, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -212,13 +211,12 @@ impl Database for CachedSqlCipher {
     async fn update_state(
         &self,
         uid: &str,
-        owner: &str,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = update_state_(uid, owner, state, &*pool).await;
+            let ret = update_state_(uid, state, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }

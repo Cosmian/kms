@@ -1,4 +1,4 @@
-mod accesses;
+mod access;
 mod auth_tests;
 mod cover_crypt;
 mod elliptic_curve;

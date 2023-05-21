@@ -60,7 +60,7 @@ impl GrantAccess {
         };
 
         client_connector
-            .grant(access)
+            .grant_access(access)
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 

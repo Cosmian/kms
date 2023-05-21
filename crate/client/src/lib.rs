@@ -357,7 +357,7 @@ impl KmsRestClient {
     /// The object uid must be known from the database.
     /// If the user already has access, nothing is done. No error is returned.
     /// The user (owner) can't grant access to himself/herself.
-    pub async fn grant(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
+    pub async fn grant_access(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
         self.post_no_ttlv("/access/grant", Some(&access)).await
     }
 
@@ -371,18 +371,20 @@ impl KmsRestClient {
 
     /// This operation requests the server to list all the granted access on a object
     pub async fn list_access(&self, uid: &str) -> Result<Vec<UserAccessResponse>, KmsClientError> {
-        self.get_no_ttlv(&format!("/accesses/{uid}"), None::<&()>)
+        self.get_no_ttlv(&format!("/access/list/{uid}"), None::<&()>)
             .await
     }
 
     /// This operation requests the server to list all the objects owned by the current user.
+    /// i.e. the objects for which the user has full access
     pub async fn list_owned_objects(&self) -> Result<Vec<ObjectOwnedResponse>, KmsClientError> {
-        self.get_no_ttlv("/objects/owned", None::<&()>).await
+        self.get_no_ttlv("/access/owned", None::<&()>).await
     }
 
-    /// This operation requests the server to list all the objects shared with the current user.
+    /// This operation requests the server to list all the object for
+    /// which access rights have been shared with the current user.
     pub async fn list_shared_objects(&self) -> Result<Vec<ObjectSharedResponse>, KmsClientError> {
-        self.get_no_ttlv("/objects/shared", None::<&()>).await
+        self.get_no_ttlv("/access/shared", None::<&()>).await
     }
 
     /// This operation requests the server to get the sgx quote.

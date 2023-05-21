@@ -15,8 +15,7 @@ use crate::{
     config::{jwt_auth_config::JwtAuthConfig, ClapConfig, ServerConfig},
     middlewares::jwt_auth::JwtAuth,
     result::KResult,
-    routes::endpoint,
-    KMSServer,
+    routes, KMSServer,
 };
 
 // Test auth0 Config
@@ -54,9 +53,9 @@ pub async fn test_app()
         App::new()
             .wrap(jwt_auth)
             .app_data(Data::new(kms_server.clone()))
-            .service(endpoint::kmip)
-            .service(endpoint::grant_access)
-            .service(endpoint::delete_access),
+            .service(routes::kmip)
+            .service(routes::grant_access)
+            .service(routes::revoke_access),
     )
     .await
 }

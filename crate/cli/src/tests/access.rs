@@ -135,8 +135,13 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
         )
         .is_err()
     );
+
     // the user should now be able to encrypt or decrypt
     run_encrypt_decrypt_test(&ctx.cli_conf_path, &key_id)?;
+    // the user should still not be able to revoke the key
+    assert!(revoke(&ctx.cli_conf_path, "sym", &key_id, "failed revoke").is_err());
+    // the user should still not be able to destroy the key
+    assert!(destroy(&ctx.cli_conf_path, "sym", &key_id).is_err());
 
     // switch back to owner
     switch_to_owner(&ctx)?;
@@ -156,10 +161,14 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
         None,
         false,
     )?;
+    // the user should still not be able to revoke the key
+    assert!(revoke(&ctx.cli_conf_path, "sym", &key_id, "failed revoke").is_err());
+    // the user should still not be able to destroy the key
+    assert!(destroy(&ctx.cli_conf_path, "sym", &key_id).is_err());
 
     // switch back to owner
     switch_to_owner(&ctx)?;
-    // grant encrypt and decrypt access to user
+    // grant revoke access to user
     grant_access(
         &ctx.cli_conf_path,
         &key_id,
@@ -174,6 +183,16 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
 
     // switch back to owner
     switch_to_owner(&ctx)?;
+    // grant destroy access to user
+    grant_access(
+        &ctx.cli_conf_path,
+        &key_id,
+        "user.client@acme.com",
+        "destroy",
+    )?;
+
+    // switch to user
+    switch_to_user(&ctx)?;
     // destroy the key
     destroy(&ctx.cli_conf_path, "sym", &key_id)?;
 

@@ -1,4 +1,4 @@
-use std::{process::Command, thread, time::Duration};
+use std::process::Command;
 
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
@@ -55,11 +55,11 @@ pub async fn test_secrets_bad() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_bad_database_secrets() -> Result<(), CliError> {
+pub async fn test_conf_does_not_exist() -> Result<(), CliError> {
     ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/kms_bad_group_id.bad");
+    cmd.env(KMS_CLI_CONF_ENV, "test_data/configs/kms_bad_group_id.bad");
 
     cmd.arg(SUB_COMMAND).args(vec![
         "keys",
@@ -68,12 +68,7 @@ pub async fn test_bad_database_secrets() -> Result<(), CliError> {
         "test_data/policy.bin",
     ]);
     let output = cmd.output()?;
-    println!("ERR: {}", String::from_utf8_lossy(&output.stderr));
-
     assert!(!output.status.success());
-
-    thread::sleep(Duration::from_secs(5));
-
     Ok(())
 }
 
