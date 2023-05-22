@@ -18,7 +18,7 @@ pub async fn test_bad_conf() -> Result<(), CliError> {
     // log_init("cosmian=info");
     let ctx = ONCE.get_or_init(init_test_server).await;
 
-    let invalid_conf_path = generate_invalid_conf(&ctx.cli_conf);
+    let invalid_conf_path = generate_invalid_conf(&ctx.owner_cli_conf);
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, invalid_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![

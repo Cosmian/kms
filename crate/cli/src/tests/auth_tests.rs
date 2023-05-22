@@ -8,9 +8,9 @@ use crate::{
     tests::{access::SUB_COMMAND, utils::init_test_server_options, PROG_NAME},
 };
 
-fn run_cli_command() {
+fn run_cli_command(owner_cli_conf_path: &str) {
     let mut cmd = Command::cargo_bin(PROG_NAME).expect(" cargo bin failed");
-    cmd.env(KMS_CLI_CONF_ENV, "/tmp/kms_9999.json");
+    cmd.env(KMS_CLI_CONF_ENV, owner_cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
     cmd.assert().success();
 }
@@ -21,22 +21,22 @@ pub async fn test_all_authentications() -> Result<(), CliError> {
     const PORT: u16 = 9999;
     // plaintext no auth
     let ctx = init_test_server_options(PORT, false, false, false).await;
-    run_cli_command();
+    run_cli_command(&ctx.owner_cli_conf_path);
     ctx.stop_server().await;
 
     // plaintext token auth
     let ctx = init_test_server_options(PORT, true, false, false).await;
-    run_cli_command();
+    run_cli_command(&ctx.owner_cli_conf_path);
     ctx.stop_server().await;
 
     // tls token auth
     let ctx = init_test_server_options(PORT, true, true, false).await;
-    run_cli_command();
+    run_cli_command(&ctx.owner_cli_conf_path);
     ctx.stop_server().await;
 
     // tls client cert auth
     let ctx = init_test_server_options(PORT, false, true, true).await;
-    run_cli_command();
+    run_cli_command(&ctx.owner_cli_conf_path);
     ctx.stop_server().await;
 
     Ok(())

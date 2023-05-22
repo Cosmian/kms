@@ -56,7 +56,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     let uid: String = import(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "cc",
         "test_data/ttlv_public_key.json",
         None,
@@ -68,7 +68,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
     // reimporting the same key  with the same id should fail
     assert!(
         import(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             "cc",
             "test_data/ttlv_public_key.json",
             Some(uid.clone()),
@@ -80,7 +80,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 
     //...unless we force it with replace_existing
     let uid_: String = import(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "cc",
         "test_data/ttlv_public_key.json",
         Some(uid.clone()),
@@ -98,30 +98,30 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
 
     // Generate
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
     export_import_test(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "cc",
         &private_key_id,
         CryptographicAlgorithm::CoverCrypt,
     )?;
 
     // generate a new key pair
-    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.cli_conf_path)?;
+    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
     export_import_test(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "ec",
         &private_key_id,
         CryptographicAlgorithm::ECDH,
     )?;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
     export_import_test(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
         CryptographicAlgorithm::AES,

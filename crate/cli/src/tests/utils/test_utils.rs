@@ -13,8 +13,6 @@ use cosmian_kms_server::{
     config::{
         db::DBConfig, http::HTTPConfig, jwt_auth_config::JwtAuthConfig, ClapConfig, ServerConfig,
     },
-    error::KmsError,
-    result::KResult,
     start_kms_server,
 };
 use cosmian_kms_utils::types::ExtraDatabaseParams;
@@ -52,10 +50,11 @@ pub fn get_auth0_jwt_config() -> JwtAuthConfig {
 pub static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 
 pub struct TestsContext {
-    pub cli_conf_path: String,
-    pub cli_conf: CliConf,
+    pub owner_cli_conf_path: String,
+    pub user_cli_conf_path: String,
+    pub owner_cli_conf: CliConf,
     pub server_handle: ServerHandle,
-    pub thread_handle: thread::JoinHandle<KResult<()>>,
+    pub thread_handle: thread::JoinHandle<Result<(), CliError>>,
 }
 
 impl TestsContext {
@@ -69,11 +68,14 @@ impl TestsContext {
 /// Start a server with the given config in a separate thread
 async fn start_server(
     server_config: ServerConfig,
-) -> Result<(ServerHandle, JoinHandle<Result<(), KmsError>>), CliError> {
+) -> Result<(ServerHandle, JoinHandle<Result<(), CliError>>), CliError> {
     let (tx, rx) = mpsc::channel::<ServerHandle>();
     let tokio_handle = tokio::runtime::Handle::current();
-    let thread_handle =
-        thread::spawn(move || tokio_handle.block_on(start_kms_server(server_config, Some(tx))));
+    let thread_handle = thread::spawn(move || {
+        tokio_handle
+            .block_on(start_kms_server(server_config, Some(tx)))
+            .map_err(|e| CliError::ServerError(e.to_string()))
+    });
     trace!("Waiting for server to start...");
     let server_handle = rx
         .recv_timeout(Duration::from_secs(25))
@@ -146,7 +148,7 @@ pub fn create_new_database(cli_conf_path: &str) -> Result<String, CliError> {
 
 /// Start a test server with the default options: JWT authentication and encrypted database, no TLS
 pub async fn init_test_server() -> TestsContext {
-    init_test_server_options(9990, true, false, false).await
+    init_test_server_options(9990, false, true, true).await
 }
 
 /// Start a server in a thread with the given options
@@ -157,7 +159,9 @@ pub async fn init_test_server_options(
     use_client_cert: bool,
 ) -> TestsContext {
     let _ = env_logger::builder().is_test(true).try_init();
-    let cli_conf_path = format!("/tmp/kms_{port}.json");
+
+    // Create a conf
+    let owner_cli_conf_path = format!("/tmp/owner_kms_{port}.json");
 
     // Configure the serveur
     let clap_config = ClapConfig {
@@ -206,7 +210,7 @@ pub async fn init_test_server_options(
 
     // Generate a CLI Conf.
     // We will update it later by appending the database secret
-    let mut cli_conf = CliConf {
+    let mut owner_cli_conf = CliConf {
         kms_server_url: if use_https {
             format!("https://0.0.0.0:{port}")
         } else {
@@ -231,42 +235,64 @@ pub async fn init_test_server_options(
         ..Default::default()
     };
     // write the conf to a file
-    write_to_json_file(&cli_conf, &cli_conf_path).expect("Can't write CLI conf path");
+    write_to_json_file(&owner_cli_conf, &owner_cli_conf_path)
+        .expect("Can't write owner CLI conf path");
 
     // Start the server on a independent thread
     println!(
         "Starting test server at URL: {} with server config {:?}",
-        cli_conf.kms_server_url, &clap_config
+        owner_cli_conf.kms_server_url, &clap_config
     );
     let (server_handle, thread_handle) = start_server(server_config)
         .await
         .expect("Can't start server");
 
     // wait for the server to be up
-    wait_for_server_to_start(&cli_conf_path)
+    wait_for_server_to_start(&owner_cli_conf_path)
         .await
         .expect("server timeout");
 
     // Configure a database and create the kms json file
     let database_secret =
-        create_new_database(&cli_conf_path).expect("failed configuring a database");
+        create_new_database(&owner_cli_conf_path).expect("failed configuring a database");
 
     // Rewrite the conf with the correct database secret
-    cli_conf.kms_database_secret = Some(database_secret);
-    write_to_json_file(&cli_conf, &cli_conf_path).expect("Can't write CLI conf path");
+    owner_cli_conf.kms_database_secret = Some(database_secret);
+    write_to_json_file(&owner_cli_conf, &owner_cli_conf_path)
+        .expect("Can't write owner CLI conf path");
+
+    // generate a user conf
+    let user_cli_conf_path =
+        generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
 
     TestsContext {
-        cli_conf_path,
-        cli_conf,
+        owner_cli_conf_path,
+        user_cli_conf_path,
+        owner_cli_conf,
         server_handle,
         thread_handle,
     }
 }
 
+/// Generate a user configuration for user.client@acme.com and return the file path
+pub(crate) fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<String, CliError> {
+    let mut user_conf = owner_cli_conf.clone();
+    user_conf.ssl_client_pkcs12_path =
+        Some("test_data/certificates/user.client.acme.com.p12".to_string());
+
+    // write the user conf
+    let user_conf_path = format!("/tmp/user_kms_{port}.json");
+    write_to_json_file(&user_conf, &user_conf_path)?;
+
+    // return the path
+    Ok(user_conf_path)
+}
+
 /// Generate an invalid configuration by changin the database secret  and return the file path
 pub(crate) fn generate_invalid_conf(correct_conf: &CliConf) -> String {
     let mut invalid_conf = correct_conf.clone();
-    let invalid_conf_path = "/tmp/kms_bad_key.bad";
+    // and a temp file
+    let invalid_conf_path = "/tmp/invalid_conf.json".to_string();
     // Generate a wrong token with valid group id
     let secrets = b64
         .decode(
@@ -282,7 +308,6 @@ pub(crate) fn generate_invalid_conf(correct_conf: &CliConf) -> String {
     secrets.key = [42_u8; 32]; // bad secret
     let token = b64.encode(serde_json::to_string(&secrets).expect("Can't encode token"));
     invalid_conf.kms_database_secret = Some(token);
-    write_to_json_file(&invalid_conf, &invalid_conf_path.to_string())
-        .expect("Can't write CONF_PATH_BAD_KEY");
-    invalid_conf_path.to_string()
+    write_to_json_file(&invalid_conf, &invalid_conf_path).expect("Can't write CONF_PATH_BAD_KEY");
+    invalid_conf_path
 }

@@ -46,14 +46,14 @@ pub async fn test_user_decryption_key() -> Result<(), CliError> {
 
     // generate a new master key pair
     let (master_private_key_id, _) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
 
     // and a user key
     let user_key_id = create_user_decryption_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
     )?;
@@ -68,14 +68,14 @@ pub async fn test_user_decryption_key_error() -> Result<(), CliError> {
 
     // generate a new master key pair
     let (master_private_key_id, _) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
 
     // bad attributes
     let err = create_user_decryption_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top SecretZZZZZZ",
     )
@@ -88,7 +88,7 @@ pub async fn test_user_decryption_key_error() -> Result<(), CliError> {
 
     // bad master private key
     let err = create_user_decryption_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "BAD_KEY",
         "(Department::MKG || Department::FIN) && Security Level::Top SecretZZZZZZ",
     )

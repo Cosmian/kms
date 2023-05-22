@@ -17,7 +17,7 @@ use crate::{
 async fn test_view_policy() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "policy",
         "view",
@@ -31,7 +31,7 @@ async fn test_view_policy() -> Result<(), CliError> {
         .stdout(predicate::str::contains("R&D"));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "policy",
         "view",
@@ -52,7 +52,7 @@ async fn test_view_policy() -> Result<(), CliError> {
 async fn test_create_policy() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "policy",
         "create",

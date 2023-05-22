@@ -45,6 +45,6 @@ pub fn create_ec_key_pair(cli_conf_path: &str) -> Result<(String, String), CliEr
 pub async fn test_create_key_pair() -> Result<(), CliError> {
     // from specs
     let ctx = ONCE.get_or_init(init_test_server).await;
-    create_ec_key_pair(&ctx.cli_conf_path)?;
+    create_ec_key_pair(&ctx.owner_cli_conf_path)?;
     Ok(())
 }

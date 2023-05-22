@@ -60,44 +60,49 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
     // AES
     {
         // AES 256 bit key
-        create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+        create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
         // AES 128 bit key
-        create_symmetric_key(&ctx.cli_conf_path, Some(128), None, None)?;
+        create_symmetric_key(&ctx.owner_cli_conf_path, Some(128), None, None)?;
         //  AES 256 bit key from a base64 encoded key
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);
-        create_symmetric_key(&ctx.cli_conf_path, None, Some(&key_b64), None)?;
+        create_symmetric_key(&ctx.owner_cli_conf_path, None, Some(&key_b64), None)?;
     }
 
     // AChaCha20
     {
         // ChaCha20 256 bit key
-        create_symmetric_key(&ctx.cli_conf_path, None, None, Some("chacha20"))?;
+        create_symmetric_key(&ctx.owner_cli_conf_path, None, None, Some("chacha20"))?;
         // ChaCha20 128 bit key
-        create_symmetric_key(&ctx.cli_conf_path, Some(128), None, Some("chacha20"))?;
+        create_symmetric_key(&ctx.owner_cli_conf_path, Some(128), None, Some("chacha20"))?;
         //  ChaCha20 256 bit key from a base64 encoded key
         let mut rng = CsRng::from_entropy();
         let mut key = vec![0u8; 32];
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);
-        create_symmetric_key(&ctx.cli_conf_path, None, Some(&key_b64), Some("chacha20"))?;
+        create_symmetric_key(
+            &ctx.owner_cli_conf_path,
+            None,
+            Some(&key_b64),
+            Some("chacha20"),
+        )?;
     }
 
     // Sha3
     {
         // ChaCha20 256 bit salt
-        create_symmetric_key(&ctx.cli_conf_path, None, None, Some("sha3"))?;
+        create_symmetric_key(&ctx.owner_cli_conf_path, None, None, Some("sha3"))?;
         // ChaCha20 salts
-        create_symmetric_key(&ctx.cli_conf_path, Some(224), None, Some("sha3"))?;
-        create_symmetric_key(&ctx.cli_conf_path, Some(256), None, Some("sha3"))?;
-        create_symmetric_key(&ctx.cli_conf_path, Some(384), None, Some("sha3"))?;
-        create_symmetric_key(&ctx.cli_conf_path, Some(512), None, Some("sha3"))?;
+        create_symmetric_key(&ctx.owner_cli_conf_path, Some(224), None, Some("sha3"))?;
+        create_symmetric_key(&ctx.owner_cli_conf_path, Some(256), None, Some("sha3"))?;
+        create_symmetric_key(&ctx.owner_cli_conf_path, Some(384), None, Some("sha3"))?;
+        create_symmetric_key(&ctx.owner_cli_conf_path, Some(512), None, Some("sha3"))?;
         //  ChaCha20 256 bit salt from a base64 encoded salt
         let mut rng = CsRng::from_entropy();
         let mut salt = vec![0u8; 32];
         rng.fill_bytes(&mut salt);
         let key_b64 = general_purpose::STANDARD.encode(&salt);
-        create_symmetric_key(&ctx.cli_conf_path, None, Some(&key_b64), Some("sha3"))?;
+        create_symmetric_key(&ctx.owner_cli_conf_path, None, Some(&key_b64), Some("sha3"))?;
     }
     Ok(())
 }

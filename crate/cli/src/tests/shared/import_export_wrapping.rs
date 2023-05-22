@@ -39,7 +39,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     let wrap_key = create_symmetric_key(&wrap_key_bytes, CryptographicAlgorithm::AES);
     write_kmip_object_to_file(&wrap_key, &wrap_key_path)?;
     let wrap_key_uid = import(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "sym",
         wrap_key_path.to_str().unwrap(),
         None,
@@ -49,12 +49,12 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
 
     // test CC
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
     test_import_export_wrap_private_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "cc",
         &private_key_id,
         &wrap_key_uid,
@@ -62,18 +62,19 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     )?;
     // test ec
     let (private_key_id, _public_key_id) =
-        elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.cli_conf_path)?;
+        elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.owner_cli_conf_path)?;
     test_import_export_wrap_private_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "ec",
         &private_key_id,
         &wrap_key_uid,
         &wrap_key,
     )?;
     // test sym
-    let key_id = symmetric::create_key::create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+    let key_id =
+        symmetric::create_key::create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
     test_import_export_wrap_private_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
         &wrap_key_uid,
@@ -99,7 +100,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
     write_kmip_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;
     import(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "ec",
         wrap_private_key_path.to_str().unwrap(),
         Some(wrap_private_key_uid.to_string()),
@@ -110,7 +111,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     let wrap_public_key_path = tmp_path.join("wrap.public.key");
     write_kmip_object_to_file(wrap_key_pair.public_key(), &wrap_public_key_path)?;
     import(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "ec",
         wrap_public_key_path.to_str().unwrap(),
         Some(wrap_public_key_uid.to_string()),
@@ -119,12 +120,12 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     )?;
     // test CC
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
     test_import_export_wrap_private_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "cc",
         &private_key_id,
         wrap_public_key_uid,
@@ -132,18 +133,19 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     )?;
     // test ec
     let (private_key_id, _public_key_id) =
-        elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.cli_conf_path)?;
+        elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.owner_cli_conf_path)?;
     test_import_export_wrap_private_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "ec",
         &private_key_id,
         wrap_public_key_uid,
         wrap_key_pair.private_key(),
     )?;
     // test sym
-    let key_id = symmetric::create_key::create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+    let key_id =
+        symmetric::create_key::create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
     test_import_export_wrap_private_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
         wrap_public_key_uid,

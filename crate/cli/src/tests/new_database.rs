@@ -25,7 +25,7 @@ pub async fn test_new_database() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
     cmd.arg("new-database");
     cmd.assert().success().stdout(predicate::str::contains(
         "A new encrypted database is configured",
@@ -36,10 +36,12 @@ pub async fn test_new_database() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_secrets_bad() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
+
+    let bad_conf_path = generate_invalid_conf(&ctx.owner_cli_conf);
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, "test_data/configs/kms_bad_secret.bad"); // Token can't be deserialized
+    cmd.env(KMS_CLI_CONF_ENV, bad_conf_path);
 
     cmd.arg(SUB_COMMAND).args(vec![
         "keys",
@@ -47,9 +49,9 @@ pub async fn test_secrets_bad() -> Result<(), CliError> {
         "--policy-binary",
         "test_data/policy.bin",
     ]);
-    cmd.assert().failure().stderr(predicate::str::contains(
-        "Access denied: KmsDatabaseSecret header cannot be decoded",
-    ));
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Database secret is wrong"));
 
     Ok(())
 }
@@ -77,7 +79,7 @@ pub async fn test_secrets_key_bad() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.cli_conf_path);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
         "keys",
         "create-master-key-pair",
@@ -86,7 +88,7 @@ pub async fn test_secrets_key_bad() -> Result<(), CliError> {
     ]);
     cmd.assert().success();
 
-    let invalid_conf_path = generate_invalid_conf(&ctx.cli_conf);
+    let invalid_conf_path = generate_invalid_conf(&ctx.owner_cli_conf);
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, invalid_conf_path);
 
@@ -112,11 +114,11 @@ async fn test_multiple_databases() -> Result<(), CliError> {
     let ctx = init_test_server_options(9997, true, false, false).await;
 
     // create a symmetric key in the default encrypted database
-    let key_1 = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+    let key_1 = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
     // export the key 1
     // Export
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "sym",
         &key_1,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -127,19 +129,19 @@ async fn test_multiple_databases() -> Result<(), CliError> {
     )?;
 
     // create a new encrypted database
-    let new_database_secret = create_new_database(&ctx.cli_conf_path)?;
+    let new_database_secret = create_new_database(&ctx.owner_cli_conf_path)?;
 
     // update the CLI conf
-    let mut new_conf = ctx.cli_conf.clone();
+    let mut new_conf = ctx.owner_cli_conf.clone();
     new_conf.kms_database_secret = Some(new_database_secret);
-    write_to_json_file(&new_conf, &ctx.cli_conf_path).expect("Can't write the new conf");
+    write_to_json_file(&new_conf, &ctx.owner_cli_conf_path).expect("Can't write the new conf");
 
     // create a symmetric key in the default encrypted database
-    let key_2 = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+    let key_2 = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
     // export the key 1
     // Export
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "sym",
         &key_2,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -150,10 +152,11 @@ async fn test_multiple_databases() -> Result<(), CliError> {
     )?;
 
     // go back to original conf
-    write_to_json_file(&ctx.cli_conf, &ctx.cli_conf_path).expect("Can't rewrite the original conf");
+    write_to_json_file(&ctx.owner_cli_conf, &ctx.owner_cli_conf_path)
+        .expect("Can't rewrite the original conf");
     // we should be able to export key_1 again
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "sym",
         &key_1,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -164,10 +167,10 @@ async fn test_multiple_databases() -> Result<(), CliError> {
     )?;
 
     // go to new conf
-    write_to_json_file(&new_conf, &ctx.cli_conf_path).expect("Can't rewrite the new conf");
+    write_to_json_file(&new_conf, &ctx.owner_cli_conf_path).expect("Can't rewrite the new conf");
     // we should be able to export key_2 again
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "sym",
         &key_2,
         tmp_path.join("output.export").to_str().unwrap(),

@@ -89,13 +89,13 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
     assert!(!output_file.exists());
 
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
 
     encrypt(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         input_file.to_str().unwrap(),
         &master_public_key_id,
         "Department::MKG && Security Level::Confidential",
@@ -105,14 +105,14 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
 
     // create a user decryption key
     let user_ok_key_id = create_user_decryption_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
     )?;
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         output_file.to_str().unwrap(),
         &user_ok_key_id,
         Some(recovered_file.to_str().unwrap()),
@@ -126,13 +126,13 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
 
     // this user key should not be able to decrypt the file
     let user_ko_key_id = create_user_decryption_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "Department::FIN && Security Level::Top Secret",
     )?;
     assert!(
         decrypt(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             output_file.to_str().unwrap(),
             &user_ko_key_id,
             Some(recovered_file.to_str().unwrap()),

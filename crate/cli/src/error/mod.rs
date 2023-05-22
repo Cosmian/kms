@@ -4,6 +4,7 @@ use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
+use cosmian_kms_client::error::KmsClientError;
 use cosmian_kms_utils::crypto::error::CryptoError;
 use thiserror::Error;
 pub mod result;
@@ -53,6 +54,10 @@ pub enum CliError {
     // A cryptographic error
     #[error("Cryptographic error: {0}")]
     Cryptographic(String),
+
+    // When the KMS client returns an error
+    #[error("{0}")]
+    KmsClientError(String),
 
     // Other errors
     #[error("{0}")]
@@ -130,6 +135,12 @@ impl From<KmipError> for CliError {
 impl From<base64::DecodeError> for CliError {
     fn from(e: base64::DecodeError) -> Self {
         CliError::Default(e.to_string())
+    }
+}
+
+impl From<KmsClientError> for CliError {
+    fn from(e: KmsClientError) -> Self {
+        CliError::KmsClientError(e.to_string())
     }
 }
 

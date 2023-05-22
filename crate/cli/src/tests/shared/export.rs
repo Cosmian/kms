@@ -69,13 +69,13 @@ pub async fn test_export_cover_crypt() -> Result<(), CliError> {
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
     // Export
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "cc",
         &master_private_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -85,7 +85,7 @@ pub async fn test_export_cover_crypt() -> Result<(), CliError> {
         false,
     )?;
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "cc",
         &master_public_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -97,12 +97,12 @@ pub async fn test_export_cover_crypt() -> Result<(), CliError> {
 
     // generate a user key
     let user_key_id = create_user_decryption_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
     )?;
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "cc",
         &user_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -124,10 +124,10 @@ pub async fn test_export_ec() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a new key pair
-    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.cli_conf_path)?;
+    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
     // Export
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "ec",
         &private_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -137,7 +137,7 @@ pub async fn test_export_ec() -> Result<(), CliError> {
         false,
     )?;
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "ec",
         &public_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -159,10 +159,10 @@ pub async fn test_export_sym() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
     // Export
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -184,10 +184,10 @@ pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
     // Export
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -210,7 +210,7 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
 
     // key does not exist
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "cc",
         "does_not_exist",
         tmp_path.join("output.export").to_str().unwrap(),
@@ -224,14 +224,14 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
 
     // Export to non existing dir
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "cc",
         &master_private_key_id,
         "/does_not_exist/output.export",
@@ -256,13 +256,13 @@ pub async fn test_export_bytes_cover_crypt() -> Result<(), CliError> {
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
     // Export
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "cc",
         &master_private_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -278,7 +278,7 @@ pub async fn test_export_bytes_cover_crypt() -> Result<(), CliError> {
 
     // Export the bytes only
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "cc",
         &master_private_key_id,
         tmp_path.join("output.export.bytes").to_str().unwrap(),
@@ -303,10 +303,10 @@ pub async fn test_export_bytes_ec() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a new key pair
-    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.cli_conf_path)?;
+    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
     // Export
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "ec",
         &private_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -322,7 +322,7 @@ pub async fn test_export_bytes_ec() -> Result<(), CliError> {
 
     // Export the bytes only
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "ec",
         &private_key_id,
         tmp_path.join("output.export.bytes").to_str().unwrap(),
@@ -347,10 +347,10 @@ pub async fn test_export_bytes_sym() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
     // Export
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -366,7 +366,7 @@ pub async fn test_export_bytes_sym() -> Result<(), CliError> {
 
     // Export the bytes only
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
         tmp_path.join("output.export.bytes").to_str().unwrap(),

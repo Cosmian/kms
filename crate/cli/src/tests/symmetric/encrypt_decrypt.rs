@@ -76,8 +76,8 @@ pub fn decrypt(
 #[tokio::test]
 async fn test_encrypt_decrypt() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
-    let key_id = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
-    run_encrypt_decrypt_test(&ctx.cli_conf_path, &key_id)
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    run_encrypt_decrypt_test(&ctx.owner_cli_conf_path, &key_id)
 }
 
 pub(crate) fn run_encrypt_decrypt_test(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {

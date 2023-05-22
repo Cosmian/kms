@@ -49,18 +49,18 @@ async fn test_rotate() -> Result<(), CliError> {
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
     let _user_decryption_key = create_user_decryption_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
     );
 
     rotate(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         &master_private_key_id,
         &["Department::MKG", "Department::FIN"],
     )
@@ -75,12 +75,12 @@ async fn test_rotate_error() -> Result<(), CliError> {
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
     let _user_decryption_key = create_user_decryption_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
     );
@@ -88,7 +88,7 @@ async fn test_rotate_error() -> Result<(), CliError> {
     // bad attributes
     assert!(
         rotate(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             &master_private_key_id,
             &["bad_attribute"]
         )
@@ -99,7 +99,7 @@ async fn test_rotate_error() -> Result<(), CliError> {
     // bad keys
     assert!(
         rotate(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             "bad_key",
             &["Department::MKG", "Department::FIN"]
         )
@@ -113,11 +113,11 @@ async fn test_rotate_error() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // create a symmetric key
-    let symmetric_key_id = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+    let symmetric_key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
     // export a wrapped key
     let exported_wrapped_key_file = tmp_path.join("exported_wrapped_master_private.key");
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         SUB_COMMAND,
         &master_private_key_id,
         exported_wrapped_key_file.to_str().unwrap(),
@@ -128,7 +128,7 @@ async fn test_rotate_error() -> Result<(), CliError> {
     )?;
     // import it wrapped
     let wrapped_key_id = import(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         SUB_COMMAND,
         &exported_wrapped_key_file.to_string_lossy(),
         None,
@@ -138,7 +138,7 @@ async fn test_rotate_error() -> Result<(), CliError> {
     // Rotate is not allowed for wrapped keys
     assert!(
         rotate(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             &wrapped_key_id,
             &["Department::MKG", "Department::FIN"]
         )
@@ -163,18 +163,18 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
     let user_decryption_key = create_user_decryption_key(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
     )?;
 
     encrypt(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         input_file.to_str().unwrap(),
         &master_public_key_id,
         "Department::MKG && Security Level::Confidential",
@@ -184,7 +184,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         output_file_before.to_str().unwrap(),
         &user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
@@ -194,7 +194,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     // export the user_decryption_key
     let exported_user_decryption_key_file = tmp_path.join("exported_user_decryption.key");
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         SUB_COMMAND,
         &user_decryption_key,
         exported_user_decryption_key_file.to_str().unwrap(),
@@ -206,7 +206,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
 
     //rotate the attributes
     rotate(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         &master_private_key_id,
         &["Department::MKG", "Department::FIN"],
     )
@@ -214,7 +214,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
 
     // encrypt again after the rotation
     encrypt(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         input_file.to_str().unwrap(),
         &master_public_key_id,
         "Department::MKG && Security Level::Confidential",
@@ -224,7 +224,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the new file
     decrypt(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         output_file_after.to_str().unwrap(),
         &user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
@@ -232,7 +232,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     )?;
     // ... and the old file
     decrypt(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         output_file_before.to_str().unwrap(),
         &user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
@@ -241,7 +241,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
 
     // import the non rotated user_decryption_key
     let old_user_decryption_key = import(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         SUB_COMMAND,
         &exported_user_decryption_key_file.to_string_lossy(),
         None,
@@ -251,7 +251,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     // the imported user key should not be able to decrypt the new file
     assert!(
         decrypt(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             output_file_after.to_str().unwrap(),
             &old_user_decryption_key,
             Some(recovered_file.to_str().unwrap()),
@@ -261,7 +261,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     );
     // ... but should decrypt the old file
     decrypt(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         output_file_before.to_str().unwrap(),
         &old_user_decryption_key,
         Some(recovered_file.to_str().unwrap()),

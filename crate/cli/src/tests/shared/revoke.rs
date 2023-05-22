@@ -84,13 +84,13 @@ async fn test_revoke_symmetric_key() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // syn
-    let key_id = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
 
     // revoke
-    revoke(&ctx.cli_conf_path, "sym", &key_id, "revocation test")?;
+    revoke(&ctx.owner_cli_conf_path, "sym", &key_id, "revocation test")?;
 
     // assert
-    assert_revoker(&ctx.cli_conf_path, &key_id)
+    assert_revoker(&ctx.owner_cli_conf_path, &key_id)
 }
 
 #[tokio::test]
@@ -101,27 +101,37 @@ async fn test_revoke_ec_key() -> Result<(), CliError> {
     // revoke via private key
     {
         // syn
-        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.cli_conf_path)?;
+        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
 
         // revoke via the private key
-        revoke(&ctx.cli_conf_path, "ec", &private_key_id, "revocation test")?;
+        revoke(
+            &ctx.owner_cli_conf_path,
+            "ec",
+            &private_key_id,
+            "revocation test",
+        )?;
 
         // assert
-        assert_revoker(&ctx.cli_conf_path, &private_key_id)?;
-        assert_revoker(&ctx.cli_conf_path, &public_key_id)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &private_key_id)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &public_key_id)?;
     }
 
     // revoke via public key
     {
         // syn
-        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.cli_conf_path)?;
+        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
 
         // revoke via the private key
-        revoke(&ctx.cli_conf_path, "ec", &public_key_id, "revocation test")?;
+        revoke(
+            &ctx.owner_cli_conf_path,
+            "ec",
+            &public_key_id,
+            "revocation test",
+        )?;
 
         // assert
-        assert_revoker(&ctx.cli_conf_path, &private_key_id)?;
-        assert_revoker(&ctx.cli_conf_path, &public_key_id)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &private_key_id)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &public_key_id)?;
     }
 
     Ok(())
@@ -136,95 +146,100 @@ async fn test_revoke_cover_crypt() -> Result<(), CliError> {
     {
         // generate a new master key pair
         let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             "--policy-specifications",
             "test_data/policy_specifications.json",
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         )?;
         let user_key_id_2 = create_user_decryption_key(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         )?;
 
         revoke(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             "cc",
             &master_private_key_id,
             "revocation test",
         )?;
 
         // assert
-        assert_revoker(&ctx.cli_conf_path, &master_private_key_id)?;
-        assert_revoker(&ctx.cli_conf_path, &master_public_key_id)?;
-        assert_revoker(&ctx.cli_conf_path, &user_key_id_1)?;
-        assert_revoker(&ctx.cli_conf_path, &user_key_id_2)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &master_private_key_id)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &master_public_key_id)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &user_key_id_1)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &user_key_id_2)?;
     }
 
     // check revocation of all keys when the public key is revoked
     {
         // generate a new master key pair
         let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             "--policy-specifications",
             "test_data/policy_specifications.json",
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         )?;
         let user_key_id_2 = create_user_decryption_key(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         )?;
 
         revoke(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             "cc",
             &master_public_key_id,
             "revocation test",
         )?;
 
         // assert
-        assert_revoker(&ctx.cli_conf_path, &master_private_key_id)?;
-        assert_revoker(&ctx.cli_conf_path, &master_public_key_id)?;
-        assert_revoker(&ctx.cli_conf_path, &user_key_id_1)?;
-        assert_revoker(&ctx.cli_conf_path, &user_key_id_2)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &master_private_key_id)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &master_public_key_id)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &user_key_id_1)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &user_key_id_2)?;
     }
 
     // check that revoking a user key, does not revoke anything else
     {
         // generate a new master key pair
         let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             "--policy-specifications",
             "test_data/policy_specifications.json",
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         )?;
 
         let user_key_id_2 = create_user_decryption_key(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         )?;
 
-        revoke(&ctx.cli_conf_path, "cc", &user_key_id_1, "revocation test")?;
+        revoke(
+            &ctx.owner_cli_conf_path,
+            "cc",
+            &user_key_id_1,
+            "revocation test",
+        )?;
 
         // assert
-        assert_revoker(&ctx.cli_conf_path, &user_key_id_1)?;
+        assert_revoker(&ctx.owner_cli_conf_path, &user_key_id_1)?;
 
         // create a temp dir
         let tmp_dir = TempDir::new()?;
@@ -232,7 +247,7 @@ async fn test_revoke_cover_crypt() -> Result<(), CliError> {
         // should able to Get the Master Keys and user key 2
         assert!(
             export(
-                &ctx.cli_conf_path,
+                &ctx.owner_cli_conf_path,
                 "cc",
                 &master_private_key_id,
                 tmp_path.join("output.export").to_str().unwrap(),
@@ -245,7 +260,7 @@ async fn test_revoke_cover_crypt() -> Result<(), CliError> {
         );
         assert!(
             export(
-                &ctx.cli_conf_path,
+                &ctx.owner_cli_conf_path,
                 "cc",
                 &master_public_key_id,
                 tmp_path.join("output.export").to_str().unwrap(),
@@ -258,7 +273,7 @@ async fn test_revoke_cover_crypt() -> Result<(), CliError> {
         );
         assert!(
             export(
-                &ctx.cli_conf_path,
+                &ctx.owner_cli_conf_path,
                 "cc",
                 &user_key_id_2,
                 tmp_path.join("output.export").to_str().unwrap(),

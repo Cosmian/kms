@@ -124,18 +124,18 @@ pub async fn test_password_wrap_import() -> Result<(), CliError> {
 
     // CC
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
     )?;
     password_wrap_import_test(ctx, "cc", &private_key_id)?;
 
     // EC
-    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.cli_conf_path)?;
+    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
     password_wrap_import_test(ctx, "ec", &private_key_id)?;
 
     // syn
-    let key_id = create_symmetric_key(&ctx.cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
     password_wrap_import_test(ctx, "sym", &key_id)?;
 
     Ok(())
@@ -151,7 +151,7 @@ pub fn password_wrap_import_test(
     // Export
     let key_file = temp_dir.path().join("master_private.key");
     export(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         sub_command,
         private_key_id,
         key_file.to_str().unwrap(),
@@ -167,7 +167,7 @@ pub fn password_wrap_import_test(
     //wrap and unwrap using a password
     {
         wrap(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
             None,
@@ -188,7 +188,7 @@ pub fn password_wrap_import_test(
         );
         assert_ne!(wrapped_object.key_block()?.key_bytes()?, key_bytes);
         unwrap(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
             None,
@@ -209,7 +209,7 @@ pub fn password_wrap_import_test(
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);
         wrap(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
             None,
@@ -230,7 +230,7 @@ pub fn password_wrap_import_test(
         );
         assert_ne!(wrapped_object.key_block()?.key_bytes()?, key_bytes);
         unwrap(
-            &ctx.cli_conf_path,
+            &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
             None,

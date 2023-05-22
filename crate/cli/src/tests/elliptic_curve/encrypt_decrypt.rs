@@ -85,10 +85,10 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
-    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.cli_conf_path)?;
+    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
 
     encrypt(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         input_file.to_str().unwrap(),
         &public_key_id,
         Some(output_file.to_str().unwrap()),
@@ -97,7 +97,7 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.cli_conf_path,
+        &ctx.owner_cli_conf_path,
         output_file.to_str().unwrap(),
         &private_key_id,
         Some(recovered_file.to_str().unwrap()),
