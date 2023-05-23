@@ -106,6 +106,12 @@ impl From<Utf8Error> for CliError {
     }
 }
 
+impl From<std::string::FromUtf8Error> for CliError {
+    fn from(e: std::string::FromUtf8Error) -> Self {
+        CliError::Default(e.to_string())
+    }
+}
+
 #[cfg(test)]
 impl From<reqwest::Error> for CliError {
     fn from(e: reqwest::Error) -> Self {
