@@ -1,6 +1,5 @@
 use cosmian_kmip::kmip::kmip_types::{Attributes, StateEnumeration, UniqueIdentifier};
 use serde::{Deserialize, Serialize};
-use strum_macros::Display;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Access {
@@ -16,7 +15,8 @@ pub struct Access {
 
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
-#[derive(Eq, PartialEq, Serialize, Deserialize, Debug, Copy, Clone, Display)]
+#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone)]
+#[serde(rename_all = "lowercase")]
 pub enum ObjectOperationTypes {
     Create,
     Decrypt,
@@ -28,6 +28,30 @@ pub enum ObjectOperationTypes {
     Locate,
     Revoke,
     Rekey,
+}
+
+impl std::fmt::Debug for ObjectOperationTypes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl std::fmt::Display for ObjectOperationTypes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let str = match self {
+            ObjectOperationTypes::Create => "create",
+            ObjectOperationTypes::Decrypt => "decrypt",
+            ObjectOperationTypes::Destroy => "destroy",
+            ObjectOperationTypes::Encrypt => "encrypt",
+            ObjectOperationTypes::Export => "export",
+            ObjectOperationTypes::Get => "get",
+            ObjectOperationTypes::Import => "import",
+            ObjectOperationTypes::Locate => "locate",
+            ObjectOperationTypes::Revoke => "revoke",
+            ObjectOperationTypes::Rekey => "rekey",
+        };
+        write!(f, "{str}")
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -115,7 +139,7 @@ impl From<(String, StateEnumeration, Attributes, IsWrapped)> for ObjectOwnedResp
 }
 
 #[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
-pub struct ObjectSharedResponse {
+pub struct AccessRightsGrantedResponse {
     pub object_id: UniqueIdentifier,
     pub owner_id: String,
     pub state: StateEnumeration,
@@ -123,7 +147,7 @@ pub struct ObjectSharedResponse {
     pub is_wrapped: IsWrapped,
 }
 
-impl fmt::Display for ObjectSharedResponse {
+impl fmt::Display for AccessRightsGrantedResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -144,7 +168,7 @@ impl
         StateEnumeration,
         Vec<ObjectOperationTypes>,
         IsWrapped,
-    )> for ObjectSharedResponse
+    )> for AccessRightsGrantedResponse
 {
     fn from(
         e: (

@@ -89,7 +89,7 @@ pub fn prepare_server(
             .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
             .service(routes::kmip)
             .service(routes::list_owned_objects)
-            .service(routes::list_shared_objects)
+            .service(routes::list_access_rights_granted)
             .service(routes::list_accesses)
             .service(routes::grant_access)
             .service(routes::revoke_access)

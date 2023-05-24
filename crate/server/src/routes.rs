@@ -15,7 +15,7 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_utils::types::{
-    Access, ObjectOwnedResponse, ObjectSharedResponse, QuoteParams, SuccessResponse,
+    Access, AccessRightsGrantedResponse, ObjectOwnedResponse, QuoteParams, SuccessResponse,
     UserAccessResponse,
 };
 use http::{header, StatusCode};
@@ -162,15 +162,15 @@ pub async fn list_owned_objects(
 }
 
 /// List objects  not owned by the user but for which an access
-/// has been shared to the user
-#[get("/access/shared")]
-pub async fn list_shared_objects(
+/// has been granted to the user
+#[get("/access/granted")]
+pub async fn list_access_rights_granted(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
-) -> KResult<Json<Vec<ObjectSharedResponse>>> {
+) -> KResult<Json<Vec<AccessRightsGrantedResponse>>> {
     let database_params = kms.get_database_secrets(&req)?;
     let user = kms.get_user(req)?;
-    info!("GET /access/shared {user}");
+    info!("GET /access/granted {user}");
 
     let list = kms
         .list_shared_objects(&user, database_params.as_ref())

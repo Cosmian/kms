@@ -9,9 +9,9 @@ use crate::error::{result::CliResultHelper, CliError};
 pub enum AccessAction {
     Grant(GrantAccess),
     Revoke(RevokeAccess),
-    List(ListAccesses),
+    List(ListAccessesGranted),
     Owned(ListOwnedObjects),
-    Shared(ListSharedObjects),
+    Granted(ListAccessRightsGranted),
 }
 
 impl AccessAction {
@@ -21,7 +21,7 @@ impl AccessAction {
             Self::Revoke(action) => action.run(client_connector).await?,
             Self::List(action) => action.run(client_connector).await?,
             Self::Owned(action) => action.run(client_connector).await?,
-            Self::Shared(action) => action.run(client_connector).await?,
+            Self::Granted(action) => action.run(client_connector).await?,
         };
 
         Ok(())
@@ -65,8 +65,7 @@ impl GrantAccess {
 
         println!(
             "The {} access right was successfully granted to {}",
-            self.operation.to_string().to_lowercase(),
-            self.user
+            self.operation, self.user
         );
 
         Ok(())
@@ -115,13 +114,13 @@ impl RevokeAccess {
 /// This command can only be called by the owner of the object.
 /// Returns a list of users and the operations they have been granted access to.
 #[derive(Parser, Debug)]
-pub struct ListAccesses {
+pub struct ListAccessesGranted {
     /// The object unique identifier
     #[clap(required = true)]
     object_uid: String,
 }
 
-impl ListAccesses {
+impl ListAccessesGranted {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let accesses = client_connector
             .list_access(&self.object_uid)
@@ -133,15 +132,7 @@ impl ListAccesses {
             &self.object_uid
         );
         for access in accesses {
-            println!(
-                " - {}: {:?}",
-                access.user_id,
-                access
-                    .operations
-                    .iter()
-                    .map(|op| op.to_string().to_lowercase())
-                    .collect::<Vec<String>>()
-            );
+            println!(" - {}: {:?}", access.user_id, access.operations);
         }
         Ok(())
     }
@@ -171,16 +162,16 @@ impl ListOwnedObjects {
 
 /// List the access rights granted to the calling user
 #[derive(Parser, Debug)]
-pub struct ListSharedObjects;
+pub struct ListAccessRightsGranted;
 
-impl ListSharedObjects {
+impl ListAccessRightsGranted {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let objects = client_connector
-            .list_shared_objects()
+            .list_access_rights_granted()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        println!("The objects are:\n");
+        println!("The access right granted are:\n");
         for object in objects {
             println!("{object}");
         }

@@ -92,10 +92,10 @@ fn list_owned_objects(cli_conf_path: &str) -> Result<String, CliError> {
 }
 
 /// List accesses granted
-fn list_shared_accesses(cli_conf_path: &str) -> Result<String, CliError> {
+fn list_accesses_rights_granted(cli_conf_path: &str) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec!["shared"]);
+    cmd.arg(SUB_COMMAND).args(vec!["granted"]);
     let output = cmd.output()?;
     if output.status.success() {
         let out = String::from_utf8(output.stdout)?;
@@ -391,7 +391,7 @@ pub async fn test_list_access_rights() -> Result<(), CliError> {
 
     // the owner can list access rights granted
     let owner_list = list_access(&ctx.owner_cli_conf_path, &key_id)?;
-    assert!(owner_list.contains("user.client@acme.com: [Get]"));
+    assert!(owner_list.contains("user.client@acme.com: [get]"));
 
     // The user is not the owner and thus should not be able to list accesses on ths object
     assert!(list_access(&ctx.user_cli_conf_path, &key_id).is_err());
@@ -444,11 +444,11 @@ pub async fn test_list_owned_objects() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_list_shared_accesses() -> Result<(), CliError> {
+pub async fn test_access_right_granted() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
     let key_id = gen_key(&ctx.owner_cli_conf_path)?;
 
-    let list = list_shared_accesses(&ctx.owner_cli_conf_path)?;
+    let list = list_accesses_rights_granted(&ctx.owner_cli_conf_path)?;
     assert!(!list.contains(&key_id));
 
     // grant encrypt and decrypt access to user
@@ -459,33 +459,19 @@ pub async fn test_list_shared_accesses() -> Result<(), CliError> {
         "get",
     )?;
 
-    let list = list_shared_accesses(&ctx.user_cli_conf_path)?;
+    // the user should have the "get" access granted
+    let list = list_accesses_rights_granted(&ctx.user_cli_conf_path)?;
     println!("user list {list}");
-
-    let list = list_shared_accesses(&ctx.owner_cli_conf_path)?;
-    println!("list {list}");
     assert!(list.contains(&key_id));
+    assert!(list.contains("get"));
 
-    // // the owner should have the object in the list
-    // let owner_list = list_shared_accesses(&ctx.owner_cli_conf_path, &key_id)?;
-    // assert!(owner_list.contains(&key_id));
+    // the owner has not been granted access rights on thjis object (it owns it)
+    let list = list_accesses_rights_granted(&ctx.owner_cli_conf_path)?;
+    assert!(!list.contains(&key_id));
 
-    // // The user is not the owner and thus should not have the object in the list
-    // let user_list = list_shared_accesses(&ctx.user_cli_conf_path)?;
-    // assert!(!user_list.contains(&key_id));
-
-    // // create a key using the user
-    // let user_key_id = gen_key(&ctx.user_cli_conf_path)?;
-
-    // // the user should have the object in the list
-    // let user_list = list_shared_accesses(&ctx.user_cli_conf_path)?;
-    // assert!(user_list.contains(&user_key_id));
-
-    // // The 'owner' is not the owner of this object and thus should not have the object in the list
-    // let owner_list = list_owned_objects(&ctx.owner_cli_conf_path)?;
-    // assert!(!owner_list.contains(&user_key_id));
-    // // ... but the list should still contain the other key
-    // assert!(owner_list.contains(&key_id));
+    // the owner should have the object in the list
+    let owner_list = list_accesses_rights_granted(&ctx.owner_cli_conf_path)?;
+    assert!(!owner_list.contains(&key_id));
 
     Ok(())
 }
