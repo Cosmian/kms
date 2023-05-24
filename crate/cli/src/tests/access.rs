@@ -459,6 +459,9 @@ pub async fn test_list_shared_accesses() -> Result<(), CliError> {
         "get",
     )?;
 
+    let list = list_shared_accesses(&ctx.user_cli_conf_path)?;
+    println!("user list {list}");
+
     let list = list_shared_accesses(&ctx.owner_cli_conf_path)?;
     println!("list {list}");
     assert!(list.contains(&key_id));

@@ -170,7 +170,7 @@ pub async fn list_shared_objects(
 ) -> KResult<Json<Vec<ObjectSharedResponse>>> {
     let database_params = kms.get_database_secrets(&req)?;
     let user = kms.get_user(req)?;
-    info!("GET /object/shared {user}");
+    info!("GET /access/shared {user}");
 
     let list = kms
         .list_shared_objects(&user, database_params.as_ref())
