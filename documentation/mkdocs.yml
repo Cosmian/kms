@@ -51,7 +51,7 @@ nav:
   - Deploying in single server mode: single_server_mode.md
   - Deploying in replicated mode: replicated_mode.md
   - Authenticating to the server: authentication.md
-  - Authorizing and sharing objects: authorization.md
+  - Authorizing using access rights: authorization.md
   - Using the cKMS command line interface: 
       - Installing and configuring: cli/cli.md
       - Using the CLI: cli/main_commands.md
@@ -65,7 +65,7 @@ nav:
       - Symmetric Encryption:
         - Commands: cli/sym/sym.md
         - Keys management: cli/sym/keys.md
-      - Permissions: cli/permissions.md
+      - Access Rights: cli/access_rights.md
       - Enclaves: cli/enclaves.md
   - KMIP 2.1 support:
       - Specifications: kmip_2_1/index.md

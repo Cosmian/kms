@@ -1,74 +1,232 @@
-### Ownership and permissions
 
-In the system, each object belongs to a single user, known as the *owner*. The owner is the creator of the object, and this relationship cannot be changed. By default, the owner has full control over the object and can perform any operation on it. Other users do not have access to the object unless granted permission by the owner.
+The authorization system in the Cosmian Key Management Service (KMS) operates based on two fundamental principles:
 
-### Sharing objects
+1. **Ownership:** Every cryptographic object has an assigned owner. The ownership is established when an object is created using any of the following KMIP operations: `Create`, `CreateKeyPair`, or `Import`. As an owner, a user holds the privilege to carry out all supported KMIP operations on their objects.
 
-The owner is the only user who can decide to share an object with another user. When sharing an object, the owner can grant specific permissions to the other user, allowing them to perform certain [operations](kmip_2_1/operations.md) on the object, such as:
+2. **Access rights delegation:** owners can delegate access rights, allowing one or more users to perform certain KMIP operations on an object. When granted such rights, a user can invoke the corresponding KMIP operation on the KMS for that particular object. The owner retains the authority to withdraw these access rights at any given time.
 
-- [Create](kmip_2_1/operations.md#create)
-- [Get](kmip_2_1/operations.md#get)
-- [Encrypt](kmip_2_1/operations.md#encrypt)
-- [Decrypt](kmip_2_1/operations.md#decrypt)
-- [Locate](kmip_2_1/operations.md#locate)
-- [Rekey](kmip_2_1/operations.md#re-key-key-pair)
 
-However, there are some operations that cannot be shared:
+To manage access rights, the user can call the following endpoints or use the `ckms` [command line interface](./cli/cli.md).
 
-- [Import](kmip_2_1/operations.md#import)
-- [Revoke](kmip_2_1/operations.md#revoke)
-- [Destroy](kmip_2_1/operations.md#destroy)
-- Delegating the ability to share the object (creation, update, or deletion)
+### Granting an access right
 
-These permissions are stored in the KMS database and enforced when a user attempts to access an object.
+An owner of an object grants an access right to a specific user for a given operation on a given object.
+The supported KMIP operations are: `get`, `export`, `encrypt`, `decrypt`, `import`, `revoke`, `destroy`.
 
-### Authentication and authorization
+=== "ckms"
+      ```sh
+      ➜ ./ckms access grant --help  
+      Grant another user an access right to an object.
 
-The permission system relies on the email address stored in the [JWT token](./authentication) used to authenticate the user when accessing the API. When a user attempts to perform an operation on an object, the system checks the JWT token's email address to determine whether the user has the necessary permissions to perform the requested operation.
+      This command can only be called by the owner of the object.
 
-## Calling the permissions endpoint
+      The right is granted for one of the supported KMIP operations: create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy
 
-The easiest way to view and set permissions is to use the [`cKMS`](./cli/permissions.md) CLI. However, you can also call the permissions endpoint directly: `/accesses/{object_id}`. The following HTTP methods are available:
+      Usage: ckms access grant <USER> <OBJECT_UID> <OPERATION>
 
-- `DELETE` to remove a permission
-- `POST` to grant a permission
+      Arguments:
+      <USER>
+               The user identifier to allow
 
-The expected data are serialized in JSON such as:
+      <OBJECT_UID>
+               The object unique identifier stored in the KMS
 
-```json
-{
-   "userid": "email@example.com",
-   "operation_type": "Get",
-   "unique_identifier": "my-object-uuid"
-}
-```
+      <OPERATION>
+               The KMIP operation to allow
 
-You can also list the accesses of an object using `/accesses/{object_id}` route with `GET` method. The output will be:
+      Options:
+      -h, --help
+               Print help (see a summary with '-h')
+      ```
 
-```json
-[
-   ["user@exemple.com", ["Get", "Revoke"]],
-   ["user2@exemple.com", ["Create", "Revoke"]],
-   ...
-]
-```
+=== "REST"
+      `POST` to the `/access/grant` endpoint with the JSON object:
 
-You can list the objects you own using  `/objects/owned` route with `GET` method. The output will be:
+      ```json
+      {
+         "uniquer_identifier": "1ae2...25df",  // the object unique identifier
+         "user_id": "john.doe@acem.com", // the user identifier to allow
+         "operation_type": "get" // the KMIP operation to allow
+      }
+      ```
 
-```json
-[
-   ["object-id-1", "Active"],
-   ["object-id-2", "Active"],
-   ...
-]
-```
+      The response is a JSON object:
 
-You can list the objects someone shared with you using  `/objects/shared` route with `GET` method. The output will be:
+      ```json
+      {
+      "success": "a success message"
+      }
+      ```
 
-```json
-[
-   ["object-id-1", "user@example.com", "Active", ["Get", "Revoke"]],
-   ["object-id-2", "user@example.com", "Active", ["Revoke"]],
-   ...
-]
-```
+
+
+### Revoking an access right
+
+An owner of an object can revoke an access right to a specific user for a given operation on a given object at any time.
+
+=== "ckms"
+      ```sh
+      ➜ ./ckms access revoke --help
+      Revoke another user access right to an object.
+
+      This command can only be called by the owner of the object.
+
+      Usage: ckms access revoke <USER> <OBJECT_UID> <OPERATION>
+
+      Arguments:
+      <USER>
+               The user to revoke access to
+
+      <OBJECT_UID>
+               The object unique identifier stored in the KMS
+
+      <OPERATION>
+               The operation to revoke (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
+
+      Options:
+      -h, --help
+               Print help (see a summary with '-h')
+      ```
+
+=== "REST"
+      `POST` to the `/access/revoke` endpoint with the JSON object:
+
+      ```json
+      {
+         "uniquer_identifier": "1ae2...25df",  // the object unique identifier
+         "user_id": "john.doe@acem.com", // the user identifier to allow
+         "operation_type": "get" // the KMIP operation to allow
+      }
+      ```
+
+      The response is a JSON object:
+
+      ```json
+      {
+      "success": "a success message"
+      }
+      ```
+### Listing an object access rights
+
+The owner of an object can list all the access rights that have been granted to another object.
+
+=== "ckms"
+      ```sh
+      ➜ ./ckms access list --help  
+      List the access rights granted on an object to other users.
+
+      This command can only be called by the owner of the object. Returns a list of users and the operations they have been granted access to.
+
+      Usage: ckms access list <OBJECT_UID>
+
+      Arguments:
+      <OBJECT_UID>
+               The object unique identifier
+
+      Options:
+      -h, --help
+               Print help (see a summary with '-h')
+      ```
+
+=== "REST"
+      `GET` to the `/access/list/{object_unique_id}` endpoint:
+
+
+      The response is a JSON array:
+
+      ```json
+      [
+         {
+            "user_id": "the user identifier the access rights are granted to",
+            "operations": [ <operation type> ]
+         }
+      ]
+      ```
+
+      where `<operation type>` is one of the following: `export`, `get`, `encrypt`, `decrypt`, `import`, `revoke`,  `destroy`.
+
+### Listing the objects owned by a user
+
+A user can list all the objects it owns (i.e. the objects it created using either the `Create`, `CreateKeyPair`, or `Import` KMIP operations).
+
+=== "ckms"
+      ```sh
+      ➜ ./ckms access owned --help
+      List the objects owned by the calling user.
+
+      Owners of objects can perform any operation on these objects and can grant access rights on any of these operations to any other user.
+
+      Usage: ckms access owned
+
+      Options:
+      -h, --help
+               Print help (see a summary with '-h')
+      ```
+
+=== "REST"
+      `GET` to the `/access/owned` endpoint:
+
+
+      The response is a JSON array:
+
+      ```json
+      [
+         {
+            "object_id": "the object unique identifier",
+            "state": "<state>",
+            "attributes": "<attributes>",
+            "is_wrapped": "<wrapped_state>"
+         }
+      ]
+      ```
+
+      where:
+   
+      - `<state>` is one of the following KMIP states: `PreActive`, `Active`, `Deactivated`, `Compromised`, `Destroyed_Compromised`,
+      - `<attributes>` is the KMIP Attributes structure (see the KMIP documentation)
+      - `<wrapped_state>`: is a boolean indicating whether the object is wrapped or not (see key wrapping).
+
+
+### Listing the access rights obtained by a user
+
+A user can list all the access rights that have been granted to it by object owners.
+
+=== "ckms"
+      ```sh
+      ➜ ./ckms access obtained --help
+      List the access rights obtained by the calling user
+
+      Returns a list of objects, their state, their owner and the accesses rights granted on the object
+
+      Usage: ckms access obtained
+
+      Options:
+      -h, --help
+            Print help (see a summary with '-h')
+      ```
+
+=== "REST"
+      `GET` to the `/access/owned` endpoint:
+
+
+      The response is a JSON array:
+
+      ```json
+      [
+         {
+            "object_id": "the object unique identifier",
+            "owner_id": "the user identifier of the owner of the object",
+            "state": "<state>",
+            "operations": [ <operation type> ]
+            "attributes": "<attributes>",
+            "is_wrapped": "<wrapped_state>"
+         }
+      ]
+      ```
+
+      where:
+   
+      - `<state>` is one of the following KMIP states: `PreActive`, `Active`, `Deactivated`, `Compromised`, `Destroyed_Compromised`,
+      - `<operation type>` is one of the following: `export`, `get`, `encrypt`, `decrypt`, `import`, `revoke`,  `destroy`,
+      - `<wrapped_state>`: is a boolean indicating whether the object is wrapped or not (see key wrapping).
+
