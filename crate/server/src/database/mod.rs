@@ -108,7 +108,7 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
-    async fn list_shared_objects(
+    async fn list_access_rights_obtained(
         &self,
         user: &str,
         params: Option<&ExtraDatabaseParams>,

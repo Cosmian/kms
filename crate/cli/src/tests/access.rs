@@ -92,10 +92,10 @@ fn list_owned_objects(cli_conf_path: &str) -> Result<String, CliError> {
 }
 
 /// List accesses granted
-fn list_accesses_rights_granted(cli_conf_path: &str) -> Result<String, CliError> {
+fn list_accesses_rights_obtained(cli_conf_path: &str) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec!["granted"]);
+    cmd.arg(SUB_COMMAND).args(vec!["obtained"]);
     let output = cmd.output()?;
     if output.status.success() {
         let out = String::from_utf8(output.stdout)?;
@@ -444,11 +444,11 @@ pub async fn test_list_owned_objects() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-pub async fn test_access_right_granted() -> Result<(), CliError> {
+pub async fn test_access_right_obtained() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
     let key_id = gen_key(&ctx.owner_cli_conf_path)?;
 
-    let list = list_accesses_rights_granted(&ctx.owner_cli_conf_path)?;
+    let list = list_accesses_rights_obtained(&ctx.owner_cli_conf_path)?;
     assert!(!list.contains(&key_id));
 
     // grant encrypt and decrypt access to user
@@ -460,17 +460,17 @@ pub async fn test_access_right_granted() -> Result<(), CliError> {
     )?;
 
     // the user should have the "get" access granted
-    let list = list_accesses_rights_granted(&ctx.user_cli_conf_path)?;
+    let list = list_accesses_rights_obtained(&ctx.user_cli_conf_path)?;
     println!("user list {list}");
     assert!(list.contains(&key_id));
     assert!(list.contains("get"));
 
     // the owner has not been granted access rights on thjis object (it owns it)
-    let list = list_accesses_rights_granted(&ctx.owner_cli_conf_path)?;
+    let list = list_accesses_rights_obtained(&ctx.owner_cli_conf_path)?;
     assert!(!list.contains(&key_id));
 
     // the owner should have the object in the list
-    let owner_list = list_accesses_rights_granted(&ctx.owner_cli_conf_path)?;
+    let owner_list = list_accesses_rights_obtained(&ctx.owner_cli_conf_path)?;
     assert!(!owner_list.contains(&key_id));
 
     Ok(())

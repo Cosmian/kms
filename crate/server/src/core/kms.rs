@@ -618,12 +618,12 @@ impl KMS {
     }
 
     /// Get all the objects shared to a given user
-    pub async fn list_shared_objects(
+    pub async fn list_access_rights_obtained(
         &self,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<AccessRightsObtainedResponse>> {
-        let list = self.db.list_shared_objects(owner, params).await?;
+        let list = self.db.list_access_rights_obtained(user, params).await?;
         let ids = list
             .into_iter()
             .map(AccessRightsObtainedResponse::from)

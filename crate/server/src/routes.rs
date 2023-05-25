@@ -173,7 +173,7 @@ pub async fn list_access_rights_obtained(
     info!("GET /access/granted {user}");
 
     let list = kms
-        .list_shared_objects(&user, database_params.as_ref())
+        .list_access_rights_obtained(&user, database_params.as_ref())
         .await?;
 
     Ok(Json(list))

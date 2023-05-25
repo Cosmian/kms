@@ -573,9 +573,9 @@ impl Database for Pgsql {
         delete_(uid, owner, &self.pool).await
     }
 
-    async fn list_shared_objects(
+    async fn list_access_rights_obtained(
         &self,
-        owner: &str,
+        user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
         Vec<(
@@ -586,7 +586,7 @@ impl Database for Pgsql {
             IsWrapped,
         )>,
     > {
-        list_shared_objects_(owner, &self.pool).await
+        list_shared_objects_(user, &self.pool).await
     }
 
     async fn list_accesses(
@@ -1056,7 +1056,7 @@ mod tests {
         let objects = pg.find(None, None, userid2, None).await?;
         assert!(objects.is_empty());
 
-        let objects = pg.list_shared_objects(userid2, None).await?;
+        let objects = pg.list_access_rights_obtained(userid2, None).await?;
         assert_eq!(
             objects,
             vec![(

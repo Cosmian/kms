@@ -258,7 +258,7 @@ impl Database for CachedSqlCipher {
         kms_bail!("Missing group_id/key for opening SQLCipher")
     }
 
-    async fn list_shared_objects(
+    async fn list_access_rights_obtained(
         &self,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
@@ -501,7 +501,9 @@ mod tests {
         let objects = db.find(None, None, userid2, Some(&params)).await?;
         assert!(objects.is_empty());
 
-        let objects = db.list_shared_objects(userid2, Some(&params)).await?;
+        let objects = db
+            .list_access_rights_obtained(userid2, Some(&params))
+            .await?;
         assert_eq!(
             objects,
             vec![(
