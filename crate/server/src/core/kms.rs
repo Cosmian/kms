@@ -19,7 +19,7 @@ use cosmian_kmip::kmip::{
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_utils::types::{
-    Access, AccessRightsGrantedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
+    Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
     UserAccessResponse,
 };
 use libsgx::quote::{get_quote, hash, prepare_report_data};
@@ -622,11 +622,11 @@ impl KMS {
         &self,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<AccessRightsGrantedResponse>> {
+    ) -> KResult<Vec<AccessRightsObtainedResponse>> {
         let list = self.db.list_shared_objects(owner, params).await?;
         let ids = list
             .into_iter()
-            .map(AccessRightsGrantedResponse::from)
+            .map(AccessRightsObtainedResponse::from)
             .collect();
         Ok(ids)
     }

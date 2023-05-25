@@ -67,7 +67,7 @@ SELECT userid, permissions
         FROM read_access
         WHERE id=?;
 
--- name: select-rows-objects-shared
+-- name: select-objects-access-obtained
 SELECT objects.id, owner, state, permissions
         FROM objects
         INNER JOIN read_access

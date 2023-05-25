@@ -139,7 +139,7 @@ impl From<(String, StateEnumeration, Attributes, IsWrapped)> for ObjectOwnedResp
 }
 
 #[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
-pub struct AccessRightsGrantedResponse {
+pub struct AccessRightsObtainedResponse {
     pub object_id: UniqueIdentifier,
     pub owner_id: String,
     pub state: StateEnumeration,
@@ -147,7 +147,7 @@ pub struct AccessRightsGrantedResponse {
     pub is_wrapped: IsWrapped,
 }
 
-impl fmt::Display for AccessRightsGrantedResponse {
+impl fmt::Display for AccessRightsObtainedResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -168,7 +168,7 @@ impl
         StateEnumeration,
         Vec<ObjectOperationTypes>,
         IsWrapped,
-    )> for AccessRightsGrantedResponse
+    )> for AccessRightsObtainedResponse
 {
     fn from(
         e: (

@@ -11,7 +11,7 @@ pub enum AccessAction {
     Revoke(RevokeAccess),
     List(ListAccessesGranted),
     Owned(ListOwnedObjects),
-    Granted(ListAccessRightsGranted),
+    Obtained(ListAccessRightsObtained),
 }
 
 impl AccessAction {
@@ -21,7 +21,7 @@ impl AccessAction {
             Self::Revoke(action) => action.run(client_connector).await?,
             Self::List(action) => action.run(client_connector).await?,
             Self::Owned(action) => action.run(client_connector).await?,
-            Self::Granted(action) => action.run(client_connector).await?,
+            Self::Obtained(action) => action.run(client_connector).await?,
         };
 
         Ok(())
@@ -160,18 +160,21 @@ impl ListOwnedObjects {
     }
 }
 
-/// List the access rights granted to the calling user
+/// List the access rights obtained by the calling user
+///
+/// Returns a list of objects, their state, their owner
+/// and the accesses rights granted on the object
 #[derive(Parser, Debug)]
-pub struct ListAccessRightsGranted;
+pub struct ListAccessRightsObtained;
 
-impl ListAccessRightsGranted {
+impl ListAccessRightsObtained {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let objects = client_connector
-            .list_access_rights_granted()
+            .list_access_rights_obtained()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        println!("The access right granted are:\n");
+        println!("The access right obtained are:\n");
         for object in objects {
             println!("{object}");
         }

@@ -15,7 +15,7 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_utils::types::{
-    Access, AccessRightsGrantedResponse, ObjectOwnedResponse, QuoteParams, SuccessResponse,
+    Access, AccessRightsObtainedResponse, ObjectOwnedResponse, QuoteParams, SuccessResponse,
     UserAccessResponse,
 };
 use http::{header, StatusCode};
@@ -161,13 +161,13 @@ pub async fn list_owned_objects(
     Ok(Json(list))
 }
 
-/// List objects  not owned by the user but for which an access
-/// has been granted to the user
-#[get("/access/granted")]
-pub async fn list_access_rights_granted(
+/// List objects not owned by the user but for which an access
+/// has been obtained by the user
+#[get("/access/obtained")]
+pub async fn list_access_rights_obtained(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
-) -> KResult<Json<Vec<AccessRightsGrantedResponse>>> {
+) -> KResult<Json<Vec<AccessRightsObtainedResponse>>> {
     let database_params = kms.get_database_secrets(&req)?;
     let user = kms.get_user(req)?;
     info!("GET /access/granted {user}");

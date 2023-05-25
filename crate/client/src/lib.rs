@@ -24,7 +24,7 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_utils::types::{
-    Access, AccessRightsGrantedResponse, ObjectOwnedResponse, QuoteParams, SuccessResponse,
+    Access, AccessRightsObtainedResponse, ObjectOwnedResponse, QuoteParams, SuccessResponse,
     UserAccessResponse,
 };
 use error::KmsClientError;
@@ -383,10 +383,10 @@ impl KmsRestClient {
 
     /// This operation requests the server to list all the object for
     /// which access rights have been obtained for the current user.
-    pub async fn list_access_rights_granted(
+    pub async fn list_access_rights_obtained(
         &self,
-    ) -> Result<Vec<AccessRightsGrantedResponse>, KmsClientError> {
-        self.get_no_ttlv("/access/granted", None::<&()>).await
+    ) -> Result<Vec<AccessRightsObtainedResponse>, KmsClientError> {
+        self.get_no_ttlv("/access/obtained", None::<&()>).await
     }
 
     /// This operation requests the server to get the sgx quote.

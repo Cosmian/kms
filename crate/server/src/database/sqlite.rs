@@ -466,7 +466,7 @@ where
     debug!("Owner = {}", user);
     let list = sqlx::query(
         SQLITE_QUERIES
-            .get("select-rows-objects-shared")
+            .get("select-objects-access-obtained")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(user)
