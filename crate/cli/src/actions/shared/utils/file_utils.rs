@@ -86,8 +86,11 @@ pub fn write_bytes_to_file(bytes: &[u8], file: &impl AsRef<Path>) -> Result<(), 
     })
 }
 
-/// Write an object T from a JSON file
-pub fn write_to_json_file<T>(json_object: &T, file: &impl AsRef<Path>) -> Result<(), CliError>
+/// Write a JSON object to a file
+pub fn write_json_object_to_file<T>(
+    json_object: &T,
+    file: &impl AsRef<Path>,
+) -> Result<(), CliError>
 where
     T: Serialize,
 {
@@ -106,7 +109,7 @@ pub fn write_kmip_object_to_file(
     // set the top tag to the object type
     ttlv.tag = tag_from_object(kmip_object);
     // write the JSON TTLV to a file
-    write_to_json_file(&ttlv, object_file)
+    write_json_object_to_file(&ttlv, object_file)
 }
 
 #[must_use]

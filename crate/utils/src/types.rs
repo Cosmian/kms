@@ -1,3 +1,4 @@
+use cloudproof::reexport::crypto_core::symmetric_crypto::{key::Key, SymKey};
 use cosmian_kmip::kmip::kmip_types::{Attributes, StateEnumeration, UniqueIdentifier};
 use serde::{Deserialize, Serialize};
 
@@ -54,10 +55,38 @@ impl std::fmt::Display for ObjectOperationTypes {
     }
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Clone)]
 pub struct ExtraDatabaseParams {
     pub group_id: u128,
-    pub key: [u8; 32],
+    pub key: Key<32>,
+}
+
+impl Serialize for ExtraDatabaseParams {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_bytes(
+            vec![
+                self.group_id.to_be_bytes().to_vec(),
+                self.key.as_bytes().to_vec(),
+            ]
+            .concat()
+            .as_slice(),
+        )
+    }
+}
+
+impl<'de> Deserialize<'de> for ExtraDatabaseParams {
+    fn deserialize<D>(deserializer: D) -> Result<ExtraDatabaseParams, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let bytes = <Vec<u8>>::deserialize(deserializer)?;
+        let group_id = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
+        let key = SymKey::from_bytes(bytes[16..48].try_into().unwrap());
+        Ok(ExtraDatabaseParams { group_id, key })
+    }
 }
 
 use std::{fmt, str::FromStr};

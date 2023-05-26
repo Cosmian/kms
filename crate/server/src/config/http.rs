@@ -65,7 +65,7 @@ impl HTTPConfig {
         };
 
         // If the server is authenticating users using a certificate, we need to load the authority certificate
-        if let Some(authority_cert_file) = &self.authority_cert_file {
+        let x509 = if let Some(authority_cert_file) = &self.authority_cert_file {
             if p12.is_none() {
                 kms_bail!(
                     "The authority certificate file can only be used when the server is running \
@@ -78,12 +78,11 @@ impl HTTPConfig {
             file.read_to_end(&mut pem_bytes)?;
 
             // Parse the byte vector as a X509 object
-            let x509 = X509::from_pem(pem_bytes.as_slice())?;
+            Some(X509::from_pem(pem_bytes.as_slice())?)
+        } else {
+            None
+        };
 
-            // Return the certificate store
-            return Ok((host_port, p12, Some(x509)))
-        }
-
-        Ok((host_port, p12, None))
+        Ok((host_port, p12, x509))
     }
 }

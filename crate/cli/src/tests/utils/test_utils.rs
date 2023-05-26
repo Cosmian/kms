@@ -9,6 +9,7 @@ use std::{
 use actix_server::ServerHandle;
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
+use cloudproof::reexport::crypto_core::{symmetric_crypto::key::Key, CsRng, KeyTrait};
 use cosmian_kms_server::{
     config::{
         db::DBConfig, http::HTTPConfig, jwt_auth_config::JwtAuthConfig, ClapConfig, ServerConfig,
@@ -16,12 +17,13 @@ use cosmian_kms_server::{
     start_kms_server,
 };
 use cosmian_kms_utils::types::ExtraDatabaseParams;
+use rand::SeedableRng;
 use tokio::sync::OnceCell;
 use tracing::trace;
 
 use super::extract_uids::extract_database_secret;
 use crate::{
-    actions::shared::utils::write_to_json_file,
+    actions::shared::utils::write_json_object_to_file,
     cli_bail,
     config::{CliConf, KMS_CLI_CONF_ENV},
     error::CliError,
@@ -235,7 +237,7 @@ pub async fn init_test_server_options(
         ..Default::default()
     };
     // write the conf to a file
-    write_to_json_file(&owner_cli_conf, &owner_cli_conf_path)
+    write_json_object_to_file(&owner_cli_conf, &owner_cli_conf_path)
         .expect("Can't write owner CLI conf path");
 
     // Start the server on a independent thread
@@ -258,7 +260,7 @@ pub async fn init_test_server_options(
 
     // Rewrite the conf with the correct database secret
     owner_cli_conf.kms_database_secret = Some(database_secret);
-    write_to_json_file(&owner_cli_conf, &owner_cli_conf_path)
+    write_json_object_to_file(&owner_cli_conf, &owner_cli_conf_path)
         .expect("Can't write owner CLI conf path");
 
     // generate a user conf
@@ -282,7 +284,7 @@ pub(crate) fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<
 
     // write the user conf
     let user_conf_path = format!("/tmp/user_kms_{port}.json");
-    write_to_json_file(&user_conf, &user_conf_path)?;
+    write_json_object_to_file(&user_conf, &user_conf_path)?;
 
     // return the path
     Ok(user_conf_path)
@@ -290,6 +292,10 @@ pub(crate) fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<
 
 /// Generate an invalid configuration by changin the database secret  and return the file path
 pub(crate) fn generate_invalid_conf(correct_conf: &CliConf) -> String {
+    // Create a new database key
+    let mut cs_rng = CsRng::from_entropy();
+    let db_key = Key::<32>::new(&mut cs_rng);
+
     let mut invalid_conf = correct_conf.clone();
     // and a temp file
     let invalid_conf_path = "/tmp/invalid_conf.json".to_string();
@@ -305,9 +311,10 @@ pub(crate) fn generate_invalid_conf(correct_conf: &CliConf) -> String {
         .expect("Can't decode token");
     let mut secrets =
         serde_json::from_slice::<ExtraDatabaseParams>(&secrets).expect("Can't deserialized token");
-    secrets.key = [42_u8; 32]; // bad secret
+    secrets.key = db_key; // bad secret
     let token = b64.encode(serde_json::to_string(&secrets).expect("Can't encode token"));
     invalid_conf.kms_database_secret = Some(token);
-    write_to_json_file(&invalid_conf, &invalid_conf_path).expect("Can't write CONF_PATH_BAD_KEY");
+    write_json_object_to_file(&invalid_conf, &invalid_conf_path)
+        .expect("Can't write CONF_PATH_BAD_KEY");
     invalid_conf_path
 }

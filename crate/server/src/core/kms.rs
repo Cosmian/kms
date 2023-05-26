@@ -8,7 +8,7 @@ use base64::{
     engine::general_purpose::{self, STANDARD as b64},
     Engine as _,
 };
-use cloudproof::reexport::crypto_core::{reexport::rand_core::RngCore, CsRng};
+use cloudproof::reexport::crypto_core::{symmetric_crypto::key::Key, CsRng, KeyTrait};
 use cosmian_kmip::kmip::{
     kmip_operations::{
         Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
@@ -119,11 +119,10 @@ impl KMS {
             };
 
             // Generate a new key
-            let mut key = [0; 32];
-            {
+            let key: Key<32> = {
                 let mut rng = self.rng.lock().expect("failed locking the RNG");
-                rng.fill_bytes(&mut key);
-            }
+                Key::<32>::new(&mut *rng)
+            };
 
             // Encode ExtraDatabaseParams
             let params = ExtraDatabaseParams { group_id: uid, key };

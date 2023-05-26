@@ -5,6 +5,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use cloudproof::reexport::crypto_core::symmetric_crypto::{key::Key, SymKey};
 use cosmian_kmip::kmip::{
     kmip_objects,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
@@ -48,11 +49,11 @@ impl CachedSqlCipher {
     async fn instantiate_group_database(
         &self,
         group_id: u128,
-        key: &[u8; 32],
+        key: &Key<32>,
     ) -> KResult<Pool<Sqlite>> {
         let path = self.filename(group_id);
         let options = SqliteConnectOptions::new()
-            .pragma("key", format!("\"x'{}'\"", hex::encode(key)))
+            .pragma("key", format!("\"x'{}'\"", hex::encode(key.as_bytes())))
             .pragma("journal_mode", "OFF")
             .filename(path)
             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
@@ -109,7 +110,7 @@ impl CachedSqlCipher {
         self.cache.release(group_id)
     }
 
-    async fn pre_query(&self, group_id: u128, key: &[u8; 32]) -> KResult<Arc<Pool<Sqlite>>> {
+    async fn pre_query(&self, group_id: u128, key: &Key<32>) -> KResult<Arc<Pool<Sqlite>>> {
         if !self.cache.exists(group_id) {
             let pool = self.instantiate_group_database(group_id, key).await?;
             Self::create_tables(&pool).await?;
@@ -368,7 +369,8 @@ impl Database for CachedSqlCipher {
 mod tests {
     use cloudproof::reexport::crypto_core::{
         reexport::rand_core::{RngCore, SeedableRng},
-        CsRng,
+        symmetric_crypto::key::Key,
+        CsRng, KeyTrait,
     };
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
@@ -402,10 +404,14 @@ mod tests {
             std::fs::remove_file(&file_path).unwrap();
         }
 
+        // Create a new database key
+        let mut cs_rng = CsRng::from_entropy();
+        let db_key = Key::<32>::new(&mut cs_rng);
+
         let db = CachedSqlCipher::instantiate(&file_path).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
-            key: [3_u8; 32],
+            key: db_key.clone(),
         };
 
         let mut symmetric_key = vec![0; 32];
@@ -581,10 +587,14 @@ mod tests {
             std::fs::remove_file(&file_path).unwrap();
         }
 
+        // Create a new database key
+        let mut cs_rng = CsRng::from_entropy();
+        let db_key = Key::<32>::new(&mut cs_rng);
+
         let db = CachedSqlCipher::instantiate(&file_path).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
-            key: [1_u8; 32],
+            key: db_key.clone(),
         };
 
         let uid = Uuid::new_v4().to_string();
@@ -666,10 +676,14 @@ mod tests {
             std::fs::remove_file(&file_path).unwrap();
         }
 
+        // Create a new database key
+        let mut cs_rng = CsRng::from_entropy();
+        let db_key = Key::<32>::new(&mut cs_rng);
+
         let db = CachedSqlCipher::instantiate(&file_path).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
-            key: [2_u8; 32],
+            key: db_key.clone(),
         };
 
         let mut symmetric_key = vec![0; 32];

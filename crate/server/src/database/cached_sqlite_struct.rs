@@ -8,6 +8,7 @@ use std::{
     time::SystemTime,
 };
 
+use cloudproof::reexport::crypto_core::symmetric_crypto::key::Key;
 use sqlx::{Pool, Sqlite};
 use tracing::info;
 
@@ -18,7 +19,7 @@ pub struct KMSSqliteCacheItem {
     /// The handler to the sqlite
     sqlite: Arc<Pool<Sqlite>>,
     /// They key of the sqlite
-    key: [u8; 32],
+    key: Key<32>,
     /// The date of the first insertion
     #[allow(dead_code)]
     inserted_at: u64,
@@ -58,7 +59,7 @@ pub fn _now() -> u64 {
 
 impl KMSSqliteCacheItem {
     #[must_use]
-    pub fn new(sqlite: Pool<Sqlite>, key: [u8; 32], freeable_cache_index: usize) -> Self {
+    pub fn new(sqlite: Pool<Sqlite>, key: Key<32>, freeable_cache_index: usize) -> Self {
         Self {
             sqlite: Arc::new(sqlite),
             key,
@@ -127,7 +128,7 @@ impl KMSSqliteCache {
     /// Get the sqlite handler and tag it as "used"
     ///
     /// The function will return an error if the database is closed or the key is not the right one
-    pub fn get(&self, id: u128, key: &[u8; 32]) -> KResult<Arc<Pool<Sqlite>>> {
+    pub fn get(&self, id: u128, key: &Key<32>) -> KResult<Arc<Pool<Sqlite>>> {
         let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
 
         let item = sqlites
@@ -237,7 +238,7 @@ impl KMSSqliteCache {
     /// The handler is considered as used until it is explicitly release.
     ///
     /// This function will call a `flush` if needed to close the oldest unused databases.
-    pub async fn save(&self, id: u128, key: &[u8; 32], pool: Pool<Sqlite>) -> KResult<()> {
+    pub async fn save(&self, id: u128, key: &Key<32>, pool: Pool<Sqlite>) -> KResult<()> {
         // Flush the cache if necessary
         self.flush().await?;
         // If nothing has been flush, allow to exceed max cache size
@@ -463,6 +464,9 @@ impl FreeableSqliteCache {
 mod tests {
     use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
+    use cloudproof::reexport::crypto_core::{
+        reexport::rand_core::SeedableRng, symmetric_crypto::key::Key, CsRng, KeyTrait,
+    };
     use sqlx::{
         sqlite::{SqliteConnectOptions, SqlitePoolOptions},
         ConnectOptions,
@@ -684,7 +688,8 @@ mod tests {
         assert_eq!(cache.max_size, 2);
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 0);
 
-        let password = [1_u8; 32];
+        let mut cs_rng = CsRng::from_entropy();
+        let password = Key::<32>::new(&mut cs_rng);
 
         let sqlite = connect().await.expect("Can't create database");
         let sqlite2 = connect().await.expect("Can't create database");
@@ -721,7 +726,7 @@ mod tests {
         assert!(cache.opened(2));
 
         assert!(cache.get(4, &password).is_err());
-        assert!(cache.get(1, &[0_u8; 32]).is_err()); // bad &password
+        assert!(cache.get(1, &Key::<32>::new(&mut cs_rng)).is_err()); // bad &password
         assert!(cache.get(1, &password).is_ok()); // 2 uses of sqlite1
 
         let sqlite4 = connect().await.expect("Can't create database");
