@@ -26,7 +26,6 @@ use crate::{
     result::KResult,
 };
 
-// static INSTANCE_CONFIG: OnceCell<SharedConfig> = OnceCell::new();
 
 #[derive(Parser, Default)]
 #[clap(version, about, long_about = None)]

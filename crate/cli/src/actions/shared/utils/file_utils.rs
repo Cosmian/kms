@@ -96,18 +96,17 @@ where
     write_bytes_to_file(&bytes, file)
 }
 
-// Export a KMS Object to a JSON TTLV in a file
+// Writes a KMIP Object to a JSON TTLV in a file.
 pub fn write_kmip_object_to_file(
     kmip_object: &Object,
-    object_file: &PathBuf,
+    object_file: &impl AsRef<Path>,
 ) -> Result<(), CliError> {
     // serialize the returned object to JSON TTLV
     let mut ttlv = to_ttlv(kmip_object)?;
     // set the top tag to the object type
     ttlv.tag = tag_from_object(kmip_object);
     // write the JSON TTLV to a file
-    write_to_json_file(&ttlv, object_file)?;
-    Ok(())
+    write_to_json_file(&ttlv, object_file)
 }
 
 #[must_use]
