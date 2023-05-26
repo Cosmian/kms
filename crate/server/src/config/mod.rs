@@ -26,7 +26,6 @@ use crate::{
     result::KResult,
 };
 
-
 #[derive(Parser, Default)]
 #[clap(version, about, long_about = None)]
 pub struct ClapConfig {
