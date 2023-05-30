@@ -21,13 +21,7 @@ base64 = "0.21"
 cloudproof = "1.3.0"
 base64-url = "1.4"
 bitflags = "1.3"
-clap = { version = "4.1", default-features = false, features = [
-  "help",
-  "usage",
-  "error-context",
-  "derive",
-  "cargo",
-] }
+clap = { version = "4.1", default-features = false, features = ["help", "usage", "error-context", "derive", "cargo"] }
 eyre = "0.6"
 hex = "0.4"
 http = "0.2"
