@@ -10,17 +10,17 @@ on:
 
 jobs:
   # Cleanup task is required for self-hosted runner since docker user is root and all files in target folder are under root permissions
-  # cleanup:
-  #   runs-on: self-hosted
-  #   steps:
-  #     - name: Chown user
-  #       run: |
-  #         echo "USER: $USER"
-  #         echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-  #         sudo chown -R $USER:$USER $GITHUB_WORKSPACE
+  cleanup:
+    runs-on: self-hosted
+    steps:
+      - name: Chown user
+        run: |
+          echo "USER: $USER"
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          sudo chown -R $USER:$USER $GITHUB_WORKSPACE
 
   kms-linux:
-    # needs: cleanup
+    needs: cleanup
     services:
       # Label used to access the service container
       postgres:
@@ -44,14 +44,13 @@ jobs:
           MYSQL_DATABASE: kms
           MYSQL_ROOT_PASSWORD: kms
 
-    runs-on: ubuntu-latest
-    # runs-on: self-hosted # uncomment when ready to test under sgx runner
+    runs-on: [self-hosted, not-docker]
     container:
       image: rust:latest
-      volumes:
-        - /home/cosmian/.ssh/:/root/.ssh
-        - /var/run/docker.sock:/var/run/docker.sock
-        - /tmp:/tmp
+      # volumes:
+      #   - /home/cosmian/.ssh/:/root/.ssh
+      #   - /var/run/docker.sock:/var/run/docker.sock
+      #   - /tmp:/tmp
 
     steps:
       - uses: actions/checkout@v1
