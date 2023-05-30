@@ -63,8 +63,15 @@ jobs:
       - uses: actions/download-artifact@v3
       - run: find .
 
+      - uses: Cosmian/reusable_workflows/.github/workflows/package-cosmian-com.yml@fix/windows-pyo3
+        with:
+          project-name: kms
+          archive-name: ${{ matrix.archive_name }}.zip
+          artifacts-name: ${{ matrix.archive_name }}
+
       - name: Creating zip to be attached to release
         run: |
+          sudo apt-get install -y zip
           zip -r ${{ matrix.archive_name }}.zip ${{ matrix.archive_name }}
 
       - name: Release on tags, attach asset on release
