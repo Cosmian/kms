@@ -1,0 +1,100 @@
+---
+name: CI checks
+
+on: push
+
+jobs:
+  # Following tasks should be enabled when ready (after github CI is completely done)
+  # cargo-audit:
+  #   uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@develop
+  #   with:
+  #     toolchain: nightly-2023-03-20
+
+  # cargo-udeps:
+  #   uses: Cosmian/reusable_workflows/.github/workflows/cargo-udeps.yml@develop
+
+  cargo-lint:
+    uses: ./.github/workflows/lint.yml
+    with:
+      toolchain: nightly-2023-03-20
+
+  cargo-tests:
+    uses: ./.github/workflows/cargo_tests.yml
+    with:
+      toolchain: nightly-2023-03-20
+
+  cargo-doc:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-doc.yml@develop
+    with:
+      toolchain: nightly-2023-03-20
+
+  python_and_docker:
+    uses: ./.github/workflows/python_and_docker.yml
+
+  github_cleanup:
+    needs:
+      - cargo-lint
+      - cargo-doc
+      - cargo-tests
+      - python_and_docker
+    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
+    secrets: inherit
+
+  ##############################################################################
+  ### Releases
+  ##############################################################################
+  release:
+    name: release
+    needs:
+      - github_cleanup
+    runs-on: [self-hosted, not-docker]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - archive_name: kms_linux
+          - archive_name: kms_macos
+          - archive_name: kms_windows
+          - archive_name: kms_python_linux
+          - archive_name: kms_python_macos
+          - archive_name: kms_python_windows
+
+    steps:
+      - uses: actions/download-artifact@v3
+      - run: find .
+
+      - name: Creating zip to be attached to release
+        run: |
+          sudo apt-get install -y zip
+          zip -r ${{ matrix.archive_name }}.zip ${{ matrix.archive_name }}
+
+      - name: Push to package.cosmian.com
+        run: |
+          set -x
+          DESTINATION_DIR=/mnt/package/kms/last_build/$VERSION
+          ssh cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
+          scp ${{ matrix.archive_name }}.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
+        env:
+          VERSION: ${{ github.head_ref }}
+
+      - name: Push to package.cosmian.com - tags
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -x
+          DESTINATION_DIR=/mnt/package/kms/$VERSION
+          ssh cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
+          scp ${{ matrix.archive_name }}.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
+        env:
+          VERSION: ${{ github.ref_name }}
+
+      - name: Release on tags, attach asset on release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ matrix.archive_name }}.zip
+
+  cleanup:
+    needs:
+      - release
+    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
+    secrets: inherit

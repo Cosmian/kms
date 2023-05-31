@@ -1,0 +1,41 @@
+---
+name: KMS Python
+
+on:
+  workflow_call:
+    inputs:
+      kms-version:
+        required: true
+        type: string
+
+jobs:
+  pyo3-test-linux:
+    services:
+      kms:
+        image: ghcr.io/cosmian/kms:${{ inputs.kms-version }}
+        env:
+          COSMIAN_SERVER_URL: http://localhost:9998
+          KMS_PUBLIC_PATH: /tmp
+          KMS_PRIVATE_PATH: /tmp
+          KMS_SHARED_PATH: /tmp
+        ports:
+          - 9998:9998
+
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v3
+      - run: find .
+
+      - name: Test KMS python client on KMS server
+        run: |
+          # Check python code
+          pip install kms_python_linux/*manylinux*.whl
+          pip install -r crate/pyo3/python/requirements.txt
+          mypy crate/pyo3/python/scripts/test_kms.py
+          python3 crate/pyo3/python/scripts/test_kms.py
+          # Check that the lib version is the same as the server
+          cargo install cargo-get
+          diff <(cargo get --root crate/pyo3 version) <(cargo get --root crate/server version) || (echo "Update the version in crate/pyo3/Cargo.toml"; exit
+            1)
