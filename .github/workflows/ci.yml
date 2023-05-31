@@ -71,9 +71,11 @@ jobs:
       - name: Push to package.cosmian.com
         run: |
           set -x
-          DESTINATION_DIR=/mnt/package/kms/last_build/${{ github.head_ref }}
+          DESTINATION_DIR=/mnt/package/kms/last_build/$VERSION
           ssh cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
           scp ${{ matrix.archive_name }}.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
+        env:
+          VERSION: ${{ github.head_ref }}
 
       - name: Push to package.cosmian.com - tags
         if: startsWith(github.ref, 'refs/tags/')
