@@ -38,15 +38,12 @@ impl AccessAction {
 #[derive(Parser, Debug)]
 pub struct GrantAccess {
     /// The user identifier to allow
-    #[clap(required = true)]
     user: String,
 
     /// The object unique identifier stored in the KMS
-    #[clap(required = true)]
     object_uid: String,
 
     /// The KMIP operation to allow
-    #[clap(required = true)]
     operation: ObjectOperationTypes,
 }
 
