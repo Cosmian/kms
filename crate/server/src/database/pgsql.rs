@@ -714,7 +714,7 @@ mod tests {
             None => kms_bail!("There should be an object"),
         }
 
-        let mut attributes = symmetric_key.attributes_mut()?;
+        let attributes = symmetric_key.attributes_mut()?;
         attributes.link = Some(vec![Link {
             link_type: LinkType::PreviousLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
@@ -807,7 +807,7 @@ mod tests {
             None => kms_bail!("There should be an object"),
         }
 
-        let mut attributes = symmetric_key.attributes_mut()?;
+        let attributes = symmetric_key.attributes_mut()?;
         attributes.link = Some(vec![Link {
             link_type: LinkType::PreviousLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
@@ -1387,7 +1387,7 @@ mod tests {
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
         }];
 
-        let mut attributes = symmetric_key.attributes_mut()?;
+        let attributes = symmetric_key.attributes_mut()?;
         attributes.link = Some(link.clone());
 
         let uid_ = pg

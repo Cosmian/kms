@@ -1103,7 +1103,7 @@ mod tests {
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
         }];
 
-        let mut attributes = symmetric_key.attributes_mut()?;
+        let attributes = symmetric_key.attributes_mut()?;
         attributes.link = Some(link.clone());
 
         let uid_ = db

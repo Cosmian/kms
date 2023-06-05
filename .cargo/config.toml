@@ -15,3 +15,12 @@ coverage = "tarpaulin --release -v -f -t 1800 --out Xml --ignore-tests --exclude
 
 # Find unused dependencies
 deps = "udeps --workspace --all-targets --all-features --backend depinfo"
+
+[build]
+# Speeds up Ristretto 25519 multiplication x 2
+rustflags = [
+    "--cfg",
+    "curve25519_dalek_backend=\"simd\"",
+    "-C",
+    "target_cpu=native",
+]

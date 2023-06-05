@@ -109,7 +109,7 @@ async fn destroy_key_core(
     };
 
     // the KMIP specs mandates that e KeyMaterial be destroyed
-    let mut key_block = object.key_block_mut()?;
+    let key_block = object.key_block_mut()?;
     key_block.key_value = KeyValue {
         key_material: KeyMaterial::ByteString(vec![]),
         attributes: key_block.key_value.attributes.clone(),
