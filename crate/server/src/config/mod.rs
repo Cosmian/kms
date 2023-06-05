@@ -117,7 +117,7 @@ pub struct ServerConfig {
     /// The JWT audience if Auth is enabled
     pub jwt_audience: Option<String>,
 
-    /// The username to use if not authentication method is provided
+    /// The username to use if no authentication method is provided
     pub default_username: String,
 
     /// When an authentication method is provided, perform the authentication
