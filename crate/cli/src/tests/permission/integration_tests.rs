@@ -95,7 +95,7 @@ pub async fn test_add_error() -> Result<(), CliError> {
         "add",
         object_id.as_str(),
         "-u",
-        "alice@cosmian.com",
+        "tech@cosmian.com",
         "-o",
         "get",
     ]);
@@ -202,7 +202,7 @@ pub async fn test_remove_error() -> Result<(), CliError> {
         "remove",
         object_id.as_str(),
         "-u",
-        "alice@cosmian.com",
+        "tech@cosmian.com",
         "-o",
         "get",
     ]);
@@ -222,7 +222,7 @@ pub async fn test_list_error() -> Result<(), CliError> {
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
     cmd.arg(SUB_COMMAND).args(vec!["list", "bad_object_id"]);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "Object with uid `bad_object_id` is not owned by owner `alice@cosmian.com`",
+        "Object with uid `bad_object_id` is not owned by owner `tech@cosmian.com`",
     ));
 
     Ok(())
