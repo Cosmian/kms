@@ -239,7 +239,7 @@ async fn start_https_kms_server(
         // This line sets the mode to verify peer (client) certificates
         builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         let mut store_builder = X509StoreBuilder::new()?;
-        store_builder.add_cert(verify_cert.clone()).unwrap();
+        store_builder.add_cert(verify_cert.clone())?;
         builder.set_verify_cert_store(store_builder.build())?;
     }
 
