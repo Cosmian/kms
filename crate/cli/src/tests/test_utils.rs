@@ -38,7 +38,7 @@ pub async fn init_test_server() {
     // Configure the serveur
     let config = Config {
         auth0: Auth0Config {
-            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
+            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
         },
         db: DBConfig {
             database_type: "sqlite-enc".to_string(),

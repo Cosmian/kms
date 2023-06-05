@@ -29,7 +29,7 @@ async fn integration_tests() -> KResult<()> {
 
     let config = Config {
         auth0: Auth0Config {
-            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
+            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };
