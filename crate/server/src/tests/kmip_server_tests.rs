@@ -17,13 +17,12 @@ use cosmian_kms_utils::crypto::curve_25519::{
 use tracing::trace;
 use uuid::Uuid;
 
-#[cfg(test)]
-use crate::tests::test_utils;
 use crate::{
     config::{ClapConfig, ServerConfig},
     error::KmsError,
     log_utils::log_init,
     result::KResult,
+    tests::test_utils,
     KMSServer,
 };
 

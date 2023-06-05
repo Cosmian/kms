@@ -16,11 +16,10 @@ use cosmian_kms_utils::crypto::{
     generic::kmip_requests::{build_decryption_request, build_encryption_request},
 };
 
-#[cfg(test)]
-use crate::tests::test_utils;
 use crate::{
     log_utils,
     result::{KResult, KResultHelper},
+    tests::test_utils,
 };
 
 #[actix_web::test]

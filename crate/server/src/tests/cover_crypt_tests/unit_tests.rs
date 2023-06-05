@@ -20,13 +20,12 @@ use cosmian_kms_utils::crypto::{
 use tracing::debug;
 use uuid::Uuid;
 
-#[cfg(test)]
-use crate::tests::test_utils;
 use crate::{
     config::{ClapConfig, ServerConfig},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
+    tests::test_utils,
     KMSServer,
 };
 

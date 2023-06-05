@@ -13,12 +13,11 @@ use cosmian_kms_utils::crypto::curve_25519::{
     operation::{self, to_curve_25519_256_public_key},
 };
 
-#[cfg(test)]
-use crate::tests::test_utils;
 use crate::{
     config::{ClapConfig, ServerConfig},
     error::KmsError,
     result::KResult,
+    tests::test_utils,
     KMSServer,
 };
 
