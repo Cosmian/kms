@@ -28,7 +28,7 @@ use uuid::Uuid;
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let config = Config {
         auth0: Auth0Config {
-            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
+            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };
@@ -165,7 +165,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 
     let config = Config {
         auth0: Auth0Config {
-            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
+            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };
@@ -227,7 +227,7 @@ async fn test_database_user_tenant() -> KResult<()> {
 
     let config = Config {
         auth0: Auth0Config {
-            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
+            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };

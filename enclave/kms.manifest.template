@@ -18,7 +18,7 @@ sys.insecure__allow_eventfd = true
 sys.stack.size = "1G"
 
 loader.env.LD_LIBRARY_PATH = "/lib:/lib64:{{ arch_libdir }}:/usr/{{ arch_libdir }}"
-loader.env.KMS_DELEGATED_AUTHORITY_DOMAIN = "console-dev.eu.auth0.com"
+loader.env.KMS_DELEGATED_AUTHORITY_DOMAIN = "kms-cosmian.eu.auth0.com"
 loader.env.KMS_CERTBOT_EMAIL = "tech@cosmian.com"
 loader.env.KMS_CERTBOT_HOSTNAME = "{{ kms_domain }}"
 loader.env.KMS_ENCLAVE_MANIFEST_FILENAME = "kms.manifest.sgx"

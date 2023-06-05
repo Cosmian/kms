@@ -31,7 +31,7 @@ use uuid::Uuid;
 async fn test_cover_crypt_keys() -> KResult<()> {
     let config = Config {
         auth0: Auth0Config {
-            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
+            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };
@@ -209,7 +209,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 
     let config = Config {
         auth0: Auth0Config {
-            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
+            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };
@@ -420,7 +420,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 async fn test_abe_json_access() -> KResult<()> {
     let config = Config {
         auth0: Auth0Config {
-            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
+            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };
@@ -527,7 +527,7 @@ async fn test_import_decrypt() -> KResult<()> {
 
     let config = Config {
         auth0: Auth0Config {
-            auth0_authority_domain: Some("console-dev.eu.auth0.com".to_string()),
+            auth0_authority_domain: Some("kms-cosmian.eu.auth0.com".to_string()),
         },
         ..Default::default()
     };
