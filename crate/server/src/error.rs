@@ -148,7 +148,7 @@ impl From<KmipError> for KmsError {
 
 impl From<SendError<ServerHandle>> for KmsError {
     fn from(e: SendError<ServerHandle>) -> Self {
-        Self::ServerError(format!("Failed to to send the server handle: {}", e))
+        Self::ServerError(format!("Failed to send the server handle: {e}"))
     }
 }
 
