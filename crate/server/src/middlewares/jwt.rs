@@ -35,6 +35,10 @@ pub fn decode_jwt(jwt_config: &JwtConfig, authorization_content: &str) -> KResul
         KmsError::Unauthorized("token is empty".to_owned())
     );
     tracing::trace!("token {}", &token);
+    tracing::trace!(
+        "expected JWT issuer {}",
+        &jwt_config.jwt_issuer_uri.to_string()
+    );
 
     let mut validations = vec![
         alcoholic_jwt::Validation::Issuer(jwt_config.jwt_issuer_uri.to_string()),
