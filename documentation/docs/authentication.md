@@ -96,6 +96,7 @@ Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set.
 
 
 #### JWT audience      
+
 The KMS server validates the JWT `aud` claim against this value if set
 
  - server option: `--jwt-audience <JWT_AUDIENCE>`
