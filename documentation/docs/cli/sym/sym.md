@@ -2,23 +2,21 @@
 
 Manage symmetric keys and salts. Encrypt and decrypt data.
 
-
-```
+```sh
 ckms sym <COMMAND>
 ```
 
-
-### [keys](./keys.md)
+## [keys](./keys.md)
 
 Create, destroy, import, export symmetric keys and salts.
 
-```
+```sh
 ckms sym keys [SUBCOMMAND]
 ```
 
-**subcommands**
+### subcommands
 
-```
+```sh
 create   Create a new symmetric key or a new salt
 export   Export a key from the KMS
 import   Import a key in the KMS.
@@ -31,26 +29,27 @@ help     Print this message or the help of the given subcommand(s)
 
 [> view subcommands details](./keys.md)
 
-
-### encrypt
+## encrypt
 
 Encrypt a file using AES GCM.
 
 The resulting bytes are the concatenation of
 
-  - the nonce (12 bytes)
-  - the encrypted data (same size as the plaintext)
-  - the authentication tag (16 bytes)
+- the nonce (12 bytes)
+- the encrypted data (same size as the plaintext)
+- the authentication tag (16 bytes)
 
 Note: this is not a streaming call: the file is entirely loaded in memory before being sent for encryption.
 
 **Usage:**
-```
+
+```sh
 ckms sym encrypt [OPTIONS] <FILE> <KEY_ID>
 ```
 
 **Arguments:**
-```
+
+```sh
 <FILE>
         The file to encrypt
 
@@ -59,7 +58,8 @@ ckms sym encrypt [OPTIONS] <FILE> <KEY_ID>
 ```
 
 **Options:**
-```
+
+```sh
 -o, --output-file <OUTPUT_FILE>
         The encrypted output file path
 
@@ -70,25 +70,27 @@ ckms sym encrypt [OPTIONS] <FILE> <KEY_ID>
         Print help (see a summary with '-h')
 ```
 
-### decrypt
+## decrypt
 
 Decrypts a file using AES GCM
 
 The content of the file must be the concatenation of
 
-  - the nonce (12 bytes)
-  - the encrypted data (same size as the plaintext)
-  - the authentication tag (16 bytes)
+- the nonce (12 bytes)
+- the encrypted data (same size as the plaintext)
+- the authentication tag (16 bytes)
 
 This is not a streaming call: the file is entirely loaded in memory before being sent for decryption.
 
 **Usage:**
-```
+
+```sh
 ckms sym decrypt [OPTIONS] <FILE> <KEY_ID>
 ```
 
 **Arguments:**
-```
+
+```sh
 <FILE>
         The file to decrypt
 
@@ -97,7 +99,8 @@ ckms sym decrypt [OPTIONS] <FILE> <KEY_ID>
 ```
 
 **Options:**
-```
+
+```sh
 -o, --output-file <OUTPUT_FILE>
         The encrypted output file path
 
@@ -108,11 +111,10 @@ ckms sym decrypt [OPTIONS] <FILE> <KEY_ID>
         Print help (see a summary with '-h')
 ```
 
-### help
+## help
 
 Print the help message or the help of the given subcommand(s).
 
-```
+```sh
 ckms sym help [SUBCOMMAND]
 ```
-

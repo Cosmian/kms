@@ -4,7 +4,6 @@ Out of this list, the Cosmian KMS server only requires 9 operations to provide a
 
 KMIP states that a number of the operations are affected by a mechanism referred to as the ID Placeholder. It is a variable stored inside the server that is preserved during the execution of a batch of operations. Maintaining this value requires maintaining a state during a batch session across multiple requests and potentially multiple servers. The performance gain of using placeholder IDs is not obvious, and the added complexity of maintaining sessions across multiple servers when scaling horizontally is not worth in the Cosmian view for the type of operations conducted on the server. The Cosmian KMS servers are kept stateless to simplify horizontal scaling and therefore do not support placeholder IDs for now.
 
-
 ### Import
 
 #### specification
@@ -20,7 +19,6 @@ The response contains the Unique Identifier provided in the request or assigned 
 
 The server fully implements import operations for the supported objects in PlainText mode but only for Symmetric Keys in Wrapped mode.
 
-
 ### Create
 
 #### specification
@@ -34,7 +32,6 @@ The response contains the Unique Identifier of the created object. The server SH
 #### implementation
 
 The Cosmian KMS server support creation of all supported objects except for Public Keys, which are created using the [Create Key Pair](#create-key-pair) operation (as one would expect).
-
 
 ### Create Key Pair
 
@@ -52,8 +49,6 @@ For the Private Key, the server SHALL create a Link attribute of Link Type Publi
 
 The Create Key Pair operation is used to create Curve 25519 Key Pairs as well as ABE Master Key Pairs.
 
-
-
 ### Decrypt
 
 #### specification
@@ -70,8 +65,6 @@ The success or failure of the operation is indicated by the Result Status (and i
 
 When used with an ABE user decryption key, this operation will attempt to perform a hybrid ABE+AES 256GCM decryption. The first 4 bytes of the cipher text are expected to be the ABE encrypted header length encoded as an unsigned 32-bit in big-endian format. The following bytes should contain the ABE header, made of an ABE encryption of the symmetric key, optionally followed by the symmetrically encoded metadata. The rest of the cipher text is the AES-encrypted content.
 
-
-
 ### Destroy
 
 #### specification
@@ -81,7 +74,6 @@ This operation is used to indicate to the server that the key material for the s
 #### implementation
 
 Destroyed keys are set in the state `destroyed` on the Cosmian KMS Server.
-
 
 ### Encrypt
 

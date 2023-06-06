@@ -1,5 +1,4 @@
 [alias]
-
 # Check for formatting
 format = "fmt --all -- --check"
 
@@ -19,8 +18,8 @@ deps = "udeps --workspace --all-targets --all-features --backend depinfo"
 [build]
 # Speeds up Ristretto 25519 multiplication x 2
 rustflags = [
-    "--cfg",
-    "curve25519_dalek_backend=\"simd\"",
-    "-C",
-    "target_cpu=native",
+  "--cfg",
+  "curve25519_dalek_backend=\"simd\"",
+  "-C",
+  "target_cpu=native",
 ]

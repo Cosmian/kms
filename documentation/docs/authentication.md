@@ -1,4 +1,3 @@
-
 The KMS server can start in authenticated or non-authenticated mode (the default).
 
 ## Determining the user
@@ -8,25 +7,23 @@ In non-authenticated mode, the server maps all requests to the default user, con
 ```sh
 --default-username <DEFAULT_USERNAME>
     The default username to use when no authentication method is provided
-    
+
     [env: KMS_DEFAULT_USERNAME=]
     [default: admin]
 ```
 
-
 In authenticated mode, the server requires authentication for all requests. The authentication method can be either:
 
- - a TLS client certificate and the server extracts the username from the certificate's subject common name (CN)
- - or a JWT access token and the server extracts the username from the token's subject (sub) claim
+- a TLS client certificate and the server extracts the username from the certificate's subject common name (CN)
+- or a JWT access token and the server extracts the username from the token's subject (sub) claim
 
  However, If the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment variable) is set, the server still performs the authentication but maps all requests to the default username.
-
 
 ## Using TLS client certificates
 
 The server must be started using TLS, and the certificate used to verify the clients' certificate must be provided in PEM format using the `--authority-cert-file` option.
 
-!!! info "Example client TLS authentification."
+!!! info "Example client TLS authentication."
 
     ```sh
     docker run -p 9998:9998 --name kms cosmian/kms \
@@ -36,19 +33,17 @@ The server must be started using TLS, and the certificate used to verify the cli
 
 The server extracts the username from the client certificate's subject common name (CN) unless the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment variable) is set, in which case the server uses the default username.
 
-
 ## Using JWT access tokens
 
 The server supports  [JWT access tokens](https://jwt.io/) which are compatible with [Open ID Connect](https://openid.net/connect/).
 
 The server validates the JWT tokens signatures using the token issuer [JSON Web Key Set (JWKS)](https://datatracker.ietf.org/doc/html/rfc7517.) that is pulled on server start.
 
-
 ### The JWT token
 
 The JWT token must be passed to the endpoints of the KMS server using the HTTP Authorization header:
 
-```
+```sh
 Authorization: Bearer <TOKEN>
 ```
 
@@ -59,7 +54,6 @@ The JWT token should contain the following claims:
 - `aud`: The audience of the token. OPTIONAL: this should be identical to the one set on the KMS server.
 - `exp`: The expiration time of the token. This should be a timestamp in the future.
 - `iat`: The time the token was issued. This should be a timestamp in the past.
-
 
 On the `ckms` command line interface, the token is configured in the client configuration. Please refer to the [CLI documentation](cli/cli.md) for more details.
 
@@ -77,39 +71,35 @@ The KMS server JWT authentication is configured using three command line options
         --jwt-audience=cosmian_kms
     ```
 
-
 #### JWT issuer URI
 
  The issuer URI of the JWT token is called to validate the token signature.
 
- - server option: `--jwt-issuer-uri <JWT_ISSUER_URI>`
- - env. variable: `KMS_JWT_ISSUER_URI=<JWT_ISSUER_URI>`
-
+- server option: `--jwt-issuer-uri <JWT_ISSUER_URI>`
+- env. variable: `KMS_JWT_ISSUER_URI=<JWT_ISSUER_URI>`
 
 #### JWKS URI
 
 The optional JWKS (JSON Web Key Set) URI of the JWT token is called to retrieve the keyset on server start.
 Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set.
 
- - server option: `--jwks-uri <JWKS_URI>`
- - env. variable: `KMS_JWKS_URI=<JWKS_URI>`
+- server option: `--jwks-uri <JWKS_URI>`
+- env. variable: `KMS_JWKS_URI=<JWKS_URI>`
 
-
-#### JWT audience      
+#### JWT audience
 
 The KMS server validates the JWT `aud` claim against this value if set
 
- - server option: `--jwt-audience <JWT_AUDIENCE>`
- - env. variable: `KMS_JWT_AUDIENCE=<JWT_AUDIENCE>`
-
+- server option: `--jwt-audience <JWT_AUDIENCE>`
+- env. variable: `KMS_JWT_AUDIENCE=<JWT_AUDIENCE>`
 
 #### Using Google ID tokens
 
 Use the following options to configure the KMS server for Google ID tokens:
 
 ```sh
---jwt-issuer-uri=https://accounts.google.com 
---jwks-uri=https://www.googleapis.com/oauth2/v3/certs 
+--jwt-issuer-uri=https://accounts.google.com
+--jwks-uri=https://www.googleapis.com/oauth2/v3/certs
 ```
 
 #### Using Auth0

@@ -2,21 +2,21 @@
 
 Manage elliptic curve keys. Encrypt and decrypt data using ECIES.
 
-```
+```sh
 ckms ec <COMMAND>
 ```
 
-### [keys](./keys.md)
+## [keys](./keys.md)
 
 Create, destroy, import, and export elliptic curve key pairs.
 
-```
+```sh
 ckms ec keys [SUBCOMMAND]
 ```
 
 **subcommands:**
 
-```
+```sh
 create   Create a new X25519 key pair
 export   Export a key from the KMS
 import   Import a key in the KMS.
@@ -29,19 +29,21 @@ help     Print this message or the help of the given subcommand(s)
 
 [> view subcommands details](./keys.md)
 
-### encrypt
+## encrypt
 
 Encrypt a file with the given public key using ECIES.
 
 Note: this is not a streaming call: the file is entirely loaded in memory before being sent for encryption.
 
 **Usage:**
-```
+
+```sh
 ckms ec encrypt [OPTIONS] <FILE> <PUBLIC_KEY_ID>
 ```
 
 **Arguments:**
-```
+
+```sh
 <FILE>
         The file to encrypt
 
@@ -50,7 +52,8 @@ ckms ec encrypt [OPTIONS] <FILE> <PUBLIC_KEY_ID>
 ```
 
 **Options:**
-```
+
+```sh
 -o, --output-file <OUTPUT_FILE>
         The encrypted output file path
 
@@ -61,19 +64,21 @@ ckms ec encrypt [OPTIONS] <FILE> <PUBLIC_KEY_ID>
         Print help (see a summary with '-h')
 ```
 
-### decrypt
+## decrypt
 
 Decrypt a file with the given private key using ECIES.
 
 Note: this is not a streaming call: the file is entirely loaded in memory before being sent for decryption.
 
 **Usage:**
-```
+
+```sh
 ckms ec decrypt [OPTIONS] <FILE> <PRIVATE_KEY_ID>
 ```
 
 **Arguments:**
-```
+
+```sh
 <FILE>
         The file to decrypt
 
@@ -82,7 +87,8 @@ ckms ec decrypt [OPTIONS] <FILE> <PRIVATE_KEY_ID>
 ```
 
 **Options:**
-```
+
+```sh
 -o, --output-file <OUTPUT_FILE>
         The encrypted output file path
 
@@ -93,11 +99,10 @@ ckms ec decrypt [OPTIONS] <FILE> <PRIVATE_KEY_ID>
         Print help (see a summary with '-h')
 ```
 
-### help
+## help
 
 Print the help message or the help of the given subcommand(s).
 
-```
+```sh
 ckms ec help [SUBCOMMAND]
 ```
-
