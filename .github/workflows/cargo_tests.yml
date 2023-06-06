@@ -29,6 +29,7 @@ jobs:
         # Provide the password for postgres
         env:
           POSTGRES_USER: kms
+          PGUSER: kms
           POSTGRES_PASSWORD: kms
           POSTGRES_DB: kms
         # Set health checks to wait until postgres has started
@@ -88,9 +89,9 @@ jobs:
           export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
           cargo test --workspace --features insecure --no-default-features -- --nocapture --skip test_curve_25519_key_pair,test_database_user_tenant,test_import_wrapped_symmetric_key
           cargo test --bins -- --nocapture
-
         env:
           POSTGRES_USER: kms
+          PGUSER: kms
           POSTGRES_PASSWORD: kms
           POSTGRES_DB: kms
           KMS_POSTGRES_URL: postgres://kms:kms@postgres/kms
