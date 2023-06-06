@@ -5,7 +5,6 @@ The authorization system in the Cosmian Key Management Service (KMS) operates ba
 
 2. **Access rights delegation:** owners can delegate access rights, allowing one or more users to perform certain KMIP operations on an object. When granted such rights, a user can invoke the corresponding KMIP operation on the KMS for that particular object. The owner retains the authority to withdraw these access rights at any given time.
 
-
 To manage access rights, the user can call the following endpoints or use the `ckms` [command line interface](./cli/cli.md).
 
 ### Granting an access right
@@ -58,8 +57,6 @@ The supported KMIP operations are: `get`, `export`, `encrypt`, `decrypt`, `impor
       }
       ```
 
-
-
 ### Revoking an access right
 
 An owner of an object can revoke an access right to a specific user for a given operation on a given object at any time.
@@ -106,6 +103,7 @@ An owner of an object can revoke an access right to a specific user for a given 
       "success": "a success message"
       }
       ```
+
 ### Listing an object access rights
 
 The owner of an object can list all the access rights that have been granted to another object.
@@ -130,7 +128,6 @@ The owner of an object can list all the access rights that have been granted to 
 
 === "REST"
       `GET` to the `/access/list/{object_unique_id}` endpoint:
-
 
       The response is a JSON array:
 
@@ -166,7 +163,6 @@ A user can list all the objects it owns (i.e. the objects it created using eithe
 === "REST"
       `GET` to the `/access/owned` endpoint:
 
-
       The response is a JSON array:
 
       ```json
@@ -185,7 +181,6 @@ A user can list all the objects it owns (i.e. the objects it created using eithe
       - `<state>` is one of the following KMIP states: `PreActive`, `Active`, `Deactivated`, `Compromised`, `Destroyed_Compromised`,
       - `<attributes>` is the KMIP Attributes structure (see the KMIP documentation)
       - `<wrapped_state>`: is a boolean indicating whether the object is wrapped or not (see key wrapping).
-
 
 ### Listing the access rights obtained by a user
 
@@ -208,7 +203,6 @@ A user can list all the access rights that have been granted to it by object own
 === "REST"
       `GET` to the `/access/owned` endpoint:
 
-
       The response is a JSON array:
 
       ```json
@@ -229,4 +223,3 @@ A user can list all the access rights that have been granted to it by object own
       - `<state>` is one of the following KMIP states: `PreActive`, `Active`, `Deactivated`, `Compromised`, `Destroyed_Compromised`,
       - `<operation type>` is one of the following: `export`, `get`, `encrypt`, `decrypt`, `import`, `revoke`,  `destroy`,
       - `<wrapped_state>`: is a boolean indicating whether the object is wrapped or not (see key wrapping).
-

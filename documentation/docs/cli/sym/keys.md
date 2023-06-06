@@ -2,30 +2,31 @@
 
 Create, destroy, import, and export symmetric keys.
 
-
-```
+```sh
 ckms sym keys <COMMAND>
 ```
 
-### create
+## create
 
 Create a new symmetric key
 
-When the `--bytes-b64` option is specified, the key will be created from the provided bytes; 
+When the `--bytes-b64` option is specified, the key will be created from the provided bytes;
 otherwise, the key will be randomly generated with a length of `--number-of-bits`.
 
 If no options are specified, a fresh 256-bit AES key will be created.
 
 **Usage:**
-```
+
+```sh
 ckms sym keys create [OPTIONS]
 ```
 
 **Options:**
-```
+
+```sh
 -l, --number-of-bits <NUMBER_OF_BITS>
         The length of the generated random key or salt in bits
-        
+
         [default: 256]
 
 -k, --bytes-b64 <WRAP_KEY_B64>
@@ -33,7 +34,7 @@ ckms sym keys create [OPTIONS]
 
 -a, --algorithm <ALGORITHM>
         The algorithm
-        
+
         [default: aes]
         [possible values: aes, chacha20, sha3, shake]
 
@@ -41,7 +42,7 @@ ckms sym keys create [OPTIONS]
         Print help (see a summary with '-h')
 ```
 
-### export
+## export
 
 Export a key from the KMS
 
@@ -49,8 +50,8 @@ The key is exported in JSON KMIP TTLV format
 unless the `--bytes` option is specified, in which case
 the key bytes are exported without meta data, such as
 
- - the links between the keys in a pair
- - other metadata: policies, etc...
+- the links between the keys in a pair
+- other metadata: policies, etc...
 
 Key bytes are sufficient to perform local encryption or decryption.
 
@@ -60,12 +61,14 @@ Wrapping a key that is already wrapped is an error.
 Unwrapping a key that is not wrapped is ignored and returns the unwrapped key.
 
 **Usage:**
-```
+
+```sh
 ckms sym keys export [OPTIONS] <KEY_ID> <KEY_FILE>
 ```
 
 **Arguments:**
-```
+
+```sh
 <KEY_ID>
         The key unique identifier stored in the KMS
 
@@ -74,7 +77,8 @@ ckms sym keys export [OPTIONS] <KEY_ID> <KEY_FILE>
 ```
 
 **Options:**
-```
+
+```sh
 -b, --bytes
         Export the key bytes only
 
@@ -90,7 +94,8 @@ ckms sym keys export [OPTIONS] <KEY_ID> <KEY_FILE>
 -h, --help
         Print help (see a summary with '-h')
 ```
-### import
+
+## import
 
 Import a key in the KMS.
 
@@ -99,19 +104,21 @@ When no key unique id is specified a random UUID v4 is generated.
 
 The key can be wrapped when imported. Wrapping using:
 
- - a password or a supplied key in base64 is done locally
- - a symmetric key id is performed server side
+- a password or a supplied key in base64 is done locally
+- a symmetric key id is performed server side
 
 A password is first converted to a 256 bit key using Argon 2.
 Wrapping is performed according to RFC 5649.
 
 **Usage:**
-```
+
+```sh
 ckms sym keys import [OPTIONS] <KEY_FILE> [KEY_ID]
 ```
 
 **Arguments:**
-```
+
+```sh
 <KEY_FILE>
         The KMIP JSON TTLV key file
 
@@ -120,7 +127,8 @@ ckms sym keys import [OPTIONS] <KEY_FILE> [KEY_ID]
 ```
 
 **Options:**
-```
+
+```sh
 -u, --unwrap
         Unwrap the object if it is wrapped before storing it
 
@@ -131,28 +139,30 @@ ckms sym keys import [OPTIONS] <KEY_FILE> [KEY_ID]
         Print help (see a summary with '-h')
 ```
 
-### wrap
+## wrap
 
 Locally wrap a key in KMIP JSON TTLV format.
 
 The key can be wrapped using either:
 
- - a password derived into a symmetric key using Argon2
- - symmetric key bytes in base64
- - a key in the KMS (which will be exported first)
- - a key in a KMIP JSON TTLV file
+- a password derived into a symmetric key using Argon2
+- symmetric key bytes in base64
+- a key in the KMS (which will be exported first)
+- a key in a KMIP JSON TTLV file
 
 For the latter 2 cases, the key may be a symmetric key
 and RFC 5649 will be used or a curve 25519 public key
 and ECIES will be used.
 
 **Usage:**
-```
+
+```sh
 ckms sym keys wrap [OPTIONS] <KEY_FILE_IN> [KEY_FILE_OUT]
 ```
 
 **Arguments:**
-```
+
+```sh
 <KEY_FILE_IN>
         The KMIP JSON TTLV input key file to wrap
 
@@ -161,7 +171,8 @@ ckms sym keys wrap [OPTIONS] <KEY_FILE_IN> [KEY_FILE_OUT]
 ```
 
 **Options:**
-```
+
+```sh
 -p, --wrap-password <WRAP_PASSWORD>
         A password to wrap the imported key
 
@@ -178,28 +189,30 @@ ckms sym keys wrap [OPTIONS] <KEY_FILE_IN> [KEY_FILE_OUT]
         Print help (see a summary with '-h')
 ```
 
-### unwrap
+## unwrap
 
 Locally unwrap a key in KMIP JSON TTLV format.
 
 The key can be unwrapped using either:
 
- - a password derived into a symmetric key using Argon2
- - symmetric key bytes in base64
- - a key in the KMS (which will be exported first)
- - a key in a KMIP JSON TTLV file
+- a password derived into a symmetric key using Argon2
+- symmetric key bytes in base64
+- a key in the KMS (which will be exported first)
+- a key in a KMIP JSON TTLV file
 
 For the latter 2 cases, the key may be a symmetric key
 and RFC 5649 will be used or a curve 25519 private key
 and ECIES will be used.
 
 **Usage:**
-```
+
+```sh
 ckms sym keys unwrap [OPTIONS] <KEY_FILE_IN> [KEY_FILE_OUT]
 ```
 
 **Arguments:**
-```
+
+```sh
 <KEY_FILE_IN>
         The KMIP JSON TTLV input key file to unwrap
 
@@ -208,7 +221,8 @@ ckms sym keys unwrap [OPTIONS] <KEY_FILE_IN> [KEY_FILE_OUT]
 ```
 
 **Options:**
-```
+
+```sh
 -p, --unwrap-password <UNWRAP_PASSWORD>
         A password to unwrap the imported key
 
@@ -225,19 +239,21 @@ ckms sym keys unwrap [OPTIONS] <KEY_FILE_IN> [KEY_FILE_OUT]
         Print help (see a summary with '-h')
 ```
 
-### revoke
+## revoke
 
 Revoke a symmetric key.
 
 When a key is revoked, it can only be exported by the owner of the key, using the --allow-revoked flag on the export function.
 
 **Usage:**
-```
+
+```sh
 ckms sym keys revoke <KEY_ID> <REVOCATION_REASON>
 ```
 
 **Arguments:**
-``` 
+
+```sh
 <KEY_ID>
         The unique identifier of the key to revoke
 
@@ -246,12 +262,13 @@ ckms sym keys revoke <KEY_ID> <REVOCATION_REASON>
 ```
 
 **Options:**
-```
+
+```sh
 -h, --help
         Print help (see a summary with '-h')
 ```
 
-### destroy
+## destroy
 
 Destroy a symmetric key.
 
@@ -260,26 +277,29 @@ The key must have been revoked first.
 When a key is destroyed, it can only be exported by the owner of the key, and without its key material
 
 **Usage:**
-```
+
+```sh
 ckms sym keys destroy <KEY_ID>
 ```
 
 **Arguments:**
-```
+
+```sh
 <KEY_ID>
         The unique identifier of the key to destroy
 ```
 
 **Options:**
-```
+
+```sh
 -h, --help
         Print help (see a summary with '-h')
 ```
 
-### help
+## help
 
 Print the help message or the help of the given subcommand(s).
 
-```
+```sh
 ckms sym keys help [SUBCOMMAND]
 ```

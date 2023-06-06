@@ -52,7 +52,7 @@ where
             let ciphertext = encrypt_bytes(&mut *rng, wrapping_key, &plaintext)?;
             object_key_block.key_value = KeyValue {
                 key_material: KeyMaterial::ByteString(ciphertext),
-                // not clear whether ths should be filled or not
+                // not clear whether this should be filled or not
                 attributes: object_key_block.key_value.attributes.clone(),
             };
         }

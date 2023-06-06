@@ -160,7 +160,7 @@ async fn test_destroy_cover_crypt() -> Result<(), CliError> {
     // init the test server
     let ctx = ONCE.get_or_init(init_test_server).await;
 
-    // check revocation of all keys when the private key is destroyd
+    // check revocation of all keys when the private key is destroyed
     {
         // generate a new master key pair
         let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(

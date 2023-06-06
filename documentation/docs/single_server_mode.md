@@ -15,7 +15,6 @@ docker run -p 9998:9998 --name kms cosmian/kms
 
 The KMS will be available on `http://localhost:9998`, and the server will store its data inside the container in the `/root/cosmian-kms/sqlite-data` directory.
 
-
 ### Persisting data between restarts
 
 To persist data between restarts, map the `/root/cosmian-kms/sqlite-data` path to a filesystem directory or a Docker volume, e.g. with a volume named `cosmian-kms`:
@@ -49,9 +48,9 @@ docker run --rm -p 9998:9998 \
         ➜ curl -X POST https://my-server:9998/new_database
         "eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0="%
         ```
-        The secret is the value between the quotes `""`. 
-        
-    :warning: This secret is only displayed **once** and is **not stored** anywhere on the server.        
+        The secret is the value between the quotes `""`.
+
+    :warning: This secret is only displayed **once** and is **not stored** anywhere on the server.
 
     :warning: Each call to `new_database` will create a **new additional** database. It will not return the secret of the last created database, and it will not overwrite the last created database.
 
@@ -60,7 +59,8 @@ Passing the correct secret "auto-selects" the correct encrypted database: multip
 
 === "ckms"
     The secret must be set in `kms_database_secret` property of the CLI `kms.json` configuration file.
-    ```json 
+
+    ```json
     {
         "kms_server_url": "https://my-server:9998",
         "kms_database_secret": "eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0="
@@ -75,4 +75,3 @@ Passing the correct secret "auto-selects" the correct encrypted database: multip
     -H "KmsDatabaseSecret: eyJncm91cF9pZCI6MzE0ODQ3NTQzOTU4OTM2Mjk5OTY2ODU4MTY1NzE0MTk0MjU5NjUyLCJrZXkiOiIzZDAyNzg3YjUyZGY5OTYzNGNkOTVmM2QxODEyNDk4YTRiZWU1Nzc1NmM5NDI0NjdhZDI5ZTYxZjFmMmM0OWViIn0=" \
     http://localhost:9998/objects/owned
     ```
-

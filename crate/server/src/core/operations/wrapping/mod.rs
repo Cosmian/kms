@@ -14,7 +14,7 @@ async fn get_key(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object> {
-    // check if unwrapping key exists adn retrieve it
+    // check if unwrapping key exists and retrieve it
     let (key, state) = kms
         .db
         .retrieve(key_uid, owner, ObjectOperationTypes::Get, params)

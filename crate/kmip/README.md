@@ -9,7 +9,6 @@ For specific Cosmian crypto-systems, you can use the [cosmian_kms_utils](http://
 
 ## Supported KMIP Objects
 
-
 ```mermaid
 erDiagram
     Object ||--o| PrivateKey : enum

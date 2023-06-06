@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.4.0] - 2023-06-06
+
+### Features
+
+- Added the ability to manipulate EC and Symmetric Keys
+- Added ECIES encryption (using Curve 25519) and AES GCM encryption
+- Added support for policy specifications
+- Reworked Revoke and Destroy to be closer to KMIP definitions
+- Revoking and Destroying a public/private key, revokes or destroy all the related keys
+- Upgrading of SQLX
+- Upgrading of PKCS12 support
+- Removal of Eyre in the CLI
+- Use of cloudproof_rust as a dependency rather than Covercrypt and Crypto Core directly to avoid version conflicts
+- Authentication:
+  - support for more JWT providers
+  - support for certificate authentication
+- Removal of global static conf and use of proper injection (was hindering testing)
+- Authorization: re-factor of endpoints and fix delegation issues around revoke and destroy
+
+### Documentation
+
+- Add link to package.cosmian.com
+
+### Ci
+
+- Add github ci
+- Publish python kms packages
+
+### Refactor
+
+- Refactored the server to simplify traits and separate the operations into smaller files
+
 ---
 
 ## [4.3.4] - 2023-03-09

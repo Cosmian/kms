@@ -41,15 +41,6 @@ cargo build --no-default-features
 cargo test --no-default-features
 ```
 
-## ERROR 2002 (HY000): Can't connect to server on 'gitlab-runner-1.ovh.cosmian.com' (115)
+## Releases
 
-Run manually:
-
-```bash
-ssh cosmian@gitlab-runner-1.ovh.cosmian.com
-sudo su -
-su gitlab-runner
-docker run -d --restart always -p 3306:3306 --name mariadb -e MYSQL_DATABASE=kms -e MYSQL_ROOT_PASSWORD=kms mariadb:latest
-cd ~/data/
-curl -k --data-binary @manifest.json https://gitlab-runner-1.ovh.cosmian.com:8080/enclave_manifest
-```
+All releases can be found in the public URL [package.cosmian.com](https://package.cosmian.com/kms/).

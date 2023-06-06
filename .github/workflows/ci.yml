@@ -93,8 +93,44 @@ jobs:
         with:
           files: ${{ matrix.archive_name }}.zip
 
+  python_publish:
+    name: python publish
+    needs:
+      - github_cleanup
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - archive_name: kms_python_linux
+          - archive_name: kms_python_macos
+          - archive_name: kms_python_windows
+
+    steps:
+      - uses: actions/download-artifact@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.7
+
+      - name: List directory
+        if: contains(runner.os, 'Linux')
+        run: find .
+
+      - name: Install requirements
+        run: |
+          pip install twine
+
+      - name: Publish .whl
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          twine upload -u "${PYPI_USERNAME}" -p "${PYPI_PASSWORD}" ${{ matrix.archive_name }}/*.whl
+        env:
+          PYPI_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+
   cleanup:
     needs:
       - release
+      - python_publish
     uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
     secrets: inherit

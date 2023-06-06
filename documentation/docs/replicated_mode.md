@@ -1,5 +1,5 @@
 
-Replicated mode offers high availability through redundancy and load-balancing. 
+Replicated mode offers high availability through redundancy and load-balancing.
 
 The KMS servers are stateless, so they can simply be scaled horizontally by connecting them to the same database and fronting them with a load balancer.
 
