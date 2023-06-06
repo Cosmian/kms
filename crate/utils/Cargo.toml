@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_utils"
-version = "0.1.2"
+version = "4.4.0"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 
@@ -9,9 +9,9 @@ curve25519 = []
 
 [dependencies]
 aes = "0.8"
+argon2 = "0.5.0"
 bitflags = { workspace = true }
-cosmian_cover_crypt = { workspace = true, features = ["serialization"] }
-cosmian_crypto_core = { workspace = true }
+cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 leb128 = { workspace = true }
 num-bigint = { workspace = true }

@@ -62,19 +62,19 @@ You can query the KMS with the CLI.
 Make sure you have compiled it with the same feature than the server. For example with the `staging` feature:
 
 ```
-cargo build --release  --no-default-features --features insecure  --bin cosmian_kms_cli
+cargo build --release  --no-default-features --features insecure  --bin ckms
 ```
 
 Then, on a fresh database:
 
 ```
-KMS_CLI_CONF=kms-test.json cosmian_kms_cli configure
+KMS_CLI_CONF=kms-test.json ckms configure
 ```
 
 Or in an already configured database:
 
 ```
-KMS_CLI_CONF=kms-test.json cosmian_kms_cli abe init 
+KMS_CLI_CONF=kms-test.json ckms abe init 
 ```
 
 Enjoy ;)

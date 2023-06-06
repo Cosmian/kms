@@ -1,6 +1,6 @@
 [package]
 name = "libsgx"
-version = "0.1.0"
+version = "4.4.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/enclave_manifest.html
@@ -9,7 +9,7 @@ edition = "2021"
 base64 = { workspace = true }
 base64-url = { workspace = true }
 hex = { workspace = true }
-jsonwebtoken = { version = "8.2", features = ["use_pem"] }
+jsonwebtoken = { version = "8.3", features = ["use_pem"] }
 openssl = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }

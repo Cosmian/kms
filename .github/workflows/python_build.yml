@@ -1,0 +1,113 @@
+---
+name: KMS Python
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+
+jobs:
+  pyo3-linux:
+    runs-on: ubuntu-20.04
+    container:
+      image: ghcr.io/pyo3/maturin:v0.14.1
+      options: --entrypoint ''
+    steps:
+      - uses: actions/checkout@v3
+      - run: rustup default ${{ inputs.toolchain }}
+
+      - name: Prerequisites
+        run: |
+          yum install -y perl-core zlib-devel wget libsodium-devel clang-devel centos-release-scl llvm-toolset-7
+          # build openssl
+          cd /tmp
+          wget https://www.openssl.org/source/openssl-1.1.1s.tar.gz
+          tar -xf openssl-1.1.1s.tar.gz
+          pushd openssl-1.1.1s
+          ./config --prefix=/usr/local/ssl --openssldir=/usr/local/ssl
+          make -j 4
+          make install_sw
+          popd
+          rm -rf openssl-1.1.1s*
+          # install maturin and readelf
+          pip install maturin[patchelf]==0.14.9
+
+      - name: Python maturin build
+        run: |
+          pushd crate/pyo3
+          LIBCLANG_PATH=/opt/rh/llvm-toolset-7/root/usr/lib64/ LIBCLANG_STATIC_PATH=/opt/rh/llvm-toolset-7/root/usr/lib64/ CLANG_PATH=/opt/rh/llvm-toolset-7/root/usr/bin/clang OPENSSL_DIR=/usr/local/ssl maturin build --compatibility manylinux_2_17 --release --target-dir target_python
+          popd
+
+      - name: Upload WHL for Linux
+        uses: actions/upload-artifact@v3
+        with:
+          name: kms_python_linux
+          path: target/wheels/*manylinux*.whl
+          retention-days: 1
+          if-no-files-found: error
+
+  pyo3-mac:
+    runs-on: ubuntu-22.04
+    container:
+      image: joseluisq/rust-linux-darwin-builder:1.66
+    steps:
+      - uses: actions/checkout@v3
+      - name: Prerequisites for macos
+        run: |
+          rustup target add x86_64-apple-darwin
+          apt-get update
+          apt-get install -y python3-pip
+          cd crate/pyo3/python
+          pip install -r requirements.txt
+
+      - name: Python maturin build
+        run: |
+          set -x
+          CARGO_HOME=$(pwd)/.cargo/
+          cp /root/.cargo/config "${CARGO_HOME}/"
+          cd crate/pyo3
+          maturin build --release --target x86_64-apple-darwin
+
+      - name: Upload WHL for MacOS
+        uses: actions/upload-artifact@v3
+        with:
+          name: kms_python_macos
+          path: target/wheels/*macosx*.whl
+          retention-days: 1
+          if-no-files-found: error
+
+  pyo3-windows:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+      - run: |
+          rustup default ${{ inputs.toolchain }}
+          rustup target add x86_64-pc-windows-gnu
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3
+          cache: pip # caching pip dependencies
+
+      - name: Prerequisites
+        run: |
+          pip install maturin[patchelf]==0.14.9
+          sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
+          cd crate/pyo3/python
+          pip install -r requirements.txt
+
+      - name: Python maturin build
+        run: |
+          pushd crate/pyo3
+          maturin build --release --target x86_64-pc-windows-gnu --target-dir target_python
+          popd
+
+      - name: Upload WHL for Windows
+        uses: actions/upload-artifact@v3
+        with:
+          name: kms_python_windows
+          path: target/wheels/*win*.whl
+          retention-days: 1
+          if-no-files-found: error

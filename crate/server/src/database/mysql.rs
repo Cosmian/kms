@@ -32,9 +32,9 @@ pub struct Sql {
 
 impl Sql {
     pub async fn instantiate(connection_url: &str) -> KResult<Self> {
-        let mut options = MySqlConnectOptions::from_str(connection_url)?;
-        // disable logging of each query
-        options.disable_statement_logging();
+        let options = MySqlConnectOptions::from_str(connection_url)?
+            // disable logging of each query
+            .disable_statement_logging();
 
         let pool = MySqlPoolOptions::new()
             .max_connections(5)
@@ -97,7 +97,7 @@ async fn create_<'e, E>(
 where
     E: Executor<'e, Database = MySql>,
 {
-    let object_json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
@@ -168,7 +168,10 @@ where
 
         // Check this operation is legit to fetch this object
         if perms.into_iter().all(|p| p != operation_type) {
-            kms_bail!("No authorization to perform this operation");
+            return Err(KmsError::Unauthorized(format!(
+                "No authorization to perform the operation {operation_type} on the object {uid} / \
+                 {owner_or_userid}"
+            )))
         }
 
         let json = row.get::<Value, _>(0);
@@ -182,16 +185,11 @@ where
     })
 }
 
-async fn update_object_<'e, E>(
-    uid: &str,
-    owner: &str,
-    object: &kmip_objects::Object,
-    executor: E,
-) -> KResult<()>
+async fn update_object_<'e, E>(uid: &str, object: &kmip_objects::Object, executor: E) -> KResult<()>
 where
     E: Executor<'e, Database = MySql>,
 {
-    let object_json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
@@ -205,18 +203,12 @@ where
     )
     .bind(object_json)
     .bind(uid)
-    .bind(owner)
     .execute(executor)
     .await?;
     Ok(())
 }
 
-async fn update_state_<'e, E>(
-    uid: &str,
-    owner: &str,
-    state: StateEnumeration,
-    executor: E,
-) -> KResult<()>
+async fn update_state_<'e, E>(uid: &str, state: StateEnumeration, executor: E) -> KResult<()>
 where
     E: Executor<'e, Database = MySql>,
 {
@@ -227,7 +219,6 @@ where
     )
     .bind(state.to_string())
     .bind(uid)
-    .bind(owner)
     .execute(executor)
     .await?;
     Ok(())
@@ -259,7 +250,7 @@ async fn upsert_<'e, E>(
 where
     E: Executor<'e, Database = MySql>,
 {
-    let object_json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
@@ -324,7 +315,7 @@ where
 {
     let list = sqlx::query(
         MYSQL_QUERIES
-            .get("select-rows-objects-shared")
+            .get("select-objects-access-obtained")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(user)
@@ -535,7 +526,7 @@ impl Database for Sql {
         let mut res = vec![];
         let mut tx = self.pool.begin().await?;
         for (uid, object) in objects {
-            match create_(uid.clone(), owner, object, &mut tx).await {
+            match create_(uid.clone(), owner, object, &mut *tx).await {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
@@ -560,21 +551,19 @@ impl Database for Sql {
     async fn update_object(
         &self,
         uid: &str,
-        owner: &str,
         object: &kmip_objects::Object,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        update_object_(uid, owner, object, &self.pool).await
+        update_object_(uid, object, &self.pool).await
     }
 
     async fn update_state(
         &self,
         uid: &str,
-        owner: &str,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        update_state_(uid, owner, state, &self.pool).await
+        update_state_(uid, state, &self.pool).await
     }
 
     async fn upsert(
@@ -597,9 +586,9 @@ impl Database for Sql {
         delete_(uid, owner, &self.pool).await
     }
 
-    async fn list_shared_objects(
+    async fn list_access_rights_obtained(
         &self,
-        owner: &str,
+        user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
         Vec<(
@@ -610,7 +599,7 @@ impl Database for Sql {
             IsWrapped,
         )>,
     > {
-        list_shared_objects_(owner, &self.pool).await
+        list_shared_objects_(user, &self.pool).await
     }
 
     async fn list_accesses(
@@ -664,7 +653,10 @@ impl Database for Sql {
 // Run these tests using: `cargo make rust-tests`
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+    use cloudproof::reexport::crypto_core::{
+        reexport::rand_core::{RngCore, SeedableRng},
+        CsRng,
+    };
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -672,7 +664,7 @@ mod tests {
             LinkType, LinkedObjectIdentifier, StateEnumeration,
         },
     };
-    use cosmian_kms_utils::{crypto::aes::create_symmetric_key, types::ObjectOperationTypes};
+    use cosmian_kms_utils::{crypto::symmetric::create_symmetric_key, types::ObjectOperationTypes};
     use serial_test::serial;
     use uuid::Uuid;
 
@@ -705,7 +697,11 @@ mod tests {
         }
 
         // Insert an object and query it, update it, delete it, query it
-        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let mut symmetric_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         let uid_ = mysql
@@ -724,15 +720,13 @@ mod tests {
             None => kms_bail!("There should be an object"),
         }
 
-        let mut attributes = symmetric_key.attributes_mut()?;
+        let attributes = symmetric_key.attributes_mut()?;
         attributes.link = Some(vec![Link {
             link_type: LinkType::PreviousLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
         }]);
 
-        mysql
-            .update_object(&uid, owner, &symmetric_key, None)
-            .await?;
+        mysql.update_object(&uid, &symmetric_key, None).await?;
 
         match mysql
             .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
@@ -755,7 +749,7 @@ mod tests {
         }
 
         mysql
-            .update_state(&uid, owner, StateEnumeration::Deactivated, None)
+            .update_state(&uid, StateEnumeration::Deactivated, None)
             .await?;
 
         match mysql
@@ -795,7 +789,11 @@ mod tests {
 
         // Create key
 
-        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let mut symmetric_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         mysql
@@ -813,7 +811,7 @@ mod tests {
             None => kms_bail!("There should be an object"),
         }
 
-        let mut attributes = symmetric_key.attributes_mut()?;
+        let attributes = symmetric_key.attributes_mut()?;
         attributes.link = Some(vec![Link {
             link_type: LinkType::PreviousLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
@@ -875,10 +873,18 @@ mod tests {
 
         // Create key
 
-        let symmetric_key_1 = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let symmetric_key_1 =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid_1 = Uuid::new_v4().to_string();
 
-        let symmetric_key_2 = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let symmetric_key_2 =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid_2 = Uuid::new_v4().to_string();
 
         let ids = mysql
@@ -956,7 +962,11 @@ mod tests {
 
         // Create key
 
-        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let symmetric_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         // test non existent row (with very high probability)
@@ -1047,7 +1057,7 @@ mod tests {
         let objects = mysql.find(None, None, userid2, None).await?;
         assert!(objects.is_empty());
 
-        let objects = mysql.list_shared_objects(userid2, None).await?;
+        let objects = mysql.list_access_rights_obtained(userid2, None).await?;
         assert_eq!(
             objects,
             vec![(
@@ -1209,7 +1219,11 @@ mod tests {
 
         // Create key
 
-        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let symmetric_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -1366,7 +1380,11 @@ mod tests {
         let owner = "eyJhbGciOiJSUzI1Ni";
 
         // Insert an object and query it, update it, delete it, query it
-        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key);
+        let mut symmetric_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         // Define the link vector
@@ -1375,7 +1393,7 @@ mod tests {
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
         }];
 
-        let mut attributes = symmetric_key.attributes_mut()?;
+        let attributes = symmetric_key.attributes_mut()?;
         attributes.link = Some(link.clone());
 
         let uid_ = db

@@ -15,7 +15,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
     ConnectOptions, Executor, Pool, Row, Sqlite,
 };
-use tracing::{debug, trace};
+use tracing::{debug, log::warn, trace};
 use uuid::Uuid;
 
 use crate::{
@@ -36,13 +36,13 @@ impl SqlitePool {
     /// Instantiate a new `SQLite` database
     /// and create the appropriate table(s) if need be
     pub async fn instantiate(path: &Path) -> KResult<Self> {
-        let mut options = SqliteConnectOptions::new()
+        let options = SqliteConnectOptions::new()
             .filename(path)
             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
             .busy_timeout(Duration::from_secs(120))
-            .create_if_missing(true);
-        // disable logging of each query
-        options.disable_statement_logging();
+            .create_if_missing(true)
+            // disable logging of each query
+            .disable_statement_logging();
 
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
@@ -83,23 +83,23 @@ impl Database for SqlitePool {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        user: &str,
         object: &kmip_objects::Object,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier> {
-        create_(uid, owner, object, &self.pool).await
+        create_(uid, user, object, &self.pool).await
     }
 
     async fn create_objects(
         &self,
-        owner: &str,
+        user: &str,
         objects: &[(Option<String>, kmip_objects::Object)],
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         let mut res = vec![];
         let mut tx = self.pool.begin().await?;
         for (uid, object) in objects {
-            match create_(uid.clone(), owner, object, &mut tx).await {
+            match create_(uid.clone(), user, object, &mut *tx).await {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
@@ -114,56 +114,54 @@ impl Database for SqlitePool {
     async fn retrieve(
         &self,
         uid: &str,
-        owner: &str,
+        user: &str,
         operation_type: ObjectOperationTypes,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Option<(kmip_objects::Object, StateEnumeration)>> {
-        retrieve_(uid, owner, operation_type, &self.pool).await
+        retrieve_(uid, user, operation_type, &self.pool).await
     }
 
     async fn update_object(
         &self,
         uid: &str,
-        owner: &str,
         object: &kmip_objects::Object,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        update_object_(uid, owner, object, &self.pool).await
+        update_object_(uid, object, &self.pool).await
     }
 
     async fn update_state(
         &self,
         uid: &str,
-        owner: &str,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        update_state_(uid, owner, state, &self.pool).await
+        update_state_(uid, state, &self.pool).await
     }
 
     async fn upsert(
         &self,
         uid: &str,
-        owner: &str,
+        user: &str,
         object: &kmip_objects::Object,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        upsert_(uid, owner, object, state, &self.pool).await
+        upsert_(uid, user, object, state, &self.pool).await
     }
 
     async fn delete(
         &self,
         uid: &str,
-        owner: &str,
+        user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        delete_(uid, owner, &self.pool).await
+        delete_(uid, user, &self.pool).await
     }
 
-    async fn list_shared_objects(
+    async fn list_access_rights_obtained(
         &self,
-        owner: &str,
+        user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
         Vec<(
@@ -174,7 +172,7 @@ impl Database for SqlitePool {
             IsWrapped,
         )>,
     > {
-        list_shared_objects_(owner, &self.pool).await
+        list_shared_objects_(user, &self.pool).await
     }
 
     async fn list_accesses(
@@ -234,7 +232,7 @@ pub(crate) async fn create_<'e, E>(
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    let object_json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
@@ -305,7 +303,12 @@ where
 
         // Check this operation is legit to fetch this object
         if perms.into_iter().all(|p| p != operation_type) {
-            kms_bail!("No authorization to perform this operation");
+            warn!(
+                "No authorization to perform the operation {operation_type} on the object {uid} / \
+                 {owner_or_userid}"
+            );
+            // return item not found to the user
+            return Err(KmsError::ItemNotFound(uid.to_string()))
         }
 
         let raw = row.get::<Vec<u8>, _>(0);
@@ -321,14 +324,13 @@ where
 
 pub(crate) async fn update_object_<'e, E>(
     uid: &str,
-    owner: &str,
     object: &kmip_objects::Object,
     executor: E,
 ) -> KResult<()>
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    let object_json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
@@ -342,7 +344,6 @@ where
     )
     .bind(object_json)
     .bind(uid)
-    .bind(owner)
     .execute(executor)
     .await?;
     trace!("Updated in DB: {uid}");
@@ -351,7 +352,6 @@ where
 
 pub(crate) async fn update_state_<'e, E>(
     uid: &str,
-    owner: &str,
     state: StateEnumeration,
     executor: E,
 ) -> KResult<()>
@@ -365,7 +365,6 @@ where
     )
     .bind(state.to_string())
     .bind(uid)
-    .bind(owner)
     .execute(executor)
     .await?;
     trace!("Updated in DB: {uid}");
@@ -399,7 +398,7 @@ pub(crate) async fn upsert_<'e, E>(
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    let object_json = serde_json::to_value(&DBObject {
+    let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
     })
@@ -467,7 +466,7 @@ where
     debug!("Owner = {}", user);
     let list = sqlx::query(
         SQLITE_QUERIES
-            .get("select-rows-objects-shared")
+            .get("select-objects-access-obtained")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(user)
@@ -654,7 +653,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use cosmian_crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+    use cloudproof::reexport::crypto_core::{
+        reexport::rand_core::{RngCore, SeedableRng},
+        CsRng,
+    };
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
         kmip_types::{
@@ -662,7 +664,7 @@ mod tests {
             LinkType, LinkedObjectIdentifier, StateEnumeration,
         },
     };
-    use cosmian_kms_utils::{crypto::aes::create_symmetric_key, types::ObjectOperationTypes};
+    use cosmian_kms_utils::{crypto::symmetric::create_symmetric_key, types::ObjectOperationTypes};
     use tempfile::tempdir;
     use uuid::Uuid;
 
@@ -684,8 +686,9 @@ mod tests {
         }
 
         let db = SqlitePool::instantiate(&file_path).await?;
-
-        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key_bytes = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key_bytes);
+        let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -763,7 +766,7 @@ mod tests {
         let objects = db.find(None, None, userid2, None).await?;
         assert!(objects.is_empty());
 
-        let objects = db.list_shared_objects(userid2, None).await?;
+        let objects = db.list_access_rights_obtained(userid2, None).await?;
         assert_eq!(
             objects,
             vec![(
@@ -911,7 +914,7 @@ mod tests {
     #[actix_rt::test]
     #[cfg_attr(feature = "sqlcipher", ignore)]
     pub async fn test_json_access() -> KResult<()> {
-        log_init("debug");
+        log_init("info");
         let mut rng = CsRng::from_entropy();
         let owner = "eyJhbGciOiJSUzI1Ni";
         let dir = tempdir()?;
@@ -924,7 +927,10 @@ mod tests {
 
         //
 
-        let symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key_bytes = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key_bytes);
+        let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -1084,7 +1090,11 @@ mod tests {
 
         //
 
-        let mut symmetric_key = create_symmetric_key(&mut rng, CryptographicAlgorithm::AES, None)?;
+        let mut symmetric_key_bytes = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key_bytes);
+        let mut symmetric_key =
+            create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
+
         let uid = Uuid::new_v4().to_string();
 
         // Define the link vector
@@ -1093,7 +1103,7 @@ mod tests {
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
         }];
 
-        let mut attributes = symmetric_key.attributes_mut()?;
+        let attributes = symmetric_key.attributes_mut()?;
         attributes.link = Some(link.clone());
 
         let uid_ = db

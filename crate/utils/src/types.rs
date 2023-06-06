@@ -1,3 +1,4 @@
+use cloudproof::reexport::crypto_core::symmetric_crypto::{key::Key, SymKey};
 use cosmian_kmip::kmip::kmip_types::{Attributes, StateEnumeration, UniqueIdentifier};
 use serde::{Deserialize, Serialize};
 
@@ -15,23 +16,77 @@ pub struct Access {
 
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
-#[derive(Eq, PartialEq, Serialize, Deserialize, Debug, Copy, Clone)]
+#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone)]
+#[serde(rename_all = "lowercase")]
 pub enum ObjectOperationTypes {
     Create,
-    Get,
-    Encrypt,
     Decrypt,
-    Import,
-    Revoke,
-    Locate,
-    Rekey,
     Destroy,
+    Encrypt,
+    Export,
+    Get,
+    Import,
+    Locate,
+    Revoke,
+    Rekey,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+impl std::fmt::Debug for ObjectOperationTypes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl std::fmt::Display for ObjectOperationTypes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let str = match self {
+            ObjectOperationTypes::Create => "create",
+            ObjectOperationTypes::Decrypt => "decrypt",
+            ObjectOperationTypes::Destroy => "destroy",
+            ObjectOperationTypes::Encrypt => "encrypt",
+            ObjectOperationTypes::Export => "export",
+            ObjectOperationTypes::Get => "get",
+            ObjectOperationTypes::Import => "import",
+            ObjectOperationTypes::Locate => "locate",
+            ObjectOperationTypes::Revoke => "revoke",
+            ObjectOperationTypes::Rekey => "rekey",
+        };
+        write!(f, "{str}")
+    }
+}
+
+#[derive(Clone)]
 pub struct ExtraDatabaseParams {
     pub group_id: u128,
-    pub key: String,
+    pub key: Key<32>,
+}
+
+impl Serialize for ExtraDatabaseParams {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_bytes(
+            vec![
+                self.group_id.to_be_bytes().to_vec(),
+                self.key.as_bytes().to_vec(),
+            ]
+            .concat()
+            .as_slice(),
+        )
+    }
+}
+
+impl<'de> Deserialize<'de> for ExtraDatabaseParams {
+    fn deserialize<D>(deserializer: D) -> Result<ExtraDatabaseParams, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let bytes = <Vec<u8>>::deserialize(deserializer)?;
+        let group_id = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
+        let key = SymKey::from_bytes(bytes[16..48].try_into().unwrap());
+        Ok(ExtraDatabaseParams { group_id, key })
+    }
 }
 
 use std::{fmt, str::FromStr};
@@ -45,14 +100,15 @@ impl FromStr for ObjectOperationTypes {
     fn from_str(op: &str) -> Result<Self, Self::Err> {
         match op {
             "create" => Ok(Self::Create),
-            "get" => Ok(Self::Get),
-            "encrypt" => Ok(Self::Encrypt),
             "decrypt" => Ok(Self::Decrypt),
+            "destroy" => Ok(Self::Destroy),
+            "encrypt" => Ok(Self::Encrypt),
+            "export" => Ok(Self::Export),
+            "get" => Ok(Self::Get),
             "import" => Ok(Self::Import),
-            "revoke" => Ok(Self::Revoke),
             "locate" => Ok(Self::Locate),
             "rekey" => Ok(Self::Rekey),
-            "destroy" => Ok(Self::Destroy),
+            "revoke" => Ok(Self::Revoke),
             _ => Err("Could not parse an operation {op}"),
         }
     }
@@ -112,7 +168,7 @@ impl From<(String, StateEnumeration, Attributes, IsWrapped)> for ObjectOwnedResp
 }
 
 #[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
-pub struct ObjectSharedResponse {
+pub struct AccessRightsObtainedResponse {
     pub object_id: UniqueIdentifier,
     pub owner_id: String,
     pub state: StateEnumeration,
@@ -120,7 +176,7 @@ pub struct ObjectSharedResponse {
     pub is_wrapped: IsWrapped,
 }
 
-impl fmt::Display for ObjectSharedResponse {
+impl fmt::Display for AccessRightsObtainedResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -141,7 +197,7 @@ impl
         StateEnumeration,
         Vec<ObjectOperationTypes>,
         IsWrapped,
-    )> for ObjectSharedResponse
+    )> for AccessRightsObtainedResponse
 {
     fn from(
         e: (

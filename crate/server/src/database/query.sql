@@ -32,10 +32,10 @@ SELECT objects.object, objects.state, read_access.permissions
         WHERE objects.id=$1 AND read_access.id=$1 AND read_access.userid=$2;
 
 -- name: update-rows-objects-with-object
-UPDATE objects SET object=$1 WHERE id=$2 AND owner=$3;
+UPDATE objects SET object=$1 WHERE id=$2;
 
 -- name: update-rows-objects-with-state
-UPDATE objects SET state=$1 WHERE id=$2 AND owner=$3;
+UPDATE objects SET state=$1 WHERE id=$2;
 
 -- name: delete-rows-objects
 DELETE FROM objects WHERE id=$1 AND owner=$2;
@@ -72,7 +72,7 @@ SELECT userid, permissions
         FROM read_access
         WHERE id=$1;
 
--- name: select-rows-objects-shared
+-- name: select-objects-access-obtained
 SELECT objects.id, owner, state, permissions
         FROM objects
         INNER JOIN read_access

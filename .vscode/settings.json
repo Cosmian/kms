@@ -3,23 +3,39 @@
     "canonicalize",
     "certbot",
     "Certbot",
+    "chacha",
+    "ciphertext",
+    "ciphertexts",
+    "ckms",
+    "cleartext",
+    "cloudproof",
     "cosmian",
     "Cosmian",
+    "Covercrypt",
+    "ECDH",
+    "ecies",
+    "ECIES",
     "gpsw",
     "Gpsw",
     "jwks",
+    "keypair",
     "kmip",
     "KMIP",
     "mysql",
     "pkcs",
     "postgres",
     "postgresql",
+    "Seedable",
     "sqlcipher",
     "sqlite",
     "Sqlite",
     "structopt",
     "TFHE",
-    "ttlv"
+    "ttlv",
+    "uids",
+    "Upserting",
+    "uuid",
+    "Uuid"
   ],
   "[md]": {
     "editor.formatOnSave": false,
@@ -39,5 +55,10 @@
     "**/README.md",
     "**/*.txt",
     "**/*.md"
-  ]
+  ],
+  "rust-analyzer.check.command": "clippy",
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  },
+  "python.formatting.provider": "none"
 }

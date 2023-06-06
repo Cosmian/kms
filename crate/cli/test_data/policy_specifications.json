@@ -1,0 +1,13 @@
+    {
+        "Security Level::<": [
+            "Protected",
+            "Confidential",
+            "Top Secret::+"
+        ],
+        "Department": [
+            "R&D",
+            "HR",
+            "MKG",
+            "FIN"
+        ]
+    }

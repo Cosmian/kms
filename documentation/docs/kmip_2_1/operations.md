@@ -2,30 +2,7 @@ In [chapter 6](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2
 
 Out of this list, the Cosmian KMS server only requires 9 operations to provide all required functionalities to support the cryptographic schemes available on the server. KMIP operations are usually made of large nested objects, a lot of them being optional. Despite the details provided in the specifications, some of the options are subject to interpretation and the list below disambiguate the Cosmian implementation.
 
-KMIP states that a number of the operations are affected by a mechanism referred to as the ID Placeholder. It is a variable stored inside the server that is preserved during the execution of a batch of operations. Maintaining this value requires maintaining state during a batch session across multiple requests, and potentially multiple servers. The performance gain of using placeholder IDs is not obvious and the added complexity of maintaining sessions across multiple servers when scaling horizontally is not worth in Cosmian view for the type of operations conducted on the server. The Cosmian KMS servers are kept stateless to simplify horizontal scaling and therefore do not support placeholder IDs for now.
-
-### Dependencies
-
-=== "Java"
-
-    You need the following package: [Cloudproof Java Lib](https://github.com/Cosmian/cloudproof_java)
-
-    Then you can instantiate a new `Abe` object to query the KMS.
-
-    ``` java
-    Abe abe = new Abe(
-      new RestClient([KMS_SERVER_URL], [YOUR_API_KEY]),
-      new Specifications(Implementation.CoverCrypt)
-    );
-    ```
-
-=== "Rust"
-
-    Coming soon…
-
-=== "Python"
-
-    Coming soon…
+KMIP states that a number of the operations are affected by a mechanism referred to as the ID Placeholder. It is a variable stored inside the server that is preserved during the execution of a batch of operations. Maintaining this value requires maintaining a state during a batch session across multiple requests and potentially multiple servers. The performance gain of using placeholder IDs is not obvious, and the added complexity of maintaining sessions across multiple servers when scaling horizontally is not worth in the Cosmian view for the type of operations conducted on the server. The Cosmian KMS servers are kept stateless to simplify horizontal scaling and therefore do not support placeholder IDs for now.
 
 ### Import
 
@@ -34,32 +11,13 @@ KMIP states that a number of the operations are affected by a mechanism referred
 This operation requests the server to Import a Managed Object specified by its Unique Identifier.
 The request specifies the object being imported and all the attributes to be assigned to the object.
 
-The attribute rules for each attribute for "Initially set by" and "When implicitly set" SHALL NOT be enforced as all attributes MUST be set to the supplied values rather than any server generated values.
+The attribute rules for each attribute for "Initially set by" and "When implicitly set" SHALL NOT be enforced as all attributes MUST be set to the supplied values rather than any server-generated values.
 
-The response contains the Unique Identifier provided in the request or assigned by the server. The server SHALL copy the Unique Identifier returned by this operations into the ID Placeholder variable.
+The response contains the Unique Identifier provided in the request or assigned by the server. The server SHALL copy the Unique Identifier returned by this operation into the ID Placeholder variable.
 
 #### implementation
 
 The server fully implements import operations for the supported objects in PlainText mode but only for Symmetric Keys in Wrapped mode.
-
-=== "Java"
-
-    ``` java
-    String privateMasterKeyUniqueIdentifier = ...;
-    PrivateKey privateMasterKey = ...;
-    boolean replaceExisting = ...;
-    abe.importPrivateMasterKey(privateMasterKeyUniqueIdentifier, privateMasterKey, replaceExisting);
-
-    String publicMasterKeyUniqueIdentifier = ...;
-    PublicKey publicMasterKey = ...;
-    boolean replaceExisting = ...;
-    abe.importPublicMasterKey(publicMasterKeyUniqueIdentifier, publicMasterKey, replaceExisting);
-
-    String userDecryptionKeyUniqueIdentifier = ...;
-    PrivateKey userDecryptionKey = ...;
-    boolean replaceExisting = ...;
-    abe.importUserDecryptionKey(userDecryptionKeyUniqueIdentifier, userDecryptionKey, replaceExisting);
-    ```
 
 ### Create
 
@@ -69,27 +27,17 @@ This operation requests the server to generate a new symmetric key or generate S
 
 The request contains information about the type of object being created, and some of the attributes to be assigned to the object (e.g., Cryptographic Algorithm, Cryptographic Length, etc.).
 
-The response contains the Unique Identifier of the created object. The server SHALL copy the Unique Identifier returned this operation into the ID Placeholder variable.
+The response contains the Unique Identifier of the created object. The server SHALL copy the Unique Identifier returned in this operation into the ID Placeholder variable.
 
 #### implementation
 
-The Cosmian KMS server support creation of all supported objects except for Public Keys which are creates using the [Create Key Pair](#create-key-pair) operation (as one would expect).
-
-=== "Java"
-
-    ``` java
-    String privateMasterKeyUniqueIdentifier = ...;
-    AccessPolicy accessPolicy = new And(new Or(new Attr("Department", "FIN"), new Attr("Department", "MKG")),
-            new Attr("Security Level", "Protected"));
-
-    String userKeyUid = abe.createUserDecryptionKey(accessPolicy, privateMasterKeyUniqueIdentifier);
-    ```
+The Cosmian KMS server support creation of all supported objects except for Public Keys, which are created using the [Create Key Pair](#create-key-pair) operation (as one would expect).
 
 ### Create Key Pair
 
 #### specification
 
-This operation requests the server to generate a new public/private key pair and register the two corresponding new Managed Cryptographic Object.
+This operation requests the server to generate a new public/private key pair and register the two corresponding new Managed Cryptographic Objects.
 
 The request contains attributes to be assigned to the objects (e.g., Cryptographic Algorithm, Cryptographic Length, etc.). Attributes MAY be specified for both keys at the same time by specifying a Common Attributes object in the request.
 
@@ -101,18 +49,6 @@ For the Private Key, the server SHALL create a Link attribute of Link Type Publi
 
 The Create Key Pair operation is used to create Curve 25519 Key Pairs as well as ABE Master Key Pairs.
 
-=== "Java"
-
-    ``` java
-    Policy policy = new Policy(20)
-            .addAxis("Security Level", new String[] { "Protected", "Confidential", "Top Secret" }, true)
-            .addAxis("Department", new String[] { "FIN", "MKG", "HR" }, false);
-
-    String[] ids = abe.createMasterKeyPair(policy);
-    String masterPrivateKeyUniqueIdentifier =  ids[0];
-    String masterPublicKeyUniqueIdentifier = ids[1];
-    ```
-
 ### Decrypt
 
 #### specification
@@ -123,21 +59,11 @@ The request contains information about the cryptographic parameters (mode and pa
 
 The response contains the Unique Identifier of the Managed Cryptographic Object used as the key and the result of the decryption operation.
 
-The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
+The success or failure of the operation is indicated by the Result Status (and if failure, the Result Reason) in the response header.
 
 #### implementation
 
-When used with an ABE user decryption key, this operation will attempt to perform a hybrid ABE+AES 256GCM decryption. The first 4 bytes of the cipher text are expected to be the ABE encrypted header length encoded as an an unsigned 32 bit in big endian format. The following bytes should contain the ABE header, made of an ABE encryption of the symmetric key, optionally followed by the symmetrically encoded meta data. The rest of the cipher text is the AES encrypted content.
-
-=== "Java"
-
-    ``` java
-    String userDecryptionKeyUniqueIdentifier = ...;
-    byte[] encryptedData = ...;
-    Optional<byte[]> authenticated_encryption_additional_data = ...;
-    byte[] clearText = abe.kmsDecrypt(userDecryptionKeyUniqueIdentifier, encryptedData,
-                        Optional.of(authenticated_encryption_additional_data));
-    ```
+When used with an ABE user decryption key, this operation will attempt to perform a hybrid ABE+AES 256GCM decryption. The first 4 bytes of the cipher text are expected to be the ABE encrypted header length encoded as an unsigned 32-bit in big-endian format. The following bytes should contain the ABE header, made of an ABE encryption of the symmetric key, optionally followed by the symmetrically encoded metadata. The rest of the cipher text is the AES-encrypted content.
 
 ### Destroy
 
@@ -149,13 +75,6 @@ This operation is used to indicate to the server that the key material for the s
 
 Destroyed keys are set in the state `destroyed` on the Cosmian KMS Server.
 
-=== "Java"
-
-    ``` java
-    String uniqueIdentifier = ...;
-    abe.destroy(uniqueIdentifier);
-    ```
-
 ### Encrypt
 
 #### specification
@@ -164,17 +83,16 @@ This operation requests the server to perform an encryption operation on the pro
 
 The request contains information about the cryptographic parameters (mode and padding method), the data to be encrypted, and the IV/Counter/Nonce to use. The cryptographic parameters MAY be omitted from the request as they can be specified as associated attributes of the Managed Cryptographic Object. The IV/Counter/Nonce MAY also be omitted from the request if the cryptographic parameters indicate that the server shall generate a Random IV on behalf of the client or the encryption algorithm does not need an IV/Counter/Nonce. The server does not store or otherwise manage the IV/Counter/Nonce.
 
-If the Managed Cryptographic Object referenced has a Usage Limits attribute then the server SHALL obtain an allocation from the current Usage Limits value prior to performing the encryption operation. If the allocation is unable to be obtained the operation SHALL return with a result status of Operation Failed and result reason of Permission Denied.
+If the Managed Cryptographic Object referenced has a Usage Limits attribute, then the server SHALL obtain an allocation from the current Usage Limits value prior to performing the encryption operation. If the allocation is unable to be obtained, the operation SHALL return with a result status of Operation Failed and result reason of Permission Denied.
 
 The response contains the Unique Identifier of the Managed Cryptographic Object used as the key and the result of the encryption operation.
 
-The success or failure of the operation is indicated by the Result Status (and if failure the Result Reason) in the response header.
+The success or failure of the operation is indicated by the Result Status (and, if failure, the Result Reason) in the response header.
 
 #### implementation
 
-When used with ABE master public key, this operation will perform an ABE+AES256GCM hybrid encryption. A symmetric key will be randomly generated and used to encrypt the content using AES 256 GCM. The symmetric key, will be encrypted using the ABE and given policy attributes in a header. The cipher text will then be the concatenation of
-    - 4 bytes representing the ABE encrypted header length encoded as an an unsigned 32 bit in big endian format
-    - the ABE header
+When used with ABE master public key, this operation will perform an ABE+AES256GCM hybrid encryption. A symmetric key will be randomly generated and used to encrypt the content using AES 256 GCM. The symmetric key will be encrypted using the ABE and given policy attributes in a header. The cipher text will then be the concatenation of
+    - 4 bytes representing the ABE encrypted header length encoded as an unsigned 32-bit in big-endian format - the ABE header
     - the symmetrically encrypted content
 Note: the passed in the authentication parameters (typically the resource UID) used for authentication of the symmetrically encrypted content are NOT encrypted as part of the ABE header and must be re-supplied on decryption.
 
@@ -200,7 +118,7 @@ This operation requests that the server returns the Managed Object specified by 
 The response contains the Unique Identifier of the object, along with the object itself, which MAY be wrapped using a wrapping key as specified in the request. The following key format capabilities SHALL be assumed by the client; restrictions apply when the client requests the server to return an object in a particular
 format:
 
-- If a client registered a key in a given format, the server SHALL be able to return the key during the Get operation in the same format that was used when the key was registered.
+- If a client registers a key in a given format, the server SHALL be able to return the key during the Get operation in the same format that was used when the key was registered.
 
 - Any other format conversion MAY be supported by the server.
 
@@ -208,11 +126,11 @@ format:
 
 The Unique Identifier shall be either that of a private key or certificate to be included in the response.
 
-The container shall be protected using the Secret Data object specified via the private key or certificate's PKCS#12 Password Link. The current certificate chain shall also be included as determined by using the private key's Public Key link to get the corresponding public key (where relevant), and then using that public key's PKCS#12 Certificate Link to get the base certificate, and then using each certificate's Certificate Link to build the certificate chain.  It is an error if there is more than one valid certificate chain.
+The container shall be protected using the Secret Data object specified via the private key or certificate's PKCS#12 Password Link. The current certificate chain shall also be included as determined by using the private key's Public Key link to get the corresponding public key (where relevant) and then using that public key's PKCS#12 Certificate Link to get the base certificate, and then using each certificate's Certificate Link to build the certificate chain.  It is an error if there is more than one valid certificate chain.
 
 #### implementation
 
-The Cosmian KMS server returns the retrieved object in the same format as it was inserted and does not perform conversion.
+The Cosmian KMS server returns the retrieved object in the same format as it was inserted and does not perform the conversion.
 
 === "Java"
 
@@ -231,7 +149,7 @@ The Cosmian KMS server returns the retrieved object in the same format as it was
 
 #### specification
 
-This operation requests that the server search for one or more Managed Objects, depending on the attributes specified in the request. All attributes are allowed to be used. The request MAY contain a Maximum Items field, which specifies the maximum number of objects to be returned. If the Maximum Items field is omitted, then the server MAY return all objects matched, or MAY impose an internal maximum limit due to resource limitations.
+This operation requests that the server search for one or more Managed Objects, depending on the attributes specified in the request. All attributes are allowed to be used. The request MAY contain a Maximum Items field, which specifies the maximum number of objects to be returned. If the Maximum Items field is omitted, then the server MAY return all objects matched or MAY impose an internal maximum limit due to resource limitations.
 
 The request MAY contain an Offset Items field, which specifies the number of objects to skip that satisfy the identification criteria specified in the request. An Offset Items field of 0 is the same as omitting the Offset Items field. If both Offset Items and Maximum Items are specified in the request, the server skips Offset Items objects and returns up to Maximum Items objects.
 

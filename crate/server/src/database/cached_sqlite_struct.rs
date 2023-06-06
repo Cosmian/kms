@@ -8,6 +8,7 @@ use std::{
     time::SystemTime,
 };
 
+use cloudproof::reexport::crypto_core::symmetric_crypto::key::Key;
 use sqlx::{Pool, Sqlite};
 use tracing::info;
 
@@ -18,7 +19,7 @@ pub struct KMSSqliteCacheItem {
     /// The handler to the sqlite
     sqlite: Arc<Pool<Sqlite>>,
     /// They key of the sqlite
-    key: String,
+    key: Key<32>,
     /// The date of the first insertion
     #[allow(dead_code)]
     inserted_at: u64,
@@ -58,7 +59,7 @@ pub fn _now() -> u64 {
 
 impl KMSSqliteCacheItem {
     #[must_use]
-    pub fn new(sqlite: Pool<Sqlite>, key: String, freeable_cache_index: usize) -> Self {
+    pub fn new(sqlite: Pool<Sqlite>, key: Key<32>, freeable_cache_index: usize) -> Self {
         Self {
             sqlite: Arc::new(sqlite),
             key,
@@ -127,7 +128,7 @@ impl KMSSqliteCache {
     /// Get the sqlite handler and tag it as "used"
     ///
     /// The function will return an error if the database is closed or the key is not the right one
-    pub fn get(&self, id: u128, key: &str) -> KResult<Arc<Pool<Sqlite>>> {
+    pub fn get(&self, id: u128, key: &Key<32>) -> KResult<Arc<Pool<Sqlite>>> {
         let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
 
         let item = sqlites
@@ -140,7 +141,7 @@ impl KMSSqliteCache {
 
         // We need to check if the key provided by the user is the same that was used to open the database
         // If we do not, we can just send any password: the database is already opened anyway.
-        if key != item.key {
+        if key != &item.key {
             kms_bail!("Database secret is wrong");
         }
 
@@ -237,7 +238,7 @@ impl KMSSqliteCache {
     /// The handler is considered as used until it is explicitly release.
     ///
     /// This function will call a `flush` if needed to close the oldest unused databases.
-    pub async fn save(&self, id: u128, key: &str, pool: Pool<Sqlite>) -> KResult<()> {
+    pub async fn save(&self, id: u128, key: &Key<32>, pool: Pool<Sqlite>) -> KResult<()> {
         // Flush the cache if necessary
         self.flush().await?;
         // If nothing has been flush, allow to exceed max cache size
@@ -272,7 +273,7 @@ impl KMSSqliteCache {
                 let freeable_cache_id = freeable_sqlites.push(id)?;
 
                 // Add it to the SqliteCache
-                let mut item = KMSSqliteCacheItem::new(pool, key.to_string(), freeable_cache_id);
+                let mut item = KMSSqliteCacheItem::new(pool, key.to_owned(), freeable_cache_id);
 
                 freeable_sqlites.uncache(freeable_cache_id)?;
 
@@ -463,6 +464,9 @@ impl FreeableSqliteCache {
 mod tests {
     use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
+    use cloudproof::reexport::crypto_core::{
+        reexport::rand_core::SeedableRng, symmetric_crypto::key::Key, CsRng, KeyTrait,
+    };
     use sqlx::{
         sqlite::{SqliteConnectOptions, SqlitePoolOptions},
         ConnectOptions,
@@ -684,15 +688,16 @@ mod tests {
         assert_eq!(cache.max_size, 2);
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 0);
 
-        let password = "test";
+        let mut cs_rng = CsRng::from_entropy();
+        let password = Key::<32>::new(&mut cs_rng);
 
         let sqlite = connect().await.expect("Can't create database");
         let sqlite2 = connect().await.expect("Can't create database");
         let sqlite3 = connect().await.expect("Can't create database");
 
-        assert!(cache.save(1, password, sqlite).await.is_ok());
+        assert!(cache.save(1, &password, sqlite).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 1);
-        assert!(cache.save(2, password, sqlite2).await.is_ok());
+        assert!(cache.save(2, &password, sqlite2).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 2); // flush should do nothing here
         assert!(cache.opened(1));
         assert!(cache.opened(2));
@@ -700,7 +705,7 @@ mod tests {
         assert!(cache.exists(1));
 
         let sqlite2 = connect().await.expect("Can't create database");
-        assert!(cache.save(2, password, sqlite2).await.is_ok()); // double saved = ok
+        assert!(cache.save(2, &password, sqlite2).await.is_ok()); // double saved = ok
 
         assert!(cache.release(2).is_ok());
         assert!(cache.release(2).is_err()); // not twice
@@ -709,30 +714,30 @@ mod tests {
         assert!(cache.opened(2)); // still opened
 
         assert!(!cache.exists(3));
-        assert!(cache.save(3, password, sqlite3).await.is_ok());
+        assert!(cache.save(3, &password, sqlite3).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 2); // flush should do nothing here
         assert!(cache.opened(3)); // still opened
         assert!(!cache.opened(2)); // not opened anymore
         assert!(cache.exists(2));
 
         let sqlite2 = connect().await.expect("Can't create database");
-        assert!(cache.save(2, password, sqlite2).await.is_ok());
+        assert!(cache.save(2, &password, sqlite2).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 3); // flush should do nothing here
         assert!(cache.opened(2));
 
-        assert!(cache.get(4, password).is_err());
-        assert!(cache.get(1, "bad_password").is_err()); // bad password
-        assert!(cache.get(1, password).is_ok()); // 2 uses of sqlite1
+        assert!(cache.get(4, &password).is_err());
+        assert!(cache.get(1, &Key::<32>::new(&mut cs_rng)).is_err()); // bad &password
+        assert!(cache.get(1, &password).is_ok()); // 2 uses of sqlite1
 
         let sqlite4 = connect().await.expect("Can't create database");
-        assert!(cache.save(4, password, sqlite4).await.is_ok());
+        assert!(cache.save(4, &password, sqlite4).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 4); // flush should do nothing here
         assert!(cache.opened(1));
 
         assert!(cache.release(1).is_ok()); // 1 uses of sqlite1
 
         let sqlite5 = connect().await.expect("Can't create database");
-        assert!(cache.save(5, password, sqlite5).await.is_ok());
+        assert!(cache.save(5, &password, sqlite5).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 5); // flush should do nothing here
         assert!(cache.opened(1));
 
@@ -740,21 +745,21 @@ mod tests {
         assert!(cache.opened(1));
 
         let sqlite6 = connect().await.expect("Can't create database");
-        assert!(cache.save(6, password, sqlite6).await.is_ok());
+        assert!(cache.save(6, &password, sqlite6).await.is_ok());
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 5); // flush should do something here
         assert!(!cache.opened(1));
         assert!(cache.exists(1));
 
-        assert!(cache.get(1, password).is_err()); // get after close
+        assert!(cache.get(1, &password).is_err()); // get after close
     }
 
     async fn connect() -> std::result::Result<sqlx::Pool<sqlx::Sqlite>, sqlx::Error> {
-        let mut options = SqliteConnectOptions::from_str("sqlite::memory:")?
+        let options = SqliteConnectOptions::from_str("sqlite::memory:")?
             .pragma("journal_mode", "OFF")
             .busy_timeout(Duration::from_secs(120))
-            .create_if_missing(true);
-        // disable logging of each query
-        options.disable_statement_logging();
+            .create_if_missing(true)
+            // disable logging of each query
+            .disable_statement_logging();
 
         SqlitePoolOptions::new()
             .max_connections(1)

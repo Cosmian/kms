@@ -30,8 +30,8 @@ script = '''
 #!/bin/bash
 set -ex
 rustup target add x86_64-pc-windows-gnu
-cargo build --bin cosmian_kms_cli --target x86_64-pc-windows-gnu
-cargo build --bin cosmian_kms_cli
+cargo build --bin ckms --target x86_64-pc-windows-gnu
+cargo build --bin ckms
 '''
 
 [tasks.ci-rust-tests]
@@ -57,8 +57,8 @@ dependencies = [
 category = "dev"
 description = "Run Rust tests"
 script = '''
-cargo build --bin cosmian_kms_cli
-cargo test --features staging --no-default-features -p cosmian_kms_cli
+cargo build --bin ckms
+cargo test --features staging --no-default-features -p kms
 '''
 
 #
@@ -85,12 +85,12 @@ script.main = '''
 set -ex
 export KMS_POSTGRES_URL="postgres://$TEST_USER:$TEST_PASSWORD@$TEST_HOST/$TEST_DB"
 export KMS_MYSQL_URL="mysql://root:$TEST_PASSWORD@$TEST_HOST/$TEST_DB"
-export KMS_DELEGATED_AUTHORITY_DOMAIN="console-dev.eu.auth0.com"
+export KMS_DELEGATED_AUTHORITY_DOMAIN="kms-cosmian.eu.auth0.com"
 export KMS_ENCLAVE_DIR_PATH="data/public"
 export KMS_SQLITE_PATH="data/shared"
 export KMS_CERTBOT_SSL_PATH="data/private"
 
-cargo build --bin cosmian_kms_cli
+cargo build --bin ckms
 
 cargo test --workspace --features insecure --no-default-features -- --nocapture
 cargo test --bins -- --nocapture

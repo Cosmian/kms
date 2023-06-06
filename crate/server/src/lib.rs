@@ -1,29 +1,35 @@
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        mpsc, Arc, Mutex,
     },
     time::Duration,
 };
 
 use actix_cors::Cors;
 use actix_web::{
+    dev::ServerHandle,
     middleware::Condition,
     rt::{spawn, time::sleep},
     web::{Data, JsonConfig, PayloadConfig},
     App, HttpServer,
 };
-use config::SharedConfig;
+use config::ServerConfig;
 use libsgx::utils::is_running_inside_enclave;
-use middlewares::auth::Auth0;
-use openssl::ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod};
+use middlewares::{
+    jwt_auth::JwtAuth,
+    ssl_auth::{extract_peer_certificate, SslAuth},
+};
+use openssl::{
+    ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
+    x509::store::X509StoreBuilder,
+};
 use result::KResult;
 use tracing::{debug, error, info};
 
 use crate::{
     core::{certbot::Certbot, KMS},
     error::KmsError,
-    routes::endpoint,
 };
 
 pub mod config;
@@ -35,6 +41,9 @@ pub mod middlewares;
 pub mod result;
 pub mod routes;
 pub use database::KMSServer;
+
+#[cfg(test)]
+mod tests;
 
 /**
  * This function prepares a server for the application. It creates an `HttpServer` instance,
@@ -56,41 +65,47 @@ pub fn prepare_server(
     kms_server: Arc<KMS>,
     builder: Option<SslAcceptorBuilder>,
 ) -> KResult<actix_web::dev::Server> {
-    // Determine if Auth0 should be used for authentication.
-    let use_auth0 = SharedConfig::auth0_authority_domain().is_some();
+    // Determine if JWT Auth should be used for authentication.
+    let use_jwt_auth = kms_server.config.jwt_issuer_uri.is_some();
+    // Determine if Client Cert Auth should be used for authentication.
+    let use_cert_auth = kms_server.config.verify_cert.is_some();
     // Determine if the application is running inside an enclave.
     let is_running_inside_enclave = is_running_inside_enclave();
     // Determine if the application is using an encrypted SQLite database.
-    let is_using_sqlite_enc = matches!(SharedConfig::db_params(), config::DbParams::SqliteEnc(_));
+    let is_using_sqlite_enc = matches!(kms_server.config.db_params, config::DbParams::SqliteEnc(_));
+
+    let jwt_auth = JwtAuth::new(&kms_server.config);
+    let port = kms_server.config.hostname_port.clone();
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the routes.
         let app = App::new()
             .wrap(Cors::permissive()) // Enable CORS for the application.
-            .wrap(Condition::new(use_auth0, Auth0)) // Use Auth0 for authentication if necessary.
+            .wrap(Condition::new(use_jwt_auth, jwt_auth.clone())) // Use JWT for authentication if necessary.
+            .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
             .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
-            .service(endpoint::kmip)
-            .service(endpoint::list_owned_objects)
-            .service(endpoint::list_shared_objects)
-            .service(endpoint::list_accesses)
-            .service(endpoint::insert_access)
-            .service(endpoint::delete_access)
-            .service(endpoint::get_version)
-            .service(endpoint::get_certificate);
+            .service(routes::kmip)
+            .service(routes::list_owned_objects)
+            .service(routes::list_access_rights_obtained)
+            .service(routes::list_accesses)
+            .service(routes::grant_access)
+            .service(routes::revoke_access)
+            .service(routes::get_version)
+            .service(routes::get_certificate);
 
         let app = if is_using_sqlite_enc {
-            app.service(endpoint::add_new_database)
+            app.service(routes::add_new_database)
         } else {
             app
         };
 
         if is_running_inside_enclave {
-            app.service(endpoint::get_enclave_quote)
-                .service(endpoint::get_enclave_manifest)
-                .service(endpoint::get_enclave_public_key)
+            app.service(routes::get_enclave_quote)
+                .service(routes::get_enclave_manifest)
+                .service(routes::get_enclave_public_key)
         } else {
             app
         }
@@ -98,33 +113,52 @@ pub fn prepare_server(
     .client_request_timeout(std::time::Duration::from_secs(10));
 
     Ok(match builder {
-        Some(b) => server.bind_openssl(SharedConfig::hostname_port(), b)?.run(),
-        _ => server.bind(SharedConfig::hostname_port())?.run(),
+        Some(b) => {
+            if use_cert_auth {
+                // Start an HTTPS server with PKCS#12 with client cert auth
+                server
+                    .on_connect(extract_peer_certificate)
+                    .bind_openssl(port, b)?
+                    .run()
+            } else {
+                // Start an HTTPS server with PKCS#12 but not client cert auth
+                server.bind_openssl(port, b)?.run()
+            }
+        }
+        _ => server.bind(port)?.run(),
     })
 }
 
-/// Start the KMS server using the specified configuration
+/// Starts the Key Management System (KMS) server based on the provided configuration.
 ///
-/// This function will start either a plain HTTP, an HTTPS with PKCS#12, or an HTTPS with certbot server
-/// depending on the config settings.
+/// The server is started using one of three methods:
+/// 1. Plain HTTP,
+/// 2. HTTPS with PKCS#12,
+/// 3. HTTPS with certbot.
+///
+/// The method used depends on the server settings specified in the `ServerConfig` instance provided.
 ///
 /// # Arguments
 ///
-/// * `conf` - A reference to the Config struct that contains the server settings
+/// * `server_config` - An instance of `ServerConfig` that contains the settings for the server.
+/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
 ///
 /// # Errors
 ///
-/// This function returns an error if any of the sub-functions fail to start the server
-pub async fn start_kms_server() -> KResult<()> {
-    if SharedConfig::certbot().is_some() {
+/// This function will return an error if any of the server starting methods fails.
+pub async fn start_kms_server(
+    server_config: ServerConfig,
+    server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
+) -> KResult<()> {
+    if server_config.certbot.is_some() {
         // Start an HTTPS server with certbot
-        start_certbot_https_kms_server().await
-    } else if SharedConfig::server_pkcs12().is_some() {
+        start_certbot_https_kms_server(server_config, server_handle_transmitter).await
+    } else if server_config.server_pkcs_12.is_some() {
         // Start an HTTPS server with PKCS#12
-        start_https_kms_server().await
+        start_https_kms_server(server_config, server_handle_transmitter).await
     } else {
         // Start a plain HTTP server
-        start_plain_http_kms_server().await
+        start_plain_http_kms_server(server_config, server_handle_transmitter).await
     }
 }
 
@@ -134,18 +168,30 @@ pub async fn start_kms_server() -> KResult<()> {
 ///
 /// # Arguments
 ///
-/// * `conf` - A reference to the Config struct that contains the server settings
+/// * `server_config` - An instance of `ServerConfig` that contains the settings for the server.
+/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
 ///
 /// # Errors
 ///
 /// This function returns an error if:
 /// - The KMS server cannot be instantiated or prepared
 /// - The server fails to run
-async fn start_plain_http_kms_server() -> KResult<()> {
+async fn start_plain_http_kms_server(
+    shared_config: ServerConfig,
+    server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
+) -> KResult<()> {
     // Instantiate and prepare the KMS server
-    let kms_server = Arc::new(KMSServer::instantiate().await?);
+    let kms_server = Arc::new(KMSServer::instantiate(shared_config).await?);
+
+    // Prepare the server
     let server = prepare_server(kms_server, None)?;
 
+    // send the server handle to the caller
+    if let Some(tx) = &server_handle_transmitter {
+        tx.send(server.handle())?;
+    }
+
+    info!("Starting the HTTP server...");
     // Run the server and return the result
     server.await.map_err(Into::into)
 }
@@ -154,7 +200,8 @@ async fn start_plain_http_kms_server() -> KResult<()> {
 ///
 /// # Arguments
 ///
-/// * `conf` - A reference to the Config struct that contains the server settings
+/// * `server_config` - An instance of `ServerConfig` that contains the settings for the server.
+/// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
 ///
 /// # Errors
 ///
@@ -165,32 +212,57 @@ async fn start_plain_http_kms_server() -> KResult<()> {
 /// - The SSL acceptor cannot be created or configured with the certificate and key
 /// - The KMS server cannot be instantiated or prepared
 /// - The server fails to run
-async fn start_https_kms_server() -> KResult<()> {
-    let p12 = SharedConfig::server_pkcs12()
+async fn start_https_kms_server(
+    shared_config: ServerConfig,
+    server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
+) -> KResult<()> {
+    let p12 = shared_config
+        .server_pkcs_12
         .as_ref()
         .ok_or_else(|| eyre::eyre!("http/s: a PKCS#12 file must be provided"))?;
 
     // Create and configure an SSL acceptor with the certificate and key
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-    builder.set_private_key(&p12.pkey)?;
-    builder.set_certificate(&p12.cert)?;
-    if let Some(chain) = &p12.chain {
+    if let Some(pkey) = &p12.pkey {
+        builder.set_private_key(pkey)?;
+    }
+    if let Some(cert) = &p12.cert {
+        builder.set_certificate(cert)?;
+    }
+    if let Some(chain) = &p12.ca {
         for x in chain {
             builder.add_extra_chain_cert(x.to_owned())?;
         }
     }
 
+    if let Some(verify_cert) = &shared_config.verify_cert {
+        // This line sets the mode to verify peer (client) certificates
+        builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
+        let mut store_builder = X509StoreBuilder::new()?;
+        store_builder.add_cert(verify_cert.clone())?;
+        builder.set_verify_cert_store(store_builder.build())?;
+    }
+
     // Instantiate and prepare the KMS server
-    let kms_server = Arc::new(KMSServer::instantiate().await?);
+    let kms_server = Arc::new(KMSServer::instantiate(shared_config).await?);
     let server = prepare_server(kms_server, Some(builder))?;
+
+    // send the server handle to the caller
+    if let Some(tx) = &server_handle_transmitter {
+        tx.send(server.handle())?;
+    }
 
     // Run the server and return the result
     server.await.map_err(Into::into)
 }
 
 /// Start and https server with the ability to renew its certificates
-async fn start_auto_renew_https(certbot: &Arc<Mutex<Certbot>>) -> KResult<()> {
-    let kms_server = Arc::new(KMSServer::instantiate().await?);
+async fn start_auto_renew_https(
+    shared_config: ServerConfig,
+    certbot: &Arc<Mutex<Certbot>>,
+    server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
+) -> KResult<()> {
+    let kms_server = Arc::new(KMSServer::instantiate(shared_config).await?);
 
     // The loop is designed to restart the server in case it stops.
     // It stops when we renew the certificates
@@ -210,6 +282,11 @@ async fn start_auto_renew_https(certbot: &Arc<Mutex<Certbot>>) -> KResult<()> {
         }
 
         let server = prepare_server(kms_server.clone(), Some(builder))?;
+
+        // send the server handle to the caller
+        if let Some(tx) = &server_handle_transmitter {
+            tx.send(server.handle())?;
+        }
 
         let restart = Arc::new(AtomicBool::new(false));
         let restart_me = Arc::clone(&restart);
@@ -275,9 +352,12 @@ async fn start_auto_renew_https(certbot: &Arc<Mutex<Certbot>>) -> KResult<()> {
     }
 }
 
-async fn start_certbot_https_kms_server() -> KResult<()> {
+async fn start_certbot_https_kms_server(
+    shared_config: ServerConfig,
+    server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
+) -> KResult<()> {
     // Before starting any servers, check the status of our SSL certificates
-    let certbot = SharedConfig::certbot().clone().ok_or_else(|| {
+    let certbot = shared_config.certbot.clone().ok_or_else(|| {
         KmsError::ServerError("trying to start a TLS server but certbot is not used !".to_string())
     })?;
 
@@ -355,7 +435,7 @@ async fn start_certbot_https_kms_server() -> KResult<()> {
     if has_valid_cert {
         // Use it and start SSL Server
         info!("Certificate is valid");
-        start_auto_renew_https(&certbot).await?
+        start_auto_renew_https(shared_config, &certbot, server_handle_transmitter).await?
     } else {
         error!("Abort program, failed to get a valid certificate");
         kms_bail!("Abort program, failed to get a valid certificate")

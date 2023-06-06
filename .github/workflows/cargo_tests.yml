@@ -1,0 +1,217 @@
+---
+name: Cargo tests
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+
+jobs:
+  # Cleanup task is required for self-hosted runner since docker user is root and all files in target folder are under root permissions
+  cleanup:
+    runs-on: self-hosted
+    steps:
+      - name: Chown user
+        run: |
+          echo "USER: $USER"
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          sudo chown -R $USER:$USER $GITHUB_WORKSPACE
+
+  kms-linux:
+    needs: cleanup
+    services:
+      # Label used to access the service container
+      postgres:
+        # Docker Hub image
+        image: postgres
+        # Provide the password for postgres
+        env:
+          POSTGRES_USER: kms
+          PGUSER: kms
+          POSTGRES_PASSWORD: kms
+          POSTGRES_DB: kms
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      mariadb:
+        image: mariadb
+        env:
+          MYSQL_DATABASE: kms
+          MYSQL_ROOT_PASSWORD: kms
+
+    runs-on: ubuntu-22.04
+    # runs-on: [self-hosted, not-docker] # currently not needed.
+    container:
+      image: rust:latest
+
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Set up cargo cache
+        id: cargo_cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-linux-kms-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-linux-kms-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: actions-rs/toolchain@v1
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          override: true
+          components: rustfmt, clippy
+
+      - name: Build
+        run: |
+          cargo check --all-targets --no-default-features
+          cargo check --all-targets --no-default-features --features insecure
+          cargo check --all-targets --no-default-features --features timeout
+          cargo build --all-targets --all-features
+          cargo build --release --bin ckms
+          cargo build --release --bin cosmian_kms_server
+
+      - name: Tests
+        run: |
+          rm -rf /tmp/sqlite-data /tmp/tmp.json
+          export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
+          cargo test --workspace --features insecure --no-default-features -- --nocapture --skip test_curve_25519_key_pair,test_database_user_tenant,test_import_wrapped_symmetric_key
+          cargo test --bins -- --nocapture
+        env:
+          POSTGRES_USER: kms
+          PGUSER: kms
+          POSTGRES_PASSWORD: kms
+          POSTGRES_DB: kms
+          KMS_POSTGRES_URL: postgres://kms:kms@postgres/kms
+
+          MYSQL_DATABASE: kms
+          MYSQL_ROOT_PASSWORD: kms
+          KMS_MYSQL_URL: mysql://root:kms@mariadb/kms
+
+          KMS_DELEGATED_AUTHORITY_DOMAIN: kms-cosmian.eu.auth0.com
+          KMS_ENCLAVE_DIR_PATH: data/public
+          KMS_SQLITE_PATH: data/shared
+          KMS_CERTBOT_SSL_PATH: data/private
+
+      - name: Run doc tests
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --workspace --doc --all-features
+
+      - name: Upload KMS for Linux
+        uses: actions/upload-artifact@v3
+        with:
+          name: kms_linux
+          path: |
+            target/release/ckms
+            target/release/cosmian_kms_server
+          retention-days: 1
+          if-no-files-found: error
+
+  kms-windows:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up cargo cache
+        id: cargo_cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-win-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-win-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: actions-rs/toolchain@v1
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          override: true
+          components: rustfmt, clippy
+
+      - name: Prerequisites for macos
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
+          rustup target add x86_64-pc-windows-gnu
+
+      - name: Build KMS for Windows
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        run: |
+          cargo build --release --bin ckms --target x86_64-pc-windows-gnu
+          cargo build --release --bin cosmian_kms_server --target x86_64-pc-windows-gnu
+
+      - name: Upload KMS for Windows
+        uses: actions/upload-artifact@v3
+        with:
+          name: kms_windows
+          path: |
+            target/x86_64-pc-windows-gnu/release/ckms.exe
+            target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
+          retention-days: 1
+          if-no-files-found: error
+
+  kms-mac:
+    runs-on: macos-12
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up cargo cache
+        id: cargo_cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-mac-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-mac-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: actions-rs/toolchain@v1
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          override: true
+          components: rustfmt, clippy
+
+      - name: Prerequisites for macos
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        run: |
+          rustup target add x86_64-apple-darwin
+
+      - name: Build KMS for MacOS
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        run: |
+          cargo build --release --bin ckms --target x86_64-apple-darwin
+          cargo build --release --bin cosmian_kms_server --target x86_64-apple-darwin
+
+      - name: Upload KMS for MacOS
+        uses: actions/upload-artifact@v3
+        with:
+          name: kms_macos
+          path: |
+            target/x86_64-apple-darwin/release/ckms
+            target/x86_64-apple-darwin/release/cosmian_kms_server
+          retention-days: 1
+          if-no-files-found: error

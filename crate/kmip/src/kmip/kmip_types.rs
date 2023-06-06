@@ -107,6 +107,7 @@ pub enum CryptographicAlgorithm {
     HMACSHA512 = 0x0000_000B,
     HMACMD5 = 0x0000_000C,
     DH = 0x0000_000D,
+    ECDH = 0x0000_000E,
     ECMQV = 0x0000_000F,
     Blowfish = 0x0000_0010,
     Camellia = 0x0000_0011,
@@ -159,9 +160,9 @@ pub enum CryptographicAlgorithm {
 /// contains fields that MAY need to be specified in the Create Key Pair Request
 /// Payload. Specific fields MAY only pertain to certain types of Managed
 /// Cryptographic Objects. The domain parameter `q_length` corresponds to the bit
-/// length of parameter Q (refer to [RFC7778],[SEC2]and [SP800-56A]).
+/// length of parameter Q (refer to RFC7778, SEC2 and SP800-56A).
 /// `q_length` applies to algorithms such as DSA and DH. The bit length of
-/// parameter P (refer toto [RFC7778],[SEC2]and [SP800-56A]) is specified
+/// parameter P (refer toto RFC7778, SEC2 and SP800-56A) is specified
 /// separately by setting the Cryptographic Length attribute. Recommended Curve
 /// is applicable to elliptic curve algorithms such as ECDSA, ECDH, and ECMQV
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
@@ -851,6 +852,7 @@ impl Attributes {
         }
     }
 
+    /// Add a vendor attribute to the list of vendor attributes.
     pub fn add_vendor_attribute(&mut self, vendor_attribute: VendorAttribute) -> &mut Self {
         if let Some(vas) = &mut self.vendor_attributes {
             vas.push(vendor_attribute);
@@ -860,6 +862,7 @@ impl Attributes {
         self
     }
 
+    ///
     #[must_use]
     pub fn get_vendor_attribute(
         &self,
@@ -876,6 +879,7 @@ impl Attributes {
         })
     }
 
+    /// Remove a vendor attribute from the list of vendor attributes.
     pub fn remove_vendor_attribute(&mut self, vendor_identification: &str, attribute_name: &str) {
         if let Some(vas) = self.vendor_attributes.as_mut() {
             vas.retain(|va| {
@@ -885,12 +889,12 @@ impl Attributes {
         }
     }
 
-    #[must_use]
-    pub fn get_parent_id(&self) -> Option<String> {
+    /// Get the link to the object.
+    pub fn get_link(&self, link_type: LinkType) -> Option<String> {
         if let Some(links) = &self.link {
             links
                 .iter()
-                .find(|&l| l.link_type == LinkType::ParentLink)
+                .find(|&l| l.link_type == link_type)
                 .and_then(|l| match &l.linked_object_identifier {
                     LinkedObjectIdentifier::TextString(s) => Some(s.clone()),
                     LinkedObjectIdentifier::Enumeration(_e) => None,
@@ -899,6 +903,12 @@ impl Attributes {
         } else {
             None
         }
+    }
+
+    /// Get the parent id of the object.
+    #[must_use]
+    pub fn get_parent_id(&self) -> Option<String> {
+        self.get_link(LinkType::ParentLink)
     }
 
     /// Set the attributes's object type.
@@ -1421,14 +1431,14 @@ pub enum MaskGenerator {
 /// The IV used with counter modes of operation (e.g., CTR and GCM) cannot
 /// repeat for a given cryptographic key. To prevent an IV/key reuse, the IV is
 /// often constructed of three parts: a fixed field, an invocation field, and a
-/// counter as described in [SP800-38A] and [SP800-38D]. The Fixed Field Length
+/// counter as described in SP800-38A and SP800-38D. The Fixed Field Length
 /// is the length of the fixed field portion of the IV in bits. The Invocation
 /// Field Length is the length of the invocation field portion of the IV in
 /// bits. The Counter Length is the length of the counter portion of the IV in
 /// bits.
 ///
 /// Initial Counter Value is the starting counter value for CTR mode (for
-/// [RFC3686] it is 1).
+/// RFC3686 it is 1).
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct CryptographicParameters {

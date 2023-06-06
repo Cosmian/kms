@@ -1,12 +1,16 @@
-use cosmian_cover_crypt::abe_policy::{AccessPolicy, Attribute, Policy};
+use cloudproof::reexport::cover_crypt::abe_policy::{AccessPolicy, Attribute, Policy};
 use cosmian_kmip::kmip::{kmip_operations::Get, kmip_types::RevocationReason};
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::cover_crypt::kmip_requests::{
-    build_create_master_keypair_request, build_create_user_decryption_private_key_request,
-    build_decryption_request, build_destroy_key_request, build_hybrid_encryption_request,
-    build_import_decryption_private_key_request, build_import_private_key_request,
-    build_import_public_key_request, build_rekey_keypair_request,
-    build_revoke_user_decryption_key_request,
+use cosmian_kms_utils::crypto::{
+    cover_crypt::kmip_requests::{
+        build_create_master_keypair_request, build_create_user_decryption_private_key_request,
+        build_destroy_key_request, build_import_decryption_private_key_request,
+        build_import_private_key_request, build_import_public_key_request,
+        build_rekey_keypair_request,
+    },
+    generic::kmip_requests::{
+        build_decryption_request, build_encryption_request, build_revoke_key_request,
+    },
 };
 use pyo3::{
     exceptions::{PyException, PyTypeError},
@@ -23,26 +27,34 @@ impl KmsClient {
     /// Instantiate a KMS Client
     ///
     /// Args:
-    ///     - `server_url` (str)                : url of the KMS server
-    ///     - `api_key` (Optional[str])         : apiKey optional, to authenticate to the KMS
-    ///     - `database_secret` (Optional[str]) : secret to authenticate to the KMS database
-    ///     - `insecure_mode` (bool)            : accept self signed ssl cert. defaults to False
+    ///     - `server_url` (str)                        : url of the KMS server
+    ///     - `api_key` (Optional[str])                 : apiKey optional, to authenticate to the KMS
+    ///     - `client_pkcs12_path` (Optional[str])      : optional path to client PKCS12, to authenticate to the KMS
+    ///     - `client_pkcs12_password` (Optional[str])  : optional password to client PKCS12
+    ///     - `database_secret` (Optional[str])         : secret to authenticate to the KMS database
+    ///     - `insecure_mode` (bool)                    : accept self signed ssl cert. defaults to False
     #[new]
     #[pyo3(signature = (
         server_url,
         api_key = None,
+        client_pkcs12_path = None,
+        client_pkcs12_password = None,
         database_secret = None,
         insecure_mode = false,
     ))]
     pub fn new(
         server_url: &str,
         api_key: Option<&str>,
+        client_pkcs12_path: Option<&str>,
+        client_pkcs12_password: Option<&str>,
         database_secret: Option<&str>,
         insecure_mode: bool,
     ) -> PyResult<Self> {
         let kms_connector = KmsRestClient::instantiate(
             server_url,
-            api_key.unwrap_or(""),
+            api_key,
+            client_pkcs12_path,
+            client_pkcs12_password,
             database_secret,
             insecure_mode,
         )
@@ -321,7 +333,7 @@ impl KmsClient {
         revocation_reason: &str,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let request = build_revoke_user_decryption_key_request(
+        let request = build_revoke_key_request(
             key_identifier,
             RevocationReason::TextString(revocation_reason.to_string()),
         )
@@ -377,15 +389,15 @@ impl KmsClient {
     pub fn cover_crypt_encryption<'p>(
         &'p self,
         public_key_identifier: &str,
-        encryption_policy_str: &str,
+        encryption_policy_str: String,
         data: Vec<u8>,
         header_metadata: Option<Vec<u8>>,
         authentication_data: Option<Vec<u8>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let request = build_hybrid_encryption_request(
+        let request = build_encryption_request(
             public_key_identifier,
-            encryption_policy_str,
+            Some(encryption_policy_str),
             data,
             header_metadata,
             authentication_data,
@@ -419,8 +431,13 @@ impl KmsClient {
         authentication_data: Option<Vec<u8>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let request =
-            build_decryption_request(user_key_identifier, encrypted_data, authentication_data);
+        let request = build_decryption_request(
+            user_key_identifier,
+            None,
+            encrypted_data,
+            None,
+            authentication_data,
+        );
 
         let client = self.0.clone();
         pyo3_asyncio::tokio::future_into_py(py, async move {

@@ -42,9 +42,9 @@ impl KmsObject {
             .object
             .key_block()
             .map_err(|e| PyException::new_err(e.to_string()))?
-            .as_bytes()
+            .key_bytes()
             .map_err(|e| PyException::new_err(e.to_string()))?;
 
-        Ok(PyBytes::new(py, key_bytes).into())
+        Ok(PyBytes::new(py, &key_bytes).into())
     }
 }

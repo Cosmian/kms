@@ -1,6 +1,5 @@
-use std::{fmt, str::from_utf8};
+use std::fmt;
 
-use cosmian_cover_crypt::abe_policy::AccessPolicy;
 use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize, Serialize,
@@ -100,7 +99,8 @@ pub enum ErrorReason {
 ///
 /// The response contains the Unique Identifier provided in the request or
 /// assigned by the server. The server SHALL copy the Unique Identifier returned
-/// by this operations into the ID Placeholder variable. https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115657
+/// by this operations into the ID Placeholder variable.
+/// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115657`
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Import {
@@ -325,6 +325,127 @@ pub struct CreateKeyPairResponse {
     pub public_key_unique_identifier: UniqueIdentifier,
 }
 
+/// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
+/// together with its attributes.
+/// The Key Format Type, Key Wrap Type, Key Compression Type and Key Wrapping Specification
+/// SHALL have the same semantics as for the Get operation.  
+/// If the Managed Object has been Destroyed then the key material for the specified managed object
+/// SHALL not be returned in the response.
+/// The server SHALL copy the Unique Identifier returned by this operations
+/// into the ID Placeholder variable.
+#[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct Export {
+    /// Determines the object being requested. If omitted, then the ID
+    /// Placeholder value is used by the server as the Unique Identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// Determines the key format type to be returned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_format_type: Option<KeyFormatType>,
+    /// Determines the Key Wrap Type of the returned key value.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_wrap_type: Option<KeyWrapType>,
+    /// Determines the compression method for elliptic curve public keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_compression_type: Option<KeyCompressionType>,
+    /// Specifies keys and other information for wrapping the returned object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_wrapping_data: Option<KeyWrappingData>,
+}
+
+impl Export {
+    /// Create a ExportRequest for an Object
+    /// # Arguments
+    /// * `uid` - The Unique Identifier of the object to be retrieved
+    /// * `unwrap` - If true, the object is returned unwrapped
+    /// * `key_wrapping_data` - If unwrap is false, this is the key wrapping data to be used
+    /// # Returns
+    /// A ExportRequest
+    /// # Example
+    /// ```
+    /// use cosmian_kmip::kmip::kmip_operations::Export;
+    ///
+    /// let export_request = Export::new("1234", false, None);
+    /// ```
+    pub fn new(uid: &str, unwrap: bool, key_wrapping_data: Option<KeyWrappingData>) -> Self {
+        let key_wrap_type = if unwrap {
+            // ignore key_wrapping_data if unwrap is true
+            Some(KeyWrapType::NotWrapped)
+        } else if key_wrapping_data.is_none() {
+            Some(KeyWrapType::AsRegistered)
+        } else {
+            None
+        };
+
+        Self {
+            unique_identifier: Some(uid.to_string()),
+            key_format_type: None,
+            key_wrap_type,
+            key_compression_type: None,
+            key_wrapping_data,
+        }
+    }
+}
+
+impl From<String> for Export {
+    // Create a ExportRequest for an object to be returned "as registered"
+    fn from(uid: String) -> Self {
+        Export::new(&uid, false, None)
+    }
+}
+impl From<&String> for Export {
+    // Create a ExportRequest for an object to be returned "as registered"
+    fn from(uid: &String) -> Self {
+        Export::new(uid, false, None)
+    }
+}
+impl From<&str> for Export {
+    // Create a ExportRequest for an object to be returned "as registered"
+    fn from(uid: &str) -> Self {
+        Export::new(uid, false, None)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ExportResponse {
+    pub object_type: ObjectType,
+    pub unique_identifier: UniqueIdentifier,
+    pub attributes: Attributes,
+    pub object: Object,
+}
+
+/// This operation requests that the server returns the Managed Object specified by its Unique Identifier.
+///
+/// Only a single object is returned. The response contains the Unique Identifier of the object, along with the
+/// object itself, which MAY be wrapped using a wrapping key as specified in the request.
+///
+/// The following key format capabilities SHALL be assumed by the client; restrictions apply when the client
+/// requests the server to return an object in a particular format:
+///
+/// · If a client registered a key in a given format, the server SHALL be able to return the key during the
+/// Get operation in the same format that was used when the key was registered.
+///
+/// · Any other format conversion MAY be supported by the server.
+///
+/// If Key Format Type is specified to be PKCS#12, then the response payload shall be a PKCS#12 container as
+/// specified by RFC7292. The Unique Identifier shall be either that of a private key or certificate to be
+/// included in the response. The container shall be protected using the Secret Data object specified via the
+/// private key or certificate’s PKCS#12 Password Link. The current certificate chain shall also be included as
+/// determined by using the private key’s Public Key link to get the corresponding public key (where relevant),
+/// and then using that public key’s PKCS#12 Certificate Link to get the base certificate, and then using each
+/// certificate’s Certificate Link to build the certificate chain. It is an error if there is more than one valid
+/// certificate chain.
+///
+/// Specifying a value of Not Wrapped ensures that the server returns the unwrapped key value.
+/// A value of As Registered can be used to retrieve the key value as it was provided in the Register operation.  
+/// In the latter case, the wrapping key need not be known to the server.  
+///
+/// If no Key Wrap Type is provided, then the server may choose to return the key either wrapped or unwrapped.
+/// A Get operation may use both a Key Wrap Type and a Wrapping Key Specification,
+/// in which case the Key Wrap Type is processed as if there was no Wrapping Key Specification,
+/// and the result is then wrapped as specified.
 #[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Get {
@@ -346,28 +467,56 @@ pub struct Get {
     pub key_wrapping_data: Option<KeyWrappingData>,
 }
 
-impl From<String> for Get {
-    // Create a GetRequest for an object to be returned "as is"
-    fn from(uid: String) -> Self {
+impl Get {
+    /// Create a GetRequest for an Object
+    /// # Arguments
+    /// * `uid` - The Unique Identifier of the object to be retrieved
+    /// * `unwrap` - If true, the object is returned unwrapped
+    /// * `key_wrapping_data` - If unwrap is false, this is the key wrapping data to be used
+    /// # Returns
+    /// A GetRequest
+    /// # Example
+    /// ```
+    /// use cosmian_kmip::kmip::kmip_operations::Get;
+    ///
+    /// let get_request = Get::new("1234", false, None);
+    /// ```
+    pub fn new(uid: &str, unwrap: bool, key_wrapping_data: Option<KeyWrappingData>) -> Self {
+        let key_wrap_type = if unwrap {
+            // ignore key_wrapping_data if unwrap is true
+            Some(KeyWrapType::NotWrapped)
+        } else if key_wrapping_data.is_none() {
+            Some(KeyWrapType::AsRegistered)
+        } else {
+            None
+        };
+
         Self {
-            unique_identifier: Some(uid),
+            unique_identifier: Some(uid.to_string()),
             key_format_type: None,
-            key_wrap_type: None,
+            key_wrap_type,
             key_compression_type: None,
-            key_wrapping_data: None,
+            key_wrapping_data,
         }
     }
 }
+
+impl From<String> for Get {
+    // Create a GetRequest for an object to be returned "as registered"
+    fn from(uid: String) -> Self {
+        Get::new(&uid, false, None)
+    }
+}
 impl From<&String> for Get {
-    // Create a GetRequest for an object to be returned "as is"
+    // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: &String) -> Self {
-        Self::from(uid.clone())
+        Get::new(uid, false, None)
     }
 }
 impl From<&str> for Get {
-    // Create a GetRequest for an object to be returned "as is"
+    // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: &str) -> Self {
-        Self::from(uid.to_owned())
+        Get::new(uid, false, None)
     }
 }
 
@@ -419,114 +568,6 @@ pub struct GetAttributesResponse {
     pub unique_identifier: UniqueIdentifier,
     /// Attributes
     pub attributes: Attributes,
-}
-
-/// To encrypt some data with Cover Crypt we need to
-/// pass an access policy. The KMIP format do not provide
-/// us a way to send this access policy with the plaintext
-/// data to encrypt (in a vendor attribute for example).
-/// We need to prepend the encoded access policy to the plaintext
-/// bytes and decode them in the KMS code before encrypting with
-/// Cover Crypt. This struct is not useful (and shouldn't be use)
-/// if the user ask to encrypt with something else than Cover Crypt
-/// (for example an AES encrypt.) See also `DecryptedData` struct.
-/// The binary format of this struct is:
-/// 1. LEB128 unsigned length of access policy string in UTF8 encoded bytes
-/// 2. access policy string in UTF8 encoded bytes
-/// 3. LEB128 unsigned length of additional metadata
-/// 4. additional metadata encrypted in the header by the DEM
-/// 5. plaintext data to encrypt
-pub struct DataToEncrypt {
-    pub access_policy: AccessPolicy,
-    pub metadata: Option<Vec<u8>>,
-    pub plaintext: Vec<u8>,
-}
-
-impl TryFrom<&[u8]> for DataToEncrypt {
-    type Error = KmipError;
-
-    fn try_from(mut bytes: &[u8]) -> Result<Self, Self::Error> {
-        let size_of_access_policy_in_bytes = leb128::read::unsigned(&mut bytes).map_err(|_| {
-            KmipError::KmipError(
-                ErrorReason::Invalid_Message,
-                "Expect a LEB128 encoded number (size of the access policy string) at the \
-                 beginning of the data to encrypt."
-                    .to_owned(),
-            )
-        })? as usize;
-
-        let access_policy_bytes =
-            bytes
-                .take(..size_of_access_policy_in_bytes)
-                .ok_or_else(|| {
-                    KmipError::KmipError(
-                        ErrorReason::Invalid_Message,
-                        format!(
-                            "After the LEB128 encoded size of access policy in bytes of \
-                             {size_of_access_policy_in_bytes}, expecting to be able to read that \
-                             many bytes but the data to encrypt length is {}.",
-                            bytes.len()
-                        ),
-                    )
-                })?;
-
-        let access_policy_string = from_utf8(access_policy_bytes).map_err(|e| {
-            KmipError::KmipError(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "After the LEB128 encoded size of access policy in bytes of \
-                     {size_of_access_policy_in_bytes}, expecting to be able to read an UTF-8 \
-                     encoded access policy. {e}",
-                ),
-            )
-        })?;
-
-        let access_policy =
-            AccessPolicy::from_boolean_expression(access_policy_string).map_err(|e| {
-                KmipError::KmipError(
-                    ErrorReason::Invalid_Message,
-                    format!("Cannot parse access policy '{access_policy_string}'. {e}"),
-                )
-            })?;
-
-        let size_of_metadata = leb128::read::unsigned(&mut bytes).map_err(|_| {
-            KmipError::KmipError(
-                ErrorReason::Invalid_Message,
-                "Expect a LEB128 encoded number (size of metadata) after the access policy."
-                    .to_owned(),
-            )
-        })? as usize;
-
-        let metadata = if size_of_metadata == 0 {
-            None
-        } else {
-            Some(
-                bytes
-                    .take(..size_of_metadata)
-                    .ok_or_else(|| {
-                        KmipError::KmipError(
-                            ErrorReason::Invalid_Message,
-                            format!(
-                                "After the LEB128 encoded size of metadata in bytes of \
-                                 {size_of_metadata}, expecting to be able to read that many bytes \
-                                 but the data left length is {}.",
-                                bytes.len()
-                            ),
-                        )
-                    })?
-                    .to_vec(),
-            )
-        };
-
-        // Remaining is the plaintext to encrypt
-        let plaintext = bytes.to_vec();
-
-        Ok(Self {
-            access_policy,
-            metadata,
-            plaintext,
-        })
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]

@@ -3,6 +3,7 @@ use std::clone::Clone;
 use num_bigint::BigUint;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
+use super::kmip_types::{LinkType, LinkedObjectIdentifier};
 use crate::{
     error::KmipError,
     kmip::{
@@ -33,12 +34,20 @@ pub struct KeyBlock {
 }
 
 impl KeyBlock {
-    /// Give a slice view on its key bytes
+    /// Give a slice view on the key bytes (which may be wrapped)
     /// Returns an error if there is no valid key material
-    pub fn as_bytes(&self) -> Result<&[u8], KmipError> {
+    pub fn key_bytes(&self) -> Result<Vec<u8>, KmipError> {
         match &self.key_value.key_material {
-            KeyMaterial::ByteString(v) => Ok(v),
-            KeyMaterial::TransparentSymmetricKey { key } => Ok(key),
+            KeyMaterial::ByteString(v) => Ok(v.to_owned()),
+            KeyMaterial::TransparentSymmetricKey { key } => Ok(key.to_owned()),
+            KeyMaterial::TransparentECPrivateKey {
+                d,
+                recommended_curve: _,
+            } => Ok(d.to_bytes_be()),
+            KeyMaterial::TransparentECPublicKey {
+                recommended_curve: _,
+                q_string,
+            } => Ok(q_string.to_owned()),
             other => Err(KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Data_Type,
                 format!("The key has an invalid key material: {other:?}"),
@@ -49,17 +58,21 @@ impl KeyBlock {
     /// Extract the Key bytes from the given `KeyBlock`
     /// and give an optional reference to `Attributes`
     /// Returns an error if there is no valid key material
-    pub fn key_bytes_and_attributes(
-        &self,
-        uid: &str,
-    ) -> Result<(&[u8], Option<&Attributes>), KmipError> {
-        let key = self.as_bytes().map_err(|e| {
-            KmipError::InvalidKmipValue(
-                ErrorReason::Invalid_Data_Type,
-                format!("uid `{uid}` - {e}"),
-            )
+    pub fn key_bytes_and_attributes(&self) -> Result<(Vec<u8>, Option<&Attributes>), KmipError> {
+        let key = self.key_bytes().map_err(|e| {
+            KmipError::InvalidKmipValue(ErrorReason::Invalid_Data_Type, e.to_string())
         })?;
         Ok((key, self.key_value.attributes.as_ref()))
+    }
+
+    /// Returns the `Attributes` of that key block if any, an error otherwise
+    pub fn attributes(&self) -> Result<&Attributes, KmipError> {
+        self.key_value.attributes()
+    }
+
+    /// Returns the `Attributes` of that key block if any, an error otherwise
+    pub fn attributes_mut(&mut self) -> Result<&mut Attributes, KmipError> {
+        self.key_value.attributes_mut()
     }
 
     /// Extract `counter_iv_nonce` value from `KeyBlock`
@@ -79,6 +92,53 @@ impl KeyBlock {
                 iv_counter_nonce, ..
             }) => iv_counter_nonce.as_ref(),
             None => None,
+        }
+    }
+
+    /// Returns the identifier of a linked object of a certain type, if it exists in the attributes
+    /// of this object.
+    ///
+    /// # Arguments
+    ///
+    /// * `link_type` - The type of link to look for
+    ///
+    /// # Errors
+    ///
+    /// Returns a `KmipError` if the attribute value is invalid or unsupported.
+    ///
+    /// # Returns
+    ///
+    /// Returns an `Option<String>` with the identifier of the linked object, or `None` if there
+    /// is no such link.
+    pub fn get_linked_object_id(&self, link_type: LinkType) -> Result<Option<String>, KmipError> {
+        // Retrieve the attributes of this object
+        let attributes = self.key_value.attributes()?;
+
+        // Retrieve the links attribute from the object attributes, if it exists
+        let links = match &attributes.link {
+            Some(links) => links,
+            None => return Ok(None),
+        };
+
+        // If there are no links, return None
+        if links.is_empty() {
+            return Ok(None)
+        }
+
+        // Find the link of the requested type in the list of links, if it exists
+        match links.iter().find(|&link| link.link_type == link_type) {
+            None => Ok(None),
+            Some(link) => match &link.linked_object_identifier {
+                // If the linked object identifier is a text string, return it
+                LinkedObjectIdentifier::TextString(s) => Ok(Some(s.clone())),
+                // Enumeration and index identifiers are not yet supported
+                LinkedObjectIdentifier::Enumeration(_) => Err(KmipError::NotSupported(
+                    "Link Enumeration not yet supported".to_owned(),
+                )),
+                LinkedObjectIdentifier::Index(_) => Err(KmipError::NotSupported(
+                    "Link Index not yet supported".to_owned(),
+                )),
+            },
         }
     }
 }
@@ -182,7 +242,7 @@ impl Serialize for KeyValue {
 /// present, from the Cryptographic Parameters attribute of the respective
 /// key(s). Either the Encryption Key Information or the MAC/Signature Key
 /// Information (or both) in the Key Wrapping Data structure SHALL be specified.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct KeyWrappingData {
     pub wrapping_method: WrappingMethod,
@@ -198,6 +258,19 @@ pub struct KeyWrappingData {
     /// wrapped Key Value structure SHALL be TTLV encoded.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub encoding_option: Option<EncodingOption>,
+}
+
+impl Default for KeyWrappingData {
+    fn default() -> Self {
+        Self {
+            wrapping_method: WrappingMethod::Encrypt,
+            encryption_key_information: None,
+            mac_or_signature_key_information: None,
+            mac_or_signature: None,
+            iv_counter_nonce: None,
+            encoding_option: Some(EncodingOption::NoEncoding),
+        }
+    }
 }
 
 // KeyMaterial has variants that do not appear in the TTLV

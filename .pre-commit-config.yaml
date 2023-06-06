@@ -7,7 +7,7 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-exclude: crate/cli/test_data|crate/cli/demo.sh|scripts/deploy_sgx.sh|documentation/pandoc|documentation/overrides|crate/cli/kms.json|enclave|crate/server/tests/test_utils.rs
+exclude: crate/cli/test_data|crate/cli/demo.sh|scripts/deploy_sgx.sh|documentation/pandoc|documentation/overrides|crate/cli/remove/kms.json|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v2.1.1
@@ -29,7 +29,7 @@ repos:
     rev: v0.32.2
     hooks:
       - id: markdownlint-fix
-        args: [--disable=MD013, --disable=MD024, --disable=MD029, --disable=MD041, --disable=MD046]
+        args: [--disable=MD004, --disable=MD013, --disable=MD024, --disable=MD029, --disable=MD041, --disable=MD046]
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
     rev: v1.1.2
@@ -37,7 +37,6 @@ repos:
       - id: htmlhint
       - id: dockerfile_lint
       - id: markdown-toc
-        args: [--bullets="-"] # comment this to refresh TOC
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.2
