@@ -18,6 +18,7 @@ use uuid::Uuid;
 use super::{state_from_string, DBObject, Database, PgsqlPlaceholder, PGSQL_QUERIES};
 use crate::{
     database::query_from_attributes,
+    error::KmsError,
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
@@ -163,7 +164,10 @@ where
 
         // Check this operation is legit to fetch this object
         if perms.into_iter().all(|p| p != operation_type) {
-            kms_bail!("No authorization to perform this operation");
+            return Err(KmsError::Unauthorized(format!(
+                "No authorization to perform the operation {operation_type} on the object {uid} / \
+                 {owner_or_userid}"
+            )))
         }
 
         let json = row.get::<Value, _>(0);
@@ -177,12 +181,7 @@ where
     })
 }
 
-async fn update_object_<'e, E>(
-    uid: &str,
-    owner: &str,
-    object: &kmip_objects::Object,
-    executor: E,
-) -> KResult<()>
+async fn update_object_<'e, E>(uid: &str, object: &kmip_objects::Object, executor: E) -> KResult<()>
 where
     E: Executor<'e, Database = Postgres>,
 {
@@ -200,18 +199,12 @@ where
     )
     .bind(object_json)
     .bind(uid)
-    .bind(owner)
     .execute(executor)
     .await?;
     Ok(())
 }
 
-async fn update_state_<'e, E>(
-    uid: &str,
-    owner: &str,
-    state: StateEnumeration,
-    executor: E,
-) -> KResult<()>
+async fn update_state_<'e, E>(uid: &str, state: StateEnumeration, executor: E) -> KResult<()>
 where
     E: Executor<'e, Database = Postgres>,
 {
@@ -222,7 +215,6 @@ where
     )
     .bind(state.to_string())
     .bind(uid)
-    .bind(owner)
     .execute(executor)
     .await?;
     Ok(())
@@ -292,7 +284,7 @@ where
 {
     let list = sqlx::query(
         PGSQL_QUERIES
-            .get("select-rows-objects-shared")
+            .get("select-objects-access-obtained")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(user)
@@ -546,21 +538,19 @@ impl Database for Pgsql {
     async fn update_object(
         &self,
         uid: &str,
-        owner: &str,
         object: &kmip_objects::Object,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        update_object_(uid, owner, object, &self.pool).await
+        update_object_(uid, object, &self.pool).await
     }
 
     async fn update_state(
         &self,
         uid: &str,
-        owner: &str,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        update_state_(uid, owner, state, &self.pool).await
+        update_state_(uid, state, &self.pool).await
     }
 
     async fn upsert(
@@ -583,9 +573,9 @@ impl Database for Pgsql {
         delete_(uid, owner, &self.pool).await
     }
 
-    async fn list_shared_objects(
+    async fn list_access_rights_obtained(
         &self,
-        owner: &str,
+        user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
         Vec<(
@@ -596,7 +586,7 @@ impl Database for Pgsql {
             IsWrapped,
         )>,
     > {
-        list_shared_objects_(owner, &self.pool).await
+        list_shared_objects_(user, &self.pool).await
     }
 
     async fn list_accesses(
@@ -724,13 +714,13 @@ mod tests {
             None => kms_bail!("There should be an object"),
         }
 
-        let mut attributes = symmetric_key.attributes_mut()?;
+        let attributes = symmetric_key.attributes_mut()?;
         attributes.link = Some(vec![Link {
             link_type: LinkType::PreviousLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
         }]);
 
-        pg.update_object(&uid, owner, &symmetric_key, None).await?;
+        pg.update_object(&uid, &symmetric_key, None).await?;
 
         match pg
             .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
@@ -752,7 +742,7 @@ mod tests {
             None => kms_bail!("There should be an object"),
         }
 
-        pg.update_state(&uid, owner, StateEnumeration::Deactivated, None)
+        pg.update_state(&uid, StateEnumeration::Deactivated, None)
             .await?;
 
         match pg
@@ -817,7 +807,7 @@ mod tests {
             None => kms_bail!("There should be an object"),
         }
 
-        let mut attributes = symmetric_key.attributes_mut()?;
+        let attributes = symmetric_key.attributes_mut()?;
         attributes.link = Some(vec![Link {
             link_type: LinkType::PreviousLink,
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
@@ -1066,7 +1056,7 @@ mod tests {
         let objects = pg.find(None, None, userid2, None).await?;
         assert!(objects.is_empty());
 
-        let objects = pg.list_shared_objects(userid2, None).await?;
+        let objects = pg.list_access_rights_obtained(userid2, None).await?;
         assert_eq!(
             objects,
             vec![(
@@ -1397,7 +1387,7 @@ mod tests {
             linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
         }];
 
-        let mut attributes = symmetric_key.attributes_mut()?;
+        let attributes = symmetric_key.attributes_mut()?;
         attributes.link = Some(link.clone());
 
         let uid_ = pg

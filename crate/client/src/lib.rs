@@ -4,8 +4,13 @@
 #![allow(dead_code)]
 
 pub mod error;
+pub mod result;
 
-use std::time::Duration;
+use std::{
+    fs::File,
+    io::{BufReader, Read},
+    time::Duration,
+};
 
 // re-export the kmip module as kmip
 pub use cosmian_kmip::kmip;
@@ -19,12 +24,12 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use cosmian_kms_utils::types::{
-    Access, ObjectOwnedResponse, ObjectSharedResponse, QuoteParams, SuccessResponse,
+    Access, AccessRightsObtainedResponse, ObjectOwnedResponse, QuoteParams, SuccessResponse,
     UserAccessResponse,
 };
 use error::KmsClientError;
 use http::{HeaderMap, HeaderValue, StatusCode};
-use reqwest::{Client, ClientBuilder, Response};
+use reqwest::{Client, ClientBuilder, Identity, Response};
 use serde::{Deserialize, Serialize};
 
 /// A struct implementing some of the 50+ operations a KMIP client should implement:
@@ -347,45 +352,41 @@ impl KmsRestClient {
         self.post_no_ttlv("/new_database", None::<&()>).await
     }
 
-    /// This operation requests the server to add an access on an object to a user
+    /// This operation requests the server to grant an access on an object to a user
     /// The user could be unknown from the database.
     /// The object uid must be known from the database.
     /// If the user already has access, nothing is done. No error is returned.
     /// The user (owner) can't grant access to himself/herself.
-    pub async fn add_access(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
-        self.post_no_ttlv(
-            &format!("/accesses/{}", access.unique_identifier.clone().unwrap()),
-            Some(&access),
-        )
-        .await
+    pub async fn grant_access(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
+        self.post_no_ttlv("/access/grant", Some(&access)).await
     }
 
     /// This operation requests the server to revoke an access on an object to a user
     /// The user could be unknown from the database.
     /// The object uid must be known from the database.
     /// If the user already has no access, nothing is done. No error is returned.
-    pub async fn remove_access(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
-        self.delete_no_ttlv(
-            &format!("/accesses/{}", &access.unique_identifier.clone().unwrap()),
-            &access,
-        )
-        .await
+    pub async fn revoke_access(&self, access: Access) -> Result<SuccessResponse, KmsClientError> {
+        self.post_no_ttlv("/access/revoke", Some(&access)).await
     }
 
     /// This operation requests the server to list all the granted access on a object
     pub async fn list_access(&self, uid: &str) -> Result<Vec<UserAccessResponse>, KmsClientError> {
-        self.get_no_ttlv(&format!("/accesses/{uid}"), None::<&()>)
+        self.get_no_ttlv(&format!("/access/list/{uid}"), None::<&()>)
             .await
     }
 
     /// This operation requests the server to list all the objects owned by the current user.
+    /// i.e. the objects for which the user has full access
     pub async fn list_owned_objects(&self) -> Result<Vec<ObjectOwnedResponse>, KmsClientError> {
-        self.get_no_ttlv("/objects/owned", None::<&()>).await
+        self.get_no_ttlv("/access/owned", None::<&()>).await
     }
 
-    /// This operation requests the server to list all the objects shared with the current user.
-    pub async fn list_shared_objects(&self) -> Result<Vec<ObjectSharedResponse>, KmsClientError> {
-        self.get_no_ttlv("/objects/shared", None::<&()>).await
+    /// This operation requests the server to list all the object for
+    /// which access rights have been obtained for the current user.
+    pub async fn list_access_rights_obtained(
+        &self,
+    ) -> Result<Vec<AccessRightsObtainedResponse>, KmsClientError> {
+        self.get_no_ttlv("/access/obtained", None::<&()>).await
     }
 
     /// This operation requests the server to get the sgx quote.
@@ -413,6 +414,11 @@ impl KmsRestClient {
     pub async fn get_manifest(&self) -> Result<String, KmsClientError> {
         self.get_no_ttlv("/enclave_manifest", None::<&()>).await
     }
+
+    /// This operation requests the version of the server
+    pub async fn version(&self) -> Result<String, KmsClientError> {
+        self.get_no_ttlv("/version", None::<&()>).await
+    }
 }
 
 impl KmsRestClient {
@@ -420,7 +426,9 @@ impl KmsRestClient {
     #[allow(dead_code)]
     pub fn instantiate(
         server_url: &str,
-        bearer_token: &str,
+        bearer_token: Option<&str>,
+        ssl_client_pkcs12_path: Option<&str>,
+        ssl_client_pkcs12_password: Option<&str>,
         database_secret: Option<&str>,
         accept_invalid_certs: bool,
     ) -> Result<Self, KmsClientError> {
@@ -429,16 +437,36 @@ impl KmsRestClient {
             None => server_url.to_string(),
         };
         let mut headers = HeaderMap::new();
-        headers.insert(
-            "Authorization",
-            HeaderValue::from_str(format!("Bearer {bearer_token}").as_str())?,
-        );
+        if let Some(bearer_token) = bearer_token {
+            headers.insert(
+                "Authorization",
+                HeaderValue::from_str(format!("Bearer {bearer_token}").as_str())?,
+            );
+        }
         if let Some(database_secret) = database_secret {
             headers.insert("KmsDatabaseSecret", HeaderValue::from_str(database_secret)?);
         }
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+
+        // Create a client builder
         let builder = ClientBuilder::new().danger_accept_invalid_certs(accept_invalid_certs);
 
+        // If a PKCS12 file is provided, use it to build the client
+        let builder = match ssl_client_pkcs12_path {
+            Some(ssl_client_pkcs12) => {
+                let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
+                let mut pkcs12_bytes = vec![];
+                pkcs12.read_to_end(&mut pkcs12_bytes)?;
+                let pkcs12 = Identity::from_pkcs12_der(
+                    &pkcs12_bytes,
+                    ssl_client_pkcs12_password.unwrap_or(""),
+                )?;
+                builder.identity(pkcs12)
+            }
+            None => builder,
+        };
+
+        // Build the client
         Ok(Self {
             client: builder
                 .connect_timeout(Duration::from_secs(5))

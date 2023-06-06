@@ -31,7 +31,7 @@ cargo build --no-default-features
 
 For staging environment, you can use `--features=staging --no-default-features`. It will tell the server:
 
-- to not verify the expiration of OAuth2 tokens if `KMS_AUTH0_AUTHORITY_DOMAIN` is set.
+- to not verify the expiration of OAuth2 tokens if `KMS_JWT_ISSUER_URI` is set.
 - to use HTTPS connection with unsecure SSL certificates (it will play anyway all the process to get a valid certificates and starts a HTTPS server)
 - to be runnable only inside an enclave
 
@@ -89,7 +89,7 @@ KMS_DELEGATED_AUTHORITY_DOMAIN="kms-cosmian.eu.auth0.com" cargo run
 ```
 
 This authentication enables the KMS to deal with several users with the same database.
-If there is no `KMS_AUTH0_AUTHORITY_DOMAIN` provided, the KMS disables the authentication. Only one user is allowed.
+If there is no `KMS_JWT_ISSUER_URI` provided, the KMS disables the authentication. Only one user is allowed.
 If so, `admin` will be the user id.
 
 ## Configure the SGDB

@@ -50,7 +50,7 @@ help                    Print this message or the help of the given subcommand(s
 ```
 [> view subcommands details](./policy.md)
 
-### [rotate](./rotate.md)
+### rotate
 
 Rotate attributes and rekey the master and user keys.
 

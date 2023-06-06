@@ -31,6 +31,8 @@ tokio = { version = "1.25", features = ["full"] }
 uuid = { workspace = true }
 
 [dev-dependencies]
+actix-rt = { version = "2.0", default-features = false }
+actix-server = { version = "2.0", default-features = false }
 assert_cmd = "2.0"
 # cosmian_crypto_core = { workspace = true }
 cosmian_kms_client = { path = "../client", default-features = false }
@@ -40,3 +42,7 @@ predicates = "2.1"
 regex = { version = "1.7", default-features = false }
 reqwest = { workspace = true }
 tempfile = "3.2"
+tracing = { workspace = true }
+tracing-log = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-tree = { workspace = true }

@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     actions::shared::utils::{
-        export_object, read_bytes_from_file, read_from_json_file, write_to_json_file,
+        export_object, read_bytes_from_file, read_from_json_file, write_json_object_to_file,
     },
     cli_bail,
     error::{result::CliResultHelper, CliError},
@@ -209,7 +209,7 @@ impl CreateAction {
         let policy = specs.to_policy()?;
 
         // write the binary file
-        write_to_json_file(&policy, &self.policy_binary_file)
+        write_json_object_to_file(&policy, &self.policy_binary_file)
             .with_context(|| "failed writing the policy binary file".to_string())?;
 
         println!(
@@ -271,7 +271,7 @@ impl SpecsAction {
         let policy = recover_policy(&self.key_id, &self.key_file, true, client_connector).await?;
         let specs = PolicySpecifications::try_from(&policy)?;
         // save the policy to the specifications file
-        write_to_json_file(&specs, &self.policy_specs_file)
+        write_json_object_to_file(&specs, &self.policy_specs_file)
     }
 }
 
@@ -304,7 +304,7 @@ impl BinaryAction {
         // Recover the policy
         let policy = recover_policy(&self.key_id, &self.key_file, true, client_connector).await?;
         // save the policy to the binary file
-        write_to_json_file(&policy, &self.policy_binary_file)
+        write_json_object_to_file(&policy, &self.policy_binary_file)
     }
 }
 

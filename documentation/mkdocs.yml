@@ -1,5 +1,5 @@
 ---
-site_name: Secure KMS
+site_name: Cosmian Key Management System
 site_url: https://docs.cosmian.com/
 copyright: © Copyright 2018-2022 Cosmian. All rights reserved
 dev_addr: localhost:8003
@@ -46,11 +46,15 @@ extra_javascript:
   - https://unpkg.com/mermaid@8.7.0/dist/mermaid.min.js
   - javascripts/extra.js
 nav:
-  - Home: index.md
-  - Installing and running: installing.md
-  - Authentication & Authorization: auth.md
-  - cKMS command line interface: 
-      - Getting started: cli/cli.md
+  - Getting started: index.md
+  - Enabling TLS: tls.md
+  - Deploying in single server mode: single_server_mode.md
+  - Deploying in replicated mode: replicated_mode.md
+  - Authenticating to the server: authentication.md
+  - Authorizing using access rights: authorization.md
+  - Using the ckms command line interface: 
+      - Installing and configuring: cli/cli.md
+      - Using the CLI: cli/main_commands.md
       - Covercrypt: 
         - Commands: cli/covercrypt/covercrypt.md
         - Keys management: cli/covercrypt/keys.md
@@ -61,10 +65,9 @@ nav:
       - Symmetric Encryption:
         - Commands: cli/sym/sym.md
         - Keys management: cli/sym/keys.md
-      - Permissions: cli/permissions.md
+      - Access Rights: cli/access_rights.md
       - Enclaves: cli/enclaves.md
-
-  - KMIP 2.1:
+  - KMIP 2.1 support:
       - Specifications: kmip_2_1/index.md
       - Objects: kmip_2_1/objects.md
       - Attributes: kmip_2_1/attributes.md

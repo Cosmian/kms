@@ -1,8 +1,8 @@
-pub mod auth0;
 mod certbot_https;
 pub mod db;
 mod enclave;
 pub mod http;
+pub mod jwt_auth_config;
 mod workspace;
 
 use std::{
@@ -14,26 +14,23 @@ use std::{
 use alcoholic_jwt::JWKS;
 use clap::Parser;
 use libsgx::utils::is_running_inside_enclave;
-use once_cell::sync::OnceCell;
-use openssl::pkcs12::ParsedPkcs12_2;
-use tracing::{debug, info};
+use openssl::{pkcs12::ParsedPkcs12_2, x509::X509};
+use tracing::info;
 
 use crate::{
     config::{
-        auth0::Auth0Config, certbot_https::HttpsCertbotConfig, db::DBConfig,
-        enclave::EnclaveConfig, http::HTTPConfig, workspace::WorkspaceConfig,
+        certbot_https::HttpsCertbotConfig, db::DBConfig, enclave::EnclaveConfig, http::HTTPConfig,
+        jwt_auth_config::JwtAuthConfig, workspace::WorkspaceConfig,
     },
     core::certbot::Certbot,
     result::KResult,
 };
 
-static INSTANCE_CONFIG: OnceCell<SharedConfig> = OnceCell::new();
-
 #[derive(Parser, Default)]
 #[clap(version, about, long_about = None)]
-pub struct Config {
+pub struct ClapConfig {
     #[clap(flatten)]
-    pub auth0: Auth0Config,
+    pub auth: JwtAuthConfig,
 
     #[clap(flatten)]
     pub db: DBConfig,
@@ -49,14 +46,23 @@ pub struct Config {
 
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
+
+    /// The default username to use when no authentication method is provided
+    #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = "admin")]
+    pub default_username: String,
+
+    /// When an authentication method is provided, perform the authentication
+    /// but always use the default username instead of the one provided by the authentication method
+    #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME", default_value = "false")]
+    pub force_default_username: bool,
 }
 
-impl fmt::Debug for Config {
+impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut x = f.debug_struct("Config");
+        let mut x = f.debug_struct("");
         let x = x.field("db", &self.db);
-        let x = if self.auth0.auth0_authority_domain.is_some() {
-            x.field("auth0", &self.auth0)
+        let x = if self.auth.jwt_issuer_uri.is_some() {
+            x.field("auth0", &self.auth)
         } else {
             x
         };
@@ -72,6 +78,8 @@ impl fmt::Debug for Config {
             x
         };
         let x = x.field("workspace", &self.workspace);
+        let x = x.field("default username", &self.default_username);
+        let x = x.field("force default username", &self.force_default_username);
         x.finish()
     }
 }
@@ -99,15 +107,22 @@ pub struct EnclaveParams {
 /// This structure is the context used by the server
 /// while it is running. There is a singleton instance
 /// shared between all threads.
-pub struct SharedConfig {
-    // The security domain if Auth0 is enabled
-    pub auth0_authority_domain: Option<String>,
+pub struct ServerConfig {
+    // The JWT issuer URI if Auth is enabled
+    pub jwt_issuer_uri: Option<String>,
 
-    // The JWKS if Auth0 is enabled
+    // The JWKS if Auth is enabled
     pub jwks: Option<JWKS>,
 
-    /// The username if Auth0 is disabled
-    pub default_username: Option<String>,
+    /// The JWT audience if Auth is enabled
+    pub jwt_audience: Option<String>,
+
+    /// The username to use if no authentication method is provided
+    pub default_username: String,
+
+    /// When an authentication method is provided, perform the authentication
+    /// but always use the default username instead of the one provided by the authentication method
+    pub force_default_username: bool,
 
     pub db_params: DbParams,
 
@@ -121,25 +136,75 @@ pub struct SharedConfig {
 
     /// The enclave parameters when running inside an enclave
     pub enclave_params: EnclaveParams,
+
+    /// The certificate used to verify the client TLS certificates
+    /// used for authentication
+    pub verify_cert: Option<X509>,
 }
 
-impl fmt::Debug for SharedConfig {
+impl ServerConfig {
+    pub async fn try_from(conf: &ClapConfig) -> KResult<Self> {
+        info!("initializing the server with user configuration: {conf:#?}");
+
+        // Initialize the workspace
+        let workspace = conf.workspace.init()?;
+
+        // Initialize the HTTP server
+        let (hostname_port, server_pkcs_12, verify_cert) = conf.http.init()?;
+
+        let server_conf = ServerConfig {
+            jwks: conf.auth.fetch_jwks().await?,
+            jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
+            jwt_audience: conf.auth.jwt_audience.clone(),
+            db_params: conf.db.init(&workspace)?,
+            hostname_port,
+            enclave_params: conf.enclave.init(&workspace)?,
+            certbot: if conf.certbot_https.use_certbot {
+                Some(Arc::new(Mutex::new(HttpsCertbotConfig::init(
+                    &conf.certbot_https,
+                    &workspace,
+                )?)))
+            } else {
+                None
+            },
+            default_username: conf.default_username.clone(),
+            force_default_username: conf.force_default_username,
+            server_pkcs_12,
+            verify_cert,
+        };
+
+        info!("generated server conf: {server_conf:#?}");
+
+        Ok(server_conf)
+    }
+}
+
+impl fmt::Debug for ServerConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut x = f.debug_struct("SharedConfig");
+        let mut x = f.debug_struct("");
         let x = x
             .field("kms_url", &self.hostname_port)
             .field("db_params", &self.db_params);
-        let x = if let Some(authority_domain) = &self.auth0_authority_domain {
-            x.field("auth0_authority_domain", &authority_domain)
+        let x = if let Some(jwt_issuer_uri) = &self.jwt_issuer_uri {
+            x.field("jwt_issuer_uri", &jwt_issuer_uri)
                 .field("jwks", &self.jwks)
+                .field("jwt_audience", &self.jwt_audience)
         } else {
-            x.field("default_username", &self.default_username)
+            x
         };
+        let x = if let Some(verify_cert) = &self.verify_cert {
+            x.field("verify_cert CN", verify_cert.subject_name())
+        } else {
+            x
+        };
+        let x = x
+            .field("default_username", &self.default_username)
+            .field("force_default_username", &self.force_default_username);
         let x = if let Some(ParsedPkcs12_2 {
             cert: Some(x509), ..
         }) = &self.server_pkcs_12
         {
-            x.field("certificate CN", &x509.subject_name())
+            x.field("server certificate CN", &x509.subject_name())
         } else {
             x
         };
@@ -155,115 +220,4 @@ impl fmt::Debug for SharedConfig {
         };
         x.finish()
     }
-}
-
-pub(crate) fn init(conf: SharedConfig) {
-    let _ = INSTANCE_CONFIG.set(conf);
-}
-
-impl SharedConfig {
-    #[inline(always)]
-    pub(crate) fn auth0_authority_domain() -> Option<String> {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .auth0_authority_domain
-            .clone()
-    }
-
-    #[inline(always)]
-    pub(crate) fn jwks() -> Option<JWKS> {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .jwks
-            .clone()
-    }
-
-    #[inline(always)]
-    pub(crate) fn default_username() -> Option<String> {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .default_username
-            .clone()
-    }
-
-    #[inline(always)]
-    pub(crate) fn db_params() -> DbParams {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .db_params
-            .clone()
-    }
-
-    #[inline(always)]
-    pub(crate) fn enclave_params() -> EnclaveParams {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .enclave_params
-            .clone()
-    }
-
-    #[inline(always)]
-    pub(crate) fn hostname_port() -> String {
-        INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .hostname_port
-            .clone()
-    }
-
-    #[inline(always)]
-    pub(crate) fn certbot() -> &'static Option<Arc<Mutex<Certbot>>> {
-        &INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .certbot
-    }
-
-    #[inline(always)]
-    pub(crate) fn server_pkcs12() -> &'static Option<ParsedPkcs12_2> {
-        &INSTANCE_CONFIG
-            .get()
-            .expect("config must be initialized")
-            .server_pkcs_12
-    }
-}
-
-pub async fn init_config(conf: &Config) -> KResult<()> {
-    info!("initializing with configuration: {conf:#?}");
-
-    let workspace = conf.workspace.init()?;
-
-    let (hostname_port, server_pkcs_12) = conf.http.init()?;
-
-    let shared_conf = SharedConfig {
-        jwks: conf.auth0.init().await?,
-        auth0_authority_domain: conf.auth0.auth0_authority_domain.clone(),
-        db_params: conf.db.init(&workspace)?,
-        hostname_port,
-        enclave_params: conf.enclave.init(&workspace)?,
-        certbot: if conf.certbot_https.use_certbot {
-            Some(Arc::new(Mutex::new(HttpsCertbotConfig::init(
-                &conf.certbot_https,
-                &workspace,
-            )?)))
-        } else {
-            None
-        },
-        default_username: match conf.auth0.auth0_authority_domain {
-            Some(_) => None,
-            None => Some("admin".to_string()),
-        },
-        server_pkcs_12,
-    };
-
-    debug!("generated shared conf: {shared_conf:#?}");
-
-    init(shared_conf);
-
-    Ok(())
 }

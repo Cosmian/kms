@@ -7,18 +7,21 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        test_utils::{init_test_server, ONCE},
-        utils::extract_uids::{extract_private_key, extract_public_key},
-        CONF_PATH, PROG_NAME,
+        utils::{
+            extract_uids::{extract_private_key, extract_public_key},
+            init_test_server, ONCE,
+        },
+        PROG_NAME,
     },
 };
 
-pub async fn create_cc_master_key_pair(
+pub fn create_cc_master_key_pair(
+    cli_conf_path: &str,
     policy_option: &str,
     file: &str,
 ) -> Result<(String, String), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.arg(SUB_COMMAND)
         .args(vec!["keys", "create-master-key-pair", policy_option, file]);
 
@@ -46,31 +49,41 @@ pub async fn create_cc_master_key_pair(
 #[tokio::test]
 pub async fn test_create_master_key_pair() -> Result<(), CliError> {
     // from specs
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
     create_cc_master_key_pair(
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
-    )
-    .await?;
+    )?;
     //from binary
-    create_cc_master_key_pair("--policy-binary", "test_data/policy.bin").await?;
+    create_cc_master_key_pair(
+        &ctx.owner_cli_conf_path,
+        "--policy-binary",
+        "test_data/policy.bin",
+    )?;
     Ok(())
 }
 
 #[tokio::test]
 pub async fn test_create_master_key_pair_error() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
-    let err = create_cc_master_key_pair("--policy-specifications", "test_data/notfound.json")
-        .await
-        .err()
-        .unwrap();
+    let err = create_cc_master_key_pair(
+        &ctx.owner_cli_conf_path,
+        "--policy-specifications",
+        "test_data/notfound.json",
+    )
+    .err()
+    .unwrap();
     assert!(err.to_string().contains("ERROR: could not open the file"));
 
-    let err = create_cc_master_key_pair("--policy-binary", "test_data/policy.bad")
-        .await
-        .err()
-        .unwrap();
+    let err = create_cc_master_key_pair(
+        &ctx.owner_cli_conf_path,
+        "--policy-binary",
+        "test_data/policy.bad",
+    )
+    .err()
+    .unwrap();
     assert!(
         err.to_string()
             .contains("ERROR: policy binary is malformed")

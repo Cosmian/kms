@@ -3,8 +3,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
-use cloudproof::reexport::crypto_core::{reexport::rand_core::RngCore, CsRng};
+use actix_web::{HttpMessage, HttpRequest};
+use base64::{
+    engine::general_purpose::{self, STANDARD as b64},
+    Engine as _,
+};
+use cloudproof::reexport::crypto_core::{symmetric_crypto::key::Key, CsRng, KeyTrait};
 use cosmian_kmip::kmip::{
     kmip_operations::{
         Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
@@ -15,24 +19,27 @@ use cosmian_kmip::kmip::{
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_utils::types::{
-    Access, ExtraDatabaseParams, ObjectOwnedResponse, ObjectSharedResponse, UserAccessResponse,
+    Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
+    UserAccessResponse,
 };
-use hex::encode;
 use libsgx::quote::{get_quote, hash, prepare_report_data};
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
-    config::{DbParams, SharedConfig},
+    config::{DbParams, ServerConfig},
     core::operations,
     database::Database,
     error::KmsError,
     kms_bail,
+    middlewares::{jwt_auth::JwtAuthClaim, ssl_auth::PeerCommonName},
     result::KResult,
 };
 
 /// A Simple Key Management System that partially implements KMIP 2.1:
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
 pub struct KMS {
+    pub(crate) config: ServerConfig,
     pub(crate) rng: Arc<Mutex<CsRng>>,
     pub(crate) db: Box<dyn Database + Sync + Send>,
 }
@@ -47,13 +54,13 @@ impl KMS {
     ///  - the server is not running TLS
     ///  - the server server certificate cannot be read
     pub fn get_server_x509_certificate(&self) -> KResult<Option<String>> {
-        if let Some(certbot) = SharedConfig::certbot() {
+        if let Some(certbot) = &self.config.certbot {
             let cert = certbot.lock().expect("can't lock certificate mutex");
             let (_, certificate) = cert.get_raw_cert()?;
             return Ok(Some(certificate.to_string()))
         }
 
-        if let Some(p12) = SharedConfig::server_pkcs12() {
+        if let Some(p12) = &self.config.server_pkcs_12 {
             let pem = String::from_utf8(
                 p12.cert
                     .as_ref()
@@ -75,7 +82,7 @@ impl KMS {
     /// Returns a `KResult` with a `Error` if the enclave public key file cannot be read
     pub fn get_enclave_public_key(&self) -> KResult<String> {
         Ok(fs::read_to_string(
-            SharedConfig::enclave_params().public_key_path,
+            &self.config.enclave_params.public_key_path,
         )?)
     }
 
@@ -84,7 +91,7 @@ impl KMS {
     /// This service is not available if the server is not running inside an enclave
     pub fn get_manifest(&self) -> KResult<String> {
         Ok(fs::read_to_string(
-            SharedConfig::enclave_params().manifest_path,
+            &self.config.enclave_params.manifest_path,
         )?)
     }
 
@@ -99,7 +106,7 @@ impl KMS {
     /// Returns an error if the KMS server does not allow this operation or if an error occurs while
     /// generating the new database or key.
     pub async fn add_new_database(&self) -> KResult<String> {
-        if let DbParams::SqliteEnc(_) = SharedConfig::db_params() {
+        if let DbParams::SqliteEnc(_) = self.config.db_params {
             // Generate a new group id
             let uid: u128 = loop {
                 let uid = Uuid::new_v4().to_u128_le();
@@ -112,17 +119,13 @@ impl KMS {
             };
 
             // Generate a new key
-            let mut key = [0; 32];
-            {
+            let key: Key<32> = {
                 let mut rng = self.rng.lock().expect("failed locking the RNG");
-                rng.fill_bytes(&mut key);
-            }
+                Key::<32>::new(&mut *rng)
+            };
 
             // Encode ExtraDatabaseParams
-            let params = ExtraDatabaseParams {
-                group_id: uid,
-                key: encode(key),
-            };
+            let params = ExtraDatabaseParams { group_id: uid, key };
 
             let token = b64.encode(serde_json::to_vec(&params)?);
 
@@ -166,10 +169,10 @@ impl KMS {
     pub async fn import(
         &self,
         request: Import,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ImportResponse> {
-        operations::import(self, request, owner, params).await
+        operations::import(self, request, user, params).await
     }
 
     /// This operation requests the server to generate a new symmetric key or
@@ -183,10 +186,10 @@ impl KMS {
     pub async fn create(
         &self,
         request: Create,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<CreateResponse> {
-        operations::create(self, request, owner, params).await
+        operations::create(self, request, user, params).await
     }
 
     /// This operation requests the server to generate a new public/private key
@@ -207,10 +210,10 @@ impl KMS {
     pub async fn create_key_pair(
         &self,
         request: CreateKeyPair,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<CreateKeyPairResponse> {
-        operations::create_key_pair(self, request, owner, params).await
+        operations::create_key_pair(self, request, user, params).await
     }
 
     /// This operation requests the server to perform a decryption operation on
@@ -234,10 +237,10 @@ impl KMS {
     pub async fn decrypt(
         &self,
         request: Decrypt,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<DecryptResponse> {
-        operations::decrypt(self, request, owner, params).await
+        operations::decrypt(self, request, user, params).await
     }
 
     /// This operation is used to indicate to the server that the key material
@@ -248,10 +251,10 @@ impl KMS {
     pub async fn destroy(
         &self,
         request: Destroy,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<DestroyResponse> {
-        operations::destroy_operation(self, request, owner, params).await
+        operations::destroy_operation(self, request, user, params).await
     }
 
     /// This operation requests the server to perform an encryption operation on
@@ -285,10 +288,10 @@ impl KMS {
     pub async fn encrypt(
         &self,
         request: Encrypt,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<EncryptResponse> {
-        operations::encrypt(self, request, owner, params).await
+        operations::encrypt(self, request, user, params).await
     }
 
     /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
@@ -302,10 +305,10 @@ impl KMS {
     pub async fn export(
         &self,
         request: Export,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ExportResponse> {
-        operations::export(self, request, owner, params).await
+        operations::export(self, request, user, params).await
     }
 
     /// This operation requests that the server returns the Managed Object
@@ -332,10 +335,10 @@ impl KMS {
     pub async fn get(
         &self,
         request: Get,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<GetResponse> {
-        operations::get(self, request, owner, params).await
+        operations::get(self, request, user, params).await
     }
 
     /// This operation requests one or more attributes associated with a Managed
@@ -351,10 +354,10 @@ impl KMS {
     pub async fn get_attributes(
         &self,
         request: GetAttributes,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<GetAttributesResponse> {
-        operations::get_attributes(self, request, owner, params).await
+        operations::get_attributes(self, request, user, params).await
     }
 
     /// This operation requests that the server search for one or more Managed
@@ -450,10 +453,10 @@ impl KMS {
     pub async fn locate(
         &self,
         request: Locate,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<LocateResponse> {
-        operations::locate(self, request, Some(StateEnumeration::Active), owner, params).await
+        operations::locate(self, request, Some(StateEnumeration::Active), user, params).await
     }
 
     // This request is used to generate a replacement key pair for an existing
@@ -484,10 +487,10 @@ impl KMS {
     pub async fn rekey_keypair(
         &self,
         request: ReKeyKeyPair,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ReKeyKeyPairResponse> {
-        operations::rekey_keypair(self, request, owner, params).await
+        operations::rekey_keypair(self, request, user, params).await
     }
 
     /// This operation requests the server to revoke a Managed Cryptographic
@@ -505,10 +508,10 @@ impl KMS {
     pub async fn revoke(
         &self,
         request: Revoke,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<RevokeResponse> {
-        operations::revoke_operation(self, request, owner, params).await
+        operations::revoke_operation(self, request, user, params).await
     }
 
     /// Insert an access authorization for a user (identified by `access.userid`)
@@ -549,7 +552,7 @@ impl KMS {
     /// Remove an access authorization for a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    pub async fn delete_access(
+    pub async fn revoke_access(
         &self,
         access: &Access,
         owner: &str,
@@ -567,7 +570,7 @@ impl KMS {
             )))
         }
 
-        // check if owner is trying to grant themself
+        // check if owner is trying to revoke itself
         if owner == access.user_id {
             kms_bail!(KmsError::Unauthorized(
                 "You can't revoke yourself, you should keep all rights on your own objects"
@@ -614,13 +617,83 @@ impl KMS {
     }
 
     /// Get all the objects shared to a given user
-    pub async fn list_shared_objects(
+    pub async fn list_access_rights_obtained(
         &self,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectSharedResponse>> {
-        let list = self.db.list_shared_objects(owner, params).await?;
-        let ids = list.into_iter().map(ObjectSharedResponse::from).collect();
+    ) -> KResult<Vec<AccessRightsObtainedResponse>> {
+        let list = self.db.list_access_rights_obtained(user, params).await?;
+        let ids = list
+            .into_iter()
+            .map(AccessRightsObtainedResponse::from)
+            .collect();
         Ok(ids)
+    }
+
+    /// Get the user from the request depending on the authentication method
+    /// The user is encoded in the JWT `Authorization` header
+    /// If the header is not present, the user is extracted from the client certificate
+    /// If the client certificate is not present, the user is extracted from the configuration file
+    pub fn get_user(&self, req_http: HttpRequest) -> KResult<String> {
+        let default_username = self.config.default_username.clone();
+
+        if self.config.force_default_username {
+            debug!(
+                "Authenticated using forced default user: {}",
+                default_username
+            );
+            return Ok(default_username)
+        }
+        // if there is a JWT token, use it in priority
+        let user = match req_http.extensions().get::<JwtAuthClaim>() {
+            Some(claim) => claim.email.clone(),
+            None => {
+                // check for client certificate authentication
+                match req_http.extensions().get::<PeerCommonName>() {
+                    Some(claim) => claim.common_name.clone(),
+                    // if no client certificate, use the default username
+                    None => default_username,
+                }
+            }
+        };
+        debug!("Authenticated user: {}", user);
+        Ok(user)
+    }
+
+    /// Get the database secrets from the request
+    /// The secrets are encoded in the `KmsDatabaseSecret` header
+    pub fn get_database_secrets(
+        &self,
+        req_http: &HttpRequest,
+    ) -> KResult<Option<ExtraDatabaseParams>> {
+        Ok(match self.config.db_params {
+            DbParams::SqliteEnc(_) => {
+                let secrets = req_http
+                    .headers()
+                    .get("KmsDatabaseSecret")
+                    .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
+                    .ok_or_else(|| {
+                        KmsError::Unauthorized(
+                            "Missing KmsDatabaseSecret header in the query".to_owned(),
+                        )
+                    })?;
+
+                let secrets = general_purpose::STANDARD.decode(secrets).map_err(|e| {
+                    KmsError::Unauthorized(format!(
+                        "KmsDatabaseSecret header cannot be decoded: {e}"
+                    ))
+                })?;
+
+                Some(
+                    serde_json::from_slice::<ExtraDatabaseParams>(&secrets).map_err(|e| {
+                        KmsError::Unauthorized(format!(
+                            "KmsDatabaseSecret header cannot be read: {}",
+                            e
+                        ))
+                    })?,
+                )
+            }
+            _ => None,
+        })
     }
 }

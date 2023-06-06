@@ -13,25 +13,25 @@ from cosmian_kms import KmsClient
 
 class TestKMS(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        self.client = KmsClient('http://localhost:9998')
+        self.client = KmsClient("http://localhost:9998")
 
         # Create Policy
         self.policy = Policy()
         self.policy.add_axis(
             PolicyAxis(
-                'Security Level',
+                "Security Level",
                 [
-                    ('Protected', False),
-                    ('Confidential', False),
-                    ('Top Secret', False),
+                    ("Protected", False),
+                    ("Confidential", False),
+                    ("Top Secret", False),
                 ],
                 hierarchical=True,
             )
         )
         self.policy.add_axis(
             PolicyAxis(
-                'Department',
-                [('FIN', False), ('MKG', False), ('HR', False)],
+                "Department",
+                [("FIN", False), ("MKG", False), ("HR", False)],
                 hierarchical=False,
             )
         )
@@ -45,12 +45,12 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
     async def test_master_keys(self) -> None:
         # Query public key from KMS
         pubkey = await self.client.get_object(self.pubkey_uid)
-        self.assertEqual(pubkey.object_type(), 'PublicKey')
+        self.assertEqual(pubkey.object_type(), "PublicKey")
         self.assertIsInstance(PublicKey.from_bytes(pubkey.key_block()), PublicKey)
 
         # Query private key from KMS
         privkey = await self.client.get_object(self.privkey_uid)
-        self.assertEqual(privkey.object_type(), 'PrivateKey')
+        self.assertEqual(privkey.object_type(), "PrivateKey")
         self.assertIsInstance(
             MasterSecretKey.from_bytes(privkey.key_block()), MasterSecretKey
         )
@@ -64,10 +64,10 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
                 self.policy.to_bytes(),
                 False,
                 None,
-                'my_custom_privkey',
+                "my_custom_privkey",
             )
         )
-        self.assertEqual(custom_privkey_uid, 'my_custom_privkey')
+        self.assertEqual(custom_privkey_uid, "my_custom_privkey")
 
         # Import custom public key
         custom_pubkey_uid = await self.client.import_cover_crypt_public_key_request(
@@ -75,19 +75,19 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
             True,
             self.policy.to_bytes(),
             self.privkey_uid,
-            'my_custom_pubkey',
+            "my_custom_pubkey",
         )
-        self.assertEqual(custom_pubkey_uid, 'my_custom_pubkey')
+        self.assertEqual(custom_pubkey_uid, "my_custom_pubkey")
 
     async def test_user_key_generation(self) -> None:
         # Generate user key
         userkey_uid = await self.client.create_cover_crypt_user_decryption_key(
-            'Department::MKG && Security Level::Confidential', self.privkey_uid
+            "Department::MKG && Security Level::Confidential", self.privkey_uid
         )
 
         # Query private key from KMS
         userkey = await self.client.get_object(userkey_uid)
-        self.assertEqual(userkey.object_type(), 'PrivateKey')
+        self.assertEqual(userkey.object_type(), "PrivateKey")
         self.assertIsInstance(
             UserSecretKey.from_bytes(userkey.key_block()), UserSecretKey
         )
@@ -98,16 +98,16 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
                 userkey.key_block(),
                 True,
                 self.privkey_uid,
-                'Department::MKG && Security Level::Confidential',
+                "Department::MKG && Security Level::Confidential",
                 False,
                 None,
-                'my_custom_userkey',
+                "my_custom_userkey",
             )
         )
-        self.assertEqual(custom_userkey_uid, 'my_custom_userkey')
+        self.assertEqual(custom_userkey_uid, "my_custom_userkey")
 
         # Revoke key
-        revoked_uid = await self.client.revoke_cover_crypt_key(userkey_uid, 'test')
+        revoked_uid = await self.client.revoke_cover_crypt_key(userkey_uid, "test")
         self.assertEqual(revoked_uid, userkey_uid)
 
         # Destroy key
@@ -116,22 +116,22 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
 
     async def test_simple_encryption_decryption_without_metadata(self) -> None:
         # Encryption
-        to_encrypt = b'My secret data'
+        to_encrypt = b"My secret data"
         protected_mkg_ciphertext = await self.client.cover_crypt_encryption(
             self.pubkey_uid,
-            'Department::MKG && Security Level::Protected',
+            "Department::MKG && Security Level::Protected",
             to_encrypt,
         )
 
         topsecret_mkg_ciphertext = await self.client.cover_crypt_encryption(
             self.pubkey_uid,
-            'Department::MKG && Security Level::Top Secret',
+            "Department::MKG && Security Level::Top Secret",
             to_encrypt,
         )
 
         # Generate user key
         userkey_uid = await self.client.create_cover_crypt_user_decryption_key(
-            'Department::MKG && Security Level::Confidential', self.privkey_uid
+            "Department::MKG && Security Level::Confidential", self.privkey_uid
         )
 
         # Successful decryption
@@ -150,28 +150,28 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
 
     async def test_simple_encryption_decryption_with_metadata(self) -> None:
         # Encryption
-        to_encrypt = b'My secret data'
+        to_encrypt = b"My secret data"
         protected_fin_ciphertext = await self.client.cover_crypt_encryption(
             self.pubkey_uid,
-            'Department::FIN && Security Level::Protected',
+            "Department::FIN && Security Level::Protected",
             to_encrypt,
-            header_metadata=b'header message',
-            authentication_data=b'auth token',
+            header_metadata=b"header message",
+            authentication_data=b"auth token",
         )
 
         # Generate user key
         userkey_uid = await self.client.create_cover_crypt_user_decryption_key(
-            'Department::FIN && Security Level::Protected', self.privkey_uid
+            "Department::FIN && Security Level::Protected", self.privkey_uid
         )
 
         # Successful decryption
         plaintext, header = await self.client.cover_crypt_decryption(
             userkey_uid,
             protected_fin_ciphertext,
-            authentication_data=b'auth token',
+            authentication_data=b"auth token",
         )
         self.assertEqual(bytes(plaintext), to_encrypt)
-        self.assertEqual(bytes(header), b'header message')
+        self.assertEqual(bytes(header), b"header message")
 
         # Missing authentication data
         with self.assertRaises(Exception):
@@ -182,16 +182,16 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
 
     async def test_policy_rotation_encryption_decryption(self) -> None:
         # Encryption
-        old_message = b'My secret data part 1'
+        old_message = b"My secret data part 1"
         old_ciphertext = await self.client.cover_crypt_encryption(
             self.pubkey_uid,
-            'Department::HR && Security Level::Confidential',
+            "Department::HR && Security Level::Confidential",
             old_message,
         )
 
         # Generate user key
         userkey_uid = await self.client.create_cover_crypt_user_decryption_key(
-            'Department::HR && Security Level::Top Secret', self.privkey_uid
+            "Department::HR && Security Level::Top Secret", self.privkey_uid
         )
 
         # Rekey
@@ -199,15 +199,15 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
             new_pubkey_uid,
             new_privkey_uid,
         ) = await self.client.rotate_cover_crypt_attributes(
-            self.privkey_uid, ['Department::HR']
+            self.privkey_uid, ["Department::HR"]
         )
         self.assertEqual(self.pubkey_uid, new_pubkey_uid)
         self.assertEqual(self.privkey_uid, new_privkey_uid)
 
-        new_message = b'My secret data part 2'
+        new_message = b"My secret data part 2"
         new_ciphertext = await self.client.cover_crypt_encryption(
             self.pubkey_uid,
-            'Department::HR && Security Level::Top Secret',
+            "Department::HR && Security Level::Top Secret",
             new_message,
         )
 
@@ -226,5 +226,5 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bytes(plaintext), new_message)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

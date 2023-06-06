@@ -21,12 +21,14 @@ use crate::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::export::export,
         symmetric::create_key::create_symmetric_key,
-        test_utils::{init_test_server, ONCE},
-        CONF_PATH, PROG_NAME,
+        utils::{init_test_server, TestsContext, ONCE},
+        PROG_NAME,
     },
 };
 
+#[allow(clippy::too_many_arguments)]
 pub fn wrap(
+    cli_conf_path: &str,
     sub_command: &str,
     key_file_in: &Path,
     key_file_out: Option<&PathBuf>,
@@ -36,7 +38,7 @@ pub fn wrap(
     wrap_key_file: Option<PathBuf>,
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     let mut args: Vec<String> = vec![
         "keys".to_owned(),
         "wrap".to_owned(),
@@ -70,7 +72,9 @@ pub fn wrap(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn unwrap(
+    cli_conf_path: &str,
     sub_command: &str,
     key_file_in: &Path,
     key_file_out: Option<&PathBuf>,
@@ -80,7 +84,7 @@ pub fn unwrap(
     unwrap_key_file: Option<PathBuf>,
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     let mut args: Vec<String> = vec![
         "keys".to_owned(),
         "unwrap".to_owned(),
@@ -116,38 +120,38 @@ pub fn unwrap(
 
 #[tokio::test]
 pub async fn test_password_wrap_import() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
     // CC
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
+        &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
-    )
-    .await?;
-    password_wrap_import_test("cc", &private_key_id).await?;
+    )?;
+    password_wrap_import_test(ctx, "cc", &private_key_id)?;
 
     // EC
-    let (private_key_id, _public_key_id) = create_ec_key_pair().await?;
-    password_wrap_import_test("ec", &private_key_id).await?;
+    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+    password_wrap_import_test(ctx, "ec", &private_key_id)?;
 
     // syn
-    let key_id = create_symmetric_key(None, None, None).await?;
-    password_wrap_import_test("sym", &key_id).await?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    password_wrap_import_test(ctx, "sym", &key_id)?;
 
     Ok(())
 }
 
-pub async fn password_wrap_import_test(
+pub fn password_wrap_import_test(
+    ctx: &TestsContext,
     sub_command: &str,
     private_key_id: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
-
     let temp_dir = TempDir::new()?;
 
     // Export
     let key_file = temp_dir.path().join("master_private.key");
     export(
+        &ctx.owner_cli_conf_path,
         sub_command,
         private_key_id,
         key_file.to_str().unwrap(),
@@ -155,8 +159,7 @@ pub async fn password_wrap_import_test(
         false,
         None,
         false,
-    )
-    .await?;
+    )?;
 
     let object = read_key_from_file(&key_file)?;
     let key_bytes = object.key_block()?.key_bytes()?;
@@ -164,6 +167,7 @@ pub async fn password_wrap_import_test(
     //wrap and unwrap using a password
     {
         wrap(
+            &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
             None,
@@ -184,6 +188,7 @@ pub async fn password_wrap_import_test(
         );
         assert_ne!(wrapped_object.key_block()?.key_bytes()?, key_bytes);
         unwrap(
+            &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
             None,
@@ -204,6 +209,7 @@ pub async fn password_wrap_import_test(
         rng.fill_bytes(&mut key);
         let key_b64 = general_purpose::STANDARD.encode(&key);
         wrap(
+            &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
             None,
@@ -224,6 +230,7 @@ pub async fn password_wrap_import_test(
         );
         assert_ne!(wrapped_object.key_block()?.key_bytes()?, key_bytes);
         unwrap(
+            &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
             None,

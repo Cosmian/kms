@@ -6,6 +6,7 @@
     "chacha",
     "ciphertext",
     "ciphertexts",
+    "ckms",
     "cleartext",
     "cloudproof",
     "cosmian",
@@ -55,5 +56,9 @@
     "**/*.txt",
     "**/*.md"
   ],
-  "rust-analyzer.check.command": "clippy"
+  "rust-analyzer.check.command": "clippy",
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.black-formatter"
+  },
+  "python.formatting.provider": "none"
 }

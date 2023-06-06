@@ -3,9 +3,9 @@ use std::process;
 use clap::{Parser, Subcommand};
 use cosmian_kms_cli::{
     actions::{
-        configure::entrypoint::NewDatabaseAction, cover_crypt::CoverCryptCommands,
-        elliptic_curves::EllipticCurveCommands, permission::entrypoint::PermissionAction,
-        sgx::entrypoint::SgxAction, symmetric::SymmetricCommands,
+        access::AccessAction, cover_crypt::CoverCryptCommands,
+        elliptic_curves::EllipticCurveCommands, new_database::NewDatabaseAction,
+        sgx::entrypoint::SgxAction, symmetric::SymmetricCommands, version::ServerVersionAction,
     },
     config::CliConf,
     error::CliError,
@@ -27,9 +27,10 @@ enum CliCommands {
     #[command(subcommand)]
     Sym(SymmetricCommands),
     #[command(subcommand)]
-    Permission(PermissionAction),
-    Trust(SgxAction),
+    Access(AccessAction),
     NewDatabase(NewDatabaseAction),
+    Trust(SgxAction),
+    ServerVersion(ServerVersionAction),
 }
 
 #[tokio::main]
@@ -48,9 +49,10 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Cc(action) => action.process(&conf).await?,
         CliCommands::Ec(action) => action.process(&conf).await?,
         CliCommands::Sym(action) => action.process(&conf).await?,
-        CliCommands::Permission(action) => action.process(&conf).await?,
-        CliCommands::Trust(action) => action.process(&conf).await?,
+        CliCommands::Access(action) => action.process(&conf).await?,
         CliCommands::NewDatabase(action) => action.process(&conf).await?,
+        CliCommands::Trust(action) => action.process(&conf).await?,
+        CliCommands::ServerVersion(action) => action.process(&conf).await?,
     };
 
     Ok(())

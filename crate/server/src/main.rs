@@ -1,9 +1,10 @@
 use cosmian_kms_server::{
-    config::{init_config, Config},
+    config::{ClapConfig, ServerConfig},
     result::KResult,
     start_kms_server,
 };
 use dotenvy::dotenv;
+#[cfg(any(feature = "timeout", feature = "insecure"))]
 use tracing::info;
 #[cfg(feature = "timeout")]
 use tracing::warn;
@@ -22,8 +23,8 @@ async fn main() -> KResult<()> {
     if option_env!("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
-            "info,cosmian=debug,cosmian_kms_server=debug, \
-             actix_web=debug,sqlx::query=error,mysql=debug",
+            "info,cosmian=info,cosmian_kms_server=info, \
+             actix_web=info,sqlx::query=error,mysql=info",
         );
     }
 
@@ -33,26 +34,24 @@ async fn main() -> KResult<()> {
     env_logger::init();
 
     // Instantiate a config object using the env variables and the args of the binary
-    let conf = Config::parse();
+    let clap_config = ClapConfig::parse();
+    let server_config = ServerConfig::try_from(&clap_config).await?;
 
-    init_config(&conf).await?;
-
-    info!("Enabled features:");
     #[cfg(feature = "timeout")]
-    info!("- Timeout");
+    info!("Feature Timeout enabled");
     #[cfg(feature = "insecure")]
-    info!("- Insecure");
+    info!("Feature Insecure enabled");
 
     #[cfg(feature = "timeout")]
     {
         warn!("This is a demo version, the server will stop in 3 months");
         let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(Box::pin(start_kms_server()), demo).await;
+        futures::future::select(Box::pin(start_kms_server(server_config, None)), demo).await;
     }
 
     // Start the KMS
     #[cfg(not(feature = "timeout"))]
-    start_kms_server().await?;
+    start_kms_server(server_config, None).await?;
 
     Ok(())
 }

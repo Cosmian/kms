@@ -21,7 +21,7 @@ use crate::{
 pub async fn destroy_operation(
     kms: &KMS,
     request: Destroy,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<DestroyResponse> {
     let unique_identifier = &request
@@ -35,9 +35,9 @@ pub async fn destroy_operation(
         unique_identifier,
         None,
         None,
-        owner,
+        user,
         params,
-        ObjectOperationTypes::Export,
+        ObjectOperationTypes::Destroy,
     )
     .await?;
 
@@ -46,31 +46,31 @@ pub async fn destroy_operation(
     match object_type {
         SymmetricKey => {
             // revoke the key
-            destroy_key_core(unique_identifier, object, state, kms, owner, params).await?;
+            destroy_key_core(unique_identifier, object, state, kms, params).await?;
         }
         PrivateKey => {
             let private_key =
-                destroy_key_core(unique_identifier, object, state, kms, owner, params).await?;
+                destroy_key_core(unique_identifier, object, state, kms, params).await?;
             if let Some(public_key_id) = private_key.attributes()?.get_link(LinkType::PublicKeyLink)
             {
-                let _ = destroy_key(&public_key_id, kms, owner, params).await;
+                let _ = destroy_key(&public_key_id, kms, user, params).await;
             }
             if let KeyFormatType::CoverCryptSecretKey = private_key.key_block()?.key_format_type {
-                destroy_user_decryption_keys(unique_identifier, kms, owner, params).await?
+                destroy_user_decryption_keys(unique_identifier, kms, user, params).await?
             }
         }
         PublicKey => {
             // revoke the public key
             let public_key =
-                destroy_key_core(unique_identifier, object, state, kms, owner, params).await?;
+                destroy_key_core(unique_identifier, object, state, kms, params).await?;
             if let Some(private_key_id) =
                 public_key.attributes()?.get_link(LinkType::PrivateKeyLink)
             {
-                if let Ok(private_key) = destroy_key(&private_key_id, kms, owner, params).await {
+                if let Ok(private_key) = destroy_key(&private_key_id, kms, user, params).await {
                     if let KeyFormatType::CoverCryptSecretKey =
                         private_key.key_block()?.key_format_type
                     {
-                        destroy_user_decryption_keys(&private_key_id, kms, owner, params).await?
+                        destroy_user_decryption_keys(&private_key_id, kms, user, params).await?
                     }
                 }
             }
@@ -93,13 +93,12 @@ async fn destroy_key_core(
     mut object: Object,
     state: StateEnumeration,
     kms: &KMS,
-    owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object> {
     //
     let new_state = match state {
         StateEnumeration::Active => {
-            return Err(KmsError::ItemNotFound(format!(
+            return Err(KmsError::InvalidRequest(format!(
                 "Object with unique identifier: {unique_identifier} is active. It must be revoked \
                  first"
             )))
@@ -110,18 +109,18 @@ async fn destroy_key_core(
     };
 
     // the KMIP specs mandates that e KeyMaterial be destroyed
-    let mut key_block = object.key_block_mut()?;
+    let key_block = object.key_block_mut()?;
     key_block.key_value = KeyValue {
         key_material: KeyMaterial::ByteString(vec![]),
         attributes: key_block.key_value.attributes.clone(),
     };
 
     kms.db
-        .update_object(unique_identifier, owner, &object, params)
+        .update_object(unique_identifier, &object, params)
         .await?;
 
     kms.db
-        .update_state(unique_identifier, owner, new_state, params)
+        .update_state(unique_identifier, new_state, params)
         .await?;
 
     Ok(object)
@@ -131,7 +130,7 @@ async fn destroy_key_core(
 pub(crate) async fn destroy_key(
     unique_identifier: &str,
     kms: &KMS,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object> {
     // retrieve the object
@@ -140,11 +139,11 @@ pub(crate) async fn destroy_key(
         unique_identifier,
         None,
         None,
-        owner,
+        user,
         params,
-        ObjectOperationTypes::Export,
+        ObjectOperationTypes::Destroy,
     )
     .await?;
 
-    destroy_key_core(unique_identifier, object, state, kms, owner, params).await
+    destroy_key_core(unique_identifier, object, state, kms, params).await
 }

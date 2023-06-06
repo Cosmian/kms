@@ -1,0 +1,26 @@
+[alias]
+
+# Check for formatting
+format = "fmt --all -- --check"
+
+# Build all features, all targets and all binaries
+build-all = "build --workspace --all-targets --all-features --bins"
+build-all-release = "build --release --workspace --all-targets --all-features --bins"
+
+# Run Clippy on all code paths
+clippy-all = "clippy --workspace --all-targets --all-features -- -D warnings"
+
+# Run coverage
+coverage = "tarpaulin --release -v -f -t 1800 --out Xml --ignore-tests --exclude-files resources/* apps/*"
+
+# Find unused dependencies
+deps = "udeps --workspace --all-targets --all-features --backend depinfo"
+
+[build]
+# Speeds up Ristretto 25519 multiplication x 2
+rustflags = [
+    "--cfg",
+    "curve25519_dalek_backend=\"simd\"",
+    "-C",
+    "target_cpu=native",
+]

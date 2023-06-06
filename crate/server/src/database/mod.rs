@@ -49,7 +49,7 @@ pub trait Database {
     async fn create(
         &self,
         uid: Option<String>,
-        owner: &str,
+        user: &str,
         object: &Object,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier>;
@@ -61,18 +61,18 @@ pub trait Database {
     /// and an object with the same id already exists
     async fn create_objects(
         &self,
-        owner: &str,
+        user: &str,
         objects: &[(Option<String>, Object)],
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>>;
 
-    /// Retrieve an object from the database using `uid` and `owner`.
+    /// Retrieve an object from the database using `uid` and `user`.
     /// The `query_read_access` allows additional lookup in `read_access` table to see
-    /// if `owner` is matching `read_access` authorization
+    /// if `user` is matching `read_access` authorization
     async fn retrieve(
         &self,
         uid: &str,
-        owner: &str,
+        user: &str,
         query_read_access: ObjectOperationTypes,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Option<(Object, StateEnumeration)>>;
@@ -80,7 +80,6 @@ pub trait Database {
     async fn update_object(
         &self,
         uid: &str,
-        owner: &str,
         object: &Object,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
@@ -88,7 +87,6 @@ pub trait Database {
     async fn update_state(
         &self,
         uid: &str,
-        owner: &str,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
@@ -97,7 +95,7 @@ pub trait Database {
     async fn upsert(
         &self,
         uid: &str,
-        owner: &str,
+        user: &str,
         object: &Object,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
@@ -106,13 +104,13 @@ pub trait Database {
     async fn delete(
         &self,
         uid: &str,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
-    async fn list_shared_objects(
+    async fn list_access_rights_obtained(
         &self,
-        owner: &str,
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
         Vec<(

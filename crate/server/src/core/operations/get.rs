@@ -96,14 +96,14 @@ pub(crate) async fn get_(
     unique_identifier: &str,
     key_wrap_type: Option<KeyWrapType>,
     key_wrapping_data: Option<KeyWrappingData>,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
     operation_type: ObjectOperationTypes,
 ) -> KResult<(Object, StateEnumeration)> {
     trace!("retrieving KMIP Object with id: {unique_identifier}");
     let (mut object, state) = kms
         .db
-        .retrieve(unique_identifier, owner, operation_type, params)
+        .retrieve(unique_identifier, user, operation_type, params)
         .await?
         .ok_or_else(|| {
             KmsError::ItemNotFound(format!(
@@ -122,7 +122,7 @@ pub(crate) async fn get_(
                 KeyWrapType::NotWrapped => {
                     let object_type = object.object_type();
                     let key_block = object.key_block_mut()?;
-                    unwrap_key(object_type, key_block, kms, owner, params).await?
+                    unwrap_key(object_type, key_block, kms, user, params).await?
                 }
                 KeyWrapType::AsRegistered => {
                     // do nothing
@@ -133,7 +133,7 @@ pub(crate) async fn get_(
             if let Some(kwd) = key_wrapping_data {
                 // wrap
                 let key_block = object.key_block_mut()?;
-                wrap_key(unique_identifier, key_block, &kwd, kms, owner, params).await?;
+                wrap_key(unique_identifier, key_block, &kwd, kms, user, params).await?;
             }
         }
     }

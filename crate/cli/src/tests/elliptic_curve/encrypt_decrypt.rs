@@ -11,20 +11,21 @@ use crate::{
     error::CliError,
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        test_utils::{init_test_server, ONCE},
-        CONF_PATH, PROG_NAME,
+        utils::{init_test_server, ONCE},
+        PROG_NAME,
     },
 };
 
 /// Encrypts a file using the given public key and access policy.
 pub fn encrypt(
+    cli_conf_path: &str,
     input_file: &str,
     public_key_id: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     let mut args = vec!["encrypt", input_file, public_key_id];
     if let Some(output_file) = output_file {
         args.push("-o");
@@ -43,13 +44,14 @@ pub fn encrypt(
 
 /// Decrypt a file using the given private key
 pub fn decrypt(
+    cli_conf_path: &str,
     input_file: &str,
     private_key_id: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     let mut args = vec!["decrypt", input_file, private_key_id];
     if let Some(output_file) = output_file {
         args.push("-o");
@@ -71,7 +73,7 @@ pub fn decrypt(
 
 #[tokio::test]
 async fn test_encrypt_decrypt() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(init_test_server).await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -83,9 +85,10 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
-    let (private_key_id, public_key_id) = create_ec_key_pair().await?;
+    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
 
     encrypt(
+        &ctx.owner_cli_conf_path,
         input_file.to_str().unwrap(),
         &public_key_id,
         Some(output_file.to_str().unwrap()),
@@ -94,6 +97,7 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the file
     decrypt(
+        &ctx.owner_cli_conf_path,
         output_file.to_str().unwrap(),
         &private_key_id,
         Some(recovered_file.to_str().unwrap()),

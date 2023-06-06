@@ -11,7 +11,7 @@ use cosmian_kms_utils::crypto::{
 };
 
 use crate::{
-    actions::shared::utils::{export_object, read_key_from_file, write_object_to_file},
+    actions::shared::utils::{export_object, read_key_from_file, write_kmip_object_to_file},
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -111,7 +111,7 @@ impl UnwrapKeyAction {
             .unwrap_or(&self.key_file_in)
             .to_path_buf();
 
-        write_object_to_file(&object, &output_file)?;
+        write_kmip_object_to_file(&object, &output_file)?;
 
         println!(
             "The key of type {:?} in file {:?} was unwrapped in file: {:?}",

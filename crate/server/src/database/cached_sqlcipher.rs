@@ -5,6 +5,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use cloudproof::reexport::crypto_core::symmetric_crypto::{key::Key, SymKey};
 use cosmian_kmip::kmip::{
     kmip_objects,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
@@ -45,10 +46,14 @@ impl CachedSqlCipher {
         })
     }
 
-    async fn instantiate_group_database(&self, group_id: u128, key: &str) -> KResult<Pool<Sqlite>> {
+    async fn instantiate_group_database(
+        &self,
+        group_id: u128,
+        key: &Key<32>,
+    ) -> KResult<Pool<Sqlite>> {
         let path = self.filename(group_id);
         let options = SqliteConnectOptions::new()
-            .pragma("key", format!("\"x'{key}'\""))
+            .pragma("key", format!("\"x'{}'\"", hex::encode(key.as_bytes())))
             .pragma("journal_mode", "OFF")
             .filename(path)
             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
@@ -105,7 +110,7 @@ impl CachedSqlCipher {
         self.cache.release(group_id)
     }
 
-    async fn pre_query(&self, group_id: u128, key: &str) -> KResult<Arc<Pool<Sqlite>>> {
+    async fn pre_query(&self, group_id: u128, key: &Key<32>) -> KResult<Arc<Pool<Sqlite>>> {
         if !self.cache.exists(group_id) {
             let pool = self.instantiate_group_database(group_id, key).await?;
             Self::create_tables(&pool).await?;
@@ -191,13 +196,12 @@ impl Database for CachedSqlCipher {
     async fn update_object(
         &self,
         uid: &str,
-        owner: &str,
         object: &kmip_objects::Object,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = update_object_(uid, owner, object, &*pool).await;
+            let ret = update_object_(uid, object, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -208,13 +212,12 @@ impl Database for CachedSqlCipher {
     async fn update_state(
         &self,
         uid: &str,
-        owner: &str,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = update_state_(uid, owner, state, &*pool).await;
+            let ret = update_state_(uid, state, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -256,7 +259,7 @@ impl Database for CachedSqlCipher {
         kms_bail!("Missing group_id/key for opening SQLCipher")
     }
 
-    async fn list_shared_objects(
+    async fn list_access_rights_obtained(
         &self,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
@@ -366,7 +369,8 @@ impl Database for CachedSqlCipher {
 mod tests {
     use cloudproof::reexport::crypto_core::{
         reexport::rand_core::{RngCore, SeedableRng},
-        CsRng,
+        symmetric_crypto::key::Key,
+        CsRng, KeyTrait,
     };
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
@@ -400,10 +404,14 @@ mod tests {
             std::fs::remove_file(&file_path).unwrap();
         }
 
+        // Create a new database key
+        let mut cs_rng = CsRng::from_entropy();
+        let db_key = Key::<32>::new(&mut cs_rng);
+
         let db = CachedSqlCipher::instantiate(&file_path).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
-            key: String::from("password"),
+            key: db_key.clone(),
         };
 
         let mut symmetric_key = vec![0; 32];
@@ -499,7 +507,9 @@ mod tests {
         let objects = db.find(None, None, userid2, Some(&params)).await?;
         assert!(objects.is_empty());
 
-        let objects = db.list_shared_objects(userid2, Some(&params)).await?;
+        let objects = db
+            .list_access_rights_obtained(userid2, Some(&params))
+            .await?;
         assert_eq!(
             objects,
             vec![(
@@ -577,10 +587,14 @@ mod tests {
             std::fs::remove_file(&file_path).unwrap();
         }
 
+        // Create a new database key
+        let mut cs_rng = CsRng::from_entropy();
+        let db_key = Key::<32>::new(&mut cs_rng);
+
         let db = CachedSqlCipher::instantiate(&file_path).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
-            key: String::from("password"),
+            key: db_key.clone(),
         };
 
         let uid = Uuid::new_v4().to_string();
@@ -653,7 +667,7 @@ mod tests {
     #[actix_rt::test]
     #[ignore = "Waiting for SqlCipher crate upgrade to handle JSON operators"]
     pub async fn test_json_access() -> KResult<()> {
-        log_init("debug");
+        log_init("info");
         let mut rng = CsRng::from_entropy();
         let owner = "eyJhbGciOiJSUzI1Ni";
         let dir = tempdir()?;
@@ -662,10 +676,14 @@ mod tests {
             std::fs::remove_file(&file_path).unwrap();
         }
 
+        // Create a new database key
+        let mut cs_rng = CsRng::from_entropy();
+        let db_key = Key::<32>::new(&mut cs_rng);
+
         let db = CachedSqlCipher::instantiate(&file_path).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
-            key: String::from("password"),
+            key: db_key.clone(),
         };
 
         let mut symmetric_key = vec![0; 32];
