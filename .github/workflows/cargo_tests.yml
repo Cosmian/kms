@@ -44,7 +44,8 @@ jobs:
           MYSQL_DATABASE: kms
           MYSQL_ROOT_PASSWORD: kms
 
-    runs-on: [self-hosted, not-docker]
+    runs-on: ubuntu-22.04
+    # runs-on: [self-hosted, not-docker] # currently not needed.
     container:
       image: rust:latest
 
