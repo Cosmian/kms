@@ -19,15 +19,17 @@ Server access is secured using native TLS combined with Open ID-compliant JWT ac
 
 Check the enabling [TLS documentation](./tls.md) as well as the [authentication documentation](./authentication.md) for details.
 
-#### Packaged as a docker image
+#### Packaged as a docker image and raw binary
 
-The KMS server is available as a Docker image on the [Cosmian public docker hub](https://hub.docker.com/r/cosmian/kms).
+The KMS server is available as a Docker image on the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
+
+Non-dockerized raw binaries are also available on [Cosmian public packages repository](https://package.cosmian.com/kms/4.4.0/)
 
 !!! info "Quick start"
     To quick start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
 
     ```sh
-    docker run -p 9998:9998 --name kms cosmian/kms
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.4.0
     ```
 
     Check the Cosmian KMS server version
@@ -61,7 +63,7 @@ The libraries are available in many languages, including Javascript, Java, Dart,
 Like the `ckms` CLI, the KMS server has a built-in help system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm cosmian/kms --help
+docker run --rm ghcr.io/cosmian/kms:4.4.0 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the options help.
