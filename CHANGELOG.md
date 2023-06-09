@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.4.1] - 2023-06-09
+
+### Bug Fixes
+
+- Incorrect docker tag
+
+### Documentation
+
+- Add description on docker usage
+
 ## [4.4.0] - 2023-06-06
 
 ### Features
