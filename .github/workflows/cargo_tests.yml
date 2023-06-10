@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-22.04
     # runs-on: [self-hosted, not-docker] # currently not needed.
     container:
-      image: rust:latest
+      image: iyxd/centos7-rust
 
     steps:
       - uses: actions/checkout@v1
