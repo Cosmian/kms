@@ -31,22 +31,16 @@ jobs:
   python_and_docker:
     uses: ./.github/workflows/python_and_docker.yml
 
-  github_cleanup:
-    needs:
-      - cargo-lint
-      - cargo-doc
-      - cargo-tests
-      - python_and_docker
-    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
-    secrets: inherit
-
   ##############################################################################
   ### Releases
   ##############################################################################
   release:
     name: release
     needs:
-      - github_cleanup
+      - cargo-lint
+      - cargo-doc
+      - cargo-tests
+      - python_and_docker
     runs-on: [self-hosted, not-docker]
     strategy:
       fail-fast: false
@@ -96,7 +90,7 @@ jobs:
   python_publish:
     name: python publish
     needs:
-      - github_cleanup
+      - python_and_docker
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
