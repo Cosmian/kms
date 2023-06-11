@@ -74,6 +74,11 @@ jobs:
           override: true
           components: rustfmt, clippy
 
+      - name: Centos 7 prerequisites
+        run: |
+          yum -y groupinstall "Development Tools"
+          yum -y install openssl openssl-devel
+
       - name: Build
         run: |
           cargo check --all-targets --no-default-features
