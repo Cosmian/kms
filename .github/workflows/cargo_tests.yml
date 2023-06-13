@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-22.04
     # runs-on: [self-hosted, not-docker] # currently not needed.
     container:
-      image: rust:latest
+      image: iyxd/centos7-rust
 
     steps:
       - uses: actions/checkout@v1
@@ -73,6 +73,11 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           override: true
           components: rustfmt, clippy
+
+      - name: Centos 7 prerequisites
+        run: |
+          yum -y groupinstall "Development Tools"
+          yum -y install openssl openssl-devel
 
       - name: Build
         run: |

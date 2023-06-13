@@ -763,7 +763,9 @@ pub struct Attributes {
     /// Request Payload. Specific fields MAY only pertain to certain types
     /// of Managed Cryptographic Objects. The domain parameter Q-length
     /// corresponds to the bit length of parameter Q (refer to
-    /// [RFC7778],[SEC2]and [SP800-56A]).
+    /// [RFC7778](https://www.rfc-editor.org/rfc/rfc7778.txt),
+    /// [SEC2](https://www.secg.org/sec2-v2.pdf) and
+    /// [SP800-56A](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Ar3.pdf)).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_domain_parameters: Option<CryptographicDomainParameters>,
     /// See `CryptographicParameters`

@@ -18,7 +18,7 @@ pub struct JwtAuthConfig {
 
     /// The JWKS (Json Web Key Set) URI of the JWT token
     ///
-    /// For Auth0, this would be https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json"
+    /// For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
     ///
     /// For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
     ///
