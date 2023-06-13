@@ -1,4 +1,3 @@
-
 The Cosmian Key Management System (KMS) is a high-performance server application written in [**Rust**](https://www.rust-lang.org/) that provides a KMIP REST API to store and manage keys and secrets used with Cosmian cryptographic stacks.
 
 #### Open source
@@ -23,13 +22,13 @@ Check the enabling [TLS documentation](./tls.md) as well as the [authentication 
 
 The KMS server is available as a Docker image on the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
-Non-dockerized raw binaries are also available on [Cosmian public packages repository](https://package.cosmian.com/kms/4.4.1/)
+Non-dockerized raw binaries are also available on [Cosmian public packages repository](https://package.cosmian.com/kms/4.4.2/)
 
 !!! info "Quick start"
     To quick start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.4.1
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.4.2
     ```
 
     Check the Cosmian KMS server version
@@ -63,7 +62,7 @@ The libraries are available in many languages, including Javascript, Java, Dart,
 Like the `ckms` CLI, the KMS server has a built-in help system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.4.1 --help
+docker run --rm ghcr.io/cosmian/kms:4.4.2 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the options help.

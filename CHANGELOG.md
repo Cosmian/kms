@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.4.2] - 2023-06-13
+
+### Features
+
+- Support glibc v2.17 when building ckms and cosmian_kms_server
+
 ## [4.4.1] - 2023-06-09
 
 ### Bug Fixes

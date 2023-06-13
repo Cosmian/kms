@@ -1,4 +1,3 @@
-
 The single server mode uses an embedded SQLite database stored on a filesystem and therefore does not require access to an external database.
 
 Although it does not provide high availability through redundancy, this configuration is suitable for production and serving millions of cryptographic objects.  The server will concurrently serve requests on as many threads as available cores to the docker container.
@@ -10,7 +9,7 @@ This configuration also supports client-secret encrypted databases, a secure way
 To run in single server mode, using the defaults, run the container as follows:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.4.1
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.4.2
 ```
 
 The KMS will be available on `http://localhost:9998`, and the server will store its data inside the container in the `/root/cosmian-kms/sqlite-data` directory.
@@ -22,7 +21,7 @@ To persist data between restarts, map the `/root/cosmian-kms/sqlite-data` path t
 ```sh
 docker run --rm -p 9998:9998 \
   -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-  --name kms ghcr.io/cosmian/kms:4.4.1
+  --name kms ghcr.io/cosmian/kms:4.4.2
 ```
 
 ### Using client-secret encrypted databases
@@ -32,7 +31,7 @@ To start the KMS server with client-secret encrypted SQLite databases, pass the 
 ```sh
 docker run --rm -p 9998:9998 \
   -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-  --name kms ghcr.io/cosmian/kms:4.4.1 \
+  --name kms ghcr.io/cosmian/kms:4.4.2 \
   --database-type=sqlite-enc
 ```
 
