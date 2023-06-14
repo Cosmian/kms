@@ -1,0 +1,57 @@
+---
+name: KMS build
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+      distribution:
+        required: true
+        type: string
+      archive-name:
+        required: true
+        type: string
+
+jobs:
+  kms-build:
+    name: Build KMS on ${{ inputs.distribution }}
+    runs-on: ${{ inputs.distribution }}
+    steps:
+      - uses: actions/checkout@v1
+
+      - name: Set up cargo cache
+        id: cargo_cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ inputs.distribution }}-kms-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-${{ inputs.distribution }}-kms-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          override: true
+          components: rustfmt, clippy
+
+      - name: Build
+        run: |
+          cargo build --release --bin ckms
+          cargo build --release --bin cosmian_kms_server
+
+      - name: Upload KMS for ${{ inputs.distribution }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ inputs.archive-name }}
+          path: |
+            target/release/ckms
+            target/release/cosmian_kms_server
+          retention-days: 1
+          if-no-files-found: error
