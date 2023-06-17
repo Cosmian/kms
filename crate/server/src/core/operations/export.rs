@@ -3,7 +3,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Export, ExportResponse},
     kmip_types::StateEnumeration,
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
 use tracing::trace;
 
 use crate::{

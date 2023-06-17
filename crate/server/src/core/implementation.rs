@@ -14,6 +14,7 @@ use cosmian_kmip::kmip::{
     kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve, StateEnumeration},
 };
 use cosmian_kms_utils::{
+    access::{ExtraDatabaseParams, ObjectOperationTypes},
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
         curve_25519::{
@@ -22,7 +23,6 @@ use cosmian_kms_utils::{
         },
         symmetric::{create_symmetric_key, AesGcmSystem},
     },
-    types::{ExtraDatabaseParams, ObjectOperationTypes},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
 use tracing::trace;

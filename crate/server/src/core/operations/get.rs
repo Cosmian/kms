@@ -4,7 +4,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Get, GetResponse},
     kmip_types::{KeyWrapType, StateEnumeration},
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
 use tracing::{debug, trace};
 
 use crate::{

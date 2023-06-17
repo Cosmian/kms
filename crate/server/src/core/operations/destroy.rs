@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Destroy, DestroyResponse},
     kmip_types::{KeyFormatType, LinkType, StateEnumeration},
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
 
 use super::get::get_;
 use crate::{

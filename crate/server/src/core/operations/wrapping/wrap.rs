@@ -2,7 +2,7 @@ use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_types::{EncodingOption, WrappingMethod},
 };
-use cosmian_kms_utils::{crypto::wrap::encrypt_bytes, types::ExtraDatabaseParams};
+use cosmian_kms_utils::{access::ExtraDatabaseParams, crypto::wrap::encrypt_bytes};
 
 use super::get_key;
 use crate::{core::KMS, kms_bail, result::KResult};

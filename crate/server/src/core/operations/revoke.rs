@@ -8,7 +8,7 @@ use cosmian_kmip::kmip::{
         KeyFormatType, LinkType, RevocationReason, RevocationReasonEnumeration, StateEnumeration,
     },
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
 
 use super::get::{check_state_active, get_};
 use crate::{

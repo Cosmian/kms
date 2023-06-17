@@ -3,6 +3,9 @@ use cosmian_kmip::{error::KmipError, kmip::kmip_operations::ErrorReason};
 
 use crate::crypto::key_wrapping_rfc_5649;
 
+/// The vendor ID to use for Cosmian specific attributes
+pub const VENDOR_ID_COSMIAN: &str = "cosmian";
+
 const WRAPPING_SECRET_LENGTH: usize = 32;
 
 /// Wrap a key using a password

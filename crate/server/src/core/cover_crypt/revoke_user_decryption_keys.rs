@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip::kmip_types::{RevocationReason, StateEnumeration};
-use cosmian_kms_utils::types::ExtraDatabaseParams;
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 
 use super::locate_user_decryption_keys;
 use crate::{

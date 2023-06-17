@@ -4,7 +4,7 @@
 // see CryptographicUsageMask
 #![allow(non_upper_case_globals)]
 
-use std::fmt;
+use std::{fmt, vec::Vec};
 
 use serde::{
     de::{self, Visitor},
@@ -875,9 +875,10 @@ impl Attributes {
         self
     }
 
-    ///
+    /// Return the vendor attribute with the given vendor identification and
+    /// attribute name.
     #[must_use]
-    pub fn get_vendor_attribute(
+    pub fn get_vendor_attribute_value(
         &self,
         vendor_identification: &str,
         attribute_name: &str,
@@ -890,6 +891,33 @@ impl Attributes {
                 })
                 .map(|va| va.attribute_value.as_slice())
         })
+    }
+
+    /// Return the vendor attribute with the given vendor identification and
+    /// attribute name. If the attribute does not exist, an empty
+    /// vendor attribute is created and returned.
+    #[must_use]
+    pub fn get_vendor_attribute_mut(
+        &mut self,
+        vendor_identification: &str,
+        attribute_name: &str,
+    ) -> &mut VendorAttribute {
+        let vas = self.vendor_attributes.get_or_insert_with(Vec::new);
+        let position = vas.iter().position(|va| {
+            va.vendor_identification == vendor_identification && va.attribute_name == attribute_name
+        });
+        let len = vas.len();
+        match position {
+            None => {
+                vas.push(VendorAttribute {
+                    vendor_identification: vendor_identification.to_owned(),
+                    attribute_name: attribute_name.to_owned(),
+                    attribute_value: vec![],
+                });
+                &mut vas[len]
+            }
+            Some(position) => &mut vas[position],
+        }
     }
 
     /// Remove a vendor attribute from the list of vendor attributes.

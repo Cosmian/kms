@@ -2,7 +2,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{GetAttributes, GetAttributesResponse},
     kmip_types::{AttributeReference, Attributes, Tag},
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
 use tracing::{debug, trace};
 
 use crate::{core::KMS, error::KmsError, result::KResult};
