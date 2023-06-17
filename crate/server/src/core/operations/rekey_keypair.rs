@@ -3,7 +3,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
     kmip_types::CryptographicAlgorithm,
 };
-use cosmian_kms_utils::types::ExtraDatabaseParams;
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::trace;
 
 use crate::{

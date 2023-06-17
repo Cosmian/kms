@@ -5,10 +5,10 @@ use cosmian_kmip::kmip::{
     kmip_types::Attributes,
 };
 use cosmian_kms_utils::{
+    access::ExtraDatabaseParams,
     crypto::cover_crypt::{
         attributes::access_policy_from_attributes, user_key::UserDecryptionKeysHandler,
     },
-    types::ExtraDatabaseParams,
     KeyPair,
 };
 

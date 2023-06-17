@@ -1,6 +1,6 @@
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::types::{Access, ObjectOperationTypes};
+use cosmian_kms_utils::access::{Access, ObjectOperationTypes};
 
 use crate::error::{result::CliResultHelper, CliError};
 

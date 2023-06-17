@@ -4,7 +4,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Import, ImportResponse},
     kmip_types::{KeyWrapType, StateEnumeration},
 };
-use cosmian_kms_utils::types::ExtraDatabaseParams;
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, warn};
 
 use super::wrapping::unwrap_key;

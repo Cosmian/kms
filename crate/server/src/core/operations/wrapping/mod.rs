@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::StateEnumeration};
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
 pub(crate) use unwrap::unwrap_key;
 pub(crate) use wrap::wrap_key;
 

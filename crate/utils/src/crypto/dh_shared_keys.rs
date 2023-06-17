@@ -9,6 +9,8 @@ use cosmian_kmip::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::kmip_utils::VENDOR_ID_COSMIAN;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EnclaveSharedKeyCreateRequest {
     pub algo_provider_public_key_uid: String,
@@ -23,7 +25,7 @@ impl TryFrom<&EnclaveSharedKeyCreateRequest> for VendorAttribute {
 
     fn try_from(request: &EnclaveSharedKeyCreateRequest) -> Result<Self, KmipError> {
         Ok(Self {
-            vendor_identification: "cosmian".to_owned(),
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             attribute_name: "enclave_shared_key_create_request".to_owned(),
             attribute_value: serde_json::to_vec(&request).map_err(|_| {
                 KmipError::InvalidKmipObject(
@@ -39,7 +41,7 @@ impl TryFrom<&VendorAttribute> for EnclaveSharedKeyCreateRequest {
     type Error = KmipError;
 
     fn try_from(attribute: &VendorAttribute) -> Result<Self, KmipError> {
-        if &attribute.vendor_identification != "cosmian"
+        if attribute.vendor_identification != VENDOR_ID_COSMIAN
             || &attribute.attribute_name != "enclave_shared_key_create_request"
         {
             return Err(KmipError::InvalidKmipObject(
@@ -73,7 +75,7 @@ impl TryFrom<&Attributes> for EnclaveSharedKeyCreateRequest {
             .iter()
             .find(|att| {
                 &att.attribute_name == "enclave_shared_key_create_request"
-                    && &att.vendor_identification == "cosmian"
+                    && att.vendor_identification == VENDOR_ID_COSMIAN
             })
             .ok_or_else(|| {
                 KmipError::InvalidKmipObject(

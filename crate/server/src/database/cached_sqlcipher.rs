@@ -10,7 +10,7 @@ use cosmian_kmip::kmip::{
     kmip_objects,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     ConnectOptions, Pool, Sqlite,
@@ -380,8 +380,8 @@ mod tests {
         },
     };
     use cosmian_kms_utils::{
+        access::{ExtraDatabaseParams, ObjectOperationTypes},
         crypto::symmetric::create_symmetric_key,
-        types::{ExtraDatabaseParams, ObjectOperationTypes},
     };
     use tempfile::tempdir;
     use uuid::Uuid;

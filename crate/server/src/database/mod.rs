@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
         Attributes, LinkedObjectIdentifier::TextString, StateEnumeration, UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
 use lazy_static::lazy_static;
 use rawsql::Loader;
 use serde::{Deserialize, Serialize};

@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip::kmip_operations::{CreateKeyPair, CreateKeyPairResponse};
-use cosmian_kms_utils::{types::ExtraDatabaseParams, KeyPair};
+use cosmian_kms_utils::{access::ExtraDatabaseParams, KeyPair};
 use tracing::trace;
 use uuid::Uuid;
 

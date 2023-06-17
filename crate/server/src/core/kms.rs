@@ -18,7 +18,7 @@ use cosmian_kmip::kmip::{
     },
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::types::{
+use cosmian_kms_utils::access::{
     Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
     UserAccessResponse,
 };

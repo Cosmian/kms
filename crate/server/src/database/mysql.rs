@@ -6,7 +6,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
 use serde_json::Value;
 use sqlx::{
     mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow},
@@ -664,7 +664,9 @@ mod tests {
             LinkType, LinkedObjectIdentifier, StateEnumeration,
         },
     };
-    use cosmian_kms_utils::{crypto::symmetric::create_symmetric_key, types::ObjectOperationTypes};
+    use cosmian_kms_utils::{
+        access::ObjectOperationTypes, crypto::symmetric::create_symmetric_key,
+    };
     use serial_test::serial;
     use uuid::Uuid;
 

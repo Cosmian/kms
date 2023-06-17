@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip::kmip_operations::{Decrypt, DecryptResponse};
-use cosmian_kms_utils::types::ExtraDatabaseParams;
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::trace;
 
 use crate::{core::KMS, error::KmsError, result::KResult};

@@ -4,9 +4,10 @@ use cosmian_kmip::kmip::{
 };
 use crypto::error::CryptoError;
 
+pub mod access;
 pub mod crypto;
 pub mod kmip_utils;
-pub mod types;
+pub mod tagging;
 
 pub trait EncryptionSystem {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError>;

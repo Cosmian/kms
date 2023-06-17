@@ -1,7 +1,7 @@
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyBlock, kmip_objects::ObjectType, kmip_types::LinkType,
 };
-use cosmian_kms_utils::{crypto::wrap::unwrap_key_block, types::ExtraDatabaseParams};
+use cosmian_kms_utils::{access::ExtraDatabaseParams, crypto::wrap::unwrap_key_block};
 
 use super::get_key;
 use crate::{

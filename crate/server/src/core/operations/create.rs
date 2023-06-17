@@ -2,7 +2,7 @@ use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{Create, CreateResponse},
 };
-use cosmian_kms_utils::types::ExtraDatabaseParams;
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, trace};
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
