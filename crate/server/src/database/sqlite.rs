@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -9,11 +10,14 @@ use cosmian_kmip::kmip::{
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
+use cosmian_kms_utils::{
+    access::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes},
+    tagging::{check_tags, get_tags},
+};
 use serde_json::Value;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
-    ConnectOptions, Executor, Pool, Row, Sqlite,
+    ConnectOptions, Executor, Pool, Row, Sqlite, Transaction,
 };
 use tracing::{debug, log::warn, trace};
 use uuid::Uuid;
@@ -65,6 +69,14 @@ impl SqlitePool {
         .execute(&pool)
         .await?;
 
+        sqlx::query(
+            SQLITE_QUERIES
+                .get("create-table-tags")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .execute(&pool)
+        .await?;
+
         Ok(Self { pool })
     }
 
@@ -87,7 +99,16 @@ impl Database for SqlitePool {
         object: &kmip_objects::Object,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier> {
-        create_(uid, user, object, &self.pool).await
+        let mut tx = self.pool.begin().await?;
+        let uid = match create_(uid, user, object, &mut tx).await {
+            Ok(uid) => uid,
+            Err(e) => {
+                tx.rollback().await.context("transaction failed")?;
+                kms_bail!("creation of object failed: {e}");
+            }
+        };
+        tx.commit().await?;
+        Ok(uid)
     }
 
     async fn create_objects(
@@ -99,7 +120,7 @@ impl Database for SqlitePool {
         let mut res = vec![];
         let mut tx = self.pool.begin().await?;
         for (uid, object) in objects {
-            match create_(uid.clone(), user, object, &mut *tx).await {
+            match create_(uid.clone(), user, object, &mut tx).await {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
@@ -223,15 +244,12 @@ impl Database for SqlitePool {
     }
 }
 
-pub(crate) async fn create_<'e, E>(
+pub(crate) async fn create_(
     uid: Option<String>,
     owner: &str,
     object: &kmip_objects::Object,
-    executor: E,
-) -> KResult<UniqueIdentifier>
-where
-    E: Executor<'e, Database = Sqlite>,
-{
+    executor: &mut Transaction<'_, Sqlite>,
+) -> KResult<UniqueIdentifier> {
     let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
@@ -239,7 +257,13 @@ where
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
 
+    // If the uid is not provided, generate a new one
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    // recover the tags
+    let tags = object.attributes().map_or(HashSet::new(), get_tags);
+    // check the tags match the pattern [a-zA-Z0-9_\-]+
+    check_tags(&tags)?;
 
     sqlx::query(
         SQLITE_QUERIES
@@ -250,8 +274,22 @@ where
     .bind(object_json)
     .bind(StateEnumeration::Active.to_string())
     .bind(owner)
-    .execute(executor)
+    .execute(&mut **executor)
     .await?;
+
+    // Insert the tags
+    for tag in tags {
+        sqlx::query(
+            SQLITE_QUERIES
+                .get("insert-row-tags")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(uid.clone())
+        .bind(tag)
+        .execute(&mut **executor)
+        .await?;
+    }
+
     trace!("Created in DB: {uid} / {owner}");
     Ok(uid)
 }
@@ -690,7 +728,8 @@ mod tests {
         let db = SqlitePool::instantiate(&file_path).await?;
         let mut symmetric_key_bytes = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key_bytes);
-        let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
+        let symmetric_key =
+            create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES, None);
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -931,7 +970,8 @@ mod tests {
 
         let mut symmetric_key_bytes = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key_bytes);
-        let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
+        let symmetric_key =
+            create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES, None);
 
         let uid = Uuid::new_v4().to_string();
 
@@ -1095,7 +1135,7 @@ mod tests {
         let mut symmetric_key_bytes = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key_bytes);
         let mut symmetric_key =
-            create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
+            create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES, None);
 
         let uid = Uuid::new_v4().to_string();
 

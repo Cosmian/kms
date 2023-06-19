@@ -241,7 +241,7 @@ pub trait PlaceholderTrait {
 
     /// Get node specifier depending on `key_name` (ie: `CryptographicAlgorithm`)
     #[must_use]
-    fn extract_path_text(key_name: &str) -> String {
+    fn extract_text_from_key_block_path(key_name: &str) -> String {
         format!("object -> 'object' -> 'KeyBlock' ->> '{key_name}'")
     }
 }
@@ -280,7 +280,7 @@ impl PlaceholderTrait for MySqlPlaceholder {
         )
     }
 
-    fn extract_path_text(key_name: &str) -> String {
+    fn extract_text_from_key_block_path(key_name: &str) -> String {
         format!(
             "{}(object, '$.object.KeyBlock.{key_name}')",
             Self::JSON_FN_EXTRACT_TEXT
@@ -339,7 +339,7 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
         if let Some(cryptographic_algorithm) = attributes.cryptographic_algorithm {
             query = format!(
                 "{query} AND {} = '{cryptographic_algorithm}'",
-                P::extract_path_text("CryptographicAlgorithm")
+                P::extract_text_from_key_block_path("CryptographicAlgorithm")
             );
         };
 
@@ -347,7 +347,7 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
         if let Some(cryptographic_length) = attributes.cryptographic_length {
             query = format!(
                 "{query} AND CAST ({} AS {}) = {cryptographic_length}",
-                P::extract_path_text("CryptographicLength"),
+                P::extract_text_from_key_block_path("CryptographicLength"),
                 P::TYPE_INTEGER
             );
         };
@@ -356,7 +356,7 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
         if let Some(key_format_type) = attributes.key_format_type {
             query = format!(
                 "{query} AND {} = '{key_format_type}'",
-                P::extract_path_text("KeyFormatType")
+                P::extract_text_from_key_block_path("KeyFormatType")
             );
         };
 

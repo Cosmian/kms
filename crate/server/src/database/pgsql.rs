@@ -54,6 +54,14 @@ impl Pgsql {
         .execute(&pool)
         .await?;
 
+        sqlx::query(
+            PGSQL_QUERIES
+                .get("create-table-tags")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .execute(&pool)
+        .await?;
+
         Ok(Self { pool })
     }
 

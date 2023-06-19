@@ -18,7 +18,7 @@ pub fn test_aes() {
     let mut rng = CsRng::from_entropy();
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
-    let key = create_symmetric_key(&symmetric_key, CryptographicAlgorithm::AES);
+    let key = create_symmetric_key(&symmetric_key, CryptographicAlgorithm::AES, None);
     let aes = AesGcmSystem::instantiate("blah", &key).unwrap();
     let mut data = vec![0_u8; 42];
     rng.fill_bytes(&mut data);

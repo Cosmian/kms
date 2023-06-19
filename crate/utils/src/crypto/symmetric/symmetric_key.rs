@@ -2,13 +2,16 @@ use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
     kmip_operations::Create,
-    kmip_types::{Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, VendorAttribute,
+    },
 };
 
 /// Create a symmetric key for the given algorithm
 pub fn create_symmetric_key(
     key_bytes: &[u8],
     cryptographic_algorithm: CryptographicAlgorithm,
+    vendor_attributes: Option<Vec<VendorAttribute>>,
 ) -> Object {
     // this length is in bits
     let symmetric_key_len = key_bytes.len() as i32 * 8;
@@ -33,6 +36,7 @@ pub fn create_symmetric_key(
                             | CryptographicUsageMask::KeyAgreement,
                     ),
                     key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+                    vendor_attributes,
                     ..Attributes::new(ObjectType::SymmetricKey)
                 }),
             },
