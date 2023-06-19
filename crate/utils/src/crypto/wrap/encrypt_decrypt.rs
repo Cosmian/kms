@@ -183,7 +183,8 @@ mod tests {
 
         let mut symmetric_key = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key);
-        let wrap_key = create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+        let wrap_key =
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES, None);
 
         let plaintext = b"plaintext";
         let ciphertext = super::encrypt_bytes(&mut rng, &wrap_key, plaintext).unwrap();

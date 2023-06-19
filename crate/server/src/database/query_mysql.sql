@@ -14,11 +14,22 @@ CREATE TABLE IF NOT EXISTS read_access (
         UNIQUE (id, userid)
 );
 
+-- name: create-table-tags
+CREATE TABLE IF NOT EXISTS tags (
+        id VARCHAR(40),
+        tag VARCHAR(255),
+        UNIQUE (id, tag)
+);
+
+
 -- name: clean-table-objects
 DELETE FROM objects;
 
 -- name: clean-table-read_access
 DELETE FROM read_access;
+
+-- name: clean-table-tags
+DELETE FROM tags;
 
 -- name: insert-row-objects
 INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?);

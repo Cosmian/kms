@@ -84,6 +84,14 @@ impl CachedSqlCipher {
         .execute(pool)
         .await?;
 
+        sqlx::query(
+            SQLITE_QUERIES
+                .get("create-table-tags")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .execute(pool)
+        .await?;
+
         Ok(())
     }
 
@@ -139,9 +147,19 @@ impl Database for CachedSqlCipher {
     ) -> KResult<UniqueIdentifier> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = create_(uid, owner, object, &*pool).await;
+            let mut tx = pool.begin().await?;
+            let uid = match create_(uid, owner, object, &mut tx).await {
+                Ok(uid) => {
+                    tx.commit().await?;
+                    uid
+                }
+                Err(e) => {
+                    tx.rollback().await.context("transaction failed")?;
+                    kms_bail!("creation of object failed: {}", e)
+                }
+            };
             self.post_query(params.group_id)?;
-            return ret
+            return Ok(uid)
         }
 
         kms_bail!("Missing group_id/key for opening SQLCipher")
@@ -159,7 +177,7 @@ impl Database for CachedSqlCipher {
             let mut res = vec![];
             let mut tx = pool.begin().await?;
             for (uid, object) in objects {
-                match create_(uid.clone(), owner, object, &mut *tx).await {
+                match create_(uid.clone(), owner, object, &mut tx).await {
                     Ok(uid) => res.push(uid),
                     Err(e) => {
                         tx.rollback().await.context("transaction failed")?;
@@ -417,7 +435,7 @@ mod tests {
         let mut symmetric_key = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key);
         let symmetric_key =
-            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES, None);
 
         let uid = Uuid::new_v4().to_string();
 
@@ -689,7 +707,7 @@ mod tests {
         let mut symmetric_key = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key);
         let symmetric_key =
-            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES, None);
 
         let uid = Uuid::new_v4().to_string();
 

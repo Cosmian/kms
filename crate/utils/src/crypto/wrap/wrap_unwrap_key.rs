@@ -163,6 +163,7 @@ mod tests {
         let sym_wrapping_key = create_symmetric_key(
             sym_wrapping_key_bytes.as_slice(),
             CryptographicAlgorithm::AES,
+            None,
         );
 
         // the key to wrap
@@ -171,6 +172,7 @@ mod tests {
         let mut sym_key_to_wrap = create_symmetric_key(
             sym_key_to_wrap_bytes.as_slice(),
             CryptographicAlgorithm::AES,
+            None,
         );
 
         let wrapping_key_pair = create_ec_key_pair(
