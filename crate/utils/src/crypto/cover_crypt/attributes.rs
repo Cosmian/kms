@@ -239,15 +239,3 @@ pub fn header_uid_from_attributes(attributes: &Attributes) -> Result<&[u8], Kmip
         ))
     }
 }
-
-//TODO: BGR: this seems unused - must be revisited _ see issue #192
-// /// This UID is used to build the asymmetric CoverCrypt Header object
-// #[cfg(test)]
-// #[allow(deprecated)]
-// pub fn cover_crypt_header_uid_to_vendor_attribute(uid: &[u8]) -> VendorAttribute {
-//     VendorAttribute {
-//         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-//         attribute_name: VENDOR_ATTR_COVER_CRYPT_HEADER_UID.to_owned(),
-//         attribute_value: uid.to_vec(),
-//     }
-// }
