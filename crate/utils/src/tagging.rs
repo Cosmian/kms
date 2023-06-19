@@ -29,10 +29,10 @@ pub fn get_tags(attributes: &Attributes) -> HashSet<String> {
 /// Returns `true` if the tag already existed
 pub fn set_tag(attributes: &mut Attributes, tag: &str) -> Result<bool, KmipError> {
     let va = attributes.get_vendor_attribute_mut(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG);
-    let mut json =
+    let mut set =
         serde_json::from_slice::<HashSet<String>>(&va.attribute_value).unwrap_or_default();
-    let existed = json.insert(tag.to_owned());
-    va.attribute_value = serde_json::to_vec(&json).unwrap();
+    let existed = set.insert(tag.to_owned());
+    va.attribute_value = serde_json::to_vec(&set)?;
     Ok(existed)
 }
 
@@ -41,10 +41,10 @@ pub fn set_tag(attributes: &mut Attributes, tag: &str) -> Result<bool, KmipError
 /// Returns `true` if the tag existed
 pub fn remove_tag(attributes: &mut Attributes, tag: &str) -> Result<bool, KmipError> {
     let va = attributes.get_vendor_attribute_mut(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG);
-    let mut json =
+    let mut set =
         serde_json::from_slice::<HashSet<String>>(&va.attribute_value).unwrap_or_default();
-    let existed = json.remove(tag);
-    va.attribute_value = serde_json::to_vec(&json).unwrap();
+    let existed = set.remove(tag);
+    va.attribute_value = serde_json::to_vec(&set)?;
     Ok(existed)
 }
 

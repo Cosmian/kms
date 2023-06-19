@@ -281,7 +281,7 @@ pub(crate) async fn create_(
     for tag in tags {
         sqlx::query(
             SQLITE_QUERIES
-                .get("insert-row-tags")
+                .get("insert-tags")
                 .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         )
         .bind(uid.clone())
@@ -703,7 +703,7 @@ mod tests {
         },
     };
     use cosmian_kms_utils::{
-        access::ObjectOperationTypes, crypto::symmetric::create_symmetric_key,
+        access::ObjectOperationTypes, crypto::symmetric::create_symmetric_key, tagging::set_tag,
     };
     use tempfile::tempdir;
     use uuid::Uuid;
@@ -1182,6 +1182,44 @@ mod tests {
             .await?;
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].0, uid);
+
+        Ok(())
+    }
+
+    #[actix_rt::test]
+    #[cfg_attr(feature = "sqlcipher", ignore)]
+
+    pub async fn test_insert_tags() -> KResult<()> {
+        log_init("info");
+        let mut rng = CsRng::from_entropy();
+        let dir = tempdir()?;
+        let file_path = dir.path().join("test_sqlite.db");
+        if file_path.exists() {
+            std::fs::remove_file(&file_path).unwrap();
+        }
+
+        // create a symmetric key with tags
+        let mut symmetric_key_bytes = vec![0; 32];
+        rng.fill_bytes(&mut symmetric_key_bytes);
+        // insert tags
+        let mut attributes = Attributes::new(ObjectType::SymmetricKey);
+        set_tag(&mut attributes, "tag1")?;
+        set_tag(&mut attributes, "tag2")?;
+        // create symmetric key
+        let symmetric_key = create_symmetric_key(
+            &symmetric_key_bytes,
+            CryptographicAlgorithm::AES,
+            attributes.vendor_attributes,
+        );
+
+        // insert into DB
+        let db = SqlitePool::instantiate(&file_path).await?;
+        let owner = "eyJhbGciOiJSUzI1Ni";
+        let uid = Uuid::new_v4().to_string();
+        let uid_ = db
+            .create(Some(uid.clone()), owner, &symmetric_key, None)
+            .await?;
+        assert_eq!(&uid, &uid_);
 
         Ok(())
     }

@@ -88,3 +88,6 @@ SELECT objects.id, owner, state, permissions
         INNER JOIN read_access
         ON objects.id = read_access.id
         WHERE read_access.userid=$1;
+
+-- name: insert-tags
+INSERT INTO tags (id, tag) VALUES ($1, $2);
