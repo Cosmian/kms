@@ -128,22 +128,22 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>;
 
-    /// Insert a `userid` to give `operation_type` access right for the object identified
-    /// by its `uid` and belonging to `owner`
+    /// Give the access right to `user` to perform the `operation_type`
+    /// on the object identified by its `uid`
     async fn insert_access(
         &self,
         uid: &str,
-        userid: &str,
+        user: &str,
         operation_type: ObjectOperationTypes,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
-    /// Delete a `userid` to remove read access right for the object identified
-    /// by its `uid` and belonging to `owner`
+    /// Remove the access right to `user` to perform the `operation_type`
+    /// on the object identified by its `uid`
     async fn delete_access(
         &self,
         uid: &str,
-        userid: &str,
+        user: &str,
         operation_type: ObjectOperationTypes,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
@@ -163,6 +163,17 @@ pub trait Database {
         researched_attributes: Option<&Attributes>,
         state: Option<StateEnumeration>,
         owner: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>;
+
+    /// Return uid, state and attributes of the objects
+    /// that contain all the `tags` and for which `user` has access rights
+    /// on ANY of the `operations_types`
+    async fn find_from_tags(
+        &self,
+        tags: &[String],
+        operations_types: &[ObjectOperationTypes],
+        user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>;
 }
