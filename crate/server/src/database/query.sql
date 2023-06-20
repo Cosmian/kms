@@ -91,3 +91,15 @@ SELECT objects.id, owner, state, permissions
 
 -- name: insert-tags
 INSERT INTO tags (id, tag) VALUES ($1, $2);
+
+-- name: select-from-tags
+SELECT objects.id, owner, state, permissions
+FROM objects
+INNER JOIN (
+    SELECT id
+    FROM tags
+    WHERE tag IN ($1) -- put your list of tags here
+    GROUP BY id
+    HAVING COUNT(DISTINCT tag) = $2
+) AS matched_tags
+ON your_table.id = matched_tags.id;

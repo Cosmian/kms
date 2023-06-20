@@ -242,6 +242,16 @@ impl Database for SqlitePool {
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
         find_(researched_attributes, state, owner, &self.pool).await
     }
+
+    async fn find_from_tags(
+        &self,
+        tags: &[String],
+        operations_types: &[ObjectOperationTypes],
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
+        find_from_tags_(tags, operations_types, user, &self.pool).await
+    }
 }
 
 pub(crate) async fn create_(
@@ -689,6 +699,17 @@ where
     Ok(uids)
 }
 
+async fn find_from_tags_<'e, E>(
+    tags: &[String],
+    operations_types: &[ObjectOperationTypes],
+    user: &str,
+    executor: E,
+) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>
+where
+    E: Executor<'e, Database = Sqlite> + Copy,
+{
+}
+
 #[cfg(test)]
 mod tests {
     use cloudproof::reexport::crypto_core::{
@@ -703,7 +724,9 @@ mod tests {
         },
     };
     use cosmian_kms_utils::{
-        access::ObjectOperationTypes, crypto::symmetric::create_symmetric_key, tagging::set_tag,
+        access::ObjectOperationTypes,
+        crypto::symmetric::create_symmetric_key,
+        tagging::{get_tags, set_tag},
     };
     use tempfile::tempdir;
     use uuid::Uuid;
@@ -1220,6 +1243,22 @@ mod tests {
             .create(Some(uid.clone()), owner, &symmetric_key, None)
             .await?;
         assert_eq!(&uid, &uid_);
+
+        //recover the object from DB and check that the vendor attributes contain the tags
+        match db
+            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
+            .await?
+        {
+            Some((obj_, state_)) => {
+                assert_eq!(StateEnumeration::Active, state_);
+                assert_eq!(&symmetric_key, &obj_);
+                let tags = get_tags(obj_.attributes()?);
+                assert_eq!(tags.len(), 2);
+                assert!(tags.contains(&"tag1".to_string()));
+                assert!(tags.contains(&"tag2".to_string()));
+            }
+            None => kms_bail!("There should be an object"),
+        }
 
         Ok(())
     }
