@@ -166,6 +166,11 @@ impl KMS {
     /// The response contains the Unique Identifier provided in the request or
     /// assigned by the server. The server SHALL copy the Unique Identifier
     /// returned by this operations into the ID Placeholder variable.
+    ///
+    /// Cosmian specific: unique identifiers starting with `[` are reserved
+    /// for queries on tags. See tagging.
+    /// For instance, a request for uniquer identifier `[tag1]` will
+    /// attempt to find a valid single object tagged with `tag1`
     pub async fn import(
         &self,
         request: Import,
