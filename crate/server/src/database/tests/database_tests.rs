@@ -5,16 +5,19 @@ use cloudproof::reexport::crypto_core::{
 };
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
-    kmip_types::{Attributes, CryptographicAlgorithm},
+    kmip_types::{Attributes, CryptographicAlgorithm, StateEnumeration},
 };
 use cosmian_kms_utils::{
-    access::ExtraDatabaseParams, crypto::symmetric::create_symmetric_key, tagging::set_tag,
+    access::{ExtraDatabaseParams, ObjectOperationTypes},
+    crypto::symmetric::create_symmetric_key,
+    tagging::{get_tags, set_tag},
 };
 use tempfile::tempdir;
 use uuid::Uuid;
 
 use crate::{
     database::{cached_sqlcipher::CachedSqlCipher, sqlite::SqlitePool, Database},
+    kms_bail,
     log_utils::log_init,
     result::KResult,
 };
@@ -42,7 +45,7 @@ async fn test_sql_cipher() -> KResult<()> {
     };
 
     // run the tests
-    let _uid = create(db, Some(&params)).await?;
+    crud(db, Some(&params)).await?;
     Ok(())
 }
 
@@ -57,12 +60,12 @@ async fn test_sqlite() -> KResult<()> {
     }
     let db = SqlitePool::instantiate(&file_path).await?;
 
-    let _uid = create(db, None).await?;
+    crud(db, None).await?;
 
     Ok(())
 }
 
-async fn create<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> KResult<String> {
+async fn crud<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> KResult<()> {
     log_init("info");
     let mut rng = CsRng::from_entropy();
 
@@ -88,5 +91,22 @@ async fn create<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -
         .await?;
     assert_eq!(&uid, &uid_);
 
-    Ok(uid)
+    // retrieve from DB
+    let _state = match db
+        .retrieve(&uid, owner, ObjectOperationTypes::Get, db_params)
+        .await?
+    {
+        Some((obj_, state_)) => {
+            assert_eq!(StateEnumeration::Active, state_);
+            assert_eq!(&symmetric_key, &obj_);
+            let tags = get_tags(obj_.attributes()?);
+            assert_eq!(tags.len(), 2);
+            assert!(tags.contains(&"tag1".to_string()));
+            assert!(tags.contains(&"tag2".to_string()));
+            state_
+        }
+        None => kms_bail!("There should be an object"),
+    };
+
+    Ok(())
 }
