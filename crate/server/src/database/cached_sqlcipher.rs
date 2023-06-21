@@ -24,7 +24,7 @@ use super::{
     },
 };
 use crate::{
-    database::{Database, SQLITE_QUERIES},
+    database::{sqlite::find_from_tags_, Database, SQLITE_QUERIES},
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
@@ -315,7 +315,7 @@ impl Database for CachedSqlCipher {
         kms_bail!("Missing group_id/key for opening SQLCipher")
     }
 
-    async fn insert_access(
+    async fn grant_access(
         &self,
         uid: &str,
         userid: &str,
@@ -332,7 +332,7 @@ impl Database for CachedSqlCipher {
         kms_bail!("Missing group_id/key for opening SQLCipher")
     }
 
-    async fn delete_access(
+    async fn remove_access(
         &self,
         uid: &str,
         userid: &str,
@@ -375,6 +375,29 @@ impl Database for CachedSqlCipher {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = find_(researched_attributes, state, owner, &*pool).await;
+            self.post_query(params.group_id)?;
+            return ret
+        }
+
+        kms_bail!("Missing group_id/key for opening SQLCipher")
+    }
+
+    async fn find_from_tags(
+        &self,
+        tags: &[String],
+        user: Option<String>,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<
+        Vec<(
+            UniqueIdentifier,
+            String,
+            StateEnumeration,
+            Vec<ObjectOperationTypes>,
+        )>,
+    > {
+        if let Some(params) = params {
+            let pool = self.pre_query(params.group_id, &params.key).await?;
+            let ret = find_from_tags_(tags, user, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -480,7 +503,7 @@ mod tests {
 
         // Add authorized `userid` to `read_access` table
 
-        db.insert_access(&uid, userid, ObjectOperationTypes::Get, Some(&params))
+        db.grant_access(&uid, userid, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
         // Retrieve object with authorized `userid` with `Create` operation type - ko
@@ -508,12 +531,12 @@ mod tests {
 
         // Add authorized `userid2` to `read_access` table
 
-        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
+        db.grant_access(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
         // Try to add same access again - OK
 
-        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
+        db.grant_access(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
         let objects = db.find(None, None, owner, Some(&params)).await?;
@@ -577,7 +600,7 @@ mod tests {
 
         // Remove `userid2` authorization
 
-        db.delete_access(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
+        db.remove_access(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
         // Retrieve object with `userid2` with `Get` operation type - ko
@@ -618,21 +641,21 @@ mod tests {
         let uid = Uuid::new_v4().to_string();
 
         // simple insert
-        db.insert_access(&uid, userid, ObjectOperationTypes::Get, Some(&params))
+        db.grant_access(&uid, userid, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
         let perms = db.perms(&uid, userid, Some(&params)).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
         // double insert, expect no duplicate
-        db.insert_access(&uid, userid, ObjectOperationTypes::Get, Some(&params))
+        db.grant_access(&uid, userid, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
         let perms = db.perms(&uid, userid, Some(&params)).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
         // insert other operation type
-        db.insert_access(&uid, userid, ObjectOperationTypes::Encrypt, Some(&params))
+        db.grant_access(&uid, userid, ObjectOperationTypes::Encrypt, Some(&params))
             .await?;
 
         let perms = db.perms(&uid, userid, Some(&params)).await?;
@@ -642,7 +665,7 @@ mod tests {
         );
 
         // insert other `userid2`, check it is ok and it didn't change anything for `userid`
-        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
+        db.grant_access(&uid, userid2, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
         let perms = db.perms(&uid, userid2, Some(&params)).await?;
@@ -670,7 +693,7 @@ mod tests {
         );
 
         // remove `Get` access for `userid`
-        db.delete_access(&uid, userid, ObjectOperationTypes::Get, Some(&params))
+        db.remove_access(&uid, userid, ObjectOperationTypes::Get, Some(&params))
             .await?;
 
         let perms = db.perms(&uid, userid2, Some(&params)).await?;

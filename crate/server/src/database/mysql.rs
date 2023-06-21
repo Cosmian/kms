@@ -618,7 +618,7 @@ impl Database for Sql {
         list_accesses_(uid, &self.pool).await
     }
 
-    async fn insert_access(
+    async fn grant_access(
         &self,
         uid: &str,
         userid: &str,
@@ -628,7 +628,7 @@ impl Database for Sql {
         insert_access_(uid, userid, operation_type, &self.pool).await
     }
 
-    async fn delete_access(
+    async fn remove_access(
         &self,
         uid: &str,
         userid: &str,
@@ -655,6 +655,22 @@ impl Database for Sql {
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
         find_(researched_attributes, state, owner, &self.pool).await
+    }
+
+    async fn find_from_tags(
+        &self,
+        _tags: &[String],
+        _user: Option<String>,
+        _params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<
+        Vec<(
+            UniqueIdentifier,
+            String,
+            StateEnumeration,
+            Vec<ObjectOperationTypes>,
+        )>,
+    > {
+        todo!("implement find_from_tags for mysql");
     }
 }
 
@@ -1020,7 +1036,7 @@ mod tests {
         // Add authorized `userid` to `read_access` table
 
         mysql
-            .insert_access(&uid, userid, ObjectOperationTypes::Get, None)
+            .grant_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         // Retrieve object with authorized `userid` with `Create` operation type - ko
@@ -1049,13 +1065,13 @@ mod tests {
         // Add authorized `userid2` to `read_access` table
 
         mysql
-            .insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
+            .grant_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         // Try to add same access again - OK
 
         mysql
-            .insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
+            .grant_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         let objects = mysql.find(None, None, owner, None).await?;
@@ -1118,7 +1134,7 @@ mod tests {
         // Remove `userid2` authorization
 
         mysql
-            .delete_access(&uid, userid2, ObjectOperationTypes::Get, None)
+            .remove_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         // Retrieve object with `userid2` with `Get` operation type - ko
@@ -1148,7 +1164,7 @@ mod tests {
 
         // simple insert
         mysql
-            .insert_access(&uid, userid, ObjectOperationTypes::Get, None)
+            .grant_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = mysql.perms(&uid, userid).await?;
@@ -1156,7 +1172,7 @@ mod tests {
 
         // double insert, expect no duplicate
         mysql
-            .insert_access(&uid, userid, ObjectOperationTypes::Get, None)
+            .grant_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = mysql.perms(&uid, userid).await?;
@@ -1164,7 +1180,7 @@ mod tests {
 
         // insert other operation type
         mysql
-            .insert_access(&uid, userid, ObjectOperationTypes::Encrypt, None)
+            .grant_access(&uid, userid, ObjectOperationTypes::Encrypt, None)
             .await?;
 
         let perms = mysql.perms(&uid, userid).await?;
@@ -1175,7 +1191,7 @@ mod tests {
 
         // insert other `userid2`, check it is ok and it didn't change anything for `userid`
         mysql
-            .insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
+            .grant_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = mysql.perms(&uid, userid2).await?;
@@ -1204,7 +1220,7 @@ mod tests {
 
         // remove `Get` access for `userid`
         mysql
-            .delete_access(&uid, userid, ObjectOperationTypes::Get, None)
+            .remove_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = mysql.perms(&uid, userid2).await?;

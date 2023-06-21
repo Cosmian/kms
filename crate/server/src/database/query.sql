@@ -98,8 +98,10 @@ FROM objects
 INNER JOIN (
     SELECT id
     FROM tags
-    WHERE tag IN ($1) -- put your list of tags here
+    WHERE tag IN (@TAGS) 
     GROUP BY id
-    HAVING COUNT(DISTINCT tag) = $2
+    HAVING COUNT(DISTINCT tag) = @LEN
 ) AS matched_tags
-ON your_table.id = matched_tags.id;
+ON objects.id = matched_tags.id
+LEFT JOIN read_access
+ON objects.id = read_access.id AND read_access.userid=@USER;
