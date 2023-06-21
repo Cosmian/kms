@@ -53,6 +53,8 @@ impl CachedSqlCipher {
     ) -> KResult<Pool<Sqlite>> {
         let path = self.filename(group_id);
         let options = SqliteConnectOptions::new()
+            // create the database file if it doesn't exist
+            .create_if_missing(true)
             .pragma("key", format!("\"x'{}'\"", hex::encode(key.as_bytes())))
             .pragma("journal_mode", "OFF")
             .filename(path)
@@ -61,10 +63,11 @@ impl CachedSqlCipher {
             // disable logging of each query
             .disable_statement_logging();
 
-        Ok(SqlitePoolOptions::new()
+        SqlitePoolOptions::new()
             .max_connections(1)
             .connect_with(options)
-            .await?)
+            .await
+            .context("Failed to connect to SQCipher database")
     }
 
     async fn create_tables(pool: &Pool<Sqlite>) -> KResult<()> {
