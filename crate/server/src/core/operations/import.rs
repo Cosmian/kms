@@ -8,7 +8,7 @@ use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, warn};
 
 use super::wrapping::unwrap_key;
-use crate::{core::KMS, result::KResult};
+use crate::{core::KMS, kms_bail, result::KResult};
 
 /// Import a new object
 pub async fn import(
@@ -17,6 +17,13 @@ pub async fn import(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ImportResponse> {
+    // Unique identifiers starting with `[` are reserved for queries on tags
+    // see tagging
+    // For instance, a request for uniquer identifier `[tag1]` will
+    // attempt to find a valid single object tagged with `tag1`
+    if request.unique_identifier.starts_with('[') {
+        kms_bail!("Importing objects with uniquer identifiers starting with `[` is not supported");
+    }
     let mut object = request.object;
     let object_type = object.object_type();
     let object_key_block = object.key_block_mut()?;
