@@ -204,7 +204,7 @@ impl Database for SqlitePool {
         list_accesses_(uid, &self.pool).await
     }
 
-    async fn insert_access(
+    async fn grant_access(
         &self,
         uid: &str,
         userid: &str,
@@ -214,7 +214,7 @@ impl Database for SqlitePool {
         insert_access_(uid, userid, operation_type, &self.pool).await
     }
 
-    async fn delete_access(
+    async fn remove_access(
         &self,
         uid: &str,
         userid: &str,
@@ -246,11 +246,17 @@ impl Database for SqlitePool {
     async fn find_from_tags(
         &self,
         tags: &[String],
-        operations_types: &[ObjectOperationTypes],
-        user: &str,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
-        find_from_tags_(tags, operations_types, user, &self.pool).await
+        user: Option<String>,
+        _params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<
+        Vec<(
+            UniqueIdentifier,
+            String,
+            StateEnumeration,
+            Vec<ObjectOperationTypes>,
+        )>,
+    > {
+        find_from_tags_(tags, user, &self.pool).await
     }
 }
 
@@ -677,12 +683,18 @@ where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
     let query = query_from_attributes::<SqlitePlaceholder>(researched_attributes, state, owner)?;
-
     let query = sqlx::query(&query);
-    let list = query.fetch_all(executor).await?;
+    let rows = query.fetch_all(executor).await?;
 
-    let mut uids = Vec::with_capacity(list.len());
-    for row in list {
+    to_qualified_uids(&rows)
+}
+
+/// Convert a list of rows into a list of qualified uids
+fn to_qualified_uids(
+    rows: &[SqliteRow],
+) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
+    let mut uids = Vec::with_capacity(rows.len());
+    for row in rows {
         let raw = row.get::<Vec<u8>, _>(2);
         let attrs: Attributes = serde_json::from_slice(&raw)
             .context("failed deserializing attributes")
@@ -695,19 +707,74 @@ where
             row.get::<IsWrapped, _>(3),
         ));
     }
-
     Ok(uids)
 }
 
-async fn find_from_tags_<'e, E>(
+pub(crate) async fn find_from_tags_<'e, E>(
     tags: &[String],
-    operations_types: &[ObjectOperationTypes],
-    user: &str,
+    user: Option<String>,
     executor: E,
-) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>
+) -> KResult<
+    Vec<(
+        UniqueIdentifier,
+        String,
+        StateEnumeration,
+        Vec<ObjectOperationTypes>,
+    )>,
+>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
+    // Build the raw tags params
+    let tags_params = tags
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("${}", i + 1))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    // Build the raw SQL query
+    let rawsql = SQLITE_QUERIES
+        .get("select-from-tags")
+        .context("SQL query can't be found")?
+        .replace("@TAGS", &tags_params)
+        .replace("@LEN", &format!("${}", tags.len() + 1))
+        .replace("@USER", &format!("${}", tags.len() + 2));
+
+    // Bind the tags params
+    let mut query = sqlx::query::<Sqlite>(&rawsql);
+    for tag in tags {
+        query = query.bind(tag);
+    }
+    // Bind the tags len and the user
+    query = query
+        .bind(tags.len() as i16)
+        .bind(user.unwrap_or("".to_string()));
+
+    // Execute the query
+    let rows = query.fetch_all(executor).await?;
+
+    // Convert the rows into a list of qualified results
+    let mut results = Vec::with_capacity(rows.len());
+    for row in rows {
+        let raw = row.get::<Vec<u8>, _>(3);
+        let perms: Vec<ObjectOperationTypes> = if raw.is_empty() {
+            vec![]
+        } else {
+            serde_json::from_slice(&raw)
+                .context("failed deserializing permissions")
+                .map_err(|e| KmsError::DatabaseError(e.to_string()))?
+        };
+
+        results.push((
+            row.get::<String, _>(0),
+            row.get::<String, _>(1),
+            state_from_string(&row.get::<String, _>(2))?,
+            perms,
+        ));
+    }
+
+    Ok(results)
 }
 
 #[cfg(test)]
@@ -724,9 +791,7 @@ mod tests {
         },
     };
     use cosmian_kms_utils::{
-        access::ObjectOperationTypes,
-        crypto::symmetric::create_symmetric_key,
-        tagging::{get_tags, set_tag},
+        access::ObjectOperationTypes, crypto::symmetric::create_symmetric_key,
     };
     use tempfile::tempdir;
     use uuid::Uuid;
@@ -785,7 +850,7 @@ mod tests {
 
         // Add authorized `userid` to `read_access` table
 
-        db.insert_access(&uid, userid, ObjectOperationTypes::Get, None)
+        db.grant_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         // Retrieve object with authorized `userid` with `Create` operation type - ko
@@ -813,12 +878,12 @@ mod tests {
 
         // Add authorized `userid2` to `read_access` table
 
-        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
+        db.grant_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         // Try to add same access again - OK
 
-        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
+        db.grant_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         let objects = db.find(None, None, owner, None).await?;
@@ -880,7 +945,7 @@ mod tests {
 
         // Remove `userid2` authorization
 
-        db.delete_access(&uid, userid2, ObjectOperationTypes::Get, None)
+        db.remove_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         // Retrieve object with `userid2` with `Get` operation type - ko
@@ -911,21 +976,21 @@ mod tests {
         let uid = Uuid::new_v4().to_string();
 
         // simple insert
-        db.insert_access(&uid, userid, ObjectOperationTypes::Get, None)
+        db.grant_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = db.perms(&uid, userid).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
         // double insert, expect no duplicate
-        db.insert_access(&uid, userid, ObjectOperationTypes::Get, None)
+        db.grant_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = db.perms(&uid, userid).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
         // insert other operation type
-        db.insert_access(&uid, userid, ObjectOperationTypes::Encrypt, None)
+        db.grant_access(&uid, userid, ObjectOperationTypes::Encrypt, None)
             .await?;
 
         let perms = db.perms(&uid, userid).await?;
@@ -935,7 +1000,7 @@ mod tests {
         );
 
         // insert other `userid2`, check it is ok and it didn't change anything for `userid`
-        db.insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
+        db.grant_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = db.perms(&uid, userid2).await?;
@@ -963,7 +1028,7 @@ mod tests {
         );
 
         // remove `Get` access for `userid`
-        db.delete_access(&uid, userid, ObjectOperationTypes::Get, None)
+        db.remove_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = db.perms(&uid, userid2).await?;
@@ -1205,60 +1270,6 @@ mod tests {
             .await?;
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].0, uid);
-
-        Ok(())
-    }
-
-    #[actix_rt::test]
-    #[cfg_attr(feature = "sqlcipher", ignore)]
-
-    pub async fn test_insert_tags() -> KResult<()> {
-        log_init("info");
-        let mut rng = CsRng::from_entropy();
-        let dir = tempdir()?;
-        let file_path = dir.path().join("test_sqlite.db");
-        if file_path.exists() {
-            std::fs::remove_file(&file_path).unwrap();
-        }
-
-        // create a symmetric key with tags
-        let mut symmetric_key_bytes = vec![0; 32];
-        rng.fill_bytes(&mut symmetric_key_bytes);
-        // insert tags
-        let mut attributes = Attributes::new(ObjectType::SymmetricKey);
-        set_tag(&mut attributes, "tag1")?;
-        set_tag(&mut attributes, "tag2")?;
-        // create symmetric key
-        let symmetric_key = create_symmetric_key(
-            &symmetric_key_bytes,
-            CryptographicAlgorithm::AES,
-            attributes.vendor_attributes,
-        );
-
-        // insert into DB
-        let db = SqlitePool::instantiate(&file_path).await?;
-        let owner = "eyJhbGciOiJSUzI1Ni";
-        let uid = Uuid::new_v4().to_string();
-        let uid_ = db
-            .create(Some(uid.clone()), owner, &symmetric_key, None)
-            .await?;
-        assert_eq!(&uid, &uid_);
-
-        //recover the object from DB and check that the vendor attributes contain the tags
-        match db
-            .retrieve(&uid, owner, ObjectOperationTypes::Get, None)
-            .await?
-        {
-            Some((obj_, state_)) => {
-                assert_eq!(StateEnumeration::Active, state_);
-                assert_eq!(&symmetric_key, &obj_);
-                let tags = get_tags(obj_.attributes()?);
-                assert_eq!(tags.len(), 2);
-                assert!(tags.contains(&"tag1".to_string()));
-                assert!(tags.contains(&"tag2".to_string()));
-            }
-            None => kms_bail!("There should be an object"),
-        }
 
         Ok(())
     }

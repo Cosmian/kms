@@ -23,6 +23,9 @@ pub mod sqlite;
 
 pub(crate) mod mysql;
 
+#[cfg(test)]
+mod tests;
+
 const PGSQL_FILE_QUERIES: &str = include_str!("query.sql");
 const MYSQL_FILE_QUERIES: &str = include_str!("query_mysql.sql");
 const SQLITE_FILE_QUERIES: &str = include_str!("query.sql");
@@ -128,9 +131,9 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>;
 
-    /// Give the access right to `user` to perform the `operation_type`
+    /// Grant the access right to `user` to perform the `operation_type`
     /// on the object identified by its `uid`
-    async fn insert_access(
+    async fn grant_access(
         &self,
         uid: &str,
         user: &str,
@@ -140,7 +143,7 @@ pub trait Database {
 
     /// Remove the access right to `user` to perform the `operation_type`
     /// on the object identified by its `uid`
-    async fn delete_access(
+    async fn remove_access(
         &self,
         uid: &str,
         user: &str,
@@ -166,16 +169,23 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>;
 
-    /// Return uid, state and attributes of the objects
-    /// that contain all the `tags` and for which `user` has access rights
-    /// on ANY of the `operations_types`
+    /// Return uid, owner and state of the objects
+    /// that contain all the `tags`
+    /// If a `user` is specified, also retrieve the
+    /// access rights for that user if any
     async fn find_from_tags(
         &self,
         tags: &[String],
-        operations_types: &[ObjectOperationTypes],
-        user: &str,
+        user: Option<String>,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>;
+    ) -> KResult<
+        Vec<(
+            UniqueIdentifier,
+            String,
+            StateEnumeration,
+            Vec<ObjectOperationTypes>,
+        )>,
+    >;
 }
 
 /// The Database implemented using `SQLite`

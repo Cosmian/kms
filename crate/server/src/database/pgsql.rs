@@ -605,7 +605,7 @@ impl Database for Pgsql {
         list_accesses_(uid, &self.pool).await
     }
 
-    async fn insert_access(
+    async fn grant_access(
         &self,
         uid: &str,
         userid: &str,
@@ -615,7 +615,7 @@ impl Database for Pgsql {
         insert_access_(uid, userid, operation_type, &self.pool).await
     }
 
-    async fn delete_access(
+    async fn remove_access(
         &self,
         uid: &str,
         userid: &str,
@@ -642,6 +642,22 @@ impl Database for Pgsql {
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
         find_(researched_attributes, state, owner, &self.pool).await
+    }
+
+    async fn find_from_tags(
+        &self,
+        _tags: &[String],
+        _user: Option<String>,
+        _params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<
+        Vec<(
+            UniqueIdentifier,
+            String,
+            StateEnumeration,
+            Vec<ObjectOperationTypes>,
+        )>,
+    > {
+        todo!("implement find_from_tags for pgsql");
     }
 }
 
@@ -1021,7 +1037,7 @@ mod tests {
 
         // Add authorized `userid` to `read_access` table
 
-        pg.insert_access(&uid, userid, ObjectOperationTypes::Get, None)
+        pg.grant_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         // Retrieve object with authorized `userid` with `Create` operation type - ko
@@ -1049,12 +1065,12 @@ mod tests {
 
         // Add authorized `userid2` to `read_access` table
 
-        pg.insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
+        pg.grant_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         // Try to add same access again - OK
 
-        pg.insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
+        pg.grant_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         let objects = pg.find(None, None, owner, None).await?;
@@ -1116,7 +1132,7 @@ mod tests {
 
         // Remove `userid2` authorization
 
-        pg.delete_access(&uid, userid2, ObjectOperationTypes::Get, None)
+        pg.remove_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         // Retrieve object with `userid2` with `Get` operation type - ko
@@ -1145,21 +1161,21 @@ mod tests {
         let uid = Uuid::new_v4().to_string();
 
         // simple insert
-        pg.insert_access(&uid, userid, ObjectOperationTypes::Get, None)
+        pg.grant_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = pg.perms(&uid, userid).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
         // double insert, expect no duplicate
-        pg.insert_access(&uid, userid, ObjectOperationTypes::Get, None)
+        pg.grant_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = pg.perms(&uid, userid).await?;
         assert_eq!(perms, vec![ObjectOperationTypes::Get]);
 
         // insert other operation type
-        pg.insert_access(&uid, userid, ObjectOperationTypes::Encrypt, None)
+        pg.grant_access(&uid, userid, ObjectOperationTypes::Encrypt, None)
             .await?;
 
         let perms = pg.perms(&uid, userid).await?;
@@ -1169,7 +1185,7 @@ mod tests {
         );
 
         // insert other `userid2`, check it is ok and it didn't change anything for `userid`
-        pg.insert_access(&uid, userid2, ObjectOperationTypes::Get, None)
+        pg.grant_access(&uid, userid2, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = pg.perms(&uid, userid2).await?;
@@ -1197,7 +1213,7 @@ mod tests {
         );
 
         // remove `Get` access for `userid`
-        pg.delete_access(&uid, userid, ObjectOperationTypes::Get, None)
+        pg.remove_access(&uid, userid, ObjectOperationTypes::Get, None)
             .await?;
 
         let perms = pg.perms(&uid, userid2).await?;

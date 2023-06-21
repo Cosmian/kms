@@ -544,7 +544,7 @@ impl KMS {
         }
 
         self.db
-            .insert_access(uid, &access.user_id, access.operation_type, params)
+            .grant_access(uid, &access.user_id, access.operation_type, params)
             .await?;
         Ok(())
     }
@@ -579,7 +579,7 @@ impl KMS {
         }
 
         self.db
-            .delete_access(uid, &access.user_id, access.operation_type, params)
+            .remove_access(uid, &access.user_id, access.operation_type, params)
             .await?;
         Ok(())
     }
