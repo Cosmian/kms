@@ -26,23 +26,26 @@ pub async fn decrypt(
     if uid.starts_with('[') {
         let tags: Vec<String> =
             serde_json::from_str(&uid).with_context(|| format!("Invalid tags: {uid}"))?;
-        let res = kms
+        // find the key(s) that matches the tags
+        // the user must be the owner or have decrypt permissions
+        let uids = kms
             .db
             .find_from_tags(&tags, Some(user.to_owned()), params)
             .await?
             .into_iter()
             .filter(|(_unique_identifier, owner, state, permissions)| {
                 owner == user
-                    && (*state == StateEnumeration::Active
+                    || (*state == StateEnumeration::Active
                         && permissions
                             .iter()
                             .any(|p| *p == ObjectOperationTypes::Decrypt))
             })
             .map(|(unique_identifier, _, _, _)| unique_identifier)
             .collect::<Vec<_>>();
-        uid = match res.len() {
+        // there must only be one matching key
+        uid = match uids.len() {
             0 => kms_bail!("No matching key for tags"),
-            1 => res[0].clone(),
+            1 => uids[0].clone(),
             _ => {
                 kms_bail!("Multiple matching keys for tags")
             }
