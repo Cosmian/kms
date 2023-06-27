@@ -1,16 +1,14 @@
+use std::collections::HashSet;
+
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     symmetric_crypto::key::Key,
     CsRng, KeyTrait,
 };
-use cosmian_kmip::kmip::{
-    kmip_objects::ObjectType,
-    kmip_types::{Attributes, CryptographicAlgorithm, StateEnumeration},
-};
+use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration};
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationTypes},
     crypto::symmetric::create_symmetric_key,
-    tagging::{get_tags, set_tags},
 };
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -72,9 +70,6 @@ async fn crud<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
     // create a symmetric key with tags
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
-    // insert tags
-    let mut attributes = Attributes::new(ObjectType::SymmetricKey);
-    set_tags(&mut attributes, ["tag1", "tag2"])?;
     // create symmetric key
     let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
 
@@ -82,7 +77,13 @@ async fn crud<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
     let owner = "eyJhbGciOiJSUzI1Ni";
     let uid = Uuid::new_v4().to_string();
     let uid_ = db
-        .create(Some(uid.clone()), owner, &symmetric_key, db_params)
+        .create(
+            Some(uid.clone()),
+            owner,
+            &symmetric_key,
+            &HashSet::from(["tag1".to_owned(), "tag2".to_owned()]),
+            db_params,
+        )
         .await?;
     assert_eq!(&uid, &uid_);
 
@@ -91,10 +92,9 @@ async fn crud<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
         .retrieve(&uid, owner, ObjectOperationTypes::Get, db_params)
         .await?
     {
-        Some((obj_, state_)) => {
+        Some((obj_, state_, tags)) => {
             assert_eq!(StateEnumeration::Active, state_);
             assert_eq!(&symmetric_key, &obj_);
-            let tags = get_tags(obj_.attributes()?);
             assert_eq!(tags.len(), 2);
             assert!(tags.contains(&"tag1".to_string()));
             assert!(tags.contains(&"tag2".to_string()));

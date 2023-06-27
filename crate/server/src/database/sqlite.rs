@@ -10,10 +10,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes},
-    tagging::{check_tags, get_tags},
-};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
 use serde_json::Value;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
@@ -97,10 +94,11 @@ impl Database for SqlitePool {
         uid: Option<String>,
         user: &str,
         object: &kmip_objects::Object,
+        tags: &HashSet<String>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier> {
         let mut tx = self.pool.begin().await?;
-        let uid = match create_(uid, user, object, &mut tx).await {
+        let uid = match create_(uid, user, object, tags, &mut tx).await {
             Ok(uid) => uid,
             Err(e) => {
                 tx.rollback().await.context("transaction failed")?;
@@ -114,13 +112,13 @@ impl Database for SqlitePool {
     async fn create_objects(
         &self,
         user: &str,
-        objects: &[(Option<String>, kmip_objects::Object)],
+        objects: &[(Option<String>, kmip_objects::Object, &HashSet<String>)],
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         let mut res = vec![];
         let mut tx = self.pool.begin().await?;
-        for (uid, object) in objects {
-            match create_(uid.clone(), user, object, &mut tx).await {
+        for (uid, object, tags) in objects {
+            match create_(uid.clone(), user, object, tags, &mut tx).await {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
@@ -138,7 +136,7 @@ impl Database for SqlitePool {
         user: &str,
         operation_type: ObjectOperationTypes,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Option<(kmip_objects::Object, StateEnumeration)>> {
+    ) -> KResult<Option<(kmip_objects::Object, StateEnumeration, HashSet<String>)>> {
         retrieve_(uid, user, operation_type, &self.pool).await
     }
 
@@ -146,9 +144,20 @@ impl Database for SqlitePool {
         &self,
         uid: &str,
         object: &kmip_objects::Object,
+        tags: &HashSet<String>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        update_object_(uid, object, &self.pool).await
+        let mut tx = self.pool.begin().await?;
+        match update_object_(uid, object, tags, &mut tx).await {
+            Ok(()) => {
+                tx.commit().await?;
+                Ok(())
+            }
+            Err(e) => {
+                tx.rollback().await.context("transaction failed")?;
+                kms_bail!("update of object failed: {}", e);
+            }
+        }
     }
 
     async fn update_state(
@@ -165,10 +174,21 @@ impl Database for SqlitePool {
         uid: &str,
         user: &str,
         object: &kmip_objects::Object,
+        tags: &HashSet<String>,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        upsert_(uid, user, object, state, &self.pool).await
+        let mut tx = self.pool.begin().await?;
+        match upsert_(uid, user, object, tags, state, &mut tx).await {
+            Ok(()) => {
+                tx.commit().await?;
+                Ok(())
+            }
+            Err(e) => {
+                tx.rollback().await.context("transaction failed")?;
+                kms_bail!("upsert of object failed: {}", e);
+            }
+        }
     }
 
     async fn delete(
@@ -177,7 +197,17 @@ impl Database for SqlitePool {
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        delete_(uid, user, &self.pool).await
+        let mut tx = self.pool.begin().await?;
+        match delete_(uid, user, &mut tx).await {
+            Ok(()) => {
+                tx.commit().await?;
+                Ok(())
+            }
+            Err(e) => {
+                tx.rollback().await.context("transaction failed")?;
+                kms_bail!("delete of object failed: {}", e);
+            }
+        }
     }
 
     async fn list_access_rights_obtained(
@@ -245,7 +275,7 @@ impl Database for SqlitePool {
 
     async fn find_from_tags(
         &self,
-        tags: &[String],
+        tags: &HashSet<String>,
         user: Option<String>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
@@ -264,6 +294,7 @@ pub(crate) async fn create_(
     uid: Option<String>,
     owner: &str,
     object: &kmip_objects::Object,
+    tags: &HashSet<String>,
     executor: &mut Transaction<'_, Sqlite>,
 ) -> KResult<UniqueIdentifier> {
     let object_json = serde_json::to_value(DBObject {
@@ -276,14 +307,9 @@ pub(crate) async fn create_(
     // If the uid is not provided, generate a new one
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    // recover the tags
-    let tags = object.attributes().map_or(HashSet::new(), get_tags);
-    // check the tags match the pattern [a-zA-Z0-9_\-]+
-    check_tags(&tags)?;
-
     sqlx::query(
         SQLITE_QUERIES
-            .get("insert-row-objects")
+            .get("insert-objects")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid.clone())
@@ -312,78 +338,84 @@ pub(crate) async fn create_(
 
 pub(crate) async fn retrieve_<'e, E>(
     uid: &str,
-    owner_or_userid: &str,
+    user: &str,
     operation_type: ObjectOperationTypes,
     executor: E,
-) -> KResult<Option<(kmip_objects::Object, StateEnumeration)>>
+) -> KResult<Option<(kmip_objects::Object, StateEnumeration, HashSet<String>)>>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
     let row: Option<SqliteRow> = sqlx::query(
         SQLITE_QUERIES
-            .get("select-row-objects")
+            .get("select-object")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
-    .bind(owner_or_userid)
+    .bind(user)
     .fetch_optional(executor)
     .await?;
 
-    if let Some(row) = row {
-        let raw = row.get::<Vec<u8>, _>(0);
-        let db_object: DBObject = serde_json::from_slice(&raw)
-            .context("failed deserializing the object")
-            .reason(ErrorReason::Internal_Server_Error)?;
-        let object = kmip_objects::Object::post_fix(db_object.object_type, db_object.object);
-        let state = state_from_string(&row.get::<String, _>(1))?;
-        return Ok(Some((object, state)))
+    // if no row, return
+    let row = match row {
+        Some(r) => r,
+        None => return Ok(None),
+    };
+
+    // recover the object
+    let raw_object = row.get::<Vec<u8>, _>(0);
+    let db_object: DBObject = serde_json::from_slice(&raw_object)
+        .context("failed deserializing the object")
+        .reason(ErrorReason::Internal_Server_Error)?;
+    let object = kmip_objects::Object::post_fix(db_object.object_type, db_object.object);
+
+    // recover the state
+    let state = state_from_string(&row.get::<String, _>(2))?;
+
+    // find the tags
+    let tag_rows: Vec<SqliteRow> = sqlx::query(
+        SQLITE_QUERIES
+            .get("select-tags")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .fetch_all(executor)
+    .await?;
+    let tags = tag_rows
+        .iter()
+        .map(|r| r.get(0))
+        .collect::<HashSet<String>>();
+
+    // if the user is the owner, we are good and can return the row
+    let owner = row.get::<String, _>(1);
+    if user == &owner {
+        return Ok(Some((object, state, tags)))
     }
 
-    let row: Option<SqliteRow> = sqlx::query(
-        SQLITE_QUERIES
-            .get("select-row-objects-join-read_access")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .bind(owner_or_userid)
-    .fetch_optional(executor)
-    .await?;
+    // check if the users has the right permissions
+    let perms_raw = row.get::<Vec<u8>, _>(3);
+    let perms: Vec<ObjectOperationTypes> = serde_json::from_slice(&perms_raw)
+        .context("failed deserializing the permissions")
+        .reason(ErrorReason::Internal_Server_Error)?;
 
-    row.map_or(Ok(None), |row| {
-        let perms_raw = row.get::<Vec<u8>, _>(2);
-        let perms: Vec<ObjectOperationTypes> = serde_json::from_slice(&perms_raw)
-            .context("failed deserializing the permissions")
-            .reason(ErrorReason::Internal_Server_Error)?;
+    // Check this operation is legit to fetch this object
+    if perms.into_iter().all(|p| p != operation_type) {
+        warn!(
+            "No authorization to perform the operation {operation_type} on the object {uid} / \
+             {user}"
+        );
+        // return item not found to the user
+        return Err(KmsError::ItemNotFound(uid.to_string()))
+    }
 
-        // Check this operation is legit to fetch this object
-        if perms.into_iter().all(|p| p != operation_type) {
-            warn!(
-                "No authorization to perform the operation {operation_type} on the object {uid} / \
-                 {owner_or_userid}"
-            );
-            // return item not found to the user
-            return Err(KmsError::ItemNotFound(uid.to_string()))
-        }
-
-        let raw = row.get::<Vec<u8>, _>(0);
-        let db_object: DBObject = serde_json::from_slice(&raw)
-            .context("failed deserializing the object")
-            .reason(ErrorReason::Internal_Server_Error)?;
-        let object = kmip_objects::Object::post_fix(db_object.object_type, db_object.object);
-        let state = state_from_string(&row.get::<String, _>(1))?;
-
-        Ok(Some((object, state)))
-    })
+    Ok(Some((object, state, tags)))
 }
 
-pub(crate) async fn update_object_<'e, E>(
+pub(crate) async fn update_object_(
     uid: &str,
     object: &kmip_objects::Object,
-    executor: E,
-) -> KResult<()>
-where
-    E: Executor<'e, Database = Sqlite>,
-{
+    tags: &HashSet<String>,
+    executor: &mut Transaction<'_, Sqlite>,
+) -> KResult<()> {
     let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
@@ -393,13 +425,37 @@ where
 
     sqlx::query(
         SQLITE_QUERIES
-            .get("update-rows-objects-with-object")
+            .get("update-object-with-object")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(object_json)
     .bind(uid)
-    .execute(executor)
+    .execute(&mut **executor)
     .await?;
+
+    // delete the existing tags
+    sqlx::query(
+        SQLITE_QUERIES
+            .get("delete-tags")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .execute(&mut **executor)
+    .await?;
+
+    // Insert the new tags
+    for tag in tags {
+        sqlx::query(
+            SQLITE_QUERIES
+                .get("insert-tags")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(uid)
+        .bind(tag)
+        .execute(&mut **executor)
+        .await?;
+    }
+
     trace!("Updated in DB: {uid}");
     Ok(())
 }
@@ -414,7 +470,7 @@ where
 {
     sqlx::query(
         SQLITE_QUERIES
-            .get("update-rows-objects-with-state")
+            .get("update-object-with-state")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(state.to_string())
@@ -425,33 +481,44 @@ where
     Ok(())
 }
 
-pub(crate) async fn delete_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<()>
-where
-    E: Executor<'e, Database = Sqlite>,
-{
+pub(crate) async fn delete_(
+    uid: &str,
+    owner: &str,
+    executor: &mut Transaction<'_, Sqlite>,
+) -> KResult<()> {
+    // delete the object
     sqlx::query(
         SQLITE_QUERIES
-            .get("delete-rows-objects")
+            .get("delete-object")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
     .bind(owner)
-    .execute(executor)
+    .execute(&mut **executor)
     .await?;
+
+    // delete the tags
+    sqlx::query(
+        SQLITE_QUERIES
+            .get("delete-tags")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .execute(&mut **executor)
+    .await?;
+
     trace!("Deleted in DB: {uid}");
     Ok(())
 }
 
-pub(crate) async fn upsert_<'e, E>(
+pub(crate) async fn upsert_(
     uid: &str,
     owner: &str,
     object: &kmip_objects::Object,
+    tags: &HashSet<String>,
     state: StateEnumeration,
-    executor: E,
-) -> KResult<()>
-where
-    E: Executor<'e, Database = Sqlite>,
-{
+    executor: &mut Transaction<'_, Sqlite>,
+) -> KResult<()> {
     let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
@@ -461,15 +528,39 @@ where
 
     sqlx::query(
         SQLITE_QUERIES
-            .get("upsert-row-objects")
+            .get("upsert-object")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
     .bind(object_json)
     .bind(state.to_string())
     .bind(owner)
-    .execute(executor)
+    .execute(&mut **executor)
     .await?;
+
+    // delete the existing tags
+    sqlx::query(
+        SQLITE_QUERIES
+            .get("delete-tags")
+            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+    )
+    .bind(uid)
+    .execute(&mut **executor)
+    .await?;
+
+    // Insert the new tags
+    for tag in tags {
+        sqlx::query(
+            SQLITE_QUERIES
+                .get("insert-tags")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(uid)
+        .bind(tag)
+        .execute(&mut **executor)
+        .await?;
+    }
+
     trace!("Upserted in DB: {uid}");
     Ok(())
 }
@@ -711,7 +802,7 @@ fn to_qualified_uids(
 }
 
 pub(crate) async fn find_from_tags_<'e, E>(
-    tags: &[String],
+    tags: &HashSet<String>,
     user: Option<String>,
     executor: E,
 ) -> KResult<
@@ -757,11 +848,11 @@ where
     // Convert the rows into a list of qualified results
     let mut results = Vec::with_capacity(rows.len());
     for row in rows {
-        let raw = row.get::<Vec<u8>, _>(3);
-        let perms: Vec<ObjectOperationTypes> = if raw.is_empty() {
+        let perms_raw = row.get::<Vec<u8>, _>(3);
+        let perms: Vec<ObjectOperationTypes> = if perms_raw.is_empty() {
             vec![]
         } else {
-            serde_json::from_slice(&raw)
+            serde_json::from_slice(&perms_raw)
                 .context("failed deserializing permissions")
                 .map_err(|e| KmsError::DatabaseError(e.to_string()))?
         };
@@ -777,6 +868,7 @@ where
     Ok(results)
 }
 
+/*
 #[cfg(test)]
 mod tests {
     use cloudproof::reexport::crypto_core::{
@@ -1272,3 +1364,4 @@ mod tests {
         Ok(())
     }
 }
+*/

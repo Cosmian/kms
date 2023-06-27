@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
@@ -18,10 +18,9 @@ pub type KMSServer = crate::core::KMS;
 
 pub(crate) mod cached_sqlcipher;
 pub(crate) mod cached_sqlite_struct;
-pub(crate) mod pgsql;
+// pub(crate) mod pgsql;
 pub mod sqlite;
-
-pub(crate) mod mysql;
+// pub(crate) mod mysql;
 
 #[cfg(test)]
 mod tests;
@@ -54,6 +53,7 @@ pub trait Database {
         uid: Option<String>,
         user: &str,
         object: &Object,
+        tags: &HashSet<String>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier>;
 
@@ -65,7 +65,7 @@ pub trait Database {
     async fn create_objects(
         &self,
         user: &str,
-        objects: &[(Option<String>, Object)],
+        objects: &[(Option<String>, Object, &HashSet<String>)],
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>>;
 
@@ -78,12 +78,13 @@ pub trait Database {
         user: &str,
         query_read_access: ObjectOperationTypes,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Option<(Object, StateEnumeration)>>;
+    ) -> KResult<Option<(Object, StateEnumeration, HashSet<String>)>>;
 
     async fn update_object(
         &self,
         uid: &str,
         object: &Object,
+        tags: &HashSet<String>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
@@ -100,6 +101,7 @@ pub trait Database {
         uid: &str,
         user: &str,
         object: &Object,
+        tags: &HashSet<String>,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
@@ -175,7 +177,7 @@ pub trait Database {
     /// access rights for that user if any
     async fn find_from_tags(
         &self,
-        tags: &[String],
+        tags: &HashSet<String>,
         user: Option<String>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
