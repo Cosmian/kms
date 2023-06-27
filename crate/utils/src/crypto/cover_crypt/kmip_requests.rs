@@ -15,16 +15,23 @@ use cosmian_kmip::{
 use super::attributes::{
     access_policy_as_vendor_attribute, attributes_as_vendor_attribute, policy_as_vendor_attribute,
 };
-use crate::kmip_utils::wrap_key_bytes;
+use crate::{kmip_utils::wrap_key_bytes, tagging::set_tag};
 /// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
-pub fn build_create_master_keypair_request(policy: &Policy) -> Result<CreateKeyPair, KmipError> {
+pub fn build_create_master_keypair_request(
+    policy: &Policy,
+    tags: &[String],
+) -> Result<CreateKeyPair, KmipError> {
+    let mut attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
+        key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
+        vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
+        ..Attributes::new(ObjectType::PrivateKey)
+    };
+    for tag in tags {
+        set_tag(&mut attributes, tag)?;
+    }
     Ok(CreateKeyPair {
-        common_attributes: Some(Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
-            key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
-            vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
-            ..Attributes::new(ObjectType::PrivateKey)
-        }),
+        common_attributes: Some(attributes),
         ..CreateKeyPair::default()
     })
 }
@@ -33,20 +40,25 @@ pub fn build_create_master_keypair_request(policy: &Policy) -> Result<CreateKeyP
 pub fn build_create_user_decryption_private_key_request(
     access_policy: &str,
     cover_crypt_master_private_key_id: &str,
+    tags: &[String],
 ) -> Result<Create, KmipError> {
+    let mut attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
+        key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
+        vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
+        link: Some(vec![Link {
+            link_type: LinkType::ParentLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(
+                cover_crypt_master_private_key_id.to_owned(),
+            ),
+        }]),
+        ..Attributes::new(ObjectType::PrivateKey)
+    };
+    for tag in tags {
+        set_tag(&mut attributes, tag)?;
+    }
     Ok(Create {
-        attributes: Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
-            key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
-            vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-            link: Some(vec![Link {
-                link_type: LinkType::ParentLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    cover_crypt_master_private_key_id.to_owned(),
-                ),
-            }]),
-            ..Attributes::new(ObjectType::PrivateKey)
-        },
+        attributes,
         object_type: ObjectType::PrivateKey,
         protection_storage_masks: None,
     })

@@ -71,19 +71,21 @@ impl KmsClient {
     ///
     /// Args:
     ///     - `policy` (bytes): policy used to generate the keys
+    ///     - `tags`: optional tags to use with the keys
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn create_cover_crypt_master_key_pair<'p>(
         &'p self,
         policy: &[u8],
+        tags: &[String],
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Parse the json policy
         let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
 
         // Create the kmip query
-        let request = build_create_master_keypair_request(&policy)
+        let request = build_create_master_keypair_request(&policy, tags)
             .map_err(|e| PyException::new_err(e.to_string()))?;
 
         // Clone client to avoid lifetime error

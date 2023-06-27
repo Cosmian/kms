@@ -48,6 +48,11 @@ pub fn remove_tag(attributes: &mut Attributes, tag: &str) -> Result<bool, KmipEr
     Ok(existed)
 }
 
+// Clear the tags on the attributes
+pub fn clear_tags(attributes: &mut Attributes) {
+    attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG);
+}
+
 pub fn check_tags<'a, I>(tags: I) -> Result<(), KmipError>
 where
     I: IntoIterator<Item = &'a String>,
