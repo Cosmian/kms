@@ -21,22 +21,19 @@ use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
-    config::{ClapConfig, ServerConfig},
+    config::ServerConfig,
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
-    tests::test_utils,
+    tests::test_utils::https_clap_config,
     KMSServer,
 };
 
 #[actix_rt::test]
 async fn test_cover_crypt_keys() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     //
@@ -208,12 +205,9 @@ pub fn access_policy_serialization() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
     //
@@ -421,12 +415,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_abe_json_access() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     //
     let mut policy = Policy::new(10);
@@ -524,12 +515,9 @@ async fn test_abe_json_access() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_import_decrypt() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     let mut policy = Policy::new(10);

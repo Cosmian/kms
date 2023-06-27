@@ -7,7 +7,10 @@ use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
 use tracing::trace;
 
 use crate::{
-    core::{operations::get::get_, KMS},
+    core::{
+        operations::{get::get_, uids::uid_from_identifier_tags},
+        KMS,
+    },
     error::KmsError,
     result::KResult,
 };
@@ -21,22 +24,34 @@ use crate::{
 pub async fn export(
     kms: &KMS,
     request: Export,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ExportResponse> {
     trace!("Export: {}", serde_json::to_string(&request)?);
 
-    let uid = request
+    // there must be an identifier
+    let identifier = request
         .unique_identifier
-        .as_ref()
+        .clone()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
+
+    // retrieve from tags or use passed identifier
+    let unique_identifier = uid_from_identifier_tags(
+        kms,
+        &identifier,
+        user,
+        ObjectOperationTypes::Encrypt,
+        params,
+    )
+    .await?
+    .unwrap_or(identifier);
 
     let (mut object, state) = get_(
         kms,
-        uid,
+        &unique_identifier,
         request.key_wrap_type,
         request.key_wrapping_data,
-        owner,
+        user,
         params,
         ObjectOperationTypes::Export,
     )
@@ -59,7 +74,7 @@ pub async fn export(
 
     Ok(ExportResponse {
         object_type: object.object_type(),
-        unique_identifier: uid.clone(),
+        unique_identifier,
         attributes: object.attributes()?.clone(),
         object,
     })

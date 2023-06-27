@@ -10,7 +10,10 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
 
-use super::get::{check_state_active, get_};
+use super::{
+    get::{check_state_active, get_},
+    uids::uid_from_identifier_tags,
+};
 use crate::{
     core::{cover_crypt::revoke_user_decryption_keys, KMS},
     error::KmsError,
@@ -194,10 +197,21 @@ pub(crate) async fn revoke_key(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object> {
+    // retrieve from tags or use passed identifier
+    let unique_identifier = uid_from_identifier_tags(
+        kms,
+        unique_identifier,
+        user,
+        ObjectOperationTypes::Encrypt,
+        params,
+    )
+    .await?
+    .unwrap_or(unique_identifier.to_owned());
+
     // retrieve the object
     let (object, state) = get_(
         kms,
-        unique_identifier,
+        &unique_identifier,
         None,
         None,
         user,
@@ -207,7 +221,7 @@ pub(crate) async fn revoke_key(
     .await?;
 
     revoke_key_core(
-        unique_identifier,
+        &unique_identifier,
         object,
         state,
         revocation_reason,

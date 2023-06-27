@@ -4,7 +4,10 @@ use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_encryption_request;
 
-use crate::error::{result::CliResultHelper, CliError};
+use crate::{
+    cli_bail,
+    error::{result::CliResultHelper, CliError},
+};
 
 /// Encrypt a file using Covercrypt
 ///
@@ -15,14 +18,20 @@ pub struct EncryptAction {
     #[clap(required = true, name = "FILE")]
     input_file: PathBuf,
 
-    /// The identifier public key unique identifier stored in the KMS
-    #[clap(required = true)]
-    public_key_id: String,
-
     /// The encryption policy to encrypt the file with
     /// Example: "department::marketing && level::confidential"`
     #[clap(required = true)]
     encryption_policy: String,
+
+    /// The key unique identifier stored in the KMS
+    /// If not specified, tags should be specified
+    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
 
     /// The encrypted output file path
     #[clap(required = false, long, short = 'o')]
@@ -43,9 +52,18 @@ impl EncryptAction {
         f.read_to_end(&mut data)
             .with_context(|| "Fail to read the file to encrypt")?;
 
+        // Recover the unique identifier or set of tags
+        let id = if let Some(key_id) = &self.key_id {
+            key_id.clone()
+        } else if let Some(tags) = &self.tags {
+            serde_json::to_string(&tags)?
+        } else {
+            cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
         // Create the kmip query
         let encrypt_request = build_encryption_request(
-            &self.public_key_id,
+            &id,
             Some(self.encryption_policy.to_string()),
             data,
             None,

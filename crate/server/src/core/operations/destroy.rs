@@ -9,7 +9,7 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
 
-use super::get::get_;
+use super::{get::get_, uids::uid_from_identifier_tags};
 use crate::{
     core::{cover_crypt::destroy_user_decryption_keys, KMS},
     error::KmsError,
@@ -24,15 +24,27 @@ pub async fn destroy_operation(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<DestroyResponse> {
-    let unique_identifier = &request
+    // there must be an identifier
+    let identifier = request
         .unique_identifier
-        .to_owned()
+        .clone()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
+
+    // retrieve from tags or use passed identifier
+    let unique_identifier = uid_from_identifier_tags(
+        kms,
+        &identifier,
+        user,
+        ObjectOperationTypes::Destroy,
+        params,
+    )
+    .await?
+    .unwrap_or(identifier);
 
     // retrieve the object
     let (object, state) = get_(
         kms,
-        unique_identifier,
+        &unique_identifier,
         None,
         None,
         user,
@@ -46,23 +58,23 @@ pub async fn destroy_operation(
     match object_type {
         SymmetricKey => {
             // revoke the key
-            destroy_key_core(unique_identifier, object, state, kms, params).await?;
+            destroy_key_core(&unique_identifier, object, state, kms, params).await?;
         }
         PrivateKey => {
             let private_key =
-                destroy_key_core(unique_identifier, object, state, kms, params).await?;
+                destroy_key_core(&unique_identifier, object, state, kms, params).await?;
             if let Some(public_key_id) = private_key.attributes()?.get_link(LinkType::PublicKeyLink)
             {
                 let _ = destroy_key(&public_key_id, kms, user, params).await;
             }
             if let KeyFormatType::CoverCryptSecretKey = private_key.key_block()?.key_format_type {
-                destroy_user_decryption_keys(unique_identifier, kms, user, params).await?
+                destroy_user_decryption_keys(&unique_identifier, kms, user, params).await?
             }
         }
         PublicKey => {
             // revoke the public key
             let public_key =
-                destroy_key_core(unique_identifier, object, state, kms, params).await?;
+                destroy_key_core(&unique_identifier, object, state, kms, params).await?;
             if let Some(private_key_id) =
                 public_key.attributes()?.get_link(LinkType::PrivateKeyLink)
             {
@@ -81,9 +93,7 @@ pub async fn destroy_operation(
         ))),
     };
 
-    Ok(DestroyResponse {
-        unique_identifier: unique_identifier.to_string(),
-    })
+    Ok(DestroyResponse { unique_identifier })
 }
 
 /// Revoke a key, knowing the object and state
