@@ -2,7 +2,6 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::tagging::clear_tags;
 
 use crate::{
     actions::shared::utils::{export_object, write_bytes_to_file, write_kmip_object_to_file},
@@ -84,7 +83,7 @@ impl ExportKeyAction {
         };
 
         // export the object
-        let mut object = export_object(
+        let object = export_object(
             client_connector,
             &id,
             self.unwrap,
@@ -92,11 +91,6 @@ impl ExportKeyAction {
             self.allow_revoked,
         )
         .await?;
-
-        // remove any tag on the object
-        if let Ok(attributes) = object.attributes_mut() {
-            clear_tags(attributes)
-        }
 
         // write the object to a file
         if self.bytes {

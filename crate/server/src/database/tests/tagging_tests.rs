@@ -1,16 +1,14 @@
+use std::collections::HashSet;
+
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     symmetric_crypto::key::Key,
     CsRng, KeyTrait,
 };
-use cosmian_kmip::kmip::{
-    kmip_objects::ObjectType,
-    kmip_types::{Attributes, CryptographicAlgorithm, StateEnumeration},
-};
+use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration};
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationTypes},
     crypto::symmetric::create_symmetric_key,
-    tagging::{get_tags, set_tags},
 };
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -68,9 +66,6 @@ async fn tags<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
     // create a symmetric key with tags
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
-    // insert tags
-    let mut attributes = Attributes::new(ObjectType::SymmetricKey);
-    set_tags(&mut attributes, ["tag1", "tag2"])?;
     // create symmetric key
     let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
 
@@ -79,7 +74,13 @@ async fn tags<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
     let owner = "eyJhbGciOiJSUzI1Ni";
     let uid = Uuid::new_v4().to_string();
     let uid_ = db
-        .create(Some(uid.clone()), owner, &symmetric_key, db_params)
+        .create(
+            Some(uid.clone()),
+            owner,
+            &symmetric_key,
+            &HashSet::from(["tag1".to_owned(), "tag2".to_owned()]),
+            db_params,
+        )
         .await?;
     assert_eq!(&uid, &uid_);
 
@@ -88,10 +89,9 @@ async fn tags<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
         .retrieve(&uid, owner, ObjectOperationTypes::Get, db_params)
         .await?
     {
-        Some((obj_, state_)) => {
+        Some((obj_, state_, tags)) => {
             assert_eq!(StateEnumeration::Active, state_);
             assert_eq!(&symmetric_key, &obj_);
-            let tags = get_tags(obj_.attributes()?);
             assert_eq!(tags.len(), 2);
             assert!(tags.contains(&"tag1".to_string()));
             assert!(tags.contains(&"tag2".to_string()));
@@ -101,7 +101,7 @@ async fn tags<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
 
     // find this object from tags as owner using tag1
     let res = db
-        .find_from_tags(&["tag1".to_owned()][..], None, db_params)
+        .find_from_tags(&HashSet::from(["tag1".to_owned()]), None, db_params)
         .await?;
     assert_eq!(res.len(), 1);
     assert_eq!(res[0].0, uid);
@@ -111,7 +111,7 @@ async fn tags<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
 
     // find this object from tags as owner using tag2
     let res = db
-        .find_from_tags(&["tag2".to_owned()][..], None, db_params)
+        .find_from_tags(&HashSet::from(["tag2".to_owned()]), None, db_params)
         .await?;
     assert_eq!(res.len(), 1);
     assert_eq!(res[0].0, uid);
@@ -121,7 +121,11 @@ async fn tags<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
 
     // find this object from tags as owner using tag1 and tag2
     let res = db
-        .find_from_tags(&["tag1".to_owned(), "tag2".to_owned()][..], None, db_params)
+        .find_from_tags(
+            &HashSet::from(["tag1".to_owned(), "tag2".to_owned()]),
+            None,
+            db_params,
+        )
         .await?;
     assert_eq!(res.len(), 1);
     assert_eq!(res[0].0, uid);
@@ -132,7 +136,7 @@ async fn tags<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
     // should NOT find this object from tags as owner using tag1, tag2 and tag3
     let res = db
         .find_from_tags(
-            &["tag1".to_owned(), "tag2".to_owned(), "tag3".to_owned()][..],
+            &HashSet::from(["tag1".to_owned(), "tag2".to_owned(), "tag3".to_owned()]),
             None,
             db_params,
         )
@@ -141,7 +145,7 @@ async fn tags<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
 
     // should NOT find this object from tags as owner using tag3
     let res = db
-        .find_from_tags(&["tag3".to_owned()][..], None, db_params)
+        .find_from_tags(&HashSet::from(["tag3".to_owned()]), None, db_params)
         .await?;
     assert_eq!(res.len(), 0);
 
@@ -158,7 +162,7 @@ async fn tags<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
     // find this object from tags as USER_GET using tag1
     let res = db
         .find_from_tags(
-            &["tag1".to_owned()][..],
+            &HashSet::from(["tag1".to_owned()]),
             Some(USER_GET.to_owned()),
             db_params,
         )
@@ -172,7 +176,7 @@ async fn tags<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
     // find this object from tags as USER_DECRYPT using tag1
     let res = db
         .find_from_tags(
-            &["tag1".to_owned(), "tag2".to_owned()][..],
+            &HashSet::from(["tag1".to_owned(), "tag2".to_owned()]),
             Some(USER_DECRYPT.to_owned()),
             db_params,
         )
