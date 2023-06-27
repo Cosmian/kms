@@ -1,17 +1,17 @@
 use cosmian_kmip::kmip::{kmip_objects::Object, kmip_operations::Import, kmip_types::KeyWrapType};
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::tagging::{clear_tags, set_tag};
+use cosmian_kms_utils::tagging::set_tags;
 use uuid::Uuid;
 
 use crate::error::{result::CliResultHelper, CliError};
 
-pub async fn import_object(
+pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     client_connector: &KmsRestClient,
     object_id: Option<String>,
     object: Object,
     unwrap: bool,
     replace_existing: bool,
-    tags: &[String],
+    tags: T,
 ) -> Result<String, CliError> {
     // unwrap the key if needed
     let key_wrap_type = object.key_wrapping_data().map(|_| {
@@ -32,12 +32,8 @@ pub async fn import_object(
 
     // add the tags to the attributes
     let mut attributes = object.attributes().cloned()?;
-    // remove any existing tag
-    clear_tags(&mut attributes);
-    // add the new tags
-    for tag in tags {
-        set_tag(&mut attributes, tag)?;
-    }
+    // set the new tags
+    set_tags(&mut attributes, tags)?;
 
     // if the key must be wrapped, wrap it
     let import = Import {

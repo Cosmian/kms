@@ -816,8 +816,7 @@ mod tests {
         let db = SqlitePool::instantiate(&file_path).await?;
         let mut symmetric_key_bytes = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key_bytes);
-        let symmetric_key =
-            create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES, None);
+        let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
         let uid = Uuid::new_v4().to_string();
 
         db.upsert(&uid, owner, &symmetric_key, StateEnumeration::Active, None)
@@ -1058,8 +1057,7 @@ mod tests {
 
         let mut symmetric_key_bytes = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key_bytes);
-        let symmetric_key =
-            create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES, None);
+        let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
 
         let uid = Uuid::new_v4().to_string();
 
@@ -1223,7 +1221,7 @@ mod tests {
         let mut symmetric_key_bytes = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key_bytes);
         let mut symmetric_key =
-            create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES, None);
+            create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
 
         let uid = Uuid::new_v4().to_string();
 

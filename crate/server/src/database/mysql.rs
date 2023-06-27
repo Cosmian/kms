@@ -726,7 +726,7 @@ mod tests {
         let mut symmetric_key = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key);
         let mut symmetric_key =
-            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES, None);
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
         let uid = Uuid::new_v4().to_string();
 
@@ -818,7 +818,7 @@ mod tests {
         let mut symmetric_key = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key);
         let mut symmetric_key =
-            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES, None);
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
         let uid = Uuid::new_v4().to_string();
 
@@ -902,14 +902,14 @@ mod tests {
         let mut symmetric_key = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key);
         let symmetric_key_1 =
-            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES, None);
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
         let uid_1 = Uuid::new_v4().to_string();
 
         let mut symmetric_key = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key);
         let symmetric_key_2 =
-            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES, None);
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
         let uid_2 = Uuid::new_v4().to_string();
 
@@ -991,7 +991,7 @@ mod tests {
         let mut symmetric_key = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key);
         let symmetric_key =
-            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES, None);
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
         let uid = Uuid::new_v4().to_string();
 
@@ -1248,7 +1248,7 @@ mod tests {
         let mut symmetric_key = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key);
         let symmetric_key =
-            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES, None);
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
         let uid = Uuid::new_v4().to_string();
 
@@ -1409,7 +1409,7 @@ mod tests {
         let mut symmetric_key = vec![0; 32];
         rng.fill_bytes(&mut symmetric_key);
         let mut symmetric_key =
-            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES, None);
+            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
         let uid = Uuid::new_v4().to_string();
 

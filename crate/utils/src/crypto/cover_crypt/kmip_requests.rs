@@ -15,11 +15,11 @@ use cosmian_kmip::{
 use super::attributes::{
     access_policy_as_vendor_attribute, attributes_as_vendor_attribute, policy_as_vendor_attribute,
 };
-use crate::{kmip_utils::wrap_key_bytes, tagging::set_tag};
+use crate::{kmip_utils::wrap_key_bytes, tagging::set_tags};
 /// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
-pub fn build_create_master_keypair_request(
+pub fn build_create_master_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     policy: &Policy,
-    tags: &[String],
+    tags: T,
 ) -> Result<CreateKeyPair, KmipError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -27,9 +27,7 @@ pub fn build_create_master_keypair_request(
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
         ..Attributes::new(ObjectType::PrivateKey)
     };
-    for tag in tags {
-        set_tag(&mut attributes, tag)?;
-    }
+    set_tags(&mut attributes, tags)?;
     Ok(CreateKeyPair {
         common_attributes: Some(attributes),
         ..CreateKeyPair::default()
@@ -37,10 +35,10 @@ pub fn build_create_master_keypair_request(
 }
 
 /// Build a `Create` request for an `CoverCrypt` User Decryption Key
-pub fn build_create_user_decryption_private_key_request(
+pub fn build_create_user_decryption_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     access_policy: &str,
     cover_crypt_master_private_key_id: &str,
-    tags: &[String],
+    tags: T,
 ) -> Result<Create, KmipError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -54,9 +52,7 @@ pub fn build_create_user_decryption_private_key_request(
         }]),
         ..Attributes::new(ObjectType::PrivateKey)
     };
-    for tag in tags {
-        set_tag(&mut attributes, tag)?;
-    }
+    set_tags(&mut attributes, tags)?;
     Ok(Create {
         attributes,
         object_type: ObjectType::PrivateKey,
@@ -68,7 +64,7 @@ pub fn build_create_user_decryption_private_key_request(
 ///
 /// A unique identifier will be generated if none is supplied
 #[allow(clippy::too_many_arguments)]
-pub fn build_import_decryption_private_key_request(
+pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     private_key: &[u8],
     unique_identifier: Option<String>,
     replace_existing: bool,
@@ -76,7 +72,7 @@ pub fn build_import_decryption_private_key_request(
     access_policy: &str,
     is_wrapped: bool,
     wrapping_password: Option<String>,
-    tags: &[String],
+    tags: T,
 ) -> Result<Import, KmipError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -90,9 +86,7 @@ pub fn build_import_decryption_private_key_request(
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
         ..Attributes::new(ObjectType::PrivateKey)
     };
-    for tag in tags {
-        set_tag(&mut attributes, tag)?;
-    }
+    set_tags(&mut attributes, tags)?;
 
     // The key could be:
     //  - already wrapped (is_wrapped is true)
@@ -143,7 +137,7 @@ pub fn build_import_decryption_private_key_request(
 ///
 /// A unique identifier will be generated if none is supplied
 #[allow(clippy::too_many_arguments)]
-pub fn build_import_private_key_request(
+pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     private_key: &[u8],
     unique_identifier: Option<String>,
     replace_existing: bool,
@@ -151,7 +145,7 @@ pub fn build_import_private_key_request(
     policy: &Policy,
     is_wrapped: bool,
     wrapping_password: Option<String>,
-    tags: &[String],
+    tags: T,
 ) -> Result<Import, KmipError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -165,9 +159,7 @@ pub fn build_import_private_key_request(
         }]),
         ..Attributes::new(ObjectType::PrivateKey)
     };
-    for tag in tags {
-        set_tag(&mut attributes, tag)?;
-    }
+    set_tags(&mut attributes, tags)?;
 
     // The key could be:
     //  - already wrapped (is_wrapped is true)
@@ -216,13 +208,13 @@ pub fn build_import_private_key_request(
 /// Build a `Import` request for an Cover Crypt Master Public Key
 ///
 /// A unique identifier will be generated if none is supplied
-pub fn build_import_public_key_request(
+pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     public_key: &[u8],
     unique_identifier: Option<String>,
     replace_existing: bool,
     policy: &Policy,
     cover_crypt_master_private_key_id: &str,
-    tags: &[String],
+    tags: T,
 ) -> Result<Import, KmipError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
@@ -236,9 +228,7 @@ pub fn build_import_public_key_request(
         }]),
         ..Attributes::new(ObjectType::PublicKey)
     };
-    for tag in tags {
-        set_tag(&mut attributes, tag)?;
-    }
+    set_tags(&mut attributes, tags)?;
 
     Ok(Import {
         unique_identifier: unique_identifier.unwrap_or_default(),

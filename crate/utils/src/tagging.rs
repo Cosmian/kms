@@ -7,13 +7,11 @@ use regex::Regex;
 use crate::kmip_utils::VENDOR_ID_COSMIAN;
 pub const VENDOR_ATTR_TAG: &str = "tag";
 
+/// Constant to use to express there are no tags
+pub const EMPTY_TAGS: [&str; 0] = [];
+
 lazy_static! {
     static ref TAG_REGEX: Regex = Regex::new("[a-zA-Z0-9_\\-]+").unwrap();
-}
-
-/// Check if the attributes have a tag
-pub fn has_tag(attributes: &Attributes, tag: &str) -> bool {
-    get_tags(attributes).contains(tag)
 }
 
 /// Get the tags from the attributes
@@ -24,16 +22,16 @@ pub fn get_tags(attributes: &Attributes) -> HashSet<String> {
         .unwrap_or(HashSet::new())
 }
 
-/// Set a tag on the attributes
-///
-/// Returns `true` if the tag already existed
-pub fn set_tag(attributes: &mut Attributes, tag: &str) -> Result<bool, KmipError> {
+/// Set the tags on the attributes
+pub fn set_tags<T: IntoIterator<Item = impl AsRef<str>>>(
+    attributes: &mut Attributes,
+    tags: T,
+) -> Result<(), KmipError> {
     let va = attributes.get_vendor_attribute_mut(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG);
-    let mut set =
-        serde_json::from_slice::<HashSet<String>>(&va.attribute_value).unwrap_or_default();
-    let existed = set.insert(tag.to_owned());
-    va.attribute_value = serde_json::to_vec(&set)?;
-    Ok(existed)
+    va.attribute_value = serde_json::to_vec::<HashSet<String>>(&HashSet::from_iter(
+        tags.into_iter().map(|t| t.as_ref().to_owned()),
+    ))?;
+    Ok(())
 }
 
 /// Remove a tag from the attributes

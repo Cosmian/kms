@@ -11,7 +11,6 @@ use cosmian_kmip::kmip::{
 pub fn create_symmetric_key(
     key_bytes: &[u8],
     cryptographic_algorithm: CryptographicAlgorithm,
-    vendor_attributes: Option<Vec<VendorAttribute>>,
 ) -> Object {
     // this length is in bits
     let symmetric_key_len = key_bytes.len() as i32 * 8;
@@ -36,7 +35,6 @@ pub fn create_symmetric_key(
                             | CryptographicUsageMask::KeyAgreement,
                     ),
                     key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-                    vendor_attributes,
                     ..Attributes::new(ObjectType::SymmetricKey)
                 }),
             },
