@@ -78,15 +78,22 @@ impl KmsClient {
     pub fn create_cover_crypt_master_key_pair<'p>(
         &'p self,
         policy: &[u8],
-        tags: &[String],
+        tags: Option<Vec<&str>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Parse the json policy
         let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
 
         // Create the kmip query
-        let request = build_create_master_keypair_request(&policy, tags)
-            .map_err(|e| PyException::new_err(e.to_string()))?;
+        let request = build_create_master_keypair_request(
+            &policy,
+            tags.unwrap_or(vec![])
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<String>>()
+                .as_slice(),
+        )
+        .map_err(|e| PyException::new_err(e.to_string()))?;
 
         // Clone client to avoid lifetime error
         let client = self.0.clone();
@@ -112,9 +119,11 @@ impl KmsClient {
     /// the same identifier
     ///     - `link_master_public_key_id` (str): id of the matching master public key
     ///     - `policy` (bytes): policy related to the key
+    ///     - `tags`: optional tags to use with the keys
     ///     - `is_wrapped` (bool): whether the key is wrapped
     ///     - `wrapping_password` (Optional[str]): password used to wrap the key
     ///     - `unique_identifier` (Optional[str]): the unique identifier of the key
+    ///
     ///
     /// Returns:
     ///     Future[str]: the unique identifier of the key
@@ -125,7 +134,8 @@ impl KmsClient {
         replace_existing: bool,
         link_master_public_key_id: &str,
         policy: &[u8],
-        is_wrapped: bool,
+        tags: Option<Vec<&str>>,
+        is_wrapped: Option<bool>,
         wrapping_password: Option<String>,
         unique_identifier: Option<String>,
         py: Python<'p>,
@@ -139,8 +149,13 @@ impl KmsClient {
             replace_existing,
             link_master_public_key_id,
             &policy,
-            is_wrapped,
+            is_wrapped.unwrap_or(false),
             wrapping_password,
+            tags.unwrap_or(vec![])
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<String>>()
+                .as_slice(),
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
 
@@ -161,10 +176,12 @@ impl KmsClient {
     ///     - `replace_existing` (bool): set to true to replace an existing key with the same identifier
     ///     - `policy` (bytes): policy related to the key
     ///     - `link_master_private_key_id` (str): id of the matching master private key
-    ///     - ` unique_identifier` (Optional[str]): the unique identifier of the key
+    ///     - `unique_identifier` (Optional[str]): the unique identifier of the key
+    ///     - `tags`: optional tags to use with the keys
     ///
     /// Returns:
     ///     Future[str]: the unique identifier of the key
+    #[allow(clippy::too_many_arguments)]
     pub fn import_cover_crypt_public_key_request<'p>(
         &'p self,
         public_key: &[u8],
@@ -172,6 +189,7 @@ impl KmsClient {
         policy: &[u8],
         link_master_private_key_id: &str,
         unique_identifier: Option<String>,
+        tags: Option<Vec<&str>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Convert policy from bytes
@@ -183,6 +201,11 @@ impl KmsClient {
             replace_existing,
             &policy,
             link_master_private_key_id,
+            tags.unwrap_or(vec![])
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<String>>()
+                .as_slice(),
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
 
@@ -242,6 +265,7 @@ impl KmsClient {
     /// Args:
     ///         - `access_policy_str` (str): user access policy
     ///         - `master_secret_key_identifier` (str): master secret key UID
+    ///         - `tags`: optional tags to use with the keys
     ///
     ///     Returns:
     ///         Future[str]: User secret key UID
@@ -249,6 +273,7 @@ impl KmsClient {
         &'p self,
         access_policy_str: &str,
         master_secret_key_identifier: &str,
+        tags: Option<Vec<&str>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Parse the access policy
@@ -258,6 +283,11 @@ impl KmsClient {
         let request = build_create_user_decryption_private_key_request(
             access_policy_str,
             master_secret_key_identifier,
+            tags.unwrap_or(vec![])
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<String>>()
+                .as_slice(),
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
 
@@ -278,6 +308,7 @@ impl KmsClient {
     ///     - `replace_existing` (bool): set to true to replace an existing key with the same identifier
     ///     - `link_master_private_key_id` (str): id of the matching master private key
     ///     - `access_policy_str` (str): user access policy
+    ///     - `tags`: optional tags to use with the key
     ///     - `is_wrapped` (bool): whether the key is wrapped
     ///     - `wrapping_password` (Optional[str]): password used to wrap the key
     ///     - `unique_identifier` (Optional[str]): the unique identifier of the key
@@ -291,7 +322,8 @@ impl KmsClient {
         replace_existing: bool,
         link_master_private_key_id: &str,
         access_policy_str: &str,
-        is_wrapped: bool,
+        tags: Option<Vec<&str>>,
+        is_wrapped: Option<bool>,
         wrapping_password: Option<String>,
         unique_identifier: Option<String>,
         py: Python<'p>,
@@ -306,8 +338,13 @@ impl KmsClient {
             replace_existing,
             link_master_private_key_id,
             access_policy_str,
-            is_wrapped,
+            is_wrapped.unwrap_or(false),
             wrapping_password,
+            tags.unwrap_or(vec![])
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<String>>()
+                .as_slice(),
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
 
@@ -324,19 +361,31 @@ impl KmsClient {
     /// Mark a CoverCrypt Key as revoked
     ///
     /// Args:
-    ///     - `key_identifier` (str):  the key unique identifier in the KMS
     ///     - `revocation_reason` (str): explanation of the revocation
+    ///     - `key_identifier` (str):  the key unique identifier in the KMS
+    ///     - `tags` to use when the `key_identifier` is  not provided
     ///
     /// Returns:
     ///     Future[str]: uid of the revoked key
+    ///
+    /// If tags resolve to multiple keys, an error is thrown
     pub fn revoke_cover_crypt_key<'p>(
         &'p self,
-        key_identifier: &str,
         revocation_reason: &str,
+        key_identifier: Option<&str>,
+        tags: Option<Vec<&str>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
+        let id = if let Some(key_id) = key_identifier {
+            key_id.to_owned()
+        } else if let Some(tags) = tags {
+            serde_json::to_string(&tags)
+                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
+        } else {
+            return Err(PyException::new_err("please specify a key id or tags"))
+        };
         let request = build_revoke_key_request(
-            key_identifier,
+            &id,
             RevocationReason::TextString(revocation_reason.to_string()),
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
@@ -355,16 +404,29 @@ impl KmsClient {
     ///
     /// Args:
     ///     - `key_identifier` (str):  the key unique identifier in the KMS
+    ///     - `tags` to use when the `key_identifier` is  not provided
     ///
     /// Returns:
     ///     Future[str]: uid of the destroyed key
+    ///
+    /// If tags resolve to multiple keys, an error is thrown
     pub fn destroy_cover_crypt_key<'p>(
         &'p self,
-        key_identifier: &str,
+        key_identifier: Option<&str>,
+        tags: Option<Vec<&str>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let request = build_destroy_key_request(key_identifier)
-            .map_err(|e| PyException::new_err(e.to_string()))?;
+        let id = if let Some(key_id) = key_identifier {
+            key_id.to_owned()
+        } else if let Some(tags) = tags {
+            serde_json::to_string(&tags)
+                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
+        } else {
+            return Err(PyException::new_err("please specify a key id or tags"))
+        };
+
+        let request =
+            build_destroy_key_request(&id).map_err(|e| PyException::new_err(e.to_string()))?;
 
         let client = self.0.clone();
         pyo3_asyncio::tokio::future_into_py(py, async move {
@@ -380,25 +442,39 @@ impl KmsClient {
     /// ciphertext.
     ///
     /// Args:
-    ///     - `public_key_identifier` (str): identifier of the public key
     ///     - `access_policy_str` (str): the access policy to use for encryption
     ///     - `data` (bytes): data to encrypt
+    ///     - `public_key_identifier` (str): identifier of the public key
+    ///     - `tags` to use when the `public_key_identifier` is  not provided
     ///     - `header_metadata` (Optional[bytes]): additional data to symmetrically encrypt in the header
     ///     - `authentication_data` (Optional[bytes]): authentication data to use in symmetric encryptions
     ///
     /// Returns:
     ///     Future[bytes]: ciphertext
+    ///
+    /// If tags resolve to multiple keys, an error is thrown
+    #[allow(clippy::too_many_arguments)]
     pub fn cover_crypt_encryption<'p>(
         &'p self,
-        public_key_identifier: &str,
         encryption_policy_str: String,
         data: Vec<u8>,
+        public_key_identifier: Option<&str>,
+        tags: Option<Vec<&str>>,
         header_metadata: Option<Vec<u8>>,
         authentication_data: Option<Vec<u8>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
+        let id = if let Some(key_id) = public_key_identifier {
+            key_id.to_owned()
+        } else if let Some(tags) = tags {
+            serde_json::to_string(&tags)
+                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
+        } else {
+            return Err(PyException::new_err("please specify a key id or tags"))
+        };
+
         let request = build_encryption_request(
-            public_key_identifier,
+            &id,
             Some(encryption_policy_str),
             data,
             header_metadata,
@@ -419,27 +495,35 @@ impl KmsClient {
     /// Hybrid decryption.
     ///
     /// Args:
-    ///     - `user_key_identifier` (str): user secret key identifier
     ///     - `encrypted_data` (bytes): encrypted header || symmetric ciphertext
     ///     - `authentication_data` (Optional[bytes]): authentication data to use in symmetric decryption
+    ///     - `user_key_identifier` (str): user secret key identifier
+    ///     - `tags` to use when the `user_key_identifier` is  not provided
     ///
     /// Returns:
     ///     Future[Tuple[bytes, bytes]]: (plaintext bytes, header metadata
     /// bytes)
+    ///
+    /// If tags resolve to multiple keys, an error is thrown
     pub fn cover_crypt_decryption<'p>(
         &'p self,
-        user_key_identifier: &str,
         encrypted_data: Vec<u8>,
         authentication_data: Option<Vec<u8>>,
+        user_key_identifier: Option<&str>,
+        tags: Option<Vec<&str>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let request = build_decryption_request(
-            user_key_identifier,
-            None,
-            encrypted_data,
-            None,
-            authentication_data,
-        );
+        let id = if let Some(key_id) = user_key_identifier {
+            key_id.to_owned()
+        } else if let Some(tags) = tags {
+            serde_json::to_string(&tags)
+                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
+        } else {
+            return Err(PyException::new_err("please specify a key id or tags"))
+        };
+
+        let request =
+            build_decryption_request(&id, None, encrypted_data, None, authentication_data);
 
         let client = self.0.clone();
         pyo3_asyncio::tokio::future_into_py(py, async move {
@@ -464,14 +548,29 @@ impl KmsClient {
     ///
     /// Args:
     ///     - `unique_identifier` (str): UID of the object on the server.
+    ///     - `tags` to use when the `unique_identifier` is  not provided
     ///
     /// Returns:
     ///     Future[KmsObject]
-    pub fn get_object<'p>(&'p self, unique_identifier: String, py: Python<'p>) -> PyResult<&PyAny> {
+    pub fn get_object<'p>(
+        &'p self,
+        unique_identifier: Option<&str>,
+        tags: Option<Vec<&str>>,
+        py: Python<'p>,
+    ) -> PyResult<&PyAny> {
+        let id = if let Some(key_id) = unique_identifier {
+            key_id.to_owned()
+        } else if let Some(tags) = tags {
+            serde_json::to_string(&tags)
+                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
+        } else {
+            return Err(PyException::new_err("please specify a key id or tags"))
+        };
+
         let client = self.0.clone();
         pyo3_asyncio::tokio::future_into_py(py, async move {
             let response = client
-                .get(Get::from(unique_identifier))
+                .get(Get::from(&id))
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
             Ok(KmsObject::new(response))
