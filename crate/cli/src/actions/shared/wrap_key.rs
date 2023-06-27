@@ -75,11 +75,11 @@ impl WrapKeyAction {
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the wrap key")?;
-            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES, None)
+            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(password) = &self.wrap_password {
             let key_bytes = derive_key(password.as_bytes(), KMS_ARGON2_SALT)?.to_vec();
             println!("wrap derived key {}", hex::encode(&key_bytes));
-            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES, None)
+            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.wrap_key_id {
             export_object(client_connector, key_id, false, &None, false).await?
         } else if let Some(key_file) = &self.wrap_key_file {

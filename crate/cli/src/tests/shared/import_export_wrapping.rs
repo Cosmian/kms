@@ -36,7 +36,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     let mut rng = CsRng::from_entropy();
     let mut wrap_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut wrap_key_bytes);
-    let wrap_key = create_symmetric_key(&wrap_key_bytes, CryptographicAlgorithm::AES, None);
+    let wrap_key = create_symmetric_key(&wrap_key_bytes, CryptographicAlgorithm::AES);
     write_kmip_object_to_file(&wrap_key, &wrap_key_path)?;
     let wrap_key_uid = import(
         &ctx.owner_cli_conf_path,

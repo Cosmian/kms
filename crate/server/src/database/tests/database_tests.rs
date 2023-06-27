@@ -10,7 +10,7 @@ use cosmian_kmip::kmip::{
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationTypes},
     crypto::symmetric::create_symmetric_key,
-    tagging::{get_tags, set_tag},
+    tagging::{get_tags, set_tags},
 };
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -74,14 +74,9 @@ async fn crud<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
     rng.fill_bytes(&mut symmetric_key_bytes);
     // insert tags
     let mut attributes = Attributes::new(ObjectType::SymmetricKey);
-    set_tag(&mut attributes, "tag1")?;
-    set_tag(&mut attributes, "tag2")?;
+    set_tags(&mut attributes, ["tag1", "tag2"])?;
     // create symmetric key
-    let symmetric_key = create_symmetric_key(
-        &symmetric_key_bytes,
-        CryptographicAlgorithm::AES,
-        attributes.vendor_attributes,
-    );
+    let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
 
     // insert into DB
     let owner = "eyJhbGciOiJSUzI1Ni";

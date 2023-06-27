@@ -230,7 +230,6 @@ impl KMS {
                     Ok(create_symmetric_key(
                         &symmetric_key,
                         *cryptographic_algorithm,
-                        attributes.vendor_attributes.clone(),
                     ))
                 }
                 Some(other) => kms_bail!(KmsError::InvalidRequest(format!(

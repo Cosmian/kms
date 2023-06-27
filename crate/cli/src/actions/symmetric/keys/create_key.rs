@@ -79,7 +79,7 @@ impl CreateKeyAction {
 
         let unique_identifier = match key_bytes {
             Some(key_bytes) => {
-                let object = create_symmetric_key(key_bytes.as_slice(), algorithm, None);
+                let object = create_symmetric_key(key_bytes.as_slice(), algorithm);
                 import_object(client_connector, None, object, false, false, &self.tags).await?
             }
             None => {

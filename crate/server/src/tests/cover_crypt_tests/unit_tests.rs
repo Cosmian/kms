@@ -8,14 +8,18 @@ use cosmian_kmip::kmip::{
         Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
     },
 };
-use cosmian_kms_utils::crypto::{
-    cover_crypt::{
-        attributes::access_policy_as_vendor_attribute,
-        kmip_requests::{
-            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
+use cosmian_kms_utils::{
+    crypto::{
+        cover_crypt::{
+            attributes::access_policy_as_vendor_attribute,
+            kmip_requests::{
+                build_create_master_keypair_request,
+                build_create_user_decryption_private_key_request,
+            },
         },
+        generic::kmip_requests::{build_decryption_request, build_encryption_request},
     },
-    generic::kmip_requests::{build_decryption_request, build_encryption_request},
+    tagging::EMPTY_TAGS,
 };
 use tracing::debug;
 use uuid::Uuid;
@@ -61,7 +65,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     let cr = kms
         .create_key_pair(
-            build_create_master_keypair_request(&policy, &[])?,
+            build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
             owner,
             None,
         )
@@ -146,7 +150,8 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
-    let request = build_create_user_decryption_private_key_request(access_policy, &sk_uid, &[])?;
+    let request =
+        build_create_user_decryption_private_key_request(access_policy, &sk_uid, EMPTY_TAGS)?;
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
@@ -170,7 +175,8 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via Private key
     debug!(" .... user key via Private Key");
-    let request = build_create_user_decryption_private_key_request(access_policy, &sk_uid, &[])?;
+    let request =
+        build_create_user_decryption_private_key_request(access_policy, &sk_uid, EMPTY_TAGS)?;
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
@@ -233,7 +239,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     // create Key Pair
     let ckr = kms
         .create_key_pair(
-            build_create_master_keypair_request(&policy, &[])?,
+            build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
             owner,
             None,
         )
@@ -320,7 +326,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             build_create_user_decryption_private_key_request(
                 secret_mkg_fin_access_policy,
                 master_private_key_id,
-                &[],
+                EMPTY_TAGS,
             )?,
             owner,
             None,
@@ -442,7 +448,7 @@ async fn test_abe_json_access() -> KResult<()> {
     let secret_mkg_fin_access_policy = "(Department::MKG||Department::FIN) && Level::secret";
 
     // Create CC master key pair
-    let master_keypair = build_create_master_keypair_request(&policy, &[])?;
+    let master_keypair = build_create_master_keypair_request(&policy, EMPTY_TAGS)?;
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
@@ -486,7 +492,7 @@ async fn test_abe_json_access() -> KResult<()> {
             build_create_user_decryption_private_key_request(
                 secret_mkg_fin_access_policy,
                 master_private_key_uid,
-                &[],
+                EMPTY_TAGS,
             )?,
             owner,
             None,
@@ -542,7 +548,7 @@ async fn test_import_decrypt() -> KResult<()> {
     // create Key Pair
     let cr = kms
         .create_key_pair(
-            build_create_master_keypair_request(&policy, &[])?,
+            build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
             owner,
             None,
         )
@@ -582,7 +588,7 @@ async fn test_import_decrypt() -> KResult<()> {
             build_create_user_decryption_private_key_request(
                 secret_mkg_fin_access_policy,
                 &sk_uid,
-                &[],
+                EMPTY_TAGS,
             )?,
             owner,
             None,
