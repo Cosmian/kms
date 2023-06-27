@@ -48,7 +48,7 @@ async fn integration_tests() -> KResult<()> {
     ))?;
 
     // create Key Pair
-    let create_key_pair = build_create_master_keypair_request(&policy)?;
+    let create_key_pair = build_create_master_keypair_request(&policy, &[])?;
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
@@ -78,6 +78,7 @@ async fn integration_tests() -> KResult<()> {
     let request = build_create_user_decryption_private_key_request(
         access_policy,
         private_key_unique_identifier,
+        &[],
     )?;
     let create_response: CreateResponse = test_utils::post(&app, request).await?;
     let user_decryption_key_identifier = &create_response.unique_identifier;
@@ -126,6 +127,7 @@ async fn integration_tests() -> KResult<()> {
     let request = build_create_user_decryption_private_key_request(
         access_policy,
         private_key_unique_identifier,
+        &[],
     )?;
     let create_response: CreateResponse = test_utils::post(&app, &request).await?;
     let user_decryption_key_identifier_1 = &create_response.unique_identifier;
@@ -136,6 +138,7 @@ async fn integration_tests() -> KResult<()> {
     let request = build_create_user_decryption_private_key_request(
         access_policy,
         private_key_unique_identifier,
+        &[],
     )?;
     let create_response2: CreateResponse = test_utils::post(&app, &request).await?;
     let user_decryption_key_identifier_2 = &create_response2.unique_identifier;

@@ -39,6 +39,8 @@ use crate::{
 ///  - the `Department` axis has 4 possible values: `R&D`, `HR`, `MKG`, and `FIN`,
 ///  - all partitions which are `Top Secret` will be encrypted using post-quantum hybridized cryptography, as indicated by the `::+` suffix on the value,
 ///  - all other partitions will use classic cryptography.
+///
+/// Tags can later be used to retrieve the keys. Tags are optional.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateMasterKeyPairAction {
@@ -52,6 +54,11 @@ pub struct CreateMasterKeyPairAction {
     /// or to extract it from existing keys.
     #[clap(long = "policy-binary", short = 'b', group = "policy")]
     policy_binary_file: Option<PathBuf>,
+
+    /// The tag to associate with the master key pair.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG")]
+    tags: Vec<String>,
 }
 
 impl CreateMasterKeyPairAction {
@@ -66,7 +73,7 @@ impl CreateMasterKeyPairAction {
         };
 
         // Create the kmip query
-        let create_key_pair = build_create_master_keypair_request(&policy)?;
+        let create_key_pair = build_create_master_keypair_request(&policy, &self.tags)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = client_connector
@@ -78,10 +85,15 @@ impl CreateMasterKeyPairAction {
 
         let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
-        println!("The master key pair has been properly generated.");
-        println!("Store the followings securely for any further uses:\n");
+        println!("The master key pair has been properly generated.\n");
         println!("  Private key unique identifier: {private_key_unique_identifier}\n");
         println!("  Public key unique identifier : {public_key_unique_identifier}");
+        if !self.tags.is_empty() {
+            println!("\n  Tags:");
+            for tag in &self.tags {
+                println!("    - {}", tag);
+            }
+        }
 
         Ok(())
     }
