@@ -14,21 +14,15 @@ use cosmian_kms_utils::crypto::curve_25519::{
 };
 
 use crate::{
-    config::{ClapConfig, ServerConfig},
-    error::KmsError,
-    result::KResult,
-    tests::test_utils,
+    config::ServerConfig, error::KmsError, result::KResult, tests::test_utils::https_clap_config,
     KMSServer,
 };
 
 #[actix_rt::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation

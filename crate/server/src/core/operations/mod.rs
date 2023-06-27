@@ -10,6 +10,7 @@ mod import;
 mod locate;
 mod rekey_keypair;
 mod revoke;
+mod uids;
 mod wrapping;
 
 pub(crate) use create::create;

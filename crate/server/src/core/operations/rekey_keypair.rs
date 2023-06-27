@@ -3,11 +3,13 @@ use cosmian_kmip::kmip::{
     kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
     kmip_types::CryptographicAlgorithm,
 };
-use cosmian_kms_utils::access::ExtraDatabaseParams;
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
 use tracing::trace;
 
 use crate::{
-    core::{cover_crypt::rekey_keypair_cover_crypt, KMS},
+    core::{
+        cover_crypt::rekey_keypair_cover_crypt, operations::uids::uid_from_identifier_tags, KMS,
+    },
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -16,22 +18,27 @@ use crate::{
 pub async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair");
 
-    let private_key_unique_identifier =
-        request
-            .private_key_unique_identifier
-            .as_ref()
-            .ok_or_else(|| {
-                KmsError::NotSupported(
-                    "Rekey keypair: ID place holder is not yet supported an a key ID must be \
-                     supplied"
-                        .to_string(),
-                )
-            })?;
+    // there must be an identifier
+    let identifier = request
+        .private_key_unique_identifier
+        .clone()
+        .ok_or(KmsError::UnsupportedPlaceholder)?;
+
+    // retrieve from tags or use passed identifier
+    let private_key_unique_identifier = uid_from_identifier_tags(
+        kms,
+        &identifier,
+        user,
+        ObjectOperationTypes::Encrypt,
+        params,
+    )
+    .await?
+    .unwrap_or(identifier);
 
     let attributes = request.private_key_attributes.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest(
@@ -44,9 +51,9 @@ pub async fn rekey_keypair(
             rekey_keypair_cover_crypt(
                 kms,
                 CoverCryptX25519Aes256::default(),
-                private_key_unique_identifier,
+                &private_key_unique_identifier,
                 attributes,
-                owner,
+                user,
                 params,
             )
             .await

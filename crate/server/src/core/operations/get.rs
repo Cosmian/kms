@@ -9,7 +9,10 @@ use tracing::{debug, trace};
 
 use crate::{
     core::{
-        operations::wrapping::{unwrap_key, wrap_key},
+        operations::{
+            uids::uid_from_identifier_tags,
+            wrapping::{unwrap_key, wrap_key},
+        },
         KMS,
     },
     error::KmsError,
@@ -25,27 +28,41 @@ use crate::{
 pub async fn get(
     kms: &KMS,
     request: Get,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<GetResponse> {
     trace!("Get: {}", serde_json::to_string(&request)?);
-    let unique_identifier = request
+
+    // there must be an identifier
+    let identifier = request
         .unique_identifier
-        .as_ref()
+        .clone()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
+
+    // retrieve from tags or use passed identifier
+    let unique_identifier = uid_from_identifier_tags(
+        kms,
+        &identifier,
+        user,
+        ObjectOperationTypes::Encrypt,
+        params,
+    )
+    .await?
+    .unwrap_or(identifier);
+
     let (object, state) = get_(
         kms,
-        unique_identifier,
+        &unique_identifier,
         request.key_wrap_type,
         request.key_wrapping_data,
-        owner,
+        user,
         params,
         ObjectOperationTypes::Get,
     )
     .await?;
 
     //
-    check_state_active(state, unique_identifier)?;
+    check_state_active(state, &unique_identifier)?;
 
     Ok(GetResponse {
         object_type: object.object_type(),

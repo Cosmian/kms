@@ -225,15 +225,17 @@ impl KmsClient {
     ///   policy and are not rotated.
     ///
     /// Args:
-    ///     - `master_secret_key_identifier` (str): master secret key UID
     ///     - `attributes` (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
+    ///     - `master_secret_key_identifier` (str): master secret key UID
+    ///     - `tags` to use when the `master_secret_key_identifier` is not provided
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn rotate_cover_crypt_attributes<'p>(
         &'p self,
-        master_secret_key_identifier: &str,
         attributes: Vec<&str>,
+        master_secret_key_identifier: Option<String>,
+        tags: Option<Vec<&str>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         let policy_attributes = attributes
@@ -242,7 +244,16 @@ impl KmsClient {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| PyTypeError::new_err(e.to_string()))?;
 
-        let request = build_rekey_keypair_request(master_secret_key_identifier, policy_attributes)
+        let id = if let Some(key_id) = master_secret_key_identifier {
+            key_id
+        } else if let Some(tags) = tags {
+            serde_json::to_string(&tags)
+                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
+        } else {
+            return Err(PyException::new_err("please specify a key id or tags"))
+        };
+
+        let request = build_rekey_keypair_request(&id, policy_attributes)
             .map_err(|e| PyException::new_err(e.to_string()))?;
 
         let client = self.0.clone();
@@ -363,7 +374,7 @@ impl KmsClient {
     /// Args:
     ///     - `revocation_reason` (str): explanation of the revocation
     ///     - `key_identifier` (str):  the key unique identifier in the KMS
-    ///     - `tags` to use when the `key_identifier` is  not provided
+    ///     - `tags` to use when the `key_identifier` is not provided
     ///
     /// Returns:
     ///     Future[str]: uid of the revoked key
@@ -384,6 +395,7 @@ impl KmsClient {
         } else {
             return Err(PyException::new_err("please specify a key id or tags"))
         };
+
         let request = build_revoke_key_request(
             &id,
             RevocationReason::TextString(revocation_reason.to_string()),
@@ -404,7 +416,7 @@ impl KmsClient {
     ///
     /// Args:
     ///     - `key_identifier` (str):  the key unique identifier in the KMS
-    ///     - `tags` to use when the `key_identifier` is  not provided
+    ///     - `tags` to use when the `key_identifier` is not provided
     ///
     /// Returns:
     ///     Future[str]: uid of the destroyed key
@@ -445,7 +457,7 @@ impl KmsClient {
     ///     - `access_policy_str` (str): the access policy to use for encryption
     ///     - `data` (bytes): data to encrypt
     ///     - `public_key_identifier` (str): identifier of the public key
-    ///     - `tags` to use when the `public_key_identifier` is  not provided
+    ///     - `tags` to use when the `public_key_identifier` is not provided
     ///     - `header_metadata` (Optional[bytes]): additional data to symmetrically encrypt in the header
     ///     - `authentication_data` (Optional[bytes]): authentication data to use in symmetric encryptions
     ///
@@ -498,7 +510,7 @@ impl KmsClient {
     ///     - `encrypted_data` (bytes): encrypted header || symmetric ciphertext
     ///     - `authentication_data` (Optional[bytes]): authentication data to use in symmetric decryption
     ///     - `user_key_identifier` (str): user secret key identifier
-    ///     - `tags` to use when the `user_key_identifier` is  not provided
+    ///     - `tags` to use when the `user_key_identifier` is not provided
     ///
     /// Returns:
     ///     Future[Tuple[bytes, bytes]]: (plaintext bytes, header metadata
@@ -548,7 +560,7 @@ impl KmsClient {
     ///
     /// Args:
     ///     - `unique_identifier` (str): UID of the object on the server.
-    ///     - `tags` to use when the `unique_identifier` is  not provided
+    ///     - `tags` to use when the `unique_identifier` is not provided
     ///
     /// Returns:
     ///     Future[KmsObject]

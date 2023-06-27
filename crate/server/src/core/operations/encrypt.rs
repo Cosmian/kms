@@ -1,26 +1,39 @@
 use cosmian_kmip::kmip::kmip_operations::{Encrypt, EncryptResponse};
-use cosmian_kms_utils::access::ExtraDatabaseParams;
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
 use tracing::trace;
 
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{
+    core::{operations::uids::uid_from_identifier_tags, KMS},
+    error::KmsError,
+    result::KResult,
+};
 
 pub async fn encrypt(
     kms: &KMS,
     request: Encrypt,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<EncryptResponse> {
-    // 1 - check correlation //TODO
-    // 2b - if correlation pull encrypt oracle from cache
-    // 2a - if no correlation, create encrypt oracle
-    // 3 - call EncryptOracle.encrypt
     trace!("encrypt : {}", serde_json::to_string(&request)?);
 
-    let uid = request
+    // there must be an identifier
+    let identifier = request
         .unique_identifier
-        .as_ref()
+        .clone()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
-    kms.get_encryption_system(uid, owner, params)
+
+    // retrieve from tags or use passed identifier
+    let unique_identifier = uid_from_identifier_tags(
+        kms,
+        &identifier,
+        user,
+        ObjectOperationTypes::Encrypt,
+        params,
+    )
+    .await?
+    .unwrap_or(identifier);
+
+    kms.get_encryption_system(&unique_identifier, user, params)
         .await?
         .encrypt(&request)
         .map_err(Into::into)
