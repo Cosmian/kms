@@ -67,6 +67,7 @@ pub fn build_create_user_decryption_private_key_request(
 /// Build a `Import` request for an `CoverCrypt` User Decryption Key
 ///
 /// A unique identifier will be generated if none is supplied
+#[allow(clippy::too_many_arguments)]
 pub fn build_import_decryption_private_key_request(
     private_key: &[u8],
     unique_identifier: Option<String>,
@@ -75,8 +76,9 @@ pub fn build_import_decryption_private_key_request(
     access_policy: &str,
     is_wrapped: bool,
     wrapping_password: Option<String>,
+    tags: &[String],
 ) -> Result<Import, KmipError> {
-    let attributes = Attributes {
+    let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         link: Some(vec![Link {
@@ -88,6 +90,9 @@ pub fn build_import_decryption_private_key_request(
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
         ..Attributes::new(ObjectType::PrivateKey)
     };
+    for tag in tags {
+        set_tag(&mut attributes, tag)?;
+    }
 
     // The key could be:
     //  - already wrapped (is_wrapped is true)
@@ -137,6 +142,7 @@ pub fn build_import_decryption_private_key_request(
 /// Build a `Import` request for an Cover Crypt Master Private Key
 ///
 /// A unique identifier will be generated if none is supplied
+#[allow(clippy::too_many_arguments)]
 pub fn build_import_private_key_request(
     private_key: &[u8],
     unique_identifier: Option<String>,
@@ -145,8 +151,9 @@ pub fn build_import_private_key_request(
     policy: &Policy,
     is_wrapped: bool,
     wrapping_password: Option<String>,
+    tags: &[String],
 ) -> Result<Import, KmipError> {
-    let attributes = Attributes {
+    let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
@@ -158,6 +165,9 @@ pub fn build_import_private_key_request(
         }]),
         ..Attributes::new(ObjectType::PrivateKey)
     };
+    for tag in tags {
+        set_tag(&mut attributes, tag)?;
+    }
 
     // The key could be:
     //  - already wrapped (is_wrapped is true)
@@ -212,8 +222,9 @@ pub fn build_import_public_key_request(
     replace_existing: bool,
     policy: &Policy,
     cover_crypt_master_private_key_id: &str,
+    tags: &[String],
 ) -> Result<Import, KmipError> {
-    let attributes = Attributes {
+    let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
@@ -225,6 +236,9 @@ pub fn build_import_public_key_request(
         }]),
         ..Attributes::new(ObjectType::PublicKey)
     };
+    for tag in tags {
+        set_tag(&mut attributes, tag)?;
+    }
 
     Ok(Import {
         unique_identifier: unique_identifier.unwrap_or_default(),
