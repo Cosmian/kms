@@ -10,15 +10,16 @@ use cosmian_kmip::kmip::{
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
 use serde_json::Value;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
     ConnectOptions, Executor, Pool, Row, Sqlite, Transaction,
 };
-use tracing::{debug, log::warn, trace};
+use tracing::{debug, trace};
 use uuid::Uuid;
 
+use super::object_with_metadata::ObjectWithMetadata;
 use crate::{
     database::{
         query_from_attributes, state_from_string, DBObject, Database, SqlitePlaceholder,
@@ -78,7 +79,7 @@ impl SqlitePool {
     }
 
     #[cfg(test)]
-    pub async fn perms(&self, uid: &str, userid: &str) -> KResult<Vec<ObjectOperationTypes>> {
+    pub async fn perms(&self, uid: &str, userid: &str) -> KResult<Vec<ObjectOperationType>> {
         fetch_permissions_(uid, userid, &self.pool).await
     }
 }
@@ -132,12 +133,20 @@ impl Database for SqlitePool {
 
     async fn retrieve(
         &self,
-        uid: &str,
+        uid_or_tags: &str,
         user: &str,
-        operation_type: ObjectOperationTypes,
+        operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Option<(kmip_objects::Object, StateEnumeration, HashSet<String>)>> {
-        retrieve_(uid, user, operation_type, &self.pool).await
+    ) -> KResult<Vec<ObjectWithMetadata>> {
+        retrieve_(uid_or_tags, user, operation_type, &self.pool).await
+    }
+
+    async fn retrieve_tags(
+        &self,
+        uid: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<HashSet<String>> {
+        retrieve_tags_(uid, &self.pool).await
     }
 
     async fn update_object(
@@ -219,7 +228,7 @@ impl Database for SqlitePool {
             UniqueIdentifier,
             String,
             StateEnumeration,
-            Vec<ObjectOperationTypes>,
+            Vec<ObjectOperationType>,
             IsWrapped,
         )>,
     > {
@@ -230,7 +239,7 @@ impl Database for SqlitePool {
         &self,
         uid: &str,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>> {
+    ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>> {
         list_accesses_(uid, &self.pool).await
     }
 
@@ -238,7 +247,7 @@ impl Database for SqlitePool {
         &self,
         uid: &str,
         userid: &str,
-        operation_type: ObjectOperationTypes,
+        operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         insert_access_(uid, userid, operation_type, &self.pool).await
@@ -248,7 +257,7 @@ impl Database for SqlitePool {
         &self,
         uid: &str,
         userid: &str,
-        operation_type: ObjectOperationTypes,
+        operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         delete_access_(uid, userid, operation_type, &self.pool).await
@@ -271,22 +280,6 @@ impl Database for SqlitePool {
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
         find_(researched_attributes, state, owner, &self.pool).await
-    }
-
-    async fn find_from_tags(
-        &self,
-        tags: &HashSet<String>,
-        user: Option<String>,
-        _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<
-        Vec<(
-            UniqueIdentifier,
-            String,
-            StateEnumeration,
-            Vec<ObjectOperationTypes>,
-        )>,
-    > {
-        find_from_tags_(tags, user, &self.pool).await
     }
 }
 
@@ -337,42 +330,83 @@ pub(crate) async fn create_(
 }
 
 pub(crate) async fn retrieve_<'e, E>(
-    uid: &str,
+    uid_or_tags: &str,
     user: &str,
-    operation_type: ObjectOperationTypes,
+    operation_type: ObjectOperationType,
     executor: E,
-) -> KResult<Option<(kmip_objects::Object, StateEnumeration, HashSet<String>)>>
+) -> KResult<Vec<ObjectWithMetadata>>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
-    let row: Option<SqliteRow> = sqlx::query(
-        SQLITE_QUERIES
-            .get("select-object")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .bind(user)
-    .fetch_optional(executor)
-    .await?;
+    let rows: Vec<SqliteRow> = if !uid_or_tags.starts_with('[') {
+        sqlx::query(
+            SQLITE_QUERIES
+                .get("select-object")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(uid_or_tags)
+        .bind(user)
+        .fetch_optional(executor)
+        .await?
+        .map_or(vec![], |row| vec![row])
+    } else {
+        // deserialize the array to an HashSet
+        let tags: HashSet<String> = serde_json::from_str(uid_or_tags)
+            .with_context(|| format!("Invalid tags: {uid_or_tags}"))?;
 
-    // if no row, return
-    let row = match row {
-        Some(r) => r,
-        None => return Ok(None),
+        // find the key(s) that matches the tags
+        // the user must be the owner or have decrypt permissions
+        // Build the raw tags params
+        let tags_params = tags
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("${}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // Build the raw SQL query
+        let raw_sql = SQLITE_QUERIES
+            .get("select-from-tags")
+            .context("SQL query can't be found")?
+            .replace("@TAGS", &tags_params)
+            .replace("@LEN", &format!("${}", tags.len() + 1))
+            .replace("@USER", &format!("${}", tags.len() + 2));
+
+        // Bind the tags params
+        let mut query = sqlx::query::<Sqlite>(&raw_sql);
+        for tag in &tags {
+            query = query.bind(tag);
+        }
+        // Bind the tags len and the user
+        query = query.bind(tags.len() as i16).bind(user);
+
+        // Execute the query
+        query.fetch_all(executor).await?
     };
 
-    // recover the object
-    let raw_object = row.get::<Vec<u8>, _>(0);
-    let db_object: DBObject = serde_json::from_slice(&raw_object)
-        .context("failed deserializing the object")
-        .reason(ErrorReason::Internal_Server_Error)?;
-    let object = kmip_objects::Object::post_fix(db_object.object_type, db_object.object);
+    // process the rows and find the tags
+    let mut res = vec![];
+    for row in rows {
+        let object_with_metadata = ObjectWithMetadata::try_from(&row)?;
 
-    // recover the state
-    let state = state_from_string(&row.get::<String, _>(2))?;
+        // check if the user, who is not an owner, has the right permissions
+        if (user != &object_with_metadata.owner)
+            && !object_with_metadata.permissions.contains(&operation_type)
+        {
+            continue
+        }
 
-    // find the tags
-    let tag_rows: Vec<SqliteRow> = sqlx::query(
+        res.push(object_with_metadata);
+    }
+
+    Ok(res)
+}
+
+pub(crate) async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> KResult<HashSet<String>>
+where
+    E: Executor<'e, Database = Sqlite> + Copy,
+{
+    let rows: Vec<SqliteRow> = sqlx::query(
         SQLITE_QUERIES
             .get("select-tags")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
@@ -380,34 +414,10 @@ where
     .bind(uid)
     .fetch_all(executor)
     .await?;
-    let tags = tag_rows
-        .iter()
-        .map(|r| r.get(0))
-        .collect::<HashSet<String>>();
 
-    // if the user is the owner, we are good and can return the row
-    let owner = row.get::<String, _>(1);
-    if user == &owner {
-        return Ok(Some((object, state, tags)))
-    }
+    let tags = rows.iter().map(|r| r.get(0)).collect::<HashSet<String>>();
 
-    // check if the users has the right permissions
-    let perms_raw = row.get::<Vec<u8>, _>(3);
-    let perms: Vec<ObjectOperationTypes> = serde_json::from_slice(&perms_raw)
-        .context("failed deserializing the permissions")
-        .reason(ErrorReason::Internal_Server_Error)?;
-
-    // Check this operation is legit to fetch this object
-    if perms.into_iter().all(|p| p != operation_type) {
-        warn!(
-            "No authorization to perform the operation {operation_type} on the object {uid} / \
-             {user}"
-        );
-        // return item not found to the user
-        return Err(KmsError::ItemNotFound(uid.to_string()))
-    }
-
-    Ok(Some((object, state, tags)))
+    Ok(tags)
 }
 
 pub(crate) async fn update_object_(
@@ -568,7 +578,7 @@ pub(crate) async fn upsert_(
 pub(crate) async fn list_accesses_<'e, E>(
     uid: &str,
     executor: E,
-) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>
+) -> KResult<Vec<(String, Vec<ObjectOperationType>)>>
 where
     E: Executor<'e, Database = Sqlite>,
 {
@@ -582,7 +592,7 @@ where
     .bind(uid)
     .fetch_all(executor)
     .await?;
-    let mut ids: Vec<(String, Vec<ObjectOperationTypes>)> = Vec::with_capacity(list.len());
+    let mut ids: Vec<(String, Vec<ObjectOperationType>)> = Vec::with_capacity(list.len());
     for row in list {
         ids.push((
             row.get::<String, _>(0),
@@ -601,7 +611,7 @@ pub(crate) async fn list_shared_objects_<'e, E>(
         UniqueIdentifier,
         String,
         StateEnumeration,
-        Vec<ObjectOperationTypes>,
+        Vec<ObjectOperationType>,
         IsWrapped,
     )>,
 >
@@ -621,7 +631,7 @@ where
         UniqueIdentifier,
         String,
         StateEnumeration,
-        Vec<ObjectOperationTypes>,
+        Vec<ObjectOperationType>,
         IsWrapped,
     )> = Vec::with_capacity(list.len());
     for row in list {
@@ -641,7 +651,7 @@ pub(crate) async fn fetch_permissions_<'e, E>(
     uid: &str,
     userid: &str,
     executor: E,
-) -> KResult<Vec<ObjectOperationTypes>>
+) -> KResult<Vec<ObjectOperationType>>
 where
     E: Executor<'e, Database = Sqlite>,
 {
@@ -657,7 +667,7 @@ where
 
     row.map_or(Ok(vec![]), |row| {
         let perms_raw = row.get::<Vec<u8>, _>(0);
-        let perms: Vec<ObjectOperationTypes> = serde_json::from_slice(&perms_raw)
+        let perms: Vec<ObjectOperationType> = serde_json::from_slice(&perms_raw)
             .context("failed deserializing the permissions")
             .reason(ErrorReason::Internal_Server_Error)?;
         Ok(perms)
@@ -667,7 +677,7 @@ where
 pub(crate) async fn insert_access_<'e, E>(
     uid: &str,
     userid: &str,
-    operation_type: ObjectOperationTypes,
+    operation_type: ObjectOperationType,
     executor: E,
 ) -> KResult<()>
 where
@@ -704,7 +714,7 @@ where
 pub(crate) async fn delete_access_<'e, E>(
     uid: &str,
     userid: &str,
-    operation_type: ObjectOperationTypes,
+    operation_type: ObjectOperationType,
     executor: E,
 ) -> KResult<()>
 where
@@ -799,73 +809,6 @@ fn to_qualified_uids(
         ));
     }
     Ok(uids)
-}
-
-pub(crate) async fn find_from_tags_<'e, E>(
-    tags: &HashSet<String>,
-    user: Option<String>,
-    executor: E,
-) -> KResult<
-    Vec<(
-        UniqueIdentifier,
-        String,
-        StateEnumeration,
-        Vec<ObjectOperationTypes>,
-    )>,
->
-where
-    E: Executor<'e, Database = Sqlite> + Copy,
-{
-    // Build the raw tags params
-    let tags_params = tags
-        .iter()
-        .enumerate()
-        .map(|(i, _)| format!("${}", i + 1))
-        .collect::<Vec<_>>()
-        .join(", ");
-
-    // Build the raw SQL query
-    let rawsql = SQLITE_QUERIES
-        .get("select-from-tags")
-        .context("SQL query can't be found")?
-        .replace("@TAGS", &tags_params)
-        .replace("@LEN", &format!("${}", tags.len() + 1))
-        .replace("@USER", &format!("${}", tags.len() + 2));
-
-    // Bind the tags params
-    let mut query = sqlx::query::<Sqlite>(&rawsql);
-    for tag in tags {
-        query = query.bind(tag);
-    }
-    // Bind the tags len and the user
-    query = query
-        .bind(tags.len() as i16)
-        .bind(user.unwrap_or("".to_string()));
-
-    // Execute the query
-    let rows = query.fetch_all(executor).await?;
-
-    // Convert the rows into a list of qualified results
-    let mut results = Vec::with_capacity(rows.len());
-    for row in rows {
-        let perms_raw = row.get::<Vec<u8>, _>(3);
-        let perms: Vec<ObjectOperationTypes> = if perms_raw.is_empty() {
-            vec![]
-        } else {
-            serde_json::from_slice(&perms_raw)
-                .context("failed deserializing permissions")
-                .map_err(|e| KmsError::DatabaseError(e.to_string()))?
-        };
-
-        results.push((
-            row.get::<String, _>(0),
-            row.get::<String, _>(1),
-            state_from_string(&row.get::<String, _>(2))?,
-            perms,
-        ));
-    }
-
-    Ok(results)
 }
 
 /*

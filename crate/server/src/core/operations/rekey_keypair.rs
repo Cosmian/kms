@@ -3,7 +3,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
     kmip_types::CryptographicAlgorithm,
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::trace;
 
 use crate::{
@@ -30,15 +30,10 @@ pub async fn rekey_keypair(
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
     // retrieve from tags or use passed identifier
-    let private_key_unique_identifier = uid_from_identifier_tags(
-        kms,
-        &identifier,
-        user,
-        ObjectOperationTypes::Encrypt,
-        params,
-    )
-    .await?
-    .unwrap_or(identifier);
+    let private_key_unique_identifier =
+        uid_from_identifier_tags(kms, &identifier, user, ObjectOperationType::Encrypt, params)
+            .await?
+            .unwrap_or(identifier);
 
     let attributes = request.private_key_attributes.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest(

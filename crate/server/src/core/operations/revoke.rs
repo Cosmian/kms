@@ -8,7 +8,7 @@ use cosmian_kmip::kmip::{
         KeyFormatType, LinkType, RevocationReason, RevocationReasonEnumeration, StateEnumeration,
     },
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 
 use super::{
     get::{check_state_active, get_},
@@ -41,7 +41,7 @@ pub async fn revoke_operation(
         None,
         user,
         params,
-        ObjectOperationTypes::Revoke,
+        ObjectOperationType::Revoke,
     )
     .await?;
 
@@ -202,7 +202,7 @@ pub(crate) async fn revoke_key(
         kms,
         unique_identifier,
         user,
-        ObjectOperationTypes::Encrypt,
+        ObjectOperationType::Encrypt,
         params,
     )
     .await?
@@ -216,7 +216,7 @@ pub(crate) async fn revoke_key(
         None,
         user,
         params,
-        ObjectOperationTypes::Revoke,
+        ObjectOperationType::Revoke,
     )
     .await?;
 

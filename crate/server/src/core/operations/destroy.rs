@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Destroy, DestroyResponse},
     kmip_types::{KeyFormatType, LinkType, StateEnumeration},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 
 use super::{get::get_, uids::uid_from_identifier_tags};
 use crate::{
@@ -31,15 +31,10 @@ pub async fn destroy_operation(
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
     // retrieve from tags or use passed identifier
-    let unique_identifier = uid_from_identifier_tags(
-        kms,
-        &identifier,
-        user,
-        ObjectOperationTypes::Destroy,
-        params,
-    )
-    .await?
-    .unwrap_or(identifier);
+    let unique_identifier =
+        uid_from_identifier_tags(kms, &identifier, user, ObjectOperationType::Destroy, params)
+            .await?
+            .unwrap_or(identifier);
 
     // retrieve the object
     let (object, state) = get_(
@@ -49,7 +44,7 @@ pub async fn destroy_operation(
         None,
         user,
         params,
-        ObjectOperationTypes::Destroy,
+        ObjectOperationType::Destroy,
     )
     .await?;
 
@@ -151,7 +146,7 @@ pub(crate) async fn destroy_key(
         None,
         user,
         params,
-        ObjectOperationTypes::Destroy,
+        ObjectOperationType::Destroy,
     )
     .await?;
 

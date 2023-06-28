@@ -7,7 +7,7 @@ use cloudproof::reexport::crypto_core::{
 };
 use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration};
 use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationTypes},
+    access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::symmetric::create_symmetric_key,
 };
 use tempfile::tempdir;
@@ -15,7 +15,6 @@ use uuid::Uuid;
 
 use crate::{
     database::{cached_sqlcipher::CachedSqlCipher, sqlite::SqlitePool, Database},
-    kms_bail,
     log_utils::log_init,
     result::KResult,
 };
@@ -85,59 +84,81 @@ async fn tags<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
     assert_eq!(&uid, &uid_);
 
     //recover the object from DB and check that the vendor attributes contain the tags
-    match db
-        .retrieve(&uid, owner, ObjectOperationTypes::Get, db_params)
-        .await?
-    {
-        Some((obj_, state_, tags)) => {
-            assert_eq!(StateEnumeration::Active, state_);
-            assert_eq!(&symmetric_key, &obj_);
-            assert_eq!(tags.len(), 2);
-            assert!(tags.contains(&"tag1".to_string()));
-            assert!(tags.contains(&"tag2".to_string()));
-        }
-        None => kms_bail!("There should be an object"),
-    }
+    let res = db
+        .retrieve(&uid, owner, ObjectOperationType::Get, db_params)
+        .await?;
+    assert_eq!(res.len(), 1);
+    let owm = res[0].clone();
+    assert_eq!(StateEnumeration::Active, owm.state);
+    assert_eq!(&symmetric_key, &owm.object);
+    let tags = db.retrieve_tags(&owm.id, db_params).await?;
+    assert_eq!(tags.len(), 2);
+    assert!(tags.contains(&"tag1".to_string()));
+    assert!(tags.contains(&"tag2".to_string()));
 
     // find this object from tags as owner using tag1
     let res = db
-        .find_from_tags(&HashSet::from(["tag1".to_owned()]), None, db_params)
-        .await?;
-    assert_eq!(res.len(), 1);
-    assert_eq!(res[0].0, uid);
-    assert_eq!(res[0].1, owner);
-    assert_eq!(res[0].2, StateEnumeration::Active);
-    assert_eq!(res[0].3, vec![]);
-
-    // find this object from tags as owner using tag2
-    let res = db
-        .find_from_tags(&HashSet::from(["tag2".to_owned()]), None, db_params)
-        .await?;
-    assert_eq!(res.len(), 1);
-    assert_eq!(res[0].0, uid);
-    assert_eq!(res[0].1, owner);
-    assert_eq!(res[0].2, StateEnumeration::Active);
-    assert_eq!(res[0].3, vec![]);
-
-    // find this object from tags as owner using tag1 and tag2
-    let res = db
-        .find_from_tags(
-            &HashSet::from(["tag1".to_owned(), "tag2".to_owned()]),
-            None,
+        .retrieve(
+            &serde_json::to_string(&["tag1"])?,
+            owner,
+            ObjectOperationType::Get,
             db_params,
         )
         .await?;
     assert_eq!(res.len(), 1);
-    assert_eq!(res[0].0, uid);
-    assert_eq!(res[0].1, owner);
-    assert_eq!(res[0].2, StateEnumeration::Active);
-    assert_eq!(res[0].3, vec![]);
+    let owm = res[0].clone();
+    assert_eq!(owm.id, uid);
+    assert_eq!(owm.owner, owner);
+    assert_eq!(owm.state, StateEnumeration::Active);
+    assert_eq!(owm.permissions, vec![]);
+    let tags = db.retrieve_tags(&owm.id, db_params).await?;
+    assert!(tags.contains(&"tag1".to_string()));
+    assert!(tags.contains(&"tag2".to_string()));
+
+    // find this object from tags as owner using tag2
+    let res = db
+        .retrieve(
+            &serde_json::to_string(&["tag2"])?,
+            owner,
+            ObjectOperationType::Get,
+            db_params,
+        )
+        .await?;
+    assert_eq!(res.len(), 1);
+    let owm = res[0].clone();
+    assert_eq!(owm.id, uid);
+    assert_eq!(owm.owner, owner);
+    assert_eq!(owm.state, StateEnumeration::Active);
+    assert_eq!(owm.permissions, vec![]);
+    let tags = db.retrieve_tags(&owm.id, db_params).await?;
+    assert!(tags.contains(&"tag1".to_string()));
+    assert!(tags.contains(&"tag2".to_string()));
+
+    // find this object from tags as owner using tag1 and tag2
+    let res = db
+        .retrieve(
+            &serde_json::to_string(&["tag1", "tag2"])?,
+            owner,
+            ObjectOperationType::Get,
+            db_params,
+        )
+        .await?;
+    assert_eq!(res.len(), 1);
+    let owm = res[0].clone();
+    assert_eq!(owm.id, uid);
+    assert_eq!(owm.owner, owner);
+    assert_eq!(owm.state, StateEnumeration::Active);
+    assert_eq!(owm.permissions, vec![]);
+    let tags = db.retrieve_tags(&owm.id, db_params).await?;
+    assert!(tags.contains(&"tag1".to_string()));
+    assert!(tags.contains(&"tag2".to_string()));
 
     // should NOT find this object from tags as owner using tag1, tag2 and tag3
     let res = db
-        .find_from_tags(
-            &HashSet::from(["tag1".to_owned(), "tag2".to_owned(), "tag3".to_owned()]),
-            None,
+        .retrieve(
+            &serde_json::to_string(&["tag1", "tag2", "tag3"])?,
+            owner,
+            ObjectOperationType::Get,
             db_params,
         )
         .await?;
@@ -145,47 +166,62 @@ async fn tags<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
 
     // should NOT find this object from tags as owner using tag3
     let res = db
-        .find_from_tags(&HashSet::from(["tag3".to_owned()]), None, db_params)
+        .retrieve(
+            &serde_json::to_string(&["tag3"])?,
+            owner,
+            ObjectOperationType::Get,
+            db_params,
+        )
         .await?;
     assert_eq!(res.len(), 0);
 
     // grant the Get access right to USER_GET
     const USER_GET: &str = "user_get";
-    db.grant_access(&uid, USER_GET, ObjectOperationTypes::Get, db_params)
+    db.grant_access(&uid, USER_GET, ObjectOperationType::Get, db_params)
         .await?;
 
     // grant the Decrypt access right to USER_DECRYPT
     const USER_DECRYPT: &str = "user_decrypt";
-    db.grant_access(&uid, USER_DECRYPT, ObjectOperationTypes::Decrypt, db_params)
+    db.grant_access(&uid, USER_DECRYPT, ObjectOperationType::Decrypt, db_params)
         .await?;
 
     // find this object from tags as USER_GET using tag1
     let res = db
-        .find_from_tags(
-            &HashSet::from(["tag1".to_owned()]),
-            Some(USER_GET.to_owned()),
+        .retrieve(
+            &serde_json::to_string(&["tag1"])?,
+            USER_GET,
+            ObjectOperationType::Get,
             db_params,
         )
         .await?;
     assert_eq!(res.len(), 1);
-    assert_eq!(res[0].0, uid);
-    assert_eq!(res[0].1, owner);
-    assert_eq!(res[0].2, StateEnumeration::Active);
-    assert_eq!(res[0].3, vec![ObjectOperationTypes::Get]);
+    let owm = res[0].clone();
+    assert_eq!(owm.id, uid);
+    assert_eq!(owm.owner, owner);
+    assert_eq!(owm.state, StateEnumeration::Active);
+    assert_eq!(owm.permissions, vec![ObjectOperationType::Get]);
+    let tags = db.retrieve_tags(&owm.id, db_params).await?;
+    assert!(tags.contains(&"tag1".to_string()));
+    assert!(tags.contains(&"tag2".to_string()));
 
     // find this object from tags as USER_DECRYPT using tag1
     let res = db
-        .find_from_tags(
-            &HashSet::from(["tag1".to_owned(), "tag2".to_owned()]),
-            Some(USER_DECRYPT.to_owned()),
+        .retrieve(
+            &serde_json::to_string(&["tag1", "tag2"])?,
+            USER_DECRYPT,
+            ObjectOperationType::Get,
             db_params,
         )
         .await?;
     assert_eq!(res.len(), 1);
-    assert_eq!(res[0].0, uid);
-    assert_eq!(res[0].1, owner);
-    assert_eq!(res[0].2, StateEnumeration::Active);
-    assert_eq!(res[0].3, vec![ObjectOperationTypes::Decrypt]);
+    let owm = res[0].clone();
+    assert_eq!(owm.id, uid);
+    assert_eq!(owm.owner, owner);
+    assert_eq!(owm.state, StateEnumeration::Active);
+    assert_eq!(owm.permissions, vec![ObjectOperationType::Decrypt]);
+    let tags = db.retrieve_tags(&owm.id, db_params).await?;
+    assert!(tags.contains(&"tag1".to_string()));
+    assert!(tags.contains(&"tag2".to_string()));
 
     Ok(())
 }

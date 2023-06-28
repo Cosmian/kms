@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::StateEnumeration};
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 pub(crate) use unwrap::unwrap_key;
 pub(crate) use wrap::wrap_key;
 
@@ -15,17 +15,18 @@ async fn get_key(
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object> {
     // check if unwrapping key exists and retrieve it
-    let (key, state) = kms
+    let owm = kms
         .db
-        .retrieve(key_uid, owner, ObjectOperationTypes::Get, params)
+        .retrieve(key_uid, owner, ObjectOperationType::Get, params)
         .await?
+        .pop()
         .ok_or_else(|| {
             KmsError::ItemNotFound(format!(
                 "unable to fetch the key with uid: {key_uid} not found"
             ))
         })?;
     // check if unwrapping key is active
-    match state {
+    match owm.state {
         StateEnumeration::Active => {
             //OK
         }
@@ -33,5 +34,5 @@ async fn get_key(
             kms_bail!("unable to fetch the key with uid: {key_uid}. The key is not active: {x:?}")
         }
     }
-    Ok(key)
+    Ok(owm.object)
 }
