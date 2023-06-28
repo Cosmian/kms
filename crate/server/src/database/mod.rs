@@ -7,20 +7,22 @@ use cosmian_kmip::kmip::{
         Attributes, LinkedObjectIdentifier::TextString, StateEnumeration, UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
 use lazy_static::lazy_static;
 use rawsql::Loader;
 use serde::{Deserialize, Serialize};
 
+use self::object_with_metadata::ObjectWithMetadata;
 use crate::{kms_bail, result::KResult};
 
 pub type KMSServer = crate::core::KMS;
 
 pub(crate) mod cached_sqlcipher;
 pub(crate) mod cached_sqlite_struct;
-// pub(crate) mod pgsql;
-pub mod sqlite;
+pub(crate) mod pgsql;
 // pub(crate) mod mysql;
+pub(crate) mod object_with_metadata;
+pub(crate) mod sqlite;
 
 #[cfg(test)]
 mod tests;
@@ -69,16 +71,27 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>>;
 
-    /// Retrieve an object from the database using `uid` and `user`.
-    /// The `query_read_access` allows additional lookup in `read_access` table to see
-    /// if `user` is matching `read_access` authorization
+    /// Retrieve objects from the database.
+    ///
+    /// The `uid_or_tags` parameter can be either a `uid` or a comma-separated list of tags
+    /// in a JSON array.
+    ///
+    /// The `query_read_access` allows additional filtering in `read_access` table to see
+    /// if a `user`, that is not a user, has the corresponding `read_access` authorization
     async fn retrieve(
         &self,
-        uid: &str,
+        uid_or_tags: &str,
         user: &str,
-        query_read_access: ObjectOperationTypes,
+        query_read_access: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Option<(Object, StateEnumeration, HashSet<String>)>>;
+    ) -> KResult<Vec<ObjectWithMetadata>>;
+
+    /// Retrieve the ags of the object with the given `uid`
+    async fn retrieve_tags(
+        &self,
+        uid: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<HashSet<String>>;
 
     async fn update_object(
         &self,
@@ -122,7 +135,7 @@ pub trait Database {
             UniqueIdentifier,
             String,
             StateEnumeration,
-            Vec<ObjectOperationTypes>,
+            Vec<ObjectOperationType>,
             IsWrapped,
         )>,
     >;
@@ -131,7 +144,7 @@ pub trait Database {
         &self,
         uid: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>;
+    ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>>;
 
     /// Grant the access right to `user` to perform the `operation_type`
     /// on the object identified by its `uid`
@@ -139,7 +152,7 @@ pub trait Database {
         &self,
         uid: &str,
         user: &str,
-        operation_type: ObjectOperationTypes,
+        operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
@@ -149,7 +162,7 @@ pub trait Database {
         &self,
         uid: &str,
         user: &str,
-        operation_type: ObjectOperationTypes,
+        operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
@@ -170,24 +183,6 @@ pub trait Database {
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>;
-
-    /// Return uid, owner and state of the objects
-    /// that contain all the `tags`
-    /// If a `user` is specified, also retrieve the
-    /// access rights for that user if any
-    async fn find_from_tags(
-        &self,
-        tags: &HashSet<String>,
-        user: Option<String>,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<
-        Vec<(
-            UniqueIdentifier,
-            String,
-            StateEnumeration,
-            Vec<ObjectOperationTypes>,
-        )>,
-    >;
 }
 
 /// The Database implemented using `SQLite`

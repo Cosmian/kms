@@ -7,7 +7,7 @@ use cloudproof::reexport::crypto_core::{
 };
 use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration};
 use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationTypes},
+    access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::symmetric::create_symmetric_key,
 };
 use tempfile::tempdir;
@@ -15,7 +15,6 @@ use uuid::Uuid;
 
 use crate::{
     database::{cached_sqlcipher::CachedSqlCipher, sqlite::SqlitePool, Database},
-    kms_bail,
     log_utils::log_init,
     result::KResult,
 };
@@ -88,20 +87,18 @@ async fn crud<DB: Database>(db: DB, db_params: Option<&ExtraDatabaseParams>) -> 
     assert_eq!(&uid, &uid_);
 
     // retrieve from DB
-    let _state = match db
-        .retrieve(&uid, owner, ObjectOperationTypes::Get, db_params)
-        .await?
-    {
-        Some((obj_, state_, tags)) => {
-            assert_eq!(StateEnumeration::Active, state_);
-            assert_eq!(&symmetric_key, &obj_);
-            assert_eq!(tags.len(), 2);
-            assert!(tags.contains(&"tag1".to_string()));
-            assert!(tags.contains(&"tag2".to_string()));
-            state_
-        }
-        None => kms_bail!("There should be an object"),
-    };
+    let res = db
+        .retrieve(&uid, owner, ObjectOperationType::Get, db_params)
+        .await?;
+
+    // check the result
+    let owm = &res[0];
+    assert_eq!(StateEnumeration::Active, owm.state);
+    assert_eq!(&symmetric_key, &owm.object);
+    let tags = db.retrieve_tags(&owm.id, db_params).await?;
+    assert_eq!(tags.len(), 2);
+    assert!(tags.contains(&"tag1".to_string()));
+    assert!(tags.contains(&"tag2".to_string()));
 
     Ok(())
 }

@@ -14,7 +14,7 @@ use cosmian_kmip::kmip::{
     kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve, StateEnumeration},
 };
 use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationTypes},
+    access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
         curve_25519::{
@@ -32,7 +32,8 @@ use crate::{
     config::{DbParams, ServerConfig},
     core::operations::unwrap_key,
     database::{
-        cached_sqlcipher::CachedSqlCipher, mysql::Sql, pgsql::Pgsql, sqlite::SqlitePool, Database,
+        cached_sqlcipher::CachedSqlCipher, object_with_metadata::ObjectWithMetadata, pgsql::PgPool,
+        sqlite::SqlitePool, Database,
     },
     error::KmsError,
     kms_bail, kms_not_supported,
@@ -46,8 +47,9 @@ impl KMS {
             DbParams::Sqlite(db_path) => {
                 Box::new(SqlitePool::instantiate(&db_path.join("kms.db")).await?)
             }
-            DbParams::Postgres(url) => Box::new(Pgsql::instantiate(url).await?),
-            DbParams::Mysql(url) => Box::new(Sql::instantiate(url).await?),
+            DbParams::Postgres(url) => Box::new(PgPool::instantiate(url).await?),
+            // DbParams::Mysql(url) => Box::new(Sql::instantiate(url).await?),
+            DbParams::Mysql(_url) => panic!("MysSQL Support removed for now"),
         };
 
         Ok(Self {
@@ -69,9 +71,9 @@ impl KMS {
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn EncryptionSystem>> {
-        let (mut object, state) = self
+        let (mut object, state, _tags) = self
             .db
-            .retrieve(key_uid, owner, ObjectOperationTypes::Encrypt, params)
+            .retrieve(key_uid, owner, ObjectOperationType::Encrypt, params)
             .await?
             .ok_or_else(|| {
                 KmsError::ItemNotFound(format!("object with uid: {key_uid} not found"))
@@ -134,42 +136,27 @@ impl KMS {
     pub(crate) async fn get_decryption_system(
         &self,
         cover_crypt: CoverCryptX25519Aes256,
-        key_uid: &str,
-        owner: &str,
+        mut owm: ObjectWithMetadata,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn DecryptionSystem>> {
-        let (mut object, state) = self
-            .db
-            .retrieve(key_uid, owner, ObjectOperationTypes::Decrypt, params)
-            .await?
-            .ok_or_else(|| {
-                KmsError::ItemNotFound(format!("Object with uid: {key_uid} not found"))
-            })?;
-
-        // the key must be active
-        if state != StateEnumeration::Active {
-            kms_bail!(KmsError::InconsistentOperation(
-                "the server can't encrypt: the key is not active".to_owned()
-            ));
-        }
-
         // unwrap if wrapped
-        if object.key_wrapping_data().is_some() {
-            let object_type = object.object_type();
-            let key_block = object.key_block_mut()?;
-            unwrap_key(object_type, key_block, self, owner, params).await?;
+        if owm.object.key_wrapping_data().is_some() {
+            let object_type = owm.object.object_type();
+            let key_block = owm.object.key_block_mut()?;
+            unwrap_key(object_type, key_block, self, &owm.owner, params).await?;
         }
 
-        match &object {
+        match &owm.object {
             Object::PrivateKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::CoverCryptSecretKey => Ok(Box::new(
-                    CovercryptDecryption::instantiate(cover_crypt, key_uid, &object)?,
+                    CovercryptDecryption::instantiate(cover_crypt, &owm.id, &owm.object)?,
                 )),
                 KeyFormatType::TransparentECPrivateKey => match key_block.cryptographic_algorithm {
-                    CryptographicAlgorithm::ECDH => {
-                        Ok(Box::new(EciesDecryption::instantiate(key_uid, &object)?)
-                            as Box<dyn DecryptionSystem>)
-                    }
+                    CryptographicAlgorithm::ECDH => Ok(Box::new(EciesDecryption::instantiate(
+                        &owm.id,
+                        &owm.object,
+                    )?)
+                        as Box<dyn DecryptionSystem>),
                     x => kms_not_supported!(
                         "EC public keys with cryptographic algorithm {:?} not supported",
                         x
@@ -181,7 +168,7 @@ impl KMS {
                 KeyFormatType::TransparentSymmetricKey => {
                     match &key_block.cryptographic_algorithm {
                         CryptographicAlgorithm::AES => {
-                            Ok(Box::new(AesGcmSystem::instantiate(key_uid, &object)?))
+                            Ok(Box::new(AesGcmSystem::instantiate(&owm.id, &owm.object)?))
                         }
                         other => {
                             kms_not_supported!("symmetric decryption with algorithm: {other:?}")

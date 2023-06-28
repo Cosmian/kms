@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip::kmip_operations::{Encrypt, EncryptResponse};
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::trace;
 
 use crate::{
@@ -23,15 +23,10 @@ pub async fn encrypt(
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
     // retrieve from tags or use passed identifier
-    let unique_identifier = uid_from_identifier_tags(
-        kms,
-        &identifier,
-        user,
-        ObjectOperationTypes::Encrypt,
-        params,
-    )
-    .await?
-    .unwrap_or(identifier);
+    let unique_identifier =
+        uid_from_identifier_tags(kms, &identifier, user, ObjectOperationType::Encrypt, params)
+            .await?
+            .unwrap_or(identifier);
 
     kms.get_encryption_system(&unique_identifier, user, params)
         .await?

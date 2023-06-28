@@ -2,9 +2,7 @@ use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
     kmip_operations::Create,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, VendorAttribute,
-    },
+    kmip_types::{Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
 };
 
 /// Create a symmetric key for the given algorithm

@@ -11,7 +11,7 @@ use cosmian_kmip::kmip::{
     kmip_objects,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     ConnectOptions, Pool, Sqlite,
@@ -19,13 +19,14 @@ use sqlx::{
 
 use super::{
     cached_sqlite_struct::KMSSqliteCache,
+    object_with_metadata::ObjectWithMetadata,
     sqlite::{
         create_, delete_, delete_access_, find_, insert_access_, is_object_owned_by_,
         list_accesses_, list_shared_objects_, retrieve_, update_object_, update_state_, upsert_,
     },
 };
 use crate::{
-    database::{sqlite::find_from_tags_, Database, SQLITE_QUERIES},
+    database::{sqlite::retrieve_tags_, Database, SQLITE_QUERIES},
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
@@ -105,7 +106,7 @@ impl CachedSqlCipher {
         uid: &str,
         userid: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectOperationTypes>> {
+    ) -> KResult<Vec<ObjectOperationType>> {
         use super::sqlite::fetch_permissions_;
 
         if let Some(params) = params {
@@ -203,13 +204,28 @@ impl Database for CachedSqlCipher {
     async fn retrieve(
         &self,
         uid: &str,
-        owner: &str,
-        operation_type: ObjectOperationTypes,
+        user: &str,
+        operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Option<(kmip_objects::Object, StateEnumeration, HashSet<String>)>> {
+    ) -> KResult<Vec<ObjectWithMetadata>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = retrieve_(uid, owner, operation_type, &*pool).await;
+            let ret = retrieve_(uid, user, operation_type, &*pool).await;
+            self.post_query(params.group_id)?;
+            return ret
+        }
+
+        kms_bail!("Missing group_id/key for opening SQLCipher")
+    }
+
+    async fn retrieve_tags(
+        &self,
+        uid: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<HashSet<String>> {
+        if let Some(params) = params {
+            let pool = self.pre_query(params.group_id, &params.key).await?;
+            let ret = retrieve_tags_(uid, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -324,7 +340,7 @@ impl Database for CachedSqlCipher {
             UniqueIdentifier,
             String,
             StateEnumeration,
-            Vec<ObjectOperationTypes>,
+            Vec<ObjectOperationType>,
             IsWrapped,
         )>,
     > {
@@ -342,7 +358,7 @@ impl Database for CachedSqlCipher {
         &self,
         uid: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>> {
+    ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = list_accesses_(uid, &*pool).await;
@@ -357,7 +373,7 @@ impl Database for CachedSqlCipher {
         &self,
         uid: &str,
         userid: &str,
-        operation_type: ObjectOperationTypes,
+        operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
@@ -374,7 +390,7 @@ impl Database for CachedSqlCipher {
         &self,
         uid: &str,
         userid: &str,
-        operation_type: ObjectOperationTypes,
+        operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
@@ -413,29 +429,6 @@ impl Database for CachedSqlCipher {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = find_(researched_attributes, state, owner, &*pool).await;
-            self.post_query(params.group_id)?;
-            return ret
-        }
-
-        kms_bail!("Missing group_id/key for opening SQLCipher")
-    }
-
-    async fn find_from_tags(
-        &self,
-        tags: &HashSet<String>,
-        user: Option<String>,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<
-        Vec<(
-            UniqueIdentifier,
-            String,
-            StateEnumeration,
-            Vec<ObjectOperationTypes>,
-        )>,
-    > {
-        if let Some(params) = params {
-            let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = find_from_tags_(tags, user, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }

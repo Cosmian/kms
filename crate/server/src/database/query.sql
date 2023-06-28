@@ -34,8 +34,9 @@ DELETE FROM tags;
 INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4);
 
 -- name: select-object
-SELECT objects.object, objects.owner, objects.state, read_access.permission FROM objects 
-WHERE id=$1
+SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permission 
+FROM objects 
+WHERE object.id=$1
 LEFT JOIN read_access
 ON objects.id = read_access.id AND read_access.userid=$2;
 
@@ -82,7 +83,7 @@ SELECT userid, permissions
         WHERE id=$1;
 
 -- name: select-objects-access-obtained
-SELECT objects.id, owner, state, permissions
+SELECT objects.id, objects.owner, objects.state, read_access.permissions
         FROM objects
         INNER JOIN read_access
         ON objects.id = read_access.id
@@ -99,7 +100,7 @@ DELETE FROM tags WHERE id=$1;
 
 
 -- name: select-from-tags
-SELECT objects.id, owner, state, permissions
+SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions
 FROM objects
 INNER JOIN (
     SELECT id

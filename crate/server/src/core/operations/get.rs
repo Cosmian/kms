@@ -4,7 +4,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Get, GetResponse},
     kmip_types::{KeyWrapType, StateEnumeration},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::{debug, trace};
 
 use crate::{
@@ -40,15 +40,10 @@ pub async fn get(
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
     // retrieve from tags or use passed identifier
-    let unique_identifier = uid_from_identifier_tags(
-        kms,
-        &identifier,
-        user,
-        ObjectOperationTypes::Encrypt,
-        params,
-    )
-    .await?
-    .unwrap_or(identifier);
+    let unique_identifier =
+        uid_from_identifier_tags(kms, &identifier, user, ObjectOperationType::Encrypt, params)
+            .await?
+            .unwrap_or(identifier);
 
     let (object, state) = get_(
         kms,
@@ -57,7 +52,7 @@ pub async fn get(
         request.key_wrapping_data,
         user,
         params,
-        ObjectOperationTypes::Get,
+        ObjectOperationType::Get,
     )
     .await?;
 
@@ -115,7 +110,7 @@ pub(crate) async fn get_(
     key_wrapping_data: Option<KeyWrappingData>,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
-    operation_type: ObjectOperationTypes,
+    operation_type: ObjectOperationType,
 ) -> KResult<(Object, StateEnumeration)> {
     trace!("retrieving KMIP Object with id: {unique_identifier}");
     let (mut object, state) = kms

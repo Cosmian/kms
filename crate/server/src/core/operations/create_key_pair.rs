@@ -1,5 +1,7 @@
+use std::collections::HashSet;
+
 use cosmian_kmip::kmip::kmip_operations::{CreateKeyPair, CreateKeyPairResponse};
-use cosmian_kms_utils::{access::ExtraDatabaseParams, KeyPair};
+use cosmian_kms_utils::{access::ExtraDatabaseParams, tagging::get_tags, KeyPair};
 use tracing::trace;
 use uuid::Uuid;
 
@@ -18,6 +20,14 @@ pub async fn create_key_pair(
     {
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }
+
+    // recover tags
+    let tags = request
+        .common_attributes
+        .as_ref()
+        .map(|attributes| get_tags(&attributes))
+        .unwrap_or(HashSet::new());
+
     let sk_uid = Uuid::new_v4().to_string();
     let pk_uid = Uuid::new_v4().to_string();
     let key_pair: KeyPair = kms.create_key_pair_(&request, &sk_uid, &pk_uid).await?;
@@ -26,8 +36,16 @@ pub async fn create_key_pair(
         .create_objects(
             owner,
             &[
-                (Some(sk_uid.clone()), key_pair.private_key().to_owned()),
-                (Some(pk_uid.clone()), key_pair.public_key().to_owned()),
+                (
+                    Some(sk_uid.clone()),
+                    key_pair.private_key().to_owned(),
+                    &tags,
+                ),
+                (
+                    Some(pk_uid.clone()),
+                    key_pair.public_key().to_owned(),
+                    &tags,
+                ),
             ],
             params,
         )

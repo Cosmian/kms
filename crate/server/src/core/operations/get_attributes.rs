@@ -2,7 +2,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{GetAttributes, GetAttributesResponse},
     kmip_types::{AttributeReference, Attributes, Tag},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::{debug, trace};
 
 use crate::{
@@ -26,20 +26,15 @@ pub async fn get_attributes(
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
     // retrieve from tags or use passed identifier
-    let unique_identifier = uid_from_identifier_tags(
-        kms,
-        &identifier,
-        user,
-        ObjectOperationTypes::Encrypt,
-        params,
-    )
-    .await?
-    .unwrap_or(identifier);
+    let unique_identifier =
+        uid_from_identifier_tags(kms, &identifier, user, ObjectOperationType::Encrypt, params)
+            .await?
+            .unwrap_or(identifier);
 
     trace!("retrieving attributes of KMIP Object with id: {unique_identifier}");
     let (object, _state) = kms
         .db
-        .retrieve(&unique_identifier, user, ObjectOperationTypes::Get, params)
+        .retrieve(&unique_identifier, user, ObjectOperationType::Get, params)
         .await?
         .ok_or_else(|| {
             KmsError::ItemNotFound(format!("Object with uid: {unique_identifier} not found"))

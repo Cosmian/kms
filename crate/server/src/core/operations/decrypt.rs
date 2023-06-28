@@ -1,11 +1,13 @@
-use cosmian_kmip::kmip::kmip_operations::{Decrypt, DecryptResponse};
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kmip::kmip::{
+    kmip_objects::ObjectType,
+    kmip_operations::{Decrypt, DecryptResponse},
+    kmip_types::StateEnumeration,
+};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::trace;
 
 use crate::{
-    core::{operations::uids::uid_from_identifier_tags, KMS},
-    error::KmsError,
-    result::KResult,
+    core::KMS, database::object_with_metadata::ObjectWithMetadata, error::KmsError, result::KResult,
 };
 
 pub async fn decrypt(
@@ -17,24 +19,36 @@ pub async fn decrypt(
     trace!("Decrypt: {:?}", &request.unique_identifier);
 
     // there must be an identifier
-    let identifier = request
+    let uid_or_tags = request
         .unique_identifier
         .clone()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
     // retrieve from tags or use passed identifier
-    let uid = uid_from_identifier_tags(
-        kms,
-        &identifier,
-        user,
-        ObjectOperationTypes::Decrypt,
-        params,
-    )
-    .await?
-    .unwrap_or(identifier);
+    let mut owm_s = kms
+        .db
+        .retrieve(&uid_or_tags, user, ObjectOperationType::Decrypt, params)
+        .await?
+        .into_iter()
+        .filter(|owm| {
+            let object_type = owm.object.object_type();
+            owm.state == StateEnumeration::Active
+                && (object_type == ObjectType::PrivateKey
+                    || object_type == ObjectType::SymmetricKey)
+        })
+        .collect::<Vec<ObjectWithMetadata>>();
+    let owm = match owm_s.len() {
+        0 => return Err(KmsError::ItemNotFound(uid_or_tags)),
+        1 => owm_s.pop().expect("failed extracting the key"),
+        _ => {
+            return Err(KmsError::InvalidRequest(format!(
+                "too many items for {uid_or_tags}",
+            )))
+        }
+    };
 
     // decrypt
-    kms.get_decryption_system(Default::default(), &uid, user, params)
+    kms.get_decryption_system(Default::default(), owm, params)
         .await?
         .decrypt(&request)
         .map_err(Into::into)
