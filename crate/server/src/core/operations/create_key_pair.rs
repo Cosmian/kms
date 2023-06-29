@@ -25,7 +25,7 @@ pub async fn create_key_pair(
     let tags = request
         .common_attributes
         .as_ref()
-        .map(|attributes| get_tags(&attributes))
+        .map(get_tags)
         .unwrap_or(HashSet::new());
 
     let sk_uid = Uuid::new_v4().to_string();

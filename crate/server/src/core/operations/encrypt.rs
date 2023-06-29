@@ -1,11 +1,13 @@
-use cosmian_kmip::kmip::kmip_operations::{Encrypt, EncryptResponse};
+use cosmian_kmip::kmip::{
+    kmip_objects::ObjectType,
+    kmip_operations::{Encrypt, EncryptResponse},
+    kmip_types::StateEnumeration,
+};
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::trace;
 
 use crate::{
-    core::{operations::uids::uid_from_identifier_tags, KMS},
-    error::KmsError,
-    result::KResult,
+    core::KMS, database::object_with_metadata::ObjectWithMetadata, error::KmsError, result::KResult,
 };
 
 pub async fn encrypt(
@@ -17,18 +19,36 @@ pub async fn encrypt(
     trace!("encrypt : {}", serde_json::to_string(&request)?);
 
     // there must be an identifier
-    let identifier = request
+    let uid_or_tags = request
         .unique_identifier
         .clone()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
     // retrieve from tags or use passed identifier
-    let unique_identifier =
-        uid_from_identifier_tags(kms, &identifier, user, ObjectOperationType::Encrypt, params)
-            .await?
-            .unwrap_or(identifier);
+    let mut owm_s = kms
+        .db
+        .retrieve(&uid_or_tags, user, ObjectOperationType::Encrypt, params)
+        .await?
+        .into_iter()
+        .filter(|owm| {
+            let object_type = owm.object.object_type();
+            owm.state == StateEnumeration::Active
+                && (object_type == ObjectType::PublicKey || object_type == ObjectType::SymmetricKey)
+        })
+        .collect::<Vec<ObjectWithMetadata>>();
 
-    kms.get_encryption_system(&unique_identifier, user, params)
+    // there can only be one key
+    let owm = match owm_s.len() {
+        0 => return Err(KmsError::ItemNotFound(uid_or_tags)),
+        1 => owm_s.pop().expect("failed extracting the key"),
+        _ => {
+            return Err(KmsError::InvalidRequest(format!(
+                "too many items for {uid_or_tags}",
+            )))
+        }
+    };
+
+    kms.get_encryption_system(owm, params)
         .await?
         .encrypt(&request)
         .map_err(Into::into)

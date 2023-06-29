@@ -19,18 +19,14 @@ pub async fn create(
     }
 
     // recover tags
-    let mut tags = get_tags(&request.attributes);
+    let tags = get_tags(&request.attributes);
 
     let object = match &request.object_type {
         ObjectType::SymmetricKey => {
             let mut rng = kms.rng.lock().expect("failed locking the CsRng");
-            tags.insert(ObjectType::SymmetricKey.to_string());
             kms.create_symmetric_key(&mut rng, &request, owner)?
         }
-        ObjectType::PrivateKey => {
-            tags.insert(ObjectType::PrivateKey.to_string());
-            kms.create_private_key(&request, owner, params).await?
-        }
+        ObjectType::PrivateKey => kms.create_private_key(&request, owner, params).await?,
         _ => {
             kms_bail!(KmsError::NotSupported(format!(
                 "This server does not yet support creation of: {}",

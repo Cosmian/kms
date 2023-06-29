@@ -37,6 +37,8 @@ pub async fn decrypt(
                     || object_type == ObjectType::SymmetricKey)
         })
         .collect::<Vec<ObjectWithMetadata>>();
+
+    // there can only be one key
     let owm = match owm_s.len() {
         0 => return Err(KmsError::ItemNotFound(uid_or_tags)),
         1 => owm_s.pop().expect("failed extracting the key"),

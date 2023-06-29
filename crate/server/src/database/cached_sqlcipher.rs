@@ -237,7 +237,7 @@ impl Database for CachedSqlCipher {
         &self,
         uid: &str,
         object: &kmip_objects::Object,
-        tags: &HashSet<String>,
+        tags: Option<&HashSet<String>>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {

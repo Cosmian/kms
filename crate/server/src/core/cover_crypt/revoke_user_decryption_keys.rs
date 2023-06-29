@@ -3,7 +3,7 @@ use cosmian_kms_utils::access::ExtraDatabaseParams;
 
 use super::locate_user_decryption_keys;
 use crate::{
-    core::{operations::revoke_key, KMS},
+    core::{operations::recursively_revoke_key, KMS},
     result::KResult,
 };
 
@@ -27,7 +27,7 @@ pub(crate) async fn revoke_user_decryption_keys(
     .await?
     {
         for id in ids {
-            let _ = revoke_key(
+            let _ = recursively_revoke_key(
                 &id,
                 revocation_reason.clone(),
                 compromise_occurrence_date,

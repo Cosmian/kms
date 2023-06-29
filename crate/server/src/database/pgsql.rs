@@ -157,7 +157,7 @@ impl Database for PgPool {
     async fn retrieve_tags(
         &self,
         uid: &str,
-        params: Option<&ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
         retrieve_tags_(uid, &self.pool).await
     }
@@ -166,7 +166,7 @@ impl Database for PgPool {
         &self,
         uid: &str,
         object: &kmip_objects::Object,
-        tags: &HashSet<String>,
+        tags: Option<&HashSet<String>>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         let mut tx = self.pool.begin().await?;
@@ -403,7 +403,7 @@ where
         let object_with_metadata = ObjectWithMetadata::try_from(&row)?;
 
         // check if the user, who is not an owner, has the right permissions
-        if (user != &object_with_metadata.owner)
+        if (user != object_with_metadata.owner)
             && !object_with_metadata.permissions.contains(&operation_type)
         {
             continue
@@ -436,7 +436,7 @@ where
 pub(crate) async fn update_object_(
     uid: &str,
     object: &kmip_objects::Object,
-    tags: &HashSet<String>,
+    tags: Option<&HashSet<String>>,
     executor: &mut Transaction<'_, Postgres>,
 ) -> KResult<()> {
     let object_json = serde_json::to_value(DBObject {
@@ -467,16 +467,18 @@ pub(crate) async fn update_object_(
     .await?;
 
     // Insert the new tags
-    for tag in tags {
-        sqlx::query(
-            PGSQL_QUERIES
-                .get("insert-tags")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .bind(uid)
-        .bind(tag)
-        .execute(&mut **executor)
-        .await?;
+    if let Some(tags) = tags {
+        for tag in tags {
+            sqlx::query(
+                PGSQL_QUERIES
+                    .get("insert-tags")
+                    .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+            )
+            .bind(uid)
+            .bind(tag)
+            .execute(&mut **executor)
+            .await?;
+        }
     }
 
     trace!("Updated in DB: {uid}");
