@@ -93,11 +93,14 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>>;
 
+    /// Update an object in the database.
+    ///
+    /// If tags is `None`, the tags will not be updated.
     async fn update_object(
         &self,
         uid: &str,
         object: &Object,
-        tags: &HashSet<String>,
+        tags: Option<&HashSet<String>>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 

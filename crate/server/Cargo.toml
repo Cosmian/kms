@@ -31,6 +31,7 @@ actix-service = "2.0"
 actix-tls = "3.0.3"
 actix-web = { version = "4.3", features = ["openssl"] }
 alcoholic_jwt = "4091"
+async-recursion = "1.0"
 async-trait = "0.1"
 base64 = { workspace = true }
 bitflags = { workspace = true }

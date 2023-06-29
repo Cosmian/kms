@@ -2,11 +2,11 @@ use cosmian_kmip::kmip::{
     kmip_operations::{GetAttributes, GetAttributesResponse},
     kmip_types::{AttributeReference, Attributes, Tag},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, trace};
 
 use crate::{
-    core::{operations::uids::uid_from_identifier_tags, KMS},
+    core::{operations::get::get_active_object, KMS},
     error::KmsError,
     result::KResult,
 };
@@ -20,33 +20,20 @@ pub async fn get_attributes(
     trace!("Get attributes: {}", serde_json::to_string(&request)?);
 
     // there must be an identifier
-    let identifier = request
+    let uid_or_tags = request
         .unique_identifier
         .clone()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    // retrieve from tags or use passed identifier
-    let unique_identifier =
-        uid_from_identifier_tags(kms, &identifier, user, ObjectOperationType::Encrypt, params)
-            .await?
-            .unwrap_or(identifier);
-
-    trace!("retrieving attributes of KMIP Object with id: {unique_identifier}");
-    let (object, _state) = kms
-        .db
-        .retrieve(&unique_identifier, user, ObjectOperationType::Get, params)
-        .await?
-        .ok_or_else(|| {
-            KmsError::ItemNotFound(format!("Object with uid: {unique_identifier} not found"))
-        })?;
-
-    let object_type = object.object_type();
-    let attributes = object.attributes()?;
+    // recover an active object
+    let owm = get_active_object(kms, &uid_or_tags, user, params).await?;
+    let object_type = owm.object.object_type();
+    let attributes = owm.object.attributes()?;
 
     let req_attributes = match &request.attribute_references {
         None => {
             return Ok(GetAttributesResponse {
-                unique_identifier: unique_identifier.clone(),
+                unique_identifier: owm.id.clone(),
                 attributes: attributes.clone(),
             })
         }
@@ -95,9 +82,9 @@ pub async fn get_attributes(
             },
         }
     }
-    debug!("Retrieved Attributes for object {unique_identifier}: {res:?}");
+    debug!("Retrieved Attributes for object {}: {:?}", owm.id, res);
     Ok(GetAttributesResponse {
-        unique_identifier,
+        unique_identifier: owm.id,
         attributes: res,
     })
 }

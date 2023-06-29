@@ -907,6 +907,7 @@ dependencies = [
  "actix-tls",
  "actix-web",
  "alcoholic_jwt",
+ "async-recursion",
  "async-trait",
  "base64 0.21.0",
  "bitflags 2.3.2",
