@@ -3,6 +3,7 @@ mod certbot_https;
 pub mod db;
 mod enclave;
 pub mod http;
+mod jwe;
 mod workspace;
 
 use std::{
@@ -21,7 +22,7 @@ use tracing::{debug, info};
 use crate::{
     config::{
         auth0::Auth0Config, certbot_https::HttpsCertbotConfig, db::DBConfig,
-        enclave::EnclaveConfig, http::HTTPConfig, workspace::WorkspaceConfig,
+        enclave::EnclaveConfig, http::HTTPConfig, jwe::JWEConfig, workspace::WorkspaceConfig,
     },
     core::certbot::Certbot,
     result::KResult,
@@ -46,6 +47,9 @@ pub struct Config {
 
     #[clap(flatten)]
     pub http: HTTPConfig,
+
+    #[clap(flatten)]
+    pub jwe: JWEConfig,
 
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
@@ -105,6 +109,8 @@ pub struct SharedConfig {
 
     // The JWKS if Auth0 is enabled
     pub jwks: Option<JWKS>,
+
+    pub jwe_config: JWEConfig,
 
     /// The username if Auth0 is disabled
     pub default_username: Option<String>,
@@ -181,6 +187,15 @@ impl SharedConfig {
     }
 
     #[inline(always)]
+    pub(crate) fn jwe_config() -> JWEConfig {
+        INSTANCE_CONFIG
+            .get()
+            .expect("config must be initialized")
+            .jwe_config
+            .clone()
+    }
+
+    #[inline(always)]
     pub(crate) fn default_username() -> Option<String> {
         INSTANCE_CONFIG
             .get()
@@ -242,6 +257,7 @@ pub async fn init_config(conf: &Config) -> KResult<()> {
 
     let shared_conf = SharedConfig {
         jwks: conf.auth0.init().await?,
+        jwe_config: conf.jwe.clone(),
         auth0_authority_domain: conf.auth0.auth0_authority_domain.clone(),
         db_params: conf.db.init(&workspace)?,
         hostname_port,
