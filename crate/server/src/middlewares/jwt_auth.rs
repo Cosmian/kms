@@ -113,7 +113,7 @@ where
 
         // decode the JWT
         trace!("Checking JWT");
-        let private_claim = decode_jwt(jwt_config, &identity).map(|claim| claim.email);
+        let private_claim: Result<Option<String>, crate::error::KmsError> = decode_jwt(jwt_config, &identity).map(|claim| claim.email);
         match private_claim {
             Err(e) => Box::pin(async move {
                 error!(

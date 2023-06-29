@@ -20,6 +20,7 @@ use cosmian_kms_utils::types::{
 };
 use http::{header, StatusCode};
 use tracing::{debug, error, info, warn};
+use josekit::jwe::{alg::ecdh_es::EcdhEsJweAlgorithm, deserialize_compact};
 
 use crate::{database::KMSServer, error::KmsError, kms_bail, result::KResult};
 
@@ -63,15 +64,33 @@ impl actix_web::error::ResponseError for KmsError {
 #[post("/kmip/2_1")]
 pub async fn kmip(
     req_http: HttpRequest,
-    item: Json<TTLV>,
+    body: String,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<TTLV>> {
-    let ttlv_req = item.into_inner();
+    let ttlv = match serde_json::from_str::<TTLV>(&body) {
+        Ok(ttlv) => ttlv,
+        Err(_) => {
+            let config = kms.config.jwe_config;
+
+            if let Some(key) = config.jwk_private_key {
+                let decrypter = EcdhEsJweAlgorithm::EcdhEs.decrypter_from_jwk(&key).unwrap();
+                let payload = deserialize_compact(&body, &decrypter).unwrap();
+
+                serde_json::from_slice::<TTLV>(&payload.0).unwrap()
+            } else {
+                return Err(KmsError::NotSupported(
+                    "this server doesn't support JWE encryption".to_string(),
+                ))
+            }
+        }
+    };
+
     let database_params = kms.get_database_secrets(&req_http)?;
     let user = kms.get_user(req_http)?;
+    let ttlv_req = ttlv;
     info!("POST /kmip. Request: {:?} {}", ttlv_req.tag.as_str(), user);
 
-    let ttlv_resp = match ttlv_req.tag.as_str() {
+    let ttlv_resp = match ttlv.tag.as_str() {
         "Create" => {
             let req = from_ttlv::<Create>(&ttlv_req)?;
             let resp = kms.create(req, &user, database_params.as_ref()).await?;
