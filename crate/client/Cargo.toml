@@ -10,6 +10,7 @@ cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils" }
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
+josekit = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

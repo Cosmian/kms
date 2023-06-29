@@ -25,6 +25,7 @@ clap = { version = "4.1", default-features = false, features = ["help", "usage",
 eyre = "0.6"
 hex = "0.4"
 http = "0.2"
+josekit = "0.8.3"
 leb128 = "0.2"
 native-tls = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }

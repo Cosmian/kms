@@ -3,6 +3,7 @@ mod export;
 mod import;
 mod import_export_wrapping;
 mod locate;
+mod jwe;
 mod revoke;
 mod wrap_unwrap;
 

@@ -47,6 +47,7 @@ eyre = { workspace = true }
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
+josekit = { workspace = true }
 lazy_static = "1.4"
 libsgx = { path = "../libsgx" }
 libsqlite3-sys = { version = "0.26.0", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }

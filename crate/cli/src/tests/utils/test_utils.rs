@@ -12,7 +12,11 @@ use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kms_server::{
     config::{
-        db::DBConfig, http::HTTPConfig, jwt_auth_config::JwtAuthConfig, ClapConfig, ServerConfig,
+        db::DBConfig,
+        http::HTTPConfig,
+        jwe::{JWEConfig, Jwk},
+        jwt_auth_config::JwtAuthConfig,
+        ClapConfig, ServerConfig,
     },
     start_kms_server,
 };
@@ -146,7 +150,7 @@ pub fn create_new_database(cli_conf_path: &str) -> Result<String, CliError> {
 
 /// Start a test server with the default options: JWT authentication and encrypted database, no TLS
 pub async fn init_test_server() -> TestsContext {
-    init_test_server_options(9990, false, true, true).await
+    init_test_server_options(9990, false, true, true, false).await
 }
 
 /// Start a server in a thread with the given options
@@ -155,11 +159,23 @@ pub async fn init_test_server_options(
     use_jwt_token: bool,
     use_https: bool,
     use_client_cert: bool,
+    use_jwe_encryption: bool,
 ) -> TestsContext {
     let _ = env_logger::builder().is_test(true).try_init();
 
     // Create a conf
     let owner_cli_conf_path = format!("/tmp/owner_kms_{port}.json");
+
+    let jwe_private_key_json =
+        "{\"kty\": \"OKP\",\"d\": \"MPEVJwdRqGM_qhJOUb5hR0Xr9EvwMLZGnkf-eDj5fU8\",\"use\": \
+         \"enc\",\"crv\": \"X25519\",\"kid\": \"DX3GC+Fx3etxfRJValQNbqaB0gs=\",\"x\": \
+         \"gdF-1TtAjsFqNWr9nwhGUlFG38qrDUqYgcILgtYrpTY\",\"alg\": \"ECDH-ES\"}";
+
+    let jwk_private_key: Option<Jwk> = if use_jwe_encryption {
+        Some(jwe_private_key_json.parse().expect("Wrong JWK private key"))
+    } else {
+        None
+    };
 
     // Configure the serveur
     let clap_config = ClapConfig {
@@ -200,6 +216,9 @@ pub async fn init_test_server_options(
                 ..Default::default()
             }
         },
+        jwe: JWEConfig {
+            jwk_private_key: jwk_private_key.clone(),
+        },
         ..Default::default()
     };
     let server_config = ServerConfig::try_from(&clap_config)
@@ -231,6 +250,11 @@ pub async fn init_test_server_options(
         } else {
             None
         },
+        jwe_public_key: if use_jwe_encryption {
+            Some(jwe_private_key_json.to_string())
+        } else {
+            None
+        }, // We use the private key since the private key is the public key with additional information.
         ..Default::default()
     };
     // write the conf to a file
