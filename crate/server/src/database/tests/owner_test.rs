@@ -11,13 +11,14 @@ use cosmian_kms_utils::{
 };
 use uuid::Uuid;
 
-use super::{get_sql_cipher, get_sqlite};
+use super::{get_pgsql, get_sql_cipher, get_sqlite};
 use crate::{database::Database, kms_bail, log_utils::log_init, result::KResult};
 
 #[actix_rt::test]
 pub async fn test_owner() -> KResult<()> {
     owner(get_sql_cipher().await?).await?;
     owner(get_sqlite().await?).await?;
+    owner(get_pgsql().await?).await?;
     Ok(())
 }
 

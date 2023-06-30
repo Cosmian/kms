@@ -5,10 +5,11 @@ use cloudproof::reexport::crypto_core::{
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 
-use super::{cached_sqlcipher::CachedSqlCipher, sqlite::SqlitePool};
+use super::{cached_sqlcipher::CachedSqlCipher, pgsql::PgPool, sqlite::SqlitePool};
 use crate::result::KResult;
 
 mod database_tests;
+mod find_attributes_test;
 mod json_access_test;
 mod owner_test;
 mod permissions_test;
@@ -44,4 +45,14 @@ async fn get_sqlite() -> KResult<(SqlitePool, Option<ExtraDatabaseParams>)> {
         std::fs::remove_file(&file_path).unwrap();
     }
     Ok((SqlitePool::instantiate(&file_path).await?, None))
+}
+
+// To run local tests with a Postgres in Docker, run
+// docker run --name postgres -e POSTGRES_USER=kms -e POSTGRES_PASSWORD=kms -e POSTGRES_DB=kms -p 5432:5432  -d postgres
+async fn get_pgsql() -> KResult<(PgPool, Option<ExtraDatabaseParams>)> {
+    let postgres_url =
+        std::option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
+    let pg = PgPool::instantiate(postgres_url).await?;
+    pg.clean_database().await;
+    Ok((pg, None))
 }
