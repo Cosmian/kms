@@ -186,6 +186,14 @@ pub trait Database {
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>;
+
+    #[cfg(test)]
+    async fn perms(
+        &self,
+        uid: &str,
+        userid: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<Vec<ObjectOperationType>>;
 }
 
 /// The Database implemented using `SQLite`

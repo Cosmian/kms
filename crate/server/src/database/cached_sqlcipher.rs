@@ -100,25 +100,6 @@ impl CachedSqlCipher {
         Ok(())
     }
 
-    #[cfg(test)]
-    pub async fn perms(
-        &self,
-        uid: &str,
-        userid: &str,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectOperationType>> {
-        use super::sqlite::fetch_permissions_;
-
-        if let Some(params) = params {
-            let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = fetch_permissions_(uid, userid, &*pool).await;
-            self.post_query(params.group_id)?;
-            return ret
-        }
-
-        kms_bail!("Missing group_id/key for opening SQLCipher")
-    }
-
     fn post_query(&self, group_id: u128) -> KResult<()> {
         self.cache.release(group_id)
     }
@@ -429,6 +410,25 @@ impl Database for CachedSqlCipher {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = find_(researched_attributes, state, owner, &*pool).await;
+            self.post_query(params.group_id)?;
+            return ret
+        }
+
+        kms_bail!("Missing group_id/key for opening SQLCipher")
+    }
+
+    #[cfg(test)]
+    async fn perms(
+        &self,
+        uid: &str,
+        userid: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<Vec<ObjectOperationType>> {
+        use super::sqlite::fetch_permissions_;
+
+        if let Some(params) = params {
+            let pool = self.pre_query(params.group_id, &params.key).await?;
+            let ret = fetch_permissions_(uid, userid, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }

@@ -34,9 +34,13 @@ impl ObjectWithMetadata {
 
         let state = state_from_string(&state_string)?;
 
-        let perms: Vec<ObjectOperationType> = serde_json::from_slice(&raw_permissions)
-            .context("failed deserializing the permissions")
-            .reason(ErrorReason::Internal_Server_Error)?;
+        let perms: Vec<ObjectOperationType> = if raw_permissions.is_empty() {
+            vec![]
+        } else {
+            serde_json::from_slice(&raw_permissions)
+                .context("failed deserializing the permissions")
+                .reason(ErrorReason::Internal_Server_Error)?
+        };
 
         Ok(ObjectWithMetadata {
             id,

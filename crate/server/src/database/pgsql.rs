@@ -90,11 +90,6 @@ impl PgPool {
         .await
         .expect("cannot truncate read_access table");
     }
-
-    #[cfg(test)]
-    pub async fn perms(&self, uid: &str, userid: &str) -> KResult<Vec<ObjectOperationType>> {
-        fetch_permissions_(uid, userid, &self.pool).await
-    }
 }
 
 #[async_trait]
@@ -293,6 +288,16 @@ impl Database for PgPool {
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
         find_(researched_attributes, state, owner, &self.pool).await
+    }
+
+    #[cfg(test)]
+    async fn perms(
+        &self,
+        uid: &str,
+        userid: &str,
+        _params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<Vec<ObjectOperationType>> {
+        fetch_permissions_(uid, userid, &self.pool).await
     }
 }
 
