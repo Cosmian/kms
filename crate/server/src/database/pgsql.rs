@@ -686,11 +686,13 @@ where
     .await?;
 
     row.map_or(Ok(vec![]), |row| {
-        let perms_raw = row.get::<Vec<u8>, _>(0);
-        let perms: Vec<ObjectOperationType> = serde_json::from_slice(&perms_raw)
-            .context("failed deserializing the permissions")
-            .reason(ErrorReason::Internal_Server_Error)?;
-        Ok(perms)
+        let permissions: Vec<ObjectOperationType> = match row.try_get::<Value, _>(0) {
+            Err(_) => vec![],
+            Ok(v) => serde_json::from_value(v)
+                .context("failed deserializing the permissions")
+                .reason(ErrorReason::Internal_Server_Error)?,
+        };
+        Ok(permissions)
     })
 }
 
