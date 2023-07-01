@@ -46,7 +46,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - archive_name: kms_linux
+          - archive_name: kms_centos7
+          - archive_name: kms_ubuntu_20_04
+          - archive_name: kms_ubuntu_22_04
           - archive_name: kms_macos
           - archive_name: kms_windows
           - archive_name: kms_python_linux
