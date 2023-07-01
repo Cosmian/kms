@@ -23,6 +23,10 @@ jobs:
 
     runs-on: ubuntu-20.04
     steps:
+      - name: Docker check container
+        run: |
+          docker run --rm ghcr.io/cosmian/kms:${{ inputs.kms-version }} --help
+
       - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
