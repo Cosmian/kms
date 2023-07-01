@@ -1,11 +1,11 @@
 use cloudproof::reexport::cover_crypt::statics::CoverCryptX25519Aes256;
 use cosmian_kmip::kmip::{
-    kmip_objects::Object,
+    kmip_objects::{Object, ObjectType},
     kmip_operations::{Create, CreateKeyPair, Get},
-    kmip_types::Attributes,
+    kmip_types::{Attributes, StateEnumeration},
 };
 use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
+    access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::cover_crypt::{
         attributes::access_policy_from_attributes, user_key::UserDecryptionKeysHandler,
     },
@@ -13,7 +13,9 @@ use cosmian_kms_utils::{
 };
 
 use super::KMS;
-use crate::{error::KmsError, kms_bail, result::KResult};
+use crate::{
+    database::object_with_metadata::ObjectWithMetadata, error::KmsError, kms_bail, result::KResult,
+};
 
 /// Create a User Decryption Key in the KMS
 ///
@@ -40,24 +42,46 @@ async fn create_user_decryption_key_(
     kmip_server: &KMS,
     cover_crypt: CoverCryptX25519Aes256,
     create_attributes: &Attributes,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object> {
     // Recover the access policy
     let access_policy = access_policy_from_attributes(create_attributes)?;
 
     // Recover private key
-    let master_private_key_uid = create_attributes.get_parent_id().ok_or_else(|| {
+    let msk_uid_or_tag = create_attributes.get_parent_id().ok_or_else(|| {
         KmsError::InvalidRequest(
             "there should be a reference to the master private key in the creation attributes"
                 .to_string(),
         )
     })?;
-    let gr_private_key = kmip_server
-        .get(Get::from(master_private_key_uid.clone()), owner, params)
-        .await?;
-    let master_private_key = &gr_private_key.object;
 
+    // retrieve from tags or use passed identifier
+    let mut owm_s = kmip_server
+        .db
+        .retrieve(&msk_uid_or_tag, user, ObjectOperationType::Get, params)
+        .await?
+        .into_iter()
+        .filter(|owm| {
+            owm.state == StateEnumeration::Active
+                && owm.object.object_type() == ObjectType::PrivateKey
+        })
+        .collect::<Vec<ObjectWithMetadata>>();
+
+    // there can only be one object
+    let owm = match owm_s.len() {
+        0 => return Err(KmsError::ItemNotFound(msk_uid_or_tag.to_owned())),
+        1 => owm_s.pop().expect(&format!(
+            "failed getting the master private key: {msk_uid_or_tag}"
+        )),
+        _ => {
+            return Err(KmsError::InvalidRequest(format!(
+                "get: too many items for master private key {msk_uid_or_tag}",
+            )))
+        }
+    };
+
+    let master_private_key = &owm.object;
     if master_private_key.key_wrapping_data().is_some() {
         kms_bail!(KmsError::InconsistentOperation(
             "The server can't create a decryption key: the master private key is wrapped"
@@ -66,11 +90,7 @@ async fn create_user_decryption_key_(
     }
 
     UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?
-        .create_user_decryption_key_object(
-            &access_policy,
-            Some(create_attributes),
-            &master_private_key_uid,
-        )
+        .create_user_decryption_key_object(&access_policy, Some(create_attributes), &owm.id)
         .map_err(Into::into)
 }
 

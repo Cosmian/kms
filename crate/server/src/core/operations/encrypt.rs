@@ -43,7 +43,7 @@ pub async fn encrypt(
         1 => owm_s.pop().expect("failed extracting the key"),
         _ => {
             return Err(KmsError::InvalidRequest(format!(
-                "too many items for {uid_or_tags}",
+                "encrypt: too many items for {uid_or_tags}",
             )))
         }
     };

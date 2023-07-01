@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{env::temp_dir, path::PathBuf, sync::Arc};
 
 use actix_http::Request;
 use actix_web::{
@@ -10,19 +10,32 @@ use actix_web::{
 };
 use cosmian_kmip::kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
 use serde::{de::DeserializeOwned, Serialize};
+use uuid::Uuid;
 
 use crate::{
-    config::{http::HTTPConfig, ClapConfig, ServerConfig},
+    config::{db::DBConfig, http::HTTPConfig, ClapConfig, ServerConfig},
     result::KResult,
     routes, KMSServer,
 };
 
 pub fn https_clap_config() -> ClapConfig {
+    let tmp_dir = temp_dir();
+    let uuid = Uuid::new_v4();
+    let sqlite_path = tmp_dir.join(format!("{}.sqlite", uuid));
+    if sqlite_path.exists() {
+        std::fs::remove_file(&sqlite_path).unwrap();
+    }
+
     ClapConfig {
         http: HTTPConfig {
             https_p12_file: Some(PathBuf::from("src/tests/kmserver.acme.com.p12")),
             https_p12_password: "password".to_string(),
             ..Default::default()
+        },
+        db: DBConfig {
+            database_type: "sqlite".to_string(),
+            database_url: None,
+            sqlite_path,
         },
         ..Default::default()
     }

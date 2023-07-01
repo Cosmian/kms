@@ -97,7 +97,7 @@ pub(crate) async fn get_active_object(
             .expect(&format!("failed getting the object: {uid_or_tags}")),
         _ => {
             return Err(KmsError::InvalidRequest(format!(
-                "too many items for {uid_or_tags}",
+                "get: too many items for {uid_or_tags}",
             )))
         }
     };
