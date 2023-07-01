@@ -5,6 +5,10 @@ use cloudproof::reexport::crypto_core::{
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 
+use self::{
+    find_attributes_test::find_attributes, json_access_test::json_access, owner_test::owner,
+    permissions_test::permissions, tagging_tests::tags,
+};
 use super::{cached_sqlcipher::CachedSqlCipher, pgsql::PgPool, sqlite::SqlitePool};
 use crate::result::KResult;
 
@@ -55,4 +59,34 @@ async fn get_pgsql() -> KResult<(PgPool, Option<ExtraDatabaseParams>)> {
     let pg = PgPool::instantiate(postgres_url).await?;
     pg.clean_database().await;
     Ok((pg, None))
+}
+
+#[actix_rt::test]
+pub async fn test_sql_cipher() -> KResult<()> {
+    json_access(&get_sql_cipher().await?).await?;
+    find_attributes(&get_sql_cipher().await?).await?;
+    owner(&get_sql_cipher().await?).await?;
+    permissions(&get_sql_cipher().await?).await?;
+    tags(&get_sql_cipher().await?).await?;
+    Ok(())
+}
+
+#[actix_rt::test]
+pub async fn test_sqlite() -> KResult<()> {
+    find_attributes(&get_sqlite().await?).await?;
+    json_access(&get_sqlite().await?).await?;
+    owner(&get_sqlite().await?).await?;
+    permissions(&get_sqlite().await?).await?;
+    tags(&get_sqlite().await?).await?;
+    Ok(())
+}
+
+#[actix_rt::test]
+pub async fn test_pgsql() -> KResult<()> {
+    json_access(&get_pgsql().await?).await?;
+    find_attributes(&get_pgsql().await?).await?;
+    owner(&get_pgsql().await?).await?;
+    permissions(&get_pgsql().await?).await?;
+    tags(&get_pgsql().await?).await?;
+    Ok(())
 }

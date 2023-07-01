@@ -16,21 +16,13 @@ use cosmian_kms_utils::{
 };
 use uuid::Uuid;
 
-use super::{get_sql_cipher, get_sqlite};
 use crate::{database::Database, kms_bail, log_utils::log_init, result::KResult};
 
-#[actix_rt::test]
-pub async fn test_json_access() -> KResult<()> {
-    json_access(get_sql_cipher().await?).await?;
-    json_access(get_sqlite().await?).await?;
-    Ok(())
-}
-
-async fn json_access<DB: Database>(
-    db_and_params: (DB, Option<ExtraDatabaseParams>),
+pub async fn json_access<DB: Database>(
+    db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
     log_init("debug");
-    let db = db_and_params.0;
+    let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 
     let mut rng = CsRng::from_entropy();
@@ -60,7 +52,7 @@ async fn json_access<DB: Database>(
         .retrieve(&uid, owner, ObjectOperationType::Get, db_params)
         .await?;
 
-    assert_eq!(objs_.len(), 1);
+    assert!(!objs_.is_empty());
     match objs_.len() {
         1 => {
             assert_eq!(StateEnumeration::Active, objs_[0].state);

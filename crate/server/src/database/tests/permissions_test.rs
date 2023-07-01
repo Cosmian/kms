@@ -1,21 +1,13 @@
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use uuid::Uuid;
 
-use super::{get_sql_cipher, get_sqlite};
 use crate::{database::Database, log_utils::log_init, result::KResult};
 
-#[actix_rt::test]
-pub async fn test_permissions() -> KResult<()> {
-    permissions(get_sql_cipher().await?).await?;
-    permissions(get_sqlite().await?).await?;
-    Ok(())
-}
-
-async fn permissions<DB: Database>(
-    db_and_params: (DB, Option<ExtraDatabaseParams>),
+pub async fn permissions<DB: Database>(
+    db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
     log_init("debug");
-    let db = db_and_params.0;
+    let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 
     let userid = "foo@example.org";
@@ -59,7 +51,8 @@ async fn permissions<DB: Database>(
         vec![ObjectOperationType::Get, ObjectOperationType::Encrypt]
     );
 
-    let accesses = db.list_accesses(&uid, db_params).await?;
+    let mut accesses = db.list_accesses(&uid, db_params).await?;
+    accesses.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(
         accesses,
         vec![
