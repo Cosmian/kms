@@ -11,19 +11,11 @@ use cosmian_kms_utils::{
 };
 use uuid::Uuid;
 
-use super::{get_sql_cipher, get_sqlite};
 use crate::{database::Database, log_utils::log_init, result::KResult};
 
-#[actix_rt::test]
-async fn test_tags() -> KResult<()> {
-    tags(get_sql_cipher().await?).await?;
-    tags(get_sqlite().await?).await?;
-    Ok(())
-}
-
-async fn tags<DB: Database>(db_and_params: (DB, Option<ExtraDatabaseParams>)) -> KResult<()> {
+pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>)) -> KResult<()> {
     log_init("debug");
-    let db = db_and_params.0;
+    let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
     let mut rng = CsRng::from_entropy();
 

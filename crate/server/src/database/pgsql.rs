@@ -659,8 +659,11 @@ where
             row.get::<String, _>(0),
             row.get::<String, _>(1),
             state_from_string(&row.get::<String, _>(2))?,
-            serde_json::from_slice(&row.get::<Vec<u8>, _>(3))?,
-            false, // TODO: unharcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
+            serde_json::from_value(
+                row.try_get::<Value, _>(3)
+                    .context("failed deserializing the operations")?,
+            )?,
+            false, // TODO: de-hardcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
         ));
     }
     debug!("Listed {} rows", ids.len());
@@ -818,10 +821,12 @@ fn to_qualified_uids(
 ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
-        let raw = row.get::<Vec<u8>, _>(2);
-        let attrs: Attributes = serde_json::from_slice(&raw)
-            .context("failed deserializing attributes")
-            .map_err(|e| KmsError::DatabaseError(e.to_string()))?;
+        let attrs: Attributes = match row.try_get::<Value, _>(2) {
+            Err(_) => return Err(KmsError::DatabaseError("no attributes found".to_string())),
+            Ok(v) => serde_json::from_value(v)
+                .context("failed deserializing the attributes")
+                .map_err(|e| KmsError::DatabaseError(e.to_string()))?,
+        };
 
         uids.push((
             row.get::<String, _>(0),
