@@ -31,37 +31,40 @@ DELETE FROM read_access;
 -- name: clean-table-tags
 DELETE FROM tags;
 
--- name: insert-row-objects
+-- name: insert-objects
 INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?);
 
--- name: select-row-objects
-SELECT object, state FROM objects WHERE id=? AND owner=?;
+-- name: select-object
+SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions 
+        FROM objects 
+        LEFT JOIN read_access 
+        ON objects.id = read_access.id AND read_access.userid=?
+        WHERE objects.id=?;
 
--- name: select-row-objects-join-read_access
-SELECT objects.object, objects.state, read_access.permissions
-        FROM objects, read_access
-        WHERE objects.id=? AND read_access.id=? AND read_access.userid=?;
-
--- name: update-rows-objects-with-object
+-- name: update-object-with-object
 UPDATE objects SET object=? WHERE id=?;
 
--- name: update-rows-objects-with-state
+-- name: update-object-with-state
 UPDATE objects SET state=? WHERE id=?;
 
--- name: delete-rows-objects
+-- name: delete-object
 DELETE FROM objects WHERE id=? AND owner=?;
 
--- name: upsert-row-objects
+-- name: upsert-object
 INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
                 object = IF(objects.owner=?, VALUES(object), object),
                 state = IF(objects.owner=?, VALUES(state), state);
 
 -- name: select-row-read_access
-SELECT permissions FROM read_access WHERE id=? AND userid=?;
+SELECT permissions 
+        FROM read_access 
+        WHERE id=? AND userid=?;
 
 -- name: upsert-row-read_access
-INSERT INTO read_access (id, userid, permissions) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE permissions = IF((id=VALUES(id)) AND (userid=VALUES(userid)), VALUES(permissions), permissions);
+INSERT INTO read_access (id, userid, permissions) VALUES (?, ?, ?) 
+        ON DUPLICATE KEY 
+        UPDATE permissions = IF((id=VALUES(id)) AND (userid=VALUES(userid)), VALUES(permissions), permissions);
 
 -- name: delete-rows-read_access
 DELETE FROM read_access WHERE id=? AND userid=?;
@@ -84,3 +87,27 @@ SELECT objects.id, owner, state, permissions
         INNER JOIN read_access
         ON objects.id = read_access.id
         WHERE read_access.userid=?;
+
+-- name: insert-tags
+INSERT INTO tags (id, tag) VALUES (?, ?);
+
+-- name: select-tags
+SELECT tag FROM tags WHERE id=?;
+
+-- name: delete-tags
+DELETE FROM tags WHERE id=?;
+
+
+-- name: select-from-tags
+SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions
+FROM objects
+INNER JOIN (
+    SELECT id
+    FROM tags
+    WHERE tag IN (@TAGS) 
+    GROUP BY id
+    HAVING COUNT(DISTINCT tag) = ?
+) AS matched_tags
+ON objects.id = matched_tags.id
+LEFT JOIN read_access
+ON objects.id = read_access.id AND read_access.userid=?;
