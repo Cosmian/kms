@@ -13,12 +13,22 @@ on:
       archive-name:
         required: true
         type: string
+      commands:
+        required: true
+        type: string
+      artifacts:
+        required: true
+        type: string
 
 jobs:
   kms-build:
     name: Build KMS on ${{ inputs.distribution }}
     runs-on: ${{ inputs.distribution }}
     steps:
+      - name: Display cpuinfo
+        if: contains(runner.os, 'Linux')
+        run: cat /proc/cpuinfo
+
       - uses: actions/checkout@v1
 
       - name: Set up cargo cache
@@ -32,26 +42,28 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-${{ inputs.distribution }}-kms-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-${{ inputs.distribution }}-kms-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ inputs.distribution }}-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-${{ inputs.distribution }}-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: actions-rs/toolchain@v1
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
         with:
           toolchain: ${{ inputs.toolchain }}
           override: true
           components: rustfmt, clippy
 
       - name: Build
-        run: |
-          cargo build --release --bin ckms
-          cargo build --release --bin cosmian_kms_server
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        run: ${{ inputs.commands }}
+        env:
+          # Speeds up Ristretto 25519 multiplication x 2
+          RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
 
       - name: Upload KMS for ${{ inputs.distribution }}
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v3
         with:
           name: ${{ inputs.archive-name }}
-          path: |
-            target/release/ckms
-            target/release/cosmian_kms_server
+          path: ${{ inputs.artifacts }}
           retention-days: 1
           if-no-files-found: error

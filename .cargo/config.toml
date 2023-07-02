@@ -15,11 +15,15 @@ coverage = "tarpaulin --release -v -f -t 1800 --out Xml --ignore-tests --exclude
 # Find unused dependencies
 deps = "udeps --workspace --all-targets --all-features --backend depinfo"
 
-[build]
-# Speeds up Ristretto 25519 multiplication x 2
-rustflags = [
-  "--cfg",
-  "curve25519_dalek_backend=\"simd\"",
-  "-C",
-  "target_cpu=native",
-]
+###
+# This options have been commented out because the Github runners responsible to build the KMS docker image have unpredictable CPU architectures, resulting in an error code 132 when running the generated container.
+# However, those flags are specifically given by CI in other builds (macos, windows, linux, centos7) in cargo_build.yml via the RUSTFLAGS environment variable.
+###
+# [build]
+# # Speeds up Ristretto 25519 multiplication x 2
+# rustflags = [
+#   "--cfg",
+#   "curve25519_dalek_backend=\"simd\"",
+#   "-C",
+#   "target_cpu=native",
+# ]

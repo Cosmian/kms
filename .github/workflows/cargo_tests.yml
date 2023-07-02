@@ -19,22 +19,6 @@ jobs:
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
           sudo chown -R $USER:$USER $GITHUB_WORKSPACE
 
-  kms-ubuntu-20:
-    needs: cleanup
-    uses: ./.github/workflows/cargo_build.yml
-    with:
-      toolchain: ${{ inputs.toolchain }}
-      distribution: ubuntu-20.04
-      archive-name: kms_ubuntu_20_04
-
-  kms-ubuntu-22:
-    needs: cleanup
-    uses: ./.github/workflows/cargo_build.yml
-    with:
-      toolchain: ${{ inputs.toolchain }}
-      distribution: ubuntu-22.04
-      archive-name: kms_ubuntu_22_04
-
   kms-centos7:
     needs: cleanup
     services:
@@ -67,6 +51,9 @@ jobs:
       image: iyxd/centos7-rust
 
     steps:
+      - name: Display cpuinfo
+        run: cat /proc/cpuinfo
+
       - uses: actions/checkout@v1
 
       - name: Set up cargo cache
@@ -102,6 +89,9 @@ jobs:
           cargo build --all-targets --all-features
           cargo build --release --bin ckms
           cargo build --release --bin cosmian_kms_server
+        env:
+          # Speeds up Ristretto 25519 multiplication x 2
+          RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
 
       - name: Tests
         run: |
@@ -141,97 +131,61 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  kms-ubuntu-20:
+    needs: cleanup
+    uses: ./.github/workflows/cargo_build.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: ubuntu-20.04
+      archive-name: kms_ubuntu_20_04
+      commands: |
+        cargo build --release --bin ckms
+        cargo build --release --bin cosmian_kms_server
+      artifacts: |
+        target/release/ckms
+        target/release/cosmian_kms_server
+
+  kms-ubuntu-22:
+    needs: cleanup
+    uses: ./.github/workflows/cargo_build.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: ubuntu-22.04
+      archive-name: kms_ubuntu_22_04
+      commands: |
+        cargo build --release --bin ckms
+        cargo build --release --bin cosmian_kms_server
+      artifacts: |
+        target/release/ckms
+        target/release/cosmian_kms_server
+
   kms-windows:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up cargo cache
-        id: cargo_cache
-        uses: actions/cache@v3
-        continue-on-error: false
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-win-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-win-${{ hashFiles('**/Cargo.lock') }}
-
-      - uses: actions-rs/toolchain@v1
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
-        with:
-          toolchain: ${{ inputs.toolchain }}
-          override: true
-          components: rustfmt, clippy
-
-      - name: Prerequisites for macos
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
-          rustup target add x86_64-pc-windows-gnu
-
-      - name: Build KMS for Windows
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
-        run: |
-          cargo build --release --bin ckms --target x86_64-pc-windows-gnu
-          cargo build --release --bin cosmian_kms_server --target x86_64-pc-windows-gnu
-
-      - name: Upload KMS for Windows
-        uses: actions/upload-artifact@v3
-        with:
-          name: kms_windows
-          path: |
-            target/x86_64-pc-windows-gnu/release/ckms.exe
-            target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
-          retention-days: 1
-          if-no-files-found: error
+    needs: cleanup
+    uses: ./.github/workflows/cargo_build.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: ubuntu-20.04
+      archive-name: kms_windows
+      commands: |
+        sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
+        rustup target add x86_64-pc-windows-gnu
+        cargo build --release --bin ckms --target x86_64-pc-windows-gnu
+        cargo build --release --bin cosmian_kms_server --target x86_64-pc-windows-gnu
+      artifacts: |
+        target/x86_64-pc-windows-gnu/release/ckms.exe
+        target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
 
   kms-mac:
-    runs-on: macos-12
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up cargo cache
-        id: cargo_cache
-        uses: actions/cache@v3
-        continue-on-error: false
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-mac-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-mac-${{ hashFiles('**/Cargo.lock') }}
-
-      - uses: actions-rs/toolchain@v1
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
-        with:
-          toolchain: ${{ inputs.toolchain }}
-          override: true
-          components: rustfmt, clippy
-
-      - name: Prerequisites for macos
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
-        run: |
-          rustup target add x86_64-apple-darwin
-
-      - name: Build KMS for MacOS
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
-        run: |
-          cargo build --release --bin ckms --target x86_64-apple-darwin
-          cargo build --release --bin cosmian_kms_server --target x86_64-apple-darwin
-
-      - name: Upload KMS for MacOS
-        uses: actions/upload-artifact@v3
-        with:
-          name: kms_macos
-          path: |
-            target/x86_64-apple-darwin/release/ckms
-            target/x86_64-apple-darwin/release/cosmian_kms_server
-          retention-days: 1
-          if-no-files-found: error
+    needs: cleanup
+    uses: ./.github/workflows/cargo_build.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: macos-12
+      archive-name: kms_macos
+      commands: |
+        rustup target add x86_64-apple-darwin
+        cargo build --release --bin ckms --target x86_64-apple-darwin
+        cargo build --release --bin cosmian_kms_server --target x86_64-apple-darwin
+      artifacts: |
+        target/x86_64-apple-darwin/release/ckms
+        target/x86_64-apple-darwin/release/cosmian_kms_server
