@@ -129,8 +129,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let access_policy = "(Department::MKG || Department::FIN) && Level::Confidential";
     let request =
         build_create_user_decryption_private_key_request(access_policy, &mkp_json_tag, [udk1_tag])?;
-    let create_response: CreateResponse = test_utils::post(&app, &request).await?;
-    let user_decryption_key_identifier_1 = &create_response.unique_identifier;
+    let _create_response: CreateResponse = test_utils::post(&app, &request).await?;
 
     //
     // Create another user decryption key

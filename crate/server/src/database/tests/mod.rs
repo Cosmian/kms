@@ -6,8 +6,12 @@ use cloudproof::reexport::crypto_core::{
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 
 use self::{
-    find_attributes_test::find_attributes, json_access_test::json_access, owner_test::owner,
-    permissions_test::permissions, tagging_tests::tags,
+    database_tests::{crud, tx_and_list, upsert},
+    find_attributes_test::find_attributes,
+    json_access_test::json_access,
+    owner_test::owner,
+    permissions_test::permissions,
+    tagging_tests::tags,
 };
 use super::{cached_sqlcipher::CachedSqlCipher, pgsql::PgPool, sqlite::SqlitePool};
 use crate::result::KResult;
@@ -68,6 +72,9 @@ pub async fn test_sql_cipher() -> KResult<()> {
     owner(&get_sql_cipher().await?).await?;
     permissions(&get_sql_cipher().await?).await?;
     tags(&get_sql_cipher().await?).await?;
+    tx_and_list(&get_sql_cipher().await?).await?;
+    upsert(&get_sql_cipher().await?).await?;
+    crud(&get_sql_cipher().await?).await?;
     Ok(())
 }
 
@@ -78,6 +85,9 @@ pub async fn test_sqlite() -> KResult<()> {
     owner(&get_sqlite().await?).await?;
     permissions(&get_sqlite().await?).await?;
     tags(&get_sqlite().await?).await?;
+    tx_and_list(&get_sqlite().await?).await?;
+    upsert(&get_sqlite().await?).await?;
+    crud(&get_sqlite().await?).await?;
     Ok(())
 }
 
@@ -88,5 +98,8 @@ pub async fn test_pgsql() -> KResult<()> {
     owner(&get_pgsql().await?).await?;
     permissions(&get_pgsql().await?).await?;
     tags(&get_pgsql().await?).await?;
+    tx_and_list(&get_pgsql().await?).await?;
+    upsert(&get_pgsql().await?).await?;
+    crud(&get_pgsql().await?).await?;
     Ok(())
 }
