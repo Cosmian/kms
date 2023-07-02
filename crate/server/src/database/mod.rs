@@ -19,9 +19,9 @@ pub type KMSServer = crate::core::KMS;
 
 pub(crate) mod cached_sqlcipher;
 pub(crate) mod cached_sqlite_struct;
-pub(crate) mod pgsql;
-// pub(crate) mod mysql;
+pub(crate) mod mysql;
 pub(crate) mod object_with_metadata;
+pub(crate) mod pgsql;
 pub(crate) mod sqlite;
 
 #[cfg(test)]

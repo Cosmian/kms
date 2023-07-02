@@ -32,8 +32,8 @@ use crate::{
     config::{DbParams, ServerConfig},
     core::operations::unwrap_key,
     database::{
-        cached_sqlcipher::CachedSqlCipher, object_with_metadata::ObjectWithMetadata, pgsql::PgPool,
-        sqlite::SqlitePool, Database,
+        cached_sqlcipher::CachedSqlCipher, mysql::MySqlPool,
+        object_with_metadata::ObjectWithMetadata, pgsql::PgPool, sqlite::SqlitePool, Database,
     },
     error::KmsError,
     kms_bail, kms_not_supported,
@@ -48,8 +48,7 @@ impl KMS {
                 Box::new(SqlitePool::instantiate(&db_path.join("kms.db")).await?)
             }
             DbParams::Postgres(url) => Box::new(PgPool::instantiate(url).await?),
-            // DbParams::Mysql(url) => Box::new(Sql::instantiate(url).await?),
-            DbParams::Mysql(_url) => panic!("MysSQL Support removed for now"),
+            DbParams::Mysql(url) => Box::new(MySqlPool::instantiate(url).await?),
         };
 
         Ok(Self {

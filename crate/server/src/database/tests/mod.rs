@@ -13,7 +13,9 @@ use self::{
     permissions_test::permissions,
     tagging_tests::tags,
 };
-use super::{cached_sqlcipher::CachedSqlCipher, pgsql::PgPool, sqlite::SqlitePool};
+use super::{
+    cached_sqlcipher::CachedSqlCipher, mysql::MySqlPool, pgsql::PgPool, sqlite::SqlitePool,
+};
 use crate::result::KResult;
 
 mod database_tests;
@@ -65,6 +67,16 @@ async fn get_pgsql() -> KResult<(PgPool, Option<ExtraDatabaseParams>)> {
     Ok((pg, None))
 }
 
+// To run local tests with a MariaDB in Docker, run
+// docker run --name mariadb --env MARIADB_DATABASE=kms  --env MARIADB_USER=kms --env MARIADB_PASSWORD=kms --env MARIADB_ROOT_PASSWORD=cosmian -p 3306:3306 -d mariadb
+async fn get_mysql() -> KResult<(MySqlPool, Option<ExtraDatabaseParams>)> {
+    let mysql_url =
+        std::option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
+    let my_sql = MySqlPool::instantiate(mysql_url).await?;
+    my_sql.clean_database().await;
+    Ok((my_sql, None))
+}
+
 #[actix_rt::test]
 pub async fn test_sql_cipher() -> KResult<()> {
     json_access(&get_sql_cipher().await?).await?;
@@ -101,5 +113,18 @@ pub async fn test_pgsql() -> KResult<()> {
     tx_and_list(&get_pgsql().await?).await?;
     upsert(&get_pgsql().await?).await?;
     crud(&get_pgsql().await?).await?;
+    Ok(())
+}
+
+#[actix_rt::test]
+pub async fn test_mysql() -> KResult<()> {
+    crud(&get_mysql().await?).await?;
+    upsert(&get_mysql().await?).await?;
+    tx_and_list(&get_mysql().await?).await?;
+    json_access(&get_mysql().await?).await?;
+    find_attributes(&get_mysql().await?).await?;
+    owner(&get_mysql().await?).await?;
+    permissions(&get_mysql().await?).await?;
+    tags(&get_mysql().await?).await?;
     Ok(())
 }

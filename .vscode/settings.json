@@ -71,6 +71,20 @@
       "database": "kms",
       "username": "kms",
       "password": "kms"
+    },
+    {
+      "mysqlOptions": {
+        "authProtocol": "default",
+        "enableSsl": "Disabled"
+      },
+      "previewLimit": 50,
+      "server": "localhost",
+      "port": 3306,
+      "driver": "MariaDB",
+      "name": "localhost kms",
+      "database": "kms",
+      "username": "kms",
+      "password": "kms"
     }
   ]
 }
