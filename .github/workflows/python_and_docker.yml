@@ -15,10 +15,14 @@ jobs:
       toolchain: nightly-2023-03-20
 
   build-and-push-image:
-    runs-on: ubuntu-latest
+    # runs-on: [self-hosted, not-docker]
+    runs-on: ubuntu-22.04
     container: docker:19.03.15
 
     steps:
+      - name: Display cpuinfo
+        run: cat /proc/cpuinfo
+
       - uses: actions/checkout@v1
 
       - name: Login to GitHub Packages
@@ -43,29 +47,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Build and tag docker container
-        env:
-          REGISTRY_IMAGE: ${{ env.REGISTRY_IMAGE }}
-          REF_NAME: ${{ github.ref_name }}
-          TAGS: ${{ steps.meta.outputs.tags }}
-          LABELS: ${{ steps.meta.outputs.labels }}
+      - name: Make sure no docker layers are created
         run: |
-          set -x
-          # Replace / by -
-          REF=${REF_NAME//\//-}
-          echo ${REGISTRY_IMAGE}
-          echo ${REF_NAME}
-          echo ${REF}
-          echo ${TAGS}
-          echo ${LABELS}
-          echo ${REGISTRY_IMAGE}:${REF}
+          docker rmi -f $(docker images | grep "ghcr.io/cosmian/kms") || true
 
-          # Build docker image
-          docker build . -f delivery/Dockerfile.standalone -t ${REGISTRY_IMAGE}:${REF}
-          # ghcr.io deployment
-          docker tag ${TAGS} ${REGISTRY_IMAGE}:${REF}
-          docker push ${REGISTRY_IMAGE}:${REF}
-          docker push ${TAGS}
+      - name: Build and tag docker container
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          file: delivery/Dockerfile.standalone
+          network: host
 
       - name: Re-tag docker for git tags
         if: startsWith(github.ref, 'refs/tags')
@@ -81,6 +75,7 @@ jobs:
 
       - name: Docker check container
         run: |
+          docker rmi -f $(docker images | grep "ghcr.io/cosmian/kms") || true
           docker run --rm ${{ steps.meta.outputs.tags }} --help
 
     outputs:
