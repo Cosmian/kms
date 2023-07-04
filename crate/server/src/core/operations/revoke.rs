@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use async_recursion::async_recursion;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType::{self, PrivateKey, PublicKey, SymmetricKey},
@@ -40,6 +42,7 @@ pub async fn revoke_operation(
         kms,
         user,
         params,
+        HashSet::new(),
     )
     .await?;
 
@@ -57,15 +60,21 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
     kms: &KMS,
     user: &str,
     params: Option<&'a ExtraDatabaseParams>,
+    // keys that should be skipped
+    mut ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
     // retrieve from tags or use passed identifier
     let owm_s = kms
         .db
-        .retrieve(uid_or_tags, user, ObjectOperationType::Decrypt, params)
+        .retrieve(uid_or_tags, user, ObjectOperationType::Revoke, params)
         .await?
         .into_iter()
         .filter(|owm| {
             let object_type = owm.object.object_type();
+            println!(
+                "Revoke: filtering object type: {}, state {}, id {}",
+                object_type, owm.state, owm.id
+            );
             (owm.state == StateEnumeration::Active || owm.state == StateEnumeration::PreActive)
                 && (object_type == ObjectType::PrivateKey
                     || object_type == ObjectType::SymmetricKey
@@ -79,6 +88,13 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
 
     // revoke the keys found
     for owm in owm_s {
+        println!(
+            "Revoke: revoking object type: {}, state {}, id {}",
+            owm.object.object_type(),
+            owm.state,
+            owm.id
+        );
+
         // perform the chain of revoke operations depending on the type of object
         let object_type = owm.object.object_type();
         match object_type {
@@ -94,6 +110,8 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
                 .await?;
             }
             PrivateKey => {
+                //add this key to the ids to skip
+                ids_to_skip.insert(owm.id.clone());
                 // for Covercrypt, if that is a master secret key, revoke the user decryption keys
                 if let KeyFormatType::CoverCryptSecretKey = owm.object.key_block()?.key_format_type
                 {
@@ -104,6 +122,7 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
                         kms,
                         user,
                         params,
+                        ids_to_skip.clone(),
                     )
                     .await?
                 }
@@ -111,15 +130,18 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
                 if let Some(public_key_id) =
                     owm.object.attributes()?.get_link(LinkType::PublicKeyLink)
                 {
-                    recursively_revoke_key(
-                        &public_key_id,
-                        revocation_reason.clone(),
-                        compromise_occurrence_date,
-                        kms,
-                        user,
-                        params,
-                    )
-                    .await?;
+                    if !ids_to_skip.contains(&public_key_id) {
+                        recursively_revoke_key(
+                            &public_key_id,
+                            revocation_reason.clone(),
+                            compromise_occurrence_date,
+                            kms,
+                            user,
+                            params,
+                            ids_to_skip.clone(),
+                        )
+                        .await?;
+                    }
                 }
                 // now revoke the private key
                 revoke_key_core(
@@ -132,19 +154,24 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
                 .await?;
             }
             PublicKey => {
+                //add this key to the ids to skip
+                ids_to_skip.insert(owm.id.clone());
                 // revoke any linked private key
                 if let Some(private_key_id) =
                     owm.object.attributes()?.get_link(LinkType::PrivateKeyLink)
                 {
-                    recursively_revoke_key(
-                        &private_key_id,
-                        revocation_reason.clone(),
-                        compromise_occurrence_date,
-                        kms,
-                        user,
-                        params,
-                    )
-                    .await?;
+                    if !ids_to_skip.contains(&private_key_id) {
+                        recursively_revoke_key(
+                            &private_key_id,
+                            revocation_reason.clone(),
+                            compromise_occurrence_date,
+                            kms,
+                            user,
+                            params,
+                            ids_to_skip.clone(),
+                        )
+                        .await?;
+                    }
                 }
                 // revoke the public key
                 revoke_key_core(

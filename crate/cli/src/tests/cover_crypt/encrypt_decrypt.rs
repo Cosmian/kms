@@ -29,7 +29,13 @@ pub fn encrypt(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    let mut args = vec!["encrypt", input_file, public_key_id, access_policy];
+    let mut args = vec![
+        "encrypt",
+        "--key-id",
+        public_key_id,
+        input_file,
+        access_policy,
+    ];
     if let Some(output_file) = output_file {
         args.push("-o");
         args.push(output_file);
@@ -55,7 +61,7 @@ pub fn decrypt(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    let mut args = vec!["decrypt", input_file, private_key_id];
+    let mut args = vec!["decrypt", "--key-id", private_key_id, input_file];
     if let Some(output_file) = output_file {
         args.push("-o");
         args.push(output_file);

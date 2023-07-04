@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use cosmian_kmip::kmip::kmip_types::{RevocationReason, StateEnumeration};
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 
@@ -14,7 +16,8 @@ pub(crate) async fn revoke_user_decryption_keys(
     compromise_occurrence_date: Option<u64>,
     kms: &KMS,
     owner: &str,
-    params: Option<&ExtraDatabaseParams>,
+    params: Option<&ExtraDatabaseParams>, // keys that should be skipped
+    ids_to_skip: HashSet<String>,
 ) -> KResult<()> {
     if let Some(ids) = locate_user_decryption_keys(
         kms,
@@ -27,15 +30,18 @@ pub(crate) async fn revoke_user_decryption_keys(
     .await?
     {
         for id in ids {
-            let _ = recursively_revoke_key(
-                &id,
-                revocation_reason.clone(),
-                compromise_occurrence_date,
-                kms,
-                owner,
-                params,
-            )
-            .await;
+            if !ids_to_skip.contains(&id) {
+                let _ = recursively_revoke_key(
+                    &id,
+                    revocation_reason.clone(),
+                    compromise_occurrence_date,
+                    kms,
+                    owner,
+                    params,
+                    ids_to_skip.clone(),
+                )
+                .await;
+            }
         }
     }
     Ok(())

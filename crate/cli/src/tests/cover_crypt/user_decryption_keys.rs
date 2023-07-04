@@ -94,10 +94,6 @@ pub async fn test_user_decryption_key_error() -> Result<(), CliError> {
     )
     .err()
     .unwrap();
-    println!("err: {}", err);
-    assert!(
-        err.to_string()
-            .contains("Object with unique identifier: BAD_KEY not found",)
-    );
+    assert!(err.to_string().contains("Item not found: BAD_KEY"));
     Ok(())
 }
