@@ -274,8 +274,12 @@ pub enum KeyCompressionType {
     // Extensions 8XXXXXXX
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct CryptographicUsageMask(u32);
+
 bitflags::bitflags! {
-    pub struct CryptographicUsageMask: u32 {
+    impl CryptographicUsageMask: u32 {
         /// Allow for signing. Applies to Sign operation. Valid for PGP Key, Private Key
         const Sign=0x0000_0001;
         /// Allow for signature verification. Applies to Signature Verify and Validate
@@ -331,7 +335,7 @@ impl Serialize for CryptographicUsageMask {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_i32(self.bits as i32)
+        serializer.serialize_i32(self.bits() as i32)
     }
 }
 impl<'de> Deserialize<'de> for CryptographicUsageMask {
@@ -352,7 +356,7 @@ impl<'de> Deserialize<'de> for CryptographicUsageMask {
             where
                 E: de::Error,
             {
-                Ok(CryptographicUsageMask { bits: v })
+                Ok(CryptographicUsageMask(v))
             }
 
             // used by the TTLV representation
@@ -360,14 +364,14 @@ impl<'de> Deserialize<'de> for CryptographicUsageMask {
             where
                 E: de::Error,
             {
-                Ok(CryptographicUsageMask { bits: v as u32 })
+                Ok(CryptographicUsageMask(v as u32))
             }
 
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(CryptographicUsageMask { bits: v as u32 })
+                Ok(CryptographicUsageMask(v as u32))
             }
 
             // used by the direct JSON representation
@@ -375,15 +379,19 @@ impl<'de> Deserialize<'de> for CryptographicUsageMask {
             where
                 E: de::Error,
             {
-                Ok(CryptographicUsageMask { bits: v as u32 })
+                Ok(CryptographicUsageMask(v as u32))
             }
         }
         deserializer.deserialize_any(CryptographicUsageMaskVisitor)
     }
 }
 
+#[derive(Debug, Clone)]
+#[repr(transparent)]
+pub struct ProtectionStorageMasks(u32);
+
 bitflags::bitflags! {
-    pub struct ProtectionStorageMasks: u32 {
+    impl ProtectionStorageMasks: u32 {
         const Software=0x0000_0001;
         const Hardware=0x0000_0002;
         const OnProcessor=0x0000_0004;
@@ -406,7 +414,7 @@ impl Serialize for ProtectionStorageMasks {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_i32(self.bits as i32)
+        serializer.serialize_i32(self.bits() as i32)
     }
 }
 impl<'de> Deserialize<'de> for ProtectionStorageMasks {
@@ -427,7 +435,7 @@ impl<'de> Deserialize<'de> for ProtectionStorageMasks {
             where
                 E: de::Error,
             {
-                Ok(ProtectionStorageMasks { bits: v })
+                Ok(ProtectionStorageMasks(v))
             }
 
             // used by the TTLV representation
@@ -435,14 +443,14 @@ impl<'de> Deserialize<'de> for ProtectionStorageMasks {
             where
                 E: de::Error,
             {
-                Ok(ProtectionStorageMasks { bits: v as u32 })
+                Ok(ProtectionStorageMasks(v as u32))
             }
 
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(ProtectionStorageMasks { bits: v as u32 })
+                Ok(ProtectionStorageMasks(v as u32))
             }
 
             // used by the direct JSON representation
@@ -450,7 +458,7 @@ impl<'de> Deserialize<'de> for ProtectionStorageMasks {
             where
                 E: de::Error,
             {
-                Ok(ProtectionStorageMasks { bits: v as u32 })
+                Ok(ProtectionStorageMasks(v as u32))
             }
         }
         deserializer.deserialize_any(ProtectionStorageMasksVisitor)
@@ -466,9 +474,12 @@ pub enum ObjectGroupMember {
     // Extensions 8XXXXXXX
 }
 
+#[derive(Debug, Clone)]
+#[repr(transparent)]
+pub struct StorageStatusMask(u32);
+
 bitflags::bitflags! {
-    // #[serde(rename_all = "PascalCase")]
-    pub struct StorageStatusMask: u32 {
+    impl StorageStatusMask: u32 {
         const OnlineStorage=0x0000_0001;
         const ArchivalStorage=0x0000_0002;
         const DestroyedStorage=0x0000_0004;
@@ -480,7 +491,7 @@ impl Serialize for StorageStatusMask {
     where
         S: serde::Serializer,
     {
-        serializer.serialize_i32(self.bits as i32)
+        serializer.serialize_i32(self.bits() as i32)
     }
 }
 impl<'de> Deserialize<'de> for StorageStatusMask {
@@ -501,7 +512,7 @@ impl<'de> Deserialize<'de> for StorageStatusMask {
             where
                 E: de::Error,
             {
-                Ok(StorageStatusMask { bits: v })
+                Ok(StorageStatusMask(v))
             }
 
             // used by the TTLV representation
@@ -509,14 +520,14 @@ impl<'de> Deserialize<'de> for StorageStatusMask {
             where
                 E: de::Error,
             {
-                Ok(StorageStatusMask { bits: v as u32 })
+                Ok(StorageStatusMask(v as u32))
             }
 
             fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
-                Ok(StorageStatusMask { bits: v as u32 })
+                Ok(StorageStatusMask(v as u32))
             }
 
             // used by the direct JSON representation
@@ -524,7 +535,7 @@ impl<'de> Deserialize<'de> for StorageStatusMask {
             where
                 E: de::Error,
             {
-                Ok(StorageStatusMask { bits: v as u32 })
+                Ok(StorageStatusMask(v as u32))
             }
         }
         deserializer.deserialize_any(StorageStatusMaskVisitor)
