@@ -72,7 +72,7 @@ pub async fn get_attributes(
                     res.cryptographic_parameters = attributes.cryptographic_parameters.clone();
                 }
                 Tag::CryptographicUsageMask => {
-                    res.cryptographic_usage_mask = attributes.cryptographic_usage_mask;
+                    res.cryptographic_usage_mask = attributes.cryptographic_usage_mask.clone();
                 }
                 Tag::KeyFormatType => {
                     res.key_format_type = attributes.key_format_type;
