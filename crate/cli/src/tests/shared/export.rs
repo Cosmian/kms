@@ -30,7 +30,7 @@ pub fn export(
     wrap_key_id: Option<String>,
     allow_revoked: bool,
 ) -> Result<(), CliError> {
-    let mut args: Vec<String> = vec!["keys", "export", key_id, key_file]
+    let mut args: Vec<String> = vec!["keys", "export", "--key-id", key_id, key_file]
         .iter()
         .map(|s| s.to_string())
         .collect();

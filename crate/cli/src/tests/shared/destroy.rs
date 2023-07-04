@@ -137,6 +137,8 @@ async fn test_destroy_ec_key() -> Result<(), CliError> {
         // destroy should not work when not revoked
         assert!(destroy(&ctx.owner_cli_conf_path, "ec", &public_key_id).is_err());
 
+        println!("OK. revoking");
+
         // revoke then destroy
         revoke(
             &ctx.owner_cli_conf_path,
@@ -144,6 +146,9 @@ async fn test_destroy_ec_key() -> Result<(), CliError> {
             &public_key_id,
             "revocation test",
         )?;
+
+        println!("OK. destroying");
+
         // destroy via the private key
         destroy(&ctx.owner_cli_conf_path, "ec", &public_key_id)?;
 

@@ -25,7 +25,7 @@ pub fn revoke(
     key_id: &str,
     revocation_reason: &str,
 ) -> Result<(), CliError> {
-    let args: Vec<String> = vec!["keys", "revoke", key_id, revocation_reason]
+    let args: Vec<String> = vec!["keys", "revoke", "--key-id", key_id, revocation_reason]
         .iter()
         .map(|s| s.to_string())
         .collect();
