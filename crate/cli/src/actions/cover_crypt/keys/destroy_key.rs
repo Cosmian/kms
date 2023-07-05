@@ -17,7 +17,7 @@ use crate::{actions::shared::utils::destroy, cli_bail, error::CliError};
 /// an error is returned if multiple keys matching the tags are found.
 #[derive(Parser, Debug)]
 pub struct DestroyKeyAction {
-    /// The key unique identifier stored in the KMS
+    /// The key unique identifier.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     key_id: Option<String>,
