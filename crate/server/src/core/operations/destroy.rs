@@ -11,6 +11,7 @@ use cosmian_kmip::kmip::{
     kmip_types::{KeyFormatType, LinkType, StateEnumeration},
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use tracing::debug;
 
 use crate::{
     core::{cover_crypt::destroy_user_decryption_keys, KMS},
@@ -56,11 +57,6 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
         .await?
         .into_iter()
         .filter(|owm| {
-            println!(
-                "filtering object type: {}, state {}",
-                owm.object.object_type(),
-                owm.state
-            );
             let object_type = owm.object.object_type();
             owm.state != StateEnumeration::Destroyed
                 && (object_type == ObjectType::PrivateKey
@@ -75,13 +71,6 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
 
     // destroy the keys found
     for mut owm in owm_s {
-        println!(
-            "destroying key: {} = {}. Follow links: {:?}",
-            owm.id,
-            owm.object.object_type(),
-            &ids_to_skip
-        );
-
         // perform the chain of destroy operations depending on the type of object
         let object_type = owm.object.object_type();
         match object_type {
@@ -116,7 +105,6 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
 
                 // destroy the private key
                 destroy_key_core(&owm.id, &mut owm.object, owm.state, kms, params).await?;
-                println!("--- private key destroyed: {}", owm.id);
             }
             PublicKey => {
                 //add this key to the ids to skip
@@ -139,7 +127,6 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
 
                 // destroy the public key
                 destroy_key_core(&owm.id, &mut owm.object, owm.state, kms, params).await?;
-                println!("--- public key destroyed: {}", owm.id);
             }
             x => kms_bail!(KmsError::NotSupported(format!(
                 "destroy operation is not supported for object type {:?}",
@@ -162,7 +149,6 @@ async fn destroy_key_core(
     // map the state to the new state
     let new_state = match state {
         StateEnumeration::Active => {
-            println!("--- key is active, cannot destroy");
             return Err(KmsError::InvalidRequest(format!(
                 "Object with unique identifier: {unique_identifier} is active. It must be revoked \
                  first"
@@ -171,10 +157,7 @@ async fn destroy_key_core(
         StateEnumeration::Deactivated | StateEnumeration::PreActive => StateEnumeration::Destroyed,
         StateEnumeration::Compromised => StateEnumeration::Destroyed_Compromised,
         // already destroyed, return the object
-        StateEnumeration::Destroyed | StateEnumeration::Destroyed_Compromised => {
-            println!("--- key already destroyed: {}", unique_identifier);
-            return Ok(())
-        }
+        StateEnumeration::Destroyed | StateEnumeration::Destroyed_Compromised => return Ok(()),
     };
 
     // the KMIP specs mandates that e KeyMaterial be destroyed
@@ -191,6 +174,11 @@ async fn destroy_key_core(
     kms.db
         .update_state(unique_identifier, new_state, params)
         .await?;
+
+    debug!(
+        "Object with unique identifier: {} destroyed",
+        unique_identifier
+    );
 
     Ok(())
 }

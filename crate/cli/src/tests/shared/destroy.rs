@@ -22,7 +22,7 @@ use crate::{
 };
 
 pub fn destroy(cli_conf_path: &str, sub_command: &str, key_id: &str) -> Result<(), CliError> {
-    let args: Vec<String> = vec!["keys", "destroy", key_id]
+    let args: Vec<String> = vec!["keys", "destroy", "--key-id", key_id]
         .iter()
         .map(|s| s.to_string())
         .collect();

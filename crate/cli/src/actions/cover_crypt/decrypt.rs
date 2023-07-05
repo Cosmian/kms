@@ -19,7 +19,7 @@ pub struct DecryptAction {
     #[clap(required = true, name = "FILE")]
     input_file: PathBuf,
 
-    /// The user key unique identifier stored in the KMS
+    /// The user key unique identifier
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     user_key_id: Option<String>,

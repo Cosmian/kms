@@ -23,7 +23,7 @@ pub struct EncryptAction {
     #[clap(required = true)]
     encryption_policy: String,
 
-    /// The key unique identifier stored in the KMS
+    /// The public key unique identifier.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     key_id: Option<String>,
