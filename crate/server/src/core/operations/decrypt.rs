@@ -1,9 +1,12 @@
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{Decrypt, DecryptResponse},
-    kmip_types::StateEnumeration,
+    kmip_types::{KeyFormatType, StateEnumeration},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use cosmian_kms_utils::{
+    access::{ExtraDatabaseParams, ObjectOperationType},
+    crypto::cover_crypt::attributes,
+};
 use tracing::trace;
 
 use crate::{
@@ -35,6 +38,20 @@ pub async fn decrypt(
             owm.state == StateEnumeration::Active
                 && (object_type == ObjectType::PrivateKey
                     || object_type == ObjectType::SymmetricKey)
+        })
+        // for Covercrypt, keep user decryption keys only
+        .filter(|owm| {
+            if owm.object.object_type() != ObjectType::PrivateKey {
+                return true
+            }
+            if let Ok(attributes) = owm.object.attributes() {
+                // is it a Covercrypt secret key?
+                if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
+                    // does it have an access policy that allows decryption?
+                    return attributes::access_policy_from_attributes(attributes).is_ok()
+                }
+            }
+            true
         })
         .collect::<Vec<ObjectWithMetadata>>();
 

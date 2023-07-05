@@ -2,9 +2,12 @@ use cloudproof::reexport::cover_crypt::statics::CoverCryptX25519Aes256;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
-    kmip_types::{CryptographicAlgorithm, StateEnumeration},
+    kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use cosmian_kms_utils::{
+    access::{ExtraDatabaseParams, ObjectOperationType},
+    crypto::cover_crypt::attributes::policy_from_attributes,
+};
 use tracing::trace;
 
 use crate::{
@@ -42,17 +45,31 @@ pub async fn rekey_keypair(
         .await?
         .into_iter()
         .filter(|owm| {
-            let object_type = owm.object.object_type();
-            owm.state == StateEnumeration::Active && object_type == ObjectType::PrivateKey
+            // only active objects
+            if owm.state != StateEnumeration::Active {
+                return false
+            }
+            // only private keys
+            if owm.object.object_type() != ObjectType::PrivateKey {
+                return false
+            }
+            // if a Covercrypt key, it must be a master secret key
+            if let Ok(attributes) = owm.object.attributes() {
+                if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
+                    // a master key should have policies in the attributes
+                    return policy_from_attributes(attributes).is_ok()
+                }
+            }
+            true
         })
         .collect::<Vec<ObjectWithMetadata>>();
 
     // there can only be one private key
     let owm = match owm_s.len() {
         0 => return Err(KmsError::ItemNotFound(uid_or_tags.to_owned())),
-        1 => owm_s
-            .pop()
-            .expect(&format!("failed getting the object: {uid_or_tags}")),
+        1 => owm_s.pop().ok_or_else(|| {
+            KmsError::ServerError(format!("failed getting the object: {uid_or_tags}"))
+        })?,
         _ => {
             return Err(KmsError::InvalidRequest(format!(
                 "too many items for {uid_or_tags}",

@@ -2,12 +2,13 @@ use cloudproof::reexport::cover_crypt::statics::CoverCryptX25519Aes256;
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Create, CreateKeyPair, Get},
-    kmip_types::{Attributes, StateEnumeration},
+    kmip_types::{Attributes, KeyFormatType, StateEnumeration},
 };
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::cover_crypt::{
-        attributes::access_policy_from_attributes, user_key::UserDecryptionKeysHandler,
+        attributes::{access_policy_from_attributes, policy_from_attributes},
+        user_key::UserDecryptionKeysHandler,
     },
     KeyPair,
 };
@@ -63,17 +64,30 @@ async fn create_user_decryption_key_(
         .await?
         .into_iter()
         .filter(|owm| {
-            owm.state == StateEnumeration::Active
-                && owm.object.object_type() == ObjectType::PrivateKey
+            if owm.state != StateEnumeration::Active {
+                return false
+            }
+            if owm.object.object_type() != ObjectType::PrivateKey {
+                return false
+            }
+            let attributes = match owm.object.attributes() {
+                Ok(attributes) => attributes,
+                Err(_) => return false,
+            };
+            if attributes.key_format_type != Some(KeyFormatType::CoverCryptSecretKey) {
+                return false
+            }
+            // a master key should have policies in the attributes
+            policy_from_attributes(attributes).is_ok()
         })
         .collect::<Vec<ObjectWithMetadata>>();
 
     // there can only be one object
     let owm = match owm_s.len() {
         0 => return Err(KmsError::ItemNotFound(msk_uid_or_tag.to_owned())),
-        1 => owm_s.pop().expect(&format!(
-            "failed getting the master private key: {msk_uid_or_tag}"
-        )),
+        1 => owm_s.pop().ok_or_else(|| {
+            KmsError::ServerError(format!("failed getting the object: {msk_uid_or_tag}"))
+        })?,
         _ => {
             return Err(KmsError::InvalidRequest(format!(
                 "get: too many items for master private key {msk_uid_or_tag}",

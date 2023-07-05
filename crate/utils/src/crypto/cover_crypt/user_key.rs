@@ -137,8 +137,10 @@ impl UserDecryptionKeysHandler {
                 att
             })
             .unwrap_or_else(|| Attributes::new(ObjectType::PrivateKey));
+
         // Add the access policy to the attributes
         upsert_access_policy_in_attributes(&mut attributes, access_policy_str)?;
+
         // Add the link to the master private key
         attributes.link = Some(vec![Link {
             link_type: LinkType::ParentLink,

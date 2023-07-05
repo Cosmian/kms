@@ -127,6 +127,7 @@ pub async fn test_password_wrap_import() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     password_wrap_import_test(ctx, "cc", &private_key_id)?;
 

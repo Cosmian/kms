@@ -19,11 +19,17 @@ pub fn create_cc_master_key_pair(
     cli_conf_path: &str,
     policy_option: &str,
     file: &str,
+    tags: &[&str],
 ) -> Result<(String, String), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(SUB_COMMAND)
-        .args(vec!["keys", "create-master-key-pair", policy_option, file]);
+    let mut args = vec!["keys", "create-master-key-pair", policy_option, file];
+    // add tags
+    for tag in tags {
+        args.push("--tag");
+        args.push(tag);
+    }
+    cmd.arg(SUB_COMMAND).args(args);
 
     let output = cmd.output()?;
     if output.status.success() {
@@ -54,12 +60,14 @@ pub async fn test_create_master_key_pair() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     //from binary
     create_cc_master_key_pair(
         &ctx.owner_cli_conf_path,
         "--policy-binary",
         "test_data/policy.bin",
+        &[],
     )?;
     Ok(())
 }
@@ -72,6 +80,7 @@ pub async fn test_create_master_key_pair_error() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/notfound.json",
+        &[],
     )
     .err()
     .unwrap();
@@ -81,6 +90,7 @@ pub async fn test_create_master_key_pair_error() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-binary",
         "test_data/policy.bad",
+        &[],
     )
     .err()
     .unwrap();

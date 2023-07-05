@@ -101,6 +101,7 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     export_import_test(
         &ctx.owner_cli_conf_path,
