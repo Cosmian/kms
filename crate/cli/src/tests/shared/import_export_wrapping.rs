@@ -52,6 +52,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
@@ -123,6 +124,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,

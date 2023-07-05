@@ -52,11 +52,13 @@ async fn test_rotate() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     let _user_decryption_key = create_user_decryption_key(
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
     );
 
     rotate(
@@ -78,11 +80,13 @@ async fn test_rotate_error() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     let _user_decryption_key = create_user_decryption_key(
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
     );
 
     // bad attributes
@@ -166,11 +170,13 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     let user_decryption_key = create_user_decryption_key(
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
     )?;
 
     encrypt(

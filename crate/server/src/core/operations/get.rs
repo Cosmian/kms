@@ -92,9 +92,9 @@ pub(crate) async fn get_active_object(
     // there can only be one object
     let owm = match owm_s.len() {
         0 => return Err(KmsError::ItemNotFound(uid_or_tags.to_owned())),
-        1 => owm_s
-            .pop()
-            .expect(&format!("failed getting the object: {uid_or_tags}")),
+        1 => owm_s.pop().ok_or_else(|| {
+            KmsError::ServerError(format!("failed getting the object: {uid_or_tags}"))
+        })?,
         _ => {
             return Err(KmsError::InvalidRequest(format!(
                 "get: too many items for {uid_or_tags}",

@@ -72,6 +72,7 @@ pub async fn test_export_cover_crypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     // Export
     export(
@@ -100,6 +101,7 @@ pub async fn test_export_cover_crypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
     )?;
     export(
         &ctx.owner_cli_conf_path,
@@ -227,6 +229,7 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
 
     // Export to non existing dir
@@ -259,6 +262,7 @@ pub async fn test_export_bytes_cover_crypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     // Export
     export(

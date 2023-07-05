@@ -81,7 +81,7 @@ pub fn decrypt(
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_using_object_ids() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -98,6 +98,7 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
 
     encrypt(
@@ -114,6 +115,7 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
     )?;
 
     // the user key should be able to decrypt the file
@@ -135,12 +137,86 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "Department::FIN && Security Level::Top Secret",
+        &[],
     )?;
     assert!(
         decrypt(
             &ctx.owner_cli_conf_path,
             output_file.to_str().unwrap(),
             &user_ko_key_id,
+            Some(recovered_file.to_str().unwrap()),
+            Some("myid"),
+        )
+        .is_err()
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
+    let ctx = ONCE.get_or_init(init_test_server).await;
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+
+    let input_file = PathBuf::from("test_data/plain.txt");
+    let output_file = tmp_path.join("plain.enc");
+    let recovered_file = tmp_path.join("plain.txt");
+
+    fs::remove_file(&output_file).ok();
+    assert!(!output_file.exists());
+
+    let (_master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
+        &ctx.owner_cli_conf_path,
+        "--policy-specifications",
+        "test_data/policy_specifications.json",
+        &["tag"],
+    )?;
+
+    encrypt(
+        &ctx.owner_cli_conf_path,
+        input_file.to_str().unwrap(),
+        "[\"tag\"]",
+        "Department::MKG && Security Level::Confidential",
+        Some(output_file.to_str().unwrap()),
+        Some("myid"),
+    )?;
+
+    // create a user decryption key
+    let _user_ok_key_id = create_user_decryption_key(
+        &ctx.owner_cli_conf_path,
+        "[\"tag\"]",
+        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &["tag"],
+    )?;
+
+    // the user key should be able to decrypt the file
+    decrypt(
+        &ctx.owner_cli_conf_path,
+        output_file.to_str().unwrap(),
+        "[\"tag\"]",
+        Some(recovered_file.to_str().unwrap()),
+        Some("myid"),
+    )?;
+    assert!(recovered_file.exists());
+
+    let original_content = read_bytes_from_file(&input_file)?;
+    let recovered_content = read_bytes_from_file(&recovered_file)?;
+    assert_eq!(original_content, recovered_content);
+
+    // this user key should not be able to decrypt the file
+    let _user_ko_key_id = create_user_decryption_key(
+        &ctx.owner_cli_conf_path,
+        "[\"tag\"]",
+        "Department::FIN && Security Level::Top Secret",
+        &["tag"],
+    )?;
+    assert!(
+        decrypt(
+            &ctx.owner_cli_conf_path,
+            output_file.to_str().unwrap(),
+            "[\"tag\"]",
             Some(recovered_file.to_str().unwrap()),
             Some("myid"),
         )
