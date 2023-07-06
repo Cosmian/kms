@@ -70,9 +70,7 @@ pub async fn kmip(
     let ttlv = match serde_json::from_str::<TTLV>(&body) {
         Ok(ttlv) => ttlv,
         Err(_) => {
-            let config = kms.config.jwe_config;
-
-            if let Some(key) = config.jwk_private_key {
+            if let Some(key) = kms.config.jwe_config.jwk_private_key {
                 let decrypter = EcdhEsJweAlgorithm::EcdhEs.decrypter_from_jwk(&key).unwrap();
                 let payload = deserialize_compact(&body, &decrypter).unwrap();
 
@@ -87,73 +85,72 @@ pub async fn kmip(
 
     let database_params = kms.get_database_secrets(&req_http)?;
     let user = kms.get_user(req_http)?;
-    let ttlv_req = ttlv;
-    info!("POST /kmip. Request: {:?} {}", ttlv_req.tag.as_str(), user);
+    info!("POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     let ttlv_resp = match ttlv.tag.as_str() {
         "Create" => {
-            let req = from_ttlv::<Create>(&ttlv_req)?;
+            let req = from_ttlv::<Create>(&ttlv)?;
             let resp = kms.create(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "CreateKeyPair" => {
-            let req = from_ttlv::<CreateKeyPair>(&ttlv_req)?;
+            let req = from_ttlv::<CreateKeyPair>(&ttlv)?;
             let resp = kms
                 .create_key_pair(req, &user, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
         "Decrypt" => {
-            let req = from_ttlv::<Decrypt>(&ttlv_req)?;
+            let req = from_ttlv::<Decrypt>(&ttlv)?;
             let resp = kms.decrypt(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Destroy" => {
-            let req = from_ttlv::<Destroy>(&ttlv_req)?;
+            let req = from_ttlv::<Destroy>(&ttlv)?;
             let resp = kms.destroy(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Encrypt" => {
-            let req = from_ttlv::<Encrypt>(&ttlv_req)?;
+            let req = from_ttlv::<Encrypt>(&ttlv)?;
             let resp = kms.encrypt(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Export" => {
-            let req = from_ttlv::<Export>(&ttlv_req)?;
+            let req = from_ttlv::<Export>(&ttlv)?;
             let resp = kms.export(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Get" => {
-            let req = from_ttlv::<Get>(&ttlv_req)?;
+            let req = from_ttlv::<Get>(&ttlv)?;
             let resp = kms.get(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "GetAttributes" => {
-            let req = from_ttlv::<GetAttributes>(&ttlv_req)?;
+            let req = from_ttlv::<GetAttributes>(&ttlv)?;
             let resp = kms
                 .get_attributes(req, &user, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
         "Import" => {
-            let req = from_ttlv::<Import>(&ttlv_req)?;
+            let req = from_ttlv::<Import>(&ttlv)?;
             let resp = kms.import(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Locate" => {
-            let req = from_ttlv::<Locate>(&ttlv_req)?;
+            let req = from_ttlv::<Locate>(&ttlv)?;
             let resp = kms.locate(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "ReKeyKeyPair" => {
-            let req = from_ttlv::<ReKeyKeyPair>(&ttlv_req)?;
+            let req = from_ttlv::<ReKeyKeyPair>(&ttlv)?;
             let resp = kms
                 .rekey_keypair(req, &user, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
         "Revoke" => {
-            let req = from_ttlv::<Revoke>(&ttlv_req)?;
+            let req = from_ttlv::<Revoke>(&ttlv)?;
             let resp = kms.revoke(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
