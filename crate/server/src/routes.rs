@@ -70,7 +70,7 @@ pub async fn kmip(
     let ttlv = match serde_json::from_str::<TTLV>(&body) {
         Ok(ttlv) => ttlv,
         Err(_) => {
-            if let Some(key) = kms.config.jwe_config.jwk_private_key {
+            if let Some(key) = &kms.config.jwe_config.jwk_private_key {
                 let decrypter = EcdhEsJweAlgorithm::EcdhEs.decrypter_from_jwk(&key).unwrap();
                 let payload = deserialize_compact(&body, &decrypter).unwrap();
 
