@@ -2,8 +2,8 @@ mod certbot_https;
 pub mod db;
 mod enclave;
 pub mod http;
-pub mod jwt_auth_config;
 mod jwe;
+pub mod jwt_auth_config;
 mod workspace;
 
 use std::{
@@ -21,7 +21,7 @@ use tracing::info;
 use crate::{
     config::{
         certbot_https::HttpsCertbotConfig, db::DBConfig, enclave::EnclaveConfig, http::HTTPConfig,
-        jwt_auth_config::JwtAuthConfig, workspace::WorkspaceConfig, jwe::JWEConfig,
+        jwe::JWEConfig, jwt_auth_config::JwtAuthConfig, workspace::WorkspaceConfig,
     },
     core::certbot::Certbot,
     result::KResult,

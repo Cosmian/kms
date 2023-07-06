@@ -19,8 +19,8 @@ use cosmian_kms_utils::types::{
     UserAccessResponse,
 };
 use http::{header, StatusCode};
-use tracing::{debug, error, info, warn};
 use josekit::jwe::{alg::ecdh_es::EcdhEsJweAlgorithm, deserialize_compact};
+use tracing::{debug, error, info, warn};
 
 use crate::{database::KMSServer, error::KmsError, kms_bail, result::KResult};
 
