@@ -72,7 +72,7 @@ pub fn decrypt(
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -85,7 +85,7 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
-    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
 
     encrypt(
         &ctx.owner_cli_conf_path,
@@ -100,6 +100,48 @@ async fn test_encrypt_decrypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         output_file.to_str().unwrap(),
         &private_key_id,
+        Some(recovered_file.to_str().unwrap()),
+        Some("myid"),
+    )?;
+    assert!(recovered_file.exists());
+
+    let original_content = read_bytes_from_file(&input_file)?;
+    let recovered_content = read_bytes_from_file(&recovered_file)?;
+    assert_eq!(original_content, recovered_content);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
+    let ctx = ONCE.get_or_init(init_test_server).await;
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+
+    let input_file = PathBuf::from("test_data/plain.txt");
+    let output_file = tmp_path.join("plain.enc");
+    let recovered_file = tmp_path.join("plain.txt");
+
+    fs::remove_file(&output_file).ok();
+    assert!(!output_file.exists());
+
+    let (_private_key_id, _public_key_id) =
+        create_ec_key_pair(&ctx.owner_cli_conf_path, &["tag_ec"])?;
+
+    encrypt(
+        &ctx.owner_cli_conf_path,
+        input_file.to_str().unwrap(),
+        "[\"tag_ec\"]",
+        Some(output_file.to_str().unwrap()),
+        Some("myid"),
+    )?;
+
+    // the user key should be able to decrypt the file
+    decrypt(
+        &ctx.owner_cli_conf_path,
+        output_file.to_str().unwrap(),
+        "[\"tag_ec\"]",
         Some(recovered_file.to_str().unwrap()),
         Some("myid"),
     )?;

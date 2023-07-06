@@ -132,7 +132,7 @@ pub async fn test_password_wrap_import() -> Result<(), CliError> {
     password_wrap_import_test(ctx, "cc", &private_key_id)?;
 
     // EC
-    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     password_wrap_import_test(ctx, "ec", &private_key_id)?;
 
     // syn

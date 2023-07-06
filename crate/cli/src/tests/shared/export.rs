@@ -126,7 +126,7 @@ pub async fn test_export_ec() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a new key pair
-    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     // Export
     export(
         &ctx.owner_cli_conf_path,
@@ -307,7 +307,7 @@ pub async fn test_export_bytes_ec() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a new key pair
-    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     // Export
     export(
         &ctx.owner_cli_conf_path,

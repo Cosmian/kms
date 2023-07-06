@@ -111,7 +111,7 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
     )?;
 
     // generate a new key pair
-    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     export_import_test(
         &ctx.owner_cli_conf_path,
         "ec",
