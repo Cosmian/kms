@@ -83,7 +83,8 @@ impl CreateKeyAction {
                 import_object(client_connector, None, object, false, false, &self.tags).await?
             }
             None => {
-                let create_key_request = symmetric_key_create_request(number_of_bits, algorithm);
+                let create_key_request =
+                    symmetric_key_create_request(number_of_bits, algorithm, &self.tags)?;
                 client_connector
                     .create(create_key_request)
                     .await

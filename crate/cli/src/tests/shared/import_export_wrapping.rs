@@ -72,8 +72,13 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
         &wrap_key,
     )?;
     // test sym
-    let key_id =
-        symmetric::create_key::create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = symmetric::create_key::create_symmetric_key(
+        &ctx.owner_cli_conf_path,
+        None,
+        None,
+        None,
+        &[] as &[&str],
+    )?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
         "sym",
@@ -144,8 +149,13 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         wrap_key_pair.private_key(),
     )?;
     // test sym
-    let key_id =
-        symmetric::create_key::create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = symmetric::create_key::create_symmetric_key(
+        &ctx.owner_cli_conf_path,
+        None,
+        None,
+        None,
+        &[] as &[&str],
+    )?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
         "sym",

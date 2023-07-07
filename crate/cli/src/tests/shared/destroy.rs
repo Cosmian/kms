@@ -88,7 +88,7 @@ async fn test_destroy_symmetric_key() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // syn
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[] as &[&str])?;
 
     // destroy should not work when not revoked
     assert!(destroy(&ctx.owner_cli_conf_path, "sym", &key_id).is_err());

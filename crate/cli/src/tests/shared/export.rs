@@ -161,7 +161,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[] as &[&str])?;
     // Export
     export(
         &ctx.owner_cli_conf_path,
@@ -186,7 +186,7 @@ pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[] as &[&str])?;
     // Export
     export(
         &ctx.owner_cli_conf_path,
@@ -351,7 +351,7 @@ pub async fn test_export_bytes_sym() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[] as &[&str])?;
     // Export
     export(
         &ctx.owner_cli_conf_path,

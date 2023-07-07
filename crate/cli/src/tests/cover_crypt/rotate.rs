@@ -117,7 +117,8 @@ async fn test_rotate_error() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // create a symmetric key
-    let symmetric_key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let symmetric_key_id =
+        create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[] as &[&str])?;
     // export a wrapped key
     let exported_wrapped_key_file = tmp_path.join("exported_wrapped_master_private.key");
     export(
