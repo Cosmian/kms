@@ -5,7 +5,7 @@ use cosmian_kmip::kmip::{
     kmip_types::{Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
 };
 
-use crate::{crypto::error::CryptoError, tagging::set_tags};
+use crate::{error::KmipUtilsError, tagging::set_tags};
 
 /// Create a symmetric key for the given algorithm
 pub fn create_symmetric_key(
@@ -49,7 +49,7 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     key_len_in_bits: usize,
     cryptographic_algorithm: CryptographicAlgorithm,
     tags: T,
-) -> Result<Create, CryptoError> {
+) -> Result<Create, KmipUtilsError> {
     let mut attributes = Attributes {
         activation_date: None,
         cryptographic_algorithm: Some(cryptographic_algorithm),

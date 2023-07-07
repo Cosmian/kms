@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex},
+};
 
 use cloudproof::reexport::{
     cover_crypt::statics::CoverCryptX25519Aes256,
@@ -172,12 +175,16 @@ impl KMS {
         }
     }
 
+    /// Create a new symmetric key and the corresponding system tags
+    /// The tags will contain
+    ///  - "_kk"
+    ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_symmetric_key(
         &self,
         rng: &mut CsRng,
         request: &Create,
-        _owner: &str,
-    ) -> KResult<Object> {
+        tags: &mut HashSet<String>,
+    ) -> KResult<(Object, HashSet<String>)> {
         let attributes = &request.attributes;
         let cryptographic_algorithm = &attributes.cryptographic_algorithm.ok_or_else(|| {
             KmsError::InvalidRequest(
@@ -205,9 +212,12 @@ impl KMS {
                         .unwrap_or(aes_256_gcm_pure::KEY_LENGTH);
                     let mut symmetric_key = vec![0; key_len];
                     rng.fill_bytes(&mut symmetric_key);
-                    Ok(create_symmetric_key(
-                        &symmetric_key,
-                        *cryptographic_algorithm,
+                    Ok((
+                        create_symmetric_key(&symmetric_key, *cryptographic_algorithm),
+                        HashSet::from([
+                            "_kk".to_string(),
+                            "_" + cryptographic_algorithm.to_string().to_lowercase(),
+                        ]),
                     ))
                 }
                 Some(other) => kms_bail!(KmsError::InvalidRequest(format!(

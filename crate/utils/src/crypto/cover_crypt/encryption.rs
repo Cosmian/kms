@@ -14,7 +14,7 @@ use cosmian_kmip::kmip::{
 use tracing::{debug, trace};
 
 use crate::{
-    crypto::{cover_crypt::attributes::policy_from_attributes, error::CryptoError},
+    crypto::cover_crypt::attributes::policy_from_attributes, error::KmipUtilsError,
     EncryptionSystem,
 };
 
@@ -35,12 +35,12 @@ impl CoverCryptEncryption {
         cover_crypt: CoverCryptX25519Aes256,
         public_key_uid: &str,
         public_key: &Object,
-    ) -> Result<Self, CryptoError> {
+    ) -> Result<Self, KmipUtilsError> {
         let (public_key_bytes, public_key_attributes) =
             public_key.key_block()?.key_bytes_and_attributes()?;
 
         let policy = policy_from_attributes(public_key_attributes.ok_or_else(|| {
-            CryptoError::Kmip(
+            KmipUtilsError::Kmip(
                 ErrorReason::Attribute_Not_Found,
                 "the master public key does not have attributes with the Policy".to_string(),
             )
@@ -61,7 +61,7 @@ impl CoverCryptEncryption {
 }
 
 impl EncryptionSystem for CoverCryptEncryption {
-    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError> {
+    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError> {
         let authenticated_encryption_additional_data = &request
             .authenticated_encryption_additional_data
             .clone()
@@ -72,7 +72,7 @@ impl EncryptionSystem for CoverCryptEncryption {
                 .data
                 .as_ref()
                 .ok_or_else(|| {
-                    CryptoError::Kmip(
+                    KmipUtilsError::Kmip(
                         ErrorReason::Invalid_Message,
                         "Missing data to encrypt".to_owned(),
                     )
@@ -82,20 +82,22 @@ impl EncryptionSystem for CoverCryptEncryption {
 
         let public_key =
             PublicKey::try_from_bytes(self.public_key_bytes.as_slice()).map_err(|e| {
-                CryptoError::Kmip(
+                KmipUtilsError::Kmip(
                     ErrorReason::Codec_Error,
                     format!("cover crypt encipher: failed recovering the public key: {e}"),
                 )
             })?;
 
         let encryption_policy_string =
-            data_to_encrypt.encryption_policy.ok_or(CryptoError::Kmip(
-                ErrorReason::Invalid_Attribute_Value,
-                "encryption policy missing".to_string(),
-            ))?;
+            data_to_encrypt
+                .encryption_policy
+                .ok_or(KmipUtilsError::Kmip(
+                    ErrorReason::Invalid_Attribute_Value,
+                    "encryption policy missing".to_string(),
+                ))?;
         let encryption_policy = AccessPolicy::from_boolean_expression(&encryption_policy_string)
             .map_err(|e| {
-                CryptoError::Kmip(
+                KmipUtilsError::Kmip(
                     ErrorReason::Invalid_Attribute_Value,
                     format!("invalid encryption policy: {e}"),
                 )
@@ -110,7 +112,7 @@ impl EncryptionSystem for CoverCryptEncryption {
             data_to_encrypt.header_metadata.as_deref(),
             Some(authenticated_encryption_additional_data),
         )
-        .map_err(|e| CryptoError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string()))?;
+        .map_err(|e| KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string()))?;
 
         // Encrypt the data
         let mut encrypted_block = self
@@ -120,11 +122,13 @@ impl EncryptionSystem for CoverCryptEncryption {
                 &data_to_encrypt.plaintext,
                 Some(authenticated_encryption_additional_data),
             )
-            .map_err(|e| CryptoError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string()))?;
+            .map_err(|e| {
+                KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string())
+            })?;
 
-        let mut ciphertext = encrypted_header
-            .try_to_bytes()
-            .map_err(|e| CryptoError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string()))?;
+        let mut ciphertext = encrypted_header.try_to_bytes().map_err(|e| {
+            KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string())
+        })?;
         ciphertext.append(&mut encrypted_block);
 
         debug!(

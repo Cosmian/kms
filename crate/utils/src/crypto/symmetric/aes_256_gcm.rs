@@ -17,7 +17,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
 };
 
-use crate::{crypto::error::CryptoError, DecryptionSystem, EncryptionSystem};
+use crate::{error::KmipUtilsError, DecryptionSystem, EncryptionSystem};
 
 pub struct AesGcmSystem {
     key_uid: String,
@@ -26,11 +26,11 @@ pub struct AesGcmSystem {
 }
 
 impl AesGcmSystem {
-    pub fn instantiate(uid: &str, symmetric_key: &Object) -> Result<Self, CryptoError> {
+    pub fn instantiate(uid: &str, symmetric_key: &Object) -> Result<Self, KmipUtilsError> {
         let key_block = match symmetric_key {
             Object::SymmetricKey { key_block } => key_block.clone(),
             _ => {
-                return Err(CryptoError::NotSupported(
+                return Err(KmipUtilsError::NotSupported(
                     "Expected a KMIP Symmetric Key".to_owned(),
                 ))
             }
@@ -44,7 +44,7 @@ impl AesGcmSystem {
 }
 
 impl EncryptionSystem for AesGcmSystem {
-    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError> {
+    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError> {
         let uid = request
             .authenticated_encryption_additional_data
             .clone()
@@ -77,7 +77,7 @@ impl EncryptionSystem for AesGcmSystem {
         // supplied Nonce or fresh
         let nonce: Nonce<NONCE_LENGTH> = match request.iv_counter_nonce.as_ref() {
             Some(v) => Nonce::try_from(v.as_slice())
-                .map_err(|e| CryptoError::NotSupported(e.to_string()))?,
+                .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?,
             None => {
                 let mut rng = self.rng.lock().expect("a mutex lock failed");
                 Nonce::new(&mut *rng)
@@ -101,7 +101,7 @@ impl EncryptionSystem for AesGcmSystem {
             nonce.as_bytes(),
             if ad.is_empty() { None } else { Some(&ad) },
         )
-        .map_err(|e| CryptoError::NotSupported(e.to_string()))?;
+        .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
 
         Ok(EncryptResponse {
             unique_identifier: self.key_uid.clone(),
@@ -114,7 +114,7 @@ impl EncryptionSystem for AesGcmSystem {
 }
 
 impl DecryptionSystem for AesGcmSystem {
-    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, CryptoError> {
+    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, KmipUtilsError> {
         let uid = request
             .authenticated_encryption_additional_data
             .clone()
@@ -148,10 +148,10 @@ impl DecryptionSystem for AesGcmSystem {
 
         // recover Nonce
         let nonce_bytes = request.iv_counter_nonce.clone().ok_or_else(|| {
-            CryptoError::NotSupported("the nonce is mandatory for AES GCM".to_string())
+            KmipUtilsError::NotSupported("the nonce is mandatory for AES GCM".to_string())
         })?;
         let nonce: Nonce<NONCE_LENGTH> = Nonce::try_from(nonce_bytes.as_slice())
-            .map_err(|e| CryptoError::NotSupported(e.to_string()))?;
+            .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
 
         // Additional data
         let mut ad = uid;
@@ -170,7 +170,7 @@ impl DecryptionSystem for AesGcmSystem {
             nonce.as_bytes(),
             if ad.is_empty() { None } else { Some(&ad) },
         )
-        .map_err(|e| CryptoError::NotSupported(e.to_string()))?;
+        .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
 
         Ok(DecryptResponse {
             unique_identifier: self.key_uid.clone(),

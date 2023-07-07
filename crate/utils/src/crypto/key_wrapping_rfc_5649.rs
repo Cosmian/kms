@@ -3,7 +3,7 @@ use aes::{
     Aes128, Aes192, Aes256,
 };
 
-use super::error::CryptoError;
+use crate::error::KmipUtilsError;
 
 const DEFAULT_IV: u64 = 0xA6A6_A6A6_A6A6_A6A6;
 const DEFAULT_RFC5649_CONST: u32 = 0xA659_59A6_u32;
@@ -37,7 +37,7 @@ fn check_iv(iv: u64, data: &[u8]) -> bool {
 ///
 /// Follows RFC 5649
 /// The function name matches the one used in the RFC and has no link to the unwrap function in Rust
-pub fn wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
+pub fn wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
     let n = plain.len();
     let m = n % 8;
 
@@ -71,7 +71,7 @@ pub fn wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
                 cipher.encrypt_block(big_c);
             }
             _ => {
-                return Err(CryptoError::InvalidSize(
+                return Err(KmipUtilsError::InvalidSize(
                     "The kek size should be 16, 24 or 32".to_string(),
                 ))
             }
@@ -87,11 +87,11 @@ pub fn wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
 ///
 /// Follows RFC 5649
 /// The function name matches the one used in the RFC and has no link to the unwrap function in Rust
-pub fn unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
+pub fn unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
     let n = ciphertext.len();
 
     if n % 8 != 0 || n < 16 {
-        return Err(CryptoError::InvalidSize(
+        return Err(KmipUtilsError::InvalidSize(
             "The ciphertext size should be >= 16 and a multiple of 8".to_string(),
         ))
     }
@@ -100,7 +100,7 @@ pub fn unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
         let (iv, padded_plain) = _unwrap_64(ciphertext, kek)?;
 
         if !check_iv(iv, &padded_plain) {
-            return Err(CryptoError::InvalidSize(
+            return Err(KmipUtilsError::InvalidSize(
                 "The ciphertext is invalid. Decrypted IV is not appropriate".to_string(),
             ))
         }
@@ -129,7 +129,7 @@ pub fn unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
                 cipher.decrypt_block(padded_plain);
             }
             _ => {
-                return Err(CryptoError::InvalidSize(
+                return Err(KmipUtilsError::InvalidSize(
                     "The kek size should be 16, 24 or 32".to_string(),
                 ))
             }
@@ -139,7 +139,7 @@ pub fn unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
             u64::from_be_bytes(padded_plain[0..8].try_into()?),
             &padded_plain[8..16],
         ) {
-            return Err(CryptoError::InvalidSize(
+            return Err(KmipUtilsError::InvalidSize(
                 "The ciphertext is invalid. Decrypted IV is not appropriate".to_string(),
             ))
         }
@@ -154,7 +154,7 @@ pub fn unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
 ///
 /// Follows RFC 3394
 /// The function name matches the one used in the RFC and has no link to the unwrap function in Rust
-pub fn wrap_64(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
+pub fn wrap_64(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
     _wrap_64(plain, kek, None)
 }
 
@@ -162,11 +162,11 @@ pub fn wrap_64(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
 ///
 /// Follows RFC 3394
 /// The function name matches the one used in the RFC and has no link to the unwrap function in Rust
-fn _wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, CryptoError> {
+fn _wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, KmipUtilsError> {
     let n = plain.len();
 
     if n % 8 != 0 {
-        return Err(CryptoError::InvalidSize(
+        return Err(KmipUtilsError::InvalidSize(
             "The plaintext size should be a multiple of 8".to_string(),
         ))
     }
@@ -204,7 +204,7 @@ fn _wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, Crypto
                     cipher.encrypt_block(&mut big_b);
                 }
                 _ => {
-                    return Err(CryptoError::InvalidSize(
+                    return Err(KmipUtilsError::InvalidSize(
                         "The kek size should be 16, 24 or 32".to_string(),
                     ))
                 }
@@ -231,11 +231,11 @@ fn _wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, Crypto
 ///
 /// Follows RFC 3394
 /// The function name matches the one used in the RFC and has no link to the unwrap function in Rust
-pub fn unwrap_64(cipher: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
+pub fn unwrap_64(cipher: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
     let (iv, plain) = _unwrap_64(cipher, kek)?;
 
     if iv != DEFAULT_IV {
-        return Err(CryptoError::InvalidSize(
+        return Err(KmipUtilsError::InvalidSize(
             "The ciphertext is invalid. Decrypted IV is not appropriate".to_string(),
         ))
     }
@@ -243,11 +243,11 @@ pub fn unwrap_64(cipher: &[u8], kek: &[u8]) -> Result<Vec<u8>, CryptoError> {
     Ok(plain)
 }
 
-fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Vec<u8>), CryptoError> {
+fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Vec<u8>), KmipUtilsError> {
     let n = ciphertext.len();
 
     if n % 8 != 0 || n < 16 {
-        return Err(CryptoError::InvalidSize(
+        return Err(KmipUtilsError::InvalidSize(
             "The ciphertext size should be >= 16 and a multiple of 8".to_string(),
         ))
     }
@@ -288,7 +288,7 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Vec<u8>), CryptoErr
                     cipher.decrypt_block(&mut big_b);
                 }
                 _ => {
-                    return Err(CryptoError::InvalidSize(
+                    return Err(KmipUtilsError::InvalidSize(
                         "The kek size should be 16, 24 or 32".to_string(),
                     ))
                 }

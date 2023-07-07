@@ -1,7 +1,11 @@
 use std::collections::HashSet;
 
 use cosmian_kmip::kmip::kmip_operations::{CreateKeyPair, CreateKeyPairResponse};
-use cosmian_kms_utils::{access::ExtraDatabaseParams, tagging::get_tags, KeyPair};
+use cosmian_kms_utils::{
+    access::ExtraDatabaseParams,
+    tagging::{check_user_tags, get_tags},
+    KeyPair,
+};
 use tracing::trace;
 use uuid::Uuid;
 
@@ -27,10 +31,20 @@ pub async fn create_key_pair(
         .as_ref()
         .map(get_tags)
         .unwrap_or(HashSet::new());
+    // check the tags
+    check_user_tags(&tags)?;
 
+    // insert additional tags with the type of object
+    let mut sk_tags = tags.clone();
+    sk_tags.insert("_sk".to_string());
+    let mut pk_tags = tags.clone();
+    pk_tags.insert("_pk".to_string());
+
+    // generate uids and create the key pair
     let sk_uid = Uuid::new_v4().to_string();
     let pk_uid = Uuid::new_v4().to_string();
     let key_pair: KeyPair = kms.create_key_pair_(&request, &sk_uid, &pk_uid).await?;
+
     trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
     kms.db
         .create_objects(
@@ -39,12 +53,12 @@ pub async fn create_key_pair(
                 (
                     Some(sk_uid.clone()),
                     key_pair.private_key().to_owned(),
-                    &tags,
+                    &sk_tags,
                 ),
                 (
                     Some(pk_uid.clone()),
                     key_pair.public_key().to_owned(),
-                    &tags,
+                    &pk_tags,
                 ),
             ],
             params,

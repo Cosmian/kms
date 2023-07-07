@@ -15,9 +15,9 @@ use cosmian_kmip::kmip::{
 };
 use tracing::{debug, trace};
 
-use crate::crypto::{
-    ecies::{ecies_decrypt, ecies_encrypt},
-    error::{result::CryptoResultHelper, CryptoError},
+use crate::{
+    crypto::ecies::{ecies_decrypt, ecies_encrypt},
+    error::{result::CryptoResultHelper, KmipUtilsError},
 };
 // use super::user_key::unwrap_user_decryption_key_object;
 use crate::{DecryptionSystem, EncryptionSystem};
@@ -34,7 +34,7 @@ pub struct EciesEncryption {
 pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
 
 impl EciesEncryption {
-    pub fn instantiate(public_key_uid: &str, public_key: &Object) -> Result<Self, CryptoError> {
+    pub fn instantiate(public_key_uid: &str, public_key: &Object) -> Result<Self, KmipUtilsError> {
         let rng = CsRng::from_entropy();
 
         let public_key_bytes = public_key.key_block()?.key_bytes()?;
@@ -51,7 +51,7 @@ impl EciesEncryption {
 }
 
 impl EncryptionSystem for EciesEncryption {
-    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError> {
+    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError> {
         let authenticated_encryption_additional_data = &request
             .authenticated_encryption_additional_data
             .clone()
@@ -99,7 +99,10 @@ pub struct EciesDecryption {
 }
 
 impl EciesDecryption {
-    pub fn instantiate(private_key_uid: &str, private_key: &Object) -> Result<Self, CryptoError> {
+    pub fn instantiate(
+        private_key_uid: &str,
+        private_key: &Object,
+    ) -> Result<Self, KmipUtilsError> {
         let private_key_bytes = private_key.key_block()?.key_bytes()?;
         let private_key = X25519PrivateKey::try_from_bytes(&private_key_bytes)?;
 
@@ -113,9 +116,9 @@ impl EciesDecryption {
 }
 
 impl DecryptionSystem for EciesDecryption {
-    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, CryptoError> {
+    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, KmipUtilsError> {
         let encrypted_bytes = request.data.as_ref().ok_or_else(|| {
-            CryptoError::NotSupported(
+            KmipUtilsError::NotSupported(
                 "the decryption request should contain encrypted data".to_string(),
             )
         })?;
