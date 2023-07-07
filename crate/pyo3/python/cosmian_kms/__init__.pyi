@@ -60,6 +60,7 @@ class KmsClient:
         replace_existing: bool,
         link_master_public_key_id: str,
         policy: bytes,
+        tags:  Optional[List[str]],
         is_wrapped: bool,
         wrapping_password: Optional[str] = None,
         unique_identifier: Optional[str] = None,
@@ -131,7 +132,8 @@ class KmsClient:
         replace_existing: bool,
         link_master_private_key_id: str,
         access_policy_str: str,
-        is_wrapped: bool,
+        tags: Optional[List[str]] = None,
+        is_wrapped: Optional[bool]=None,
         wrapping_password: Optional[str] = None,
         unique_identifier: Optional[str] = None,
     ) -> Future[str]:
@@ -142,6 +144,7 @@ class KmsClient:
             replace_existing (bool): set to true to replace an existing key with the same identifier
             link_master_private_key_id (str): id of the matching master private key
             access_policy_str (str): user access policy
+            tags (Optional[List[str]]): tags associated to the key
             is_wrapped (bool): whether the key is wrapped
             wrapping_password (Optional[str]): password used to wrap the key
             unique_identifier (Optional[str]): the unique identifier of the key
@@ -151,9 +154,10 @@ class KmsClient:
         """
     def cover_crypt_encryption(
         self,
-        public_key_identifier: str,
         encryption_policy_str: str,
         data: bytes,
+        public_key_identifier: Optional[str],
+        tags: Optional[List[str]] = None,
         header_metadata: Optional[bytes] = None,
         authentication_data: Optional[bytes] = None,
     ) -> Future[bytes]:
@@ -161,9 +165,10 @@ class KmsClient:
         ciphertext.
 
         Args:
-            public_key_identifier (str): identifier of the public key
             encryption_policy_str (str): the access policy to use for encryption
             data (bytes): data to encrypt
+            public_key_identifier (str): identifier of the public key. If not specified, tags must be provided.
+            tags (Optional[List[str]]): tags to use to find the public key
             header_metadata (Optional[bytes]): additional data to symmetrically encrypt in the header
             authentication_data (Optional[bytes]): authentication data to use in symmetric encryptions
 

@@ -4,11 +4,11 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Import, ImportResponse},
     kmip_types::{KeyWrapType, StateEnumeration},
 };
-use cosmian_kms_utils::types::ExtraDatabaseParams;
+use cosmian_kms_utils::{access::ExtraDatabaseParams, tagging::get_tags};
 use tracing::{debug, warn};
 
 use super::wrapping::unwrap_key;
-use crate::{core::KMS, result::KResult};
+use crate::{core::KMS, kms_bail, result::KResult};
 
 /// Import a new object
 pub async fn import(
@@ -17,6 +17,17 @@ pub async fn import(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ImportResponse> {
+    // Unique identifiers starting with `[` are reserved for queries on tags
+    // see tagging
+    // For instance, a request for uniquer identifier `[tag1]` will
+    // attempt to find a valid single object tagged with `tag1`
+    if request.unique_identifier.starts_with('[') {
+        kms_bail!("Importing objects with uniquer identifiers starting with `[` is not supported");
+    }
+
+    // recover tags
+    let tags = get_tags(&request.attributes);
+
     let mut object = request.object;
     let object_type = object.object_type();
     let object_key_block = object.key_block_mut()?;
@@ -33,7 +44,6 @@ pub async fn import(
             };
         }
         x => {
-            //TODO keep attributes as separate column in DB
             warn!("Attributes are not yet supported for objects of type : {x}")
         }
     }
@@ -54,6 +64,7 @@ pub async fn import(
                 &request.unique_identifier,
                 owner,
                 &object,
+                &tags,
                 StateEnumeration::Active,
                 params,
             )
@@ -66,7 +77,7 @@ pub async fn import(
         } else {
             Some(request.unique_identifier)
         };
-        kms.db.create(id, owner, &object, params).await?
+        kms.db.create(id, owner, &object, &tags, params).await?
     };
     Ok(ImportResponse {
         unique_identifier: uid,

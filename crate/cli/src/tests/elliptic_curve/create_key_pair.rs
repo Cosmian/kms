@@ -15,10 +15,19 @@ use crate::{
     },
 };
 
-pub fn create_ec_key_pair(cli_conf_path: &str) -> Result<(String, String), CliError> {
+pub fn create_ec_key_pair(
+    cli_conf_path: &str,
+    tags: &[&str],
+) -> Result<(String, String), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec!["keys", "create"]);
+    let mut args = vec!["keys", "create"];
+    // add tags
+    for tag in tags {
+        args.push("--tag");
+        args.push(tag);
+    }
+    cmd.arg(SUB_COMMAND).args(args);
 
     let output = cmd.output()?;
     if output.status.success() {
@@ -45,6 +54,6 @@ pub fn create_ec_key_pair(cli_conf_path: &str) -> Result<(String, String), CliEr
 pub async fn test_create_key_pair() -> Result<(), CliError> {
     // from specs
     let ctx = ONCE.get_or_init(init_test_server).await;
-    create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+    create_ec_key_pair(&ctx.owner_cli_conf_path, &["tag1", "tag2"])?;
     Ok(())
 }

@@ -8,35 +8,36 @@ use cosmian_kmip::kmip::{
         Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
     },
 };
-use cosmian_kms_utils::crypto::{
-    cover_crypt::{
-        attributes::access_policy_as_vendor_attribute,
-        kmip_requests::{
-            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
+use cosmian_kms_utils::{
+    crypto::{
+        cover_crypt::{
+            attributes::access_policy_as_vendor_attribute,
+            kmip_requests::{
+                build_create_master_keypair_request,
+                build_create_user_decryption_private_key_request,
+            },
         },
+        generic::kmip_requests::{build_decryption_request, build_encryption_request},
     },
-    generic::kmip_requests::{build_decryption_request, build_encryption_request},
+    tagging::EMPTY_TAGS,
 };
 use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
-    config::{ClapConfig, ServerConfig},
+    config::ServerConfig,
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
-    tests::test_utils,
+    tests::test_utils::https_clap_config,
     KMSServer,
 };
 
 #[actix_rt::test]
 async fn test_cover_crypt_keys() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     //
@@ -63,7 +64,11 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     debug!("ABE Create Master Key Pair");
 
     let cr = kms
-        .create_key_pair(build_create_master_keypair_request(&policy)?, owner, None)
+        .create_key_pair(
+            build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
+            owner,
+            None,
+        )
         .await?;
     debug!("  -> response {:?}", cr);
     let sk_uid = cr.private_key_unique_identifier;
@@ -145,7 +150,8 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
-    let request = build_create_user_decryption_private_key_request(access_policy, &sk_uid)?;
+    let request =
+        build_create_user_decryption_private_key_request(access_policy, &sk_uid, EMPTY_TAGS)?;
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
@@ -169,7 +175,8 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via Private key
     debug!(" .... user key via Private Key");
-    let request = build_create_user_decryption_private_key_request(access_policy, &sk_uid)?;
+    let request =
+        build_create_user_decryption_private_key_request(access_policy, &sk_uid, EMPTY_TAGS)?;
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
@@ -204,12 +211,9 @@ pub fn access_policy_serialization() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
     //
@@ -234,7 +238,11 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 
     // create Key Pair
     let ckr = kms
-        .create_key_pair(build_create_master_keypair_request(&policy)?, owner, None)
+        .create_key_pair(
+            build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
+            owner,
+            None,
+        )
         .await?;
     let master_private_key_id = &ckr.private_key_unique_identifier;
     let master_public_key_id = &ckr.public_key_unique_identifier;
@@ -318,6 +326,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             build_create_user_decryption_private_key_request(
                 secret_mkg_fin_access_policy,
                 master_private_key_id,
+                EMPTY_TAGS,
             )?,
             owner,
             None,
@@ -412,12 +421,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_abe_json_access() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     //
     let mut policy = Policy::new(10);
@@ -442,7 +448,7 @@ async fn test_abe_json_access() -> KResult<()> {
     let secret_mkg_fin_access_policy = "(Department::MKG||Department::FIN) && Level::secret";
 
     // Create CC master key pair
-    let master_keypair = build_create_master_keypair_request(&policy)?;
+    let master_keypair = build_create_master_keypair_request(&policy, EMPTY_TAGS)?;
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
@@ -486,6 +492,7 @@ async fn test_abe_json_access() -> KResult<()> {
             build_create_user_decryption_private_key_request(
                 secret_mkg_fin_access_policy,
                 master_private_key_uid,
+                EMPTY_TAGS,
             )?,
             owner,
             None,
@@ -514,12 +521,9 @@ async fn test_abe_json_access() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_import_decrypt() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     let mut policy = Policy::new(10);
@@ -543,7 +547,11 @@ async fn test_import_decrypt() -> KResult<()> {
 
     // create Key Pair
     let cr = kms
-        .create_key_pair(build_create_master_keypair_request(&policy)?, owner, None)
+        .create_key_pair(
+            build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
+            owner,
+            None,
+        )
         .await?;
     debug!("  -> response {:?}", cr);
     let sk_uid = cr.private_key_unique_identifier;
@@ -580,6 +588,7 @@ async fn test_import_decrypt() -> KResult<()> {
             build_create_user_decryption_private_key_request(
                 secret_mkg_fin_access_policy,
                 &sk_uid,
+                EMPTY_TAGS,
             )?,
             owner,
             None,

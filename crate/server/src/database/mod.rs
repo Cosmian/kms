@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashSet, path::PathBuf};
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
@@ -7,21 +7,25 @@ use cosmian_kmip::kmip::{
         Attributes, LinkedObjectIdentifier::TextString, StateEnumeration, UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, IsWrapped, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
 use lazy_static::lazy_static;
 use rawsql::Loader;
 use serde::{Deserialize, Serialize};
 
+use self::object_with_metadata::ObjectWithMetadata;
 use crate::{kms_bail, result::KResult};
 
 pub type KMSServer = crate::core::KMS;
 
 pub(crate) mod cached_sqlcipher;
 pub(crate) mod cached_sqlite_struct;
-pub(crate) mod pgsql;
-pub mod sqlite;
-
 pub(crate) mod mysql;
+pub(crate) mod object_with_metadata;
+pub(crate) mod pgsql;
+pub(crate) mod sqlite;
+
+#[cfg(test)]
+mod tests;
 
 const PGSQL_FILE_QUERIES: &str = include_str!("query.sql");
 const MYSQL_FILE_QUERIES: &str = include_str!("query_mysql.sql");
@@ -51,6 +55,7 @@ pub trait Database {
         uid: Option<String>,
         user: &str,
         object: &Object,
+        tags: &HashSet<String>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier>;
 
@@ -62,25 +67,40 @@ pub trait Database {
     async fn create_objects(
         &self,
         user: &str,
-        objects: &[(Option<String>, Object)],
+        objects: &[(Option<String>, Object, &HashSet<String>)],
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>>;
 
-    /// Retrieve an object from the database using `uid` and `user`.
-    /// The `query_read_access` allows additional lookup in `read_access` table to see
-    /// if `user` is matching `read_access` authorization
+    /// Retrieve objects from the database.
+    ///
+    /// The `uid_or_tags` parameter can be either a `uid` or a comma-separated list of tags
+    /// in a JSON array.
+    ///
+    /// The `query_read_access` allows additional filtering in `read_access` table to see
+    /// if a `user`, that is not a user, has the corresponding `read_access` authorization
     async fn retrieve(
         &self,
-        uid: &str,
+        uid_or_tags: &str,
         user: &str,
-        query_read_access: ObjectOperationTypes,
+        query_read_access: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Option<(Object, StateEnumeration)>>;
+    ) -> KResult<Vec<ObjectWithMetadata>>;
 
+    /// Retrieve the ags of the object with the given `uid`
+    async fn retrieve_tags(
+        &self,
+        uid: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<HashSet<String>>;
+
+    /// Update an object in the database.
+    ///
+    /// If tags is `None`, the tags will not be updated.
     async fn update_object(
         &self,
         uid: &str,
         object: &Object,
+        tags: Option<&HashSet<String>>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
@@ -97,6 +117,7 @@ pub trait Database {
         uid: &str,
         user: &str,
         object: &Object,
+        tags: &HashSet<String>,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
@@ -117,7 +138,7 @@ pub trait Database {
             UniqueIdentifier,
             String,
             StateEnumeration,
-            Vec<ObjectOperationTypes>,
+            Vec<ObjectOperationType>,
             IsWrapped,
         )>,
     >;
@@ -126,25 +147,25 @@ pub trait Database {
         &self,
         uid: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(String, Vec<ObjectOperationTypes>)>>;
+    ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>>;
 
-    /// Insert a `userid` to give `operation_type` access right for the object identified
-    /// by its `uid` and belonging to `owner`
-    async fn insert_access(
+    /// Grant the access right to `user` to perform the `operation_type`
+    /// on the object identified by its `uid`
+    async fn grant_access(
         &self,
         uid: &str,
-        userid: &str,
-        operation_type: ObjectOperationTypes,
+        user: &str,
+        operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
-    /// Delete a `userid` to remove read access right for the object identified
-    /// by its `uid` and belonging to `owner`
-    async fn delete_access(
+    /// Remove the access right to `user` to perform the `operation_type`
+    /// on the object identified by its `uid`
+    async fn remove_access(
         &self,
         uid: &str,
-        userid: &str,
-        operation_type: ObjectOperationTypes,
+        user: &str,
+        operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
@@ -165,6 +186,14 @@ pub trait Database {
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>;
+
+    #[cfg(test)]
+    async fn perms(
+        &self,
+        uid: &str,
+        userid: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<Vec<ObjectOperationType>>;
 }
 
 /// The Database implemented using `SQLite`
@@ -241,7 +270,7 @@ pub trait PlaceholderTrait {
 
     /// Get node specifier depending on `key_name` (ie: `CryptographicAlgorithm`)
     #[must_use]
-    fn extract_path_text(key_name: &str) -> String {
+    fn extract_text_from_key_block_path(key_name: &str) -> String {
         format!("object -> 'object' -> 'KeyBlock' ->> '{key_name}'")
     }
 }
@@ -280,7 +309,7 @@ impl PlaceholderTrait for MySqlPlaceholder {
         )
     }
 
-    fn extract_path_text(key_name: &str) -> String {
+    fn extract_text_from_key_block_path(key_name: &str) -> String {
         format!(
             "{}(object, '$.object.KeyBlock.{key_name}')",
             Self::JSON_FN_EXTRACT_TEXT
@@ -339,7 +368,7 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
         if let Some(cryptographic_algorithm) = attributes.cryptographic_algorithm {
             query = format!(
                 "{query} AND {} = '{cryptographic_algorithm}'",
-                P::extract_path_text("CryptographicAlgorithm")
+                P::extract_text_from_key_block_path("CryptographicAlgorithm")
             );
         };
 
@@ -347,7 +376,7 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
         if let Some(cryptographic_length) = attributes.cryptographic_length {
             query = format!(
                 "{query} AND CAST ({} AS {}) = {cryptographic_length}",
-                P::extract_path_text("CryptographicLength"),
+                P::extract_text_from_key_block_path("CryptographicLength"),
                 P::TYPE_INTEGER
             );
         };
@@ -356,7 +385,7 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
         if let Some(key_format_type) = attributes.key_format_type {
             query = format!(
                 "{query} AND {} = '{key_format_type}'",
-                P::extract_path_text("KeyFormatType")
+                P::extract_text_from_key_block_path("KeyFormatType")
             );
         };
 

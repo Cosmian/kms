@@ -2,37 +2,38 @@ use cosmian_kmip::kmip::{
     kmip_operations::{GetAttributes, GetAttributesResponse},
     kmip_types::{AttributeReference, Attributes, Tag},
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, trace};
 
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{
+    core::{operations::get::get_active_object, KMS},
+    error::KmsError,
+    result::KResult,
+};
 
 pub async fn get_attributes(
     kms: &KMS,
     request: GetAttributes,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<GetAttributesResponse> {
     trace!("Get attributes: {}", serde_json::to_string(&request)?);
-    let uid = request
+
+    // there must be an identifier
+    let uid_or_tags = request
         .unique_identifier
-        .as_ref()
+        .clone()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    trace!("retrieving attributes of KMIP Object with id: {uid}");
-    let (object, _state) = kms
-        .db
-        .retrieve(uid, owner, ObjectOperationTypes::Get, params)
-        .await?
-        .ok_or_else(|| KmsError::ItemNotFound(format!("Object with uid: {uid} not found")))?;
-
-    let object_type = object.object_type();
-    let attributes = object.attributes()?;
+    // recover an active object
+    let owm = get_active_object(kms, &uid_or_tags, user, params).await?;
+    let object_type = owm.object.object_type();
+    let attributes = owm.object.attributes()?;
 
     let req_attributes = match &request.attribute_references {
         None => {
             return Ok(GetAttributesResponse {
-                unique_identifier: uid.clone(),
+                unique_identifier: owm.id.clone(),
                 attributes: attributes.clone(),
             })
         }
@@ -81,9 +82,9 @@ pub async fn get_attributes(
             },
         }
     }
-    debug!("Retrieved Attributes for object {uid}: {res:?}");
+    debug!("Retrieved Attributes for object {}: {:?}", owm.id, res);
     Ok(GetAttributesResponse {
-        unique_identifier: uid.clone(),
+        unique_identifier: owm.id,
         attributes: res,
     })
 }

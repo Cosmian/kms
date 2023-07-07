@@ -14,33 +14,43 @@ CREATE TABLE IF NOT EXISTS read_access (
         UNIQUE (id, userid)
 );
 
+-- name: create-table-tags
+CREATE TABLE IF NOT EXISTS tags (
+        id VARCHAR(40),
+        tag VARCHAR(255),
+        UNIQUE (id, tag)
+);
+
 -- name: clean-table-objects
 DELETE FROM objects;
 
 -- name: clean-table-read_access
 DELETE FROM read_access;
 
--- name: insert-row-objects
+-- name: clean-table-tags
+DELETE FROM tags;
+
+-- name: insert-objects
 INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4);
 
--- name: select-row-objects
-SELECT object, state FROM objects WHERE id=$1 AND owner=$2;
+-- name: select-object
+SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions 
+        FROM objects 
+        LEFT JOIN read_access 
+        ON objects.id = read_access.id AND read_access.userid=$2
+        WHERE objects.id=$1;
 
--- name: select-row-objects-join-read_access
-SELECT objects.object, objects.state, read_access.permissions
-        FROM objects, read_access
-        WHERE objects.id=$1 AND read_access.id=$1 AND read_access.userid=$2;
 
--- name: update-rows-objects-with-object
+-- name: update-object-with-object
 UPDATE objects SET object=$1 WHERE id=$2;
 
--- name: update-rows-objects-with-state
+-- name: update-object-with-state
 UPDATE objects SET state=$1 WHERE id=$2;
 
--- name: delete-rows-objects
+-- name: delete-object
 DELETE FROM objects WHERE id=$1 AND owner=$2;
 
--- name: upsert-row-objects
+-- name: upsert-object
 INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4)
         ON CONFLICT(id)
         DO UPDATE SET object=$2, state=$3
@@ -73,8 +83,32 @@ SELECT userid, permissions
         WHERE id=$1;
 
 -- name: select-objects-access-obtained
-SELECT objects.id, owner, state, permissions
+SELECT objects.id, objects.owner, objects.state, read_access.permissions
         FROM objects
         INNER JOIN read_access
         ON objects.id = read_access.id
         WHERE read_access.userid=$1;
+
+-- name: insert-tags
+INSERT INTO tags (id, tag) VALUES ($1, $2);
+
+-- name: select-tags
+SELECT tag FROM tags WHERE id=$1;
+
+-- name: delete-tags
+DELETE FROM tags WHERE id=$1;
+
+
+-- name: select-from-tags
+SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions
+FROM objects
+INNER JOIN (
+    SELECT id
+    FROM tags
+    WHERE tag IN (@TAGS) 
+    GROUP BY id
+    HAVING COUNT(DISTINCT tag) = @LEN
+) AS matched_tags
+ON objects.id = matched_tags.id
+LEFT JOIN read_access
+ON objects.id = read_access.id AND read_access.userid=@USER;

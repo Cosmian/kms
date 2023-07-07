@@ -21,14 +21,20 @@ use crate::{
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct RotateAttributesAction {
-    /// The private master key unique identifier stored in the KMS
-    #[clap(required = true)]
-    secret_key_id: String,
-
     /// The policy attributes to rotate.
     /// Example: `department::marketing level::confidential`
     #[clap(required = true)]
     attributes: Vec<String>,
+
+    /// The private master key unique identifier stored in the KMS
+    /// If not specified, tags should be specified
+    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    secret_key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
 }
 
 impl RotateAttributesAction {
@@ -40,8 +46,16 @@ impl RotateAttributesAction {
             .map(|s| Attribute::try_from(s.as_str()).map_err(Into::into))
             .collect::<Result<Vec<Attribute>, CliError>>()?;
 
+        let id = if let Some(key_id) = &self.secret_key_id {
+            key_id.clone()
+        } else if let Some(tags) = &self.tags {
+            serde_json::to_string(&tags)?
+        } else {
+            cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
         // Create the kmip query
-        let rotate_query = build_rekey_keypair_request(&self.secret_key_id, ats)?;
+        let rotate_query = build_rekey_keypair_request(&id, ats)?;
 
         // Query the KMS with your kmip data
         let rotate_response = client_connector
@@ -49,17 +63,12 @@ impl RotateAttributesAction {
             .await
             .with_context(|| "failed rotating the master keys")?;
 
-        if self.secret_key_id == rotate_response.private_key_unique_identifier {
-            println!(
-                "The master private key {} and master public key {} were rotated for attributes \
-                 {:?}",
-                &rotate_response.private_key_unique_identifier,
-                &rotate_response.public_key_unique_identifier,
-                &self.attributes
-            );
-            Ok(())
-        } else {
-            cli_bail!("Something went wrong when rotating the master keys.")
-        }
+        println!(
+            "The master private key {} and master public key {} were rotated for attributes {:?}",
+            &rotate_response.private_key_unique_identifier,
+            &rotate_response.public_key_unique_identifier,
+            &self.attributes
+        );
+        Ok(())
     }
 }

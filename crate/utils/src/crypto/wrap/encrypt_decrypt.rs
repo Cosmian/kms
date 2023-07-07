@@ -15,10 +15,10 @@ use cosmian_kmip::kmip::{
 use crate::{
     crypto::{
         ecies::{ecies_decrypt, ecies_encrypt},
-        error::{result::CryptoResultHelper, CryptoError},
         key_wrapping_rfc_5649,
     },
-    crypto_bail,
+    error::{result::CryptoResultHelper, KmipUtilsError},
+    kmip_utils_bail,
 };
 
 /// Encrypt bytes using the wrapping key
@@ -26,7 +26,7 @@ pub fn encrypt_bytes<R>(
     rng: &mut R,
     wrapping_key: &Object,
     plaintext: &[u8],
-) -> Result<Vec<u8>, CryptoError>
+) -> Result<Vec<u8>, KmipUtilsError>
 where
     R: CryptoRngCore,
 {
@@ -35,7 +35,7 @@ where
         .context("unable to wrap: wrapping key is not a key")?;
     // wrap the wrapping key if necessary
     if wrapping_key_block.key_wrapping_data.is_some() {
-        crypto_bail!("unable to wrap keys: wrapping key is wrapped and that is not supported")
+        kmip_utils_bail!("unable to wrap keys: wrapping key is wrapped and that is not supported")
     }
     let ciphertext = match wrapping_key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey => {
@@ -64,21 +64,21 @@ where
                             >(rng, &public_key, plaintext, None, None)
                         }
                         x => {
-                            crypto_bail!(
+                            kmip_utils_bail!(
                                 "Unable to wrap key: wrapping key: recommended curve not \
                                  supported for wrapping: {x:?}"
                             )
                         }
                     },
                     x => {
-                        crypto_bail!(
+                        kmip_utils_bail!(
                             "Unable to wrap key: wrapping key: key material not supported for \
                              wrapping: {x:?}"
                         )
                     }
                 },
                 x => {
-                    crypto_bail!(
+                    kmip_utils_bail!(
                         "Unable to wrap key: wrapping key: cryptographic algorithm not supported \
                          for wrapping: {x:?}"
                     )
@@ -86,7 +86,7 @@ where
             }
         }
         x => {
-            crypto_bail!(
+            kmip_utils_bail!(
                 "Unable to wrap key: wrapping key: format not supported for wrapping: {x:?}"
             )
         }
@@ -95,13 +95,18 @@ where
 }
 
 /// Decrypt bytes using the unwrapping key
-pub fn decrypt_bytes(unwrapping_key: &Object, ciphertext: &[u8]) -> Result<Vec<u8>, CryptoError> {
+pub fn decrypt_bytes(
+    unwrapping_key: &Object,
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, KmipUtilsError> {
     let unwrapping_key_block = unwrapping_key
         .key_block()
         .context("Unable to unwrap: unwrapping key is not a key")?;
     // unwrap the unwrapping key if necessary
     if unwrapping_key_block.key_wrapping_data.is_some() {
-        crypto_bail!("unable to unwrap key: unwrapping key is wrapped and that is not supported")
+        kmip_utils_bail!(
+            "unable to unwrap key: unwrapping key is wrapped and that is not supported"
+        )
     }
     let plaintext = match unwrapping_key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey => {
@@ -132,14 +137,14 @@ pub fn decrypt_bytes(unwrapping_key: &Object, ciphertext: &[u8]) -> Result<Vec<u
                                 )
                             }
                             x => {
-                                crypto_bail!(
+                                kmip_utils_bail!(
                                     "Unable to unwrap key: unwrapping key: recommended curve not \
                                      supported for unwrapping: {x:?}"
                                 )
                             }
                         },
                         x => {
-                            crypto_bail!(
+                            kmip_utils_bail!(
                                 "Unable to unwrap key: unwrapping key: key material not supported \
                                  for unwrapping: {x:?}"
                             )
@@ -147,7 +152,7 @@ pub fn decrypt_bytes(unwrapping_key: &Object, ciphertext: &[u8]) -> Result<Vec<u
                     }
                 }
                 x => {
-                    crypto_bail!(
+                    kmip_utils_bail!(
                         "Unable to unwrap key: unwrapping key: cryptographic algorithm not \
                          supported for unwrapping: {x:?}"
                     )
@@ -156,7 +161,7 @@ pub fn decrypt_bytes(unwrapping_key: &Object, ciphertext: &[u8]) -> Result<Vec<u
         }
 
         x => {
-            crypto_bail!(
+            kmip_utils_bail!(
                 "Unable to unwrap key: unwrapping key: format not supported for unwrapping: {x:?}"
             )
         }

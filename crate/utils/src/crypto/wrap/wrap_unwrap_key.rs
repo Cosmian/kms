@@ -6,11 +6,9 @@ use cosmian_kmip::kmip::{
 };
 
 use crate::{
-    crypto::{
-        error::{result::CryptoResultHelper, CryptoError},
-        wrap::{decrypt_bytes, encrypt_bytes},
-    },
-    crypto_bail,
+    crypto::wrap::{decrypt_bytes, encrypt_bytes},
+    error::{result::CryptoResultHelper, KmipUtilsError},
+    kmip_utils_bail,
 };
 
 /// Wrap a key block with a wrapping key
@@ -29,14 +27,14 @@ pub fn wrap_key_block<R>(
     object_key_block: &mut KeyBlock,
     wrapping_key: &Object,
     key_wrapping_data: Option<KeyWrappingData>,
-) -> Result<(), CryptoError>
+) -> Result<(), KmipUtilsError>
 where
     R: CryptoRngCore,
 {
     let mut key_wrapping_data = key_wrapping_data.unwrap_or_default();
 
     if WrappingMethod::Encrypt != key_wrapping_data.wrapping_method {
-        crypto_bail!("unable to wrap key: only the Encrypt wrapping method is supported")
+        kmip_utils_bail!("unable to wrap key: only the Encrypt wrapping method is supported")
     }
     key_wrapping_data.wrapping_method = WrappingMethod::Encrypt;
 
@@ -79,7 +77,7 @@ pub fn unwrap_key_block(
     object_type: ObjectType,
     object_key_block: &mut KeyBlock,
     unwrapping_key: &Object,
-) -> Result<(), CryptoError> {
+) -> Result<(), KmipUtilsError> {
     // check that the key wrapping data is present
     let key_wrapping_data = object_key_block
         .key_wrapping_data
@@ -92,13 +90,13 @@ pub fn unwrap_key_block(
             // ok
         }
         x => {
-            crypto_bail!("unable to unwrap key: wrapping method is not supported: {x:?}")
+            kmip_utils_bail!("unable to unwrap key: wrapping method is not supported: {x:?}")
         }
     }
 
     // check that the wrapping method is supported
     if WrappingMethod::Encrypt != key_wrapping_data.wrapping_method {
-        crypto_bail!("unable to unwrap key: only the Encrypt unwrapping method is supported")
+        kmip_utils_bail!("unable to unwrap key: only the Encrypt unwrapping method is supported")
     }
 
     // get the encoding
@@ -146,15 +144,17 @@ mod tests {
         kmip_types::{CryptographicAlgorithm, EncodingOption},
     };
 
-    use crate::crypto::{
-        curve_25519::operation::create_ec_key_pair,
-        error::CryptoError,
-        symmetric::create_symmetric_key,
-        wrap::{unwrap_key_block, wrap_key_block},
+    use crate::{
+        crypto::{
+            curve_25519::operation::create_ec_key_pair,
+            symmetric::create_symmetric_key,
+            wrap::{unwrap_key_block, wrap_key_block},
+        },
+        error::KmipUtilsError,
     };
 
     #[test]
-    fn test_wrap_unwrap() -> Result<(), CryptoError> {
+    fn test_wrap_unwrap() -> Result<(), KmipUtilsError> {
         let mut rng = CsRng::from_entropy();
 
         // the symmetric wrapping key
@@ -220,7 +220,7 @@ mod tests {
         wrapping_key: &Object,
         unwrapping_key: &Object,
         key_to_wrap: &mut Object,
-    ) -> Result<(), CryptoError> {
+    ) -> Result<(), KmipUtilsError> {
         let key_to_wrap_bytes = key_to_wrap.key_block()?.key_bytes()?;
 
         // no encoding

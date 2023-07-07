@@ -8,7 +8,7 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_utils::{
-    crypto::cover_crypt::attributes::attributes_as_vendor_attribute, types::ExtraDatabaseParams,
+    access::ExtraDatabaseParams, crypto::cover_crypt::attributes::attributes_as_vendor_attribute,
 };
 
 use crate::{

@@ -2,7 +2,10 @@ use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{Create, CreateResponse},
 };
-use cosmian_kms_utils::types::ExtraDatabaseParams;
+use cosmian_kms_utils::{
+    access::ExtraDatabaseParams,
+    tagging::{check_user_tags, get_tags},
+};
 use tracing::{debug, trace};
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
@@ -17,6 +20,11 @@ pub async fn create(
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }
+
+    // recover tags
+    let tags = get_tags(&request.attributes);
+    check_user_tags(&tags)?;
+
     let object = match &request.object_type {
         ObjectType::SymmetricKey => {
             let mut rng = kms.rng.lock().expect("failed locking the CsRng");
@@ -30,7 +38,7 @@ pub async fn create(
             )))
         }
     };
-    let uid = kms.db.create(None, owner, &object, params).await?;
+    let uid = kms.db.create(None, owner, &object, &tags, params).await?;
     debug!(
         "Created KMS Object of type {:?} with id {uid}",
         &object.object_type(),

@@ -5,7 +5,7 @@ use cosmian_kmip::{
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
 use cosmian_kms_client::error::KmsClientError;
-use cosmian_kms_utils::crypto::error::CryptoError;
+use cosmian_kms_utils::error::KmipUtilsError;
 use thiserror::Error;
 pub mod result;
 
@@ -64,8 +64,8 @@ pub enum CliError {
     Default(String),
 }
 
-impl From<CryptoError> for CliError {
-    fn from(e: CryptoError) -> Self {
+impl From<KmipUtilsError> for CliError {
+    fn from(e: KmipUtilsError) -> Self {
         CliError::Cryptographic(e.to_string())
     }
 }

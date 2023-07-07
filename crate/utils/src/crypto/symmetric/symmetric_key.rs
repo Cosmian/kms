@@ -5,6 +5,8 @@ use cosmian_kmip::kmip::{
     kmip_types::{Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
 };
 
+use crate::{error::KmipUtilsError, tagging::set_tags};
+
 /// Create a symmetric key for the given algorithm
 pub fn create_symmetric_key(
     key_bytes: &[u8],
@@ -43,31 +45,33 @@ pub fn create_symmetric_key(
 }
 
 /// Build a `CreateKeyPairRequest` for a curve 25519 key pair
-#[must_use]
-pub fn symmetric_key_create_request(
+pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     key_len_in_bits: usize,
     cryptographic_algorithm: CryptographicAlgorithm,
-) -> Create {
-    Create {
+    tags: T,
+) -> Result<Create, KmipUtilsError> {
+    let mut attributes = Attributes {
+        activation_date: None,
+        cryptographic_algorithm: Some(cryptographic_algorithm),
+        cryptographic_length: Some(key_len_in_bits as i32),
+        cryptographic_parameters: None,
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::Encrypt
+                | CryptographicUsageMask::Decrypt
+                | CryptographicUsageMask::WrapKey
+                | CryptographicUsageMask::UnwrapKey
+                | CryptographicUsageMask::KeyAgreement,
+        ),
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        link: None,
         object_type: ObjectType::SymmetricKey,
-        attributes: Attributes {
-            activation_date: None,
-            cryptographic_algorithm: Some(cryptographic_algorithm),
-            cryptographic_length: Some(key_len_in_bits as i32),
-            cryptographic_parameters: None,
-            cryptographic_usage_mask: Some(
-                CryptographicUsageMask::Encrypt
-                    | CryptographicUsageMask::Decrypt
-                    | CryptographicUsageMask::WrapKey
-                    | CryptographicUsageMask::UnwrapKey
-                    | CryptographicUsageMask::KeyAgreement,
-            ),
-            key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-            link: None,
-            object_type: ObjectType::SymmetricKey,
-            vendor_attributes: None,
-            cryptographic_domain_parameters: None,
-        },
+        vendor_attributes: None,
+        cryptographic_domain_parameters: None,
+    };
+    set_tags(&mut attributes, tags)?;
+    Ok(Create {
+        object_type: ObjectType::SymmetricKey,
+        attributes,
         protection_storage_masks: None,
-    }
+    })
 }

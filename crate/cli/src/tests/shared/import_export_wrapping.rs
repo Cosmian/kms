@@ -52,6 +52,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
@@ -62,7 +63,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     )?;
     // test ec
     let (private_key_id, _public_key_id) =
-        elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+        elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
         "ec",
@@ -71,8 +72,13 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
         &wrap_key,
     )?;
     // test sym
-    let key_id =
-        symmetric::create_key::create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = symmetric::create_key::create_symmetric_key(
+        &ctx.owner_cli_conf_path,
+        None,
+        None,
+        None,
+        &[] as &[&str],
+    )?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
         "sym",
@@ -123,6 +129,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
@@ -133,7 +140,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     )?;
     // test ec
     let (private_key_id, _public_key_id) =
-        elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+        elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
         "ec",
@@ -142,8 +149,13 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         wrap_key_pair.private_key(),
     )?;
     // test sym
-    let key_id =
-        symmetric::create_key::create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = symmetric::create_key::create_symmetric_key(
+        &ctx.owner_cli_conf_path,
+        None,
+        None,
+        None,
+        &[] as &[&str],
+    )?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
         "sym",

@@ -11,14 +11,14 @@ pub struct Access {
     /// User identifier, beneficiary of the access
     pub user_id: String,
     /// Operation type for the access
-    pub operation_type: ObjectOperationTypes,
+    pub operation_type: ObjectOperationType,
 }
 
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
 #[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone)]
 #[serde(rename_all = "lowercase")]
-pub enum ObjectOperationTypes {
+pub enum ObjectOperationType {
     Create,
     Decrypt,
     Destroy,
@@ -31,25 +31,25 @@ pub enum ObjectOperationTypes {
     Rekey,
 }
 
-impl std::fmt::Debug for ObjectOperationTypes {
+impl std::fmt::Debug for ObjectOperationType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self)
     }
 }
 
-impl std::fmt::Display for ObjectOperationTypes {
+impl std::fmt::Display for ObjectOperationType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
-            ObjectOperationTypes::Create => "create",
-            ObjectOperationTypes::Decrypt => "decrypt",
-            ObjectOperationTypes::Destroy => "destroy",
-            ObjectOperationTypes::Encrypt => "encrypt",
-            ObjectOperationTypes::Export => "export",
-            ObjectOperationTypes::Get => "get",
-            ObjectOperationTypes::Import => "import",
-            ObjectOperationTypes::Locate => "locate",
-            ObjectOperationTypes::Revoke => "revoke",
-            ObjectOperationTypes::Rekey => "rekey",
+            ObjectOperationType::Create => "create",
+            ObjectOperationType::Decrypt => "decrypt",
+            ObjectOperationType::Destroy => "destroy",
+            ObjectOperationType::Encrypt => "encrypt",
+            ObjectOperationType::Export => "export",
+            ObjectOperationType::Get => "get",
+            ObjectOperationType::Import => "import",
+            ObjectOperationType::Locate => "locate",
+            ObjectOperationType::Revoke => "revoke",
+            ObjectOperationType::Rekey => "rekey",
         };
         write!(f, "{str}")
     }
@@ -94,7 +94,7 @@ use std::{fmt, str::FromStr};
 // any error type implementing Display is acceptable.
 type ParseError = &'static str;
 
-impl FromStr for ObjectOperationTypes {
+impl FromStr for ObjectOperationType {
     type Err = ParseError;
 
     fn from_str(op: &str) -> Result<Self, Self::Err> {
@@ -117,11 +117,11 @@ impl FromStr for ObjectOperationTypes {
 #[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
 pub struct UserAccessResponse {
     pub user_id: String,
-    pub operations: Vec<ObjectOperationTypes>,
+    pub operations: Vec<ObjectOperationType>,
 }
 
-impl From<(String, Vec<ObjectOperationTypes>)> for UserAccessResponse {
-    fn from(e: (String, Vec<ObjectOperationTypes>)) -> Self {
+impl From<(String, Vec<ObjectOperationType>)> for UserAccessResponse {
+    fn from(e: (String, Vec<ObjectOperationType>)) -> Self {
         Self {
             user_id: e.0,
             operations: e.1,
@@ -172,7 +172,7 @@ pub struct AccessRightsObtainedResponse {
     pub object_id: UniqueIdentifier,
     pub owner_id: String,
     pub state: StateEnumeration,
-    pub operations: Vec<ObjectOperationTypes>,
+    pub operations: Vec<ObjectOperationType>,
     pub is_wrapped: IsWrapped,
 }
 
@@ -195,7 +195,7 @@ impl
         UniqueIdentifier,
         String,
         StateEnumeration,
-        Vec<ObjectOperationTypes>,
+        Vec<ObjectOperationType>,
         IsWrapped,
     )> for AccessRightsObtainedResponse
 {
@@ -204,7 +204,7 @@ impl
             UniqueIdentifier,
             String,
             StateEnumeration,
-            Vec<ObjectOperationTypes>,
+            Vec<ObjectOperationType>,
             IsWrapped,
         ),
     ) -> Self {

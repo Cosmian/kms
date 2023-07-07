@@ -17,15 +17,22 @@ pub fn create_user_decryption_key(
     cli_conf_path: &str,
     master_private_key_id: &str,
     access_policy: &str,
+    tags: &[&str],
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(SUB_COMMAND).args(vec![
+    let mut args = vec![
         "keys",
         "create-user-key",
         master_private_key_id,
         access_policy,
-    ]);
+    ];
+    // add tags
+    for tag in tags {
+        args.push("--tag");
+        args.push(tag);
+    }
+    cmd.arg(SUB_COMMAND).args(args);
 
     let output = cmd.output()?;
     if output.status.success() {
@@ -49,6 +56,7 @@ pub async fn test_user_decryption_key() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
 
     // and a user key
@@ -56,6 +64,7 @@ pub async fn test_user_decryption_key() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
     )?;
     assert!(!user_key_id.is_empty());
 
@@ -71,6 +80,7 @@ pub async fn test_user_decryption_key_error() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
 
     // bad attributes
@@ -78,6 +88,7 @@ pub async fn test_user_decryption_key_error() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top SecretZZZZZZ",
+        &[],
     )
     .err()
     .unwrap();
@@ -91,13 +102,10 @@ pub async fn test_user_decryption_key_error() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "BAD_KEY",
         "(Department::MKG || Department::FIN) && Security Level::Top SecretZZZZZZ",
+        &[],
     )
     .err()
     .unwrap();
-    println!("err: {}", err);
-    assert!(
-        err.to_string()
-            .contains("Object with unique identifier: BAD_KEY not found",)
-    );
+    assert!(err.to_string().contains("Item not found: BAD_KEY"));
     Ok(())
 }

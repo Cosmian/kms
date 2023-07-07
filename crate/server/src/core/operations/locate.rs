@@ -3,10 +3,10 @@ use cosmian_kmip::kmip::{
     kmip_types::{CryptographicAlgorithm, StateEnumeration},
 };
 use cosmian_kms_utils::{
+    access::ExtraDatabaseParams,
     crypto::cover_crypt::{
         attributes::access_policy_from_attributes, locate::compare_cover_crypt_attributes,
     },
-    types::ExtraDatabaseParams,
 };
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
