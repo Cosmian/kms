@@ -74,9 +74,9 @@ pub fn decrypt(
 }
 
 #[tokio::test]
-async fn test_encrypt_decrypt() -> Result<(), CliError> {
+async fn test_encrypt_decrypt_with_ids() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[] as &[&str])?;
     run_encrypt_decrypt_test(&ctx.owner_cli_conf_path, &key_id)
 }
 
@@ -110,6 +110,63 @@ pub(crate) fn run_encrypt_decrypt_test(cli_conf_path: &str, key_id: &str) -> Res
         cli_conf_path,
         output_file.to_str().unwrap(),
         key_id,
+        Some(recovered_file.to_str().unwrap()),
+        Some("myid"),
+    )?;
+    if !recovered_file.exists() {
+        return Err(CliError::Default(format!(
+            "Recovered file {} does not exist",
+            recovered_file.to_str().unwrap()
+        )))
+    }
+
+    let original_content = read_bytes_from_file(&input_file)?;
+    let recovered_content = read_bytes_from_file(&recovered_file)?;
+    if original_content != recovered_content {
+        return Err(CliError::Default(format!(
+            "Recovered content in file {} does not match the original file content {}",
+            recovered_file.to_str().unwrap(),
+            input_file.to_str().unwrap()
+        )))
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_encrypt_decrypt_with_tags() -> Result<(), CliError> {
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+
+    let ctx = ONCE.get_or_init(init_test_server).await;
+    let _key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &["tag_sym"])?;
+
+    let input_file = PathBuf::from("test_data/plain.txt");
+    let output_file = tmp_path.join("plain.enc");
+    let recovered_file = tmp_path.join("plain.txt");
+
+    fs::remove_file(&output_file).ok();
+    if output_file.exists() {
+        return Err(CliError::Default(format!(
+            "Output file {} could not be removed",
+            output_file.to_str().unwrap()
+        )))
+    }
+
+    encrypt(
+        &ctx.owner_cli_conf_path,
+        input_file.to_str().unwrap(),
+        "[\"tag_sym\"]",
+        Some(output_file.to_str().unwrap()),
+        Some("myid"),
+    )?;
+
+    // the user key should be able to decrypt the file
+    decrypt(
+        &ctx.owner_cli_conf_path,
+        output_file.to_str().unwrap(),
+        "[\"tag_sym\"]",
         Some(recovered_file.to_str().unwrap()),
         Some("myid"),
     )?;
