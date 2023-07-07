@@ -8,14 +8,13 @@ use cosmian_kmip::kmip::{
 };
 
 use crate::{
-    crypto::{curve_25519::operation::Q_LENGTH_BITS, error::CryptoError},
-    tagging::set_tags,
+    crypto::curve_25519::operation::Q_LENGTH_BITS, error::KmipUtilsError, tagging::set_tags,
 };
 
 /// Build a `CreateKeyPairRequest` for a curve 25519 key pair
 pub fn create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
-) -> Result<CreateKeyPair, CryptoError> {
+) -> Result<CreateKeyPair, KmipUtilsError> {
     let mut attributes = Attributes {
         activation_date: None,
         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),

@@ -1,26 +1,23 @@
 use cloudproof::reexport::cover_crypt::abe_policy::Policy;
-use cosmian_kmip::{
-    error::KmipError,
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, Link, LinkType,
-            LinkedObjectIdentifier, WrappingMethod,
-        },
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, Link, LinkType,
+        LinkedObjectIdentifier, WrappingMethod,
     },
 };
 
 use super::attributes::{
     access_policy_as_vendor_attribute, attributes_as_vendor_attribute, policy_as_vendor_attribute,
 };
-use crate::{kmip_utils::wrap_key_bytes, tagging::set_tags};
+use crate::{error::KmipUtilsError, kmip_utils::wrap_key_bytes, tagging::set_tags};
 /// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
 pub fn build_create_master_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     policy: &Policy,
     tags: T,
-) -> Result<CreateKeyPair, KmipError> {
+) -> Result<CreateKeyPair, KmipUtilsError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
@@ -39,7 +36,7 @@ pub fn build_create_user_decryption_private_key_request<T: IntoIterator<Item = i
     access_policy: &str,
     cover_crypt_master_private_key_id: &str,
     tags: T,
-) -> Result<Create, KmipError> {
+) -> Result<Create, KmipUtilsError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
@@ -73,7 +70,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
     is_wrapped: bool,
     wrapping_password: Option<String>,
     tags: T,
-) -> Result<Import, KmipError> {
+) -> Result<Import, KmipUtilsError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
@@ -146,7 +143,7 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
     is_wrapped: bool,
     wrapping_password: Option<String>,
     tags: T,
-) -> Result<Import, KmipError> {
+) -> Result<Import, KmipUtilsError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
@@ -215,7 +212,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     policy: &Policy,
     cover_crypt_master_private_key_id: &str,
     tags: T,
-) -> Result<Import, KmipError> {
+) -> Result<Import, KmipUtilsError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
@@ -253,7 +250,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
 }
 
 /// Build a `Locate` request to locate an `CoverCrypt` Symmetric Key
-pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate, KmipError> {
+pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate, KmipUtilsError> {
     Ok(Locate {
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
@@ -267,7 +264,7 @@ pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate,
 }
 
 /// Build a `Revoke` request to locate an `CoverCrypt` User Decryption Key
-pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, KmipError> {
+pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, KmipUtilsError> {
     Ok(Destroy {
         unique_identifier: Some(unique_identifier.to_string()),
     })
@@ -281,7 +278,7 @@ pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, Kmi
 pub fn build_rekey_keypair_request(
     master_private_key_unique_identifier: &str,
     cover_crypt_policy_attributes: Vec<cloudproof::reexport::cover_crypt::abe_policy::Attribute>,
-) -> Result<ReKeyKeyPair, KmipError> {
+) -> Result<ReKeyKeyPair, KmipUtilsError> {
     Ok(ReKeyKeyPair {
         private_key_unique_identifier: Some(master_private_key_unique_identifier.to_string()),
         private_key_attributes: Some(Attributes {

@@ -2,7 +2,10 @@ use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{Create, CreateResponse},
 };
-use cosmian_kms_utils::{access::ExtraDatabaseParams, tagging::get_tags};
+use cosmian_kms_utils::{
+    access::ExtraDatabaseParams,
+    tagging::{check_user_tags, get_tags},
+};
 use tracing::{debug, trace};
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
@@ -20,6 +23,7 @@ pub async fn create(
 
     // recover tags
     let tags = get_tags(&request.attributes);
+    check_user_tags(&tags)?;
 
     let object = match &request.object_type {
         ObjectType::SymmetricKey => {
