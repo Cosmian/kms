@@ -10,4 +10,5 @@ mod wrap_unwrap;
 pub use destroy::destroy;
 pub use export::export;
 pub use import::import;
+pub use locate::locate;
 pub use revoke::revoke;

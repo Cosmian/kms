@@ -1,6 +1,8 @@
+use std::collections::HashSet;
+
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyValue,
-    kmip_objects::ObjectType,
+    kmip_objects::{Object, ObjectType},
     kmip_operations::{Import, ImportResponse},
     kmip_types::{KeyWrapType, StateEnumeration},
 };
@@ -9,9 +11,50 @@ use cosmian_kms_utils::{
     tagging::{check_user_tags, get_tags},
 };
 use tracing::{debug, warn};
+use x509_parser::{parse_x509_certificate, prelude::parse_x509_pem};
 
 use super::wrapping::unwrap_key;
-use crate::{core::KMS, kms_bail, result::KResult};
+use crate::{
+    core::{
+        certificate::parsing::{get_certificate_subject_key_identifier, get_common_name},
+        KMS,
+    },
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
+
+fn parse_certificate_and_create_tags(
+    tags: &mut HashSet<String>,
+    certificate_value: &[u8],
+) -> KResult<()> {
+    debug!("Import with _cert system tag");
+    tags.insert("_cert".to_string());
+
+    let (_, pem) = parse_x509_pem(certificate_value)?;
+    let (_, x509) = parse_x509_certificate(&pem.contents)?;
+
+    if !x509.validity().is_valid() {
+        return Err(KmsError::Certificate(format!(
+            "Cannot import expired certificate. Certificate details: {x509:?}"
+        )))
+    }
+    debug!("Certificate is not expired: {:?}", x509.validity());
+
+    let cert_spki = get_certificate_subject_key_identifier(&x509)?;
+    if let Some(spki) = cert_spki {
+        let spki_tag = format!("_cert_spki={spki}");
+        debug!("Add spki system tag: {spki_tag}");
+        tags.insert(spki_tag);
+    }
+    if x509.is_ca() {
+        let subject_common_name = get_common_name(&x509.subject)?;
+        let ca_tag = format!("_ca={subject_common_name}");
+        debug!("Add CA system tag: {}", &ca_tag);
+        tags.insert(ca_tag);
+    }
+    Ok(())
+}
 
 /// Import a new object
 pub async fn import(
@@ -20,6 +63,7 @@ pub async fn import(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ImportResponse> {
+    debug!("Entering import KMIP operation");
     // Unique identifiers starting with `[` are reserved for queries on tags
     // see tagging
     // For instance, a request for uniquer identifier `[tag1]` will
@@ -34,9 +78,10 @@ pub async fn import(
 
     let mut object = request.object;
     let object_type = object.object_type();
-    let object_key_block = object.key_block_mut()?;
+
     match object_type {
         ObjectType::SymmetricKey | ObjectType::PublicKey | ObjectType::PrivateKey => {
+            let object_key_block = object.key_block_mut()?;
             // unwrap before storing if requested
             if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
                 unwrap_key(object_type, object_key_block, kms, owner, params).await?;
@@ -60,8 +105,22 @@ pub async fn import(
                 _ => unreachable!(),
             }
         }
+        ObjectType::Certificate => {
+            debug!("Import with _cert system tag");
+            tags.insert("_cert".to_string());
+            let certificate_pem_bytes = match &object {
+                Object::Certificate {
+                    certificate_value, ..
+                } => Ok(certificate_value),
+                _ => Err(KmsError::Certificate(format!(
+                    "Invalid object type {:?} when importing a certificate",
+                    object_type
+                ))),
+            }?;
+            parse_certificate_and_create_tags(&mut tags, certificate_pem_bytes)?;
+        }
         x => {
-            warn!("Import is not yet supported for objects of type : {x}")
+            warn!("Import is not yet supported for objects of type : {x}");
         }
     }
     // check if the object will be replaced if it already exists

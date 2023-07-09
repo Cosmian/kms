@@ -1,3 +1,4 @@
+use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{Decrypt, DecryptResponse},
@@ -26,6 +27,7 @@ pub async fn decrypt(
         .unique_identifier
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
+    trace!("decrypt: uid_or_tags: {uid_or_tags}");
 
     // retrieve from tags or use passed identifier
     let mut owm_s = kms
@@ -54,6 +56,7 @@ pub async fn decrypt(
             true
         })
         .collect::<Vec<ObjectWithMetadata>>();
+    trace!("decrypt: owm_s: {:?}", owm_s);
 
     // there can only be one key
     let owm = owm_s
@@ -67,7 +70,7 @@ pub async fn decrypt(
     }
 
     // decrypt
-    kms.get_decryption_system(Default::default(), owm, params)
+    kms.get_decryption_system(Covercrypt::default(), owm, params)
         .await?
         .decrypt(&request)
         .map_err(Into::into)

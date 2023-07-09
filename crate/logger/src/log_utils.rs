@@ -1,6 +1,3 @@
-// we may not use log_init att all in tests
-#![allow(dead_code)]
-
 use std::sync::Once;
 
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter};
@@ -22,7 +19,9 @@ pub fn log_init(paths: &str) {
 
 /// # Panics
 ///
-/// Will panic if we cannot set global subscriber
+/// Will panic if:
+/// - we cannot set global subscriber
+/// - we cannot init the log tracer
 fn tracing_setup() {
     let layer = tracing_tree::HierarchicalLayer::default()
         .with_verbose_exit(true)

@@ -2,12 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.6.0] - 2023-09-01
 
-## [4.6.0] - 2023-08-21
+### Bug Fixes
+
+- Filter Locate request by object type
+
+### Documentation
+
+- Remove merge leftovers
+
 ### Features
 
 - bootstrap: the KMS server now supports bootstrap mode to facilitate the secure input of secret components, including the database encryption secret and the HTTPS certificate key, directly into the encrypted machine memory, through a secure connection
-
+- Add certificate support:
+  - in cosmian_kms_server:
+    - implement `Certify` KMIP operation
+    - in addition, the KMS server will automatically add:
+      - the system tag `_cert` on `Certificate` object
+      - the system tag `_cert=<certificate_uid>` where `certificate_uid` is used as the link between public/private key objects and the related certificate object
+      - the system tag `_cert_spki=<Subject Public Key Info>` on `Certificate` object where SPKI refers to [RFC 5280](https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.2.7). The SPKI value identifies uniquely the underlying certificate
+      - the system tag `_ca=<Subject Common Name>` on CA `Certificate` object
+    - import X509 certificate as PEM and also public key and private key
+  - in `ckms`, add:
+    - create/destroy certificate
+    - export/import certificate
+    - revoke certificate
 
 ## [4.5.0] - 2023-08-21
 
@@ -26,11 +46,12 @@ In addition, the user server will automatically add a system tag based on the ob
 - `_pk`: for a public key
 - `_kk`: for a symmetric key
 - `_uk`: for a Covercrypt user decryption key
+
 Use the tags to export objects, locate them, or request data encryption and decryption.
 
 - Added `locate` to the `ckms`client
-
 - Added `Redis-Findex` backend support so that the KMS can encrypt the KMS server data and indexes at the application level.
+- Added JWE support
 
 ## [4.4.3] - 2023-07-17
 

@@ -6,7 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
+use cosmian_crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_objects,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
@@ -16,6 +16,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     ConnectOptions, Pool, Sqlite,
 };
+use tracing::trace;
 
 use super::{
     cached_sqlite_struct::KMSSqliteCache,
@@ -417,6 +418,7 @@ impl Database for CachedSqlCipher {
         user_must_be_owner: bool,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
+        trace!("cached sqlcipher: find: {:?}", researched_attributes);
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = find_(
@@ -427,6 +429,7 @@ impl Database for CachedSqlCipher {
                 &*pool,
             )
             .await;
+            trace!("cached sqlcipher: before post_query: {:?}", ret);
             self.post_query(params.group_id)?;
             return ret
         }

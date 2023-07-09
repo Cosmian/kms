@@ -39,6 +39,7 @@ pub enum Object {
     #[serde(rename_all = "PascalCase")]
     Certificate {
         certificate_type: CertificateType,
+        /// A Managed Cryptographic Object that is a digital certificate. It is a DER-encoded X.509 public key certificate.
         certificate_value: Vec<u8>,
     },
     #[serde(rename_all = "PascalCase")]
@@ -180,7 +181,7 @@ impl Object {
             | Self::SplitKey { key_block, .. } => Ok(key_block),
             _ => Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Object_Type,
-                "This object does not have a key block".to_string(),
+                "This object does not have a key block (function `key_block_mut`)".to_string(),
             )),
         }
     }
@@ -210,6 +211,7 @@ impl Object {
                 }
                 _ => object,
             },
+            ObjectType::Certificate => object,
             _ => object,
         }
     }

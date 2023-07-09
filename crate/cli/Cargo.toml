@@ -19,19 +19,22 @@ base64-url = { workspace = true }
 clap = { workspace = true }
 cloudproof = { workspace = true }
 colored = "2.0"
+cosmian_crypto_core = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_client = { path = "../client" }
 cosmian_kms_utils = { path = "../utils" }
 hex = { workspace = true }
-josekit = { workspace = true }
 libsgx = { path = "../libsgx" }
+openssl = { workspace = true }
 rand = "0.8"
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
 uuid = { workspace = true }
+x509-parser = { workspace = true }
 
 [dev-dependencies]
 actix-rt = { version = "2.0", default-features = false }
@@ -46,7 +49,4 @@ predicates = "2.1"
 regex = { version = "1.7", default-features = false }
 reqwest = { workspace = true }
 tempfile = "3.2"
-tracing = { workspace = true }
-tracing-log = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-tree = { workspace = true }
+

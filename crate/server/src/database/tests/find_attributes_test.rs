@@ -15,9 +15,10 @@ use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::symmetric::create_symmetric_key,
 };
+use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
 
-use crate::{database::Database, kms_bail, log_utils::log_init, result::KResult};
+use crate::{database::Database, kms_bail, result::KResult};
 
 pub async fn find_attributes<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),

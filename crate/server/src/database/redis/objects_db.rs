@@ -1,13 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
-use cloudproof::reexport::{
-    crypto_core::{kdf256, Aes256Gcm, Dem, Instantiable, Nonce, SymmetricKey},
-    findex::{
-        implementations::redis::{FindexRedisError, RemovedLocationsFinder},
-        Keyword, Location,
-    },
+use cloudproof::reexport::findex::{
+    implementations::redis::{FindexRedisError, RemovedLocationsFinder},
+    Keyword, Location,
 };
+use cosmian_crypto_core::{kdf256, Aes256Gcm, Dem, Instantiable, Nonce, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_types::{Attributes, StateEnumeration},
@@ -153,7 +151,7 @@ impl ObjectsDB {
 
     pub async fn objects_upsert(&self, objects: &HashMap<String, RedisDbObject>) -> KResult<()> {
         let mut pipeline = pipe();
-        for (uid, redis_db_object) in objects.iter() {
+        for (uid, redis_db_object) in objects {
             pipeline.set(
                 ObjectsDB::object_key(uid),
                 self.encrypt_object(uid, redis_db_object)?,
@@ -168,7 +166,7 @@ impl ObjectsDB {
         uids: &HashSet<String>,
     ) -> KResult<HashMap<String, RedisDbObject>> {
         let mut pipeline = pipe();
-        for uid in uids.iter() {
+        for uid in uids {
             pipeline.get(ObjectsDB::object_key(uid));
         }
         let bytes: Vec<Vec<u8>> = pipeline.query_async(&mut self.mgr.clone()).await?;

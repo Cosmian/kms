@@ -8,7 +8,6 @@ pub mod core;
 pub mod database;
 pub mod error;
 pub mod kms_server;
-pub mod log_utils;
 pub mod middlewares;
 pub mod result;
 pub mod routes;

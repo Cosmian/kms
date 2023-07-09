@@ -10,9 +10,9 @@ use super::{
     kmip_data_structures::KeyWrappingData,
     kmip_objects::{Object, ObjectType},
     kmip_types::{
-        AttributeReference, Attributes, CryptographicParameters, KeyCompressionType, KeyFormatType,
-        KeyWrapType, ObjectGroupMember, ProtectionStorageMasks, RevocationReason,
-        StorageStatusMask, UniqueIdentifier,
+        AttributeReference, Attributes, CertificateRequestType, CryptographicParameters,
+        KeyCompressionType, KeyFormatType, KeyWrapType, ObjectGroupMember, ProtectionStorageMasks,
+        RevocationReason, StorageStatusMask, UniqueIdentifier,
     },
 };
 use crate::error::KmipError;
@@ -241,6 +241,64 @@ impl<'de> Deserialize<'de> for Import {
 #[serde(rename_all = "PascalCase")]
 pub struct ImportResponse {
     /// The Unique Identifier of the newly imported object.
+    pub unique_identifier: UniqueIdentifier,
+}
+
+/// This request is used to generate a Certificate object for a public key. This
+/// request supports the certification of a new public key, as well as the
+/// certification of a public key that has already been certified (i.e.,
+/// certificate update). Only a single certificate SHALL be requested at a time.
+///
+/// The Certificate Request object MAY be omitted, in which case the public key
+/// for which a Certificate object is generated SHALL be specified by its Unique
+/// Identifier only. If the Certificate Request Type and the Certificate Request
+/// objects are omitted from the request, then the Certificate Type SHALL be
+/// specified using the Attributes object.
+///
+/// The Certificate Request is passed as
+/// a Byte String, which allows multiple certificate request types for X.509
+/// certificates (e.g., PKCS#10, PEM, etc.) to be submitted to the server.
+///
+/// The generated Certificate object whose Unique Identifier is returned MAY be
+/// obtained by the client via a Get operation in the same batch, using the ID
+/// Placeholder mechanism. For the public key, the server SHALL create a Link
+/// attribute of Link Type Certificate pointing to the generated certificate.
+/// For the generated certificate, the server SHALL create a Link attribute of
+/// Link Type Public Key pointing to the Public Key.
+///
+/// The server SHALL copy the
+/// Unique Identifier of the generated certificate returned by this operation
+/// into the ID Placeholder variable. If the information in the Certificate
+/// Request conflicts with the attributes specified in the Attributes, then the
+/// information in the Certificate Request takes precedence.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct Certify {
+    // The Unique Identifier of the Public Key or the Certificate Request being certified. If
+    // omitted and Certificate Request is not present, then the ID Placeholder value is used by the
+    // server as the Unique Identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unique_identifier: Option<UniqueIdentifier>,
+    /// An Enumeration object specifying the type of certificate request. It is
+    /// REQUIRED if the Certificate Request is present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_request_type: Option<CertificateRequestType>,
+    /// A Byte String object with the certificate request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_request_value: Option<Vec<u8>>,
+    /// Specifies desired attributes to be associated with the new object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<Attributes>,
+    /// Specifies all permissible Protection Storage Mask selections for the new
+    /// object
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protection_storage_masks: Option<ProtectionStorageMasks>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct CertifyResponse {
+    /// The Unique Identifier of the newly created object.
     pub unique_identifier: UniqueIdentifier,
 }
 

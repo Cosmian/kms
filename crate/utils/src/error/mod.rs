@@ -39,6 +39,19 @@ impl From<std::array::TryFromSliceError> for KmipUtilsError {
     }
 }
 
+impl From<openssl::error::ErrorStack> for KmipUtilsError {
+    fn from(e: openssl::error::ErrorStack) -> Self {
+        Self::NotSupported(e.to_string())
+    }
+}
+
+impl From<cosmian_crypto_core::CryptoCoreError> for KmipUtilsError {
+    //TODELETE!
+    fn from(e: cosmian_crypto_core::CryptoCoreError) -> Self {
+        Self::NotSupported(e.to_string())
+    }
+}
+
 impl From<KmipError> for KmipUtilsError {
     fn from(value: KmipError) -> Self {
         match value {

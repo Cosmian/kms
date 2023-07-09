@@ -4,7 +4,7 @@ use cosmian_kmip::kmip::{
     kmip_types::StateEnumeration,
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
-use tracing::trace;
+use tracing::{debug, trace};
 
 use crate::{
     core::KMS, database::object_with_metadata::ObjectWithMetadata, error::KmsError, result::KResult,
@@ -23,6 +23,7 @@ pub async fn encrypt(
         .unique_identifier
         .clone()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
+    trace!("encrypt: uid_or_tags: {uid_or_tags}");
 
     // retrieve from tags or use passed identifier
     let mut owm_s = kms
@@ -33,10 +34,13 @@ pub async fn encrypt(
         .filter(|owm| {
             let object_type = owm.object.object_type();
             owm.state == StateEnumeration::Active
-                && (object_type == ObjectType::PublicKey || object_type == ObjectType::SymmetricKey)
+                && (object_type == ObjectType::PublicKey
+                    || object_type == ObjectType::SymmetricKey
+                    || object_type == ObjectType::Certificate)
         })
         .collect::<Vec<ObjectWithMetadata>>();
 
+    trace!("encrypt: owm_s: {:?}", owm_s);
     // there can only be one key
     let owm = owm_s
         .pop()
@@ -48,6 +52,7 @@ pub async fn encrypt(
         )))
     }
 
+    debug!("kms.get_encryption_system");
     kms.get_encryption_system(owm, params)
         .await?
         .encrypt(&request)

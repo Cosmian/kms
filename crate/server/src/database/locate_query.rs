@@ -58,6 +58,12 @@ pub trait PlaceholderTrait {
     fn extract_text_from_key_block_path(key_name: &str) -> String {
         format!("object -> 'object' -> 'KeyBlock' ->> '{key_name}'")
     }
+
+    /// Get node specifier depending on `object_type` (ie: `PrivateKey` or `Certificate`)
+    #[must_use]
+    fn extract_text_from_object_type_path() -> String {
+        "object ->> 'object_type'".to_string()
+    }
 }
 
 pub enum MySqlPlaceholder {}
@@ -100,6 +106,10 @@ impl PlaceholderTrait for MySqlPlaceholder {
             "{}(object, '$.object.KeyBlock.{key_name}')",
             Self::JSON_FN_EXTRACT_TEXT
         )
+    }
+
+    fn extract_text_from_object_type_path() -> String {
+        format!("{}(object, '$.object_type')", Self::JSON_FN_EXTRACT_TEXT)
     }
 }
 pub enum PgSqlPlaceholder {}
@@ -161,7 +171,7 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
                 "{query} INNER JOIN (
     SELECT id
     FROM tags
-    WHERE tag IN ({tags_string}) 
+    WHERE tag IN ({tags_string})
     GROUP BY id
     HAVING COUNT(DISTINCT tag) = {tags_len}
 ) AS matched_tags
@@ -210,6 +220,14 @@ ON objects.id = matched_tags.id"
             query = format!(
                 "{query} AND {} = '{key_format_type}'",
                 P::extract_text_from_key_block_path("KeyFormatType")
+            );
+        };
+
+        // ObjectType
+        if let Some(object_type) = attributes.object_type {
+            query = format!(
+                "{query} AND {} = '{object_type}'",
+                P::extract_text_from_object_type_path()
             );
         };
 

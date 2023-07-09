@@ -4,14 +4,12 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::{
-    crypto_core::{FixedSizeCBytes, SymmetricKey},
-    findex::{
-        implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
-        parameters::MASTER_KEY_LENGTH,
-        IndexedValue, Keyword, Location,
-    },
+use cloudproof::reexport::findex::{
+    implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
+    parameters::MASTER_KEY_LENGTH,
+    IndexedValue, Keyword, Location,
 };
+use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
 use cosmian_kms_utils::access::ObjectOperationType;
 
 use crate::{error::KmsError, result::KResult};
@@ -42,7 +40,7 @@ impl Triple {
     }
 
     pub fn build_key(obj_uid: &str, user_id: &str) -> String {
-        format!("{}::{}", obj_uid, user_id)
+        format!("{obj_uid}::{user_id}")
     }
 
     pub fn permissions_per_user(
@@ -107,13 +105,13 @@ impl TryFrom<&Triple> for Location {
     }
 }
 
-/// PermissionsDB is a database entirely built on top of Findex that stores the permissions
+/// `PermissionsDB` is a database entirely built on top of Findex that stores the permissions
 /// We "abuse" Location to store data i.e. the actual permission
-///     userid::obj_uid --> Location(permission)
-///     userid --> NextKeyword(userid::obj_uid)
-///     obj_uid --> NextKeyword(userid::obj_uid)
+///     `userid::obj_uid` --> Location(permission)
+///     userid --> `NextKeyword(userid::obj_uid`)
+///     `obj_uid` --> `NextKeyword(userid::obj_uid`)
 ///
-/// The problem is that the search function does not return the userid::obj_uid when
+/// The problem is that the search function does not return the `userid::obj_uid` when
 /// searching for either a userid or a uid, so wee need to store a triplet
 /// rather than just the permission
 pub(crate) struct PermissionsDB {

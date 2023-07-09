@@ -27,7 +27,6 @@ The Cosmian KMS server exposes a **KMIP 2.1** REST API on the `/kmip_2_1` endpoi
 
 Check the [KMIP 2.1](./kmip_2_1/index.md) page for details.
 
-
 #### State-of-the-art authentication
 
 State-of-the-art authentication facilitates integration with existing IT infrastructure and allows single sign-on scenarios.
@@ -35,7 +34,6 @@ State-of-the-art authentication facilitates integration with existing IT infrast
 Server access is secured using native TLS combined with [Open ID-compliant](https://openid.net/) JWT access tokens or TLS client certificates.
 
 Check the enabling [TLS documentation](./tls.md) as well as the [authentication documentation](./authentication.md) for details.
-
 
 #### High-availability and databases
 

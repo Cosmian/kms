@@ -7,7 +7,7 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-exclude: crate/cli/test_data|crate/cli/demo.sh|scripts/deploy_sgx.sh|documentation/pandoc|documentation/overrides|crate/cli/remove/kms.json|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs
+exclude: crate/cli/test_data|crate/cli/demo.sh|scripts/deploy_sgx.sh|documentation/pandoc|documentation/overrides|crate/cli/remove/kms.json|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|.pre-commit-config.yaml
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v2.1.1
@@ -117,11 +117,21 @@ repos:
         args: [--skip-string-normalization]
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.11
+    rev: v1.0.16
     hooks:
       - id: dprint-toml-fix
       - id: cargo-format
+      # - id: cargo-upgrade
+      # - id: cargo-update
+      - id: cargo-build-kms
+      - id: docker-compose-up
+      - id: cargo-test
+      - id: cargo-audit
+      - id: cargo-outdated
+      - id: cargo-udeps
+      - id: cargo-test-doc
       - id: clippy-autofix-all
       - id: clippy-autofix-pedantic
       - id: clippy-autofix-others
       - id: clippy-all-targets-all-features
+      - id: clippy-all-targets-all-features-release

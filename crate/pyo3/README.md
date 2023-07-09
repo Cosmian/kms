@@ -7,7 +7,7 @@ This library is part of [CloudProof Python](https://github.com/Cosmian/cloudproo
 You need to have `maturin` installed. To install it, run:
 
 ```bash
-python3 -m pip install maturin 
+python3 -m pip install maturin
 ```
 
 To build the Python interface, run:

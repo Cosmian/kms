@@ -633,7 +633,7 @@ impl<'a> ser::SerializeStruct for &'a mut TTLVSerializer {
         match value.detect() {
             Detected::Other => {
                 trace!("... detected other for {}", &self.current.tag);
-                value.serialize(&mut **self)?
+                value.serialize(&mut **self)?;
             }
             Detected::ByteString(byte_string) => {
                 trace!("... detected ByteString for {}", &self.current.tag);

@@ -1,6 +1,6 @@
-use cloudproof::reexport::crypto_core::{
+use cosmian_crypto_core::{
     key_unwrap, key_wrap, reexport::rand_core::CryptoRngCore, Ecies, EciesSalsaSealBox,
-    FixedSizeCBytes, X25519PrivateKey, X25519PublicKey,
+    X25519PrivateKey, X25519PublicKey, CURVE_25519_SECRET_LENGTH, X25519_PUBLIC_KEY_LENGTH,
 };
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyMaterial,
@@ -12,11 +12,6 @@ use crate::{
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail,
 };
-
-//TODO These should be re-exported from crypto_core in a future release
-// Sizes in bytes
-pub const X25519_PUBLIC_KEY_LENGTH: usize = 32;
-pub const CURVE_25519_PRIVATE_KEY_LENGTH: usize = 32;
 
 /// Encrypt bytes using the wrapping key
 pub fn encrypt_bytes<R>(
@@ -120,7 +115,7 @@ pub fn decrypt_bytes(
                             d,
                         } => match recommended_curve {
                             RecommendedCurve::CURVE25519 => {
-                                let private_key_bytes: [u8; CURVE_25519_PRIVATE_KEY_LENGTH] =
+                                let private_key_bytes: [u8; CURVE_25519_SECRET_LENGTH] =
                                     d.to_bytes_be().try_into().map_err(|_| {
                                         KmipUtilsError::ConversionError(
                                             "invalid Curve 25519 private key length".to_string(),
@@ -176,7 +171,7 @@ mod tests {
     use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 
     use crate::crypto::{
-        curve_25519::operation::create_ec_key_pair, symmetric::create_symmetric_key,
+        curve_25519::operation::create_x25519_key_pair, symmetric::create_symmetric_key,
     };
 
     #[test]
@@ -195,7 +190,7 @@ mod tests {
     #[test]
     fn test_encrypt_decrypt_rfc_ecies() {
         let mut rng = CsRng::from_entropy();
-        let wrap_key_pair = create_ec_key_pair(&mut rng, "sk_uid", "pk_uid").unwrap();
+        let wrap_key_pair = create_x25519_key_pair(&mut rng, "sk_uid", "pk_uid").unwrap();
 
         let plaintext = b"plaintext";
         let ciphertext =

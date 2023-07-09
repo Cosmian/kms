@@ -11,6 +11,7 @@ use cosmian_kmip::{
 use cosmian_kms_utils::error::KmipUtilsError;
 use redis::ErrorKind;
 use thiserror::Error;
+use x509_parser::prelude::{PEMError, X509Error};
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug, Eq, PartialEq)]
@@ -71,6 +72,10 @@ pub enum KmsError {
     #[error("Cryptographic error: {0}")]
     CryptographicError(String),
 
+    // Error related to X509 Certificate
+    #[error("Certificate error: {0}")]
+    Certificate(String),
+
     #[error("Redis Error: {0}")]
     Redis(String),
 
@@ -87,8 +92,38 @@ impl From<TtlvError> for KmsError {
     }
 }
 
+impl From<x509_parser::nom::Err<X509Error>> for KmsError {
+    fn from(e: x509_parser::nom::Err<X509Error>) -> Self {
+        Self::Certificate(e.to_string())
+    }
+}
+
+impl From<X509Error> for KmsError {
+    fn from(e: X509Error) -> Self {
+        Self::Certificate(e.to_string())
+    }
+}
+
+impl From<&X509Error> for KmsError {
+    fn from(e: &X509Error) -> Self {
+        Self::Certificate(e.to_string())
+    }
+}
+
+impl From<x509_parser::nom::Err<PEMError>> for KmsError {
+    fn from(e: x509_parser::nom::Err<PEMError>) -> Self {
+        Self::Certificate(e.to_string())
+    }
+}
+
 impl From<CryptoCoreError> for KmsError {
     fn from(e: CryptoCoreError) -> Self {
+        Self::CryptographicError(e.to_string())
+    }
+}
+impl From<cosmian_crypto_core::CryptoCoreError> for KmsError {
+    //TODELETE!
+    fn from(e: cosmian_crypto_core::CryptoCoreError) -> Self {
         Self::CryptographicError(e.to_string())
     }
 }

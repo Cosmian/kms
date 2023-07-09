@@ -50,7 +50,7 @@ pub async fn get_attributes(
                     let mut list = res
                         .vendor_attributes
                         .as_ref()
-                        .map_or(Vec::new(), |va| va.clone());
+                        .map_or(Vec::new(), std::clone::Clone::clone);
                     vdr_attrs
                         .iter()
                         .filter(|attr| {

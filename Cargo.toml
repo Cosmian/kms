@@ -1,34 +1,29 @@
 [workspace]
 members = [
-    "crate/cli",
-    "crate/client",
-    "crate/kmip",
-    "crate/server",
-    "crate/utils",
-    "crate/libsgx",
-    "crate/pyo3",
+  "crate/cli",
+  "crate/client",
+  "crate/kmip",
+  "crate/server",
+  "crate/utils",
+  "crate/libsgx",
+  "crate/pyo3",
+  "crate/logger",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli. For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
 resolver = "2"
 
 [profile.release]
-strip = true
 lto = true
+strip = true
 
 [workspace.dependencies]
-
 async-trait = "0.1"
 base64 = "0.21"
 base64-url = "2.0"
 bitflags = "2.3"
-clap = { version = "4.1", default-features = false, features = [
-    "help",
-    "usage",
-    "error-context",
-    "derive",
-    "cargo",
-] }
+clap = { version = "4.4", default-features = false, features = ["help", "std", "usage", "error-context", "derive", "cargo"] }
 cloudproof = { version = "2.2.1", features = ["findex-redis"] }
+cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core", rev = "16d0e9f0b46292b202970772e89a30813dbc5007" }
 env_logger = "0.10"
 hex = "0.4"
 http = "0.2"
@@ -56,7 +51,6 @@ strum = "0.25"
 strum_macros = "0.25"
 thiserror = "1.0"
 time = "0.3"
-tiny-keccak = "2.0"
 # It is important to keep this version in sync with that of actix-web
 # use `cargo tree -i tokio` to check there is no other version of tokio
 tokio = { version = "1.25", features = ["full"] }
@@ -68,3 +62,4 @@ tracing-tree = "0.2"
 url = "2.2"
 uuid = { version = "1.3", features = ["v4"] }
 zeroize = { version = "1.6", features = ["zeroize_derive"] }
+x509-parser = { version = "0.15.1", features = ["verify"] }

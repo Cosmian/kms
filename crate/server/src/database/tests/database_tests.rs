@@ -11,9 +11,10 @@ use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::symmetric::create_symmetric_key,
 };
+use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
 
-use crate::{database::Database, error::KmsError, kms_bail, log_utils::log_init, result::KResult};
+use crate::{database::Database, error::KmsError, kms_bail, result::KResult};
 
 pub async fn tx_and_list<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),

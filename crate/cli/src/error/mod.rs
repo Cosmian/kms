@@ -1,4 +1,5 @@
-use std::str::Utf8Error;
+use std::{array::TryFromSliceError, str::Utf8Error};
+
 
 use cosmian_kmip::{
     error::KmipError,
@@ -6,11 +7,13 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::RestClientError;
 use cosmian_kms_utils::error::KmipUtilsError;
+use openssl::error::ErrorStack;
 use thiserror::Error;
 pub mod result;
 
 #[cfg(test)]
 use assert_cmd::cargo::CargoError;
+use x509_parser::prelude::PEMError;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug, Eq, PartialEq)]
@@ -55,6 +58,10 @@ pub enum CliError {
     #[error("Cryptographic error: {0}")]
     Cryptographic(String),
 
+    // Conversion errors
+    #[error("Conversion error: {0}")]
+    Conversion(String),
+
     // When the KMS client returns an error
     #[error("{0}")]
     KmsClientError(String),
@@ -73,6 +80,42 @@ impl From<KmipUtilsError> for CliError {
 impl From<TtlvError> for CliError {
     fn from(e: TtlvError) -> Self {
         Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+    }
+}
+
+impl From<cosmian_crypto_core::reexport::pkcs8::der::Error> for CliError {
+    fn from(e: cosmian_crypto_core::reexport::pkcs8::der::Error) -> Self {
+        Self::Conversion(e.to_string())
+    }
+}
+
+impl From<cosmian_crypto_core::CryptoCoreError> for CliError {
+    fn from(e: cosmian_crypto_core::CryptoCoreError) -> Self {
+        Self::Cryptographic(e.to_string())
+    }
+}
+
+impl From<cosmian_crypto_core::reexport::pkcs8::Error> for CliError {
+    fn from(e: cosmian_crypto_core::reexport::pkcs8::Error) -> Self {
+        Self::Conversion(e.to_string())
+    }
+}
+
+impl From<x509_parser::nom::Err<PEMError>> for CliError {
+    fn from(e: x509_parser::nom::Err<PEMError>) -> Self {
+        Self::Conversion(e.to_string())
+    }
+}
+
+impl From<ErrorStack> for CliError {
+    fn from(e: ErrorStack) -> Self {
+        Self::Conversion(e.to_string())
+    }
+}
+
+impl From<TryFromSliceError> for CliError {
+    fn from(e: TryFromSliceError) -> Self {
+        Self::Conversion(e.to_string())
     }
 }
 

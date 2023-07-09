@@ -1,6 +1,6 @@
-use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::CryptoRngCore, FixedSizeCBytes, RandomFixedSizeCBytes, X25519PrivateKey,
-    X25519PublicKey,
+use cosmian_crypto_core::{
+    reexport::rand_core::CryptoRngCore, Ed25519PrivateKey, Ed25519PublicKey, X25519PrivateKey,
+    X25519PublicKey, CURVE_25519_SECRET_LENGTH,
 };
 use cosmian_kmip::{
     error::KmipError,
@@ -16,10 +16,9 @@ use cosmian_kmip::{
 };
 use num_bigint::BigUint;
 
-use super::CURVE_25519_PRIVATE_KEY_LENGTH;
 use crate::KeyPair;
 
-pub const SECRET_KEY_LENGTH: usize = CURVE_25519_PRIVATE_KEY_LENGTH;
+pub const SECRET_KEY_LENGTH: usize = CURVE_25519_SECRET_LENGTH;
 pub const Q_LENGTH_BITS: i32 = (SECRET_KEY_LENGTH * 8) as i32;
 
 /// convert to a X25519 256 bits KMIP Public Key
@@ -111,7 +110,7 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Obj
 }
 
 /// Generate a key CURVE 25519 Key Pair
-pub fn create_ec_key_pair<R>(
+pub fn create_x25519_key_pair<R>(
     rng: &mut R,
     private_key_uid: &str,
     public_key_uid: &str,
@@ -122,7 +121,24 @@ where
     let private_key = X25519PrivateKey::new(rng);
     let public_key = X25519PublicKey::from(&private_key);
 
-    let private_key = to_curve_25519_256_private_key(&private_key.to_bytes(), public_key_uid);
-    let public_key = to_curve_25519_256_public_key(&public_key.to_bytes(), private_key_uid);
+    let private_key = to_curve_25519_256_private_key(private_key.as_bytes(), public_key_uid);
+    let public_key = to_curve_25519_256_public_key(public_key.as_bytes(), private_key_uid);
+    Ok(KeyPair::new(private_key, public_key))
+}
+
+/// Generate a key CURVE Ed25519 Key Pair
+pub fn create_ed25519_key_pair<R>(
+    rng: &mut R,
+    private_key_uid: &str,
+    public_key_uid: &str,
+) -> Result<KeyPair, KmipError>
+where
+    R: CryptoRngCore,
+{
+    let private_key = Ed25519PrivateKey::new(rng);
+    let public_key = Ed25519PublicKey::from(&private_key);
+
+    let private_key = to_curve_25519_256_private_key(private_key.as_bytes(), public_key_uid);
+    let public_key = to_curve_25519_256_public_key(public_key.as_bytes(), private_key_uid);
     Ok(KeyPair::new(private_key, public_key))
 }

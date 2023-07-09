@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
+use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::Import,
     kmip_types::{
         Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+        RecommendedCurve,
     },
 };
 use cosmian_kms_utils::crypto::curve_25519::{
-    kmip_requests::{create_key_pair_request, get_private_key_request, get_public_key_request},
+    kmip_requests::{ec_create_key_pair_request, get_private_key_request, get_public_key_request},
     operation::{self, to_curve_25519_256_public_key},
-    X25519_PUBLIC_KEY_LENGTH,
 };
 
 use crate::{
@@ -26,7 +27,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = create_key_pair_request(&[] as &[&str])?;
+    let request = ec_create_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
