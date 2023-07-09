@@ -8,8 +8,8 @@ use actix_web::{
 use clap::crate_version;
 use cosmian_kmip::kmip::{
     kmip_operations::{
-        Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Export, Get, GetAttributes, Import,
-        Locate, ReKeyKeyPair, Revoke,
+        Certify, Create, CreateKeyPair, Decrypt, Destroy, Encrypt, Export, Get, GetAttributes,
+        Import, Locate, ReKeyKeyPair, Revoke,
     },
     kmip_types::UniqueIdentifier,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
@@ -104,6 +104,11 @@ pub async fn kmip(
     info!("POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
     let ttlv_resp = match ttlv.tag.as_str() {
+        "Certify" => {
+            let req = from_ttlv::<Certify>(&ttlv)?;
+            let resp = kms.certify(req, &user, database_params.as_ref()).await?;
+            to_ttlv(&resp)?
+        }
         "Create" => {
             let req = from_ttlv::<Create>(&ttlv)?;
             let resp = kms.create(req, &user, database_params.as_ref()).await?;

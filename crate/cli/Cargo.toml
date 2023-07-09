@@ -23,7 +23,6 @@ cosmian_kmip = { path = "../kmip" }
 cosmian_kms_client = { path = "../client" }
 cosmian_kms_utils = { path = "../utils" }
 hex = { workspace = true }
-josekit = { workspace = true }
 libsgx = { path = "../libsgx" }
 rand = "0.8"
 serde = { workspace = true }
@@ -45,6 +44,3 @@ regex = { version = "1.7", default-features = false }
 reqwest = { workspace = true }
 tempfile = "3.2"
 tracing = { workspace = true }
-tracing-log = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-tree = { workspace = true }

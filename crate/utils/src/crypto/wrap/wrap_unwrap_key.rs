@@ -146,7 +146,7 @@ mod tests {
 
     use crate::{
         crypto::{
-            curve_25519::operation::create_ec_key_pair,
+            curve_25519::operation::create_x25519_key_pair,
             symmetric::create_symmetric_key,
             wrap::{unwrap_key_block, wrap_key_block},
         },
@@ -173,12 +173,12 @@ mod tests {
             CryptographicAlgorithm::AES,
         );
 
-        let wrapping_key_pair = create_ec_key_pair(
+        let wrapping_key_pair = create_x25519_key_pair(
             &mut rng,
             "wrapping_private_key_uid",
             "wrapping_public_key_uid",
         )?;
-        let mut key_pair_to_wrap = create_ec_key_pair(
+        let mut key_pair_to_wrap = create_x25519_key_pair(
             &mut rng,
             "private_key_to_wrap_uid",
             "public_key_to_wrap_uid",

@@ -26,17 +26,17 @@ jobs:
   cargo-lint:
     uses: ./.github/workflows/lint.yml
     with:
-      toolchain: nightly-2023-03-20
+      toolchain: nightly-2023-08-17
 
   cargo-tests:
     uses: ./.github/workflows/cargo_tests.yml
     with:
-      toolchain: nightly-2023-03-20
+      toolchain: nightly-2023-08-17
 
   cargo-doc:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-doc.yml@develop
     with:
-      toolchain: nightly-2023-03-20
+      toolchain: nightly-2023-08-17
 
   python_and_docker:
     uses: ./.github/workflows/python_and_docker.yml

@@ -10,7 +10,7 @@ impl FromStr for Jwk {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Jwk(JoseJwk::from_reader(&mut s.as_bytes()).map_err(
+        Ok(Self(JoseJwk::from_reader(&mut s.as_bytes()).map_err(
             |err| format!("'{s}' is not a valid JWK ({err})"),
         )?))
     }

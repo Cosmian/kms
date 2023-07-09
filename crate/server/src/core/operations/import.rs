@@ -61,7 +61,7 @@ pub async fn import(
             }
         }
         x => {
-            warn!("Import is not yet supported for objects of type : {x}")
+            warn!("Import is not yet supported for objects of type : {x}");
         }
     }
     // check if the object will be replaced if it already exists

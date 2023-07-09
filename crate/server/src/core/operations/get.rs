@@ -45,7 +45,7 @@ pub(crate) async fn get(
                 KeyWrapType::NotWrapped => {
                     let object_type = owm.object.object_type();
                     let key_block = owm.object.key_block_mut()?;
-                    unwrap_key(object_type, key_block, kms, user, params).await?
+                    unwrap_key(object_type, key_block, kms, user, params).await?;
                 }
                 KeyWrapType::AsRegistered => {
                     // do nothing

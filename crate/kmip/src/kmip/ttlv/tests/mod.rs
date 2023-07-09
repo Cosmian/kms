@@ -1,19 +1,17 @@
+use cosmian_logger::log_utils::log_init;
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-use crate::{
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Create, Import, ImportResponse},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
-            LinkedObjectIdentifier,
-        },
-        ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
+use crate::kmip::{
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Create, Import, ImportResponse},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
+        LinkedObjectIdentifier,
     },
-    log_utils::log_init,
+    ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
 };
 
 pub fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
@@ -322,7 +320,7 @@ fn test_des_int() {
             another_int: 4
         },
         &rec
-    )
+    );
 }
 
 #[test]
@@ -353,7 +351,7 @@ fn test_des_array() {
     };
 
     let rec: Test = from_ttlv(&ttlv).unwrap();
-    assert_eq!(&Test { ints: vec![2, 4] }, &rec)
+    assert_eq!(&Test { ints: vec![2, 4] }, &rec);
 }
 
 #[test]
@@ -380,7 +378,7 @@ fn test_des_enum() {
             crypto_algo: CryptographicAlgorithm::AES
         },
         &rec
-    )
+    );
 }
 
 #[test]
@@ -473,7 +471,7 @@ fn test_des_aes_key() {
     assert_eq!(
         aes_key(key_bytes),
         Object::post_fix(ObjectType::SymmetricKey, rec)
-    )
+    );
 }
 
 #[test]
@@ -487,7 +485,7 @@ fn test_aes_key_block() {
     //
     let ttlv = aes_key_block_ttlv(key_bytes);
     let rec: KeyBlock = from_ttlv(&ttlv).unwrap();
-    assert_eq!(aes_key_block(key_bytes), rec)
+    assert_eq!(aes_key_block(key_bytes), rec);
 }
 
 #[test]
@@ -510,7 +508,7 @@ fn test_aes_key_material() {
     let key_bytes: &[u8] = b"this_is_a_test";
     let ttlv = aes_key_material_ttlv(key_bytes);
     let rec: KeyMaterial = from_ttlv(&ttlv).unwrap();
-    assert_eq!(aes_key_material(key_bytes), rec)
+    assert_eq!(aes_key_material(key_bytes), rec);
 }
 
 #[test]
@@ -646,7 +644,7 @@ fn test_aes_key_full() {
     assert_eq!(
         aes_key,
         Object::post_fix(ObjectType::SymmetricKey, aes_key_)
-    )
+    );
 }
 
 #[test]

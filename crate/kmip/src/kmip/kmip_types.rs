@@ -254,7 +254,8 @@ pub enum RecommendedCurve {
     BRAINPOOLP512R1 = 0x0000_0043,
     BRAINPOOLP512T1 = 0x0000_0044,
     CURVE25519 = 0x0000_0045,
-    CURVE448 = 0x0000_0046,
+    CURVEED25519 = 0x0000_0046,
+    CURVE448 = 0x0000_0047,
     // Extensions 8XXXXXXX
 }
 
@@ -911,7 +912,7 @@ impl Attributes {
             vas.retain(|va| {
                 va.vendor_identification != vendor_identification
                     || va.attribute_name != attribute_name
-            })
+            });
         }
     }
 
@@ -942,6 +943,60 @@ impl Attributes {
     pub fn set_object_type(&mut self, object_type: ObjectType) {
         self.object_type = Some(object_type);
     }
+}
+
+/// The Certificate Attributes are the various items included in a certificate. The following list is based on RFC2253.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct CertificateAttributes {
+    // Certificate Subject CN
+    pub certificate_subject_cn: String,
+    // Certificate Subject O
+    pub certificate_subject_o: String,
+    // Certificate Subject OU
+    pub certificate_subject_ou: String,
+    // Certificate Subject Email
+    pub certificate_subject_email: String,
+    // Certificate Subject C
+    pub certificate_subject_c: String,
+    // Certificate Subject ST
+    pub certificate_subject_st: String,
+    // Certificate Subject L
+    pub certificate_subject_l: String,
+    // Certificate Subject UID
+    pub certificate_subject_uid: String,
+    // Certificate Subject Serial Number
+    pub certificate_subject_serial_number: String,
+    // Certificate Subject Title
+    pub certificate_subject_title: String,
+    // Certificate Subject DC
+    pub certificate_subject_dc: String,
+    // Certificate Subject DN Qualifier
+    pub certificate_subject_dn_qualifier: String,
+    // Certificate Issuer CN
+    pub certificate_issuer_cn: String,
+    // Certificate Issuer O
+    pub certificate_issuer_o: String,
+    // Certificate Issuer OU
+    pub certificate_issuer_ou: String,
+    // Certificate Issuer Email
+    pub certificate_issuer_email: String,
+    // Certificate Issuer C
+    pub certificate_issuer_c: String,
+    // Certificate Issuer ST
+    pub certificate_issuer_st: String,
+    // Certificate Issuer L
+    pub certificate_issuer_l: String,
+    // Certificate Issuer UID
+    pub certificate_issuer_uid: String,
+    // Certificate Issuer Serial Number
+    pub certificate_issuer_serial_number: String,
+    // Certificate Issuer Title
+    pub certificate_issuer_title: String,
+    // Certificate Issuer DC
+    pub certificate_issuer_dc: String,
+    // Certificate Issuer DN Qualifier
+    pub certificate_issuer_dn_qualifier: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]

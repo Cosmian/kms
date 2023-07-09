@@ -36,7 +36,6 @@ pub mod config;
 pub mod core;
 pub mod database;
 pub mod error;
-pub mod log_utils;
 pub mod middlewares;
 pub mod result;
 pub mod routes;
@@ -227,8 +226,8 @@ async fn start_https_kms_server(
 
     // Create and configure an SSL acceptor with the certificate and key
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-    if let Some(pkey) = &p12.pkey {
-        builder.set_private_key(pkey)?;
+    if let Some(private_key) = &p12.pkey {
+        builder.set_private_key(private_key)?;
     }
     if let Some(cert) = &p12.cert {
         builder.set_certificate(cert)?;
@@ -324,7 +323,7 @@ async fn start_auto_renew_https(
                 .expect("can't lock certificate mutex")
                 .request_cert();
             match request_cert {
-                Ok(_) => restart_me.store(true, Ordering::Relaxed),
+                Ok(()) => restart_me.store(true, Ordering::Relaxed),
                 Err(error) => {
                     error!("Error when renewing the certificate {error}");
                     restart_me.store(false, Ordering::Relaxed);
@@ -333,7 +332,7 @@ async fn start_auto_renew_https(
 
             info!("Stopping the HTTPS server...");
             // Stop the HTTPS server. We don't need it anymore
-            srv.stop(true).await
+            srv.stop(true).await;
         });
 
         // Run server until stopped (either by ctrl-c or stopped by the previous thread)
@@ -410,7 +409,7 @@ async fn start_certbot_https_kms_server(
                 .expect("can't lock certificate mutex")
                 .request_cert();
             match request_cert {
-                Ok(_) => succeed_me.store(true, Ordering::Relaxed),
+                Ok(()) => succeed_me.store(true, Ordering::Relaxed),
                 Err(error) => {
                     error!("Error when generating the certificate: {error}");
                     succeed_me.store(false, Ordering::Relaxed);
@@ -418,7 +417,7 @@ async fn start_certbot_https_kms_server(
             }
 
             // Stop the HTTP server. We don't need it anymore
-            srv.stop(true).await
+            srv.stop(true).await;
         });
 
         // Run server until stopped (either by ctrl-c or stopped by the previous thread)
@@ -439,7 +438,7 @@ async fn start_certbot_https_kms_server(
     if has_valid_cert {
         // Use it and start SSL Server
         info!("Certificate is valid");
-        start_auto_renew_https(shared_config, &certbot, server_handle_transmitter).await?
+        start_auto_renew_https(shared_config, &certbot, server_handle_transmitter).await?;
     } else {
         error!("Abort program, failed to get a valid certificate");
         kms_bail!("Abort program, failed to get a valid certificate")

@@ -5,7 +5,8 @@ use cosmian_kms_cli::{
     actions::{
         access::AccessAction, cover_crypt::CovercryptCommands,
         elliptic_curves::EllipticCurveCommands, new_database::NewDatabaseAction,
-        shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
+        pki::CertificatesCommands, shared::LocateObjectsAction, symmetric::SymmetricCommands,
+        version::ServerVersionAction,
     },
     config::CliConf,
     error::CliError,
@@ -26,6 +27,8 @@ enum CliCommands {
     Ec(EllipticCurveCommands),
     #[command(subcommand)]
     Sym(SymmetricCommands),
+    #[command(subcommand)]
+    Pki(CertificatesCommands),
     #[command(subcommand)]
     AccessRights(AccessAction),
     Locate(LocateObjectsAction),
@@ -50,6 +53,7 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Cc(action) => action.process(&conf).await?,
         CliCommands::Ec(action) => action.process(&conf).await?,
         CliCommands::Sym(action) => action.process(&conf).await?,
+        CliCommands::Pki(action) => action.process(&conf).await?,
         CliCommands::AccessRights(action) => action.process(&conf).await?,
         CliCommands::NewDatabase(action) => action.process(&conf).await?,
         CliCommands::ServerVersion(action) => action.process(&conf).await?,

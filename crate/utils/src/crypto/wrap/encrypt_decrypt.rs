@@ -176,7 +176,7 @@ mod tests {
     use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 
     use crate::crypto::{
-        curve_25519::operation::create_ec_key_pair, symmetric::create_symmetric_key,
+        curve_25519::operation::create_x25519_key_pair, symmetric::create_symmetric_key,
     };
 
     #[test]
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn test_encrypt_decrypt_rfc_ecies() {
         let mut rng = CsRng::from_entropy();
-        let wrap_key_pair = create_ec_key_pair(&mut rng, "sk_uid", "pk_uid").unwrap();
+        let wrap_key_pair = create_x25519_key_pair(&mut rng, "sk_uid", "pk_uid").unwrap();
 
         let plaintext = b"plaintext";
         let ciphertext =

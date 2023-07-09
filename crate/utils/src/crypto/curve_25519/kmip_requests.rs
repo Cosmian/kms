@@ -12,8 +12,9 @@ use crate::{
 };
 
 /// Build a `CreateKeyPairRequest` for a curve 25519 key pair
-pub fn create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+pub fn ec_create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
+    recommended_curve: RecommendedCurve,
 ) -> Result<CreateKeyPair, KmipUtilsError> {
     let mut attributes = Attributes {
         activation_date: None,
@@ -21,7 +22,7 @@ pub fn create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         cryptographic_length: Some(Q_LENGTH_BITS),
         cryptographic_domain_parameters: Some(CryptographicDomainParameters {
             q_length: Some(Q_LENGTH_BITS),
-            recommended_curve: Some(RecommendedCurve::CURVE25519),
+            recommended_curve: Some(recommended_curve),
         }),
         cryptographic_parameters: None,
         cryptographic_usage_mask: Some(

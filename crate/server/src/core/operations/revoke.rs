@@ -74,6 +74,7 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
             let object_type = owm.object.object_type();
             (owm.state == StateEnumeration::Active || owm.state == StateEnumeration::PreActive)
                 && (object_type == ObjectType::PrivateKey
+                    || object_type == ObjectType::Certificate
                     || object_type == ObjectType::SymmetricKey
                     || object_type == ObjectType::PublicKey)
         })
@@ -88,7 +89,7 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
         // perform the chain of revoke operations depending on the type of object
         let object_type = owm.object.object_type();
         match object_type {
-            SymmetricKey => {
+            SymmetricKey | cosmian_kmip::kmip::kmip_objects::ObjectType::Certificate => {
                 // revoke the key
                 revoke_key_core(
                     &owm.id,
@@ -113,7 +114,7 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
                         params,
                         ids_to_skip.clone(),
                     )
-                    .await?
+                    .await?;
                 }
                 // revoke any linked public key
                 if let Some(public_key_id) =

@@ -1,3 +1,4 @@
+use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{Decrypt, DecryptResponse},
@@ -67,7 +68,7 @@ pub async fn decrypt(
     }
 
     // decrypt
-    kms.get_decryption_system(Default::default(), owm, params)
+    kms.get_decryption_system(Covercrypt::default(), owm, params)
         .await?
         .decrypt(&request)
         .map_err(Into::into)

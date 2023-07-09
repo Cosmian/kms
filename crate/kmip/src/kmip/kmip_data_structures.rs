@@ -384,11 +384,11 @@ impl Serialize for KeyMaterial {
                 let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
                 st.serialize_field("P", p)?;
                 if let Some(q) = q {
-                    st.serialize_field("Q", q)?
+                    st.serialize_field("Q", q)?;
                 };
                 st.serialize_field("G", g)?;
                 if let Some(j) = j {
-                    st.serialize_field("J", j)?
+                    st.serialize_field("J", j)?;
                 };
                 st.serialize_field("X", x)?;
                 st.end()
@@ -397,11 +397,11 @@ impl Serialize for KeyMaterial {
                 let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
                 st.serialize_field("P", p)?;
                 if let Some(q) = q {
-                    st.serialize_field("Q", q)?
+                    st.serialize_field("Q", q)?;
                 };
                 st.serialize_field("G", g)?;
                 if let Some(j) = j {
-                    st.serialize_field("J", j)?
+                    st.serialize_field("J", j)?;
                 };
                 st.serialize_field("Y", y)?;
                 st.end()
@@ -435,25 +435,25 @@ impl Serialize for KeyMaterial {
                 let mut st = serializer.serialize_struct("KeyMaterial", 8)?;
                 st.serialize_field("Modulus", modulus)?;
                 if let Some(private_exponent) = private_exponent {
-                    st.serialize_field("PrivateExponent", private_exponent)?
+                    st.serialize_field("PrivateExponent", private_exponent)?;
                 };
                 if let Some(public_exponent) = public_exponent {
-                    st.serialize_field("PublicExponent", public_exponent)?
+                    st.serialize_field("PublicExponent", public_exponent)?;
                 };
                 if let Some(p) = p {
-                    st.serialize_field("P", p)?
+                    st.serialize_field("P", p)?;
                 };
                 if let Some(q) = q {
-                    st.serialize_field("Q", q)?
+                    st.serialize_field("Q", q)?;
                 };
                 if let Some(prime_exponent_p) = prime_exponent_p {
-                    st.serialize_field("PrimeExponentP", prime_exponent_p)?
+                    st.serialize_field("PrimeExponentP", prime_exponent_p)?;
                 };
                 if let Some(prime_exponent_q) = prime_exponent_q {
-                    st.serialize_field("PrimeExponentQ", prime_exponent_q)?
+                    st.serialize_field("PrimeExponentQ", prime_exponent_q)?;
                 };
                 if let Some(crt_coefficient) = crt_coefficient {
-                    st.serialize_field("CrtCoefficient", crt_coefficient)?
+                    st.serialize_field("CrtCoefficient", crt_coefficient)?;
                 };
                 st.end()
             }

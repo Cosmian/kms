@@ -3,6 +3,7 @@ mod auth_tests;
 mod cover_crypt;
 mod elliptic_curve;
 mod new_database;
+mod pki;
 mod sgx;
 mod shared;
 mod symmetric;

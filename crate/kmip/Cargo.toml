@@ -7,6 +7,7 @@ license-file = "../../LICENSE.md"
 [dependencies]
 bitflags = { workspace = true }
 cloudproof = { workspace = true }
+cosmian_logger = { path = "../logger" }
 hex = { workspace = true }
 leb128 = { workspace = true }
 num-bigint = { workspace = true }
@@ -17,6 +18,3 @@ strum_macros = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
-tracing-log = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-tree = { workspace = true }

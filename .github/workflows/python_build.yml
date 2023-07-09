@@ -63,8 +63,7 @@ jobs:
           rustup target add x86_64-apple-darwin
 
           NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          brew install autoconf automake libtool openssl@1.1 pkg-config openssl
-          pip3 install maturin
+          brew install autoconf automake libtool maturin openssl@1.1 pkg-config openssl
 
       - name: Python maturin build
         run: |

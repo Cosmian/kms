@@ -65,7 +65,6 @@
     "**/*.txt",
     "**/*.md"
   ],
-  "rust-analyzer.check.command": "clippy",
   "[python]": {
     "editor.defaultFormatter": "ms-python.black-formatter"
   },
@@ -102,5 +101,10 @@
       "database": "/Users/bgrieder/cosmian-kms/sqlite-data/kms.db"
     }
   ],
-  "sqltools.useNodeRuntime": true
+  "sqltools.useNodeRuntime": true,
+  "workbench.colorCustomizations": {
+    "activityBar.background": "#8a0303",
+    "titleBar.activeBackground": "#8b0b16",
+    "titleBar.activeForeground": "#E9FEFA"
+  }
 }

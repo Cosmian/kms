@@ -20,8 +20,8 @@ use cosmian_kms_utils::{
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
         curve_25519::{
-            operation::create_ec_key_pair,
             salsa_sealed_box::{EciesDecryption, EciesEncryption},
+            operation::{create_ed25519_key_pair, create_x25519_key_pair},
         },
         symmetric::{create_symmetric_key, AesGcmSystem},
     },
@@ -309,8 +309,8 @@ impl KMS {
     ///  - "_pk" for the public key
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     ///
-    /// Only Covercrypt user decryption keys can be created using this function
-    pub(crate) async fn create_key_pair_and_tags(
+    /// Only Covercrypt master keys can be created using this function
+    pub(crate) fn create_key_pair_and_tags(
         &self,
         request: &CreateKeyPair,
         private_key_uid: &str,
@@ -356,7 +356,11 @@ impl KMS {
                     match dp.recommended_curve.unwrap_or_default() {
                         RecommendedCurve::CURVE25519 => {
                             let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                            create_ec_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                            create_x25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                        }
+                        RecommendedCurve::CURVEED25519 => {
+                            let mut rng = self.rng.lock().expect("RNG lock poisoned");
+                            create_ed25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
                         }
                         other => kms_not_supported!(
                             "Generation of Key Pair for curve: {other:?}, is not supported"

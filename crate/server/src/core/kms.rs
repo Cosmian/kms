@@ -11,10 +11,11 @@ use base64::{
 use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_operations::{
-        Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
-        Destroy, DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get,
-        GetAttributes, GetAttributesResponse, GetResponse, Import, ImportResponse, Locate,
-        LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
+        Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
+        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
+        ImportResponse, Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke,
+        RevokeResponse,
     },
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
@@ -178,6 +179,38 @@ impl KMS {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ImportResponse> {
         operations::import(self, request, user, params).await
+    }
+
+    /// This request is used to generate a Certificate object for a public key.
+    /// This request supports the certification of a new public key, as well as
+    /// the certification of a public key that has already been certified (i.e.,
+    /// certificate update). Only a single certificate SHALL be requested at a
+    /// time. The Certificate Request object MAY be omitted, in which case
+    /// the public key for which a Certificate object is generated SHALL be
+    /// specified by its Unique Identifier only. If the Certificate Request Type
+    /// and the Certificate Request objects are omitted from the request, then
+    /// the Certificate Type SHALL be specified using the Attributes object.
+    /// The Certificate Request is passed as a Byte String, which allows
+    /// multiple certificate request types for X.509 certificates (e.g.,
+    /// PKCS#10, PEM, etc.) to be submitted to the server. The generated
+    /// Certificate object whose Unique Identifier is returned MAY be obtained
+    /// by the client via a Get operation in the same batch, using the ID
+    /// Placeholder mechanism. For the public key, the server SHALL create a
+    /// Link attribute of Link Type Certificate pointing to the generated
+    /// certificate. For the generated certificate, the server SHALL create a
+    /// Link attribute of Link Type Public Key pointing to the Public Key.
+    /// The server SHALL copy the Unique Identifier of the generated certificate
+    /// returned by this operation into the ID Placeholder variable.
+    /// If the information in the Certificate Request conflicts with the
+    /// attributes specified in the Attributes, then the information in the
+    /// Certificate Request takes precedence.
+    pub async fn certify(
+        &self,
+        request: Certify,
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<CertifyResponse> {
+        operations::certify(self, request, user, params).await
     }
 
     /// This operation requests the server to generate a new symmetric key or
@@ -540,7 +573,7 @@ impl KMS {
             )))
         }
 
-        // check if owner is trying to grant themself
+        // check if owner is trying to grant them self
         if owner == access.user_id {
             kms_bail!(KmsError::Unauthorized(
                 "You can't grant yourself, you have already all rights on your own objects"
