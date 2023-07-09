@@ -18,7 +18,7 @@ use crate::{
 
 /// Locate all the user decryption keys associated with the master private key
 /// and for the given policy attributes
-pub(crate) async fn locate_user_decryption_keys(
+pub async fn locate_user_decryption_keys(
     kmip_server: &KMS,
     master_private_key_uid: &str,
     cover_crypt_policy_attributes_to_revoke: Option<Vec<Attribute>>,

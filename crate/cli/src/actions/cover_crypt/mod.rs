@@ -15,7 +15,7 @@ use crate::{
     error::CliError,
 };
 
-/// Manage CoverCrypt keys and policies. Rotate attributes. Encrypt and decrypt data.
+/// Manage `CoverCrypt` keys and policies. Rotate attributes. Encrypt and decrypt data.
 #[derive(Parser)]
 pub enum CoverCryptCommands {
     #[command(subcommand)]

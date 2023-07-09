@@ -34,19 +34,11 @@ impl From<std::array::TryFromSliceError> for CryptoError {
 impl From<KmipError> for CryptoError {
     fn from(value: KmipError) -> Self {
         match value {
-            KmipError::InvalidKmipValue(error_reason, value) => {
-                CryptoError::Kmip(error_reason, value)
-            }
-            KmipError::InvalidKmipObject(error_reason, value) => {
-                CryptoError::Kmip(error_reason, value)
-            }
-            KmipError::KmipNotSupported(error_reason, value) => {
-                CryptoError::Kmip(error_reason, value)
-            }
-            KmipError::NotSupported(value) => {
-                CryptoError::Kmip(ErrorReason::Feature_Not_Supported, value)
-            }
-            KmipError::KmipError(error_reason, value) => CryptoError::Kmip(error_reason, value),
+            KmipError::InvalidKmipValue(error_reason, value) => Self::Kmip(error_reason, value),
+            KmipError::InvalidKmipObject(error_reason, value) => Self::Kmip(error_reason, value),
+            KmipError::KmipNotSupported(error_reason, value) => Self::Kmip(error_reason, value),
+            KmipError::NotSupported(value) => Self::Kmip(ErrorReason::Feature_Not_Supported, value),
+            KmipError::KmipError(error_reason, value) => Self::Kmip(error_reason, value),
         }
     }
 }
@@ -59,7 +51,7 @@ impl From<CryptoCoreError> for CryptoError {
 
 impl From<serde_json::Error> for CryptoError {
     fn from(e: serde_json::Error) -> Self {
-        CryptoError::ConversionError(e.to_string())
+        Self::ConversionError(e.to_string())
     }
 }
 

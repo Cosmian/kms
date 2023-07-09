@@ -1,13 +1,6 @@
-use std::sync::{Arc, Mutex};
-
 use cloudproof::reexport::crypto_core::{
-    asymmetric_crypto::{
-        curve25519::{X25519KeyPair, X25519PrivateKey, X25519PublicKey},
-        DhKeyPair,
-    },
-    bytes_ser_de::Serializable,
-    reexport::rand_core::SeedableRng,
-    CsRng,
+    bytes_ser_de::Serializable, reexport::rand_core::SeedableRng, CsRng, Ecies,
+    EciesX25519XChaCha20, FixedSizeCBytes, X25519PrivateKey, X25519PublicKey,
 };
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
@@ -15,17 +8,13 @@ use cosmian_kmip::kmip::{
 };
 use tracing::{debug, trace};
 
-use crate::crypto::{
-    ecies::{ecies_decrypt, ecies_encrypt},
-    error::{result::CryptoResultHelper, CryptoError},
-};
+use crate::crypto::error::{result::CryptoResultHelper, CryptoError};
 // use super::user_key::unwrap_user_decryption_key_object;
 use crate::{DecryptionSystem, EncryptionSystem};
 
 /// Encrypt a single block of data using an hybrid encryption mode
 /// Cannot be used as a stream cipher
 pub struct EciesEncryption {
-    rng: Arc<Mutex<CsRng>>,
     public_key_uid: String,
     public_key: X25519PublicKey,
 }
@@ -35,15 +24,13 @@ pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
 
 impl EciesEncryption {
     pub fn instantiate(public_key_uid: &str, public_key: &Object) -> Result<Self, CryptoError> {
-        let rng = CsRng::from_entropy();
-
-        let public_key_bytes = public_key.key_block()?.key_bytes()?;
-        let public_key = X25519PublicKey::try_from_bytes(&public_key_bytes)?;
+        let public_key_bytes: [u8; 32] =
+            public_key.key_block()?.key_bytes()?.as_slice().try_into()?;
+        let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
 
         trace!("Instantiated hybrid ECIES encipher for public key id: {public_key_uid}");
 
         Ok(Self {
-            rng: Arc::new(Mutex::new(rng)),
             public_key_uid: public_key_uid.into(),
             public_key,
         })
@@ -59,21 +46,10 @@ impl EncryptionSystem for EciesEncryption {
 
         let plaintext = request.data.clone().context("missing plaintext data")?;
 
-        let mut rng = self.rng.lock().unwrap();
+        let mut rng = CsRng::from_entropy();
 
-        let ciphertext = ecies_encrypt::<
-            CsRng,
-            X25519KeyPair,
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-        >(
-            &mut rng,
-            &self.public_key,
-            &plaintext,
-            None,
-            request.authenticated_encryption_additional_data.as_deref(),
-        )
-        .unwrap();
+        let ciphertext =
+            EciesX25519XChaCha20::encrypt(&mut rng, &self.public_key, &plaintext, None).unwrap();
 
         debug!(
             "Encrypted data with public key {} of len (CT/Enc): {}/{}",
@@ -101,7 +77,7 @@ pub struct EciesDecryption {
 impl EciesDecryption {
     pub fn instantiate(private_key_uid: &str, private_key: &Object) -> Result<Self, CryptoError> {
         let private_key_bytes = private_key.key_block()?.key_bytes()?;
-        let private_key = X25519PrivateKey::try_from_bytes(&private_key_bytes)?;
+        let private_key = X25519PrivateKey::deserialize(&private_key_bytes)?;
 
         debug!("Instantiated ECIES decipher for user decryption key id: {private_key_uid}");
 
@@ -121,17 +97,9 @@ impl DecryptionSystem for EciesDecryption {
         })?;
 
         // Decrypt the encrypted message
-        let plaintext = ecies_decrypt::<
-            X25519KeyPair,
-            { X25519KeyPair::PUBLIC_KEY_LENGTH },
-            { X25519KeyPair::PRIVATE_KEY_LENGTH },
-        >(
-            &self.private_key,
-            encrypted_bytes,
-            None,
-            request.authenticated_encryption_additional_data.as_deref(),
-        )
-        .unwrap();
+        let plaintext =
+            EciesX25519XChaCha20::decrypt(&self.private_key, encrypted_bytes, None).unwrap();
+        //TODO(ecse): remove all unwrap()
 
         debug!(
             "Decrypted data with user key {} of len (CT/Enc): {}/{}",

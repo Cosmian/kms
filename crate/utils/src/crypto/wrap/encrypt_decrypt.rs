@@ -1,10 +1,6 @@
 use cloudproof::reexport::crypto_core::{
-    asymmetric_crypto::{
-        curve25519::{X25519KeyPair, X25519PrivateKey, X25519PublicKey},
-        DhKeyPair,
-    },
-    reexport::rand_core::CryptoRngCore,
-    KeyTrait,
+    reexport::rand_core::CryptoRngCore, unwrap, wrap, Ecies, EciesX25519XChaCha20, FixedSizeCBytes,
+    X25519PrivateKey, X25519PublicKey,
 };
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyMaterial,
@@ -13,11 +9,7 @@ use cosmian_kmip::kmip::{
 };
 
 use crate::{
-    crypto::{
-        ecies::{ecies_decrypt, ecies_encrypt},
-        error::{result::CryptoResultHelper, CryptoError},
-        key_wrapping_rfc_5649,
-    },
+    crypto::error::{result::CryptoResultHelper, CryptoError},
     crypto_bail,
 };
 
@@ -41,7 +33,7 @@ where
         KeyFormatType::TransparentSymmetricKey => {
             // wrap using rfc_5649
             let wrap_secret = wrapping_key_block.key_bytes()?;
-            key_wrapping_rfc_5649::wrap(plaintext, &wrap_secret)
+            wrap(plaintext, &wrap_secret)
         }
         KeyFormatType::TransparentECPublicKey => {
             // wrap using ECIES
@@ -52,16 +44,13 @@ where
                         q_string,
                     } => match recommended_curve {
                         RecommendedCurve::CURVE25519 => {
-                            let public_key = X25519PublicKey::try_from_bytes(q_string).context(
+                            let q: [u8; 32] = q_string.as_slice().try_into()?;
+                            //TODO(ecse): export PUBLIC_KEY_LENGTH
+                            let public_key = X25519PublicKey::try_from_bytes(q).context(
                                 "Unable to wrap key: wrapping key: failed to parse X25519 public \
                                  key",
                             )?;
-                            ecies_encrypt::<
-                                R,
-                                X25519KeyPair,
-                                { X25519KeyPair::PUBLIC_KEY_LENGTH },
-                                { X25519KeyPair::PRIVATE_KEY_LENGTH },
-                            >(rng, &public_key, plaintext, None, None)
+                            EciesX25519XChaCha20::encrypt(rng, &public_key, plaintext, None)
                         }
                         x => {
                             crypto_bail!(
@@ -107,7 +96,7 @@ pub fn decrypt_bytes(unwrapping_key: &Object, ciphertext: &[u8]) -> Result<Vec<u
         KeyFormatType::TransparentSymmetricKey => {
             // unwrap using rfc_5649
             let unwrap_secret = unwrapping_key_block.key_bytes()?;
-            key_wrapping_rfc_5649::unwrap(ciphertext, &unwrap_secret)
+            unwrap(ciphertext, &unwrap_secret)
         }
         KeyFormatType::TransparentECPrivateKey => {
             match unwrapping_key_block.cryptographic_algorithm {
@@ -118,18 +107,15 @@ pub fn decrypt_bytes(unwrapping_key: &Object, ciphertext: &[u8]) -> Result<Vec<u
                             d,
                         } => match recommended_curve {
                             RecommendedCurve::CURVE25519 => {
-                                let private_key =
-                                    X25519PrivateKey::try_from_bytes(&d.to_bytes_be()).context(
+                                let private_key: [u8; 32] =
+                                    d.to_bytes_be().as_slice().try_into()?;
+                                let private_key = X25519PrivateKey::try_from_bytes(private_key)
+                                    .context(
                                         "Unable to unwrap: unwrapping key: failed to parse X25519 \
                                          private key",
                                     )?;
-                                ecies_decrypt::<
-                                    X25519KeyPair,
-                                    { X25519KeyPair::PUBLIC_KEY_LENGTH },
-                                    { X25519KeyPair::PRIVATE_KEY_LENGTH },
-                                >(
-                                    &private_key, ciphertext, None, None
-                                )
+
+                                EciesX25519XChaCha20::decrypt(&private_key, ciphertext, None)
                             }
                             x => {
                                 crypto_bail!(

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::crypto_core::asymmetric_crypto::curve25519::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::Import,
@@ -20,6 +19,8 @@ use crate::{
     tests::test_utils,
     KMSServer,
 };
+
+const X25519_PUBLIC_KEY_LENGTH: usize = 32;
 
 #[actix_rt::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {

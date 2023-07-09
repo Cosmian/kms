@@ -53,7 +53,7 @@ pub async fn init_test_server() {
 }
 pub async fn init_test_server_options(use_jwt_token: bool, use_https: bool, use_client_cert: bool) {
     let _ = env_logger::builder().is_test(true).try_init();
-    // Configure the serveur
+    // Configure the server
     let config = Config {
         auth: if use_jwt_token {
             get_auth0_jwt_config()

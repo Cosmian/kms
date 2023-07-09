@@ -71,7 +71,8 @@ cargo_audit:
   only: [main, develop, merge_requests]
   cache: {}
   script:
-    - cargo audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2023-0006 --ignore RUSTSEC-2023-0007 --ignore RUSTSEC-2023-0009 --ignore RUSTSEC-2023-0010 --ignore RUSTSEC-2023-0018 --ignore RUSTSEC-2023-0034
+    - cargo audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2023-0006 --ignore RUSTSEC-2023-0007 --ignore RUSTSEC-2023-0009 --ignore RUSTSEC-2023-0010
+      --ignore RUSTSEC-2023-0018 --ignore RUSTSEC-2023-0034
 
 #
 # Coverage

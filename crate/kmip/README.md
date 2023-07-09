@@ -14,7 +14,7 @@ erDiagram
     Object ||--o| PrivateKey : enum
     Object ||--o| PublicKey : enum
     Object ||--o| SymmetricKey : enum
-    
+
     PrivateKey ||--o| KeyBlock : has
     PublicKey ||--o| KeyBlock : has
     SymmetricKey ||--o| KeyBlock : has
@@ -46,10 +46,10 @@ erDiagram
 
     EncodingOption ||--o| NoEncoding : enum
     EncodingOption ||--o| TTLVEncoding : enum
-    
+
 ```
 
-<!-- 
+<!--
 
     Unsupported WrappingMethods
 

@@ -17,8 +17,8 @@ use crate::{
 };
 
 /// Get an object
-/// If the request contains a KeyWrappingData, the key will be wrapped
-/// If the request contains a KeyWrapType, the key will be unwrapped
+/// If the request contains a `KeyWrappingData`, the key will be wrapped
+/// If the request contains a `KeyWrapType`, the key will be unwrapped
 /// If both are present, the key will be wrapped
 /// If none are present, the key will be returned as is
 ///
@@ -55,7 +55,7 @@ pub async fn get(
 }
 
 /// Check if the state of the object is active
-pub(crate) fn check_state_active(state: StateEnumeration, unique_identifier: &str) -> KResult<()> {
+pub fn check_state_active(state: StateEnumeration, unique_identifier: &str) -> KResult<()> {
     match state {
         StateEnumeration::Active => {
             // ok
@@ -91,7 +91,7 @@ pub(crate) fn check_state_active(state: StateEnumeration, unique_identifier: &st
 }
 
 /// Get an object
-pub(crate) async fn get_(
+pub async fn get_(
     kms: &KMS,
     unique_identifier: &str,
     key_wrap_type: Option<KeyWrapType>,

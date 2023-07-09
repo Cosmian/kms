@@ -5,7 +5,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::crypto_core::symmetric_crypto::{key::Key, SymKey};
+use cloudproof::reexport::crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_objects,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
@@ -49,7 +49,7 @@ impl CachedSqlCipher {
     async fn instantiate_group_database(
         &self,
         group_id: u128,
-        key: &Key<32>,
+        key: &SymmetricKey<32>,
     ) -> KResult<Pool<Sqlite>> {
         let path = self.filename(group_id);
         let options = SqliteConnectOptions::new()
@@ -110,7 +110,11 @@ impl CachedSqlCipher {
         self.cache.release(group_id)
     }
 
-    async fn pre_query(&self, group_id: u128, key: &Key<32>) -> KResult<Arc<Pool<Sqlite>>> {
+    async fn pre_query(
+        &self,
+        group_id: u128,
+        key: &SymmetricKey<32>,
+    ) -> KResult<Arc<Pool<Sqlite>>> {
         if !self.cache.exists(group_id) {
             let pool = self.instantiate_group_database(group_id, key).await?;
             Self::create_tables(&pool).await?;
@@ -369,8 +373,7 @@ impl Database for CachedSqlCipher {
 mod tests {
     use cloudproof::reexport::crypto_core::{
         reexport::rand_core::{RngCore, SeedableRng},
-        symmetric_crypto::key::Key,
-        CsRng, KeyTrait,
+        CsRng, RandomFixedSizeCBytes, SymmetricKey,
     };
     use cosmian_kmip::kmip::{
         kmip_objects::ObjectType,
@@ -406,12 +409,12 @@ mod tests {
 
         // Create a new database key
         let mut cs_rng = CsRng::from_entropy();
-        let db_key = Key::<32>::new(&mut cs_rng);
+        let db_key = SymmetricKey::new(&mut cs_rng);
 
         let db = CachedSqlCipher::instantiate(&file_path).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
-            key: db_key.clone(),
+            key: db_key,
         };
 
         let mut symmetric_key = vec![0; 32];
@@ -589,12 +592,12 @@ mod tests {
 
         // Create a new database key
         let mut cs_rng = CsRng::from_entropy();
-        let db_key = Key::<32>::new(&mut cs_rng);
+        let db_key = SymmetricKey::new(&mut cs_rng);
 
         let db = CachedSqlCipher::instantiate(&file_path).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
-            key: db_key.clone(),
+            key: db_key,
         };
 
         let uid = Uuid::new_v4().to_string();
@@ -678,12 +681,12 @@ mod tests {
 
         // Create a new database key
         let mut cs_rng = CsRng::from_entropy();
-        let db_key = Key::<32>::new(&mut cs_rng);
+        let db_key = SymmetricKey::new(&mut cs_rng);
 
         let db = CachedSqlCipher::instantiate(&file_path).await?;
         let params = ExtraDatabaseParams {
             group_id: 0,
-            key: db_key.clone(),
+            key: db_key,
         };
 
         let mut symmetric_key = vec![0; 32];

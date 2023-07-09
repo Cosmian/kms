@@ -26,7 +26,7 @@ pub async fn destroy_operation(
 ) -> KResult<DestroyResponse> {
     let unique_identifier = &request
         .unique_identifier
-        .to_owned()
+        .clone()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
     // retrieve the object
@@ -55,7 +55,7 @@ pub async fn destroy_operation(
             {
                 let _ = destroy_key(&public_key_id, kms, user, params).await;
             }
-            if let KeyFormatType::CoverCryptSecretKey = private_key.key_block()?.key_format_type {
+            if private_key.key_block()?.key_format_type == KeyFormatType::CoverCryptSecretKey {
                 destroy_user_decryption_keys(unique_identifier, kms, user, params).await?
             }
         }
@@ -67,8 +67,8 @@ pub async fn destroy_operation(
                 public_key.attributes()?.get_link(LinkType::PrivateKeyLink)
             {
                 if let Ok(private_key) = destroy_key(&private_key_id, kms, user, params).await {
-                    if let KeyFormatType::CoverCryptSecretKey =
-                        private_key.key_block()?.key_format_type
+                    if private_key.key_block()?.key_format_type
+                        == KeyFormatType::CoverCryptSecretKey
                     {
                         destroy_user_decryption_keys(&private_key_id, kms, user, params).await?
                     }
@@ -127,7 +127,7 @@ async fn destroy_key_core(
 }
 
 /// Revoke a key from its id
-pub(crate) async fn destroy_key(
+pub async fn destroy_key(
     unique_identifier: &str,
     kms: &KMS,
     user: &str,

@@ -27,7 +27,7 @@ pub async fn revoke_operation(
     //TODO http://gitlab.cosmian.com/core/cosmian_server/-/issues/131  Reasons should be kept
     let unique_identifier = &request
         .unique_identifier
-        .to_owned()
+        .clone()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
     // retrieve the object
@@ -80,7 +80,7 @@ pub async fn revoke_operation(
                 )
                 .await;
             }
-            if let KeyFormatType::CoverCryptSecretKey = private_key.key_block()?.key_format_type {
+            if private_key.key_block()?.key_format_type == KeyFormatType::CoverCryptSecretKey {
                 revoke_user_decryption_keys(
                     unique_identifier,
                     request.revocation_reason,
@@ -117,8 +117,8 @@ pub async fn revoke_operation(
                 )
                 .await
                 {
-                    if let KeyFormatType::CoverCryptSecretKey =
-                        private_key.key_block()?.key_format_type
+                    if private_key.key_block()?.key_format_type
+                        == KeyFormatType::CoverCryptSecretKey
                     {
                         revoke_user_decryption_keys(
                             &private_key_id,
@@ -186,7 +186,7 @@ async fn revoke_key_core(
 }
 
 /// Revoke a key from its id
-pub(crate) async fn revoke_key(
+pub async fn revoke_key(
     unique_identifier: &str,
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<u64>,

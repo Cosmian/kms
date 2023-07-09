@@ -8,7 +8,7 @@ use eyre::Context;
 #[derive(Debug, Args, Default)]
 pub struct JwtAuthConfig {
     /// The issuer URI of the JWT token
-    ///    
+    ///
     /// For Auth0, this is the delegated authority domain configured on Auth0, for instance
     /// `https://<your-tenant>.<region>.auth0.com/`
     ///

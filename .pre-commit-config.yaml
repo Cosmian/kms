@@ -7,7 +7,8 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-exclude: crate/cli/test_data|crate/cli/demo.sh|scripts/deploy_sgx.sh|documentation/pandoc|documentation/overrides|crate/cli/remove/kms.json|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs
+exclude: 
+  crate/cli/test_data|crate/cli/demo.sh|scripts/deploy_sgx.sh|documentation/pandoc|documentation/overrides|crate/cli/remove/kms.json|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v2.1.1
@@ -78,17 +79,6 @@ repos:
     hooks:
       - id: cargo-check
 
-  - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.7
-    hooks:
-      - id: cargo-update
-      - id: clippy-autofix-all
-      - id: clippy-autofix-pedantic
-      - id: clippy-autofix-nursery
-      - id: clippy-autofix-others
-      - id: cargo-format
-      - id: dprint-toml-fix
-
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0
     hooks:
@@ -118,7 +108,7 @@ repos:
       - id: name-tests-test
       - id: requirements-txt-fixer
       - id: sort-simple-yaml
-      - id: trailing-whitespace
+      # - id: trailing-whitespace
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
@@ -126,3 +116,19 @@ repos:
       - id: black
         # avoid clash with `double-quote-string-fixer`
         args: [--skip-string-normalization]
+
+  - repo: https://github.com/Cosmian/git-hooks.git
+    rev: v1.0.11
+    hooks:
+      - id: dprint-toml-fix
+      - id: cargo-format
+      - id: cargo-update
+      # - id: cargo-outdated
+      - id: cargo-udeps
+      # - id: cargo-tests-all
+      # - id: cargo-test-doc
+      - id: clippy-autofix-all
+      - id: clippy-autofix-pedantic
+      - id: clippy-autofix-nursery
+      - id: clippy-autofix-others
+      - id: clippy-all-targets-all-features

@@ -1,6 +1,6 @@
 use cloudproof::reexport::cover_crypt::{
     abe_policy::{Attribute, Policy},
-    statics::CoverCryptX25519Aes256,
+    Covercrypt,
 };
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
@@ -26,7 +26,7 @@ use crate::{
 /// is to "revoke" the list of given attributes by increasing their value
 pub async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
-    cover_crypt: CoverCryptX25519Aes256,
+    cover_crypt: Covercrypt,
     master_private_key_uid: &str,
     attributes: &Attributes,
     owner: &str,
@@ -141,7 +141,7 @@ fn rotate_policy(
 /// Rekey the Master keys given the provided Private Master Key and Policy
 /// Return the Public Mater Key Identifier
 async fn rekey_master_keys(
-    cover_crypt: &CoverCryptX25519Aes256,
+    cover_crypt: &Covercrypt,
     kmip_server: &KMS,
     master_private_key_uid: &str,
     master_private_key: &Object,
@@ -212,7 +212,7 @@ async fn rekey_master_keys(
 
 async fn refresh_all_user_decryption_keys(
     kmip_server: &KMS,
-    cover_crypt: CoverCryptX25519Aes256,
+    cover_crypt: Covercrypt,
     master_private_key_uid: &str,
     user_decryption_key_unique_identifiers: &[String],
     preserve_access_to_old_partitions: bool,

@@ -1,7 +1,6 @@
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
-    symmetric_crypto::nonce::{Nonce, NonceTrait},
-    CsRng,
+    Aes256Gcm, CsRng, Nonce, RandomFixedSizeCBytes,
 };
 use cosmian_kmip::kmip::{
     kmip_operations::{Decrypt, Encrypt},
@@ -9,7 +8,7 @@ use cosmian_kmip::kmip::{
 };
 
 use crate::{
-    crypto::symmetric::{create_symmetric_key, AesGcmSystem, NONCE_LENGTH},
+    crypto::symmetric::{create_symmetric_key, AesGcmSystem},
     DecryptionSystem, EncryptionSystem,
 };
 
@@ -24,7 +23,7 @@ pub fn test_aes() {
     rng.fill_bytes(&mut data);
     let mut uid = vec![0_u8; 32];
     rng.fill_bytes(&mut uid);
-    let nonce: Nonce<NONCE_LENGTH> = Nonce::new(&mut rng);
+    let nonce: Nonce<{ Aes256Gcm::NONCE_LENGTH }> = Nonce::new(&mut rng);
     // encrypt
     let enc_res = aes
         .encrypt(&Encrypt {

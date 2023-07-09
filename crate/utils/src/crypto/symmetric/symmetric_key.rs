@@ -6,6 +6,7 @@ use cosmian_kmip::kmip::{
 };
 
 /// Create a symmetric key for the given algorithm
+#[must_use]
 pub fn create_symmetric_key(
     key_bytes: &[u8],
     cryptographic_algorithm: CryptographicAlgorithm,

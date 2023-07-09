@@ -20,9 +20,9 @@ pub enum EllipticCurveCommands {
 impl EllipticCurveCommands {
     pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         match self {
-            EllipticCurveCommands::Keys(command) => command.process(client_connector).await?,
-            EllipticCurveCommands::Encrypt(action) => action.run(client_connector).await?,
-            EllipticCurveCommands::Decrypt(action) => action.run(client_connector).await?,
+            Self::Keys(command) => command.process(client_connector).await?,
+            Self::Encrypt(action) => action.run(client_connector).await?,
+            Self::Decrypt(action) => action.run(client_connector).await?,
         };
         Ok(())
     }

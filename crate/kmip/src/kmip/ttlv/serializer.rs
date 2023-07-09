@@ -454,8 +454,7 @@ impl<'a> ser::SerializeSeq for &'a mut TTLVSerializer {
             }
             v => {
                 return Err(TtlvError::custom(format!(
-                    "'unexpected value for struct: {:?}",
-                    v
+                    "'unexpected value for struct: {v:?}"
                 )))
             }
         }
@@ -658,8 +657,7 @@ impl<'a> ser::SerializeStruct for &'a mut TTLVSerializer {
             }
             v => {
                 return Err(TtlvError::custom(format!(
-                    "'unexpected value for struct: {:?}",
-                    v
+                    "'unexpected value for struct: {v:?}"
                 )))
             }
         };

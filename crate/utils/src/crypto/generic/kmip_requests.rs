@@ -36,9 +36,9 @@ pub fn build_encryption_request(
 ) -> Result<Encrypt, std::io::Error> {
     let data_to_encrypt = if encryption_policy.is_some() {
         DataToEncrypt {
-            plaintext,
             encryption_policy,
             header_metadata,
+            plaintext,
         }
         .to_bytes()
     } else {

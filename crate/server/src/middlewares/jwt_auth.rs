@@ -27,10 +27,11 @@ pub struct JwtAuth {
 }
 
 impl JwtAuth {
+    #[must_use]
     pub fn new(config: &ServerConfig) -> Self {
         if let Some(jwt_issuer_uri) = &config.jwt_issuer_uri {
             if let Some(jwks) = &config.jwks {
-                return JwtAuth {
+                return Self {
                     jwt_config: Some(JwtConfig {
                         jwt_issuer_uri: jwt_issuer_uri.clone(),
                         jwks: jwks.clone(),
@@ -39,7 +40,7 @@ impl JwtAuth {
                 }
             }
         }
-        JwtAuth { jwt_config: None }
+        Self { jwt_config: None }
     }
 }
 
@@ -157,6 +158,7 @@ pub struct JwtAuthClaim {
 }
 
 impl JwtAuthClaim {
+    #[must_use]
     pub fn new(email: String) -> Self {
         Self { email }
     }

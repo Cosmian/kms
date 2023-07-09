@@ -150,6 +150,7 @@ impl Object {
     }
 
     /// Return the `KeyWrappingData` of that object if any
+    #[must_use]
     pub fn key_wrapping_data(&self) -> Option<&KeyWrappingData> {
         match self.key_block() {
             Ok(kb) => kb.key_wrapping_data.as_ref(),
