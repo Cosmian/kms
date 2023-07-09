@@ -38,7 +38,7 @@ pub async fn import(
     match object_type {
         ObjectType::SymmetricKey | ObjectType::PublicKey | ObjectType::PrivateKey => {
             // unwrap before storing if requested
-            if let Some(KeyWrapType::NotWrapped) = request.key_wrap_type {
+            if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
                 unwrap_key(object_type, object_key_block, kms, owner, params).await?;
             }
             // replace attributes

@@ -5,7 +5,7 @@ from cloudproof_cover_crypt import (
     Attribute,
     MasterSecretKey,
     Policy,
-    PublicKey,
+    MasterPublicKey,
     UserSecretKey,
 )
 

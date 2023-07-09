@@ -1,4 +1,4 @@
-use std::sync::mpsc::SendError;
+use std::{array::TryFromSliceError, sync::mpsc::SendError};
 
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
 use cosmian_kmip::{
@@ -131,6 +131,12 @@ impl From<QueryPayloadError> for KmsError {
 impl From<KmipUtilsError> for KmsError {
     fn from(e: KmipUtilsError) -> Self {
         Self::CryptographicError(e.to_string())
+    }
+}
+
+impl From<TryFromSliceError> for KmsError {
+    fn from(e: TryFromSliceError) -> Self {
+        Self::ConversionError(e.to_string())
     }
 }
 

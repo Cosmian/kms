@@ -80,7 +80,7 @@ async fn test_encrypt_decrypt_with_ids() -> Result<(), CliError> {
     run_encrypt_decrypt_test(&ctx.owner_cli_conf_path, &key_id)
 }
 
-pub(crate) fn run_encrypt_decrypt_test(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
+pub fn run_encrypt_decrypt_test(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

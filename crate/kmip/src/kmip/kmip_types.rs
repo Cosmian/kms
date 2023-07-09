@@ -931,6 +931,7 @@ impl Attributes {
     }
 
     /// Get the link to the object.
+    #[must_use]
     pub fn get_link(&self, link_type: LinkType) -> Option<String> {
         if let Some(links) = &self.link {
             links

@@ -8,7 +8,6 @@ edition = "2021"
 curve25519 = []
 
 [dependencies]
-aes = "0.8"
 argon2 = "0.5.0"
 bitflags = { workspace = true }
 cloudproof = { workspace = true }
@@ -20,6 +19,7 @@ serde_json = { workspace = true }
 strum = { workspace = true }
 strum_macros = { workspace = true }
 thiserror = { workspace = true }
+tiny-keccak = { version = "2.0.2", features = ["shake"] } # TODO(E.C): should be fixed in cosmian_crypto_core
 tracing = { workspace = true }
 
 [dev-dependencies]

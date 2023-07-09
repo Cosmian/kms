@@ -370,8 +370,7 @@ impl<'de> Deserialize<'de> for TTLV {
                                     let hex: String = map.next_value()?;
                                     if &hex[0..2] != "0x" {
                                         return Err(de::Error::custom(format!(
-                                            "Invalid value for Mask: {}",
-                                            hex
+                                            "Invalid value for Mask: {hex}"
                                         )))
                                     }
                                     let bytes = hex::decode(&hex[2..]).map_err(|_e| {

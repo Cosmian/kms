@@ -1,4 +1,4 @@
-use cloudproof::reexport::cover_crypt::statics::CoverCryptX25519Aes256;
+use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
@@ -79,7 +79,7 @@ pub async fn rekey_keypair(
         Some(CryptographicAlgorithm::CoverCrypt) => {
             rekey_keypair_cover_crypt(
                 kms,
-                CoverCryptX25519Aes256::default(),
+                Covercrypt::default(),
                 &owm.id,
                 attributes,
                 user,

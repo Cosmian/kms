@@ -138,7 +138,7 @@ impl KmsRestClient {
     /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
     /// together with its attributes.
     /// The Key Format Type, Key Wrap Type, Key Compression Type and Key Wrapping Specification
-    /// SHALL have the same semantics as for the Get operation.  
+    /// SHALL have the same semantics as for the Get operation.
     /// If the Managed Object has been Destroyed then the key material for the specified managed object
     /// SHALL not be returned in the response.
     /// The server SHALL copy the Unique Identifier returned by this operations

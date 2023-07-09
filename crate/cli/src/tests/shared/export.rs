@@ -32,7 +32,7 @@ pub fn export(
 ) -> Result<(), CliError> {
     let mut args: Vec<String> = vec!["keys", "export", "--key-id", key_id, key_file]
         .iter()
-        .map(|s| s.to_string())
+        .map(|s| (*s).to_string())
         .collect();
     if bytes {
         args.push("--bytes".to_owned());

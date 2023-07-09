@@ -9,7 +9,7 @@ use std::{
 use actix_server::ServerHandle;
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
-use cloudproof::reexport::crypto_core::{symmetric_crypto::key::Key, CsRng, KeyTrait};
+use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kms_server::{
     config::{
         db::DBConfig, http::HTTPConfig, jwt_auth_config::JwtAuthConfig, ClapConfig, ServerConfig,
@@ -274,7 +274,7 @@ pub async fn init_test_server_options(
 }
 
 /// Generate a user configuration for user.client@acme.com and return the file path
-pub(crate) fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<String, CliError> {
+pub fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<String, CliError> {
     let mut user_conf = owner_cli_conf.clone();
     user_conf.ssl_client_pkcs12_path =
         Some("test_data/certificates/user.client.acme.com.p12".to_string());
@@ -288,10 +288,10 @@ pub(crate) fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<
 }
 
 /// Generate an invalid configuration by changin the database secret  and return the file path
-pub(crate) fn generate_invalid_conf(correct_conf: &CliConf) -> String {
+pub fn generate_invalid_conf(correct_conf: &CliConf) -> String {
     // Create a new database key
     let mut cs_rng = CsRng::from_entropy();
-    let db_key = Key::<32>::new(&mut cs_rng);
+    let db_key = SymmetricKey::new(&mut cs_rng);
 
     let mut invalid_conf = correct_conf.clone();
     // and a temp file

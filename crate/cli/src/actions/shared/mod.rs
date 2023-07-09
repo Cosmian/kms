@@ -2,7 +2,7 @@ mod export_key;
 mod import_key;
 mod locate;
 mod unwrap_key;
-pub(crate) mod utils;
+pub mod utils;
 mod wrap_key;
 
 pub use export_key::ExportKeyAction;

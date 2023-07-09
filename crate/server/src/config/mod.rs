@@ -155,7 +155,7 @@ impl ServerConfig {
         // Initialize the HTTP server
         let (hostname_port, server_pkcs_12, verify_cert) = conf.http.init()?;
 
-        let server_conf = ServerConfig {
+        let server_conf = Self {
             jwks: conf.auth.fetch_jwks().await?,
             jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
             jwt_audience: conf.auth.jwt_audience.clone(),

@@ -18,7 +18,7 @@ lto = true
 [workspace.dependencies]
 env_logger = "0.10"
 base64 = "0.21"
-cloudproof = "1.3.0"
+cloudproof = "2.1.0"
 base64-url = "2.0"
 bitflags = "2.3"
 clap = { version = "4.1", default-features = false, features = [

@@ -27,6 +27,7 @@ pub struct DataToEncrypt {
 
 impl DataToEncrypt {
     /// Serialize the data to encrypt to bytes
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = Vec::new();
         // Write the encryption policy

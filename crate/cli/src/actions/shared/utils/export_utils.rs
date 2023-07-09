@@ -40,7 +40,7 @@ pub async fn export_object(
         wrapping_key_id.as_ref().map(|id| KeyWrappingData {
             wrapping_method: WrappingMethod::Encrypt,
             encryption_key_information: Some(EncryptionKeyInformation {
-                unique_identifier: id.to_owned(),
+                unique_identifier: id.clone(),
                 cryptographic_parameters: None,
             }),
             mac_or_signature_key_information: None,
