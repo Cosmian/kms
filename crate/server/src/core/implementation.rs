@@ -26,6 +26,7 @@ use cosmian_kms_utils::{
         },
         symmetric::{create_symmetric_key, AesGcmSystem},
     },
+    tagging::{check_user_tags, get_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
 use tracing::trace;
@@ -176,21 +177,30 @@ impl KMS {
     }
 
     /// Create a new symmetric key and the corresponding system tags
-    /// The tags will contain
+    /// The tags will contain the user tags and the following:
     ///  - "_kk"
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
-    pub(crate) fn create_symmetric_key(
+    pub(crate) fn create_symmetric_key_and_tags(
         &self,
         rng: &mut CsRng,
         request: &Create,
-        tags: &mut HashSet<String>,
     ) -> KResult<(Object, HashSet<String>)> {
         let attributes = &request.attributes;
+
+        // check that the cryptographic algorithm is specified
         let cryptographic_algorithm = &attributes.cryptographic_algorithm.ok_or_else(|| {
             KmsError::InvalidRequest(
                 "the cryptographic algorithm must be specified for secret key creation".to_string(),
             )
         })?;
+
+        // recover tags
+        let mut tags = get_tags(attributes);
+        check_user_tags(&tags)?;
+        //update the tags
+        tags.insert("_kk".to_string());
+        tags.insert("_".to_string() + &cryptographic_algorithm.to_string().to_lowercase());
+
         match cryptographic_algorithm {
             CryptographicAlgorithm::AES
             | CryptographicAlgorithm::ChaCha20
@@ -206,19 +216,17 @@ impl KMS {
                         .to_string()
                 )),
                 Some(KeyFormatType::TransparentSymmetricKey) => {
+                    // create the key
                     let key_len: usize = attributes
                         .cryptographic_length
                         .map(|v| v as usize / 8)
                         .unwrap_or(aes_256_gcm_pure::KEY_LENGTH);
                     let mut symmetric_key = vec![0; key_len];
                     rng.fill_bytes(&mut symmetric_key);
-                    Ok((
-                        create_symmetric_key(&symmetric_key, *cryptographic_algorithm),
-                        HashSet::from([
-                            "_kk".to_string(),
-                            "_" + cryptographic_algorithm.to_string().to_lowercase(),
-                        ]),
-                    ))
+                    let object = create_symmetric_key(&symmetric_key, *cryptographic_algorithm);
+
+                    //return the object and the tags
+                    Ok((object, tags))
                 }
                 Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
                     "unable to generate a symmetric key for format: {other}"
@@ -230,41 +238,69 @@ impl KMS {
         }
     }
 
-    pub(crate) async fn create_private_key(
+    /// Create a private key and the corresponding system tags
+    /// The tags will contain the user tags and the following:
+    ///  - "_sk"
+    ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
+    ///
+    /// Only Covercrypt user decryption keys can be created using this function
+    pub(crate) async fn create_private_key_and_tags(
         &self,
         create_request: &Create,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Object> {
+    ) -> KResult<(Object, HashSet<String>)> {
         trace!("Internal create private key");
         let attributes = &create_request.attributes;
-        match &attributes.cryptographic_algorithm {
-            Some(CryptographicAlgorithm::CoverCrypt) => {
-                create_user_decryption_key(
+
+        // check that the cryptographic algorithm is specified
+        let cryptographic_algorithm = &attributes.cryptographic_algorithm.ok_or_else(|| {
+            KmsError::InvalidRequest(
+                "the cryptographic algorithm must be specified for private key creation"
+                    .to_string(),
+            )
+        })?;
+
+        // recover tags
+        let mut tags = get_tags(attributes);
+        check_user_tags(&tags)?;
+        //update the tags
+        tags.insert("_sk".to_string());
+        tags.insert("_".to_string() + &cryptographic_algorithm.to_string().to_lowercase());
+
+        match &cryptographic_algorithm {
+            CryptographicAlgorithm::CoverCrypt => {
+                let object = create_user_decryption_key(
                     self,
                     CoverCryptX25519Aes256::default(),
                     create_request,
                     owner,
                     params,
                 )
-                .await
+                .await?;
+                // add algorithm to tags
+                //return the object and the tags
+                Ok((object, tags))
             }
-            Some(other) => kms_not_supported!(
+            other => kms_not_supported!(
                 "the creation of a private key for algorithm: {other:?} is not supported"
             ),
-            None => kms_bail!(KmsError::InvalidRequest(
-                "the cryptographic algorithm must be specified for private key creation"
-                    .to_string()
-            )),
         }
     }
 
-    pub(crate) async fn create_key_pair_(
+    /// Create a key pair and the corresponding system tags
+    /// The tags will contain the user tags and the following:
+    ///  - "_sk" for the private key
+    ///  - "_pk" for the public key
+    ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
+    ///
+    /// Only Covercrypt user decryption keys can be created using this function
+    pub(crate) async fn create_key_pair_and_tags(
         &self,
         request: &CreateKeyPair,
         private_key_uid: &str,
         public_key_uid: &str,
-    ) -> KResult<KeyPair> {
+    ) -> KResult<(KeyPair, HashSet<String>, HashSet<String>)> {
         trace!("Internal create key pair");
         let attributes = request
             .common_attributes
@@ -276,8 +312,26 @@ impl KMS {
                     "Attributes must be provided in a CreateKeyPair request".to_owned(),
                 )
             })?;
-        match &attributes.cryptographic_algorithm {
-            Some(CryptographicAlgorithm::ECDH) => match attributes.key_format_type {
+
+        // check that the cryptographic algorithm is specified
+        let cryptographic_algorithm = &attributes.cryptographic_algorithm.ok_or_else(|| {
+            KmsError::InvalidRequest(
+                "the cryptographic algorithm must be specified for key pair creation".to_string(),
+            )
+        })?;
+
+        // recover tags
+        let mut tags = get_tags(attributes);
+        check_user_tags(&tags)?;
+        //update the tags
+        tags.insert("_".to_string() + &cryptographic_algorithm.to_string().to_lowercase());
+        let mut sk_tags = tags.clone();
+        sk_tags.insert("_sk".to_string());
+        let mut pk_tags = tags.clone();
+        pk_tags.insert("_pk".to_string());
+
+        let object = match &cryptographic_algorithm {
+            CryptographicAlgorithm::ECDH => match attributes.key_format_type {
                 None => kms_bail!(KmsError::InvalidRequest(
                     "Unable to create a EC key, the format type is not specified".to_string()
                 )),
@@ -289,7 +343,6 @@ impl KMS {
                         RecommendedCurve::CURVE25519 => {
                             let mut rng = self.rng.lock().expect("RNG lock poisoned");
                             create_ec_key_pair(&mut *rng, private_key_uid, public_key_uid)
-                                .map_err(Into::into)
                         }
                         other => kms_not_supported!(
                             "Generation of Key Pair for curve: {other:?}, is not supported"
@@ -300,7 +353,7 @@ impl KMS {
                     kms_not_supported!("Unable to generate an DH key pair for format: {other}")
                 }
             },
-            Some(CryptographicAlgorithm::CoverCrypt) => {
+            CryptographicAlgorithm::CoverCrypt => {
                 cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
                     &CoverCryptX25519Aes256::default(),
                     request,
@@ -309,12 +362,10 @@ impl KMS {
                 )
                 .map_err(Into::into)
             }
-            Some(other) => kms_not_supported!(
+            other => kms_not_supported!(
                 "The creation of a key pair for algorithm: {other:?} is not supported"
             ),
-            None => kms_bail!(KmsError::InvalidRequest(
-                "The cryptographic algorithm must be specified for key pair creation".to_string()
-            )),
-        }
+        }?;
+        Ok((object, sk_tags, pk_tags))
     }
 }
