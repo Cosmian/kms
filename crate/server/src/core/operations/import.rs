@@ -4,7 +4,10 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Import, ImportResponse},
     kmip_types::{KeyWrapType, StateEnumeration},
 };
-use cosmian_kms_utils::{access::ExtraDatabaseParams, tagging::get_tags};
+use cosmian_kms_utils::{
+    access::ExtraDatabaseParams,
+    tagging::{check_user_tags, get_tags},
+};
 use tracing::{debug, warn};
 
 use super::wrapping::unwrap_key;
@@ -25,8 +28,9 @@ pub async fn import(
         kms_bail!("Importing objects with uniquer identifiers starting with `[` is not supported");
     }
 
-    // recover tags
-    let tags = get_tags(&request.attributes);
+    // recover user tags
+    let mut tags = get_tags(&request.attributes);
+    check_user_tags(&tags)?;
 
     let mut object = request.object;
     let object_type = object.object_type();
@@ -42,9 +46,26 @@ pub async fn import(
                 key_material: object_key_block.key_value.key_material.clone(),
                 attributes: Some(request.attributes),
             };
+            // recover the cryptographic algorithm
+            let cryptographic_algorithm = object_key_block.cryptographic_algorithm;
+            // insert the tag corresponding to the cryptographic algorithm
+            tags.insert("_".to_string() + &cryptographic_algorithm.to_string().to_lowercase());
+            // insert the tag corresponding to the object type
+            match object_type {
+                ObjectType::SymmetricKey => {
+                    tags.insert("_kk".to_string());
+                }
+                ObjectType::PublicKey => {
+                    tags.insert("_pk".to_string());
+                }
+                ObjectType::PrivateKey => {
+                    tags.insert("_sk".to_string());
+                }
+                _ => unreachable!(),
+            }
         }
         x => {
-            warn!("Attributes are not yet supported for objects of type : {x}")
+            warn!("Import is not yet supported for objects of type : {x}")
         }
     }
     // check if the object will be replaced if it already exists

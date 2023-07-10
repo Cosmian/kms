@@ -2,10 +2,7 @@ use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{Create, CreateResponse},
 };
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
-    tagging::{check_user_tags, get_tags},
-};
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, trace};
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
@@ -21,16 +18,15 @@ pub async fn create(
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }
 
-    // recover tags
-    let tags = get_tags(&request.attributes);
-    check_user_tags(&tags)?;
-
-    let object = match &request.object_type {
+    let (object, tags) = match &request.object_type {
         ObjectType::SymmetricKey => {
             let mut rng = kms.rng.lock().expect("failed locking the CsRng");
-            kms.create_symmetric_key(&mut rng, &request, owner)?
+            kms.create_symmetric_key_and_tags(&mut rng, &request)?
         }
-        ObjectType::PrivateKey => kms.create_private_key(&request, owner, params).await?,
+        ObjectType::PrivateKey => {
+            kms.create_private_key_and_tags(&request, owner, params)
+                .await?
+        }
         _ => {
             kms_bail!(KmsError::NotSupported(format!(
                 "This server does not yet support creation of: {}",
