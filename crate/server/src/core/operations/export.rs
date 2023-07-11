@@ -47,7 +47,7 @@ pub async fn export(
         1 => owm_s.pop().expect("failed extracting the object"),
         _ => {
             return Err(KmsError::InvalidRequest(format!(
-                "too many items for {uid_or_tags}",
+                "too many objects for {uid_or_tags}",
             )))
         }
     };

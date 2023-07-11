@@ -72,7 +72,7 @@ pub async fn rekey_keypair(
         })?,
         _ => {
             return Err(KmsError::InvalidRequest(format!(
-                "too many items for {uid_or_tags}",
+                "too many objects for {uid_or_tags}",
             )))
         }
     };
