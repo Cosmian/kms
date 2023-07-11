@@ -26,9 +26,6 @@ pub struct CoverCryptEncryption {
     policy: Policy,
 }
 
-/// Maximum clear text size that can be safely encrypted with AES GCM (using a single random nonce)
-pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
-
 impl CoverCryptEncryption {
     pub fn instantiate(
         cover_crypt: Covercrypt,

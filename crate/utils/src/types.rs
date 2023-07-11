@@ -55,7 +55,6 @@ impl std::fmt::Display for ObjectOperationTypes {
     }
 }
 
-// #[derive(Clone)]
 pub struct ExtraDatabaseParams {
     pub group_id: u128,
     pub key: SymmetricKey<32>,

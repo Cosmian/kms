@@ -8,9 +8,10 @@ use cosmian_kmip::kmip::{
 };
 use tracing::{debug, trace};
 
-use crate::crypto::error::{result::CryptoResultHelper, CryptoError};
-// use super::user_key::unwrap_user_decryption_key_object;
-use crate::{DecryptionSystem, EncryptionSystem};
+use crate::{
+    crypto::error::{result::CryptoResultHelper, CryptoError},
+    DecryptionSystem, EncryptionSystem,
+};
 
 /// Encrypt a single block of data using an hybrid encryption mode
 /// Cannot be used as a stream cipher
@@ -19,12 +20,13 @@ pub struct EciesEncryption {
     public_key: X25519PublicKey,
 }
 
-/// Maximum clear text size that can be safely encrypted with AES GCM (using a single random nonce)
-pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
+/// x25519 key length
+pub const X25519_PUBLIC_KEY_LENGTH: usize = 32;
+pub const X25519_PRIVATE_KEY_LENGTH: usize = 32;
 
 impl EciesEncryption {
     pub fn instantiate(public_key_uid: &str, public_key: &Object) -> Result<Self, CryptoError> {
-        let public_key_bytes: [u8; 32] =
+        let public_key_bytes: [u8; X25519_PUBLIC_KEY_LENGTH] =
             public_key.key_block()?.key_bytes()?.as_slice().try_into()?;
         let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
 
@@ -49,7 +51,7 @@ impl EncryptionSystem for EciesEncryption {
         let mut rng = CsRng::from_entropy();
 
         let ciphertext =
-            EciesX25519XChaCha20::encrypt(&mut rng, &self.public_key, &plaintext, None).unwrap();
+            EciesX25519XChaCha20::encrypt(&mut rng, &self.public_key, &plaintext, None)?;
 
         debug!(
             "Encrypted data with public key {} of len (CT/Enc): {}/{}",
@@ -97,9 +99,7 @@ impl DecryptionSystem for EciesDecryption {
         })?;
 
         // Decrypt the encrypted message
-        let plaintext =
-            EciesX25519XChaCha20::decrypt(&self.private_key, encrypted_bytes, None).unwrap();
-        //TODO(ecse): remove all unwrap()
+        let plaintext = EciesX25519XChaCha20::decrypt(&self.private_key, encrypted_bytes, None)?;
 
         debug!(
             "Decrypted data with user key {} of len (CT/Enc): {}/{}",

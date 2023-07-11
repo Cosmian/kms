@@ -15,10 +15,11 @@ use cosmian_kmip::{
 };
 use num_bigint::BigUint;
 
+use super::encryption_decryption::X25519_PRIVATE_KEY_LENGTH;
 use crate::KeyPair;
 
-pub const SECRET_KEY_LENGTH: usize = 32;
-pub const Q_LENGTH_BITS: i32 = 32_i32;
+pub const SECRET_KEY_LENGTH: usize = X25519_PRIVATE_KEY_LENGTH;
+pub const Q_LENGTH_BITS: i32 = X25519_PRIVATE_KEY_LENGTH as i32;
 
 /// convert to a curve 25519 256 bits KMIP Public Key
 /// no check performed

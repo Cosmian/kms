@@ -9,7 +9,10 @@ use cosmian_kmip::kmip::{
 };
 
 use crate::{
-    crypto::error::{result::CryptoResultHelper, CryptoError},
+    crypto::{
+        curve_25519::encryption_decryption::{X25519_PRIVATE_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH},
+        error::{result::CryptoResultHelper, CryptoError},
+    },
     crypto_bail,
 };
 
@@ -44,8 +47,8 @@ where
                         q_string,
                     } => match recommended_curve {
                         RecommendedCurve::CURVE25519 => {
-                            let q: [u8; 32] = q_string.as_slice().try_into()?;
-                            //TODO(ecse): export PUBLIC_KEY_LENGTH
+                            let q: [u8; X25519_PUBLIC_KEY_LENGTH] =
+                                q_string.as_slice().try_into()?;
                             let public_key = X25519PublicKey::try_from_bytes(q).context(
                                 "Unable to wrap key: wrapping key: failed to parse X25519 public \
                                  key",
@@ -107,7 +110,7 @@ pub fn decrypt_bytes(unwrapping_key: &Object, ciphertext: &[u8]) -> Result<Vec<u
                             d,
                         } => match recommended_curve {
                             RecommendedCurve::CURVE25519 => {
-                                let private_key: [u8; 32] =
+                                let private_key: [u8; X25519_PRIVATE_KEY_LENGTH] =
                                     d.to_bytes_be().as_slice().try_into()?;
                                 let private_key = X25519PrivateKey::try_from_bytes(private_key)
                                     .context(
