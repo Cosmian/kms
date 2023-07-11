@@ -7,16 +7,13 @@ use clap::{
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::Locate,
-    kmip_types::{Attributes, CryptographicAlgorithm},
+    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
 };
 use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_utils::tagging::set_tags;
 use strum::IntoEnumIterator;
 
-use crate::{
-    actions::shared::utils::{export_object, write_bytes_to_file, write_kmip_object_to_file},
-    cli_bail,
-    error::CliError,
-};
+use crate::error::CliError;
 
 /// Locate Objects inside the KMS
 #[derive(Parser, Debug)]
@@ -37,13 +34,38 @@ pub struct LocateKeysAction {
         value_parser = CryptographicAlgorithmParser
     )]
     cryptographic_algorithm: Option<CryptographicAlgorithm>,
+
+    /// Cryptographic length (e.g. key size) in bits
+    #[clap(long = "cryptographic_length", short = 'l')]
+    cryptographic_length: Option<i32>,
+
+    /// key format type as specified by KMIP 2.1 + covercrypt: CoverCryptSecretKey and CoverCryptPublicKey
+    #[clap(long = "key_format_type", short = 'f',
+        value_parser = KeyFormatTypeParser)]
+    key_format_type: Option<KeyFormatType>,
 }
 
 impl LocateKeysAction {
     /// Export a key from the KMS
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
-        // TODO make the Object Type selectable
-        let attributes = Attributes::new(ObjectType::SymmetricKey);
+        // the object type is ignored
+        let mut attributes = Attributes::new(ObjectType::SecretData);
+
+        if let Some(crypto_algo) = self.cryptographic_algorithm {
+            attributes.cryptographic_algorithm = Some(crypto_algo);
+        }
+
+        if let Some(cryptographic_length) = self.cryptographic_length {
+            attributes.cryptographic_length = Some(cryptographic_length);
+        }
+
+        if let Some(key_format_type) = self.key_format_type {
+            attributes.key_format_type = Some(key_format_type);
+        }
+
+        if let Some(tags) = &self.tags {
+            set_tags(&mut attributes, tags)?;
+        }
 
         let locate = Locate {
             maximum_items: None,
@@ -66,6 +88,7 @@ impl LocateKeysAction {
     }
 }
 
+/// Parse a string entered by the user into a CryptographicAlgorithm
 #[derive(Clone)]
 struct CryptographicAlgorithmParser;
 
@@ -98,6 +121,48 @@ impl clap::builder::TypedValueParser for CryptographicAlgorithmParser {
                     ContextKind::SuggestedValue,
                     ContextValue::Strings(
                         CryptographicAlgorithm::iter()
+                            .map(|algo| algo.to_string().to_lowercase())
+                            .collect::<Vec<String>>(),
+                    ),
+                );
+                err
+            })
+    }
+}
+
+/// Parse a string entered by the user into a KeyFormatType
+#[derive(Clone)]
+struct KeyFormatTypeParser;
+
+impl clap::builder::TypedValueParser for KeyFormatTypeParser {
+    type Value = KeyFormatType;
+
+    fn parse_ref(
+        &self,
+        cmd: &clap::Command,
+        arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        KeyFormatType::iter()
+            .find(|algo| {
+                OsString::from(algo.to_string().to_lowercase()) == value.to_ascii_lowercase()
+            })
+            .ok_or_else(|| {
+                let mut err = clap::Error::new(ErrorKind::ValueValidation).with_cmd(cmd);
+                if let Some(arg) = arg {
+                    err.insert(
+                        ContextKind::InvalidArg,
+                        ContextValue::String(arg.to_string()),
+                    );
+                }
+                err.insert(
+                    ContextKind::InvalidValue,
+                    ContextValue::String(value.to_string_lossy().to_string()),
+                );
+                err.insert(
+                    ContextKind::SuggestedValue,
+                    ContextValue::Strings(
+                        KeyFormatType::iter()
                             .map(|algo| algo.to_string().to_lowercase())
                             .collect::<Vec<String>>(),
                     ),

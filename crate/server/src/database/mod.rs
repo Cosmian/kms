@@ -7,7 +7,10 @@ use cosmian_kmip::kmip::{
         Attributes, LinkedObjectIdentifier::TextString, StateEnumeration, UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
+use cosmian_kms_utils::{
+    access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType},
+    tagging::get_tags,
+};
 use lazy_static::lazy_static;
 use rawsql::Loader;
 use serde::{Deserialize, Serialize};
@@ -334,6 +337,7 @@ impl PlaceholderTrait for SqlitePlaceholder {}
 /// to search for items in database.
 /// Returns a tuple containing the stringified query and the values to bind with.
 /// The different placeholder for variable binding is handled by trait specification.
+/// TODO  although this
 pub fn query_from_attributes<P: PlaceholderTrait>(
     attributes: Option<&Attributes>,
     state: Option<StateEnumeration>,
@@ -347,13 +351,36 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
         P::JSON_FN_EXTRACT_PATH,
         P::JSON_NODE_WRAPPING
     );
+
     if let Some(attributes) = attributes {
+        // Links
         if let Some(links) = &attributes.link {
             if !links.is_empty() {
                 if let Some(additional_rq_from) = P::additional_rq_from() {
                     query = format!("{query}, {additional_rq_from}");
                 }
             }
+        }
+
+        // tags
+        let tags = get_tags(attributes);
+        let tags_len = tags.len();
+        if tags_len > 0 {
+            let tags_string = tags
+                .iter()
+                .map(|t| format!("\"{t}\""))
+                .collect::<Vec<String>>()
+                .join("', '");
+            query = format!(
+                "{query} INNER JOIN (
+    SELECT id
+    FROM tags
+    WHERE tag IN ({tags_string}) 
+    GROUP BY id
+    HAVING COUNT(DISTINCT tag) = {tags_len}
+) AS matched_tags
+ON objects.id = matched_tags.id"
+            );
         }
     }
 
@@ -409,5 +436,6 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
         }
     }
 
+    println!("query: {}", query);
     Ok(query)
 }
