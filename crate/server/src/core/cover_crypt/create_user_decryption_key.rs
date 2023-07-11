@@ -90,7 +90,7 @@ async fn create_user_decryption_key_(
         })?,
         _ => {
             return Err(KmsError::InvalidRequest(format!(
-                "get: too many items for master private key {msk_uid_or_tag}",
+                "get: too many objects for master private key {msk_uid_or_tag}",
             )))
         }
     };

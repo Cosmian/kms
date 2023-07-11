@@ -10,7 +10,7 @@ use serde::{
     de::{self, Visitor},
     Deserialize, Serialize,
 };
-use strum_macros::{Display, EnumString};
+use strum_macros::{Display, EnumIter, EnumString};
 
 use super::kmip_objects::ObjectType;
 
@@ -92,7 +92,7 @@ pub enum KeyFormatType {
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Display, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Display, Eq, PartialEq, EnumIter)]
 pub enum CryptographicAlgorithm {
     DES = 0x0000_0001,
     THREE_DES = 0x0000_0002,
