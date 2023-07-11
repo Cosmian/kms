@@ -56,7 +56,7 @@ pub enum SplitKeyMethod {
 }
 
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumIter)]
 pub enum KeyFormatType {
     Raw = 0x01,
     Opaque = 0x02,
