@@ -450,7 +450,7 @@ checksum = "a564d521dd56509c4c47480d00b80ee55f7e385ae48db5744c67ad50c92d2ebf"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]
@@ -712,7 +712,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]
@@ -724,7 +724,7 @@ checksum = "2da6da31387c7e4ef160ffab6d5e7f00c42626fe39aea70a7b0f1773f7dd6c1b"
 [[package]]
 name = "cloudproof"
 version = "2.1.0"
-source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#f159236cef90e447f4023062f7386255add4b308"
+source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#d03e10029762666a1facdfc796cd6d676f19b239"
 dependencies = [
  "cloudproof_aesgcm",
  "cloudproof_anonymization",
@@ -737,7 +737,7 @@ dependencies = [
 [[package]]
 name = "cloudproof_aesgcm"
 version = "0.1.0"
-source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#f159236cef90e447f4023062f7386255add4b308"
+source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#d03e10029762666a1facdfc796cd6d676f19b239"
 dependencies = [
  "cloudproof_cover_crypt",
  "cosmian_ffi_utils",
@@ -746,7 +746,7 @@ dependencies = [
 [[package]]
 name = "cloudproof_anonymization"
 version = "0.1.0"
-source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#f159236cef90e447f4023062f7386255add4b308"
+source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#d03e10029762666a1facdfc796cd6d676f19b239"
 dependencies = [
  "argon2",
  "base64 0.21.2",
@@ -764,7 +764,7 @@ dependencies = [
 [[package]]
 name = "cloudproof_cover_crypt"
 version = "12.0.0"
-source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#f159236cef90e447f4023062f7386255add4b308"
+source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#d03e10029762666a1facdfc796cd6d676f19b239"
 dependencies = [
  "cosmian_cover_crypt",
  "cosmian_crypto_core",
@@ -776,7 +776,7 @@ dependencies = [
 [[package]]
 name = "cloudproof_ecies"
 version = "0.1.0"
-source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#f159236cef90e447f4023062f7386255add4b308"
+source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#d03e10029762666a1facdfc796cd6d676f19b239"
 dependencies = [
  "cloudproof_cover_crypt",
  "cosmian_ffi_utils",
@@ -785,7 +785,7 @@ dependencies = [
 [[package]]
 name = "cloudproof_findex"
 version = "4.0.1"
-source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#f159236cef90e447f4023062f7386255add4b308"
+source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#d03e10029762666a1facdfc796cd6d676f19b239"
 dependencies = [
  "base64 0.21.2",
  "cosmian_crypto_core",
@@ -802,7 +802,7 @@ dependencies = [
 [[package]]
 name = "cloudproof_fpe"
 version = "0.2.0"
-source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#f159236cef90e447f4023062f7386255add4b308"
+source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=update_cover_crypt_12#d03e10029762666a1facdfc796cd6d676f19b239"
 dependencies = [
  "aes",
  "cosmian_ffi_utils",
@@ -826,9 +826,9 @@ dependencies = [
 
 [[package]]
 name = "const-oid"
-version = "0.9.3"
+version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6340df57935414636969091153f35f68d9f00bbc8fb4a9c6054706c213e6c6bc"
+checksum = "795bc6e66a8e340f075fcf6227e417a2dc976b92b91f3cdc778bb858778b6747"
 
 [[package]]
 name = "convert_case"
@@ -873,7 +873,8 @@ checksum = "e496a50fda8aacccc86d7529e2c1e0892dbd0f898a6b5645b5561b89c3210efa"
 [[package]]
 name = "cosmian_cover_crypt"
 version = "12.0.0"
-source = "git+https://github.com/Cosmian/cover_crypt?branch=develop#0b28a02fa2722c66c5db48e0998f71de8eec16ee"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fee6ce685159955b99a2b6d9141fdb5446f298cb56b2265a4ffc8b6ae528aaf1"
 dependencies = [
  "base64 0.21.2",
  "cosmian_crypto_core",
@@ -886,9 +887,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_crypto_core"
-version = "8.0.0"
+version = "9.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72ce102c777a0a72b3f9857eb5dddc97edfb688717942d5f72a37a5850e28471"
+checksum = "8cf6eece34fddc7889b1af460511310160be5d50d9e95e587b0ffc1188a2b29a"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -915,9 +916,9 @@ checksum = "39d216ff7e679760a8e22ccc512fb43b87af8ae9e8437757221061f6d9ae2c07"
 
 [[package]]
 name = "cosmian_findex"
-version = "4.0.2"
+version = "4.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ced7d058a52eeb521ba5f9f37904ad279730f189a05d1aac3559d6946f8b76d9"
+checksum = "53293c295643a29a338a3130e0bb5bbd30de711f1c44890a1e5326080ba42436"
 dependencies = [
  "base64 0.21.2",
  "cosmian_crypto_core",
@@ -1230,17 +1231,17 @@ checksum = "83fdaf97f4804dcebfa5862639bc9ce4121e82140bec2a987ac5140294865b5b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]
 name = "dashmap"
-version = "5.4.0"
+version = "5.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "907076dfda823b0b36d2a1bb5f90c96660a5bbcd7729e10727f07858f22c4edc"
+checksum = "6943ae99c34386c84a470c499d3414f66502a41340aa895406e0d2e4a207b91d"
 dependencies = [
  "cfg-if",
- "hashbrown 0.12.3",
+ "hashbrown 0.14.0",
  "lock_api",
  "once_cell",
  "parking_lot_core",
@@ -1377,9 +1378,9 @@ dependencies = [
 
 [[package]]
 name = "equivalent"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88bffebc5d80432c9b140ee17875ff173a8ab62faad5b257da912bd2f6c1c0a1"
+checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
 name = "errno"
@@ -1572,7 +1573,7 @@ checksum = "89ca545a94061b6365f2c7355b4b32bd20df3ff95f02da9329b34ccc3bd6ee72"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]
@@ -2333,7 +2334,7 @@ checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]
@@ -2457,7 +2458,7 @@ checksum = "ec2e072ecce94ec471b13398d5402c188e76ac03cf74dd1a975161b23a3f6d9c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]
@@ -2770,7 +2771,7 @@ dependencies = [
  "aho-corasick",
  "memchr",
  "regex-automata 0.3.2",
- "regex-syntax 0.7.3",
+ "regex-syntax 0.7.4",
 ]
 
 [[package]]
@@ -2790,7 +2791,7 @@ checksum = "83d3daa6976cffb758ec878f108ba0e062a45b2d6ca3a2cca965338855476caf"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-syntax 0.7.3",
+ "regex-syntax 0.7.4",
 ]
 
 [[package]]
@@ -2801,9 +2802,9 @@ checksum = "f162c6dd7b008981e4d40210aca20b4bd0f9b60ca9271061b07f78537722f2e1"
 
 [[package]]
 name = "regex-syntax"
-version = "0.7.3"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ab07dc67230e4a4718e70fd5c20055a4334b121f1f9db8fe63ef39ce9b8c846"
+checksum = "e5ea92a5b6195c6ef2a0295ea818b312502c6fc94dde986c5553242e18fd4ce2"
 
 [[package]]
 name = "reqwest"
@@ -2923,9 +2924,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.21.3"
+version = "0.21.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b19faa85ecb5197342b54f987b142fb3e30d0c90da40f80ef4fa9a726e6676ed"
+checksum = "79ea77c539259495ce8ca47f53e66ae0330a8819f67e23ac96ca02f50e7b7d36"
 dependencies = [
  "log",
  "ring",
@@ -3030,22 +3031,22 @@ checksum = "bebd363326d05ec3e2f532ab7660680f3b02130d780c299bca73469d521bc0ed"
 
 [[package]]
 name = "serde"
-version = "1.0.169"
+version = "1.0.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd51c3db8f9500d531e6c12dd0fd4ad13d133e9117f5aebac3cdbb8b6d9824b0"
+checksum = "30e27d1e4fd7659406c492fd6cfaf2066ba8773de45ca75e855590f856dc34a9"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.169"
+version = "1.0.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27738cfea0d944ab72c3ed01f3d5f23ec4322af8a1431e40ce630e4c01ea74fd"
+checksum = "389894603bd18c46fa56231694f8d827779c0951a667087194cf9de94ed24682"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]
@@ -3093,7 +3094,7 @@ checksum = "91d129178576168c589c9ec973feedf7d3126c01ac2bf08795109aa35b69fb8f"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]
@@ -3447,7 +3448,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustversion",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]
@@ -3469,9 +3470,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.24"
+version = "2.0.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36ccaf716a23c35ff908f91c971a86a9a71af5998c1d8f10e828d9f55f68ac00"
+checksum = "15e3fc8c0c74267e2df136e5e5fb656a464158aa57624053375eb9c8c6e25ae2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3530,7 +3531,7 @@ checksum = "463fe12d7993d3b327787537ce8dd4dfa058de32fc2b195ef3cde03dc4771e8f"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]
@@ -3635,7 +3636,7 @@ checksum = "630bdcf245f78637c13ec01ffae6187cca34625e8c63150d424b59e55af2675e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]
@@ -3712,7 +3713,7 @@ checksum = "5f4f31f56159e98206da9efd823404b79b6ef3143b4a7ab76e67b1751b25a4ab"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]
@@ -3948,7 +3949,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
  "wasm-bindgen-shared",
 ]
 
@@ -3982,7 +3983,7 @@ checksum = "54681b18a46765f095758388f2d0cf16eb8d4169b639ab575a8f5693af210c7b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -4150,7 +4151,7 @@ checksum = "ce36e65b0d2999d2aafac989fb249189a141aee1f53c612c1f37d72631959f69"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.24",
+ "syn 2.0.25",
 ]
 
 [[package]]

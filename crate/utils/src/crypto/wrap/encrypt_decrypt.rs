@@ -1,6 +1,6 @@
 use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::CryptoRngCore, unwrap, wrap, Ecies, EciesX25519XChaCha20, FixedSizeCBytes,
-    X25519PrivateKey, X25519PublicKey,
+    key_unwrap, key_wrap, reexport::rand_core::CryptoRngCore, Ecies, EciesX25519XChaCha20,
+    FixedSizeCBytes, X25519PrivateKey, X25519PublicKey,
 };
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyMaterial,
@@ -33,7 +33,7 @@ where
         KeyFormatType::TransparentSymmetricKey => {
             // wrap using rfc_5649
             let wrap_secret = wrapping_key_block.key_bytes()?;
-            wrap(plaintext, &wrap_secret)
+            key_wrap(plaintext, &wrap_secret)
         }
         KeyFormatType::TransparentECPublicKey => {
             // wrap using ECIES
@@ -96,7 +96,7 @@ pub fn decrypt_bytes(unwrapping_key: &Object, ciphertext: &[u8]) -> Result<Vec<u
         KeyFormatType::TransparentSymmetricKey => {
             // unwrap using rfc_5649
             let unwrap_secret = unwrapping_key_block.key_bytes()?;
-            unwrap(ciphertext, &unwrap_secret)
+            key_unwrap(ciphertext, &unwrap_secret)
         }
         KeyFormatType::TransparentECPrivateKey => {
             match unwrapping_key_block.cryptographic_algorithm {
