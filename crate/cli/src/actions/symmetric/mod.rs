@@ -20,9 +20,9 @@ pub enum SymmetricCommands {
 impl SymmetricCommands {
     pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         match self {
-            SymmetricCommands::Keys(command) => command.process(client_connector).await?,
-            SymmetricCommands::Encrypt(action) => action.run(client_connector).await?,
-            SymmetricCommands::Decrypt(action) => action.run(client_connector).await?,
+            Self::Keys(command) => command.process(client_connector).await?,
+            Self::Encrypt(action) => action.run(client_connector).await?,
+            Self::Decrypt(action) => action.run(client_connector).await?,
         };
         Ok(())
     }

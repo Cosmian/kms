@@ -96,7 +96,7 @@ impl WrapKeyAction {
             .key_file_out
             .as_ref()
             .unwrap_or(&self.key_file_in)
-            .to_path_buf();
+            .clone();
 
         write_kmip_object_to_file(&object, &output_file)?;
 

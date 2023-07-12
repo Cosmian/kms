@@ -78,17 +78,6 @@ repos:
     hooks:
       - id: cargo-check
 
-  - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.7
-    hooks:
-      - id: cargo-update
-      - id: clippy-autofix-all
-      - id: clippy-autofix-pedantic
-      - id: clippy-autofix-nursery
-      - id: clippy-autofix-others
-      - id: cargo-format
-      - id: dprint-toml-fix
-
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0
     hooks:
@@ -126,3 +115,19 @@ repos:
       - id: black
         # avoid clash with `double-quote-string-fixer`
         args: [--skip-string-normalization]
+
+  - repo: https://github.com/Cosmian/git-hooks.git
+    rev: v1.0.11
+    hooks:
+      - id: dprint-toml-fix
+      - id: cargo-format
+      - id: cargo-update
+      # - id: cargo-outdated
+      - id: cargo-udeps
+      # - id: cargo-tests-all
+      # - id: cargo-test-doc
+      - id: clippy-autofix-all
+      - id: clippy-autofix-pedantic
+      - id: clippy-autofix-nursery
+      - id: clippy-autofix-others
+      - id: clippy-all-targets-all-features

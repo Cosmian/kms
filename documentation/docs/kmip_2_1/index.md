@@ -1,4 +1,3 @@
-
 The Cosmian KMS server supports a restricted set of the KMIP 2.1 protocol.
 
 The Key Management Interoperability Protocol Specification Version 2.1 and Key Management Interoperability Protocol Profiles Version 2.1 are [OASIS](https://www.oasis-open.org/) Standards.
@@ -182,7 +181,7 @@ The following KMIP TTLV JSON examples are provided for reference only.
         }
     ]
     }
-    ```    
+    ```
 
 === "Decrypt"
 
@@ -228,7 +227,7 @@ The following KMIP TTLV JSON examples are provided for reference only.
         }
     ]
     }
-    ```    
+    ```
 
 === "Locate"
 

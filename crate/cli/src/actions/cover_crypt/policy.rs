@@ -75,7 +75,7 @@ impl PolicySpecifications {
     }
 
     /// Read a JSON policy specification from a file
-    pub fn from_json_file(file: &impl AsRef<Path>) -> Result<PolicySpecifications, CliError> {
+    pub fn from_json_file(file: &impl AsRef<Path>) -> Result<Self, CliError> {
         read_from_json_file(file)
     }
 }
@@ -95,10 +95,10 @@ impl TryFrom<&Policy> for PolicySpecifications {
         let mut result: HashMap<String, Vec<String>> = HashMap::new();
         for (axis_name, params) in &policy.axes {
             let axis_full_name =
-                axis_name.to_owned() + if params.is_hierarchical { "::+" } else { "" };
+                axis_name.clone() + if params.is_hierarchical { "::+" } else { "" };
             let mut attributes = Vec::with_capacity(params.attribute_names.len());
             for att in &params.attribute_names {
-                let name = att.to_owned()
+                let name = att.clone()
                     + match policy.attribute_hybridization_hint(&Attribute::new(axis_name, att))? {
                         EncryptionHint::Hybridized => "::+",
                         EncryptionHint::Classic => "",
@@ -107,7 +107,7 @@ impl TryFrom<&Policy> for PolicySpecifications {
             }
             result.insert(axis_full_name, attributes);
         }
-        Ok(PolicySpecifications(result))
+        Ok(Self(result))
     }
 }
 
@@ -141,10 +141,10 @@ pub enum PolicyCommands {
 impl PolicyCommands {
     pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         match self {
-            PolicyCommands::View(action) => action.run(client_connector).await?,
-            PolicyCommands::Specs(action) => action.run(client_connector).await?,
-            PolicyCommands::Binary(action) => action.run(client_connector).await?,
-            PolicyCommands::Create(action) => action.run().await?,
+            Self::View(action) => action.run(client_connector).await?,
+            Self::Specs(action) => action.run(client_connector).await?,
+            Self::Binary(action) => action.run(client_connector).await?,
+            Self::Create(action) => action.run().await?,
         };
 
         Ok(())

@@ -1,9 +1,7 @@
 pub mod cover_crypt;
 pub mod dh_shared_keys;
-pub mod ecies;
 pub mod error;
 pub mod generic;
-pub mod key_wrapping_rfc_5649;
 pub mod password_derivation;
 pub mod symmetric;
 pub mod wrap;

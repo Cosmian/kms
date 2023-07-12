@@ -38,8 +38,8 @@ impl KeyBlock {
     /// Returns an error if there is no valid key material
     pub fn key_bytes(&self) -> Result<Vec<u8>, KmipError> {
         match &self.key_value.key_material {
-            KeyMaterial::ByteString(v) => Ok(v.to_owned()),
-            KeyMaterial::TransparentSymmetricKey { key } => Ok(key.to_owned()),
+            KeyMaterial::ByteString(v) => Ok(v.clone()),
+            KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
             KeyMaterial::TransparentECPrivateKey {
                 d,
                 recommended_curve: _,
@@ -47,7 +47,7 @@ impl KeyBlock {
             KeyMaterial::TransparentECPublicKey {
                 recommended_curve: _,
                 q_string,
-            } => Ok(q_string.to_owned()),
+            } => Ok(q_string.clone()),
             other => Err(KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Data_Type,
                 format!("The key has an invalid key material: {other:?}"),

@@ -1,4 +1,3 @@
-
 The authorization system in the Cosmian Key Management Service (KMS) operates based on two fundamental principles:
 
 1. **Ownership:** Every cryptographic object has an assigned owner. The ownership is established when an object is created using any of the following KMIP operations: `Create`, `CreateKeyPair`, or `Import`. As an owner, a user holds the privilege to carry out all supported KMIP operations on their objects.
@@ -14,7 +13,7 @@ The supported KMIP operations are: `get`, `export`, `encrypt`, `decrypt`, `impor
 
 === "ckms"
       ```sh
-      ➜ ./ckms access grant --help  
+      ➜ ./ckms access grant --help
       Grant another user an access right to an object.
 
       This command can only be called by the owner of the object.
@@ -110,7 +109,7 @@ The owner of an object can list all the access rights that have been granted to 
 
 === "ckms"
       ```sh
-      ➜ ./ckms access list --help  
+      ➜ ./ckms access list --help
       List the access rights granted on an object to other users.
 
       This command can only be called by the owner of the object. Returns a list of users and the operations they have been granted access to.
@@ -177,7 +176,7 @@ A user can list all the objects it owns (i.e. the objects it created using eithe
       ```
 
       where:
-   
+
       - `<state>` is one of the following KMIP states: `PreActive`, `Active`, `Deactivated`, `Compromised`, `Destroyed_Compromised`,
       - `<attributes>` is the KMIP Attributes structure (see the KMIP documentation)
       - `<wrapped_state>`: is a boolean indicating whether the object is wrapped or not (see key wrapping).
@@ -219,7 +218,7 @@ A user can list all the access rights that have been granted to it by object own
       ```
 
       where:
-   
+
       - `<state>` is one of the following KMIP states: `PreActive`, `Active`, `Deactivated`, `Compromised`, `Destroyed_Compromised`,
       - `<operation type>` is one of the following: `export`, `get`, `encrypt`, `decrypt`, `import`, `revoke`,  `destroy`,
       - `<wrapped_state>`: is a boolean indicating whether the object is wrapped or not (see key wrapping).

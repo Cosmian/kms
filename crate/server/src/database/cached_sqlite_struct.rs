@@ -8,7 +8,7 @@ use std::{
     time::SystemTime,
 };
 
-use cloudproof::reexport::crypto_core::symmetric_crypto::key::Key;
+use cloudproof::reexport::crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
 use sqlx::{Pool, Sqlite};
 use tracing::info;
 
@@ -19,7 +19,7 @@ pub struct KMSSqliteCacheItem {
     /// The handler to the sqlite
     sqlite: Arc<Pool<Sqlite>>,
     /// They key of the sqlite
-    key: Key<32>,
+    key: [u8; 32],
     /// The date of the first insertion
     #[allow(dead_code)]
     inserted_at: u64,
@@ -38,7 +38,7 @@ pub struct KMSSqliteCacheItem {
 impl fmt::Debug for KMSSqliteCacheItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("KMSSqliteCacheItem")
-            .field("group_ id", &self.key)
+            // .field("group_id", &self.key)
             .field("inserted_at", &self.inserted_at)
             .field("in_used", &self.in_used)
             .field("last_used_at", &self.last_used_at)
@@ -49,7 +49,7 @@ impl fmt::Debug for KMSSqliteCacheItem {
     }
 }
 
-/// Give the time sonce EPOCH in secs
+/// Give the time since EPOCH in secs
 pub fn _now() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
@@ -59,7 +59,7 @@ pub fn _now() -> u64 {
 
 impl KMSSqliteCacheItem {
     #[must_use]
-    pub fn new(sqlite: Pool<Sqlite>, key: Key<32>, freeable_cache_index: usize) -> Self {
+    pub fn new(sqlite: Pool<Sqlite>, key: [u8; 32], freeable_cache_index: usize) -> Self {
         Self {
             sqlite: Arc::new(sqlite),
             key,
@@ -128,7 +128,7 @@ impl KMSSqliteCache {
     /// Get the sqlite handler and tag it as "used"
     ///
     /// The function will return an error if the database is closed or the key is not the right one
-    pub fn get(&self, id: u128, key: &Key<32>) -> KResult<Arc<Pool<Sqlite>>> {
+    pub fn get(&self, id: u128, key: &SymmetricKey<32>) -> KResult<Arc<Pool<Sqlite>>> {
         let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
 
         let item = sqlites
@@ -141,7 +141,7 @@ impl KMSSqliteCache {
 
         // We need to check if the key provided by the user is the same that was used to open the database
         // If we do not, we can just send any password: the database is already opened anyway.
-        if key != &item.key {
+        if key.as_bytes() != item.key {
             kms_bail!("Database secret is wrong");
         }
 
@@ -238,7 +238,7 @@ impl KMSSqliteCache {
     /// The handler is considered as used until it is explicitly release.
     ///
     /// This function will call a `flush` if needed to close the oldest unused databases.
-    pub async fn save(&self, id: u128, key: &Key<32>, pool: Pool<Sqlite>) -> KResult<()> {
+    pub async fn save(&self, id: u128, key: &SymmetricKey<32>, pool: Pool<Sqlite>) -> KResult<()> {
         // Flush the cache if necessary
         self.flush().await?;
         // If nothing has been flush, allow to exceed max cache size
@@ -273,7 +273,8 @@ impl KMSSqliteCache {
                 let freeable_cache_id = freeable_sqlites.push(id)?;
 
                 // Add it to the SqliteCache
-                let mut item = KMSSqliteCacheItem::new(pool, key.to_owned(), freeable_cache_id);
+                let key: [u8; 32] = key.as_bytes().try_into()?;
+                let mut item = KMSSqliteCacheItem::new(pool, key, freeable_cache_id);
 
                 freeable_sqlites.uncache(freeable_cache_id)?;
 
@@ -465,7 +466,7 @@ mod tests {
     use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
     use cloudproof::reexport::crypto_core::{
-        reexport::rand_core::SeedableRng, symmetric_crypto::key::Key, CsRng, KeyTrait,
+        reexport::rand_core::SeedableRng, CsRng, RandomFixedSizeCBytes, SymmetricKey,
     };
     use sqlx::{
         sqlite::{SqliteConnectOptions, SqlitePoolOptions},
@@ -689,7 +690,7 @@ mod tests {
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 0);
 
         let mut cs_rng = CsRng::from_entropy();
-        let password = Key::<32>::new(&mut cs_rng);
+        let password = SymmetricKey::new(&mut cs_rng);
 
         let sqlite = connect().await.expect("Can't create database");
         let sqlite2 = connect().await.expect("Can't create database");
@@ -726,7 +727,7 @@ mod tests {
         assert!(cache.opened(2));
 
         assert!(cache.get(4, &password).is_err());
-        assert!(cache.get(1, &Key::<32>::new(&mut cs_rng)).is_err()); // bad &password
+        assert!(cache.get(1, &SymmetricKey::new(&mut cs_rng)).is_err()); // bad &password
         assert!(cache.get(1, &password).is_ok()); // 2 uses of sqlite1
 
         let sqlite4 = connect().await.expect("Can't create database");

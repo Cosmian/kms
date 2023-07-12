@@ -26,8 +26,8 @@ pub async fn create_key_pair(
         .create_objects(
             owner,
             &[
-                (Some(sk_uid.clone()), key_pair.private_key().to_owned()),
-                (Some(pk_uid.clone()), key_pair.public_key().to_owned()),
+                (Some(sk_uid.clone()), key_pair.private_key().clone()),
+                (Some(pk_uid.clone()), key_pair.public_key().clone()),
             ],
             params,
         )
