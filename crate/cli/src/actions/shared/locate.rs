@@ -18,7 +18,7 @@ use crate::error::CliError;
 /// Locate Objects inside the KMS
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
-pub struct LocateKeysAction {
+pub struct LocateObjectsAction {
     /// User tags or system tags to locate the object.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
@@ -45,7 +45,7 @@ pub struct LocateKeysAction {
     key_format_type: Option<KeyFormatType>,
 }
 
-impl LocateKeysAction {
+impl LocateObjectsAction {
     /// Export a key from the KMS
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         // the object type is ignored

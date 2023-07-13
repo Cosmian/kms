@@ -199,7 +199,6 @@ impl KMS {
         check_user_tags(&tags)?;
         //update the tags
         tags.insert("_kk".to_string());
-        tags.insert("_".to_string() + &cryptographic_algorithm.to_string().to_lowercase());
 
         match cryptographic_algorithm {
             CryptographicAlgorithm::AES
@@ -265,8 +264,7 @@ impl KMS {
         let mut tags = get_tags(attributes);
         check_user_tags(&tags)?;
         //update the tags
-        tags.insert("_sk".to_string());
-        tags.insert("_".to_string() + &cryptographic_algorithm.to_string().to_lowercase());
+        tags.insert("_uk".to_string());
 
         match &cryptographic_algorithm {
             CryptographicAlgorithm::CoverCrypt => {
@@ -321,13 +319,12 @@ impl KMS {
         })?;
 
         // recover tags
-        let mut tags = get_tags(attributes);
+        let tags = get_tags(attributes);
         check_user_tags(&tags)?;
         //update the tags
-        tags.insert("_".to_string() + &cryptographic_algorithm.to_string().to_lowercase());
         let mut sk_tags = tags.clone();
         sk_tags.insert("_sk".to_string());
-        let mut pk_tags = tags.clone();
+        let mut pk_tags = tags;
         pk_tags.insert("_pk".to_string());
 
         let object = match &cryptographic_algorithm {

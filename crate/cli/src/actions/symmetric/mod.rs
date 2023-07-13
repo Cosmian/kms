@@ -6,7 +6,7 @@ use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 
 use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
-use super::shared::LocateKeysAction;
+use super::shared::LocateObjectsAction;
 use crate::error::CliError;
 
 /// Manage symmetric keys and salts. Encrypt and decrypt data.
@@ -16,7 +16,7 @@ pub enum SymmetricCommands {
     Keys(KeysCommands),
     Encrypt(EncryptAction),
     Decrypt(DecryptAction),
-    Locate(LocateKeysAction),
+    Locate(LocateObjectsAction),
 }
 
 impl SymmetricCommands {
