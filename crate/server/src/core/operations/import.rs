@@ -46,10 +46,6 @@ pub async fn import(
                 key_material: object_key_block.key_value.key_material.clone(),
                 attributes: Some(request.attributes),
             };
-            // recover the cryptographic algorithm
-            let cryptographic_algorithm = object_key_block.cryptographic_algorithm;
-            // insert the tag corresponding to the cryptographic algorithm
-            tags.insert("_".to_string() + &cryptographic_algorithm.to_string().to_lowercase());
             // insert the tag corresponding to the object type
             match object_type {
                 ObjectType::SymmetricKey => {

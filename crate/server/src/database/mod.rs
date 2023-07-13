@@ -370,7 +370,7 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
                 .iter()
                 .map(|t| format!("\"{t}\""))
                 .collect::<Vec<String>>()
-                .join("', '");
+                .join(", ");
             query = format!(
                 "{query} INNER JOIN (
     SELECT id
@@ -436,6 +436,5 @@ ON objects.id = matched_tags.id"
         }
     }
 
-    println!("query: {}", query);
     Ok(query)
 }

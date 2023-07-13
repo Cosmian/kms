@@ -7,6 +7,7 @@ pub(crate) mod rotate_attributes;
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 
+use super::shared::LocateObjectsAction;
 use crate::{
     actions::cover_crypt::{
         decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands, policy::PolicyCommands,
@@ -25,6 +26,7 @@ pub enum CoverCryptCommands {
     Rotate(RotateAttributesAction),
     Encrypt(EncryptAction),
     Decrypt(DecryptAction),
+    Locate(LocateObjectsAction),
 }
 
 impl CoverCryptCommands {
@@ -35,6 +37,7 @@ impl CoverCryptCommands {
             Self::Rotate(action) => action.run(client_connector).await?,
             Self::Encrypt(action) => action.run(client_connector).await?,
             Self::Decrypt(action) => action.run(client_connector).await?,
+            Self::Locate(action) => action.run(client_connector).await?,
         };
         Ok(())
     }
