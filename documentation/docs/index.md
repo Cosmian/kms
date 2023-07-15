@@ -25,7 +25,7 @@ The KMS server is available as a Docker image on the [Cosmian public Docker repo
 Non-dockerized raw binaries are also available on [Cosmian public packages repository](https://package.cosmian.com/kms/4.4.3/)
 
 !!! info "Quick start"
-    To quick start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
+    To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
 
     ```sh
     docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.4.3
@@ -42,6 +42,21 @@ Non-dockerized raw binaries are also available on [Cosmian public packages repos
 The KMS server deploys either in [single-server mode](./single_server_mode.md) or in [replicated mode](./replicated_mode.md).
 
 The server supports concurrent client-secret encrypted databases in single-server mode for additional security.
+
+#### Support for object tagging
+
+The KMS server supports user tagging of objects to facilitate their management.
+Specify as many user tags as needed when creating and importing objects.
+
+In addition, the user server will automatically add a system tag based on the object type:
+
+ - `_sk`: for a private key
+ - `_pk`: for a public key
+ - `_kk`: for a symmetric key
+ - `_uk`: for a Covercrypt user decryption key
+
+Use the tags to export objects, locate them, or request data encryption and decryption.
+
 
 #### Command line interface client
 
@@ -82,7 +97,7 @@ The options are enabled on the docker command line or using the environment vari
 --jwks-uri <JWKS_URI>
     The JWKS (Json Web Key Set) URI of the JWT token
 
-    For Auth0, this would be https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json"
+    For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
 
     For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
 
@@ -122,6 +137,12 @@ The options are enabled on the docker command line or using the environment vari
     [env: KMS_SQLITE_PATH=]
     [default: ./sqlite-data]
 
+--clear-database
+    Clear the database on start .
+    WARNING: This will delete ALL the data in the database
+    
+    [env: KMS_CLEAR_DATABASE=]    
+
 --enclave-dir-path <ENCLAVE_DIR_PATH>
     The directory where the manifest and public key files are located This path should not be encrypted by the enclave and should be directly readable from it
 
@@ -143,18 +164,18 @@ The options are enabled on the docker command line or using the environment vari
     [default: mr-signer-key.pub]
 
 --use-certbot
-    Enable TLS and use Let's Encrypt certbot to get a certificate
+    Enable TLS and use Lets Encrypt certbot to get a certificate
 
     [env: KMS_USE_CERTBOT=]
 
 --certbot-hostname <CERTBOT_HOSTNAME>
-    The hostname of the KMS HTTPS server that will be used as the Common Name in the Let's Encrypt certificate
+    The hostname of the KMS HTTPS server that will be used as the Common Name in the Lets Encrypt certificate
 
     [env: KMS_CERTBOT_HOSTNAME=]
     [default: ]
 
 --certbot-email <CERTBOT_EMAIL>
-    The email used during the Let's Encrypt certbot certification process
+    The email used during the Lets Encrypt certbot certification process
 
     [env: KMS_CERTBOT_EMAIL=]
     [default: ]

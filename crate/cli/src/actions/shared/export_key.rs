@@ -32,7 +32,7 @@ pub struct ExportKeyAction {
     #[clap(required = true)]
     key_file: PathBuf,
 
-    /// The key unique identifier stored in the KMS
+    /// The key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     key_id: Option<String>,

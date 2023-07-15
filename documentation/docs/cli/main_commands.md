@@ -28,6 +28,7 @@ policy   Extract or view policies of existing keys,
 rotate   Rotate attributes and rekey the master and user keys.
 encrypt  Encrypt a file using Covercrypt
 decrypt  Decrypt a file using Covercrypt
+locate   Locate Objects inside the KMS
 help     Print this message or the help of the given subcommand(s)
 ```
 
@@ -47,6 +48,7 @@ ckms ec [SUBCOMMAND]
 keys     Create, destroy, import, export elliptic curve key pairs
 encrypt  Encrypt a file with the given public key using ECIES
 decrypt  Decrypts a file with the given private key using ECIES
+locate   Locate Objects inside the KMS
 help     Print this message or the help of the given subcommand(s)
 ```
 
@@ -66,6 +68,7 @@ ckms sym [SUBCOMMAND]
 keys     Create, destroy, import, and export symmetric keys
 encrypt  Encrypt a file using AES GCM
 decrypt  Decrypts a file using AES GCM
+locate   Locate Objects inside the KMS
 help     Print this message or the help of the given subcommand(s)
 ```
 
