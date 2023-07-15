@@ -10,6 +10,8 @@ use crate::{
             master_key_pair::create_cc_master_key_pair,
             user_decryption_keys::create_user_decryption_key,
         },
+        elliptic_curve::create_key_pair::create_ec_key_pair,
+        symmetric::create_key::create_symmetric_key,
         utils::{init_test_server, ONCE},
         PROG_NAME,
     },
@@ -68,14 +70,14 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
-        &["test_tag"],
+        &["test_cc"],
     )?;
 
     // Locate with Tags
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "cc",
-        Some(&["test_tag"]),
+        Some(&["test_cc"]),
         None,
         None,
         None,
@@ -124,7 +126,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "cc",
-        Some(&["test_tag"]),
+        Some(&["test_cc"]),
         Some("CoverCrypt"),
         None,
         Some("CoverCryptSecretKey"),
@@ -137,13 +139,13 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
-        &["test_tag", "another_tag"],
+        &["test_cc", "another_tag"],
     )?;
     // Locate with Tags
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "cc",
-        Some(&["test_tag"]),
+        Some(&["test_cc"]),
         None,
         None,
         None,
@@ -156,7 +158,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "cc",
-        Some(&["test_tag"]),
+        Some(&["test_cc"]),
         Some("CoverCrypt"),
         None,
         Some("CoverCryptSecretKey"),
@@ -167,7 +169,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "cc",
-        Some(&["test_tag", "another_tag"]),
+        Some(&["test_cc", "another_tag"]),
         Some("CoverCrypt"),
         None,
         Some("CoverCryptSecretKey"),
@@ -179,7 +181,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "cc",
-        Some(&["test_tag", "_uk"]),
+        Some(&["test_cc", "_uk"]),
         None,
         None,
         None,
@@ -189,7 +191,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "cc",
-        Some(&["test_tag", "_sk"]),
+        Some(&["test_cc", "_sk"]),
         None,
         None,
         None,
@@ -199,7 +201,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "cc",
-        Some(&["test_tag", "_pk"]),
+        Some(&["test_cc", "_pk"]),
         None,
         None,
         None,
@@ -210,271 +212,169 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     Ok(())
 }
 
-// #[tokio::test]
-// pub async fn test_export_ec() -> Result<(), CliError> {
-//     // create a temp dir
-//     let tmp_dir = TempDir::new()?;
-//     let tmp_path = tmp_dir.path();
-//     // init the test server
-//     let ctx = ONCE.get_or_init(init_test_server).await;
+#[tokio::test]
+pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
+    // init the test server
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
-//     // generate a new key pair
-//     let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
-//     // Export
-//     export(
-//         &ctx.owner_cli_conf_path,
-//         "ec",
-//         &private_key_id,
-//         tmp_path.join("output.export").to_str().unwrap(),
-//         false,
-//         false,
-//         None,
-//         false,
-//     )?;
-//     export(
-//         &ctx.owner_cli_conf_path,
-//         "ec",
-//         &public_key_id,
-//         tmp_path.join("output.export").to_str().unwrap(),
-//         false,
-//         false,
-//         None,
-//         false,
-//     )?;
+    // generate a new key pair
+    let (private_key_id, public_key_id) =
+        create_ec_key_pair(&ctx.owner_cli_conf_path, &["test_ec"])?;
 
-//     Ok(())
-// }
+    // Locate with Tags
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        "ec",
+        Some(&["test_ec"]),
+        None,
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 2);
+    assert!(ids.contains(&private_key_id));
+    assert!(ids.contains(&public_key_id));
 
-// #[tokio::test]
-// pub async fn test_export_sym() -> Result<(), CliError> {
-//     // create a temp dir
-//     let tmp_dir = TempDir::new()?;
-//     let tmp_path = tmp_dir.path();
-//     // init the test server
-//     let ctx = ONCE.get_or_init(init_test_server).await;
+    // Locate with cryptographic algorithm
+    // this should be case insensitive
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        "ec",
+        None,
+        Some("EcDH"),
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 2);
+    assert!(ids.contains(&private_key_id));
+    assert!(ids.contains(&public_key_id));
 
-//     // generate a symmetric key
-//     let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[] as &[&str])?;
-//     // Export
-//     export(
-//         &ctx.owner_cli_conf_path,
-//         "sym",
-//         &key_id,
-//         tmp_path.join("output.export").to_str().unwrap(),
-//         false,
-//         false,
-//         None,
-//         false,
-//     )?;
+    // locate using the key format type
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        "ec",
+        None,
+        None,
+        None,
+        Some("TransparentECPrivateKey"),
+    )?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&private_key_id));
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        "ec",
+        None,
+        None,
+        None,
+        Some("TransparentECPublicKey"),
+    )?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&public_key_id));
 
-//     Ok(())
-// }
+    //locate using tags and cryptographic algorithm and key format type
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        "ec",
+        Some(&["test_ec"]),
+        Some("ECDH"),
+        None,
+        Some("TransparentECPrivateKey"),
+    )?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&private_key_id));
 
-// #[tokio::test]
-// pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
-//     // create a temp dir
-//     let tmp_dir = TempDir::new()?;
-//     let tmp_path = tmp_dir.path();
-//     // init the test server
-//     let ctx = ONCE.get_or_init(init_test_server).await;
+    // test using system Tags
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        "ec",
+        Some(&["test_ec", "_sk"]),
+        None,
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&private_key_id));
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        "ec",
+        Some(&["test_ec", "_pk"]),
+        None,
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&public_key_id));
 
-//     // generate a symmetric key
-//     let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[] as &[&str])?;
-//     // Export
-//     export(
-//         &ctx.owner_cli_conf_path,
-//         "sym",
-//         &key_id,
-//         tmp_path.join("output.export").to_str().unwrap(),
-//         false,
-//         false,
-//         None,
-//         true,
-//     )?;
+    Ok(())
+}
 
-//     Ok(())
-// }
+#[tokio::test]
+pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
+    // init the test server
+    let ctx = ONCE.get_or_init(init_test_server).await;
 
-// #[tokio::test]
-// pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
-//     // create a temp dir
-//     let tmp_dir = TempDir::new()?;
-//     let tmp_path = tmp_dir.path();
-//     // init the test server
-//     let ctx = ONCE.get_or_init(init_test_server).await;
+    // generate a new key
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &["test_sym"])?;
 
-//     // key does not exist
-//     export(
-//         &ctx.owner_cli_conf_path,
-//         "cc",
-//         "does_not_exist",
-//         tmp_path.join("output.export").to_str().unwrap(),
-//         false,
-//         false,
-//         None,
-//         false,
-//     )
-//     .err()
-//     .unwrap();
+    // Locate with Tags
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        "sym",
+        Some(&["test_sym"]),
+        None,
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&key_id));
 
-//     // generate a new master key pair
-//     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-//         &ctx.owner_cli_conf_path,
-//         "--policy-specifications",
-//         "test_data/policy_specifications.json",
-//         &[],
-//     )?;
+    // Locate with cryptographic algorithm
+    // this should be case insensitive
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        "sym",
+        None,
+        Some("Aes"),
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&key_id));
 
-//     // Export to non existing dir
-//     export(
-//         &ctx.owner_cli_conf_path,
-//         "cc",
-//         &master_private_key_id,
-//         "/does_not_exist/output.export",
-//         false,
-//         false,
-//         None,
-//         false,
-//     )
-//     .err()
-//     .unwrap();
+    // locate using the key format type
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        "sym",
+        None,
+        None,
+        None,
+        Some("TransparentSymmetricKey"),
+    )?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&key_id));
 
-//     Ok(())
-// }
+    //locate using tags and cryptographic algorithm and key format type
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        "sym",
+        Some(&["test_sym"]),
+        Some("AES"),
+        None,
+        Some("TransparentSymmetricKey"),
+    )?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&key_id));
 
-// #[tokio::test]
-// pub async fn test_export_bytes_cover_crypt() -> Result<(), CliError> {
-//     // create a temp dir
-//     let tmp_dir = TempDir::new()?;
-//     let tmp_path = tmp_dir.path();
-//     // init the test server
-//     let ctx = ONCE.get_or_init(init_test_server).await;
+    // test using system Tags
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        "sym",
+        Some(&["test_sym", "_kk"]),
+        None,
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&key_id));
 
-//     // generate a new master key pair
-//     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-//         &ctx.owner_cli_conf_path,
-//         "--policy-specifications",
-//         "test_data/policy_specifications.json",
-//         &[],
-//     )?;
-//     // Export
-//     export(
-//         &ctx.owner_cli_conf_path,
-//         "cc",
-//         &master_private_key_id,
-//         tmp_path.join("output.export").to_str().unwrap(),
-//         false,
-//         false,
-//         None,
-//         false,
-//     )?;
-
-//     // read the bytes from the exported file
-//     let object = read_key_from_file(&tmp_path.join("output.export"))?;
-//     let key_bytes = object.key_block()?.key_bytes()?;
-
-//     // Export the bytes only
-//     export(
-//         &ctx.owner_cli_conf_path,
-//         "cc",
-//         &master_private_key_id,
-//         tmp_path.join("output.export.bytes").to_str().unwrap(),
-//         true,
-//         false,
-//         None,
-//         false,
-//     )?;
-//     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
-
-//     assert_eq!(key_bytes, bytes);
-
-//     Ok(())
-// }
-
-// #[tokio::test]
-// pub async fn test_export_bytes_ec() -> Result<(), CliError> {
-//     // create a temp dir
-//     let tmp_dir = TempDir::new()?;
-//     let tmp_path = tmp_dir.path();
-//     // init the test server
-//     let ctx = ONCE.get_or_init(init_test_server).await;
-
-//     // generate a new key pair
-//     let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
-//     // Export
-//     export(
-//         &ctx.owner_cli_conf_path,
-//         "ec",
-//         &private_key_id,
-//         tmp_path.join("output.export").to_str().unwrap(),
-//         false,
-//         false,
-//         None,
-//         false,
-//     )?;
-
-//     // read the bytes from the exported file
-//     let object = read_key_from_file(&tmp_path.join("output.export"))?;
-//     let key_bytes = object.key_block()?.key_bytes()?;
-
-//     // Export the bytes only
-//     export(
-//         &ctx.owner_cli_conf_path,
-//         "ec",
-//         &private_key_id,
-//         tmp_path.join("output.export.bytes").to_str().unwrap(),
-//         true,
-//         false,
-//         None,
-//         false,
-//     )?;
-//     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
-
-//     assert_eq!(key_bytes, bytes);
-
-//     Ok(())
-// }
-
-// #[tokio::test]
-// pub async fn test_export_bytes_sym() -> Result<(), CliError> {
-//     // create a temp dir
-//     let tmp_dir = TempDir::new()?;
-//     let tmp_path = tmp_dir.path();
-//     // init the test server
-//     let ctx = ONCE.get_or_init(init_test_server).await;
-
-//     // generate a symmetric key
-//     let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[] as &[&str])?;
-//     // Export
-//     export(
-//         &ctx.owner_cli_conf_path,
-//         "sym",
-//         &key_id,
-//         tmp_path.join("output.export").to_str().unwrap(),
-//         false,
-//         false,
-//         None,
-//         false,
-//     )?;
-
-//     // read the bytes from the exported file
-//     let object = read_key_from_file(&tmp_path.join("output.export"))?;
-//     let key_bytes = object.key_block()?.key_bytes()?;
-
-//     // Export the bytes only
-//     export(
-//         &ctx.owner_cli_conf_path,
-//         "sym",
-//         &key_id,
-//         tmp_path.join("output.export.bytes").to_str().unwrap(),
-//         true,
-//         false,
-//         None,
-//         false,
-//     )?;
-//     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
-
-//     assert_eq!(key_bytes, bytes);
-
-//     Ok(())
-// }
+    Ok(())
+}
