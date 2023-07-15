@@ -41,7 +41,10 @@ const KMS_SQLITE_CACHE_SIZE: usize = 100;
 impl CachedSqlCipher {
     /// Instantiate a new `CachedSqlCipher`
     /// and create the appropriate table(s) if need be
-    pub async fn instantiate(path: &Path) -> KResult<Self> {
+    pub async fn instantiate(path: &Path, clear_database: bool) -> KResult<Self> {
+        if clear_database && path.exists() && path.is_dir() {
+            remove_dir_content(path)?;
+        }
         Ok(Self {
             path: path.to_path_buf(),
             cache: KMSSqliteCache::new(KMS_SQLITE_CACHE_SIZE),
@@ -435,4 +438,17 @@ impl Database for CachedSqlCipher {
 
         kms_bail!("Missing group_id/key for opening SQLCipher")
     }
+}
+
+fn remove_dir_content(path: &Path) -> Result<(), std::io::Error> {
+    let dir = std::fs::read_dir(path)?;
+    for entry in dir {
+        let path = entry?.path();
+        if path.is_dir() {
+            remove_dir_content(&path)?;
+        } else {
+            std::fs::remove_file(&path)?;
+        }
+    }
+    Ok(())
 }

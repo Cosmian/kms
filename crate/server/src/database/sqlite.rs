@@ -37,7 +37,7 @@ pub struct SqlitePool {
 impl SqlitePool {
     /// Instantiate a new `SQLite` database
     /// and create the appropriate table(s) if need be
-    pub async fn instantiate(path: &Path) -> KResult<Self> {
+    pub async fn instantiate(path: &Path, clear_database: bool) -> KResult<Self> {
         let options = SqliteConnectOptions::new()
             .filename(path)
             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
@@ -74,6 +74,10 @@ impl SqlitePool {
         )
         .execute(&pool)
         .await?;
+
+        if clear_database {
+            clear_database_(&pool).await?;
+        }
 
         Ok(Self { pool })
     }
@@ -816,4 +820,35 @@ fn to_qualified_uids(
         ));
     }
     Ok(uids)
+}
+
+pub(crate) async fn clear_database_<'e, E>(executor: E) -> KResult<()>
+where
+    E: Executor<'e, Database = Sqlite> + Copy,
+{
+    // Erase `objects` table
+    sqlx::query(
+        SQLITE_QUERIES
+            .get("clean-table-objects")
+            .expect("SQL query can't be found"),
+    )
+    .execute(executor)
+    .await?;
+    // Erase `read_access` table
+    sqlx::query(
+        SQLITE_QUERIES
+            .get("clean-table-read_access")
+            .expect("SQL query can't be found"),
+    )
+    .execute(executor)
+    .await?;
+    // Erase `tags` table
+    sqlx::query(
+        SQLITE_QUERIES
+            .get("clean-table-tags")
+            .expect("SQL query can't be found"),
+    )
+    .execute(executor)
+    .await?;
+    Ok(())
 }

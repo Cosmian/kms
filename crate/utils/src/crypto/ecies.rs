@@ -40,7 +40,8 @@ use crate::error::KmipUtilsError;
 ///    reexport::rand_core::SeedableRng,
 ///    CsRng,
 /// };
-/// use cosmian_kms_utils::crypto::{error::KmipUtilsError,ecies::ecies_encrypt};
+/// use cosmian_kms_utils::crypto::ecies::ecies_encrypt;
+/// use cosmian_kms_utils::error::KmipUtilsError;
 ///
 /// let mut rng = CsRng::from_entropy();
 /// let key_pair: X25519KeyPair = X25519KeyPair::new(&mut rng);
@@ -134,7 +135,8 @@ where
 ///     reexport::rand_core::SeedableRng,
 ///     CsRng,
 /// };
-/// use cosmian_kms_utils::crypto::{error::KmipUtilsError, ecies::{ecies_encrypt, ecies_decrypt}};
+/// use cosmian_kms_utils::error::KmipUtilsError;
+/// use cosmian_kms_utils::crypto::ecies::{ecies_encrypt, ecies_decrypt};
 ///
 /// let mut rng = CsRng::from_entropy();
 /// let key_pair: X25519KeyPair = X25519KeyPair::new(&mut rng);

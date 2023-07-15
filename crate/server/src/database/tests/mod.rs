@@ -39,7 +39,7 @@ async fn get_sql_cipher() -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParam
     }
     std::fs::create_dir_all(&dir_path).unwrap();
 
-    let db = CachedSqlCipher::instantiate(&dir_path).await?;
+    let db = CachedSqlCipher::instantiate(&dir_path, true).await?;
     let params = ExtraDatabaseParams {
         group_id: 0,
         key: db_key.clone(),
@@ -54,7 +54,7 @@ async fn get_sqlite() -> KResult<(SqlitePool, Option<ExtraDatabaseParams>)> {
     if file_path.exists() {
         std::fs::remove_file(&file_path).unwrap();
     }
-    Ok((SqlitePool::instantiate(&file_path).await?, None))
+    Ok((SqlitePool::instantiate(&file_path, true).await?, None))
 }
 
 // To run local tests with a Postgres in Docker, run
@@ -62,8 +62,7 @@ async fn get_sqlite() -> KResult<(SqlitePool, Option<ExtraDatabaseParams>)> {
 async fn get_pgsql() -> KResult<(PgPool, Option<ExtraDatabaseParams>)> {
     let postgres_url =
         std::option_env!("KMS_POSTGRES_URL").unwrap_or("postgresql://kms:kms@127.0.0.1:5432/kms");
-    let pg = PgPool::instantiate(postgres_url).await?;
-    pg.clean_database().await;
+    let pg = PgPool::instantiate(postgres_url, true).await?;
     Ok((pg, None))
 }
 
@@ -72,8 +71,7 @@ async fn get_pgsql() -> KResult<(PgPool, Option<ExtraDatabaseParams>)> {
 async fn get_mysql() -> KResult<(MySqlPool, Option<ExtraDatabaseParams>)> {
     let mysql_url =
         std::option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
-    let my_sql = MySqlPool::instantiate(mysql_url).await?;
-    my_sql.clean_database().await;
+    let my_sql = MySqlPool::instantiate(mysql_url, true).await?;
     Ok((my_sql, None))
 }
 

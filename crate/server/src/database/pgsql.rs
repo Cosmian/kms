@@ -18,7 +18,7 @@ use uuid::Uuid;
 use crate::{
     database::{
         object_with_metadata::ObjectWithMetadata, query_from_attributes, state_from_string,
-        DBObject, Database, PgsqlPlaceholder, PGSQL_QUERIES,
+        DBObject, Database, PgSqlPlaceholder, PGSQL_QUERIES,
     },
     error::KmsError,
     kms_bail, kms_error,
@@ -32,7 +32,7 @@ pub struct PgPool {
 impl PgPool {
     /// Instantiate a new `Postgres` database
     /// and create the appropriate table(s) if need be
-    pub async fn instantiate(connection_url: &str) -> KResult<Self> {
+    pub async fn instantiate(connection_url: &str, clear_database: bool) -> KResult<Self> {
         let options = PgConnectOptions::from_str(connection_url)?
             // disable logging of each query
             .disable_statement_logging();
@@ -66,29 +66,11 @@ impl PgPool {
         .execute(&pool)
         .await?;
 
-        Ok(Self { pool })
-    }
+        if clear_database {
+            clear_database_(&pool).await?;
+        }
 
-    #[cfg(test)]
-    pub async fn clean_database(&self) {
-        // Erase `objects` table
-        sqlx::query(
-            PGSQL_QUERIES
-                .get("clean-table-objects")
-                .expect("SQL query can't be found"),
-        )
-        .execute(&self.pool)
-        .await
-        .expect("cannot truncate objects table");
-        // Erase `read_access` table
-        sqlx::query(
-            PGSQL_QUERIES
-                .get("clean-table-read_access")
-                .expect("SQL query can't be found"),
-        )
-        .execute(&self.pool)
-        .await
-        .expect("cannot truncate read_access table");
+        Ok(Self { pool })
     }
 }
 
@@ -808,7 +790,7 @@ pub(crate) async fn find_<'e, E>(
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
-    let query = query_from_attributes::<PgsqlPlaceholder>(researched_attributes, state, owner)?;
+    let query = query_from_attributes::<PgSqlPlaceholder>(researched_attributes, state, owner)?;
     let query = sqlx::query(&query);
     let rows = query.fetch_all(executor).await?;
 
@@ -836,4 +818,35 @@ fn to_qualified_uids(
         ));
     }
     Ok(uids)
+}
+
+async fn clear_database_<'e, E>(executor: E) -> KResult<()>
+where
+    E: Executor<'e, Database = Postgres> + Copy,
+{
+    // Erase `objects` table
+    sqlx::query(
+        PGSQL_QUERIES
+            .get("clean-table-objects")
+            .expect("SQL query can't be found"),
+    )
+    .execute(executor)
+    .await?;
+    // Erase `read_access` table
+    sqlx::query(
+        PGSQL_QUERIES
+            .get("clean-table-read_access")
+            .expect("SQL query can't be found"),
+    )
+    .execute(executor)
+    .await?;
+    // Erase `tags` table
+    sqlx::query(
+        PGSQL_QUERIES
+            .get("clean-table-tags")
+            .expect("SQL query can't be found"),
+    )
+    .execute(executor)
+    .await?;
+    Ok(())
 }

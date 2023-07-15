@@ -91,7 +91,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "cc",
-        None,
+        Some(&["test_cc"]),
         Some("coVerCRypt"),
         None,
         None,
@@ -104,7 +104,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "cc",
-        None,
+        Some(&["test_cc"]),
         None,
         None,
         Some("CoverCryptSecretKey"),
@@ -114,7 +114,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "cc",
-        None,
+        Some(&["test_cc"]),
         None,
         None,
         Some("CoverCRyptPUBLIcKey"),
@@ -239,7 +239,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "ec",
-        None,
+        Some(&["test_ec"]),
         Some("EcDH"),
         None,
         None,
@@ -252,7 +252,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "ec",
-        None,
+        Some(&["test_ec"]),
         None,
         None,
         Some("TransparentECPrivateKey"),
@@ -262,7 +262,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "ec",
-        None,
+        Some(&["test_ec"]),
         None,
         None,
         Some("TransparentECPublicKey"),
@@ -332,7 +332,7 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "sym",
-        None,
+        Some(&["test_sym"]),
         Some("Aes"),
         None,
         None,
@@ -344,7 +344,7 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         "sym",
-        None,
+        Some(&["test_sym"]),
         None,
         None,
         Some("TransparentSymmetricKey"),

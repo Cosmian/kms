@@ -47,12 +47,19 @@ use crate::{
 impl KMS {
     pub async fn instantiate(shared_config: ServerConfig) -> KResult<Self> {
         let db: Box<dyn Database + Sync + Send> = match &shared_config.db_params {
-            DbParams::SqliteEnc(db_path) => Box::new(CachedSqlCipher::instantiate(db_path).await?),
-            DbParams::Sqlite(db_path) => {
-                Box::new(SqlitePool::instantiate(&db_path.join("kms.db")).await?)
+            DbParams::SqliteEnc(db_path) => Box::new(
+                CachedSqlCipher::instantiate(db_path, shared_config.clear_db_on_start).await?,
+            ),
+            DbParams::Sqlite(db_path) => Box::new(
+                SqlitePool::instantiate(&db_path.join("kms.db"), shared_config.clear_db_on_start)
+                    .await?,
+            ),
+            DbParams::Postgres(url) => {
+                Box::new(PgPool::instantiate(url, shared_config.clear_db_on_start).await?)
             }
-            DbParams::Postgres(url) => Box::new(PgPool::instantiate(url).await?),
-            DbParams::Mysql(url) => Box::new(MySqlPool::instantiate(url).await?),
+            DbParams::Mysql(url) => {
+                Box::new(MySqlPool::instantiate(url, shared_config.clear_db_on_start).await?)
+            }
         };
 
         Ok(Self {

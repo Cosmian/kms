@@ -170,6 +170,7 @@ pub async fn init_test_server_options(
         },
         db: DBConfig {
             database_type: "sqlite-enc".to_string(),
+            clear_database: true,
             ..Default::default()
         },
         http: if use_https {

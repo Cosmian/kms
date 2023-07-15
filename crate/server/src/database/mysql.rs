@@ -32,7 +32,7 @@ pub struct MySqlPool {
 }
 
 impl MySqlPool {
-    pub async fn instantiate(connection_url: &str) -> KResult<Self> {
+    pub async fn instantiate(connection_url: &str, clear_database: bool) -> KResult<Self> {
         let options = MySqlConnectOptions::from_str(connection_url)?
             // disable logging of each query
             .disable_statement_logging();
@@ -66,29 +66,11 @@ impl MySqlPool {
         .execute(&pool)
         .await?;
 
-        Ok(Self { pool })
-    }
+        if clear_database {
+            clear_database_(&pool).await?;
+        }
 
-    #[cfg(test)]
-    pub async fn clean_database(&self) {
-        // Erase `objects` table
-        sqlx::query(
-            MYSQL_QUERIES
-                .get("clean-table-objects")
-                .expect("SQL query can't be found"),
-        )
-        .execute(&self.pool)
-        .await
-        .expect("cannot truncate objects table");
-        // Erase `read_access` table
-        sqlx::query(
-            MYSQL_QUERIES
-                .get("clean-table-read_access")
-                .expect("SQL query can't be found"),
-        )
-        .execute(&self.pool)
-        .await
-        .expect("cannot truncate read_access table");
+        Ok(Self { pool })
     }
 }
 
@@ -834,4 +816,35 @@ fn to_qualified_uids(
         ));
     }
     Ok(uids)
+}
+
+async fn clear_database_<'e, E>(executor: E) -> KResult<()>
+where
+    E: Executor<'e, Database = MySql> + Copy,
+{
+    // Erase `objects` table
+    sqlx::query(
+        MYSQL_QUERIES
+            .get("clean-table-objects")
+            .expect("SQL query can't be found"),
+    )
+    .execute(executor)
+    .await?;
+    // Erase `read_access` table
+    sqlx::query(
+        MYSQL_QUERIES
+            .get("clean-table-read_access")
+            .expect("SQL query can't be found"),
+    )
+    .execute(executor)
+    .await?;
+    // Erase `tags` table
+    sqlx::query(
+        MYSQL_QUERIES
+            .get("clean-table-tags")
+            .expect("SQL query can't be found"),
+    )
+    .execute(executor)
+    .await?;
+    Ok(())
 }
