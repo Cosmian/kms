@@ -109,7 +109,7 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(custom_userkey_uid, "my_custom_userkey")
 
         # Revoke key
-        revoked_uid = await self.client.revoke_cover_crypt_key(userkey_uid, "test")
+        revoked_uid = await self.client.revoke_cover_crypt_key( "test", userkey_uid)
         self.assertEqual(revoked_uid, userkey_uid)
 
         # Destroy key
@@ -201,7 +201,7 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
             new_pubkey_uid,
             new_privkey_uid,
         ) = await self.client.rotate_cover_crypt_attributes(
-            ["Department::HR"], self.privkey_uid, 
+            ["Department::HR"], self.privkey_uid,
         )
         self.assertEqual(self.pubkey_uid, new_pubkey_uid)
         self.assertEqual(self.privkey_uid, new_privkey_uid)
