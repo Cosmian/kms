@@ -18,12 +18,15 @@ Create a new X25519 key pair.
 **Usage:**
 
 ```sh
-ckms ec keys create
+ckms ec keys create [OPTIONS]
 ```
 
 **Options:**
 
 ```sh
+-t, --tag <TAG>
+        The tag to associate with the master key pair.
+        To specify multiple tags, use the option multiple times
 -h, --help
         Print help (see a summary with '-h')
 ```
@@ -34,10 +37,10 @@ Export a key from the KMS.
 
 The key is exported in JSON KMIP TTLV format
 unless the `--bytes` option is specified, in which case
-the key bytes are exported without meta data, such as
+the key bytes are exported without metadata, such as
 
 - the links between the keys in a pair
-- other metadata: policies, etc...
+- other metadata: policies, etc.
 
 Key bytes are sufficient to perform local encryption or decryption.
 
@@ -49,15 +52,12 @@ Unwrapping a key that is not wrapped is ignored and returns the unwrapped key.
 **Usage:**
 
 ```sh
-ckms ec keys export [OPTIONS] <KEY_ID> <KEY_FILE>
+ckms ec keys export [OPTIONS] <KEY_FILE>
 ```
 
 **Arguments:**
 
 ```sh
-<KEY_ID>
-        The key unique identifier stored in the KMS
-
 <KEY_FILE>
         The file to export the key to
 ```
@@ -65,6 +65,14 @@ ckms ec keys export [OPTIONS] <KEY_ID> <KEY_FILE>
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The key unique identifier stored in the KMS. 
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified.
+        To specify multiple tags, use the option multiple times
+
 -b, --bytes
         Export the key bytes only
 
@@ -86,15 +94,17 @@ ckms ec keys export [OPTIONS] <KEY_ID> <KEY_FILE>
 Import a key in the KMS.
 
 The key must be in KMIP JSON TTLV format.
-When no key unique id is specified a random UUID v4 is generated.
+When no key unique id is specified, a random UUID v4 is generated.
 
 The key can be wrapped when imported. Wrapping using:
 
 - a password or a supplied key in base64 is done locally
-- a symmetric key id is performed server side
+- a symmetric key id is performed server-side
 
-A password is first converted to a 256 bit key using Argon 2.
+A password is first converted to a 256-bit key using Argon 2.
 Wrapping is performed according to RFC 5649.
+
+Tags can later be used to retrieve the key. Tags are optional.
 
 **Usage:**
 
@@ -121,6 +131,10 @@ ckms ec keys import [OPTIONS] <KEY_FILE> [KEY_ID]
 -r, --replace
         Replace an existing key under the same id
 
+-t, --tag <TAG>
+        The tag to associate with the key. 
+        To specify multiple tags, use the option multiple times        
+
 -h, --help
         Print help (see a summary with '-h')
 ```
@@ -136,8 +150,8 @@ The key can be wrapped using either:
 - a key in the KMS (which will be exported first)
 - a key in a KMIP JSON TTLV file
 
-For the latter 2 cases, the key may be a symmetric key
-and RFC 5649 will be used or a curve 25519 public key
+For the latter 2 cases, the key may be a symmetric key,
+and RFC 5649 will be used, or a curve 25519 public key
 and ECIES will be used.
 
 **Usage:**
@@ -186,8 +200,8 @@ The key can be unwrapped using either:
 - a key in the KMS (which will be exported first)
 - a key in a KMIP JSON TTLV file
 
-For the latter 2 cases, the key may be a symmetric key
-and RFC 5649 will be used or a curve 25519 private key
+For the latter 2 cases, the key may be a symmetric key,
+and RFC 5649 will be used, or a curve 25519 private key
 and ECIES will be used.
 
 **Usage:**
@@ -236,15 +250,12 @@ Revoking a public or private key will revoke the whole key pair (the two keys ne
 **Usage:**
 
 ```sh
-ckms ec keys revoke <KEY_ID> <REVOCATION_REASON>
+ckms ec keys revoke [OPTIONS] <REVOCATION_REASON>
 ```
 
 **Arguments:**
 
 ```sh
-<KEY_ID>
-        The unique identifier of the key to revoke
-
 <REVOCATION_REASON>
         The reason for the revocation as a string
 ```
@@ -252,6 +263,14 @@ ckms ec keys revoke <KEY_ID> <REVOCATION_REASON>
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The key unique identifier of the key to revoke.
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+
 -h, --help
         Print help (see a summary with '-h')
 ```
@@ -269,19 +288,20 @@ Destroying a public or private key will destroy the whole key pair when the two 
 **Usage:**
 
 ```sh
-ckms ec keys destroy <KEY_ID>
-```
-
-**Arguments:**
-
-```sh
-<KEY_ID>
-        The unique identifier of the key to destroy
+ckms ec keys destroy [OPTIONS]
 ```
 
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The key unique identifier of the key to revoke.
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+        
 -h, --help
         Print help (see a summary with '-h')
 ```

@@ -1,4 +1,4 @@
-# Elliptic Curve Encryption Commands
+# Elliptic Curve Commands
 
 Manage elliptic curve keys. Encrypt and decrypt data using ECIES.
 
@@ -38,7 +38,7 @@ Note: this is not a streaming call: the file is entirely loaded in memory before
 **Usage:**
 
 ```sh
-ckms ec encrypt [OPTIONS] <FILE> <PUBLIC_KEY_ID>
+ckms ec encrypt [OPTIONS] <FILE>
 ```
 
 **Arguments:**
@@ -46,14 +46,19 @@ ckms ec encrypt [OPTIONS] <FILE> <PUBLIC_KEY_ID>
 ```sh
 <FILE>
         The file to encrypt
-
-<PUBLIC_KEY_ID>
-        The public key unique identifier stored in the KMS
 ```
 
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The public key unique identifier. 
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+
 -o, --output-file <OUTPUT_FILE>
         The encrypted output file path
 
@@ -73,7 +78,7 @@ Note: this is not a streaming call: the file is entirely loaded in memory before
 **Usage:**
 
 ```sh
-ckms ec decrypt [OPTIONS] <FILE> <PRIVATE_KEY_ID>
+ckms ec decrypt [OPTIONS] <FILE>
 ```
 
 **Arguments:**
@@ -81,14 +86,19 @@ ckms ec decrypt [OPTIONS] <FILE> <PRIVATE_KEY_ID>
 ```sh
 <FILE>
         The file to decrypt
-
-<PRIVATE_KEY_ID>
-        The private key unique identifier stored in the KMS
 ```
 
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The public key unique identifier. 
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+
 -o, --output-file <OUTPUT_FILE>
         The encrypted output file path
 
@@ -99,37 +109,6 @@ ckms ec decrypt [OPTIONS] <FILE> <PRIVATE_KEY_ID>
         Print help (see a summary with '-h')
 ```
 
-## locate
-
-Locate Objects inside the KMS
-
-**Usage:**
-
-```sh
-ckms cc locate [OPTIONS]
-```
-
-**Options:**
-
-```sh
--t, --tag <TAG>
-        User tags or system tags to locate the object. 
-        To specify multiple tags, use the option multiple times
-
--a, --algorithm <CRYPTOGRAPHIC_ALGORITHM>
-        Cryptographic algorithm in lowercase as specified by KMIP 2.1
-        
-        Possible values include "covercrypt", "ecdh", "chacha20poly1305", "aes", "ed25519"
-
--l, --cryptographic_length <CRYPTOGRAPHIC_LENGTH>
-        Cryptographic length (e.g. key size) in bits
-
--f, --key_format_type <KEY_FORMAT_TYPE>
-        key format type as specified by KMIP 2.1 
-
--h, --help
-        Print help (see a summary with '-h')
-```
 
 ## help
 

@@ -7,7 +7,6 @@ pub(crate) mod rotate_attributes;
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 
-use super::shared::LocateObjectsAction;
 use crate::{
     actions::cover_crypt::{
         decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands, policy::PolicyCommands,
@@ -16,9 +15,9 @@ use crate::{
     error::CliError,
 };
 
-/// Manage CoverCrypt keys and policies. Rotate attributes. Encrypt and decrypt data.
+/// Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data.
 #[derive(Parser)]
-pub enum CoverCryptCommands {
+pub enum CovercryptCommands {
     #[command(subcommand)]
     Keys(KeysCommands),
     #[command(subcommand)]
@@ -26,10 +25,9 @@ pub enum CoverCryptCommands {
     Rotate(RotateAttributesAction),
     Encrypt(EncryptAction),
     Decrypt(DecryptAction),
-    Locate(LocateObjectsAction),
 }
 
-impl CoverCryptCommands {
+impl CovercryptCommands {
     pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         match self {
             Self::Policy(command) => command.process(client_connector).await?,
@@ -37,7 +35,6 @@ impl CoverCryptCommands {
             Self::Rotate(action) => action.run(client_connector).await?,
             Self::Encrypt(action) => action.run(client_connector).await?,
             Self::Decrypt(action) => action.run(client_connector).await?,
-            Self::Locate(action) => action.run(client_connector).await?,
         };
         Ok(())
     }

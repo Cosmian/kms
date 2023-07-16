@@ -13,9 +13,9 @@ use crate::{
 ///
 /// The key is exported in JSON KMIP TTLV format
 /// unless the `--bytes` option is specified, in which case
-/// the key bytes are exported without meta data, such as
+/// the key bytes are exported without metadata, such as
 ///  - the links between the keys in a pair
-///  - other metadata: policies, etc...
+///  - other metadata: policies, etc.
 /// Key bytes are sufficient to perform local encryption or decryption.
 ///
 /// The key can be wrapped or unwrapped when exported.
@@ -28,7 +28,7 @@ use crate::{
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct ExportKeyAction {
-    /// The ile to export the key to
+    /// The file to export the key to
     #[clap(required = true)]
     key_file: PathBuf,
 

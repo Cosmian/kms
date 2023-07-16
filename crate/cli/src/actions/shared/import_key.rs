@@ -11,13 +11,13 @@ use crate::{
 /// Import a key in the KMS.
 ///
 /// The key must be in KMIP JSON TTLV format.
-/// When no key unique id is specified a random UUID v4 is generated.
+/// When no key unique id is specified, a random UUID v4 is generated.
 ///
 /// The key can be wrapped when imported. Wrapping using:
 ///  - a password or a supplied key in base64 is done locally
-///  - a symmetric key id is performed server side
+///  - a symmetric key id is performed server-side
 ///
-/// A password is first converted to a 256 bit key using Argon 2.
+/// A password is first converted to a 256-bit key using Argon 2.
 /// Wrapping is performed according to RFC 5649.
 ///
 /// Tags can later be used to retrieve the key. Tags are optional.

@@ -6,7 +6,6 @@ use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 
 use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
-use super::shared::LocateObjectsAction;
 use crate::error::CliError;
 
 /// Manage elliptic curve keys. Encrypt and decrypt data using ECIES.
@@ -16,7 +15,6 @@ pub enum EllipticCurveCommands {
     Keys(KeysCommands),
     Encrypt(EncryptAction),
     Decrypt(DecryptAction),
-    Locate(LocateObjectsAction),
 }
 
 impl EllipticCurveCommands {
@@ -25,7 +23,6 @@ impl EllipticCurveCommands {
             EllipticCurveCommands::Keys(command) => command.process(client_connector).await?,
             EllipticCurveCommands::Encrypt(action) => action.run(client_connector).await?,
             EllipticCurveCommands::Decrypt(action) => action.run(client_connector).await?,
-            EllipticCurveCommands::Locate(action) => action.run(client_connector).await?,
         };
         Ok(())
     }

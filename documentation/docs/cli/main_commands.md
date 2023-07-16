@@ -5,10 +5,28 @@ The `ckms` client expects command with parameters and optional options.
 ckms <COMMAND>
 ```
 
-At any time the online help for the COMMAND, can be displayed using the `--help` option.
+At any time the online help for the CLI or a `COMMAND`, can be displayed using the `--help` option.
 
 ```sh
-ckms <COMMAND> --help
+> ckms --help
+
+CLI used to manage the Cosmian KMS.
+
+Usage: ckms <COMMAND>
+
+Commands:
+  cc              Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
+  ec              Manage elliptic curve keys. Encrypt and decrypt data using ECIES
+  sym             Manage symmetric keys and salts. Encrypt and decrypt data
+  access-rights   Manage the users' access rights to the cryptographic objects
+  locate          Locate cryptographic objects inside the KMS
+  new-database    Initialize a new client-secret encrypted database and return the secret (SQLCipher only).
+  server-version  Print the version of the server
+  help            Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
 ```
 
 ### [cc](covercrypt/covercrypt.md)
@@ -22,13 +40,11 @@ ckms cc [SUBCOMMAND]
 **subcommands:**
 
 ```sh
-keys     Create, destroy, import, export CoverCrypt master and user keys
-policy   Extract or view policies of existing keys,
-           and create a binary policy from specifications
+keys     Create, destroy, import, export Covercrypt master and user keys
+policy   Extract or view policies of existing keys, and create a binary policy from specifications
 rotate   Rotate attributes and rekey the master and user keys.
 encrypt  Encrypt a file using Covercrypt
 decrypt  Decrypt a file using Covercrypt
-locate   Locate Objects inside the KMS
 help     Print this message or the help of the given subcommand(s)
 ```
 
@@ -45,10 +61,9 @@ ckms ec [SUBCOMMAND]
 **subcommands:**
 
 ```sh
-keys     Create, destroy, import, export elliptic curve key pairs
+keys     Create, destroy, import, and export elliptic curve key pairs
 encrypt  Encrypt a file with the given public key using ECIES
 decrypt  Decrypts a file with the given private key using ECIES
-locate   Locate Objects inside the KMS
 help     Print this message or the help of the given subcommand(s)
 ```
 
@@ -68,36 +83,82 @@ ckms sym [SUBCOMMAND]
 keys     Create, destroy, import, and export symmetric keys
 encrypt  Encrypt a file using AES GCM
 decrypt  Decrypts a file using AES GCM
-locate   Locate Objects inside the KMS
 help     Print this message or the help of the given subcommand(s)
 ```
 
 [> view subcommands details](sym/sym.md)
 
-### [permission](./permissions.md)
+### [access-rights](./access_rights.md)
 
-Manage the permission of objects.
+Manage the users' access rights to the cryptographic objects.
 
 ```sh
-ckms permission [SUBCOMMAND]
+ckms access-rights [SUBCOMMAND]
 ```
 
 **subcommands:**
 
 ```sh
-remove  Remove an access authorization for an object to a user
-add     Add an access authorization for an object to a user
-list    List granted access authorizations for an object
-owned   List objects owned by the current user
-shared  List objects shared for the current user
-help    Print this message or the help of the given subcommand(s)
+grant     Grant another user an access right to an object
+revoke    Revoke another user access right to an object
+list      List the access rights granted on an object to other users
+owned     List the objects owned by the calling user
+obtained  List the access rights obtained by the calling user
+help      Print this message or the help of the given subcommand(s)
 ```
 
-[> view subcommands details](./permissions.md)
+[> view subcommands details](./access_rights.md)
+
+
+### locate
+
+Locate cryptographic objects inside the KMS
+
+**Usage:**
+
+```sh
+ckms locate [OPTIONS] 
+```
+
+**Options:**
+
+```sh
+-t, --tag <TAG>
+        User tags or system tags to locate the object.
+        To specify multiple tags, use the option multiple times.
+
+-a, --algorithm <CRYPTOGRAPHIC_ALGORITHM>
+        Cryptographic algorithm (case insensitive)
+        
+        The list of algorithms is the one specified by KMIP 2.1 in addition to "Covercrypt".
+        Possible values include "Covercrypt", "ECDH", "ChaCha20Poly1305", "AES", "Ed25519"
+        
+        Running the locate sub-command with a wrong value will list all the possible values.
+        e.g. `ckms locate --algorithm WRONG`
+
+-l, --cryptographic-length <CRYPTOGRAPHIC_LENGTH>
+        Cryptographic length (e.g. key size) in bits
+
+-f, --key-format-type <KEY_FORMAT_TYPE>
+        Key format type (case insensitive)
+        
+        The list is the one specified by KMIP 2.1
+        in addition to the two Covercrypt formats: "CoverCryptSecretKey" and "CoverCryptPublicKey"
+        Possible values also include: "TransparentECPrivateKey", "TransparentECPublicKey" and "TransparentSymmetricKey"
+        
+        Running the locate sub-command with a wrong value will list all the possible values.
+        e.g. `ckms locate --key-format-type WRONG`
+
+-h, --help
+        Print help (see a summary with '-h')
+        
+-h, --help                 Print help
+```
+
 
 ### new-database
 
-Initialize a new client-secret encrypted database and return the secret.
+Initialize a new client-secret encrypted database and return the secret (SQLCipher only).
 
 This secret is only displayed once and is not stored anywhere on the server.
 To use the encrypted database, the secret must be set in the `kms_database_secret`
@@ -121,33 +182,3 @@ ckms new-database
 -h, --help                 Print help
 ```
 
-### trust
-
-Query the enclave to check its trustworthiness
-
-**Usage:**
-
-```sh
-ckms trust --mr-enclave <MR_ENCLAVE> <EXPORT_PATH>
-```
-
-**Arguments:**
-
-```sh
-<EXPORT_PATH>  The path to store exported files (quote, manifest, certificate, remote attestation, ...)
-```
-
-**Options:**
-
-```sh
---mr-enclave <MR_ENCLAVE>  The value of the MR_ENCLAVE obtained by running the KMS docker on your local machine
--h, --help                 Print help
-```
-
-### help
-
-Print the help message or the help of the given subcommand(s).
-
-```sh
-ckms help [SUBCOMMAND]
-```

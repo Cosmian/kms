@@ -16,7 +16,7 @@ pub struct RevokeKeyAction {
     #[clap(required = true)]
     revocation_reason: String,
 
-    /// The key unique identifier of the key to revoke
+    /// The key unique identifier of the key to revoke.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     key_id: Option<String>,

@@ -166,40 +166,6 @@ ckms cc decrypt [OPTIONS] <FILE> <USER_KEY_ID>
         Print help (see a summary with '-h')
 ```
 
-## locate
-
-Locate Objects inside the KMS
-
-**Usage:**
-
-```sh
-ckms cc locate [OPTIONS]
-```
-
-
-**Options:**
-
-```sh
--t, --tag <TAG>
-        User tags or system tags to locate the object. 
-        To specify multiple tags, use the option multiple times
-
--a, --algorithm <CRYPTOGRAPHIC_ALGORITHM>
-        Cryptographic algorithm in lowercase as specified by KMIP 2.1 + covercrypt
-        
-        Possible values include "covercrypt", "ecdh", "chacha20poly1305", "aes", "ed25519"
-
--l, --cryptographic_length <CRYPTOGRAPHIC_LENGTH>
-        Cryptographic length (e.g. key size) in bits
-
--f, --key_format_type <KEY_FORMAT_TYPE>
-        key format type as specified by KMIP 2.1 
-           + covercrypt: CoverCryptSecretKey and CoverCryptPublicKey
-
--h, --help
-        Print help (see a summary with '-h')
-```
-
 ## help
 
 Print the help message or the help of the given subcommand(s).

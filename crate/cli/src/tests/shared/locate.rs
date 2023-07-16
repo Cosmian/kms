@@ -19,13 +19,12 @@ use crate::{
 
 pub fn locate(
     cli_conf_path: &str,
-    sub_command: &str,
     tags: Option<&[&str]>,
     algorithm: Option<&str>,
     cryptographic_length: Option<usize>,
     key_format_type: Option<&str>,
 ) -> Result<Vec<String>, CliError> {
-    let mut args: Vec<String> = vec!["locate"].iter().map(|s| s.to_string()).collect();
+    let mut args: Vec<String> = vec![];
     if let Some(tags) = tags {
         tags.iter().for_each(|tag| {
             args.push("--tag".to_owned());
@@ -37,17 +36,17 @@ pub fn locate(
         args.push(algorithm.to_owned());
     }
     if let Some(cryptographic_length) = cryptographic_length {
-        args.push("--cryptographic_length".to_owned());
+        args.push("--cryptographic-length".to_owned());
         args.push(cryptographic_length.to_string());
     }
     if let Some(key_format_type) = key_format_type {
-        args.push("--key_format_type".to_owned());
+        args.push("--key-format-type".to_owned());
         args.push(key_format_type.to_string());
     }
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(sub_command).args(args);
+    cmd.arg("locate").args(args);
     let output = cmd.output()?;
     if output.status.success() {
         return Ok(std::str::from_utf8(&output.stdout)?
@@ -76,7 +75,6 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     // Locate with Tags
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "cc",
         Some(&["test_cc"]),
         None,
         None,
@@ -90,7 +88,6 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     // this should be case insensitive
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "cc",
         Some(&["test_cc"]),
         Some("coVerCRypt"),
         None,
@@ -103,7 +100,6 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     // locate using the key format type
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "cc",
         Some(&["test_cc"]),
         None,
         None,
@@ -113,7 +109,6 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     assert!(ids.contains(&master_private_key_id));
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "cc",
         Some(&["test_cc"]),
         None,
         None,
@@ -125,7 +120,6 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     //locate using tags and cryptographic algorithm and key format type
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "cc",
         Some(&["test_cc"]),
         Some("CoverCrypt"),
         None,
@@ -144,7 +138,6 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     // Locate with Tags
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "cc",
         Some(&["test_cc"]),
         None,
         None,
@@ -157,7 +150,6 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     //locate using tags and cryptographic algorithm and key format type
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "cc",
         Some(&["test_cc"]),
         Some("CoverCrypt"),
         None,
@@ -168,7 +160,6 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     assert!(ids.contains(&user_key_id));
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "cc",
         Some(&["test_cc", "another_tag"]),
         Some("CoverCrypt"),
         None,
@@ -180,7 +171,6 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     // test using system Tags
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "cc",
         Some(&["test_cc", "_uk"]),
         None,
         None,
@@ -190,7 +180,6 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     assert!(ids.contains(&user_key_id));
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "cc",
         Some(&["test_cc", "_sk"]),
         None,
         None,
@@ -200,7 +189,6 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     assert!(ids.contains(&master_private_key_id));
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "cc",
         Some(&["test_cc", "_pk"]),
         None,
         None,
@@ -224,7 +212,6 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     // Locate with Tags
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "ec",
         Some(&["test_ec"]),
         None,
         None,
@@ -238,7 +225,6 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     // this should be case insensitive
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "ec",
         Some(&["test_ec"]),
         Some("EcDH"),
         None,
@@ -251,7 +237,6 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     // locate using the key format type
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "ec",
         Some(&["test_ec"]),
         None,
         None,
@@ -261,7 +246,6 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     assert!(ids.contains(&private_key_id));
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "ec",
         Some(&["test_ec"]),
         None,
         None,
@@ -273,7 +257,6 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     //locate using tags and cryptographic algorithm and key format type
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "ec",
         Some(&["test_ec"]),
         Some("ECDH"),
         None,
@@ -285,7 +268,6 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     // test using system Tags
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "ec",
         Some(&["test_ec", "_sk"]),
         None,
         None,
@@ -295,7 +277,6 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     assert!(ids.contains(&private_key_id));
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "ec",
         Some(&["test_ec", "_pk"]),
         None,
         None,
@@ -318,7 +299,6 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     // Locate with Tags
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "sym",
         Some(&["test_sym"]),
         None,
         None,
@@ -331,7 +311,6 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     // this should be case insensitive
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "sym",
         Some(&["test_sym"]),
         Some("Aes"),
         None,
@@ -343,7 +322,6 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     // locate using the key format type
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "sym",
         Some(&["test_sym"]),
         None,
         None,
@@ -355,7 +333,6 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     //locate using tags and cryptographic algorithm and key format type
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "sym",
         Some(&["test_sym"]),
         Some("AES"),
         None,
@@ -367,7 +344,6 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     // test using system Tags
     let ids = locate(
         &ctx.owner_cli_conf_path,
-        "sym",
         Some(&["test_sym", "_kk"]),
         None,
         None,

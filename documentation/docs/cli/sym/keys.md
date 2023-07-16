@@ -37,6 +37,10 @@ ckms sym keys create [OPTIONS]
 
         [default: aes]
         [possible values: aes, chacha20, sha3, shake]
+        
+-t, --tag <TAG>
+        The tag to associate with the key. 
+        To specify multiple tags, use the option multiple times
 
 -h, --help
         Print help (see a summary with '-h')
@@ -48,10 +52,10 @@ Export a key from the KMS
 
 The key is exported in JSON KMIP TTLV format
 unless the `--bytes` option is specified, in which case
-the key bytes are exported without meta data, such as
+the key bytes are exported without metadata, such as
 
 - the links between the keys in a pair
-- other metadata: policies, etc...
+- other metadata: policies, etc.
 
 Key bytes are sufficient to perform local encryption or decryption.
 
@@ -60,18 +64,18 @@ If nothing is specified, it is returned as it is stored.
 Wrapping a key that is already wrapped is an error.
 Unwrapping a key that is not wrapped is ignored and returns the unwrapped key.
 
+When using tags to retrieve the key, rather than the key id,
+an error is returned if multiple keys matching the tags are found.
+
 **Usage:**
 
 ```sh
-ckms sym keys export [OPTIONS] <KEY_ID> <KEY_FILE>
+ckms sym keys export [OPTIONS] <KEY_FILE>
 ```
 
 **Arguments:**
 
 ```sh
-<KEY_ID>
-        The key unique identifier stored in the KMS
-
 <KEY_FILE>
         The ile to export the key to
 ```
@@ -79,6 +83,14 @@ ckms sym keys export [OPTIONS] <KEY_ID> <KEY_FILE>
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The public key unique identifier. 
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+
 -b, --bytes
         Export the key bytes only
 
@@ -110,6 +122,8 @@ The key can be wrapped when imported. Wrapping using:
 A password is first converted to a 256 bit key using Argon 2.
 Wrapping is performed according to RFC 5649.
 
+Tags can later be used to retrieve the key. Tags are optional.
+
 **Usage:**
 
 ```sh
@@ -134,6 +148,10 @@ ckms sym keys import [OPTIONS] <KEY_FILE> [KEY_ID]
 
 -r, --replace
         Replace an existing key under the same id
+
+-t, --tag <TAG>
+        The tag to associate with the key. 
+        To specify multiple tags, use the option multiple times        
 
 -h, --help
         Print help (see a summary with '-h')
@@ -248,15 +266,12 @@ When a key is revoked, it can only be exported by the owner of the key, using th
 **Usage:**
 
 ```sh
-ckms sym keys revoke <KEY_ID> <REVOCATION_REASON>
+ckms sym keys revoke <REVOCATION_REASON>
 ```
 
 **Arguments:**
 
 ```sh
-<KEY_ID>
-        The unique identifier of the key to revoke
-
 <REVOCATION_REASON>
         The reason for the revocation as a string
 ```
@@ -264,6 +279,14 @@ ckms sym keys revoke <KEY_ID> <REVOCATION_REASON>
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The public key unique identifier. 
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+
 -h, --help
         Print help (see a summary with '-h')
 ```
@@ -279,19 +302,20 @@ When a key is destroyed, it can only be exported by the owner of the key, and wi
 **Usage:**
 
 ```sh
-ckms sym keys destroy <KEY_ID>
-```
-
-**Arguments:**
-
-```sh
-<KEY_ID>
-        The unique identifier of the key to destroy
+ckms sym keys destroy [OPTIONS]
 ```
 
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The public key unique identifier. 
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+
 -h, --help
         Print help (see a summary with '-h')
 ```

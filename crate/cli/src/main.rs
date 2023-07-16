@@ -3,9 +3,9 @@ use std::process;
 use clap::{Parser, Subcommand};
 use cosmian_kms_cli::{
     actions::{
-        access::AccessAction, cover_crypt::CoverCryptCommands,
+        access::AccessAction, cover_crypt::CovercryptCommands,
         elliptic_curves::EllipticCurveCommands, new_database::NewDatabaseAction,
-        sgx::entrypoint::SgxAction, symmetric::SymmetricCommands, version::ServerVersionAction,
+        shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
     },
     config::CliConf,
     error::CliError,
@@ -21,15 +21,16 @@ struct Cli {
 #[derive(Subcommand)]
 enum CliCommands {
     #[command(subcommand)]
-    Cc(CoverCryptCommands),
+    Cc(CovercryptCommands),
     #[command(subcommand)]
     Ec(EllipticCurveCommands),
     #[command(subcommand)]
     Sym(SymmetricCommands),
     #[command(subcommand)]
-    Access(AccessAction),
+    AccessRights(AccessAction),
+    Locate(LocateObjectsAction),
     NewDatabase(NewDatabaseAction),
-    Trust(SgxAction),
+    // Trust(SgxAction),
     ServerVersion(ServerVersionAction),
 }
 
@@ -46,12 +47,13 @@ async fn main_() -> Result<(), CliError> {
     let conf = CliConf::load()?;
 
     match opts.command {
+        CliCommands::Locate(action) => action.run(&conf).await?,
         CliCommands::Cc(action) => action.process(&conf).await?,
         CliCommands::Ec(action) => action.process(&conf).await?,
         CliCommands::Sym(action) => action.process(&conf).await?,
-        CliCommands::Access(action) => action.process(&conf).await?,
+        CliCommands::AccessRights(action) => action.process(&conf).await?,
         CliCommands::NewDatabase(action) => action.process(&conf).await?,
-        CliCommands::Trust(action) => action.process(&conf).await?,
+        // CliCommands::Trust(action) => action.process(&conf).await?,
         CliCommands::ServerVersion(action) => action.process(&conf).await?,
     };
 

@@ -15,33 +15,44 @@ use strum::IntoEnumIterator;
 
 use crate::error::CliError;
 
-/// Locate Objects inside the KMS
+/// Locate cryptographic objects inside the KMS
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct LocateObjectsAction {
     /// User tags or system tags to locate the object.
     /// To specify multiple tags, use the option multiple times.
-    #[clap(long = "tag", short = 't', value_name = "TAG")]
+    #[clap(long = "tag", short = 't', value_name = "TAG", verbatim_doc_comment)]
     tags: Option<Vec<String>>,
 
-    /// Cryptographic algorithm
-    /// in lowercase as specified by KMIP 2.1 + covercrypt
+    /// Cryptographic algorithm (case insensitive)
     ///
-    /// Possible values include "covercrypt", "ecdh", "chacha20poly1305", "aes", "ed25519"
+    /// The list of algorithms is the one specified by KMIP 2.1 in addition to "Covercrypt".
+    /// Possible values include "Covercrypt", "ECDH", "ChaCha20Poly1305", "AES", "Ed25519"
+    ///
+    /// Running the locate sub-command with a wrong value will list all the possible values.
+    /// e.g. `ckms locate --algorithm WRONG`
     #[clap(
         long = "algorithm",
         short = 'a',
-        value_parser = CryptographicAlgorithmParser
+        value_parser = CryptographicAlgorithmParser,
+        verbatim_doc_comment
     )]
     cryptographic_algorithm: Option<CryptographicAlgorithm>,
 
     /// Cryptographic length (e.g. key size) in bits
-    #[clap(long = "cryptographic_length", short = 'l')]
+    #[clap(long = "cryptographic-length", short = 'l')]
     cryptographic_length: Option<i32>,
 
-    /// key format type as specified by KMIP 2.1 + covercrypt: CoverCryptSecretKey and CoverCryptPublicKey
-    #[clap(long = "key_format_type", short = 'f',
-        value_parser = KeyFormatTypeParser)]
+    /// Key format type (case insensitive)
+    ///
+    /// The list is the one specified by KMIP 2.1
+    /// in addition to the two Covercrypt formats: "CoverCryptSecretKey" and "CoverCryptPublicKey"
+    /// Possible values also include: "TransparentECPrivateKey", "TransparentECPublicKey" and "TransparentSymmetricKey"
+    ///
+    /// Running the locate sub-command with a wrong value will list all the possible values.
+    /// e.g. `ckms locate --key-format-type WRONG`
+    #[clap(long = "key-format-type", short = 'f',
+        value_parser = KeyFormatTypeParser,verbatim_doc_comment)]
     key_format_type: Option<KeyFormatType>,
 }
 
@@ -121,7 +132,7 @@ impl clap::builder::TypedValueParser for CryptographicAlgorithmParser {
                     ContextKind::SuggestedValue,
                     ContextValue::Strings(
                         CryptographicAlgorithm::iter()
-                            .map(|algo| algo.to_string().to_lowercase())
+                            .map(|algo| algo.to_string())
                             .collect::<Vec<String>>(),
                     ),
                 );
@@ -163,7 +174,7 @@ impl clap::builder::TypedValueParser for KeyFormatTypeParser {
                     ContextKind::SuggestedValue,
                     ContextValue::Strings(
                         KeyFormatType::iter()
-                            .map(|algo| algo.to_string().to_lowercase())
+                            .map(|algo| algo.to_string())
                             .collect::<Vec<String>>(),
                     ),
                 );

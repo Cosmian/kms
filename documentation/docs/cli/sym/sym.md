@@ -44,7 +44,7 @@ Note: this is not a streaming call: the file is entirely loaded in memory before
 **Usage:**
 
 ```sh
-ckms sym encrypt [OPTIONS] <FILE> <KEY_ID>
+ckms sym encrypt [OPTIONS] <FILE>
 ```
 
 **Arguments:**
@@ -52,14 +52,19 @@ ckms sym encrypt [OPTIONS] <FILE> <KEY_ID>
 ```sh
 <FILE>
         The file to encrypt
-
-<KEY_ID>
-        The symmetric key unique identifier stored in the KMS
 ```
 
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The public key unique identifier. 
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+
 -o, --output-file <OUTPUT_FILE>
         The encrypted output file path
 
@@ -85,7 +90,7 @@ This is not a streaming call: the file is entirely loaded in memory before being
 **Usage:**
 
 ```sh
-ckms sym decrypt [OPTIONS] <FILE> <KEY_ID>
+ckms sym decrypt [OPTIONS] <FILE>
 ```
 
 **Arguments:**
@@ -93,51 +98,24 @@ ckms sym decrypt [OPTIONS] <FILE> <KEY_ID>
 ```sh
 <FILE>
         The file to decrypt
-
-<KEY_ID>
-        The symmetric key unique identifier stored in the KMS
 ```
 
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The public key unique identifier. 
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+
 -o, --output-file <OUTPUT_FILE>
         The encrypted output file path
 
 -a, --authentication-data <AUTHENTICATION_DATA>
         Optional authentication data that was supplied during encryption
-
--h, --help
-        Print help (see a summary with '-h')
-```
-
-## locate
-
-Locate Objects inside the KMS
-
-**Usage:**
-
-```sh
-ckms cc locate [OPTIONS]
-```
-
-**Options:**
-
-```sh
--t, --tag <TAG>
-        User tags or system tags to locate the object. 
-        To specify multiple tags, use the option multiple times
-
--a, --algorithm <CRYPTOGRAPHIC_ALGORITHM>
-        Cryptographic algorithm in lowercase as specified by KMIP 2.1
-        
-        Possible values include "covercrypt", "ecdh", "chacha20poly1305", "aes", "ed25519"
-
--l, --cryptographic_length <CRYPTOGRAPHIC_LENGTH>
-        Cryptographic length (e.g. key size) in bits
-
--f, --key_format_type <KEY_FORMAT_TYPE>
-        key format type as specified by KMIP 2.1 
 
 -h, --help
         Print help (see a summary with '-h')

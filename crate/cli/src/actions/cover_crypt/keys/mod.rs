@@ -15,7 +15,7 @@ mod create_user_key;
 mod destroy_key;
 mod revoke_key;
 
-/// Create, destroy, import, export CoverCrypt master and user keys
+/// Create, destroy, import, export Covercrypt master and user keys
 #[derive(Subcommand)]
 pub enum KeysCommands {
     CreateMasterKeyPair(CreateMasterKeyPairAction),
