@@ -138,16 +138,16 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
 
         # Successful decryption
         plaintext, _ = await self.client.cover_crypt_decryption(
-            userkey_uid,
             protected_mkg_ciphertext,
+            userkey_uid,
         )
         self.assertEqual(bytes(plaintext), to_encrypt)
 
         # Wrong permission
         with self.assertRaises(Exception):
             await self.client.cover_crypt_decryption(
-                userkey_uid,
                 topsecret_mkg_ciphertext,
+                userkey_uid,
             )
 
     async def test_simple_encryption_decryption_with_metadata(self) -> None:
@@ -168,8 +168,8 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
 
         # Successful decryption
         plaintext, header = await self.client.cover_crypt_decryption(
-            userkey_uid,
             protected_fin_ciphertext,
+            userkey_uid,
             authentication_data=b"auth token",
         )
         self.assertEqual(bytes(plaintext), to_encrypt)
@@ -178,8 +178,8 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
         # Missing authentication data
         with self.assertRaises(Exception):
             await self.client.cover_crypt_decryption(
-                userkey_uid,
                 protected_fin_ciphertext,
+                userkey_uid,
             )
 
     async def test_policy_rotation_encryption_decryption(self) -> None:
@@ -201,7 +201,7 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
             new_pubkey_uid,
             new_privkey_uid,
         ) = await self.client.rotate_cover_crypt_attributes(
-            self.privkey_uid, ["Department::HR"]
+            ["Department::HR"], self.privkey_uid, 
         )
         self.assertEqual(self.pubkey_uid, new_pubkey_uid)
         self.assertEqual(self.privkey_uid, new_privkey_uid)
@@ -215,15 +215,15 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
 
         # Decrypt old message
         plaintext, _ = await self.client.cover_crypt_decryption(
-            userkey_uid,
             old_ciphertext,
+            userkey_uid,
         )
         self.assertEqual(bytes(plaintext), old_message)
 
         # Decrypt new message
         plaintext, _ = await self.client.cover_crypt_decryption(
-            userkey_uid,
             new_ciphertext,
+            userkey_uid,
         )
         self.assertEqual(bytes(plaintext), new_message)
 

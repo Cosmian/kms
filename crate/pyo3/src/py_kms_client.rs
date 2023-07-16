@@ -520,9 +520,9 @@ impl KmsClient {
     pub fn cover_crypt_decryption<'p>(
         &'p self,
         encrypted_data: Vec<u8>,
-        authentication_data: Option<Vec<u8>>,
         user_key_identifier: Option<&str>,
         tags: Option<Vec<&str>>,
+        authentication_data: Option<Vec<u8>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         let id = if let Some(key_id) = user_key_identifier {
