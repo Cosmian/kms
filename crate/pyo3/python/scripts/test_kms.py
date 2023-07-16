@@ -110,7 +110,7 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
 
         # Revoke key
         revoked_uid = await self.client.revoke_cover_crypt_key(
-            "test", 
+            "test",
             userkey_uid
         )
         self.assertEqual(revoked_uid, userkey_uid)
