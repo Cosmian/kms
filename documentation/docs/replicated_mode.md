@@ -14,7 +14,7 @@ e.g.
 
 ```sh
 docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:4.4.3 \
+  --name kms ghcr.io/cosmian/kms:4.5.0 \
   --database-type=postgresql \
   --database-url=postgres://kms_user:kms_password@pgsql-server:5432/kms
 
@@ -46,7 +46,11 @@ Say the certificate is called `cert.p12` and is in a directory called `/certific
 
 ```sh
 docker run --rm -p 9998:9998 \
+<<<<<<< HEAD
   --name kms ghcr.io/cosmian/kms:4.4.3 \
+=======
+  --name kms ghcr.io/cosmian/kms:4.5.0 \
+>>>>>>> 9795148 (bump to version4.5.0)
   -v /certificate/cert.p12:/root/cosmian-kms/cert.p12 \
   --database-type=mysql \
   --database-url=mysql://mysql_server:3306/kms \
