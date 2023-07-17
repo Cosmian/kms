@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.4.3] - 2023-07-17
+
+### Bug Fixes
+
+- Remove RUSTFLAGS for docker container and python package
+
+### Features
+
+- Update sqlx to 0.7 + bitflags and base64-url to version 2
+
 ## [4.4.2] - 2023-06-13
 
 ### Features
