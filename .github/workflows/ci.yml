@@ -41,7 +41,7 @@ jobs:
       - cargo-doc
       - cargo-tests
       - python_and_docker
-    runs-on: [self-hosted, not-docker]
+    runs-on: [self-hosted, not-sgx]
     strategy:
       fail-fast: false
       matrix:
