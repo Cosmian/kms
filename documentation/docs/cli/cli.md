@@ -1,7 +1,7 @@
 The Cosmian Key Management System (KMS) is a command line interface (CLI) used to manage cryptographic objects inside the KMS.
 
 !!! info "Download ckms"
-    Please download the latest version of the CLI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.4.2/)
+    Please download the latest version of the CLI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.4.3/)
 
 The CLI expects a configuration file to be located at `~/.cosmian/kms.json` where `~` is your home folder.
 

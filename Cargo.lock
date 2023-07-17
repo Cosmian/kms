@@ -809,7 +809,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "4.4.2"
+version = "4.4.3"
 dependencies = [
  "bitflags 2.3.3",
  "cloudproof",
@@ -830,7 +830,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "4.4.2"
+version = "4.4.3"
 dependencies = [
  "actix-rt",
  "actix-server",
@@ -880,7 +880,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_python"
-version = "4.4.2"
+version = "4.4.3"
 dependencies = [
  "cloudproof",
  "cosmian_kmip",
@@ -895,7 +895,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "4.4.2"
+version = "4.4.3"
 dependencies = [
  "acme-lib",
  "actix-cors",
@@ -944,7 +944,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_utils"
-version = "4.4.2"
+version = "4.4.3"
 dependencies = [
  "aes",
  "argon2",
@@ -1816,7 +1816,7 @@ checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 
 [[package]]
 name = "libsgx"
-version = "4.4.2"
+version = "4.4.3"
 dependencies = [
  "base64 0.21.0",
  "base64-url",
