@@ -46,7 +46,7 @@ jobs:
           MYSQL_ROOT_PASSWORD: kms
 
     runs-on: ubuntu-22.04
-    # runs-on: [self-hosted, not-docker] # currently not needed.
+    # runs-on: [self-hosted, not-sgx] # currently not needed.
     container:
       image: iyxd/centos7-rust
 
