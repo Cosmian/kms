@@ -22,7 +22,7 @@ fn gen_key(cli_conf_path: &str) -> Result<String, CliError> {
 }
 
 /// Grants access to a user
-fn grant_access(
+pub(crate) fn grant_access(
     cli_conf_path: &str,
     object_id: &str,
     user: &str,
@@ -42,7 +42,7 @@ fn grant_access(
 }
 
 /// Revoke access to a user
-fn revoke_access(
+pub(crate) fn revoke_access(
     cli_conf_path: &str,
     object_id: &str,
     user: &str,

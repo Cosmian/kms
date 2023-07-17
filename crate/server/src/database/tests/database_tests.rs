@@ -63,7 +63,7 @@ pub async fn tx_and_list<DB: Database>(
     assert_eq!(&uid_1, &ids[0]);
     assert_eq!(&uid_2, &ids[1]);
 
-    let list = db.find(None, None, owner, db_params).await?;
+    let list = db.find(None, None, owner, true, db_params).await?;
     match list
         .iter()
         .find(|(id, _state, _attrs, _is_wrapped)| id == &uid_1)

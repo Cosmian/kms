@@ -266,10 +266,18 @@ impl Database for MySqlPool {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<StateEnumeration>,
-        owner: &str,
+        user: &str,
+        user_must_be_owner: bool,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
-        find_(researched_attributes, state, owner, &self.pool).await
+        find_(
+            researched_attributes,
+            state,
+            user,
+            user_must_be_owner,
+            &self.pool,
+        )
+        .await
     }
 
     #[cfg(test)]
@@ -782,13 +790,19 @@ where
 pub(crate) async fn find_<'e, E>(
     researched_attributes: Option<&Attributes>,
     state: Option<StateEnumeration>,
-    owner: &str,
+    user: &str,
+    user_must_be_owner: bool,
     executor: E,
 ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
-    let query = query_from_attributes::<MySqlPlaceholder>(researched_attributes, state, owner)?;
+    let query = query_from_attributes::<MySqlPlaceholder>(
+        researched_attributes,
+        state,
+        user,
+        user_must_be_owner,
+    )?;
     let query = sqlx::query(&query);
     let rows = query.fetch_all(executor).await?;
 

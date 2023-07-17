@@ -6,6 +6,7 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
+        access::{grant_access, revoke_access},
         cover_crypt::{
             master_key_pair::create_cc_master_key_pair,
             user_decryption_keys::create_user_decryption_key,
@@ -351,6 +352,114 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     )?;
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&key_id));
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_locate_grant() -> Result<(), CliError> {
+    // init the test server
+    let ctx = ONCE.get_or_init(init_test_server).await;
+
+    // generate a new master key pair
+    let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
+        &ctx.owner_cli_conf_path,
+        "--policy-specifications",
+        "test_data/policy_specifications.json",
+        &["test_grant"],
+    )?;
+
+    // Locate with Tags
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        Some(&["test_grant"]),
+        None,
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 2);
+    assert!(ids.contains(&master_private_key_id));
+    assert!(ids.contains(&master_public_key_id));
+
+    // Locate with cryptographic algorithm
+    // this should be case insensitive
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        Some(&["test_grant"]),
+        Some("coVerCRypt"),
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 2);
+    assert!(ids.contains(&master_private_key_id));
+    assert!(ids.contains(&master_public_key_id));
+
+    // generate a user key
+    let user_key_id = create_user_decryption_key(
+        &ctx.owner_cli_conf_path,
+        &master_private_key_id,
+        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &["test_grant", "another_tag"],
+    )?;
+    // Locate with Tags
+    let ids = locate(
+        &ctx.owner_cli_conf_path,
+        Some(&["test_grant"]),
+        None,
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 3);
+    assert!(ids.contains(&master_private_key_id));
+    assert!(ids.contains(&master_public_key_id));
+    assert!(ids.contains(&user_key_id));
+
+    // the user should not be able to locate anything
+    let ids = locate(
+        &ctx.user_cli_conf_path,
+        Some(&["test_grant"]),
+        None,
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 0);
+
+    // Grant access to the user decryption key
+    grant_access(
+        &ctx.owner_cli_conf_path,
+        &user_key_id,
+        "user.client@acme.com",
+        "encrypt",
+    )?;
+
+    // The user should be able to locate the user key and only that one
+    let ids = locate(
+        &ctx.user_cli_conf_path,
+        Some(&["test_grant"]),
+        None,
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 1);
+    assert!(ids.contains(&user_key_id));
+
+    //revoke the access
+    revoke_access(
+        &ctx.owner_cli_conf_path,
+        &user_key_id,
+        "user.client@acme.com",
+        "encrypt",
+    )?;
+
+    // the user should no more be able to locate the key
+    let ids = locate(
+        &ctx.user_cli_conf_path,
+        Some(&["test_grant"]),
+        None,
+        None,
+        None,
+    )?;
+    assert_eq!(ids.len(), 0);
 
     Ok(())
 }

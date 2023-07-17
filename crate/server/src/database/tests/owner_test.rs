@@ -99,13 +99,13 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
     db.grant_access(&uid, userid2, ObjectOperationType::Get, db_params)
         .await?;
 
-    let objects = db.find(None, None, owner, db_params).await?;
+    let objects = db.find(None, None, owner, true, db_params).await?;
     assert_eq!(objects.len(), 1);
     let (o_uid, o_state, _, _) = &objects[0];
     assert_eq!(o_uid, &uid);
     assert_eq!(o_state, &StateEnumeration::Active);
 
-    let objects = db.find(None, None, userid2, db_params).await?;
+    let objects = db.find(None, None, userid2, true, db_params).await?;
     assert!(objects.is_empty());
 
     let objects = db.list_access_rights_obtained(userid2, db_params).await?;

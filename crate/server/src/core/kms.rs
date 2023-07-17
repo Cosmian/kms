@@ -132,7 +132,7 @@ impl KMS {
             // Create a dummy query to initialize the database
             // Note: if we don't proceed like that, the password will be set at the first query of the user
             // which let him put the password he wants.
-            self.db.find(None, None, "", Some(&params)).await?;
+            self.db.find(None, None, "", true, Some(&params)).await?;
 
             return Ok(token)
         }
@@ -616,7 +616,7 @@ impl KMS {
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectOwnedResponse>> {
-        let list = self.db.find(None, None, owner, params).await?;
+        let list = self.db.find(None, None, owner, true, params).await?;
         let ids = list.into_iter().map(ObjectOwnedResponse::from).collect();
         Ok(ids)
     }

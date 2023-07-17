@@ -87,6 +87,13 @@
       "database": "kms",
       "username": "kms",
       "password": "kms"
+    },
+    {
+      "previewLimit": 50,
+      "driver": "SQLite",
+      "name": "kms.db",
+      "database": "/Users/bgrieder/cosmian-kms/sqlite-data/kms.db"
     }
-  ]
+  ],
+  "sqltools.useNodeRuntime": true
 }

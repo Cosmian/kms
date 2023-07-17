@@ -407,12 +407,20 @@ impl Database for CachedSqlCipher {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<StateEnumeration>,
-        owner: &str,
+        user: &str,
+        user_must_be_owner: bool,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = find_(researched_attributes, state, owner, &*pool).await;
+            let ret = find_(
+                researched_attributes,
+                state,
+                user,
+                user_must_be_owner,
+                &*pool,
+            )
+            .await;
             self.post_query(params.group_id)?;
             return ret
         }

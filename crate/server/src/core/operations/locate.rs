@@ -15,13 +15,13 @@ pub async fn locate(
     kms: &KMS,
     request: Locate,
     state: Option<StateEnumeration>,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<LocateResponse> {
     // Find all the objects that match the attributes
     let uids_attrs = kms
         .db
-        .find(Some(&request.attributes), state, owner, params)
+        .find(Some(&request.attributes), state, user, false, params)
         .await?;
     // Filter the uids that match the access policy
     let mut uids = Vec::new();

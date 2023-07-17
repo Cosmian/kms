@@ -82,6 +82,7 @@ pub async fn find_attributes<DB: Database>(
             researched_attributes.as_ref(),
             Some(StateEnumeration::Active),
             owner,
+            true,
             db_params,
         )
         .await?;

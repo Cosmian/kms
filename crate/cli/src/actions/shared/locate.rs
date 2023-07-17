@@ -16,6 +16,9 @@ use strum::IntoEnumIterator;
 use crate::error::CliError;
 
 /// Locate cryptographic objects inside the KMS
+///
+/// This command will return one id per line.
+/// There will be no output if no object is found.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct LocateObjectsAction {
@@ -91,8 +94,6 @@ impl LocateObjectsAction {
             for identifier in identifiers {
                 println!("{}", identifier);
             }
-        } else {
-            println!("No objects found");
         }
 
         Ok(())

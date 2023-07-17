@@ -72,6 +72,7 @@ pub async fn json_access<DB: Database>(
             researched_attributes.as_ref(),
             Some(StateEnumeration::Active),
             owner,
+            true,
             db_params,
         )
         .await?;
@@ -89,6 +90,7 @@ pub async fn json_access<DB: Database>(
             researched_attributes.as_ref(),
             Some(StateEnumeration::Active),
             owner,
+            true,
             db_params,
         )
         .await?;
@@ -107,6 +109,7 @@ pub async fn json_access<DB: Database>(
             researched_attributes.as_ref(),
             Some(StateEnumeration::Active),
             owner,
+            true,
             db_params,
         )
         .await?;
@@ -124,6 +127,7 @@ pub async fn json_access<DB: Database>(
             researched_attributes.as_ref(),
             Some(StateEnumeration::Active),
             owner,
+            true,
             db_params,
         )
         .await?;
@@ -144,6 +148,7 @@ pub async fn json_access<DB: Database>(
             researched_attributes.as_ref(),
             Some(StateEnumeration::Active),
             owner,
+            true,
             db_params,
         )
         .await?;
@@ -161,6 +166,7 @@ pub async fn json_access<DB: Database>(
             researched_attributes.as_ref(),
             Some(StateEnumeration::Active),
             owner,
+            true,
             db_params,
         )
         .await?;
@@ -177,6 +183,7 @@ pub async fn json_access<DB: Database>(
             researched_attributes.as_ref(),
             Some(StateEnumeration::Active),
             owner,
+            true,
             db_params,
         )
         .await?;

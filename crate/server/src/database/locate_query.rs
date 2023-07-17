@@ -13,6 +13,7 @@ pub trait PlaceholderTrait {
     const JSON_FN_EACH_ELEMENT: &'static str = "json_each";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
+    const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
     const JSON_NODE_ATTRS: &'static str = "'$.object.KeyBlock.KeyValue.Attributes'";
     const JSON_NODE_WRAPPING: &'static str = "'$.object.KeyBlock.KeyWrappingData'";
     const JSON_NODE_LINK: &'static str = "'$.object.KeyBlock.KeyValue.Attributes.Link'";
@@ -61,6 +62,7 @@ pub trait PlaceholderTrait {
 
 pub enum MySqlPlaceholder {}
 impl PlaceholderTrait for MySqlPlaceholder {
+    const JSON_ARRAY_LENGTH: &'static str = "JSON_LENGTH";
     const JSON_FN_EACH_ELEMENT: &'static str = "json_search";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$[*].LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$[*].LinkType'";
@@ -102,6 +104,7 @@ impl PlaceholderTrait for MySqlPlaceholder {
 }
 pub enum PgSqlPlaceholder {}
 impl PlaceholderTrait for PgSqlPlaceholder {
+    const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
     const JSON_FN_EACH_ELEMENT: &'static str = "json_array_elements";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract_path";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract_path_text";
@@ -123,7 +126,8 @@ impl PlaceholderTrait for SqlitePlaceholder {}
 pub fn query_from_attributes<P: PlaceholderTrait>(
     attributes: Option<&Attributes>,
     state: Option<StateEnumeration>,
-    owner: &str,
+    user: &str,
+    user_must_be_owner: bool,
 ) -> KResult<String> {
     let mut query = format!(
         "SELECT objects.id as id, objects.state as state, {}(objects.object, {}) as attrs, \
@@ -150,7 +154,7 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
         if tags_len > 0 {
             let tags_string = tags
                 .iter()
-                .map(|t| format!("\"{t}\""))
+                .map(|t| format!("'{t}'"))
                 .collect::<Vec<String>>()
                 .join(", ");
             query = format!(
@@ -166,7 +170,18 @@ ON objects.id = matched_tags.id"
         }
     }
 
-    query = format!("{query} WHERE owner = '{owner}'");
+    if user_must_be_owner {
+        // only select objects for which the user is the owner
+        query = format!("{query} WHERE objects.owner = '{user}'",);
+    } else {
+        // select objects for which the user is the owner or has been granted an access right
+        query = format!(
+            "{query}\n LEFT JOIN read_access ON objects.id = read_access.id AND \
+             read_access.userid = '{user}'"
+        );
+        query =
+            format!("{query} WHERE (objects.owner = '{user}' OR read_access.userid = '{user}')");
+    }
 
     if let Some(state) = state {
         query = format!("{query} AND state = '{state}'");
@@ -217,6 +232,5 @@ ON objects.id = matched_tags.id"
             }
         }
     }
-
     Ok(query)
 }

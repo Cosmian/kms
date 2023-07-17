@@ -153,7 +153,8 @@ pub trait Database {
         &self,
         researched_attributes: Option<&Attributes>,
         state: Option<StateEnumeration>,
-        owner: &str,
+        user: &str,
+        user_must_be_owner: bool,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>;
 
