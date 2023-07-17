@@ -49,7 +49,7 @@ docker run --rm -p 443:9998 \
   -v cosmian-kms:/root/cosmian-kms/sqlite-data \
   -v cosmian-kms-certs:/root/cosmian-kms/certbot-ssl \
 <<<<<<< HEAD
-  --name kms ghcr.io/cosmian/kms:4.4.3 \
+  --name kms ghcr.io/cosmian/kms:4.5.0 \
 =======
   --name kms ghcr.io/cosmian/kms:4.5.0 \
 >>>>>>> 9795148 (bump to version4.5.0)

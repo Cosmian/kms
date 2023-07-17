@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.5.0] - 2023-07-18
+
+### Bug Fixes
+
+- Documentation 
+
+### Features
+
+- tagging: the KMS server now supports user tagging of objects to facilitate their management.
+Specify as many user tags as needed when creating and importing objects.
+
+In addition, the user server will automatically add a system tag based on the object type:
+
+ - `_sk`: for a private key
+ - `_pk`: for a public key
+ - `_kk`: for a symmetric key
+ - `_uk`: for a Covercrypt user decryption key
+Use the tags to export objects, locate them, or request data encryption and decryption.
+
+- Added `locate` to the `ckms`client
+
+
 ## [4.4.3] - 2023-07-17
 
 ### Bug Fixes

@@ -26,7 +26,7 @@ The server must be started using TLS, and the certificate used to verify the cli
 !!! info "Example client TLS authentication."
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.4.3 \
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.5.0 \
         --https-p12-file kms.server.p12  --https-p12-password password \
         --authority-cert-file verifier.cert.pem
     ```
@@ -66,7 +66,7 @@ The KMS server JWT authentication is configured using three command line options
 
     ```sh
 <<<<<<< HEAD
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.4.3 \
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.5.0 \
 =======
     docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.5.0 \
 >>>>>>> 9795148 (bump to version4.5.0)
