@@ -30,7 +30,6 @@ enum CliCommands {
     AccessRights(AccessAction),
     Locate(LocateObjectsAction),
     NewDatabase(NewDatabaseAction),
-    // Trust(SgxAction),
     ServerVersion(ServerVersionAction),
 }
 
@@ -53,7 +52,6 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Sym(action) => action.process(&conf).await?,
         CliCommands::AccessRights(action) => action.process(&conf).await?,
         CliCommands::NewDatabase(action) => action.process(&conf).await?,
-        // CliCommands::Trust(action) => action.process(&conf).await?,
         CliCommands::ServerVersion(action) => action.process(&conf).await?,
     };
 
