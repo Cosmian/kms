@@ -136,7 +136,7 @@ pub async fn test_password_wrap_import() -> Result<(), CliError> {
     password_wrap_import_test(ctx, "ec", &private_key_id)?;
 
     // syn
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[] as &[&str])?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     password_wrap_import_test(ctx, "sym", &key_id)?;
 
     Ok(())

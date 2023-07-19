@@ -15,7 +15,6 @@ use crate::error::{result::CliResultHelper, CliError};
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateKeyPairAction {
-    //todo add algorithm choice
     /// The tag to associate with the master key pair.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]

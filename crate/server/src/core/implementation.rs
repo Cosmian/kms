@@ -283,8 +283,6 @@ impl KMS {
                     params,
                 )
                 .await?;
-                // add algorithm to tags
-                //return the object and the tags
                 Ok((object, tags))
             }
             other => kms_not_supported!(

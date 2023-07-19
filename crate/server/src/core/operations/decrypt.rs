@@ -35,14 +35,14 @@ pub async fn decrypt(
         .into_iter()
         .filter(|owm| {
             let object_type = owm.object.object_type();
-            owm.state == StateEnumeration::Active
-                && (object_type == ObjectType::PrivateKey
-                    || object_type == ObjectType::SymmetricKey)
-        })
-        // for Covercrypt, keep user decryption keys only
-        .filter(|owm| {
-            if owm.object.object_type() != ObjectType::PrivateKey {
+            if owm.state != StateEnumeration::Active {
+                return false
+            }
+            if object_type == ObjectType::SymmetricKey {
                 return true
+            }
+            if object_type != ObjectType::PrivateKey {
+                return false
             }
             if let Ok(attributes) = owm.object.attributes() {
                 // is it a Covercrypt secret key?

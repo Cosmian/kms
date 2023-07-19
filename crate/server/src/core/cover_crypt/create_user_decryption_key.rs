@@ -83,17 +83,15 @@ async fn create_user_decryption_key_(
         .collect::<Vec<ObjectWithMetadata>>();
 
     // there can only be one object
-    let owm = match owm_s.len() {
-        0 => return Err(KmsError::ItemNotFound(msk_uid_or_tag.to_owned())),
-        1 => owm_s.pop().ok_or_else(|| {
-            KmsError::ServerError(format!("failed getting the object: {msk_uid_or_tag}"))
-        })?,
-        _ => {
-            return Err(KmsError::InvalidRequest(format!(
-                "get: too many objects for master private key {msk_uid_or_tag}",
-            )))
-        }
-    };
+    let owm = owm_s
+        .pop()
+        .ok_or_else(|| KmsError::ItemNotFound(msk_uid_or_tag.to_owned()))?;
+
+    if !owm_s.is_empty() {
+        return Err(KmsError::InvalidRequest(format!(
+            "get: too many objects for master private key {msk_uid_or_tag}",
+        )))
+    }
 
     let master_private_key = &owm.object;
     if master_private_key.key_wrapping_data().is_some() {

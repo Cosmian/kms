@@ -29,19 +29,17 @@ pub(crate) async fn revoke_user_decryption_keys(
     )
     .await?
     {
-        for id in ids {
-            if !ids_to_skip.contains(&id) {
-                let _ = recursively_revoke_key(
-                    &id,
-                    revocation_reason.clone(),
-                    compromise_occurrence_date,
-                    kms,
-                    owner,
-                    params,
-                    ids_to_skip.clone(),
-                )
-                .await;
-            }
+        for id in ids.iter().filter(|&id| !ids_to_skip.contains(id)) {
+            recursively_revoke_key(
+                id,
+                revocation_reason.clone(),
+                compromise_occurrence_date,
+                kms,
+                owner,
+                params,
+                ids_to_skip.clone(),
+            )
+            .await?;
         }
     }
     Ok(())

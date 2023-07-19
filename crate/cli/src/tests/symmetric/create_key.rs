@@ -70,7 +70,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
     // AES
     {
         // AES 256 bit key
-        create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[] as &[&str])?;
+        create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
         // AES 128 bit key
         create_symmetric_key(
             &ctx.owner_cli_conf_path,

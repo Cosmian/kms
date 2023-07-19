@@ -120,7 +120,7 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
     )?;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[] as &[&str])?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     export_import_test(
         &ctx.owner_cli_conf_path,
         "sym",

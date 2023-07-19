@@ -18,7 +18,7 @@ pub const SUB_COMMAND: &str = "access-rights";
 
 /// Generates a symmetric key
 fn gen_key(cli_conf_path: &str) -> Result<String, CliError> {
-    create_symmetric_key(cli_conf_path, None, None, None, &[] as &[&str])
+    create_symmetric_key(cli_conf_path, None, None, None, &[])
 }
 
 /// Grants access to a user
