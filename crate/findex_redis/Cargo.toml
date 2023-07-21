@@ -1,0 +1,16 @@
+[package]
+name = "cosmian_findex_redis"
+version = "4.5.0"
+edition = "2021"
+
+[dependencies]
+redis = { version = "0.23", features = [
+    "aio",
+    "ahash",
+    "script",
+    "connection-manager",
+    "tokio-comp",
+] }
+cloudproof = { workspace = true }
+cosmian_findex = "4.0.3"
+thiserror = { workspace = true }

@@ -1,12 +1,13 @@
 [workspace]
 members = [
-  "crate/cli",
-  "crate/client",
-  "crate/kmip",
-  "crate/server",
-  "crate/utils",
-  "crate/libsgx",
-  "crate/pyo3",
+    "crate/cli",
+    "crate/client",
+    "crate/kmip",
+    "crate/server",
+    "crate/utils",
+    "crate/libsgx",
+    "crate/pyo3",
+    "crate/findex_redis",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli. For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
 resolver = "2"
@@ -21,7 +22,13 @@ base64 = "0.21"
 cloudproof = "2.1.1"
 base64-url = "2.0"
 bitflags = "2.3"
-clap = { version = "4.1", default-features = false, features = ["help", "usage", "error-context", "derive", "cargo"] }
+clap = { version = "4.1", default-features = false, features = [
+    "help",
+    "usage",
+    "error-context",
+    "derive",
+    "cargo",
+] }
 eyre = "0.6"
 hex = "0.4"
 http = "0.2"

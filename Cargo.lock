@@ -375,25 +375,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "android-tzdata"
-version = "0.1.1"
+name = "arc-swap"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e999941b234f3131b00bc13c22d06e8c5ff726d1b6318ac7eb276997bbb4fef0"
-
-[[package]]
-name = "android_system_properties"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "anyhow"
-version = "1.0.72"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b13c32d80ecc7ab747b80c3784bce54ee8a7a0cc4fbda9bf4cda2cf6fe90854"
+checksum = "bddcadddf5e9015d310179a59bb28c4d4b9920ad0f11e8e14dbadf654890c9a6"
 
 [[package]]
 name = "argon2"
@@ -755,7 +740,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c7018973eaa0b862d90ff14ed44ded840804c77d35d10527247b9a34819db9"
 dependencies = [
  "cosmian_cover_crypt",
- "cosmian_crypto_core",
+ "cosmian_crypto_core 7.0.0",
  "serde_json",
 ]
 
@@ -774,8 +759,8 @@ version = "4.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16c18b84647bc4cb2919339275ef6ace5ff3228b0c95c996741efbc7ee3b78d0"
 dependencies = [
- "cosmian_crypto_core",
- "cosmian_findex",
+ "cosmian_crypto_core 7.0.0",
+ "cosmian_findex 3.0.0",
 ]
 
 [[package]]
@@ -801,6 +786,20 @@ dependencies = [
  "atty",
  "lazy_static",
  "winapi",
+]
+
+[[package]]
+name = "combine"
+version = "4.6.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35ed6e9d84f0b51a7f52daf1c7d71dd136fd7a3f41a8462b8cdb8c78d920fad4"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "memchr",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -855,7 +854,8 @@ version = "12.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1fdda9201f0d8ae1e850872fb428c8bf48488a97773d0910f4a2e7665d07af3"
 dependencies = [
- "cosmian_crypto_core",
+ "base64 0.21.2",
+ "cosmian_crypto_core 7.0.0",
  "pqc_kyber",
  "serde",
  "serde_json",
@@ -887,16 +887,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmian_crypto_core"
+version = "9.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0145591a9cbd1b0f29804e38dee3538dce83c911ffa01e37755745d45fe1c9"
+dependencies = [
+ "aead",
+ "aes-gcm",
+ "getrandom 0.2.8",
+ "leb128",
+ "rand_chacha",
+ "rand_core 0.6.4",
+ "tiny-keccak",
+ "zeroize",
+]
+
+[[package]]
+name = "cosmian_findex"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53293c295643a29a338a3130e0bb5bbd30de711f1c44890a1e5326080ba42436"
+dependencies = [
+ "async-recursion",
+ "cosmian_crypto_core 7.0.0",
+ "futures",
+ "rand",
+ "tiny-keccak",
+ "zeroize",
+]
+
+[[package]]
 name = "cosmian_findex"
 version = "4.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "53293c295643a29a338a3130e0bb5bbd30de711f1c44890a1e5326080ba42436"
 dependencies = [
  "base64 0.21.2",
- "cosmian_crypto_core",
+ "cosmian_crypto_core 9.0.1",
  "rand",
  "tiny-keccak",
  "zeroize",
+]
+
+[[package]]
+name = "cosmian_findex_redis"
+version = "4.5.0"
+dependencies = [
+ "cloudproof",
+ "cosmian_findex 4.0.3",
+ "redis",
+ "thiserror",
 ]
 
 [[package]]
@@ -1018,6 +1058,7 @@ dependencies = [
  "async-recursion",
  "async-trait",
  "base64 0.21.2",
+ "bitflags 2.3.2",
  "clap",
  "cloudproof",
  "cosmian_kmip",
@@ -2721,6 +2762,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f70b36c8415361d34d90adf494f45bc18e568f909b5946d27c79559ddd812fa8"
 
 [[package]]
+name = "redis"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ea8c51b5dc1d8e5fd3350ec8167f464ec0995e79f2e90a075b63371500d557f"
+dependencies = [
+ "ahash 0.7.6",
+ "arc-swap",
+ "async-trait",
+ "bytes",
+ "combine",
+ "futures",
+ "futures-util",
+ "itoa",
+ "percent-encoding",
+ "pin-project-lite",
+ "ryu",
+ "sha1_smol",
+ "tokio",
+ "tokio-util",
+ "url",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3015,6 +3079,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1_smol"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae1a47186c03a32177042e55dbc5fd5aee900b8e0069a8d70fba96a9375cd012"
+
+[[package]]
 name = "sha2"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3227,7 +3297,7 @@ checksum = "8264c59b28b6858796acfcedc660aa4c9075cc6e4ec8eb03cdca2a3e725726db"
 dependencies = [
  "atoi",
  "base64 0.21.2",
- "bitflags 2.3.3",
+ "bitflags 2.3.2",
  "byteorder",
  "bytes",
  "crc",
@@ -3269,7 +3339,7 @@ checksum = "1cab6147b81ca9213a7578f1b4c9d24c449a53953cd2222a7b5d7cd29a5c3139"
 dependencies = [
  "atoi",
  "base64 0.21.2",
- "bitflags 2.3.3",
+ "bitflags 2.3.2",
  "byteorder",
  "crc",
  "dotenvy",
