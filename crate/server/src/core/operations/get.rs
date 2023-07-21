@@ -90,17 +90,15 @@ pub(crate) async fn get_active_object(
         .collect::<Vec<ObjectWithMetadata>>();
 
     // there can only be one object
-    let owm = match owm_s.len() {
-        0 => return Err(KmsError::ItemNotFound(uid_or_tags.to_owned())),
-        1 => owm_s.pop().ok_or_else(|| {
-            KmsError::ServerError(format!("failed getting the object: {uid_or_tags}"))
-        })?,
-        _ => {
-            return Err(KmsError::InvalidRequest(format!(
-                "get: too many objects for {uid_or_tags}",
-            )))
-        }
-    };
+    let owm = owm_s
+        .pop()
+        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.to_owned()))?;
+
+    if !owm_s.is_empty() {
+        return Err(KmsError::InvalidRequest(format!(
+            "get: too many active objects for {uid_or_tags}",
+        )))
+    }
 
     Ok(owm)
 }

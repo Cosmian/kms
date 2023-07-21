@@ -20,10 +20,8 @@ pub(crate) async fn destroy_user_decryption_keys(
     if let Some(ids) =
         locate_user_decryption_keys(kms, master_private_key_id, None, None, owner, params).await?
     {
-        for id in ids {
-            if !ids_to_skip.contains(&id) {
-                recursively_destroy_key(&id, kms, owner, params, ids_to_skip.clone()).await?;
-            }
+        for id in ids.into_iter().filter(|id| !ids_to_skip.contains(id)) {
+            recursively_destroy_key(&id, kms, owner, params, ids_to_skip.clone()).await?;
         }
     }
     Ok(())

@@ -31,12 +31,12 @@ pub async fn destroy_operation(
     // there must be an identifier
     let uid_or_tags = request
         .unique_identifier
-        .clone()
+        .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    recursively_destroy_key(&uid_or_tags, kms, user, params, HashSet::new()).await?;
+    recursively_destroy_key(uid_or_tags, kms, user, params, HashSet::new()).await?;
     Ok(DestroyResponse {
-        unique_identifier: uid_or_tags,
+        unique_identifier: uid_or_tags.to_owned(),
     })
 }
 
@@ -156,7 +156,7 @@ async fn destroy_key_core(
         }
         StateEnumeration::Deactivated | StateEnumeration::PreActive => StateEnumeration::Destroyed,
         StateEnumeration::Compromised => StateEnumeration::Destroyed_Compromised,
-        // already destroyed, return the object
+        // already destroyed, return
         StateEnumeration::Destroyed | StateEnumeration::Destroyed_Compromised => return Ok(()),
     };
 

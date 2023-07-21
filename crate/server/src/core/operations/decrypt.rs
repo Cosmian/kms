@@ -24,13 +24,13 @@ pub async fn decrypt(
     // there must be an identifier
     let uid_or_tags = request
         .unique_identifier
-        .clone()
+        .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
     // retrieve from tags or use passed identifier
     let mut owm_s = kms
         .db
-        .retrieve(&uid_or_tags, user, ObjectOperationType::Decrypt, params)
+        .retrieve(uid_or_tags, user, ObjectOperationType::Decrypt, params)
         .await?
         .into_iter()
         .filter(|owm| {
@@ -56,15 +56,15 @@ pub async fn decrypt(
         .collect::<Vec<ObjectWithMetadata>>();
 
     // there can only be one key
-    let owm = match owm_s.len() {
-        0 => return Err(KmsError::ItemNotFound(uid_or_tags)),
-        1 => owm_s.pop().expect("failed extracting the key"),
-        _ => {
-            return Err(KmsError::InvalidRequest(format!(
-                "too many objects for {uid_or_tags}",
-            )))
-        }
-    };
+    let owm = owm_s
+        .pop()
+        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.to_owned()))?;
+
+    if !owm_s.is_empty() {
+        return Err(KmsError::InvalidRequest(format!(
+            "get: too many objects for key {uid_or_tags}",
+        )))
+    }
 
     // decrypt
     kms.get_decryption_system(Default::default(), owm, params)

@@ -42,15 +42,15 @@ pub async fn export(
         .await?;
 
     // there can only be one object
-    let mut owm = match owm_s.len() {
-        0 => return Err(KmsError::ItemNotFound(uid_or_tags.to_owned())),
-        1 => owm_s.pop().expect("failed extracting the object"),
-        _ => {
-            return Err(KmsError::InvalidRequest(format!(
-                "too many objects for {uid_or_tags}",
-            )))
-        }
-    };
+    let mut owm = owm_s
+        .pop()
+        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.to_owned()))?;
+
+    if !owm_s.is_empty() {
+        return Err(KmsError::InvalidRequest(format!(
+            "get: too many objects for {uid_or_tags}",
+        )))
+    }
 
     // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
     // The rest of the semantics is the same as Get
