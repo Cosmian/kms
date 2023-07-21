@@ -99,7 +99,7 @@ impl EncryptionSystem for AesGcmSystem {
                 &mut data,
                 if ad.is_empty() { None } else { Some(&ad) },
             )
-            .map_err(|e| KmisUtilsError::NotSupported(e.to_string()))?;
+            .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
 
         Ok(EncryptResponse {
             unique_identifier: self.key_uid.clone(),
@@ -173,7 +173,7 @@ impl DecryptionSystem for AesGcmSystem {
                 &tag,
                 if ad.is_empty() { None } else { Some(&ad) },
             )
-            .map_err(|e| CryptoError::NotSupported(e.to_string()))?;
+            .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
 
         Ok(DecryptResponse {
             unique_identifier: self.key_uid.clone(),

@@ -291,7 +291,7 @@ impl Database for PgPool {
     }
 }
 
-pub(crate) async fn create_(
+pub async fn create_(
     uid: Option<String>,
     owner: &str,
     object: &kmip_objects::Object,
@@ -337,7 +337,7 @@ pub(crate) async fn create_(
     Ok(uid)
 }
 
-pub(crate) async fn retrieve_<'e, E>(
+pub async fn retrieve_<'e, E>(
     uid_or_tags: &str,
     user: &str,
     operation_type: ObjectOperationType,
@@ -428,7 +428,7 @@ where
     Ok(tags)
 }
 
-pub(crate) async fn update_object_(
+pub async fn update_object_(
     uid: &str,
     object: &kmip_objects::Object,
     tags: Option<&HashSet<String>>,
@@ -480,11 +480,7 @@ pub(crate) async fn update_object_(
     Ok(())
 }
 
-pub(crate) async fn update_state_<'e, E>(
-    uid: &str,
-    state: StateEnumeration,
-    executor: E,
-) -> KResult<()>
+pub async fn update_state_<'e, E>(uid: &str, state: StateEnumeration, executor: E) -> KResult<()>
 where
     E: Executor<'e, Database = Postgres>,
 {
@@ -501,7 +497,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn delete_(
+pub async fn delete_(
     uid: &str,
     owner: &str,
     executor: &mut Transaction<'_, Postgres>,
@@ -531,7 +527,7 @@ pub(crate) async fn delete_(
     Ok(())
 }
 
-pub(crate) async fn upsert_(
+pub async fn upsert_(
     uid: &str,
     owner: &str,
     object: &kmip_objects::Object,
@@ -585,7 +581,7 @@ pub(crate) async fn upsert_(
     Ok(())
 }
 
-pub(crate) async fn list_accesses_<'e, E>(
+pub async fn list_accesses_<'e, E>(
     uid: &str,
     executor: E,
 ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>>
@@ -613,7 +609,7 @@ where
     Ok(ids)
 }
 
-pub(crate) async fn list_shared_objects_<'e, E>(
+pub async fn list_shared_objects_<'e, E>(
     user: &str,
     executor: E,
 ) -> KResult<
@@ -660,7 +656,7 @@ where
     Ok(ids)
 }
 
-pub(crate) async fn fetch_permissions_<'e, E>(
+pub async fn fetch_permissions_<'e, E>(
     uid: &str,
     userid: &str,
     executor: E,
@@ -689,7 +685,7 @@ where
     })
 }
 
-pub(crate) async fn insert_access_<'e, E>(
+pub async fn insert_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_type: ObjectOperationType,
@@ -726,7 +722,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn delete_access_<'e, E>(
+pub async fn delete_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_type: ObjectOperationType,
@@ -773,7 +769,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<bool>
+pub async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<bool>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
@@ -789,7 +785,7 @@ where
     Ok(row.is_some())
 }
 
-pub(crate) async fn find_<'e, E>(
+pub async fn find_<'e, E>(
     researched_attributes: Option<&Attributes>,
     state: Option<StateEnumeration>,
     user: &str,

@@ -21,7 +21,7 @@ use crate::{
 pub fn https_clap_config() -> ClapConfig {
     let tmp_dir = temp_dir();
     let uuid = Uuid::new_v4();
-    let sqlite_path = tmp_dir.join(format!("{}.sqlite", uuid));
+    let sqlite_path = tmp_dir.join(format!("{uuid}.sqlite"));
     if sqlite_path.exists() {
         std::fs::remove_file(&sqlite_path).unwrap();
     }

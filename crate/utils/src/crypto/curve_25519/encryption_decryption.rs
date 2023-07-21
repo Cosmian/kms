@@ -11,10 +11,9 @@ use cosmian_kmip::kmip::{
 use tracing::{debug, trace};
 
 use crate::{
-    crypto::error::{result::CryptoResultHelper, KmipUtilsError},
+    error::{result::CryptoResultHelper, KmipUtilsError},
+    DecryptionSystem, EncryptionSystem,
 };
-// use super::user_key::unwrap_user_decryption_key_object;
-use crate::{DecryptionSystem, EncryptionSystem};
 
 /// Encrypt a single block of data using an hybrid encryption mode
 /// Cannot be used as a stream cipher
@@ -30,6 +29,8 @@ pub const X25519_PRIVATE_KEY_LENGTH: usize = 32;
 
 impl EciesEncryption {
     pub fn instantiate(public_key_uid: &str, public_key: &Object) -> Result<Self, KmipUtilsError> {
+        let rng = CsRng::from_entropy();
+
         let public_key_bytes: [u8; X25519_PUBLIC_KEY_LENGTH] =
             public_key.key_block()?.key_bytes()?.as_slice().try_into()?;
         let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
@@ -37,6 +38,7 @@ impl EciesEncryption {
         trace!("Instantiated hybrid ECIES encipher for public key id: {public_key_uid}");
 
         Ok(Self {
+            rng: Arc::new(Mutex::new(rng)),
             public_key_uid: public_key_uid.into(),
             public_key,
         })
@@ -44,7 +46,7 @@ impl EciesEncryption {
 }
 
 impl EncryptionSystem for EciesEncryption {
-    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError> {
+    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError> {
         let authenticated_encryption_additional_data = &request
             .authenticated_encryption_additional_data
             .clone()
@@ -52,10 +54,10 @@ impl EncryptionSystem for EciesEncryption {
 
         let plaintext = request.data.clone().context("missing plaintext data")?;
 
-        let mut rng = self.rng.lock().unwrap();
+        let mut rng = self.rng.lock().expect("failed to lock rng");
 
         let ciphertext =
-            EciesX25519XChaCha20::encrypt(&mut rng, &self.public_key, &plaintext, None)?;
+            EciesX25519XChaCha20::encrypt(&mut *rng, &self.public_key, &plaintext, None)?;
 
         debug!(
             "Encrypted data with public key {} of len (CT/Enc): {}/{}",

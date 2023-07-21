@@ -116,7 +116,6 @@ pub fn create_ec_key_pair<R>(
 where
     R: CryptoRngCore,
 {
-    // generate a key pair
     let private_key = X25519PrivateKey::new(rng);
     let public_key = X25519PublicKey::from(&private_key);
 

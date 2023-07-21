@@ -9,8 +9,8 @@ use cosmian_kmip::kmip::{
 };
 
 use crate::{
-    crypto::{
-        curve_25519::encryption_decryption::{X25519_PRIVATE_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH},
+    crypto::curve_25519::encryption_decryption::{
+        X25519_PRIVATE_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH,
     },
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail,

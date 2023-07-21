@@ -17,8 +17,8 @@ use crate::{
 
 /// Get an object
 ///
-/// If the request contains a KeyWrappingData, the key will be wrapped
-/// If the request contains a KeyWrapType, the key will be unwrapped
+/// If the request contains a `KeyWrappingData`, the key will be wrapped
+/// If the request contains a `KeyWrapType`, the key will be unwrapped
 /// If both are present, the key will be wrapped
 /// If none are present, the key will be returned as is
 pub async fn get(
@@ -74,7 +74,7 @@ pub async fn get(
 }
 
 /// Get a single active object
-pub(crate) async fn get_active_object(
+pub async fn get_active_object(
     kms: &KMS,
     uid_or_tags: &str,
     user: &str,

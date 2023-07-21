@@ -87,7 +87,7 @@ impl KmsClient {
         // Create the kmip query
         let request = build_create_master_keypair_request(
             &policy,
-            tags.unwrap_or(vec![])
+            tags.unwrap_or_default()
                 .into_iter()
                 .map(String::from)
                 .collect::<Vec<String>>()
@@ -151,7 +151,7 @@ impl KmsClient {
             &policy,
             is_wrapped.unwrap_or(false),
             wrapping_password,
-            tags.unwrap_or(vec![])
+            tags.unwrap_or_default()
                 .into_iter()
                 .map(String::from)
                 .collect::<Vec<String>>()
@@ -201,7 +201,7 @@ impl KmsClient {
             replace_existing,
             &policy,
             link_master_private_key_id,
-            tags.unwrap_or(vec![])
+            tags.unwrap_or_default()
                 .into_iter()
                 .map(String::from)
                 .collect::<Vec<String>>()
@@ -294,7 +294,7 @@ impl KmsClient {
         let request = build_create_user_decryption_private_key_request(
             access_policy_str,
             master_secret_key_identifier,
-            tags.unwrap_or(vec![])
+            tags.unwrap_or_default()
                 .into_iter()
                 .map(String::from)
                 .collect::<Vec<String>>()
@@ -351,7 +351,7 @@ impl KmsClient {
             access_policy_str,
             is_wrapped.unwrap_or(false),
             wrapping_password,
-            tags.unwrap_or(vec![])
+            tags.unwrap_or_default()
                 .into_iter()
                 .map(String::from)
                 .collect::<Vec<String>>()

@@ -107,7 +107,11 @@ impl CachedSqlCipher {
         self.cache.release(group_id)
     }
 
-    async fn pre_query(&self, group_id: u128, key: &SymmetricKey<32>) -> KResult<Arc<Pool<Sqlite>>> {
+    async fn pre_query(
+        &self,
+        group_id: u128,
+        key: &SymmetricKey<32>,
+    ) -> KResult<Arc<Pool<Sqlite>>> {
         if !self.cache.exists(group_id) {
             let pool = self.instantiate_group_database(group_id, key).await?;
             Self::create_tables(&pool).await?;

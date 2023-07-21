@@ -27,10 +27,10 @@ pub fn locate(
 ) -> Result<Vec<String>, CliError> {
     let mut args: Vec<String> = vec![];
     if let Some(tags) = tags {
-        tags.iter().for_each(|tag| {
+        for tag in tags.iter() {
             args.push("--tag".to_owned());
-            args.push(tag.to_string());
-        });
+            args.push((*tag).to_string());
+        }
     }
     if let Some(algorithm) = algorithm {
         args.push("--algorithm".to_owned());
@@ -52,7 +52,7 @@ pub fn locate(
     if output.status.success() {
         return Ok(std::str::from_utf8(&output.stdout)?
             .lines()
-            .map(|s| s.to_owned())
+            .map(std::borrow::ToOwned::to_owned)
             .collect::<Vec<String>>())
     }
     Err(CliError::Default(

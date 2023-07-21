@@ -50,7 +50,7 @@ impl CoverCryptEncryption {
         Ok(Self {
             cover_crypt,
             public_key_uid: public_key_uid.into(),
-            public_key_bytes: public_key_bytes.to_vec(),
+            public_key_bytes,
             policy,
         })
     }
@@ -122,7 +122,7 @@ impl EncryptionSystem for CoverCryptEncryption {
                 KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string())
             })?;
 
-        let mut ciphertext = encrypted_header.try_to_bytes().map_err(|e| {
+        let mut ciphertext = encrypted_header.serialize().map_err(|e| {
             KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string())
         })?;
         ciphertext.append(&mut encrypted_block);
@@ -135,7 +135,7 @@ impl EncryptionSystem for CoverCryptEncryption {
         );
         Ok(EncryptResponse {
             unique_identifier: self.public_key_uid.clone(),
-            data: Some(ciphertext),
+            data: Some(ciphertext.to_vec()),
             iv_counter_nonce: None,
             correlation_value: None,
             authenticated_encryption_tag: Some(authenticated_encryption_additional_data.clone()),

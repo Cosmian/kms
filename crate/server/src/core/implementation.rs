@@ -69,6 +69,7 @@ impl KMS {
     }
 
     /// Get the CS-RNG
+    #[must_use]
     pub fn rng(&self) -> Arc<Mutex<CsRng>> {
         self.rng.clone()
     }
@@ -110,7 +111,7 @@ impl KMS {
             },
             Object::PublicKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::CoverCryptPublicKey => Ok(Box::new(
-                    CoverCryptEncryption::instantiate(Covercrypt::default(), &owm.uid, &owm.object)?,
+                    CoverCryptEncryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?,
                 )
                     as Box<dyn EncryptionSystem>),
                 KeyFormatType::TransparentECPublicKey => match key_block.cryptographic_algorithm {

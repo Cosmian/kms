@@ -8,9 +8,7 @@ use base64::{
     engine::general_purpose::{self, STANDARD as b64},
     Engine as _,
 };
-use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::SeedableRng, CsRng, RandomFixedSizeCBytes, SymmetricKey,
-};
+use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_operations::{
         Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
@@ -121,8 +119,9 @@ impl KMS {
             };
 
             // Generate a new key
-            let mut rng = CsRng::from_entropy();
-            let key = SymmetricKey::new(&mut rng);
+            let mut rng = self.rng.lock().expect("failed locking the RNG");
+
+            let key = SymmetricKey::new(&mut *rng);
 
             // Encode ExtraDatabaseParams
             let params = ExtraDatabaseParams { group_id: uid, key };
@@ -540,7 +539,7 @@ impl KMS {
             )))
         }
 
-        // check if owner is trying to grant them self
+        // check if owner is trying to grant themself
         if owner == access.user_id {
             kms_bail!(KmsError::Unauthorized(
                 "You can't grant yourself, you have already all rights on your own objects"

@@ -1,7 +1,7 @@
 use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::StateEnumeration};
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
-pub(crate) use unwrap::unwrap_key;
-pub(crate) use wrap::wrap_key;
+pub use unwrap::unwrap_key;
+pub use wrap::wrap_key;
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 

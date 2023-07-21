@@ -85,7 +85,7 @@ async fn create_user_decryption_key_(
     // there can only be one object
     let owm = owm_s
         .pop()
-        .ok_or_else(|| KmsError::ItemNotFound(msk_uid_or_tag.to_owned()))?;
+        .ok_or_else(|| KmsError::ItemNotFound(msk_uid_or_tag.clone()))?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(

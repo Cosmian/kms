@@ -38,7 +38,7 @@ pub struct KMSSqliteCacheItem {
 impl fmt::Debug for KMSSqliteCacheItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("KMSSqliteCacheItem")
-            // .field("group_id", &self.key)
+            .field("group_id", &self.key)
             .field("inserted_at", &self.inserted_at)
             .field("in_used", &self.in_used)
             .field("last_used_at", &self.last_used_at)

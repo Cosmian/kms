@@ -36,13 +36,13 @@ pub async fn destroy_operation(
 
     recursively_destroy_key(uid_or_tags, kms, user, params, HashSet::new()).await?;
     Ok(DestroyResponse {
-        unique_identifier: uid_or_tags.to_owned(),
+        unique_identifier: uid_or_tags.clone(),
     })
 }
 
 /// Recursively destroy keys
 #[async_recursion]
-pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
+pub async fn recursively_destroy_key<'a: 'async_recursion>(
     uid_or_tags: &str,
     kms: &KMS,
     user: &str,
@@ -82,8 +82,7 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
                 //add this key to the ids to skip
                 ids_to_skip.insert(owm.id.clone());
                 // for Covercrypt, if that is a master secret key, destroy the user decryption keys
-                if let KeyFormatType::CoverCryptSecretKey = owm.object.key_block()?.key_format_type
-                {
+                if owm.object.key_block()?.key_format_type == KeyFormatType::CoverCryptSecretKey {
                     destroy_user_decryption_keys(&owm.id, kms, user, params, ids_to_skip.clone())
                         .await?
                 }

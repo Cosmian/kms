@@ -1,6 +1,9 @@
 use cloudproof::reexport::crypto_core::{kdf256, key_unwrap, key_wrap};
 use cosmian_kmip::{error::KmipError, kmip::kmip_operations::ErrorReason};
 
+/// The vendor ID to use for Cosmian specific attributes
+pub const VENDOR_ID_COSMIAN: &str = "cosmian";
+
 const WRAPPING_SECRET_LENGTH: usize = 32;
 
 /// Wrap a key using a password

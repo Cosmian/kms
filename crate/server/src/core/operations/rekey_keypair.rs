@@ -67,7 +67,7 @@ pub async fn rekey_keypair(
     // there can only be one private key
     let owm = owm_s
         .pop()
-        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.to_owned()))?;
+        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.clone()))?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(

@@ -9,11 +9,12 @@ pub const VENDOR_ATTR_TAG: &str = "tag";
 pub const EMPTY_TAGS: [&str; 0] = [];
 
 /// Get the tags from the attributes
+#[must_use]
 pub fn get_tags(attributes: &Attributes) -> HashSet<String> {
     attributes
         .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
         .map(|value| serde_json::from_slice::<HashSet<String>>(value).unwrap_or_default())
-        .unwrap_or(HashSet::new())
+        .unwrap_or_default()
 }
 
 /// Set the tags on the attributes

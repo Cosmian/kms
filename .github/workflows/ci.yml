@@ -4,14 +4,13 @@ name: CI checks
 on: push
 
 jobs:
-  # Following tasks should be enabled when ready (after github CI is completely done)
-  # cargo-audit:
-  #   uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@develop
-  #   with:
-  #     toolchain: nightly-2023-03-20
+  cargo-audit:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-audit.yml@develop
+    with:
+      toolchain: nightly-2023-03-20
 
-  # cargo-udeps:
-  #   uses: Cosmian/reusable_workflows/.github/workflows/cargo-udeps.yml@develop
+  cargo-udeps:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-udeps.yml@develop
 
   cargo-lint:
     uses: ./.github/workflows/lint.yml

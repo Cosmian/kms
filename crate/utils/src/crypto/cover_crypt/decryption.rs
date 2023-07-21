@@ -43,7 +43,7 @@ impl CovercryptDecryption {
 
 impl DecryptionSystem for CovercryptDecryption {
     fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, KmipUtilsError> {
-        let user_decryption_key = UserSecretKey::try_from_bytes(&self.user_decryption_key_bytes)
+        let user_decryption_key = UserSecretKey::deserialize(&self.user_decryption_key_bytes)
             .map_err(|e| {
                 KmipUtilsError::Kmip(
                     ErrorReason::Codec_Error,
@@ -92,7 +92,7 @@ impl DecryptionSystem for CovercryptDecryption {
         );
 
         let decrypted_data = DecryptedData {
-            metadata: header_.metadata,
+            metadata: header_.metadata.unwrap_or_default(),
             plaintext: cleartext,
         };
 
