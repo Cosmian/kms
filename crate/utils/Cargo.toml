@@ -3,6 +3,7 @@ name = "cosmian_kms_utils"
 version = "4.5.0"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
+license-file = "../../LICENSE.md"
 
 [features]
 curve25519 = []
