@@ -158,9 +158,9 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
         # Encryption
         to_encrypt = b'My secret data'
         protected_fin_ciphertext = await self.client.cover_crypt_encryption(
-            self.pub_key_uid,
             'Department::FIN && Security Level::Protected',
             to_encrypt,
+            self.pub_key_uid,
             header_metadata=b'header message',
             authentication_data=b'auth token',
         )

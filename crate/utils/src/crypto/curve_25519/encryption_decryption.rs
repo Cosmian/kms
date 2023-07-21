@@ -54,10 +54,10 @@ impl EncryptionSystem for EciesEncryption {
 
         let plaintext = request.data.clone().context("missing plaintext data")?;
 
-        let mut rng = self.rng.lock().expect("failed to lock rng");
-
-        let ciphertext =
-            EciesX25519XChaCha20::encrypt(&mut *rng, &self.public_key, &plaintext, None)?;
+        let ciphertext = {
+            let mut rng = self.rng.lock().expect("failed to lock rng");
+            EciesX25519XChaCha20::encrypt(&mut *rng, &self.public_key, &plaintext, None)?
+        };
 
         debug!(
             "Encrypted data with public key {} of len (CT/Enc): {}/{}",

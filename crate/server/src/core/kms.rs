@@ -119,9 +119,10 @@ impl KMS {
             };
 
             // Generate a new key
-            let mut rng = self.rng.lock().expect("failed locking the RNG");
-
-            let key = SymmetricKey::new(&mut *rng);
+            let key = {
+                let mut rng = self.rng.lock().expect("failed locking the RNG");
+                SymmetricKey::new(&mut *rng)
+            };
 
             // Encode ExtraDatabaseParams
             let params = ExtraDatabaseParams { group_id: uid, key };
