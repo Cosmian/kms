@@ -60,6 +60,7 @@ class KmsClient:
         replace_existing: bool,
         link_master_public_key_id: str,
         policy: bytes,
+        tags:  Optional[List[str]],
         is_wrapped: bool,
         wrapping_password: Optional[str] = None,
         unique_identifier: Optional[str] = None,
@@ -99,15 +100,20 @@ class KmsClient:
             Future[str]: the unique identifier of the key
         """
     def rotate_cover_crypt_attributes(
-        self, master_secret_key_identifier: str, attributes: List[Union[Attribute, str]]
+        self, 
+        attributes: List[Union[Attribute, str]],
+        master_secret_key_identifier: Optional[str],
+        tags: Optional[List[str]] = None,
+
     ) -> Future[Tuple[str, str]]:
         """Rotate the given policy attributes. This will rekey in the KMS:
             - the Master Keys
             - all User Decryption Keys that contain one of these attributes in their policy and are not rotated.
 
         Args:
-            master_secret_key_identifier (str): master secret key UID
             attributes (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
+            master_secret_key_identifier (Optional[str]): master secret key UID. Tags should be supplied if the ID is not given. 
+            tags: (Optional[List[str][]) tags to retrieve the master secret key if it the id is not satisfied
 
         Returns:
             Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
@@ -131,7 +137,8 @@ class KmsClient:
         replace_existing: bool,
         link_master_private_key_id: str,
         access_policy_str: str,
-        is_wrapped: bool,
+        tags: Optional[List[str]] = None,
+        is_wrapped: Optional[bool]=None,
         wrapping_password: Optional[str] = None,
         unique_identifier: Optional[str] = None,
     ) -> Future[str]:
@@ -142,6 +149,7 @@ class KmsClient:
             replace_existing (bool): set to true to replace an existing key with the same identifier
             link_master_private_key_id (str): id of the matching master private key
             access_policy_str (str): user access policy
+            tags (Optional[List[str]]): tags associated to the key
             is_wrapped (bool): whether the key is wrapped
             wrapping_password (Optional[str]): password used to wrap the key
             unique_identifier (Optional[str]): the unique identifier of the key
@@ -151,9 +159,10 @@ class KmsClient:
         """
     def cover_crypt_encryption(
         self,
-        public_key_identifier: str,
         encryption_policy_str: str,
         data: bytes,
+        public_key_identifier: Optional[str],
+        tags: Optional[List[str]] = None,
         header_metadata: Optional[bytes] = None,
         authentication_data: Optional[bytes] = None,
     ) -> Future[bytes]:
@@ -161,9 +170,10 @@ class KmsClient:
         ciphertext.
 
         Args:
-            public_key_identifier (str): identifier of the public key
             encryption_policy_str (str): the access policy to use for encryption
             data (bytes): data to encrypt
+            public_key_identifier (str): identifier of the public key. If not specified, tags must be provided.
+            tags (Optional[List[str]]): tags to use to find the public key
             header_metadata (Optional[bytes]): additional data to symmetrically encrypt in the header
             authentication_data (Optional[bytes]): authentication data to use in symmetric encryptions
 
@@ -172,15 +182,17 @@ class KmsClient:
         """
     def cover_crypt_decryption(
         self,
-        user_key_identifier: str,
         encrypted_data: bytes,
+        user_key_identifier: Optional[str],
+        tags: Optional[List[str]] = None,
         authentication_data: Optional[bytes] = None,
     ) -> Future[Tuple[bytes, bytes]]:
         """Hybrid decryption.
 
         Args:
-            user_key_identifier (str): user secret key identifier
             encrypted_data (bytes): encrypted header || symmetric ciphertext
+            user_key_identifier (str): identifier of the user key. If not specified, tags must be provided.
+            tags (Optional[List[str]]): tags to use to find the user key
             authentication_data (Optional[bytes]): authentication data to use in symmetric decryption
 
         Returns:
@@ -196,56 +208,32 @@ class KmsClient:
             Future[KmsObject]
         """
     def revoke_cover_crypt_key(
-        self, key_identifier: str, revocation_reason: str
+        self,
+        revocation_reason: str,
+        key_identifier: Optional[str],
+        tags: Optional[List[str]] = None,
     ) -> Future[str]:
         """Mark a CoverCrypt Key as revoked
 
         Args:
-            key_identifier (str):  the key unique identifier in the KMS
             revocation_reason (str): explanation of the revocation
+            key_identifier (str): identifier of the user key. If not specified, tags must be provided.
+            tags (Optional[List[str]]): tags to use to find the user key
 
         Returns:
             Future[str]: uid of the revoked key
         """
-    def destroy_cover_crypt_key(self, key_identifier: str) -> Future[str]:
+    def destroy_cover_crypt_key(
+            self, 
+            key_identifier: Optional[str],
+            tags: Optional[List[str]] = None,
+        ) -> Future[str]:
         """Mark a CoverCrypt Key as destroyed
 
         Args:
-            key_identifier (str):  the key unique identifier in the KMS
+            key_identifier (str): identifier of the user key. If not specified, tags must be provided.
+            tags (Optional[List[str]]): tags to use to find the user key
 
         Returns:
             Future[str]: uid of the destroyed key
-        """
-    def retrieve_cover_crypt_public_master_key(
-        self, public_key_identifier: str
-    ) -> Future[PublicKey]:
-        """Fetch a CoverCrypt Public Master key.
-
-        Args:
-            public_key_identifier (str): the key unique identifier in the KMS
-
-        Returns:
-            Future[PublicKey]
-        """
-    def retrieve_cover_crypt_private_master_key(
-        self, master_secret_key_identifier: str
-    ) -> Future[MasterSecretKey]:
-        """Fetch a CoverCrypt Private Master key.
-
-        Args:
-            master_secret_key_identifier (str): the key unique identifier in the KMS
-
-        Returns:
-            Future[MasterSecretKey]
-        """
-    def retrieve_cover_crypt_user_key(
-        self, user_key_identifier: str
-    ) -> Future[UserSecretKey]:
-        """Fetch a CoverCrypt Private User key.
-
-        Args:
-            user_key_identifier (str): the key unique identifier in the KMS
-
-        Returns:
-            Future[UserSecretKey]
         """

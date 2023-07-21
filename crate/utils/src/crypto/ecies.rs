@@ -12,13 +12,13 @@ use cloudproof::reexport::crypto_core::{
     KeyTrait,
 };
 
-use super::error::CryptoError;
+use crate::error::KmipUtilsError;
 
 /// Encrypts a message using Elliptic Curve Integrated Encryption Scheme (ECIES).
 /// This implementation uses SHAKE128 (XOF) as a KDF and AES256-GCM as a symmetric cipher.
 ///
 /// This function encrypts a given message using ECIES with the provided receiver's public key.
-/// The encrypted message is returned as a `Result<Vec<u8>, CryptoError>`.
+/// The encrypted message is returned as a `Result<Vec<u8>, KmipUtilsError>`.
 ///
 /// # Arguments
 ///
@@ -30,7 +30,7 @@ use super::error::CryptoError;
 ///
 /// # Returns
 ///
-/// * `Result<Vec<u8>, CryptoError>` - The encrypted message as a `Vec<u8>`, or a `CryptoError` if an error occurs.
+/// * `Result<Vec<u8>, KmipUtilsError>` - The encrypted message as a `Vec<u8>`, or a `KmipUtilsError` if an error occurs.
 ///
 /// # Example
 ///
@@ -40,7 +40,8 @@ use super::error::CryptoError;
 ///    reexport::rand_core::SeedableRng,
 ///    CsRng,
 /// };
-/// use cosmian_kms_utils::crypto::{error::CryptoError,ecies::ecies_encrypt};
+/// use cosmian_kms_utils::crypto::ecies::ecies_encrypt;
+/// use cosmian_kms_utils::error::KmipUtilsError;
 ///
 /// let mut rng = CsRng::from_entropy();
 /// let key_pair: X25519KeyPair = X25519KeyPair::new(&mut rng);
@@ -66,7 +67,7 @@ pub fn ecies_encrypt<R, DH, const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LE
     msg: &[u8],
     shared_encapsulation_data: Option<&[u8]>,
     shared_authentication_data: Option<&[u8]>,
-) -> Result<Vec<u8>, CryptoError>
+) -> Result<Vec<u8>, KmipUtilsError>
 where
     R: CryptoRngCore,
     DH: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
@@ -113,7 +114,7 @@ where
 /// This implementation uses SHAKE128 (XOF) as a KDF and AES256-GCM as a symmetric cipher.
 ///
 /// This function decrypts a given message using ECIES with the provided receiver's private key.
-/// The decrypted message is returned as a `Result<Vec<u8>, CryptoError>`.
+/// The decrypted message is returned as a `Result<Vec<u8>, KmipUtilsError>`.
 ///
 /// # Arguments
 ///
@@ -124,7 +125,7 @@ where
 ///
 /// # Returns
 ///
-/// * `Result<Vec<u8>, CryptoError>` - The decrypted message as a `Vec<u8>`, or a `CryptoError` if an error occurs.
+/// * `Result<Vec<u8>, KmipUtilsError>` - The decrypted message as a `Vec<u8>`, or a `KmipUtilsError` if an error occurs.
 ///
 /// # Example
 ///
@@ -134,7 +135,8 @@ where
 ///     reexport::rand_core::SeedableRng,
 ///     CsRng,
 /// };
-/// use cosmian_kms_utils::crypto::{error::CryptoError, ecies::{ecies_encrypt, ecies_decrypt}};
+/// use cosmian_kms_utils::error::KmipUtilsError;
+/// use cosmian_kms_utils::crypto::ecies::{ecies_encrypt, ecies_decrypt};
 ///
 /// let mut rng = CsRng::from_entropy();
 /// let key_pair: X25519KeyPair = X25519KeyPair::new(&mut rng);
@@ -175,7 +177,7 @@ pub fn ecies_decrypt<DH, const PUBLIC_KEY_LENGTH: usize, const PRIVATE_KEY_LENGT
     ciphertext: &[u8],
     shared_encapsulation_data: Option<&[u8]>,
     shared_authentication_data: Option<&[u8]>,
-) -> Result<Vec<u8>, CryptoError>
+) -> Result<Vec<u8>, KmipUtilsError>
 where
     DH: DhKeyPair<PUBLIC_KEY_LENGTH, PRIVATE_KEY_LENGTH>,
     DH::PublicKey: From<DH::PrivateKey>,
@@ -226,10 +228,10 @@ mod tests {
         CsRng,
     };
 
-    use super::{ecies_decrypt, ecies_encrypt, CryptoError};
+    use super::{ecies_decrypt, ecies_encrypt, KmipUtilsError};
 
     #[test]
-    fn test_encrypt_decrypt() -> Result<(), CryptoError> {
+    fn test_encrypt_decrypt() -> Result<(), KmipUtilsError> {
         let mut rng = CsRng::from_entropy();
         let key_pair: X25519KeyPair = X25519KeyPair::new(&mut rng);
         let msg = b"Hello, World!";
@@ -256,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn test_encrypt_decrypt_with_optional_data() -> Result<(), CryptoError> {
+    fn test_encrypt_decrypt_with_optional_data() -> Result<(), KmipUtilsError> {
         let mut rng = CsRng::from_entropy();
         let key_pair: X25519KeyPair = X25519KeyPair::new(&mut rng);
         let msg = b"Hello, World!";

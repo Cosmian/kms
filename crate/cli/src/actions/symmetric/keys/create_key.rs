@@ -16,6 +16,8 @@ use crate::{
 /// otherwise, the key will be randomly generated with a length of `--number-of-bits`.
 ///
 /// If no options are specified, a fresh 256-bit AES key will be created.
+///
+/// Tags can later be used to retrieve the key. Tags are optional.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateKeyAction {
@@ -35,6 +37,11 @@ pub struct CreateKeyAction {
     /// The algorithm
     #[clap(long = "algorithm", short = 'a', required = false, default_value = "aes", value_parser(["aes", "chacha20", "sha3", "shake"]))]
     algorithm: String,
+
+    /// The tag to associate with the key.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG")]
+    tags: Vec<String>,
 }
 
 impl CreateKeyAction {
@@ -73,10 +80,11 @@ impl CreateKeyAction {
         let unique_identifier = match key_bytes {
             Some(key_bytes) => {
                 let object = create_symmetric_key(key_bytes.as_slice(), algorithm);
-                import_object(client_connector, None, object, false, false).await?
+                import_object(client_connector, None, object, false, false, &self.tags).await?
             }
             None => {
-                let create_key_request = symmetric_key_create_request(number_of_bits, algorithm);
+                let create_key_request =
+                    symmetric_key_create_request(number_of_bits, algorithm, &self.tags)?;
                 client_connector
                     .create(create_key_request)
                     .await

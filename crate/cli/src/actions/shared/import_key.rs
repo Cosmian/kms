@@ -11,14 +11,16 @@ use crate::{
 /// Import a key in the KMS.
 ///
 /// The key must be in KMIP JSON TTLV format.
-/// When no key unique id is specified a random UUID v4 is generated.
+/// When no key unique id is specified, a random UUID v4 is generated.
 ///
 /// The key can be wrapped when imported. Wrapping using:
 ///  - a password or a supplied key in base64 is done locally
-///  - a symmetric key id is performed server side
+///  - a symmetric key id is performed server-side
 ///
-/// A password is first converted to a 256 bit key using Argon 2.
+/// A password is first converted to a 256-bit key using Argon 2.
 /// Wrapping is performed according to RFC 5649.
+///
+/// Tags can later be used to retrieve the key. Tags are optional.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct ImportKeyAction {
@@ -47,6 +49,11 @@ pub struct ImportKeyAction {
         default_value = "false"
     )]
     replace_existing: bool,
+
+    /// The tag to associate with the key.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG")]
+    tags: Vec<String>,
 }
 
 impl ImportKeyAction {
@@ -62,6 +69,7 @@ impl ImportKeyAction {
             object,
             self.unwrap,
             self.replace_existing,
+            &self.tags,
         )
         .await?;
 
@@ -70,6 +78,12 @@ impl ImportKeyAction {
             "The key of type {:?} in file {:?} was imported with id: {}",
             &self.key_file, object_type, unique_identifier,
         );
+        if !self.tags.is_empty() {
+            println!("Tags:");
+            for tag in &self.tags {
+                println!("    - {}", tag);
+            }
+        }
 
         Ok(())
     }

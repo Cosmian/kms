@@ -15,9 +15,9 @@ use crate::{
     error::CliError,
 };
 
-/// Manage CoverCrypt keys and policies. Rotate attributes. Encrypt and decrypt data.
+/// Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data.
 #[derive(Parser)]
-pub enum CoverCryptCommands {
+pub enum CovercryptCommands {
     #[command(subcommand)]
     Keys(KeysCommands),
     #[command(subcommand)]
@@ -27,7 +27,7 @@ pub enum CoverCryptCommands {
     Decrypt(DecryptAction),
 }
 
-impl CoverCryptCommands {
+impl CovercryptCommands {
     pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         match self {
             Self::Policy(command) => command.process(client_connector).await?,

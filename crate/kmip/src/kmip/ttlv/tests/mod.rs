@@ -494,7 +494,7 @@ fn test_aes_key_block() {
 
 #[test]
 fn test_aes_key_value() {
-    log_init("trace,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_value(key_bytes)).unwrap();

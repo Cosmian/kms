@@ -44,7 +44,7 @@ Note: this is not a streaming call: the file is entirely loaded in memory before
 **Usage:**
 
 ```sh
-ckms sym encrypt [OPTIONS] <FILE> <KEY_ID>
+ckms sym encrypt [OPTIONS] <FILE>
 ```
 
 **Arguments:**
@@ -52,14 +52,19 @@ ckms sym encrypt [OPTIONS] <FILE> <KEY_ID>
 ```sh
 <FILE>
         The file to encrypt
-
-<KEY_ID>
-        The symmetric key unique identifier stored in the KMS
 ```
 
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The public key unique identifier. 
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+
 -o, --output-file <OUTPUT_FILE>
         The encrypted output file path
 
@@ -85,7 +90,7 @@ This is not a streaming call: the file is entirely loaded in memory before being
 **Usage:**
 
 ```sh
-ckms sym decrypt [OPTIONS] <FILE> <KEY_ID>
+ckms sym decrypt [OPTIONS] <FILE>
 ```
 
 **Arguments:**
@@ -93,14 +98,19 @@ ckms sym decrypt [OPTIONS] <FILE> <KEY_ID>
 ```sh
 <FILE>
         The file to decrypt
-
-<KEY_ID>
-        The symmetric key unique identifier stored in the KMS
 ```
 
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The public key unique identifier. 
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+
 -o, --output-file <OUTPUT_FILE>
         The encrypted output file path
 

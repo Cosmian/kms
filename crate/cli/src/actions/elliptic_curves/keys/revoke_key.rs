@@ -1,7 +1,7 @@
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 
-use crate::{actions::shared::utils::revoke, error::CliError};
+use crate::{actions::shared::utils::revoke, cli_bail, error::CliError};
 
 /// Revoke a public or private key.
 ///
@@ -12,17 +12,31 @@ use crate::{actions::shared::utils::revoke, error::CliError};
 /// (the two keys need to be stored in the KMS).
 #[derive(Parser, Debug)]
 pub struct RevokeKeyAction {
-    /// The unique identifier of the key to revoke
-    #[clap(required = true)]
-    key_id: String,
-
     /// The reason for the revocation as a string
     #[clap(required = true)]
     revocation_reason: String,
+
+    /// The key unique identifier of the key to revoke.
+    /// If not specified, tags should be specified
+    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
 }
 
 impl RevokeKeyAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
-        revoke(client_connector, &self.key_id, &self.revocation_reason).await
+        let id = if let Some(key_id) = &self.key_id {
+            key_id.clone()
+        } else if let Some(tags) = &self.tags {
+            serde_json::to_string(&tags)?
+        } else {
+            cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
+        revoke(client_connector, &id, &self.revocation_reason).await
     }
 }

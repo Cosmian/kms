@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip::kmip_operations::{CreateKeyPair, CreateKeyPairResponse};
-use cosmian_kms_utils::{types::ExtraDatabaseParams, KeyPair};
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::trace;
 use uuid::Uuid;
 
@@ -18,16 +18,29 @@ pub async fn create_key_pair(
     {
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }
+
+    // generate uids and create the key pair and tags
     let sk_uid = Uuid::new_v4().to_string();
     let pk_uid = Uuid::new_v4().to_string();
-    let key_pair: KeyPair = kms.create_key_pair_(&request, &sk_uid, &pk_uid).await?;
+    let (key_pair, sk_tags, pk_tags) = kms
+        .create_key_pair_and_tags(&request, &sk_uid, &pk_uid)
+        .await?;
+
     trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
     kms.db
         .create_objects(
             owner,
             &[
-                (Some(sk_uid.clone()), key_pair.private_key().to_owned()),
-                (Some(pk_uid.clone()), key_pair.public_key().to_owned()),
+                (
+                    Some(sk_uid.clone()),
+                    key_pair.private_key().to_owned(),
+                    &sk_tags,
+                ),
+                (
+                    Some(pk_uid.clone()),
+                    key_pair.public_key().to_owned(),
+                    &pk_tags,
+                ),
             ],
             params,
         )

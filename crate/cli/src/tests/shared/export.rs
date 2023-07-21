@@ -30,7 +30,7 @@ pub fn export(
     wrap_key_id: Option<String>,
     allow_revoked: bool,
 ) -> Result<(), CliError> {
-    let mut args: Vec<String> = vec!["keys", "export", key_id, key_file]
+    let mut args: Vec<String> = vec!["keys", "export", "--key-id", key_id, key_file]
         .iter()
         .map(|s| s.to_string())
         .collect();
@@ -72,6 +72,7 @@ pub async fn test_export_cover_crypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     // Export
     export(
@@ -100,6 +101,7 @@ pub async fn test_export_cover_crypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
     )?;
     export(
         &ctx.owner_cli_conf_path,
@@ -124,7 +126,7 @@ pub async fn test_export_ec() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a new key pair
-    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     // Export
     export(
         &ctx.owner_cli_conf_path,
@@ -159,7 +161,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     // Export
     export(
         &ctx.owner_cli_conf_path,
@@ -184,7 +186,7 @@ pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     // Export
     export(
         &ctx.owner_cli_conf_path,
@@ -227,6 +229,7 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
 
     // Export to non existing dir
@@ -259,6 +262,7 @@ pub async fn test_export_bytes_cover_crypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     // Export
     export(
@@ -303,7 +307,7 @@ pub async fn test_export_bytes_ec() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a new key pair
-    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     // Export
     export(
         &ctx.owner_cli_conf_path,
@@ -347,7 +351,7 @@ pub async fn test_export_bytes_sym() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     // Export
     export(
         &ctx.owner_cli_conf_path,

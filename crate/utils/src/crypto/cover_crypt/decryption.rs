@@ -12,7 +12,7 @@ use cosmian_kmip::kmip::{
 use tracing::debug;
 
 use super::user_key::unwrap_user_decryption_key_object;
-use crate::{crypto::error::CryptoError, DecryptionSystem};
+use crate::{error::KmipUtilsError, DecryptionSystem};
 
 /// Decrypt a single block of data encrypted using an hybrid encryption mode
 /// Cannot be used as a stream decipher
@@ -27,7 +27,7 @@ impl CovercryptDecryption {
         cover_crypt: CoverCryptX25519Aes256,
         user_decryption_key_uid: &str,
         user_decryption_key: &Object,
-    ) -> Result<Self, CryptoError> {
+    ) -> Result<Self, KmipUtilsError> {
         let (user_decryption_key_bytes, _access_policy, _attributes) =
             unwrap_user_decryption_key_object(user_decryption_key)?;
 
@@ -45,17 +45,17 @@ impl CovercryptDecryption {
 }
 
 impl DecryptionSystem for CovercryptDecryption {
-    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, CryptoError> {
+    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, KmipUtilsError> {
         let user_decryption_key = UserSecretKey::try_from_bytes(&self.user_decryption_key_bytes)
             .map_err(|e| {
-                CryptoError::Kmip(
+                KmipUtilsError::Kmip(
                     ErrorReason::Codec_Error,
                     format!("cover crypt decipher: failed recovering the user key: {e}"),
                 )
             })?;
 
         let encrypted_bytes = request.data.as_ref().ok_or_else(|| {
-            CryptoError::Kmip(
+            KmipUtilsError::Kmip(
                 ErrorReason::Invalid_Message,
                 "The decryption request should contain encrypted data".to_string(),
             )
@@ -63,7 +63,7 @@ impl DecryptionSystem for CovercryptDecryption {
 
         let mut de = Deserializer::new(encrypted_bytes.as_slice());
         let encrypted_header = EncryptedHeader::read(&mut de).map_err(|e| {
-            CryptoError::Kmip(
+            KmipUtilsError::Kmip(
                 ErrorReason::Invalid_Message,
                 format!("Bad or corrupted encrypted data: {e}"),
             )
@@ -76,7 +76,7 @@ impl DecryptionSystem for CovercryptDecryption {
                 &user_decryption_key,
                 request.authenticated_encryption_additional_data.as_deref(),
             )
-            .map_err(|e| CryptoError::Kmip(ErrorReason::Invalid_Message, e.to_string()))?;
+            .map_err(|e| KmipUtilsError::Kmip(ErrorReason::Invalid_Message, e.to_string()))?;
 
         let cleartext = self
             .cover_crypt
@@ -85,7 +85,7 @@ impl DecryptionSystem for CovercryptDecryption {
                 &encrypted_block,
                 request.authenticated_encryption_additional_data.as_deref(),
             )
-            .map_err(|e| CryptoError::Kmip(ErrorReason::Invalid_Message, e.to_string()))?;
+            .map_err(|e| KmipUtilsError::Kmip(ErrorReason::Invalid_Message, e.to_string()))?;
 
         debug!(
             "Decrypted data with user key {} of len (CT/Enc): {}/{}",

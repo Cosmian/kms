@@ -2,7 +2,7 @@ use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{Create, CreateResponse},
 };
-use cosmian_kms_utils::types::ExtraDatabaseParams;
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, trace};
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
@@ -17,12 +17,16 @@ pub async fn create(
     if request.protection_storage_masks.is_some() {
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }
-    let object = match &request.object_type {
+
+    let (object, tags) = match &request.object_type {
         ObjectType::SymmetricKey => {
             let mut rng = kms.rng.lock().expect("failed locking the CsRng");
-            kms.create_symmetric_key(&mut rng, &request, owner)?
+            kms.create_symmetric_key_and_tags(&mut rng, &request)?
         }
-        ObjectType::PrivateKey => kms.create_private_key(&request, owner, params).await?,
+        ObjectType::PrivateKey => {
+            kms.create_private_key_and_tags(&request, owner, params)
+                .await?
+        }
         _ => {
             kms_bail!(KmsError::NotSupported(format!(
                 "This server does not yet support creation of: {}",
@@ -30,7 +34,7 @@ pub async fn create(
             )))
         }
     };
-    let uid = kms.db.create(None, owner, &object, params).await?;
+    let uid = kms.db.create(None, owner, &object, &tags, params).await?;
     debug!(
         "Created KMS Object of type {:?} with id {uid}",
         &object.object_type(),

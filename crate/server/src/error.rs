@@ -5,7 +5,7 @@ use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
-use cosmian_kms_utils::crypto::error::CryptoError;
+use cosmian_kms_utils::error::KmipUtilsError;
 use thiserror::Error;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
@@ -128,8 +128,8 @@ impl From<QueryPayloadError> for KmsError {
     }
 }
 
-impl From<CryptoError> for KmsError {
-    fn from(e: CryptoError) -> Self {
+impl From<KmipUtilsError> for KmsError {
+    fn from(e: KmipUtilsError) -> Self {
         Self::CryptographicError(e.to_string())
     }
 }

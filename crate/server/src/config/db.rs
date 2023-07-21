@@ -31,6 +31,16 @@ pub struct DBConfig {
     /// The directory path of the sqlite or sqlite-enc
     #[clap(long, env = "KMS_SQLITE_PATH", default_value = "./sqlite-data")]
     pub sqlite_path: PathBuf,
+
+    /// Clear the database on start.
+    /// WARNING: This will delete ALL the data in the database
+    #[clap(
+        long,
+        env = "KMS_CLEAR_DATABASE",
+        default_value = "false",
+        verbatim_doc_comment
+    )]
+    pub clear_database: bool,
 }
 
 impl Default for DBConfig {
@@ -39,6 +49,7 @@ impl Default for DBConfig {
             database_type: "sqlite".to_string(),
             database_url: None,
             sqlite_path: PathBuf::from("./sqlite-data"),
+            clear_database: false,
         }
     }
 }

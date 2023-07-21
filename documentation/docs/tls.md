@@ -12,7 +12,7 @@ Say the certificate is called `server.mydomain.com.p12`, is protected by the pas
 ```sh
 docker run --rm -p 443:9998 \
   -v /certificate/server.mydomain.com.p12:/root/cosmian-kms/server.mydomain.com.p12 \
-  --name kms ghcr.io/cosmian/kms:4.4.3 \
+  --name kms ghcr.io/cosmian/kms:4.5.0 \
   --database-type=mysql \
   --database-url=mysql://mysql_server:3306/kms \
   --https-p12-file=server.mydomain.com.p12 \
@@ -48,7 +48,11 @@ Example:
 docker run --rm -p 443:9998 \
   -v cosmian-kms:/root/cosmian-kms/sqlite-data \
   -v cosmian-kms-certs:/root/cosmian-kms/certbot-ssl \
-  --name kms ghcr.io/cosmian/kms:4.4.3 \
+<<<<<<< HEAD
+  --name kms ghcr.io/cosmian/kms:4.5.0 \
+=======
+  --name kms ghcr.io/cosmian/kms:4.5.0 \
+>>>>>>> 9795148 (bump to version4.5.0)
   --database-type=sqlite-enc \
   --use-certbot \
   --certbot-server-name server.mydomain.com \

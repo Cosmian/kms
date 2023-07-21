@@ -126,6 +126,9 @@ pub struct ServerConfig {
 
     pub db_params: DbParams,
 
+    /// Whether to clear the database on start
+    pub clear_db_on_start: bool,
+
     pub hostname_port: String,
 
     /// The provided PKCS#12 when HTTPS is enabled
@@ -157,6 +160,7 @@ impl ServerConfig {
             jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
             jwt_audience: conf.auth.jwt_audience.clone(),
             db_params: conf.db.init(&workspace)?,
+            clear_db_on_start: conf.db.clear_database,
             hostname_port,
             enclave_params: conf.enclave.init(&workspace)?,
             certbot: if conf.certbot_https.use_certbot {

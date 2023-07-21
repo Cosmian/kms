@@ -18,7 +18,7 @@ use cosmian_kmip::kmip::{
     },
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::types::{
+use cosmian_kms_utils::access::{
     Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
     UserAccessResponse,
 };
@@ -132,7 +132,7 @@ impl KMS {
             // Create a dummy query to initialize the database
             // Note: if we don't proceed like that, the password will be set at the first query of the user
             // which let him put the password he wants.
-            self.db.find(None, None, "", Some(&params)).await?;
+            self.db.find(None, None, "", true, Some(&params)).await?;
 
             return Ok(token)
         }
@@ -166,6 +166,11 @@ impl KMS {
     /// The response contains the Unique Identifier provided in the request or
     /// assigned by the server. The server SHALL copy the Unique Identifier
     /// returned by this operations into the ID Placeholder variable.
+    ///
+    /// Cosmian specific: unique identifiers starting with `[` are reserved
+    /// for queries on tags. See tagging.
+    /// For instance, a request for uniquer identifier `[tag1]` will
+    /// attempt to find a valid single object tagged with `tag1`
     pub async fn import(
         &self,
         request: Import,
@@ -544,7 +549,7 @@ impl KMS {
         }
 
         self.db
-            .insert_access(uid, &access.user_id, access.operation_type, params)
+            .grant_access(uid, &access.user_id, access.operation_type, params)
             .await?;
         Ok(())
     }
@@ -579,7 +584,7 @@ impl KMS {
         }
 
         self.db
-            .delete_access(uid, &access.user_id, access.operation_type, params)
+            .remove_access(uid, &access.user_id, access.operation_type, params)
             .await?;
         Ok(())
     }
@@ -611,7 +616,7 @@ impl KMS {
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectOwnedResponse>> {
-        let list = self.db.find(None, None, owner, params).await?;
+        let list = self.db.find(None, None, owner, true, params).await?;
         let ids = list.into_iter().map(ObjectOwnedResponse::from).collect();
         Ok(ids)
     }

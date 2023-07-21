@@ -8,12 +8,12 @@ use cosmian_kmip::kmip::{
     kmip_types::{Attributes, KeyFormatType, LinkType, StateEnumeration},
 };
 use cosmian_kms_utils::{
+    access::ExtraDatabaseParams,
     crypto::cover_crypt::{
         attributes::{attributes_from_attributes, policy_from_attributes},
         master_keys::update_master_keys,
         user_key::UserDecryptionKeysHandler,
     },
-    types::ExtraDatabaseParams,
 };
 use tracing::trace;
 

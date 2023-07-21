@@ -24,8 +24,8 @@ use crate::{
 ///  - a key in the KMS (which will be exported first)
 ///  - a key in a KMIP JSON TTLV file
 ///
-/// For the latter 2 cases, the key may be a symmetric key
-/// and RFC 5649 will be used or a curve 25519 private key
+/// For the latter 2 cases, the key may be a symmetric key,
+/// and RFC 5649 will be used, or a curve 25519 private key
 /// and ECIES will be used.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]

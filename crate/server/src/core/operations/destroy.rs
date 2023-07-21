@@ -1,17 +1,21 @@
+use std::collections::HashSet;
+
+use async_recursion::async_recursion;
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyMaterial, KeyValue},
     kmip_objects::{
         Object,
-        ObjectType::{PrivateKey, PublicKey, SymmetricKey},
+        ObjectType::{self, PrivateKey, PublicKey, SymmetricKey},
     },
     kmip_operations::{Destroy, DestroyResponse},
     kmip_types::{KeyFormatType, LinkType, StateEnumeration},
 };
-use cosmian_kms_utils::types::{ExtraDatabaseParams, ObjectOperationTypes};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use tracing::debug;
 
-use super::get::get_;
 use crate::{
     core::{cover_crypt::destroy_user_decryption_keys, KMS},
+    database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -24,78 +28,125 @@ pub async fn destroy_operation(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<DestroyResponse> {
-    let unique_identifier = &request
+    // there must be an identifier
+    let uid_or_tags = request
         .unique_identifier
-        .to_owned()
+        .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    // retrieve the object
-    let (object, state) = get_(
-        kms,
-        unique_identifier,
-        None,
-        None,
-        user,
-        params,
-        ObjectOperationTypes::Destroy,
-    )
-    .await?;
-
-    // perform the chain of destroy operations depending on the type of object
-    let object_type = object.object_type();
-    match object_type {
-        SymmetricKey => {
-            // revoke the key
-            destroy_key_core(unique_identifier, object, state, kms, params).await?;
-        }
-        PrivateKey => {
-            let private_key =
-                destroy_key_core(unique_identifier, object, state, kms, params).await?;
-            if let Some(public_key_id) = private_key.attributes()?.get_link(LinkType::PublicKeyLink)
-            {
-                let _ = destroy_key(&public_key_id, kms, user, params).await;
-            }
-            if let KeyFormatType::CoverCryptSecretKey = private_key.key_block()?.key_format_type {
-                destroy_user_decryption_keys(unique_identifier, kms, user, params).await?
-            }
-        }
-        PublicKey => {
-            // revoke the public key
-            let public_key =
-                destroy_key_core(unique_identifier, object, state, kms, params).await?;
-            if let Some(private_key_id) =
-                public_key.attributes()?.get_link(LinkType::PrivateKeyLink)
-            {
-                if let Ok(private_key) = destroy_key(&private_key_id, kms, user, params).await {
-                    if let KeyFormatType::CoverCryptSecretKey =
-                        private_key.key_block()?.key_format_type
-                    {
-                        destroy_user_decryption_keys(&private_key_id, kms, user, params).await?
-                    }
-                }
-            }
-        }
-        x => kms_bail!(KmsError::NotSupported(format!(
-            "revoke operation is not supported for object type {:?}",
-            x
-        ))),
-    };
-
+    recursively_destroy_key(uid_or_tags, kms, user, params, HashSet::new()).await?;
     Ok(DestroyResponse {
-        unique_identifier: unique_identifier.to_string(),
+        unique_identifier: uid_or_tags.to_owned(),
     })
 }
 
-/// Revoke a key, knowing the object and state
-#[allow(clippy::too_many_arguments)]
+/// Recursively destroy keys
+#[async_recursion]
+pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
+    uid_or_tags: &str,
+    kms: &KMS,
+    user: &str,
+    params: Option<&'a ExtraDatabaseParams>,
+    // keys that should be skipped
+    mut ids_to_skip: HashSet<String>,
+) -> KResult<()> {
+    // retrieve from tags or use passed identifier
+    let owm_s = kms
+        .db
+        .retrieve(uid_or_tags, user, ObjectOperationType::Destroy, params)
+        .await?
+        .into_iter()
+        .filter(|owm| {
+            let object_type = owm.object.object_type();
+            owm.state != StateEnumeration::Destroyed
+                && (object_type == ObjectType::PrivateKey
+                    || object_type == ObjectType::SymmetricKey
+                    || object_type == ObjectType::PublicKey)
+        })
+        .collect::<Vec<ObjectWithMetadata>>();
+
+    if owm_s.is_empty() {
+        return Err(KmsError::ItemNotFound(uid_or_tags.to_owned()))
+    }
+
+    // destroy the keys found
+    for mut owm in owm_s {
+        // perform the chain of destroy operations depending on the type of object
+        let object_type = owm.object.object_type();
+        match object_type {
+            SymmetricKey => {
+                // destroy the key
+                destroy_key_core(&owm.id, &mut owm.object, owm.state, kms, params).await?;
+            }
+            PrivateKey => {
+                //add this key to the ids to skip
+                ids_to_skip.insert(owm.id.clone());
+                // for Covercrypt, if that is a master secret key, destroy the user decryption keys
+                if let KeyFormatType::CoverCryptSecretKey = owm.object.key_block()?.key_format_type
+                {
+                    destroy_user_decryption_keys(&owm.id, kms, user, params, ids_to_skip.clone())
+                        .await?
+                }
+                // destroy any linked public key
+                if let Some(public_key_id) =
+                    owm.object.attributes()?.get_link(LinkType::PublicKeyLink)
+                {
+                    if !ids_to_skip.contains(&public_key_id) {
+                        recursively_destroy_key(
+                            &public_key_id,
+                            kms,
+                            user,
+                            params,
+                            ids_to_skip.clone(),
+                        )
+                        .await?;
+                    }
+                }
+
+                // destroy the private key
+                destroy_key_core(&owm.id, &mut owm.object, owm.state, kms, params).await?;
+            }
+            PublicKey => {
+                //add this key to the ids to skip
+                ids_to_skip.insert(owm.id.clone());
+                // destroy any linked private key
+                if let Some(private_key_id) =
+                    owm.object.attributes()?.get_link(LinkType::PrivateKeyLink)
+                {
+                    if !ids_to_skip.contains(&private_key_id) {
+                        recursively_destroy_key(
+                            &private_key_id,
+                            kms,
+                            user,
+                            params,
+                            ids_to_skip.clone(),
+                        )
+                        .await?;
+                    }
+                }
+
+                // destroy the public key
+                destroy_key_core(&owm.id, &mut owm.object, owm.state, kms, params).await?;
+            }
+            x => kms_bail!(KmsError::NotSupported(format!(
+                "destroy operation is not supported for object type {:?}",
+                x
+            ))),
+        };
+    }
+
+    Ok(())
+}
+
+/// Destroy a key, knowing the object and state
 async fn destroy_key_core(
     unique_identifier: &str,
-    mut object: Object,
+    object: &mut Object,
     state: StateEnumeration,
     kms: &KMS,
     params: Option<&ExtraDatabaseParams>,
-) -> KResult<Object> {
-    //
+) -> KResult<()> {
+    // map the state to the new state
     let new_state = match state {
         StateEnumeration::Active => {
             return Err(KmsError::InvalidRequest(format!(
@@ -105,7 +156,8 @@ async fn destroy_key_core(
         }
         StateEnumeration::Deactivated | StateEnumeration::PreActive => StateEnumeration::Destroyed,
         StateEnumeration::Compromised => StateEnumeration::Destroyed_Compromised,
-        StateEnumeration::Destroyed | StateEnumeration::Destroyed_Compromised => return Ok(object),
+        // already destroyed, return
+        StateEnumeration::Destroyed | StateEnumeration::Destroyed_Compromised => return Ok(()),
     };
 
     // the KMIP specs mandates that e KeyMaterial be destroyed
@@ -116,34 +168,17 @@ async fn destroy_key_core(
     };
 
     kms.db
-        .update_object(unique_identifier, &object, params)
+        .update_object(unique_identifier, object, None, params)
         .await?;
 
     kms.db
         .update_state(unique_identifier, new_state, params)
         .await?;
 
-    Ok(object)
-}
+    debug!(
+        "Object with unique identifier: {} destroyed",
+        unique_identifier
+    );
 
-/// Revoke a key from its id
-pub(crate) async fn destroy_key(
-    unique_identifier: &str,
-    kms: &KMS,
-    user: &str,
-    params: Option<&ExtraDatabaseParams>,
-) -> KResult<Object> {
-    // retrieve the object
-    let (object, state) = get_(
-        kms,
-        unique_identifier,
-        None,
-        None,
-        user,
-        params,
-        ObjectOperationTypes::Destroy,
-    )
-    .await?;
-
-    destroy_key_core(unique_identifier, object, state, kms, params).await
+    Ok(())
 }

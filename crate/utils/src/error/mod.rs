@@ -5,7 +5,7 @@ use thiserror::Error;
 pub mod result;
 
 #[derive(Error, Debug)]
-pub enum CryptoError {
+pub enum KmipUtilsError {
     #[error("Conversion Error: {0}")]
     ConversionError(String),
 
@@ -21,45 +21,48 @@ pub enum CryptoError {
     #[error("Kmip: {0}: {1}")]
     Kmip(ErrorReason, String),
 
+    #[error("Invalid tag: {0}")]
+    InvalidTag(String),
+
     #[error("{0}")]
     Default(String),
 }
 
-impl From<std::array::TryFromSliceError> for CryptoError {
+impl From<std::array::TryFromSliceError> for KmipUtilsError {
     fn from(value: std::array::TryFromSliceError) -> Self {
         Self::ConversionError(value.to_string())
     }
 }
 
-impl From<KmipError> for CryptoError {
+impl From<KmipError> for KmipUtilsError {
     fn from(value: KmipError) -> Self {
         match value {
             KmipError::InvalidKmipValue(error_reason, value) => {
-                CryptoError::Kmip(error_reason, value)
+                KmipUtilsError::Kmip(error_reason, value)
             }
             KmipError::InvalidKmipObject(error_reason, value) => {
-                CryptoError::Kmip(error_reason, value)
+                KmipUtilsError::Kmip(error_reason, value)
             }
             KmipError::KmipNotSupported(error_reason, value) => {
-                CryptoError::Kmip(error_reason, value)
+                KmipUtilsError::Kmip(error_reason, value)
             }
             KmipError::NotSupported(value) => {
-                CryptoError::Kmip(ErrorReason::Feature_Not_Supported, value)
+                KmipUtilsError::Kmip(ErrorReason::Feature_Not_Supported, value)
             }
-            KmipError::KmipError(error_reason, value) => CryptoError::Kmip(error_reason, value),
+            KmipError::KmipError(error_reason, value) => KmipUtilsError::Kmip(error_reason, value),
         }
     }
 }
 
-impl From<CryptoCoreError> for CryptoError {
+impl From<CryptoCoreError> for KmipUtilsError {
     fn from(value: CryptoCoreError) -> Self {
         Self::Default(value.to_string())
     }
 }
 
-impl From<serde_json::Error> for CryptoError {
+impl From<serde_json::Error> for KmipUtilsError {
     fn from(e: serde_json::Error) -> Self {
-        CryptoError::ConversionError(e.to_string())
+        KmipUtilsError::ConversionError(e.to_string())
     }
 }
 
@@ -70,7 +73,7 @@ impl From<serde_json::Error> for CryptoError {
 macro_rules! crypto_ensure {
     ($cond:expr, $msg:literal $(,)?) => {
         if !$cond {
-            return ::core::result::Result::Err($crate::crypto::error::CryptoError::Default($msg.to_owned()));
+            return ::core::result::Result::Err($crate::error::KmipUtilsError::Default($msg.to_owned()));
         }
     };
     ($cond:expr, $err:expr $(,)?) => {
@@ -80,35 +83,35 @@ macro_rules! crypto_ensure {
     };
     ($cond:expr, $fmt:expr, $($arg:tt)*) => {
         if !$cond {
-            return ::core::result::Result::Err($crate::crypto::error::CryptoError::Default(format!($fmt, $($arg)*)));
+            return ::core::result::Result::Err($crate::error::KmipUtilsError::Default(format!($fmt, $($arg)*)));
         }
     };
 }
 
 /// Construct a server error from a string.
 #[macro_export]
-macro_rules! crypto_error {
+macro_rules! kmip_utils_error {
     ($msg:literal) => {
-        $crate::crypto::error::CryptoError::Default(format!($msg))
+        $crate::error::KmipUtilsError::Default(format!($msg))
     };
     ($err:expr $(,)?) => ({
-        $crate::crypto::error::CryptoError::Default($err.to_string())
+        $crate::error::KmipUtilsError::Default($err.to_string())
     });
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::crypto::error::CryptoError::Default(format!($fmt, $($arg)*))
+        $crate::error::KmipUtilsError::Default(format!($fmt, $($arg)*))
     };
 }
 
 /// Return early with an error if a condition is not satisfied.
 #[macro_export]
-macro_rules! crypto_bail {
+macro_rules! kmip_utils_bail {
     ($msg:literal) => {
-        return ::core::result::Result::Err( $crate::crypto::error::CryptoError::Default(format!($msg)))
+        return ::core::result::Result::Err( $crate::error::KmipUtilsError::Default(format!($msg)))
     };
     ($err:expr $(,)?) => {
         return ::core::result::Result::Err($err)
     };
     ($fmt:expr, $($arg:tt)*) => {
-        return ::core::result::Result::Err($crate::crypto::error::CryptoError::Default(format!($fmt, $($arg)*)))
+        return ::core::result::Result::Err($crate::error::KmipUtilsError::Default(format!($fmt, $($arg)*)))
     };
 }

@@ -14,15 +14,15 @@ use crate::{
     },
 };
 
-pub const SUB_COMMAND: &str = "access";
+pub const SUB_COMMAND: &str = "access-rights";
 
 /// Generates a symmetric key
 fn gen_key(cli_conf_path: &str) -> Result<String, CliError> {
-    create_symmetric_key(cli_conf_path, None, None, None)
+    create_symmetric_key(cli_conf_path, None, None, None, &[])
 }
 
 /// Grants access to a user
-fn grant_access(
+pub(crate) fn grant_access(
     cli_conf_path: &str,
     object_id: &str,
     user: &str,
@@ -42,7 +42,7 @@ fn grant_access(
 }
 
 /// Revoke access to a user
-fn revoke_access(
+pub(crate) fn revoke_access(
     cli_conf_path: &str,
     object_id: &str,
     user: &str,
@@ -117,7 +117,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
-        "output.json",
+        "/tmp/output.json",
         false,
         false,
         None,
@@ -133,7 +133,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
-            "output.json",
+            "/tmp/output.json",
             false,
             false,
             None,
@@ -170,7 +170,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
-            "output.json",
+            "/tmp/output.json",
             false,
             false,
             None,
@@ -201,7 +201,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
         &ctx.user_cli_conf_path,
         "sym",
         &key_id,
-        "output.json",
+        "/tmp/output.json",
         false,
         false,
         None,
@@ -294,7 +294,7 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
-            "output.json",
+            "/tmp/output.json",
             false,
             false,
             None,
@@ -318,7 +318,7 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
         &ctx.user_cli_conf_path,
         "sym",
         &key_id,
-        "output.json",
+        "/tmp/output.json",
         false,
         false,
         None,
@@ -340,7 +340,7 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
-            "output.json",
+            "/tmp/output.json",
             false,
             false,
             None,

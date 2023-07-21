@@ -16,7 +16,7 @@ use cosmian_kms_server::{
     },
     start_kms_server,
 };
-use cosmian_kms_utils::types::ExtraDatabaseParams;
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use rand::SeedableRng;
 use tokio::sync::OnceCell;
 use tracing::trace;
@@ -170,6 +170,7 @@ pub async fn init_test_server_options(
         },
         db: DBConfig {
             database_type: "sqlite-enc".to_string(),
+            clear_database: true,
             ..Default::default()
         },
         http: if use_https {

@@ -1,6 +1,6 @@
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::types::{Access, ObjectOperationTypes};
+use cosmian_kms_utils::access::{Access, ObjectOperationType};
 
 use crate::error::{result::CliResultHelper, CliError};
 
@@ -44,7 +44,7 @@ pub struct GrantAccess {
     object_uid: String,
 
     /// The KMIP operation to allow
-    operation: ObjectOperationTypes,
+    operation: ObjectOperationType,
 }
 
 impl GrantAccess {
@@ -84,7 +84,7 @@ pub struct RevokeAccess {
 
     /// The operation to revoke (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
     #[clap(required = true)]
-    operation: ObjectOperationTypes,
+    operation: ObjectOperationType,
 }
 
 impl RevokeAccess {

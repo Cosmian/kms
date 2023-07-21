@@ -14,7 +14,7 @@ use cosmian_kmip::kmip::{
     kmip_types::UniqueIdentifier,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use cosmian_kms_utils::types::{
+use cosmian_kms_utils::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, QuoteParams, SuccessResponse,
     UserAccessResponse,
 };

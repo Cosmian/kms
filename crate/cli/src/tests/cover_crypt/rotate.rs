@@ -29,7 +29,7 @@ pub async fn rotate(
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    let mut args = vec!["rotate", master_private_key_id];
+    let mut args = vec!["rotate", "--key-id", master_private_key_id];
     args.extend_from_slice(attributes);
     cmd.arg(SUB_COMMAND).args(args);
     let output = cmd.output()?;
@@ -52,11 +52,13 @@ async fn test_rotate() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     let _user_decryption_key = create_user_decryption_key(
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
     );
 
     rotate(
@@ -78,11 +80,13 @@ async fn test_rotate_error() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     let _user_decryption_key = create_user_decryption_key(
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
     );
 
     // bad attributes
@@ -113,7 +117,7 @@ async fn test_rotate_error() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // create a symmetric key
-    let symmetric_key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let symmetric_key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     // export a wrapped key
     let exported_wrapped_key_file = tmp_path.join("exported_wrapped_master_private.key");
     export(
@@ -166,11 +170,13 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     let user_decryption_key = create_user_decryption_key(
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+        &[],
     )?;
 
     encrypt(
