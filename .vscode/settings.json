@@ -17,6 +17,8 @@
     "ECDH",
     "ecies",
     "ECIES",
+    "findex",
+    "Findex",
     "gpsw",
     "Gpsw",
     "jwks",

@@ -1,25 +1,16 @@
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Display,
-    sync::Mutex,
-};
+use std::collections::{HashMap, HashSet};
 
-use cloudproof::reexport::crypto_core::{reexport::rand_core::SeedableRng, CsRng};
 use cosmian_findex::{
-    impl_findex_trait,
-    parameters::{BLOCK_LENGTH, CHAIN_TABLE_WIDTH, KWI_LENGTH, UID_LENGTH},
+    parameters::{
+        BLOCK_LENGTH, CHAIN_TABLE_WIDTH, KMAC_KEY_LENGTH, KWI_LENGTH, MASTER_KEY_LENGTH, UID_LENGTH,
+    },
     EncryptedMultiTable, EncryptedTable, FetchChains, FindexCallbacks, FindexCompact, FindexSearch,
     FindexUpsert, IndexedValue, Keyword, Location, Uid, Uids, UpsertData,
 };
-use redis::{aio::ConnectionManager, transaction, AsyncCommands, Commands, Connection, Script};
+use redis::{aio::ConnectionManager, pipe, AsyncCommands, Script};
+use tracing::trace;
 
-use crate::error::FindexError;
-// use rand::Rng;
-#[cfg(feature = "live_compact")]
-use crate::{
-    compact_live::FindexLiveCompact,
-    parameters::{BLOCK_LENGTH, CHAIN_TABLE_WIDTH, KMAC_KEY_LENGTH, KWI_LENGTH, MASTER_KEY_LENGTH},
-};
+use crate::{error::FindexError, RemovedLocationsFinder};
 
 #[derive(Copy, Clone)]
 enum FindexTable {
@@ -37,16 +28,17 @@ fn key(table: FindexTable, uid: &[u8]) -> Vec<u8> {
     key
 }
 
-pub struct FindexRedis<const UID_LENGTH: usize> {
+pub struct FindexRedis<'a, F: RemovedLocationsFinder> {
+    // we keep redis_url for the updateLines method
     mgr: ConnectionManager,
-    upsert_script: Script, // entry_table: EncryptedTable<UID_LENGTH>,
-                           // chain_table: EncryptedTable<UID_LENGTH>,
-                           // removed_locations: HashSet<Location>,
-                           // pub check_progress_callback_next_keyword: bool,
-                           // pub progress_callback_cancel: bool,
+    upsert_script: Script,
+    removed_locations_finder: &'a F,
 }
 
-impl<const UID_LENGTH: usize> FindexRedis<UID_LENGTH> {
+impl<'a, F> FindexRedis<'a, F>
+where
+    F: RemovedLocationsFinder,
+{
     /// The conditional upsert script used to
     /// only update a table if the previous value matches ARGV[2].
     /// When the value does not match, the previous value is returned
@@ -64,7 +56,10 @@ impl<const UID_LENGTH: usize> FindexRedis<UID_LENGTH> {
     ///
     /// # Arguments
     ///  * `redis_url` - The Redis URL e.g. "redis://user:password@localhost:6379"
-    pub async fn connect(redis_url: &str) -> Result<Self, FindexError> {
+    pub async fn connect(
+        redis_url: &str,
+        removed_locations_finder: &'a F,
+    ) -> Result<FindexRedis<'a, F>, FindexError> {
         //todo add username/password support
         let client = redis::Client::open(redis_url)?;
         let mgr = ConnectionManager::new(client).await?;
@@ -72,11 +67,41 @@ impl<const UID_LENGTH: usize> FindexRedis<UID_LENGTH> {
         Ok(FindexRedis {
             mgr,
             upsert_script: Script::new(Self::CONDITIONAL_UPSERT_SCRIPT),
+            removed_locations_finder,
         })
     }
 
-    async fn get_all_keys(&self, table: FindexTable) -> Result<Uids<UID_LENGTH>, FindexError> {
-        let keys: Vec<Vec<u8>> = self.mgr.clone().keys(key(table, b"*")).await?;
+    /// Clear all indexes
+    ///
+    /// # Warning
+    /// This is definitive
+    pub async fn clear_indexes(&self) -> Result<(), FindexError> {
+        redis::cmd("FLUSHDB")
+            .query_async(&mut self.mgr.clone())
+            .await?;
+        Ok(())
+    }
+}
+
+impl<'a, F> FindexCallbacks<FindexError, UID_LENGTH> for FindexRedis<'a, F>
+where
+    F: RemovedLocationsFinder,
+{
+    async fn progress(
+        &self,
+        _results: &HashMap<Keyword, HashSet<IndexedValue>>,
+    ) -> Result<bool, FindexError> {
+        //TODO: allow passing callback fn on connect
+        Ok(true)
+    }
+
+    async fn fetch_all_entry_table_uids(&self) -> Result<Uids<UID_LENGTH>, FindexError> {
+        let keys: Vec<Vec<u8>> = self
+            .mgr
+            .clone()
+            .keys(key(FindexTable::EntryTable, b"*"))
+            .await?;
+        trace!("fetch_all_entry_table_uids num keywords: {}", keys.len());
         Ok(Uids(
             keys.iter()
                 .map(|v| {
@@ -88,55 +113,55 @@ impl<const UID_LENGTH: usize> FindexRedis<UID_LENGTH> {
         ))
     }
 
-    async fn get_values(
-        &self,
-        table: FindexTable,
-        uids: Uids<UID_LENGTH>,
-    ) -> Result<EncryptedMultiTable<UID_LENGTH>, FindexError> {
-        let keys: Vec<Vec<u8>> = uids.0.iter().map(|uid| key(table, uid)).collect();
-        let values: Vec<Vec<u8>> = self.mgr.clone().mget(keys).await?;
-        Ok(EncryptedMultiTable(
-            uids.0.into_iter().zip(values).collect::<Vec<_>>(),
-        ))
-    }
-}
-
-impl<const UID_LENGTH: usize> FindexCallbacks<FindexError, UID_LENGTH> for FindexRedis<UID_LENGTH> {
-    async fn progress(
-        &self,
-        _results: &HashMap<Keyword, HashSet<IndexedValue>>,
-    ) -> Result<bool, FindexError> {
-        //TODO: allow passing callback fn on connect
-        Ok(true)
-    }
-
-    async fn fetch_all_entry_table_uids(&self) -> Result<Uids<UID_LENGTH>, FindexError> {
-        self.get_all_keys(FindexTable::EntryTable).await
-    }
-
     async fn fetch_entry_table(
         &self,
         entry_table_uids: Uids<UID_LENGTH>,
     ) -> Result<EncryptedMultiTable<UID_LENGTH>, FindexError> {
+        trace!(
+            "fetch_entry_table num keywords: {}:",
+            entry_table_uids.0.len(),
+        );
+        // guard against empty uids
+        if entry_table_uids.0.is_empty() {
+            return Ok(EncryptedMultiTable::default())
+        }
+
+        // build Redis keys
         let keys: Vec<Vec<u8>> = entry_table_uids
             .0
             .iter()
             .map(|uid| key(FindexTable::EntryTable, uid))
             .collect();
+
+        // mget the values from the Redis keys
         let values: Vec<Vec<u8>> = self.mgr.clone().mget(keys).await?;
-        Ok(EncryptedMultiTable(
-            entry_table_uids
-                .0
-                .into_iter()
-                .zip(values)
-                .collect::<Vec<_>>(),
-        ))
+
+        // discard empty values
+        let tuples = entry_table_uids
+            .0
+            .into_iter()
+            .zip(values)
+            .filter(|(_uid, v)| !v.is_empty())
+            .collect::<Vec<_>>();
+        trace!("fetch_entry_table non empty tuples len: {}", tuples.len(),);
+
+        Ok(EncryptedMultiTable(tuples))
     }
 
     async fn fetch_chain_table(
         &self,
         chain_table_uids: Uids<UID_LENGTH>,
     ) -> Result<EncryptedTable<UID_LENGTH>, FindexError> {
+        trace!(
+            "fetch_chain_table num entries: {}:",
+            chain_table_uids.0.len(),
+        );
+
+        //guard against empty uids
+        if chain_table_uids.0.is_empty() {
+            return Ok(EncryptedTable::default())
+        }
+
         let keys: Vec<Vec<u8>> = chain_table_uids
             .0
             .iter()
@@ -149,6 +174,7 @@ impl<const UID_LENGTH: usize> FindexCallbacks<FindexError, UID_LENGTH> for Finde
                 .0
                 .into_iter()
                 .zip(values)
+                .filter(|(_uid, v)| !v.is_empty())
                 .collect::<HashMap<Uid<UID_LENGTH>, Vec<u8>>>(),
         ))
     }
@@ -157,6 +183,9 @@ impl<const UID_LENGTH: usize> FindexCallbacks<FindexError, UID_LENGTH> for Finde
         &mut self,
         modifications: UpsertData<UID_LENGTH>,
     ) -> Result<EncryptedTable<UID_LENGTH>, FindexError> {
+        // TODO: get the compact lock: we cannot insert new entries while compacting
+        trace!("upsert_entry_table num keywords {:?}", modifications.len());
+
         let mut rejected = EncryptedTable::default();
         for (uid, (old_value, new_value)) in modifications {
             let value: Vec<u8> = self
@@ -170,6 +199,7 @@ impl<const UID_LENGTH: usize> FindexCallbacks<FindexError, UID_LENGTH> for Finde
                 rejected.insert(uid, value);
             }
         }
+        trace!("upsert_entry_table rejected: {:?}", rejected);
         Ok(rejected)
     }
 
@@ -177,51 +207,72 @@ impl<const UID_LENGTH: usize> FindexCallbacks<FindexError, UID_LENGTH> for Finde
         &mut self,
         items: EncryptedTable<UID_LENGTH>,
     ) -> Result<(), FindexError> {
-        let keys: Vec<Vec<u8>> = items
-            .keys()
-            .map(|uid| key(FindexTable::ChainTable, uid))
-            .collect();
-
-        transaction(&mut self.mgr.clone(), &keys, func)?;
-
-        for (uid, value) in items {
-            if self.chain_table.contains_key(&uid) {
-                return Err(FindexError(format!(
-                    "Conflict in Chain Table for UID: {uid:?}"
-                )))
-            }
-            self.chain_table.insert(uid, value);
+        let mut pipe = pipe();
+        for item in items {
+            pipe.set(key(FindexTable::ChainTable, &item.0), item.1);
         }
+        pipe.atomic().query_async(&mut self.mgr.clone()).await?;
         Ok(())
     }
 
-    fn update_lines(
+    async fn update_lines(
         &mut self,
         chain_table_uids_to_remove: Uids<UID_LENGTH>,
         new_encrypted_entry_table_items: EncryptedTable<UID_LENGTH>,
         new_encrypted_chain_table_items: EncryptedTable<UID_LENGTH>,
     ) -> Result<(), FindexError> {
-        self.entry_table = new_encrypted_entry_table_items;
+        //TODO get the compact lock: we cannot compact while upserting
 
-        for new_encrypted_chain_table_item in new_encrypted_chain_table_items {
-            self.chain_table.insert(
-                new_encrypted_chain_table_item.0,
-                new_encrypted_chain_table_item.1,
-            );
+        trace!(
+            "update_lines chain_table_uids_to_remove: {}, new_encrypted_entry_table_items: {}, \
+             new_encrypted_chain_table_items: {}",
+            chain_table_uids_to_remove.len(),
+            new_encrypted_entry_table_items.len(),
+            new_encrypted_chain_table_items.len()
+        );
+        // delete the entry table
+        let entry_keys: Vec<Vec<u8>> = self
+            .mgr
+            .clone()
+            .keys(key(FindexTable::EntryTable, b"*"))
+            .await?;
+        let mut pipeline = pipe();
+        for entry_key in entry_keys {
+            pipeline.del(entry_key);
         }
+        pipeline.atomic().query_async(&mut self.mgr.clone()).await?;
 
-        for removed_chain_table_uid in chain_table_uids_to_remove {
-            self.chain_table.remove(&removed_chain_table_uid);
+        // add new entry table entries
+        let mut pipeline = pipe();
+        for item in new_encrypted_entry_table_items {
+            pipeline.set(key(FindexTable::EntryTable, &item.0), item.1);
         }
+        pipeline.atomic().query_async(&mut self.mgr.clone()).await?;
+
+        // delete the chain table
+        let mut pipeline = pipe();
+        for item in chain_table_uids_to_remove {
+            pipeline.del(key(FindexTable::ChainTable, &item));
+        }
+        pipeline.atomic().query_async(&mut self.mgr.clone()).await?;
+
+        // add new chain table entries
+        let mut pipeline = pipe();
+        for item in new_encrypted_chain_table_items {
+            pipeline.set(key(FindexTable::ChainTable, &item.0), item.1);
+        }
+        pipeline.atomic().query_async(&mut self.mgr.clone()).await?;
 
         Ok(())
     }
 
-    fn list_removed_locations(
+    async fn list_removed_locations(
         &self,
-        _: HashSet<Location>,
+        locations: HashSet<Location>,
     ) -> Result<HashSet<Location>, FindexError> {
-        Ok(self.removed_locations.iter().cloned().collect())
+        self.removed_locations_finder
+            .find_removed_locations(locations)
+            .await
     }
 
     #[cfg(feature = "live_compact")]
@@ -229,33 +280,24 @@ impl<const UID_LENGTH: usize> FindexCallbacks<FindexError, UID_LENGTH> for Finde
         &self,
         locations: HashSet<Location>,
     ) -> Result<HashSet<Location>, FindexError> {
-        Ok(locations
-            .into_iter()
-            .filter(|location| !self.removed_locations.contains(location))
-            .collect())
+        unimplemented!("this method will be removed in a future release")
     }
 
     #[cfg(feature = "live_compact")]
     async fn delete_chain(&mut self, uids: Uids<UID_LENGTH>) -> Result<(), FindexError> {
-        self.chain_table.retain(|uid, _| !uids.contains(uid));
-        Ok(())
+        unimplemented!("this method will be removed in a future release")
     }
 }
 
-impl FetchChains<UID_LENGTH, BLOCK_LENGTH, CHAIN_TABLE_WIDTH, KWI_LENGTH, FindexError>
-    for FindexRedis<UID_LENGTH>
+impl<'a, F> FetchChains<UID_LENGTH, BLOCK_LENGTH, CHAIN_TABLE_WIDTH, KWI_LENGTH, FindexError>
+    for FindexRedis<'a, F>
+where
+    F: RemovedLocationsFinder,
 {
 }
 
-impl_findex_trait!(FindexSearch, FindexRedis<UID_LENGTH>, FindexError);
-
-impl_findex_trait!(FindexUpsert, FindexRedis<UID_LENGTH>, FindexError);
-
-impl_findex_trait!(FindexCompact, FindexRedis<UID_LENGTH>, FindexError);
-
-#[cfg(feature = "live_compact")]
-impl
-    FindexLiveCompact<
+impl<'a, F>
+    FindexUpsert<
         UID_LENGTH,
         BLOCK_LENGTH,
         CHAIN_TABLE_WIDTH,
@@ -263,8 +305,38 @@ impl
         KWI_LENGTH,
         KMAC_KEY_LENGTH,
         FindexError,
-    > for FindexRedis<UID_LENGTH>
+    > for FindexRedis<'a, F>
+where
+    F: RemovedLocationsFinder,
 {
-    const BATCH_SIZE: usize = 10;
-    const NOISE_RATIO: f64 = 0.5;
+}
+
+impl<'a, F>
+    FindexSearch<
+        UID_LENGTH,
+        BLOCK_LENGTH,
+        CHAIN_TABLE_WIDTH,
+        MASTER_KEY_LENGTH,
+        KWI_LENGTH,
+        KMAC_KEY_LENGTH,
+        FindexError,
+    > for FindexRedis<'a, F>
+where
+    F: RemovedLocationsFinder,
+{
+}
+
+impl<'a, F>
+    FindexCompact<
+        UID_LENGTH,
+        BLOCK_LENGTH,
+        CHAIN_TABLE_WIDTH,
+        MASTER_KEY_LENGTH,
+        KWI_LENGTH,
+        KMAC_KEY_LENGTH,
+        FindexError,
+    > for FindexRedis<'a, F>
+where
+    F: RemovedLocationsFinder,
+{
 }

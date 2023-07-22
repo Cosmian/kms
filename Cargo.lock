@@ -918,9 +918,8 @@ dependencies = [
 
 [[package]]
 name = "cosmian_findex"
-version = "4.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53293c295643a29a338a3130e0bb5bbd30de711f1c44890a1e5326080ba42436"
+version = "5.0.0"
+source = "git+https://github.com/Cosmian/findex.git?branch=fix/make_compact_callback_async#b1a8248e3629e2f21fdac3eea7657e245b6953bc"
 dependencies = [
  "base64 0.21.2",
  "cosmian_crypto_core 9.0.1",
@@ -934,9 +933,17 @@ name = "cosmian_findex_redis"
 version = "4.5.0"
 dependencies = [
  "cloudproof",
- "cosmian_findex 4.0.3",
+ "cosmian_findex 5.0.0",
  "redis",
+ "serde",
+ "serde_json",
+ "serial_test",
  "thiserror",
+ "tokio",
+ "tracing",
+ "tracing-log",
+ "tracing-subscriber",
+ "tracing-tree",
 ]
 
 [[package]]
