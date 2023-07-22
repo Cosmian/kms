@@ -98,10 +98,10 @@ pub async fn test_compact() -> Result<(), FindexError> {
         keywords_19,
     );
 
+    // employee 19 should not appear in search results anymore
     findex
         .upsert(&master_key, &new_label, HashMap::new(), deletions)
         .await?;
-
     let updated_result = FRANCE_LOCATIONS
         .into_iter()
         .filter(|v| *v != 17 && *v != 19)
@@ -113,7 +113,7 @@ pub async fn test_compact() -> Result<(), FindexError> {
         .compact(&master_key, &master_key, &new_label, 1)
         .await?;
 
-    // search should be ok with new label
+    // search should still be the same
     let updated_result = FRANCE_LOCATIONS
         .into_iter()
         .filter(|v| *v != 17 && *v != 19)
@@ -236,6 +236,10 @@ pub async fn test_upsert_conflict() -> Result<(), FindexError> {
         ))
         .await?;
     assert_eq!(111, rejected.len());
+    for (uid, prev_value) in rejected {
+        assert!(changed_state.contains_key(&uid));
+        assert_eq!(prev_value, CHANGED_BYTES.to_vec());
+    }
 
     Ok(())
 }
