@@ -1,9 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
-use cloudproof::reexport::crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+use cloudproof::reexport::crypto_core::{
+    reexport::rand_core::{RngCore, SeedableRng},
+    CsRng,
+};
 use cosmian_findex::{
-    parameters::MASTER_KEY_LENGTH, FindexCompact, FindexSearch, FindexUpsert, IndexedValue,
-    KeyingMaterial, Keyword, Label, Location,
+    parameters::{MASTER_KEY_LENGTH, UID_LENGTH},
+    EncryptedTable, FindexCallbacks, FindexCompact, FindexSearch, FindexUpsert, IndexedValue,
+    KeyingMaterial, Keyword, Label, Location, Uid, UpsertData,
 };
 use serial_test::serial;
 use tracing::trace;
@@ -24,9 +28,9 @@ const FRANCE_LOCATIONS: [u16; 30] = [
 
 #[tokio::test]
 #[serial]
-pub async fn test_upsert_and_compact() -> Result<(), FindexError> {
+pub async fn test_compact() -> Result<(), FindexError> {
     log_init("cosmian_findex_redis=trace");
-    trace!("test_upsert");
+    trace!("test_compact");
 
     // load the dataset and create the list of keywords to be indexed
     let dataset = Dataset::new();
@@ -114,4 +118,83 @@ async fn assert_french_search<'a, F>(
             index
         );
     }
+}
+
+#[tokio::test]
+#[serial]
+pub async fn test_upsert_conflict() -> Result<(), FindexError> {
+    log_init("cosmian_findex_redis=trace");
+    trace!("test_upsert_conflict");
+
+    struct DummyDataset;
+    impl RemovedLocationsFinder for DummyDataset {
+        async fn find_removed_locations(
+            &self,
+            _locations: HashSet<Location>,
+        ) -> Result<HashSet<Location>, FindexError> {
+            Ok(HashSet::new())
+        }
+    }
+    let dummy = DummyDataset {};
+
+    // let f: FindRemovedLocations = Box::new(|s| Box::pin(dataset.find_removed_locations(s)));
+    let mut findex = FindexRedis::connect(REDIS_URL, &dummy).await?;
+    findex.clear_indexes().await?;
+
+    // generate 333 random Uids
+    let mut rng = CsRng::from_entropy();
+    let mut uids: HashSet<Uid<UID_LENGTH>> = HashSet::with_capacity(333);
+    loop {
+        let mut buffer = [0_u8; UID_LENGTH];
+        rng.fill_bytes(&mut buffer);
+        uids.insert(Uid::from(buffer));
+        if uids.len() == 333 {
+            break
+        }
+    }
+    let uids = uids.iter().collect::<Vec<&Uid<UID_LENGTH>>>();
+
+    const ORIGINAL_BYTES: &[u8; 8] = b"original";
+    const CHANGED_BYTES: &[u8; 7] = b"changed";
+    const NEW_BYTES: &[u8; 3] = b"new";
+
+    // the original state is what the user would have fetched before changing the table
+    let mut original_state: HashMap<Uid<UID_LENGTH>, Vec<u8>> = HashMap::new();
+    for uid in &uids {
+        original_state.insert(**uid, ORIGINAL_BYTES.to_vec());
+    }
+
+    // now simulate that an other user has changed the state of 111 Uids
+    let mut changed_state: HashMap<Uid<UID_LENGTH>, Vec<u8>> = HashMap::new();
+    for (idx, uid) in uids.iter().enumerate() {
+        if idx % 3 == 0 {
+            changed_state.insert(**uid, CHANGED_BYTES.to_vec());
+        } else {
+            changed_state.insert(**uid, ORIGINAL_BYTES.to_vec());
+        }
+    }
+    let rejected = findex
+        .upsert_entry_table(UpsertData::new(
+            &EncryptedTable::from(HashMap::new()),
+            EncryptedTable::from(changed_state.clone()),
+        ))
+        .await?;
+    assert!(rejected.is_empty());
+
+    // prepare a new state for the first user
+    let mut new_state: HashMap<Uid<UID_LENGTH>, Vec<u8>> = HashMap::new();
+    for uid in &uids {
+        new_state.insert(**uid, NEW_BYTES.to_vec());
+    }
+
+    // the first user is trying to update the table with its new state but knowing the original state
+    let rejected = findex
+        .upsert_entry_table(UpsertData::new(
+            &EncryptedTable::from(original_state),
+            EncryptedTable::from(new_state),
+        ))
+        .await?;
+    assert_eq!(111, rejected.len());
+
+    Ok(())
 }

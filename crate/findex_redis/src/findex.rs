@@ -46,9 +46,9 @@ where
         local value=redis.call('GET',ARGV[1])
         if((value==false) or (not(value == false) and (ARGV[2] == value))) then 
             redis.call('SET', ARGV[1], ARGV[3])
-            return {} 
+            return  
         else 
-            return {value} 
+            return value 
         end;
     "#;
 
@@ -199,7 +199,7 @@ where
                 rejected.insert(uid, value);
             }
         }
-        trace!("upsert_entry_table rejected: {:?}", rejected);
+        trace!("upsert_entry_table rejected: {}", rejected.len());
         Ok(rejected)
     }
 

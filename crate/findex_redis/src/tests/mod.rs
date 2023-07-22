@@ -95,17 +95,3 @@ impl RemovedLocationsFinder for Dataset {
         Ok(removed_locations)
     }
 }
-
-// impl Deref for Dataset {
-//     type Target = HashMap<u16, Employee>;
-
-//     fn deref(&self) -> &Self::Target {
-//         &self.0
-//     }
-// }
-
-// impl DerefMut for Dataset {
-//     fn deref_mut(&mut self) -> &mut Self::Target {
-//         &mut self.0
-//     }
-// }
