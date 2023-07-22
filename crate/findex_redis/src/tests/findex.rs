@@ -1,5 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
+use async_trait::async_trait;
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
@@ -33,11 +37,11 @@ pub async fn test_compact() -> Result<(), FindexError> {
     trace!("test_compact");
 
     // load the dataset and create the list of keywords to be indexed
-    let dataset = Dataset::new();
+    let dataset = Arc::new(Dataset::new());
     trace!("employees dataset size: {:?}", dataset.len().await);
 
     // let f: FindRemovedLocations = Box::new(|s| Box::pin(dataset.find_removed_locations(s)));
-    let mut findex = FindexRedis::connect(REDIS_URL, &dataset).await?;
+    let mut findex = FindexRedis::connect(REDIS_URL, dataset.clone()).await?;
     findex.clear_indexes().await?;
 
     let mut rng = CsRng::from_entropy();
@@ -126,14 +130,12 @@ pub async fn test_compact() -> Result<(), FindexError> {
     Ok(())
 }
 
-async fn assert_french_search<'a, F>(
-    findex: &mut FindexRedis<'a, F>,
+async fn assert_french_search(
+    findex: &mut FindexRedis,
     master_key: &KeyingMaterial<MASTER_KEY_LENGTH>,
     label: &Label,
     expected_values: &[u16],
-) where
-    F: RemovedLocationsFinder,
-{
+) {
     let keyword = Keyword::from("France".as_bytes());
     let search = findex
         .search(master_key, label, HashSet::from([keyword.clone()]))
@@ -161,6 +163,8 @@ pub async fn test_upsert_conflict() -> Result<(), FindexError> {
     trace!("test_upsert_conflict");
 
     struct DummyDataset;
+
+    #[async_trait]
     impl RemovedLocationsFinder for DummyDataset {
         async fn find_removed_locations(
             &self,
@@ -169,10 +173,10 @@ pub async fn test_upsert_conflict() -> Result<(), FindexError> {
             Ok(HashSet::new())
         }
     }
-    let dummy = DummyDataset {};
+    let dummy = Arc::new(DummyDataset {});
 
     // let f: FindRemovedLocations = Box::new(|s| Box::pin(dataset.find_removed_locations(s)));
-    let mut findex = FindexRedis::connect(REDIS_URL, &dummy).await?;
+    let mut findex = FindexRedis::connect(REDIS_URL, dummy.clone()).await?;
     findex.clear_indexes().await?;
 
     // generate 333 random Uids

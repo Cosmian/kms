@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use cosmian_findex::{
     parameters::{
@@ -29,18 +32,15 @@ fn key(table: FindexTable, uid: &[u8]) -> Vec<u8> {
     key
 }
 
-pub struct FindexRedis<'a, F: RemovedLocationsFinder> {
+pub struct FindexRedis {
     // we keep redis_url for the updateLines method
     mgr: ConnectionManager,
     upsert_script: Script,
-    removed_locations_finder: &'a F,
+    removed_locations_finder: Arc<dyn RemovedLocationsFinder + Sync + Send>,
     compact_lock: RwLock<()>,
 }
 
-impl<'a, F> FindexRedis<'a, F>
-where
-    F: RemovedLocationsFinder,
-{
+impl FindexRedis {
     /// The conditional upsert script used to
     /// only update a table if the previous value matches ARGV[2].
     /// When the value does not match, the previous value is returned
@@ -60,11 +60,27 @@ where
     ///  * `redis_url` - The Redis URL e.g. "redis://user:password@localhost:6379"
     pub async fn connect(
         redis_url: &str,
-        removed_locations_finder: &'a F,
-    ) -> Result<FindexRedis<'a, F>, FindexError> {
+        removed_locations_finder: Arc<dyn RemovedLocationsFinder + Sync + Send>,
+    ) -> Result<Self, FindexError> {
         let client = redis::Client::open(redis_url)?;
         let mgr = ConnectionManager::new(client).await?;
 
+        Ok(FindexRedis {
+            mgr,
+            upsert_script: Script::new(Self::CONDITIONAL_UPSERT_SCRIPT),
+            removed_locations_finder,
+            compact_lock: RwLock::new(()),
+        })
+    }
+
+    /// Connect to a Redis server with a ConnectionManager
+    ///
+    /// # Arguments
+    ///  * `redis_url` - The Redis URL e.g. "redis://user:password@localhost:6379"
+    pub async fn connect_with_manager(
+        mgr: ConnectionManager,
+        removed_locations_finder: Arc<dyn RemovedLocationsFinder + Sync + Send>,
+    ) -> Result<Self, FindexError> {
         Ok(FindexRedis {
             mgr,
             upsert_script: Script::new(Self::CONDITIONAL_UPSERT_SCRIPT),
@@ -85,10 +101,7 @@ where
     }
 }
 
-impl<'a, F> FindexCallbacks<FindexError, UID_LENGTH> for FindexRedis<'a, F>
-where
-    F: RemovedLocationsFinder,
-{
+impl FindexCallbacks<FindexError, UID_LENGTH> for FindexRedis {
     async fn progress(
         &self,
         _results: &HashMap<Keyword, HashSet<IndexedValue>>,
@@ -292,14 +305,12 @@ where
     }
 }
 
-impl<'a, F> FetchChains<UID_LENGTH, BLOCK_LENGTH, CHAIN_TABLE_WIDTH, KWI_LENGTH, FindexError>
-    for FindexRedis<'a, F>
-where
-    F: RemovedLocationsFinder,
+impl FetchChains<UID_LENGTH, BLOCK_LENGTH, CHAIN_TABLE_WIDTH, KWI_LENGTH, FindexError>
+    for FindexRedis
 {
 }
 
-impl<'a, F>
+impl
     FindexUpsert<
         UID_LENGTH,
         BLOCK_LENGTH,
@@ -308,13 +319,11 @@ impl<'a, F>
         KWI_LENGTH,
         KMAC_KEY_LENGTH,
         FindexError,
-    > for FindexRedis<'a, F>
-where
-    F: RemovedLocationsFinder,
+    > for FindexRedis
 {
 }
 
-impl<'a, F>
+impl
     FindexSearch<
         UID_LENGTH,
         BLOCK_LENGTH,
@@ -323,13 +332,11 @@ impl<'a, F>
         KWI_LENGTH,
         KMAC_KEY_LENGTH,
         FindexError,
-    > for FindexRedis<'a, F>
-where
-    F: RemovedLocationsFinder,
+    > for FindexRedis
 {
 }
 
-impl<'a, F>
+impl
     FindexCompact<
         UID_LENGTH,
         BLOCK_LENGTH,
@@ -338,8 +345,6 @@ impl<'a, F>
         KWI_LENGTH,
         KMAC_KEY_LENGTH,
         FindexError,
-    > for FindexRedis<'a, F>
-where
-    F: RemovedLocationsFinder,
+    > for FindexRedis
 {
 }

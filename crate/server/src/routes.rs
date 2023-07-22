@@ -42,20 +42,22 @@ impl actix_web::error::ResponseError for KmsError {
 
     fn status_code(&self) -> StatusCode {
         match self {
-            Self::RouteNotFound(_) => StatusCode::NOT_FOUND,
-            Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            Self::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::KmipError(..) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::NotSupported(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::UnsupportedProtectionMasks => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::UnsupportedPlaceholder => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::InconsistentOperation(..) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::InvalidRequest(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::SGXError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::ConversionError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::CryptographicError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            KmsError::RouteNotFound(_) => StatusCode::NOT_FOUND,
+            KmsError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            KmsError::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            KmsError::KmipError(..) => StatusCode::UNPROCESSABLE_ENTITY,
+            KmsError::NotSupported(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            KmsError::UnsupportedProtectionMasks => StatusCode::UNPROCESSABLE_ENTITY,
+            KmsError::UnsupportedPlaceholder => StatusCode::UNPROCESSABLE_ENTITY,
+            KmsError::InconsistentOperation(..) => StatusCode::UNPROCESSABLE_ENTITY,
+            KmsError::InvalidRequest(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            KmsError::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            KmsError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            KmsError::SGXError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            KmsError::ConversionError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            KmsError::CryptographicError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            KmsError::Redis(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            KmsError::Findex(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

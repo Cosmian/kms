@@ -4,13 +4,8 @@ version = "4.5.0"
 edition = "2021"
 
 [dependencies]
-redis = { version = "0.23", features = [
-    "aio",
-    "ahash",
-    "script",
-    "connection-manager",
-    "tokio-comp",
-] }
+async-trait = { workspace = true }
+redis = { workspace = true }
 cloudproof = { workspace = true }
 cosmian_findex = { git = "https://github.com/Cosmian/findex.git", branch = "fix/make_compact_callback_async" }
 thiserror = { workspace = true }

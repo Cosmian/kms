@@ -932,6 +932,7 @@ dependencies = [
 name = "cosmian_findex_redis"
 version = "4.5.0"
 dependencies = [
+ "async-trait",
  "cloudproof",
  "cosmian_findex 5.0.0",
  "redis",
@@ -1068,6 +1069,7 @@ dependencies = [
  "bitflags 2.3.2",
  "clap",
  "cloudproof",
+ "cosmian_findex_redis",
  "cosmian_kmip",
  "cosmian_kms_utils",
  "dirs",
@@ -1082,6 +1084,7 @@ dependencies = [
  "libsgx",
  "openssl",
  "rawsql",
+ "redis",
  "reqwest",
  "serde",
  "serde_json",

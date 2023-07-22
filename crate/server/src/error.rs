@@ -2,6 +2,7 @@ use std::{array::TryFromSliceError, sync::mpsc::SendError};
 
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
 use cloudproof::reexport::crypto_core::CryptoCoreError;
+use cosmian_findex_redis::FindexError;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
@@ -67,6 +68,12 @@ pub enum KmsError {
     // A failure originating from one of the cryptographic algorithms
     #[error("Cryptographic error: {0}")]
     CryptographicError(String),
+
+    #[error("Redis Error: {0}")]
+    Redis(String),
+
+    #[error("Findex Error: {0}")]
+    Findex(String),
 }
 
 impl From<TtlvError> for KmsError {
@@ -162,6 +169,18 @@ impl From<KmipError> for KmsError {
 impl From<SendError<ServerHandle>> for KmsError {
     fn from(e: SendError<ServerHandle>) -> Self {
         Self::ServerError(format!("Failed to send the server handle: {e}"))
+    }
+}
+
+impl From<redis::RedisError> for KmsError {
+    fn from(err: redis::RedisError) -> Self {
+        KmsError::Redis(err.to_string())
+    }
+}
+
+impl From<FindexError> for KmsError {
+    fn from(err: FindexError) -> Self {
+        KmsError::Findex(err.to_string())
     }
 }
 

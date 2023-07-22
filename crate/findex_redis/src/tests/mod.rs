@@ -3,6 +3,7 @@ use std::{
     fs,
 };
 
+use async_trait::async_trait;
 use cosmian_findex::{Keyword, Location};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -81,6 +82,7 @@ impl Dataset {
     }
 }
 
+#[async_trait]
 impl RemovedLocationsFinder for Dataset {
     async fn find_removed_locations(
         &self,
