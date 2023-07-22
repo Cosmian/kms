@@ -13,6 +13,9 @@ pub enum FindexError {
     #[error("Conversion error: {0}")]
     Conversion(String),
 
+    #[error("The server is compacting the indexes. Please retry later.")]
+    Compacting,
+
     #[allow(dead_code)]
     #[error("{0}")]
     Default(String),

@@ -14,13 +14,13 @@ redis = { version = "0.23", features = [
 cloudproof = { workspace = true }
 cosmian_findex = { git = "https://github.com/Cosmian/findex.git", branch = "fix/make_compact_callback_async" }
 thiserror = { workspace = true }
+tokio = { version = "1.25", features = ["full"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serial_test = "2.0.0"
-tokio = { version = "1.25", features = ["full"] }
 tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-tree = { workspace = true }
