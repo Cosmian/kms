@@ -89,6 +89,40 @@ pub async fn test_compact() -> Result<(), FindexError> {
         .collect::<Vec<u16>>();
     assert_french_search(&mut findex, &master_key, &new_label, &updated_result).await;
 
+    // now remove the index 19 from Findex
+    let employee_19 = dataset.get(19).await.unwrap();
+    let keywords_19 = employee_19.keywords();
+    let mut deletions: HashMap<IndexedValue, HashSet<Keyword>> = HashMap::new();
+    deletions.insert(
+        IndexedValue::from(Location::from(19_u16.to_be_bytes().as_slice())),
+        keywords_19,
+    );
+
+    findex
+        .upsert(&master_key, &new_label, HashMap::new(), deletions)
+        .await?;
+
+    let updated_result = FRANCE_LOCATIONS
+        .into_iter()
+        .filter(|v| *v != 17 && *v != 19)
+        .collect::<Vec<u16>>();
+    assert_french_search(&mut findex, &master_key, &new_label, &updated_result).await;
+
+    // compact the dataset
+    findex
+        .compact(&master_key, &master_key, &new_label, 1)
+        .await?;
+
+    // search should be ok with new label
+    let updated_result = FRANCE_LOCATIONS
+        .into_iter()
+        .filter(|v| *v != 17 && *v != 19)
+        .collect::<Vec<u16>>();
+    assert_french_search(&mut findex, &master_key, &new_label, &updated_result).await;
+
+    // note: employee 19 is still in the database but not in the index anymore
+    assert!(dataset.get(19).await.is_some());
+
     Ok(())
 }
 
@@ -163,6 +197,13 @@ pub async fn test_upsert_conflict() -> Result<(), FindexError> {
     for uid in &uids {
         original_state.insert(**uid, ORIGINAL_BYTES.to_vec());
     }
+    let rejected = findex
+        .upsert_entry_table(UpsertData::new(
+            &EncryptedTable::from(HashMap::new()),
+            EncryptedTable::from(original_state.clone()),
+        ))
+        .await?;
+    assert!(rejected.is_empty());
 
     // now simulate that an other user has changed the state of 111 Uids
     let mut changed_state: HashMap<Uid<UID_LENGTH>, Vec<u8>> = HashMap::new();
@@ -175,7 +216,7 @@ pub async fn test_upsert_conflict() -> Result<(), FindexError> {
     }
     let rejected = findex
         .upsert_entry_table(UpsertData::new(
-            &EncryptedTable::from(HashMap::new()),
+            &EncryptedTable::from(original_state.clone()),
             EncryptedTable::from(changed_state.clone()),
         ))
         .await?;

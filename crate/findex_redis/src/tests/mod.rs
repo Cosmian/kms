@@ -64,6 +64,10 @@ impl Dataset {
         Self(RwLock::new(dataset))
     }
 
+    async fn get(&self, index: u16) -> Option<Employee> {
+        self.0.read().await.get(&index).cloned()
+    }
+
     async fn remove(&self, index: u16) {
         self.0.write().await.remove(&index);
     }
