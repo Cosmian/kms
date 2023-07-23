@@ -32,7 +32,7 @@ impl EciesEncryption {
         let rng = CsRng::from_entropy();
 
         let public_key_bytes: [u8; X25519_PUBLIC_KEY_LENGTH] =
-            public_key.key_block()?.key_bytes()?.as_slice().try_into()?;
+            public_key.key_block()?.key_bytes()?.try_into()?;
         let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
 
         trace!("Instantiated hybrid ECIES encipher for public key id: {public_key_uid}");

@@ -65,11 +65,8 @@ impl EncryptionSystem for AesGcmSystem {
         };
 
         // recover key
-        let key: [u8; Aes256Gcm::KEY_LENGTH] = self
-            .symmetric_key_key_block
-            .key_bytes()?
-            .as_slice()
-            .try_into()?;
+        let key: [u8; Aes256Gcm::KEY_LENGTH] =
+            self.symmetric_key_key_block.key_bytes()?.try_into()?;
         let key = SymmetricKey::try_from_bytes(key)?;
 
         // supplied Nonce or fresh

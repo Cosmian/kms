@@ -9,7 +9,6 @@
 # All the 2023 are open SSl related but cannot be easily fixed by simply upgrading dependencies
 ignore = [
   "RUSTSEC-2020-0071",
-  "RUSTSEC-2020-0071",
   "RUSTSEC-2023-0006",
   "RUSTSEC-2023-0007",
   "RUSTSEC-2023-0009",

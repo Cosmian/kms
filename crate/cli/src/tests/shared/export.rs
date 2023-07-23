@@ -30,9 +30,9 @@ pub fn export(
     wrap_key_id: Option<String>,
     allow_revoked: bool,
 ) -> Result<(), CliError> {
-    let mut args: Vec<String> = vec!["keys", "export", "--key-id", key_id, key_file]
-        .iter()
-        .map(|s| (*s).to_string())
+    let mut args: Vec<String> = ["keys", "export", "--key-id", key_id, key_file]
+        .into_iter()
+        .map(std::string::ToString::to_string)
         .collect();
     if bytes {
         args.push("--bytes".to_owned());

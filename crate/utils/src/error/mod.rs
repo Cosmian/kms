@@ -28,6 +28,11 @@ pub enum KmipUtilsError {
     Default(String),
 }
 
+impl From<Vec<u8>> for KmipUtilsError {
+    fn from(value: Vec<u8>) -> Self {
+        Self::ConversionError(format!("Failed converting Vec<u8>: {value:?}"))
+    }
+}
 impl From<std::array::TryFromSliceError> for KmipUtilsError {
     fn from(value: std::array::TryFromSliceError) -> Self {
         Self::ConversionError(value.to_string())

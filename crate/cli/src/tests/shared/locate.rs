@@ -27,7 +27,7 @@ pub fn locate(
 ) -> Result<Vec<String>, CliError> {
     let mut args: Vec<String> = vec![];
     if let Some(tags) = tags {
-        for tag in tags.iter() {
+        for tag in tags {
             args.push("--tag".to_owned());
             args.push((*tag).to_string());
         }

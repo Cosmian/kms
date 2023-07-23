@@ -8,7 +8,7 @@ use std::{
     time::SystemTime,
 };
 
-use cloudproof::reexport::crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
+use cloudproof::reexport::crypto_core::{FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey};
 use sqlx::{Pool, Sqlite};
 use tracing::info;
 
@@ -19,7 +19,7 @@ pub struct KMSSqliteCacheItem {
     /// The handler to the sqlite
     sqlite: Arc<Pool<Sqlite>>,
     /// They key of the sqlite
-    key: [u8; 32],
+    key: SymmetricKey<32>,
     /// The date of the first insertion
     #[allow(dead_code)]
     inserted_at: u64,
@@ -58,9 +58,14 @@ pub fn _now() -> u64 {
 }
 
 impl KMSSqliteCacheItem {
-    #[must_use]
-    pub fn new(sqlite: Pool<Sqlite>, key: [u8; 32], freeable_cache_index: usize) -> Self {
-        Self {
+    pub fn new(
+        sqlite: Pool<Sqlite>,
+        key: &SymmetricKey<32>,
+        freeable_cache_index: usize,
+    ) -> KResult<Self> {
+        let key_bytes: [u8; 32] = key.as_bytes().try_into()?;
+        let key = SymmetricKey::try_from_bytes(key_bytes)?;
+        Ok(Self {
             sqlite: Arc::new(sqlite),
             key,
             inserted_at: _now(),
@@ -69,7 +74,7 @@ impl KMSSqliteCacheItem {
             closed: false,
             closed_at: 0,
             freeable_cache_index,
-        }
+        })
     }
 }
 
@@ -141,7 +146,7 @@ impl KMSSqliteCache {
 
         // We need to check if the key provided by the user is the same that was used to open the database
         // If we do not, we can just send any password: the database is already opened anyway.
-        if key.as_bytes() != item.key {
+        if key.as_bytes() != item.key.as_bytes() {
             kms_bail!("Database secret is wrong");
         }
 
@@ -273,8 +278,7 @@ impl KMSSqliteCache {
                 let freeable_cache_id = freeable_sqlites.push(id)?;
 
                 // Add it to the SqliteCache
-                let key: [u8; 32] = key.as_bytes().try_into()?;
-                let mut item = KMSSqliteCacheItem::new(pool, key, freeable_cache_id);
+                let mut item = KMSSqliteCacheItem::new(pool, key, freeable_cache_id)?;
 
                 freeable_sqlites.uncache(freeable_cache_id)?;
 

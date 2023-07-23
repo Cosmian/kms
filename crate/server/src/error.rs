@@ -1,6 +1,7 @@
 use std::{array::TryFromSliceError, sync::mpsc::SendError};
 
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
+use cloudproof::reexport::crypto_core::CryptoCoreError;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
@@ -71,6 +72,12 @@ pub enum KmsError {
 impl From<TtlvError> for KmsError {
     fn from(e: TtlvError) -> Self {
         Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+    }
+}
+
+impl From<CryptoCoreError> for KmsError {
+    fn from(e: CryptoCoreError) -> Self {
+        Self::CryptographicError(e.to_string())
     }
 }
 

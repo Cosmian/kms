@@ -31,7 +31,7 @@ pub fn set_tags<T: IntoIterator<Item = impl AsRef<str>>>(
 
 /// Check that the user tags are valid i.e. they are not empty and do not start with '_'
 pub fn check_user_tags(tags: &HashSet<String>) -> Result<(), KmipUtilsError> {
-    for tag in tags.iter() {
+    for tag in tags {
         if tag.starts_with('_') {
             return Err(KmipUtilsError::InvalidTag(
                 "user tags cannot start with _".to_owned(),

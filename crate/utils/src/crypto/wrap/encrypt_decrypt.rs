@@ -47,8 +47,7 @@ where
                         q_string,
                     } => match recommended_curve {
                         RecommendedCurve::CURVE25519 => {
-                            let q: [u8; X25519_PUBLIC_KEY_LENGTH] =
-                                q_string.as_slice().try_into()?;
+                            let q: [u8; X25519_PUBLIC_KEY_LENGTH] = q_string[..].try_into()?;
                             let public_key = X25519PublicKey::try_from_bytes(q).context(
                                 "Unable to wrap key: wrapping key: failed to parse X25519 public \
                                  key",
@@ -116,7 +115,7 @@ pub fn decrypt_bytes(
                         } => match recommended_curve {
                             RecommendedCurve::CURVE25519 => {
                                 let private_key: [u8; X25519_PRIVATE_KEY_LENGTH] =
-                                    d.to_bytes_be().as_slice().try_into()?;
+                                    d.to_bytes_be()[..].try_into()?;
                                 let private_key = X25519PrivateKey::try_from_bytes(private_key)
                                     .context(
                                         "Unable to unwrap: unwrapping key: failed to parse X25519 \
