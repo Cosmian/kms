@@ -16,7 +16,7 @@ pub struct Access {
 
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
-#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone)]
+#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum ObjectOperationType {
     Create,

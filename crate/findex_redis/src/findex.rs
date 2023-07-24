@@ -8,7 +8,7 @@ use cosmian_findex::{
         BLOCK_LENGTH, CHAIN_TABLE_WIDTH, KMAC_KEY_LENGTH, KWI_LENGTH, MASTER_KEY_LENGTH, UID_LENGTH,
     },
     EncryptedMultiTable, EncryptedTable, FetchChains, FindexCallbacks, FindexCompact, FindexSearch,
-    FindexUpsert, IndexedValue, Keyword, Location, Uid, Uids, UpsertData,
+    FindexUpsert, IndexedValue, KeyingMaterial, Keyword, Label, Location, Uid, Uids, UpsertData,
 };
 use redis::{aio::ConnectionManager, pipe, AsyncCommands, Script};
 use tokio::sync::RwLock;
@@ -97,6 +97,98 @@ impl FindexRedis {
         redis::cmd("FLUSHDB")
             .query_async(&mut self.mgr.clone())
             .await?;
+        Ok(())
+    }
+
+    /// Upsert the given chain elements in Findex tables.
+    ///
+    /// # Parameters
+    ///
+    /// - `master_key`  : Findex master key
+    /// - `label`       : additional public information used in key hashing
+    /// - `additions`   : values to indexed for a set of keywords
+    /// - `deletions`   : values to remove from the indexes for a set of
+    ///   keywords
+    pub async fn upsert(
+        &mut self,
+        master_key: &[u8; 16],
+        label: &[u8],
+        additions: HashMap<IndexedValue, HashSet<Keyword>>,
+        deletions: HashMap<IndexedValue, HashSet<Keyword>>,
+    ) -> Result<(), FindexError> {
+        FindexUpsert::upsert(
+            self,
+            &KeyingMaterial::<MASTER_KEY_LENGTH>::from(*master_key),
+            &Label::from(label),
+            additions,
+            deletions,
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Searches for the `Location`s indexed by the given `Keyword`s. This is
+    /// the entry point of the Findex search.
+    ///
+    /// # Parameters
+    ///
+    /// - `master_key`          : Findex master key
+    /// - `label`               : public label
+    /// - `keywords`            : keywords to search
+    /// - `max_depth`           : maximum recursion depth allowed
+    pub async fn search(
+        &mut self,
+        master_key: &[u8; 16],
+        label: &[u8],
+        keywords: HashSet<Keyword>,
+    ) -> Result<HashMap<Keyword, HashSet<Location>>, FindexError> {
+        let res = FindexSearch::search(
+            self,
+            &KeyingMaterial::<MASTER_KEY_LENGTH>::from(*master_key),
+            &Label::from(label),
+            keywords,
+        )
+        .await?;
+        Ok(res)
+    }
+
+    /// Replaces all the Index Entry Table UIDs and values. New UIDs are derived
+    /// using the given label and the KMAC key derived from the new master key.
+    /// The values are decrypted using the DEM key derived from the master key
+    /// and re-encrypted using the DEM key derived from the new master key.
+    ///
+    /// Randomly selects index entries and recompact their associated chains.
+    /// Chains indexing no existing location are removed. Others are recomputed
+    /// from a new keying material. This removes unneeded paddings. New UIDs are
+    /// derived for the chain and values are re-encrypted using a DEM key
+    /// derived from the new keying material.
+    ///
+    /// - `master_key`                      : master key used to generate the
+    ///   current index
+    /// - `new_master_key`                  : master key used to generate the
+    ///   new index
+    /// - `label`                           : label used to generate the new
+    ///   index
+    /// - `num_reindexing_before_full_set`  : average number of calls to compact
+    ///   needed to recompute all of the Chain Table.
+    ///
+    /// **WARNING**: the compact operation *cannot* be done concurrently with
+    /// upsert operations. This could result in corrupted indexes.
+    pub async fn compact(
+        &mut self,
+        master_key: &[u8; 16],
+        new_master_key: &[u8; 16],
+        label: &[u8],
+        num_reindexing_before_full_set: u32,
+    ) -> Result<(), FindexError> {
+        FindexCompact::compact(
+            self,
+            &KeyingMaterial::<MASTER_KEY_LENGTH>::from(*master_key),
+            &KeyingMaterial::<MASTER_KEY_LENGTH>::from(*new_master_key),
+            &Label::from(label),
+            num_reindexing_before_full_set,
+        )
+        .await?;
         Ok(())
     }
 }

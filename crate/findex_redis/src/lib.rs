@@ -9,6 +9,6 @@ mod findex;
 mod tests;
 
 pub use callbacks::RemovedLocationsFinder;
-pub use cosmian_findex::Location;
+pub use cosmian_findex::{parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword, Location};
 pub use error::FindexError;
 pub use findex::FindexRedis;

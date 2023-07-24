@@ -1,8 +1,11 @@
 use std::path::PathBuf;
 
 use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::SeedableRng, CsRng, RandomFixedSizeCBytes, SymmetricKey,
+    reexport::rand_core::{RngCore, SeedableRng},
+    symmetric_crypto::key::Key,
+    CsRng, KeyTrait,
 };
+use cosmian_findex_redis::FindexRedis;
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 
 use self::{
@@ -14,7 +17,8 @@ use self::{
     tagging_tests::tags,
 };
 use super::{
-    cached_sqlcipher::CachedSqlCipher, mysql::MySqlPool, pgsql::PgPool, sqlite::SqlitePool,
+    cached_sqlcipher::CachedSqlCipher, mysql::MySqlPool, pgsql::PgPool,
+    redis_with_findex::RedisWithFindex, sqlite::SqlitePool,
 };
 use crate::result::KResult;
 
@@ -73,6 +77,30 @@ async fn get_mysql() -> KResult<(MySqlPool, Option<ExtraDatabaseParams>)> {
         std::option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
     let my_sql = MySqlPool::instantiate(mysql_url, true).await?;
     Ok((my_sql, None))
+}
+
+// To run local tests with a Redis in Docker, run
+// docker run --name redis -p 6379:6379 -d redis
+async fn get_redis_with_findex() -> KResult<(RedisWithFindex, Option<ExtraDatabaseParams>)> {
+    let redis_url = std::option_env!("KMS_REDIS_URL").unwrap_or("redis://localhost:6379");
+    let mut rng = CsRng::from_entropy();
+    let mut master_key = [0_u8; 32];
+    rng.fill_bytes(&mut master_key);
+    let redis_findex = RedisWithFindex::new(redis_url, &master_key, b"label").await?;
+    Ok((redis_findex, None))
+}
+
+#[actix_rt::test]
+pub async fn test_redis_with_findex() -> KResult<()> {
+    // json_access(&get_redis_with_findex().await?).await?;
+    // find_attributes(&get_redis_with_findex().await?).await?;
+    // owner(&get_redis_with_findex().await?).await?;
+    // permissions(&get_redis_with_findex().await?).await?;
+    tags(&get_redis_with_findex().await?).await?;
+    // tx_and_list(&get_redis_with_findex().await?).await?;
+    // upsert(&get_redis_with_findex().await?).await?;
+    // crud(&get_redis_with_findex().await?).await?;
+    Ok(())
 }
 
 #[actix_rt::test]

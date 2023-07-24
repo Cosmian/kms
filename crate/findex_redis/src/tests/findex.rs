@@ -10,8 +10,7 @@ use cloudproof::reexport::crypto_core::{
 };
 use cosmian_findex::{
     parameters::{MASTER_KEY_LENGTH, UID_LENGTH},
-    EncryptedTable, FindexCallbacks, FindexCompact, FindexSearch, FindexUpsert, IndexedValue,
-    KeyingMaterial, Keyword, Label, Location, Uid, UpsertData,
+    EncryptedTable, FindexCallbacks, IndexedValue, Keyword, Label, Location, Uid, UpsertData,
 };
 use serial_test::serial;
 use tracing::trace;
@@ -45,7 +44,10 @@ pub async fn test_compact() -> Result<(), FindexError> {
     findex.clear_indexes().await?;
 
     let mut rng = CsRng::from_entropy();
-    let master_key = KeyingMaterial::<MASTER_KEY_LENGTH>::new(&mut rng);
+    let mut master_key = [0_u8; MASTER_KEY_LENGTH];
+    rng.fill_bytes(&mut master_key);
+
+    // let master_key = KeyingMaterial::<MASTER_KEY_LENGTH>::new(&mut rng);
 
     let label = Label::random(&mut rng);
 
@@ -132,7 +134,7 @@ pub async fn test_compact() -> Result<(), FindexError> {
 
 async fn assert_french_search(
     findex: &mut FindexRedis,
-    master_key: &KeyingMaterial<MASTER_KEY_LENGTH>,
+    master_key: &[u8; MASTER_KEY_LENGTH],
     label: &Label,
     expected_values: &[u16],
 ) {

@@ -46,13 +46,13 @@ pub trait Database {
     /// The `uid_or_tags` parameter can be either a `uid` or a comma-separated list of tags
     /// in a JSON array.
     ///
-    /// The `query_read_access` allows additional filtering in `read_access` table to see
-    /// if a `user`, that is not a user, has the corresponding `read_access` authorization
+    /// The `query_access_grant` allows additional filtering in the `access` table to see
+    /// if a `user`, that is not a owner, has the corresponding access granted
     async fn retrieve(
         &self,
         uid_or_tags: &str,
         user: &str,
-        query_read_access: ObjectOperationType,
+        query_access_grant: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectWithMetadata>>;
 
