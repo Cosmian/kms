@@ -62,6 +62,29 @@ impl RedisDbObject {
             tags,
         }
     }
+
+    pub fn keywords(&self) -> HashSet<Keyword> {
+        let mut keywords = self
+            .tags
+            .iter()
+            .map(|tag| Keyword::from(tag.as_bytes()))
+            .collect::<HashSet<Keyword>>();
+        // index some of the attributes
+        if let Ok(attributes) = self.object.attributes() {
+            if let Some(algo) = attributes.cryptographic_algorithm {
+                keywords.insert(Keyword::from(algo.to_string().as_bytes()));
+            }
+            if let Some(key_format_type) = attributes.key_format_type {
+                keywords.insert(Keyword::from(key_format_type.to_string().as_bytes()));
+            }
+            if let Some(cryptographic_length) = attributes.cryptographic_length {
+                keywords.insert(Keyword::from(cryptographic_length.to_be_bytes().as_slice()));
+            }
+        }
+        // index the owner
+        keywords.insert(Keyword::from(self.owner.as_bytes()));
+        keywords
+    }
 }
 
 const DB_KEY_LENGTH: usize = 32;
@@ -103,7 +126,15 @@ impl ObjectsDB {
     }
 
     pub async fn objects_upsert(&self, objects: &HashMap<String, RedisDbObject>) -> KResult<()> {
-        todo!()
+        let mut pipeline = pipe();
+        for (uid, redis_db_object) in objects.iter() {
+            pipeline.set(
+                ObjectsDB::object_key(uid),
+                serde_json::to_vec(redis_db_object)?,
+            );
+        }
+        pipeline.query_async(&mut self.mgr.clone()).await?;
+        Ok(())
     }
 
     pub async fn objects_get(
@@ -117,7 +148,8 @@ impl ObjectsDB {
         let bytes: Vec<Vec<u8>> = pipeline.query_async(&mut self.mgr.clone()).await?;
         let mut results = HashMap::new();
         for (uid, bytes) in uids.iter().zip(bytes) {
-            let dbo: RedisDbObject = serde_json::from_slice(&bytes)?;
+            let mut dbo: RedisDbObject = serde_json::from_slice(&bytes)?;
+            dbo.object = Object::post_fix(dbo.object_type, dbo.object);
             results.insert(uid.to_string(), dbo);
         }
         Ok(results)
@@ -125,6 +157,24 @@ impl ObjectsDB {
 
     fn permissions_key(uid: &str, user_id: &str) -> String {
         format!("dp::{}::{}", uid, user_id)
+    }
+
+    pub async fn list_user_permissions(
+        &self,
+        user_id: &str,
+    ) -> KResult<HashMap<String, Vec<ObjectOperationType>>> {
+        let wildcard = format!("dp::*::{}", user_id);
+        let keys: Vec<String> = self.mgr.clone().keys(&wildcard).await?;
+        // recover the corresponding permissions
+        let values: Vec<Vec<u8>> = self.mgr.clone().mget(&keys).await?;
+        keys.into_iter()
+            .zip(values)
+            .map(|(k, v)| {
+                let uid = k.replace(&wildcard, "");
+                let permissions: HashSet<ObjectOperationType> = serde_json::from_slice(&v)?;
+                Ok((uid, permissions.into_iter().collect()))
+            })
+            .collect::<KResult<HashMap<String, Vec<ObjectOperationType>>>>()
     }
 
     pub async fn permissions_upsert(
@@ -243,29 +293,21 @@ impl Database for RedisWithFindex {
         let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
         let indexed_value = IndexedValue::Location(Location::from(uid.as_bytes()));
 
-        // create the indexes
-        // tags
-        let mut keywords = tags
-            .iter()
-            .map(|tag| Keyword::from(tag.as_bytes()))
-            .collect::<HashSet<Keyword>>();
-        // index some of the attributes
-        if let Ok(attributes) = object.attributes() {
-            if let Some(algo) = attributes.cryptographic_algorithm {
-                keywords.insert(Keyword::from(algo.to_string().as_bytes()));
-            }
-            if let Some(key_format_type) = attributes.key_format_type {
-                keywords.insert(Keyword::from(key_format_type.to_string().as_bytes()));
-            }
-            if let Some(cryptographic_length) = attributes.cryptographic_length {
-                keywords.insert(Keyword::from(cryptographic_length.to_be_bytes().as_slice()));
-            }
-        }
-        // index the owner
-        keywords.insert(Keyword::from(owner.as_bytes()));
-        // additions
+        // the database object to index and store
+        let db_object = RedisDbObject::new(
+            object.clone(),
+            owner.to_string(),
+            StateEnumeration::Active,
+            tags.clone(),
+        );
+
+        // extract the keywords
+        let keywords = db_object.keywords();
+
+        // additions to the index
         let mut additions = HashMap::new();
         additions.insert(indexed_value, keywords);
+
         //upsert the index
         self.findex
             .lock()
@@ -298,10 +340,48 @@ impl Database for RedisWithFindex {
     async fn create_objects(
         &self,
         owner: &str,
-        _objects: &[(Option<String>, Object, &HashSet<String>)],
-        params: Option<&ExtraDatabaseParams>,
+        objects: &[(Option<String>, Object, &HashSet<String>)],
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
-        todo!()
+        // If the uid is not provided, generate a new one
+        let mut uids = vec![];
+        let mut additions = HashMap::new();
+        let mut db_objects = HashMap::new();
+        for (uid, object, tags) in objects.iter() {
+            let uid = uid.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+            let indexed_value = IndexedValue::Location(Location::from(uid.as_bytes()));
+
+            // the database object to index and store
+            let db_object = RedisDbObject::new(
+                object.clone(),
+                owner.to_string(),
+                StateEnumeration::Active,
+                (*tags).clone(),
+            );
+
+            // extract the keywords
+            let keywords = db_object.keywords();
+
+            // additions to the index
+            additions.insert(indexed_value, keywords);
+
+            //upsert the object
+            db_objects.insert(uid.clone(), db_object);
+            uids.push(uid);
+        }
+
+        //upsert the indexes
+        self.findex
+            .lock()
+            .await
+            // .expect("findex lock is poisoned")
+            .upsert(&self.findex_key, &self.label, additions, HashMap::new())
+            .await?;
+
+        // upsert the objects
+        self.db.objects_upsert(&db_objects).await?;
+
+        Ok(uids.into_iter().map(UniqueIdentifier::from).collect())
     }
 
     /// Retrieve objects from the database.
@@ -397,18 +477,27 @@ impl Database for RedisWithFindex {
         uid: &str,
         object: &Object,
         tags: Option<&HashSet<String>>,
-        params: Option<&ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        todo!()
+        let mut db_object = self.db.object_get(uid).await?;
+        db_object.object = object.clone();
+        if let Some(tags) = tags {
+            db_object.tags = tags.clone();
+        }
+        self.db.object_upsert(uid, &db_object).await?;
+        Ok(())
     }
 
     async fn update_state(
         &self,
         uid: &str,
         state: StateEnumeration,
-        params: Option<&ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        todo!()
+        let mut db_object = self.db.object_get(uid).await?;
+        db_object.state = state;
+        self.db.object_upsert(uid, &db_object).await?;
+        Ok(())
     }
 
     /// upsert (update or create if not exists)
@@ -419,24 +508,31 @@ impl Database for RedisWithFindex {
         object: &Object,
         tags: &HashSet<String>,
         state: StateEnumeration,
-        params: Option<&ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        todo!()
+        let db_object = RedisDbObject::new(object.clone(), user.to_string(), state, tags.clone());
+        self.db.object_upsert(uid, &db_object).await?;
+        Ok(())
     }
 
     async fn delete(
         &self,
         uid: &str,
         user: &str,
-        params: Option<&ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        todo!()
+        let db_object = self.db.object_get(uid).await?;
+        if db_object.owner != user {
+            return Err(kms_error!("User is not the owner of the object"))
+        }
+        self.db.object_delete(uid).await?;
+        Ok(())
     }
 
     async fn list_access_rights_obtained(
         &self,
         user: &str,
-        params: Option<&ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<
         Vec<(
             UniqueIdentifier,
@@ -446,9 +542,33 @@ impl Database for RedisWithFindex {
             IsWrapped,
         )>,
     > {
-        todo!()
+        let permissions = self.db.list_user_permissions(user).await?;
+        let redis_db_objects = self
+            .db
+            .objects_get(
+                &permissions
+                    .keys()
+                    .map(|uid| uid.to_owned())
+                    .collect::<HashSet<String>>(),
+            )
+            .await?;
+        Ok(permissions
+            .into_iter()
+            .zip(redis_db_objects)
+            .map(|((uid, permissions), (_, redis_db_object))| {
+                (
+                    UniqueIdentifier::from(uid),
+                    redis_db_object.owner,
+                    redis_db_object.state,
+                    permissions,
+                    false, // TODO: de-hardcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
+                )
+            })
+            .collect())
     }
 
+    /// List all the accessed granted per `user`
+    /// This is called by the owner only
     async fn list_accesses(
         &self,
         uid: &str,

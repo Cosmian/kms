@@ -74,6 +74,7 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
+    /// Update the state of an object in the database.
     async fn update_state(
         &self,
         uid: &str,
@@ -92,6 +93,7 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
+    /// Delete an object from the database.
     async fn delete(
         &self,
         uid: &str,
@@ -99,6 +101,12 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
+    /// List all the access rights obtained by `user`
+    /// on all the objects in the database
+    /// (i.e. the objects for which `user` is not the owner)
+    /// The result is a list of tuples (uid, owner, state, operations, is_wrapped)
+    /// where `operations` is a list of operations that `user` can perform on the object
+    /// and `is_wrapped` is a boolean indicating if the object is wrapped
     async fn list_access_rights_obtained(
         &self,
         user: &str,
@@ -113,6 +121,8 @@ pub trait Database {
         )>,
     >;
 
+    /// List all the accessed granted per `user`
+    /// This is called by the owner only
     async fn list_accesses(
         &self,
         uid: &str,

@@ -5,7 +5,6 @@ use cloudproof::reexport::crypto_core::{
     symmetric_crypto::key::Key,
     CsRng, KeyTrait,
 };
-use cosmian_findex_redis::FindexRedis;
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 
 use self::{

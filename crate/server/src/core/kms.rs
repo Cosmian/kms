@@ -589,7 +589,8 @@ impl KMS {
         Ok(())
     }
 
-    /// Get all the access authorization for a given object
+    /// Get all the access granted for a given object
+    /// per user
     pub async fn list_accesses(
         &self,
         object_id: &UniqueIdentifier,
