@@ -74,7 +74,7 @@ pub(crate) async fn get(
 }
 
 /// Get a single active object
-pub async fn get_active_object(
+pub(crate) async fn get_active_object(
     kms: &KMS,
     uid_or_tags: &str,
     user: &str,

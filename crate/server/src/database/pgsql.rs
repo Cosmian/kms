@@ -291,7 +291,7 @@ impl Database for PgPool {
     }
 }
 
-pub async fn create_(
+pub(crate) async fn create_(
     uid: Option<String>,
     owner: &str,
     object: &kmip_objects::Object,
@@ -337,7 +337,7 @@ pub async fn create_(
     Ok(uid)
 }
 
-pub async fn retrieve_<'e, E>(
+pub(crate) async fn retrieve_<'e, E>(
     uid_or_tags: &str,
     user: &str,
     operation_type: ObjectOperationType,
@@ -428,7 +428,7 @@ where
     Ok(tags)
 }
 
-pub async fn update_object_(
+pub(crate) async fn update_object_(
     uid: &str,
     object: &kmip_objects::Object,
     tags: Option<&HashSet<String>>,
@@ -480,7 +480,11 @@ pub async fn update_object_(
     Ok(())
 }
 
-pub async fn update_state_<'e, E>(uid: &str, state: StateEnumeration, executor: E) -> KResult<()>
+pub(crate) async fn update_state_<'e, E>(
+    uid: &str,
+    state: StateEnumeration,
+    executor: E,
+) -> KResult<()>
 where
     E: Executor<'e, Database = Postgres>,
 {
@@ -497,7 +501,7 @@ where
     Ok(())
 }
 
-pub async fn delete_(
+pub(crate) async fn delete_(
     uid: &str,
     owner: &str,
     executor: &mut Transaction<'_, Postgres>,
