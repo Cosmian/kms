@@ -8,7 +8,9 @@ use std::{
     time::SystemTime,
 };
 
-use cloudproof::reexport::crypto_core::{FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey};
+use cloudproof::reexport::crypto_core::{
+    Aes256Gcm, FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey,
+};
 use sqlx::{Pool, Sqlite};
 use tracing::info;
 
@@ -19,7 +21,7 @@ pub struct KMSSqliteCacheItem {
     /// The handler to the sqlite
     sqlite: Arc<Pool<Sqlite>>,
     /// They key of the sqlite
-    key: SymmetricKey<32>,
+    key: SymmetricKey<{ Aes256Gcm::KEY_LENGTH }>,
     /// The date of the first insertion
     #[allow(dead_code)]
     inserted_at: u64,
@@ -60,10 +62,10 @@ pub fn _now() -> u64 {
 impl KMSSqliteCacheItem {
     pub fn new(
         sqlite: Pool<Sqlite>,
-        key: &SymmetricKey<32>,
+        key: &SymmetricKey<{ Aes256Gcm::KEY_LENGTH }>,
         freeable_cache_index: usize,
     ) -> KResult<Self> {
-        let key_bytes: [u8; 32] = key.as_bytes().try_into()?;
+        let key_bytes: [u8; Aes256Gcm::KEY_LENGTH] = key.as_bytes().try_into()?;
         let key = SymmetricKey::try_from_bytes(key_bytes)?;
         Ok(Self {
             sqlite: Arc::new(sqlite),
@@ -133,7 +135,11 @@ impl KMSSqliteCache {
     /// Get the sqlite handler and tag it as "used"
     ///
     /// The function will return an error if the database is closed or the key is not the right one
-    pub fn get(&self, id: u128, key: &SymmetricKey<32>) -> KResult<Arc<Pool<Sqlite>>> {
+    pub fn get(
+        &self,
+        id: u128,
+        key: &SymmetricKey<{ Aes256Gcm::KEY_LENGTH }>,
+    ) -> KResult<Arc<Pool<Sqlite>>> {
         let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
 
         let item = sqlites
@@ -243,7 +249,12 @@ impl KMSSqliteCache {
     /// The handler is considered as used until it is explicitly release.
     ///
     /// This function will call a `flush` if needed to close the oldest unused databases.
-    pub async fn save(&self, id: u128, key: &SymmetricKey<32>, pool: Pool<Sqlite>) -> KResult<()> {
+    pub async fn save(
+        &self,
+        id: u128,
+        key: &SymmetricKey<{ Aes256Gcm::KEY_LENGTH }>,
+        pool: Pool<Sqlite>,
+    ) -> KResult<()> {
         // Flush the cache if necessary
         self.flush().await?;
         // If nothing has been flush, allow to exceed max cache size
