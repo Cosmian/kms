@@ -274,7 +274,7 @@ pub async fn init_test_server_options(
 }
 
 /// Generate a user configuration for user.client@acme.com and return the file path
-pub fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<String, CliError> {
+pub(crate) fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<String, CliError> {
     let mut user_conf = owner_cli_conf.clone();
     user_conf.ssl_client_pkcs12_path =
         Some("test_data/certificates/user.client.acme.com.p12".to_string());
@@ -288,7 +288,7 @@ pub fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<String,
 }
 
 /// Generate an invalid configuration by changin the database secret  and return the file path
-pub fn generate_invalid_conf(correct_conf: &CliConf) -> String {
+pub(crate) fn generate_invalid_conf(correct_conf: &CliConf) -> String {
     // Create a new database key
     let mut cs_rng = CsRng::from_entropy();
     let db_key = SymmetricKey::new(&mut cs_rng);

@@ -123,6 +123,5 @@ repos:
       - id: cargo-format
       - id: clippy-autofix-all
       - id: clippy-autofix-pedantic
-      - id: clippy-autofix-nursery
       - id: clippy-autofix-others
       - id: clippy-all-targets-all-features

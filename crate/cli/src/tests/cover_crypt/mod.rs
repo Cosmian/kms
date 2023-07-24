@@ -1,7 +1,7 @@
-pub const SUB_COMMAND: &str = "cc";
+pub(crate) const SUB_COMMAND: &str = "cc";
 mod conf;
 mod encrypt_decrypt;
-pub mod master_key_pair;
-pub mod policy;
+pub(crate) mod master_key_pair;
+pub(crate) mod policy;
 mod rotate;
-pub mod user_decryption_keys;
+pub(crate) mod user_decryption_keys;

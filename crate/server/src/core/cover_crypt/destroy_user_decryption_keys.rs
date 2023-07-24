@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// Revoke all the user decryption keys associated with the master private key
-pub async fn destroy_user_decryption_keys(
+pub(crate) async fn destroy_user_decryption_keys(
     master_private_key_id: &str,
     kms: &KMS,
     owner: &str,

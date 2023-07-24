@@ -42,7 +42,7 @@ pub async fn destroy_operation(
 
 /// Recursively destroy keys
 #[async_recursion]
-pub async fn recursively_destroy_key<'a: 'async_recursion>(
+pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
     uid_or_tags: &str,
     kms: &KMS,
     user: &str,

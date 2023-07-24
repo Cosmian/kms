@@ -19,7 +19,7 @@ use crate::{
     result::KResult,
 };
 
-pub async fn revoke_operation(
+pub(crate) async fn revoke_operation(
     kms: &KMS,
     request: Revoke,
     user: &str,

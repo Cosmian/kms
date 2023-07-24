@@ -527,7 +527,7 @@ pub async fn delete_(
     Ok(())
 }
 
-pub async fn upsert_(
+pub(crate) async fn upsert_(
     uid: &str,
     owner: &str,
     object: &kmip_objects::Object,
@@ -581,7 +581,7 @@ pub async fn upsert_(
     Ok(())
 }
 
-pub async fn list_accesses_<'e, E>(
+pub(crate) async fn list_accesses_<'e, E>(
     uid: &str,
     executor: E,
 ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>>
@@ -609,7 +609,7 @@ where
     Ok(ids)
 }
 
-pub async fn list_shared_objects_<'e, E>(
+pub(crate) async fn list_shared_objects_<'e, E>(
     user: &str,
     executor: E,
 ) -> KResult<
@@ -656,7 +656,7 @@ where
     Ok(ids)
 }
 
-pub async fn fetch_permissions_<'e, E>(
+pub(crate) async fn fetch_permissions_<'e, E>(
     uid: &str,
     userid: &str,
     executor: E,
@@ -685,7 +685,7 @@ where
     })
 }
 
-pub async fn insert_access_<'e, E>(
+pub(crate) async fn insert_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_type: ObjectOperationType,
@@ -722,7 +722,7 @@ where
     Ok(())
 }
 
-pub async fn delete_access_<'e, E>(
+pub(crate) async fn delete_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_type: ObjectOperationType,
@@ -769,7 +769,7 @@ where
     Ok(())
 }
 
-pub async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<bool>
+pub(crate) async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<bool>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
@@ -785,7 +785,7 @@ where
     Ok(row.is_some())
 }
 
-pub async fn find_<'e, E>(
+pub(crate) async fn find_<'e, E>(
     researched_attributes: Option<&Attributes>,
     state: Option<StateEnumeration>,
     user: &str,

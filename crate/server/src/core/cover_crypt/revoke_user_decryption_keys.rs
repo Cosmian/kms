@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// Revoke all the user decryption keys associated with the master private key
-pub async fn revoke_user_decryption_keys(
+pub(crate) async fn revoke_user_decryption_keys(
     master_private_key_id: &str,
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<u64>,

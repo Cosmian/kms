@@ -37,7 +37,7 @@ where
         .with_context(|| "failed parsing the object from the json file")
 }
 
-pub fn determine_key_object_type(object: &Object) -> Result<ObjectType, CliError> {
+pub(crate) fn determine_key_object_type(object: &Object) -> Result<ObjectType, CliError> {
     let key_block = object.key_block().context("invalid key block")?;
     Ok(match key_block.key_format_type {
         KeyFormatType::CoverCryptSecretKey => ObjectType::PrivateKey,
