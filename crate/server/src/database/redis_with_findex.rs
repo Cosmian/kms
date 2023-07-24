@@ -16,13 +16,13 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
 use futures::lock::Mutex;
-use redis::{aio::ConnectionManager, AsyncCommands};
+use redis::{aio::ConnectionManager, pipe, AsyncCommands};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::{object_with_metadata::ObjectWithMetadata, Database};
 use crate::{
-    kms_bail, kms_error,
+    kms_error,
     result::{KResult, KResultHelper},
 };
 
@@ -46,6 +46,24 @@ pub struct RedisDbObject {
     tags: HashSet<String>,
 }
 
+impl RedisDbObject {
+    pub fn new(
+        object: Object,
+        owner: String,
+        state: StateEnumeration,
+        tags: HashSet<String>,
+    ) -> Self {
+        let object_type = object.object_type();
+        Self {
+            object,
+            object_type,
+            owner,
+            state,
+            tags,
+        }
+    }
+}
+
 const DB_KEY_LENGTH: usize = 32;
 
 struct ObjectsDB {
@@ -61,41 +79,48 @@ impl ObjectsDB {
         format!("do::{}", uid)
     }
 
-    pub async fn object_upsert(
-        &self,
-        uid: &str,
-        object: &Object,
-        owner: &str,
-        state: StateEnumeration,
-        tags: &HashSet<String>,
-    ) -> KResult<()> {
-        let dbo = RedisDbObject {
-            object: object.clone(),
-            object_type: object.object_type(),
-            owner: owner.to_string(),
-            state,
-            tags: tags.clone(),
-        };
+    pub async fn object_upsert(&self, uid: &str, redis_db_object: &RedisDbObject) -> KResult<()> {
         self.mgr
             .clone()
-            .set(ObjectsDB::object_key(uid), serde_json::to_vec(&dbo)?)
+            .set(
+                ObjectsDB::object_key(uid),
+                serde_json::to_vec(redis_db_object)?,
+            )
             .await?;
         Ok(())
     }
 
-    pub async fn object_get(
-        &self,
-        uid: &str,
-    ) -> KResult<(Object, String, StateEnumeration, HashSet<String>)> {
+    pub async fn object_get(&self, uid: &str) -> KResult<RedisDbObject> {
         let bytes: Vec<u8> = self.mgr.clone().get(ObjectsDB::object_key(uid)).await?;
         let mut dbo: RedisDbObject = serde_json::from_slice(&bytes)?;
         dbo.object = Object::post_fix(dbo.object_type, dbo.object);
-        Ok((dbo.object, dbo.owner, dbo.state, dbo.tags))
+        Ok(dbo)
     }
 
     pub async fn object_delete(&self, uid: &str) -> KResult<()> {
         self.mgr.clone().del(ObjectsDB::object_key(uid)).await?;
         Ok(())
+    }
+
+    pub async fn objects_upsert(&self, objects: &HashMap<String, RedisDbObject>) -> KResult<()> {
+        todo!()
+    }
+
+    pub async fn objects_get(
+        &self,
+        uids: &HashSet<String>,
+    ) -> KResult<HashMap<String, RedisDbObject>> {
+        let mut pipeline = pipe();
+        for uid in uids.iter() {
+            pipeline.get(ObjectsDB::object_key(uid));
+        }
+        let bytes: Vec<Vec<u8>> = pipeline.query_async(&mut self.mgr.clone()).await?;
+        let mut results = HashMap::new();
+        for (uid, bytes) in uids.iter().zip(bytes) {
+            let dbo: RedisDbObject = serde_json::from_slice(&bytes)?;
+            results.insert(uid.to_string(), dbo);
+        }
+        Ok(results)
     }
 
     fn permissions_key(uid: &str, user_id: &str) -> String {
@@ -251,7 +276,15 @@ impl Database for RedisWithFindex {
 
         // upsert the object
         self.db
-            .object_upsert(&uid, object, owner, StateEnumeration::Active, tags)
+            .object_upsert(
+                &uid,
+                &RedisDbObject::new(
+                    object.clone(),
+                    owner.to_string(),
+                    StateEnumeration::Active,
+                    tags.clone(),
+                ),
+            )
             .await?;
 
         Ok(UniqueIdentifier::from(uid))
@@ -265,7 +298,7 @@ impl Database for RedisWithFindex {
     async fn create_objects(
         &self,
         owner: &str,
-        objects: &[(Option<String>, Object, &HashSet<String>)],
+        _objects: &[(Option<String>, Object, &HashSet<String>)],
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         todo!()
@@ -285,7 +318,7 @@ impl Database for RedisWithFindex {
         query_access_grant: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectWithMetadata>> {
-        let uid = if uid_or_tags.starts_with('[') {
+        let uids = if uid_or_tags.starts_with('[') {
             let tags: HashSet<String> = serde_json::from_str(uid_or_tags)
                 .with_context(|| format!("Invalid tags: {uid_or_tags}"))?;
             let keywords = tags
@@ -301,50 +334,49 @@ impl Database for RedisWithFindex {
                 .await?;
             // we want the intersection of all the locations
             let locations = intersect_all(res.values().cloned());
-            if locations.len() > 1 {
-                kms_bail!("Too many objects found for tags: {:?}", tags)
-            }
-            let location = locations
+            locations
                 .into_iter()
-                .next()
-                .ok_or_else(|| kms_error!("No object found for tags: {:?}", tags))?
-                .to_vec();
-            String::from_utf8(location).map_err(|_| kms_error!("Invalid uid"))?
+                .map(|location| {
+                    String::from_utf8(location.to_vec()).map_err(|_| kms_error!("Invalid uid"))
+                })
+                .collect::<KResult<HashSet<String>>>()?
         } else {
-            uid_or_tags.to_string()
+            HashSet::from([uid_or_tags.to_string()])
         };
 
         // now retrieve the object
-        let (object, owner, state, _tags) = self.db.object_get(&uid).await?;
+        let results = self.db.objects_get(&uids).await?;
+        let mut objects: Vec<ObjectWithMetadata> = vec![];
+        for (uid, redis_db_object) in results {
+            // if the user is the owner, return it
+            if redis_db_object.owner == user {
+                objects.push(ObjectWithMetadata {
+                    id: uid,
+                    object: redis_db_object.object,
+                    owner: redis_db_object.owner,
+                    state: redis_db_object.state,
+                    permissions: vec![],
+                });
+                continue
+            }
 
-        // if the user is the owner, return it
-        if owner == user {
-            return Ok(vec![ObjectWithMetadata {
-                id: uid,
-                object,
-                owner,
-                state,
-                permissions: vec![],
-            }])
+            // fetch the permissions for the user
+            let permissions = self
+                .db
+                .permissions_get(&uid, user)
+                .await
+                .unwrap_or_default();
+            if permissions.contains(&query_access_grant) {
+                objects.push(ObjectWithMetadata {
+                    id: uid,
+                    object: redis_db_object.object,
+                    owner: redis_db_object.owner,
+                    state: redis_db_object.state,
+                    permissions: permissions.into_iter().collect(),
+                });
+            }
         }
-
-        // fetch the permissions for the user
-        let permissions = self
-            .db
-            .permissions_get(&uid, user)
-            .await
-            .unwrap_or_default();
-        if permissions.contains(&query_access_grant) {
-            Ok(vec![ObjectWithMetadata {
-                id: uid,
-                object,
-                owner,
-                state,
-                permissions: permissions.into_iter().collect(),
-            }])
-        } else {
-            kms_bail!("User {user} does not have the required access to object {uid}")
-        }
+        Ok(objects)
     }
 
     /// Retrieve the ags of the object with the given `uid`
@@ -353,8 +385,8 @@ impl Database for RedisWithFindex {
         uid: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
-        let (_object, _owner, _state, tags) = self.db.object_get(uid).await?;
-        Ok(tags)
+        let redis_db_object = self.db.object_get(uid).await?;
+        Ok(redis_db_object.tags)
     }
 
     /// Update an object in the database.
@@ -498,7 +530,11 @@ mod tests {
     use serial_test::serial;
     use tracing::trace;
 
-    use crate::{database::redis_with_findex::ObjectsDB, log_utils::log_init, result::KResult};
+    use crate::{
+        database::redis_with_findex::{ObjectsDB, RedisDbObject},
+        log_utils::log_init,
+        result::KResult,
+    };
 
     const REDIS_URL: &str = "redis://localhost:6379";
 
@@ -563,19 +599,21 @@ mod tests {
 
         o_db.object_upsert(
             uid,
-            &object,
-            "owner",
-            StateEnumeration::Active,
-            &HashSet::new(),
+            &RedisDbObject::new(
+                object.clone(),
+                "owner".to_string(),
+                StateEnumeration::Active,
+                HashSet::new(),
+            ),
         )
         .await?;
-        let (object2, owner, state, _tags) = o_db.object_get(uid).await?;
+        let redis_db_object = o_db.object_get(uid).await?;
         assert_eq!(
             object.key_block()?.key_bytes()?,
-            object2.key_block()?.key_bytes()?
+            redis_db_object.object.key_block()?.key_bytes()?
         );
-        assert_eq!(owner, "owner");
-        assert_eq!(state, StateEnumeration::Active);
+        assert_eq!(redis_db_object.owner, "owner");
+        assert_eq!(redis_db_object.state, StateEnumeration::Active);
 
         o_db.object_delete(uid).await?;
         assert!(o_db.object_get(uid).await.is_err());
