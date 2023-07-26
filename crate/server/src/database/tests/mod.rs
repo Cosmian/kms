@@ -16,8 +16,8 @@ use self::{
     tagging_tests::tags,
 };
 use super::{
-    cached_sqlcipher::CachedSqlCipher, mysql::MySqlPool, pgsql::PgPool,
-    redis_with_findex::RedisWithFindex, sqlite::SqlitePool,
+    cached_sqlcipher::CachedSqlCipher, mysql::MySqlPool, pgsql::PgPool, redis::RedisWithFindex,
+    sqlite::SqlitePool,
 };
 use crate::result::KResult;
 
@@ -78,8 +78,8 @@ async fn get_mysql() -> KResult<(MySqlPool, Option<ExtraDatabaseParams>)> {
     Ok((my_sql, None))
 }
 
-// To run local tests with a Redis in Docker, run
-// docker run --name redis -p 6379:6379 -d redis
+// To run local tests with a Redis in Docker (and local storage - needed for transactions), run
+// docker run --name redis -p 6379:6379 -d redis redis-server --save 60 1 --loglevel verbose
 async fn get_redis_with_findex() -> KResult<(RedisWithFindex, Option<ExtraDatabaseParams>)> {
     let redis_url = std::option_env!("KMS_REDIS_URL").unwrap_or("redis://localhost:6379");
     let mut rng = CsRng::from_entropy();

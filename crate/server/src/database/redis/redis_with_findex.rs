@@ -20,8 +20,8 @@ use redis::{aio::ConnectionManager, pipe, AsyncCommands};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use super::{object_with_metadata::ObjectWithMetadata, Database};
 use crate::{
+    database::{object_with_metadata::ObjectWithMetadata, Database},
     kms_error,
     result::{KResult, KResultHelper},
 };
@@ -159,6 +159,8 @@ impl ObjectsDB {
         format!("dp::{}::{}", uid, user_id)
     }
 
+    /// List all the permissions granted to the user
+    /// per object uid
     pub async fn list_user_permissions(
         &self,
         user_id: &str,
@@ -173,6 +175,26 @@ impl ObjectsDB {
                 let uid = k.replace(&wildcard, "");
                 let permissions: HashSet<ObjectOperationType> = serde_json::from_slice(&v)?;
                 Ok((uid, permissions.into_iter().collect()))
+            })
+            .collect::<KResult<HashMap<String, Vec<ObjectOperationType>>>>()
+    }
+
+    /// List all the permissions granted on an object
+    /// per user id
+    pub async fn list_object_permissions(
+        &self,
+        uid: &str,
+    ) -> KResult<HashMap<String, Vec<ObjectOperationType>>> {
+        let wildcard = format!("dp::{}::*", uid);
+        let keys: Vec<String> = self.mgr.clone().keys(&wildcard).await?;
+        // recover the corresponding permissions
+        let values: Vec<Vec<u8>> = self.mgr.clone().mget(&keys).await?;
+        keys.into_iter()
+            .zip(values)
+            .map(|(k, v)| {
+                let user_id = k.replace(&wildcard, "");
+                let permissions: HashSet<ObjectOperationType> = serde_json::from_slice(&v)?;
+                Ok((user_id, permissions.into_iter().collect()))
             })
             .collect::<KResult<HashMap<String, Vec<ObjectOperationType>>>>()
     }
@@ -198,6 +220,49 @@ impl ObjectsDB {
         uid: &str,
         user_id: &str,
     ) -> KResult<HashSet<ObjectOperationType>> {
+        let bytes: Vec<u8> = self
+            .mgr
+            .clone()
+            .get(ObjectsDB::permissions_key(uid, user_id))
+            .await?;
+        let permissions: HashSet<ObjectOperationType> = serde_json::from_slice(&bytes)?;
+        Ok(permissions)
+    }
+
+    pub async fn permissions_add(
+        &self,
+        uid: &str,
+        user_id: &str,
+        permissions: HashSet<ObjectOperationType>,
+    ) -> KResult<HashSet<ObjectOperationType>> {
+        let key = ObjectsDB::permissions_key(uid, user_id);
+
+        // loop {
+        //     cmd("WATCH").arg(vec![key]).query_async(&mut self.mgr.clone()).await?;
+
+        //     let permissions = self.permissions_get(uid, user_id).await ?;
+
+        //     let response: Option<T> = ;
+        //     match response {
+        //         None => continue,
+        //         Some(response) => {
+        //             // make sure no watch is left in the connection, even if
+        //             // someone forgot to use the pipeline.
+        //             cmd("UNWATCH").query_async(&mut mgr).await?;
+        //             return Ok(response)
+        //         }
+        //     }
+        // }
+
+        // transaction_async(self.mgr.clone(), &[key], async move |con, pipe| {
+        //     let old_val: isize = con.get(key).await?;
+        //     // pipe.set(key, old_val + 1)
+        //     //     .ignore()
+        //     //     .get(key)
+        //     //     .query_async(con.clone())
+        //     //     .await
+        // })
+        // .await?;
         let bytes: Vec<u8> = self
             .mgr
             .clone()
@@ -572,9 +637,10 @@ impl Database for RedisWithFindex {
     async fn list_accesses(
         &self,
         uid: &str,
-        params: Option<&ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>> {
-        todo!()
+        let permissions = self.db.list_object_permissions(uid).await?;
+        Ok(permissions.into_iter().collect())
     }
 
     /// Grant the access right to `user` to perform the `operation_type`
@@ -584,9 +650,12 @@ impl Database for RedisWithFindex {
         uid: &str,
         user: &str,
         operation_type: ObjectOperationType,
-        params: Option<&ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        todo!()
+        let mut permissions = self.db.permissions_get(uid, user).await?;
+        permissions.insert(operation_type);
+        self.db.permissions_upsert(uid, user, permissions).await?;
+        Ok(())
     }
 
     /// Remove the access right to `user` to perform the `operation_type`
@@ -651,7 +720,7 @@ mod tests {
     use tracing::trace;
 
     use crate::{
-        database::redis_with_findex::{ObjectsDB, RedisDbObject},
+        database::redis::redis_with_findex::{ObjectsDB, RedisDbObject},
         log_utils::log_init,
         result::KResult,
     };
