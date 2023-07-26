@@ -1,25 +1,24 @@
 use std::pin::Pin;
 
 use futures::Future;
-use redis::{aio::ConnectionManager, cmd, pipe, Pipeline, RedisResult, ToRedisArgs};
-
-use crate::result::KResult;
+use redis::{aio::ConnectionManager, cmd, pipe, Pipeline, RedisError, ToRedisArgs};
 
 /// This function encapsulates the boilerplate required to establish a Redis transaction.
 /// Do not use it directly but use the `transaction_async!` macro instead.
 /// See the `transaction_async!` macro for more details.
 pub(crate) async fn transaction_async<
     T,
+    E: From<RedisError>,
     K: ToRedisArgs,
     F: FnMut(
         ConnectionManager,
         &mut Pipeline,
-    ) -> Pin<Box<dyn Future<Output = RedisResult<Option<T>>> + Send>>,
+    ) -> Pin<Box<dyn Future<Output = Result<Option<T>, E>> + Send>>,
 >(
     mut mgr: ConnectionManager,
     keys: &[K],
     mut func: F,
-) -> KResult<T> {
+) -> Result<T, E> {
     loop {
         cmd("WATCH").arg(keys).query_async(&mut mgr).await?;
         let mut p = pipe();
