@@ -45,6 +45,14 @@ jobs:
           MYSQL_DATABASE: kms
           MYSQL_ROOT_PASSWORD: kms
 
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     runs-on: ubuntu-22.04
     # runs-on: [self-hosted, not-sgx] # currently not needed.
     container:
