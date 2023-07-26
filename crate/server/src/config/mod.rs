@@ -2,6 +2,7 @@ mod certbot_https;
 pub mod db;
 mod enclave;
 pub mod http;
+pub mod jwe;
 pub mod jwt_auth_config;
 mod workspace;
 
@@ -20,7 +21,7 @@ use tracing::info;
 use crate::{
     config::{
         certbot_https::HttpsCertbotConfig, db::DBConfig, enclave::EnclaveConfig, http::HTTPConfig,
-        jwt_auth_config::JwtAuthConfig, workspace::WorkspaceConfig,
+        jwe::JWEConfig, jwt_auth_config::JwtAuthConfig, workspace::WorkspaceConfig,
     },
     core::certbot::Certbot,
     result::KResult,
@@ -43,6 +44,9 @@ pub struct ClapConfig {
 
     #[clap(flatten)]
     pub http: HTTPConfig,
+
+    #[clap(flatten)]
+    pub jwe: JWEConfig,
 
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
@@ -114,6 +118,8 @@ pub struct ServerConfig {
     // The JWKS if Auth is enabled
     pub jwks: Option<JWKS>,
 
+    pub jwe_config: JWEConfig,
+
     /// The JWT audience if Auth is enabled
     pub jwt_audience: Option<String>,
 
@@ -158,6 +164,7 @@ impl ServerConfig {
         let server_conf = Self {
             jwks: conf.auth.fetch_jwks().await?,
             jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
+            jwe_config: conf.jwe.clone(),
             jwt_audience: conf.auth.jwt_audience.clone(),
             db_params: conf.db.init(&workspace)?,
             clear_db_on_start: conf.db.clear_database,

@@ -41,6 +41,7 @@ impl KmsClient {
         client_pkcs12_password = None,
         database_secret = None,
         insecure_mode = false,
+        jwe_public_key = None,
     ))]
     pub fn new(
         server_url: &str,
@@ -49,6 +50,7 @@ impl KmsClient {
         client_pkcs12_password: Option<&str>,
         database_secret: Option<&str>,
         insecure_mode: bool,
+        jwe_public_key: Option<&str>,
     ) -> PyResult<Self> {
         let kms_connector = KmsRestClient::instantiate(
             server_url,
@@ -57,6 +59,7 @@ impl KmsClient {
             client_pkcs12_password,
             database_secret,
             insecure_mode,
+            jwe_public_key,
         )
         .map_err(|_| {
             PyException::new_err(format!(

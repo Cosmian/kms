@@ -2,6 +2,7 @@ mod destroy;
 mod export;
 mod import;
 mod import_export_wrapping;
+mod jwe;
 mod locate;
 mod revoke;
 mod wrap_unwrap;

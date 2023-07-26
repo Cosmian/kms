@@ -390,6 +390,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.72"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b13c32d80ecc7ab747b80c3784bce54ee8a7a0cc4fbda9bf4cda2cf6fe90854"
+
+[[package]]
 name = "argon2"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -947,6 +953,7 @@ dependencies = [
  "cosmian_kms_utils",
  "env_logger",
  "hex",
+ "josekit",
  "libsgx",
  "predicates",
  "rand",
@@ -974,6 +981,7 @@ dependencies = [
  "cosmian_kms_utils",
  "hex",
  "http",
+ "josekit",
  "reqwest",
  "serde",
  "serde_json",
@@ -1025,6 +1033,7 @@ dependencies = [
  "futures",
  "hex",
  "http",
+ "josekit",
  "lazy_static",
  "libsgx",
  "libsqlite3-sys",
@@ -1925,6 +1934,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "josekit"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33a96c4f2128a6f44ecf7c36df2b03dddf5a07b060a4d5ebc0a81e9821f7c60e"
+dependencies = [
+ "anyhow",
+ "base64 0.21.2",
+ "flate2",
+ "once_cell",
+ "openssl",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "time 0.3.17",
+]
+
+[[package]]
 name = "js-sys"
 version = "0.3.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2266,9 +2293,9 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
 name = "openssl"
-version = "0.10.50"
+version = "0.10.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e30d8bc91859781f0a943411186324d580f2bbeb71b452fe91ae344806af3f1"
+checksum = "345df152bc43501c5eb9e4654ff05f794effb78d4efe3d53abc158baddc0703d"
 dependencies = [
  "bitflags 1.3.2",
  "cfg-if",
@@ -2307,9 +2334,9 @@ dependencies = [
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.85"
+version = "0.9.90"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d3d193fb1488ad46ffe3aaabc912cc931d02ee8518fe2959aea8ef52718b0c0"
+checksum = "374533b0e45f3a7ced10fcaeccca020e66656bc03dac384f852e4e5a7a8104a6"
 dependencies = [
  "cc",
  "libc",
@@ -2969,6 +2996,7 @@ version = "1.0.96"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "057d394a50403bcac12672b2b18fb387ab6d289d957dab67dd201875391e52f1"
 dependencies = [
+ "indexmap 1.9.2",
  "itoa",
  "ryu",
  "serde",
