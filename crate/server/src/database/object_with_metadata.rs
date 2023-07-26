@@ -34,7 +34,7 @@ impl TryFrom<&PgRow> for ObjectWithMetadata {
                 .context("failed deserializing the permissions")
                 .reason(ErrorReason::Internal_Server_Error)?,
         };
-        Ok(ObjectWithMetadata {
+        Ok(Self {
             id,
             object,
             owner,
@@ -65,7 +65,7 @@ impl TryFrom<&SqliteRow> for ObjectWithMetadata {
                 .reason(ErrorReason::Internal_Server_Error)?
         };
 
-        Ok(ObjectWithMetadata {
+        Ok(Self {
             id,
             object,
             owner,
@@ -92,7 +92,7 @@ impl TryFrom<&MySqlRow> for ObjectWithMetadata {
                 .context("failed deserializing the permissions")
                 .reason(ErrorReason::Internal_Server_Error)?,
         };
-        Ok(ObjectWithMetadata {
+        Ok(Self {
             id,
             object,
             owner,

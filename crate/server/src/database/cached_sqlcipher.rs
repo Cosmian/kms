@@ -6,7 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::crypto_core::symmetric_crypto::{key::Key, SymKey};
+use cloudproof::reexport::crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_objects,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
@@ -54,7 +54,7 @@ impl CachedSqlCipher {
     async fn instantiate_group_database(
         &self,
         group_id: u128,
-        key: &Key<32>,
+        key: &SymmetricKey<32>,
     ) -> KResult<Pool<Sqlite>> {
         let path = self.filename(group_id);
         let options = SqliteConnectOptions::new()
@@ -107,7 +107,11 @@ impl CachedSqlCipher {
         self.cache.release(group_id)
     }
 
-    async fn pre_query(&self, group_id: u128, key: &Key<32>) -> KResult<Arc<Pool<Sqlite>>> {
+    async fn pre_query(
+        &self,
+        group_id: u128,
+        key: &SymmetricKey<32>,
+    ) -> KResult<Arc<Pool<Sqlite>>> {
         if !self.cache.exists(group_id) {
             let pool = self.instantiate_group_database(group_id, key).await?;
             Self::create_tables(&pool).await?;

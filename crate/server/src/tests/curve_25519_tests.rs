@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::crypto_core::asymmetric_crypto::curve25519::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::Import,
@@ -9,6 +8,7 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_utils::crypto::curve_25519::{
+    encryption_decryption::X25519_PUBLIC_KEY_LENGTH,
     kmip_requests::{create_key_pair_request, get_private_key_request, get_public_key_request},
     operation::{self, to_curve_25519_256_public_key},
 };

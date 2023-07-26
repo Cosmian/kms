@@ -9,11 +9,12 @@ pub const VENDOR_ATTR_TAG: &str = "tag";
 pub const EMPTY_TAGS: [&str; 0] = [];
 
 /// Get the tags from the attributes
+#[must_use]
 pub fn get_tags(attributes: &Attributes) -> HashSet<String> {
     attributes
         .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
         .map(|value| serde_json::from_slice::<HashSet<String>>(value).unwrap_or_default())
-        .unwrap_or(HashSet::new())
+        .unwrap_or_default()
 }
 
 /// Set the tags on the attributes
@@ -30,7 +31,7 @@ pub fn set_tags<T: IntoIterator<Item = impl AsRef<str>>>(
 
 /// Check that the user tags are valid i.e. they are not empty and do not start with '_'
 pub fn check_user_tags(tags: &HashSet<String>) -> Result<(), KmipUtilsError> {
-    for tag in tags.iter() {
+    for tag in tags {
         if tag.starts_with('_') {
             return Err(KmipUtilsError::InvalidTag(
                 "user tags cannot start with _".to_owned(),

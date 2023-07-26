@@ -17,8 +17,8 @@ use crate::{
 
 /// Export an object
 ///
-/// If the request contains a KeyWrappingData, the key will be wrapped
-/// If the request contains a KeyWrapType, the key will be unwrapped
+/// If the request contains a `KeyWrappingData`, the key will be wrapped
+/// If the request contains a `KeyWrapType`, the key will be unwrapped
 /// If both are present, the key will be wrapped
 /// If none are present, the key will be returned as is
 pub async fn export(
@@ -44,7 +44,7 @@ pub async fn export(
     // there can only be one object
     let mut owm = owm_s
         .pop()
-        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.to_owned()))?;
+        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.clone()))?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(

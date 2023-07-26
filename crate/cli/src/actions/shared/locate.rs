@@ -100,7 +100,7 @@ impl LocateObjectsAction {
     }
 }
 
-/// Parse a string entered by the user into a CryptographicAlgorithm
+/// Parse a string entered by the user into a `CryptographicAlgorithm`
 #[derive(Clone)]
 struct CryptographicAlgorithmParser;
 
@@ -142,7 +142,7 @@ impl clap::builder::TypedValueParser for CryptographicAlgorithmParser {
     }
 }
 
-/// Parse a string entered by the user into a KeyFormatType
+/// Parse a string entered by the user into a `KeyFormatType`
 #[derive(Clone)]
 struct KeyFormatTypeParser;
 

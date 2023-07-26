@@ -28,6 +28,11 @@ pub enum KmipUtilsError {
     Default(String),
 }
 
+impl From<Vec<u8>> for KmipUtilsError {
+    fn from(value: Vec<u8>) -> Self {
+        Self::ConversionError(format!("Failed converting Vec<u8>: {value:?}"))
+    }
+}
 impl From<std::array::TryFromSliceError> for KmipUtilsError {
     fn from(value: std::array::TryFromSliceError) -> Self {
         Self::ConversionError(value.to_string())
@@ -37,19 +42,11 @@ impl From<std::array::TryFromSliceError> for KmipUtilsError {
 impl From<KmipError> for KmipUtilsError {
     fn from(value: KmipError) -> Self {
         match value {
-            KmipError::InvalidKmipValue(error_reason, value) => {
-                KmipUtilsError::Kmip(error_reason, value)
-            }
-            KmipError::InvalidKmipObject(error_reason, value) => {
-                KmipUtilsError::Kmip(error_reason, value)
-            }
-            KmipError::KmipNotSupported(error_reason, value) => {
-                KmipUtilsError::Kmip(error_reason, value)
-            }
-            KmipError::NotSupported(value) => {
-                KmipUtilsError::Kmip(ErrorReason::Feature_Not_Supported, value)
-            }
-            KmipError::KmipError(error_reason, value) => KmipUtilsError::Kmip(error_reason, value),
+            KmipError::InvalidKmipValue(error_reason, value) => Self::Kmip(error_reason, value),
+            KmipError::InvalidKmipObject(error_reason, value) => Self::Kmip(error_reason, value),
+            KmipError::KmipNotSupported(error_reason, value) => Self::Kmip(error_reason, value),
+            KmipError::NotSupported(value) => Self::Kmip(ErrorReason::Feature_Not_Supported, value),
+            KmipError::KmipError(error_reason, value) => Self::Kmip(error_reason, value),
         }
     }
 }
@@ -62,7 +59,7 @@ impl From<CryptoCoreError> for KmipUtilsError {
 
 impl From<serde_json::Error> for KmipUtilsError {
     fn from(e: serde_json::Error) -> Self {
-        KmipUtilsError::ConversionError(e.to_string())
+        Self::ConversionError(e.to_string())
     }
 }
 

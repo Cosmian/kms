@@ -248,8 +248,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let master_public_key_id = &ckr.public_key_unique_identifier;
 
     // encrypt a resource MKG + confidential
-    let confidential_authentication_data = "cc the uid confidential".as_bytes().to_vec();
-    let confidential_mkg_data = "Confidential MKG Data".as_bytes();
+    let confidential_authentication_data = b"cc the uid confidential".to_vec();
+    let confidential_mkg_data = b"Confidential MKG Data";
     let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
     let er = kms
         .encrypt(
@@ -284,8 +284,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     assert!(er.is_err());
 
     // encrypt a resource FIN + Secret
-    let secret_authentication_data = "cc the uid secret".as_bytes().to_vec();
-    let secret_fin_data = "Secret FIN data".as_bytes();
+    let secret_authentication_data = b"cc the uid secret".to_vec();
+    let secret_fin_data = b"Secret FIN data";
     let secret_fin_policy_attributes = "Level::secret && Department::FIN";
     let er = kms
         .encrypt(
@@ -356,7 +356,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext);
+    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext[..]);
     assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
 
     // check it doesn't work with invalid tenant
@@ -397,7 +397,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(secret_fin_data, &decrypted_data.plaintext);
+    assert_eq!(secret_fin_data, &decrypted_data.plaintext[..]);
     assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
 
     // check it doesn't work with invalid tenant
@@ -562,8 +562,8 @@ async fn test_import_decrypt() -> KResult<()> {
     assert_eq!(&sk_uid, &sk_uid_.to_string());
 
     // encrypt a resource MKG + confidential
-    let confidential_authentication_data = "cc the uid confidential".as_bytes().to_vec();
-    let confidential_mkg_data = "Confidential MKG Data".as_bytes();
+    let confidential_authentication_data = b"cc the uid confidential".to_vec();
+    let confidential_mkg_data = b"Confidential MKG Data";
     let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
     let er = kms
         .encrypt(
@@ -675,7 +675,7 @@ async fn test_import_decrypt() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext);
+    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext[..]);
     assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
 
     Ok(())

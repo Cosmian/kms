@@ -33,12 +33,12 @@ pub async fn create_key_pair(
             &[
                 (
                     Some(sk_uid.clone()),
-                    key_pair.private_key().to_owned(),
+                    key_pair.private_key().clone(),
                     &sk_tags,
                 ),
                 (
                     Some(pk_uid.clone()),
-                    key_pair.public_key().to_owned(),
+                    key_pair.public_key().clone(),
                     &pk_tags,
                 ),
             ],

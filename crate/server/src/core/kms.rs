@@ -8,7 +8,7 @@ use base64::{
     engine::general_purpose::{self, STANDARD as b64},
     Engine as _,
 };
-use cloudproof::reexport::crypto_core::{symmetric_crypto::key::Key, CsRng, KeyTrait};
+use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_operations::{
         Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
@@ -95,7 +95,7 @@ impl KMS {
         )?)
     }
 
-    /// Adds a new encrypted SQLite database to the KMS server.
+    /// Adds a new encrypted `SQLite` database to the KMS server.
     ///
     /// # Returns
     ///
@@ -119,9 +119,9 @@ impl KMS {
             };
 
             // Generate a new key
-            let key: Key<32> = {
+            let key = {
                 let mut rng = self.rng.lock().expect("failed locking the RNG");
-                Key::<32>::new(&mut *rng)
+                SymmetricKey::new(&mut *rng)
             };
 
             // Encode ExtraDatabaseParams
@@ -302,7 +302,7 @@ impl KMS {
     /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
     /// together with its attributes.
     /// The Key Format Type, Key Wrap Type, Key Compression Type and Key Wrapping Specification
-    /// SHALL have the same semantics as for the Get operation.  
+    /// SHALL have the same semantics as for the Get operation.
     /// If the Managed Object has been Destroyed then the key material for the specified managed object
     /// SHALL not be returned in the response.
     /// The server SHALL copy the Unique Identifier returned by this operations

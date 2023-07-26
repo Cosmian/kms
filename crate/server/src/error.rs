@@ -1,6 +1,7 @@
-use std::sync::mpsc::SendError;
+use std::{array::TryFromSliceError, sync::mpsc::SendError};
 
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
+use cloudproof::reexport::crypto_core::CryptoCoreError;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
@@ -74,6 +75,12 @@ impl From<TtlvError> for KmsError {
     }
 }
 
+impl From<CryptoCoreError> for KmsError {
+    fn from(e: CryptoCoreError) -> Self {
+        Self::CryptographicError(e.to_string())
+    }
+}
+
 impl From<sqlx::Error> for KmsError {
     fn from(e: sqlx::Error) -> Self {
         Self::DatabaseError(e.to_string())
@@ -131,6 +138,12 @@ impl From<QueryPayloadError> for KmsError {
 impl From<KmipUtilsError> for KmsError {
     fn from(e: KmipUtilsError) -> Self {
         Self::CryptographicError(e.to_string())
+    }
+}
+
+impl From<TryFromSliceError> for KmsError {
+    fn from(e: TryFromSliceError) -> Self {
+        Self::ConversionError(e.to_string())
     }
 }
 

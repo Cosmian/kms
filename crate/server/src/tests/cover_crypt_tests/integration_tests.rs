@@ -59,8 +59,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
     // Encrypt
-    let authentication_data = "cc the uid".as_bytes().to_vec();
-    let data = "Confidential MKG Data".as_bytes();
+    let authentication_data = b"cc the uid".to_vec();
+    let data = b"Confidential MKG Data";
     let encryption_policy = "Level::Confidential && Department::MKG";
     let header_metadata = vec![1, 2, 3];
     let request = build_encryption_request(
@@ -103,13 +103,13 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(data, &decrypted_data.plaintext);
+    assert_eq!(data, &decrypted_data.plaintext[..]);
     assert_eq!(header_metadata, decrypted_data.metadata);
 
     // revocation
 
     // Encrypt
-    let authentication_data = "cc the uid".as_bytes().to_vec();
+    let authentication_data = b"cc the uid".to_vec();
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";
     let request = build_encryption_request(
@@ -214,7 +214,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     );
 
     // ReEncrypt with same ABE attribute (which has been previously incremented)
-    let authentication_data = "cc the uid".as_bytes().to_vec();
+    let authentication_data = b"cc the uid".to_vec();
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";
     let request = build_encryption_request(

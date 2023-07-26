@@ -112,8 +112,7 @@ impl CliConf {
             // Error if the specified file does not exist
             if !conf_path.exists() {
                 return Err(CliError::NotSupported(format!(
-                    "Configuration file {:?} does not exist",
-                    conf_path
+                    "Configuration file {conf_path:?} does not exist"
                 )))
             }
             conf_path
@@ -140,7 +139,7 @@ impl CliConf {
                     parent
                 )
             })?;
-            let default_conf = CliConf::default();
+            let default_conf = Self::default();
             fs::write(
                 &conf_path,
                 serde_json::to_string(&default_conf).with_context(|| {

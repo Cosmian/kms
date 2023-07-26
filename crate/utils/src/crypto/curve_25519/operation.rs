@@ -1,10 +1,5 @@
 use cloudproof::reexport::crypto_core::{
-    asymmetric_crypto::{
-        curve25519::{X25519KeyPair, X25519_PRIVATE_KEY_LENGTH},
-        DhKeyPair,
-    },
-    reexport::rand_core::CryptoRngCore,
-    KeyTrait,
+    reexport::rand_core::CryptoRngCore, RandomFixedSizeCBytes, X25519PrivateKey, X25519PublicKey,
 };
 use cosmian_kmip::{
     error::KmipError,
@@ -20,6 +15,7 @@ use cosmian_kmip::{
 };
 use num_bigint::BigUint;
 
+use super::encryption_decryption::X25519_PRIVATE_KEY_LENGTH;
 use crate::KeyPair;
 
 pub const SECRET_KEY_LENGTH: usize = X25519_PRIVATE_KEY_LENGTH;
@@ -120,10 +116,10 @@ pub fn create_ec_key_pair<R>(
 where
     R: CryptoRngCore,
 {
-    let key_pair = X25519KeyPair::new(rng);
-    let private_key =
-        to_curve_25519_256_private_key(&key_pair.private_key().to_bytes(), public_key_uid);
-    let public_key =
-        to_curve_25519_256_public_key(&key_pair.public_key().to_bytes(), private_key_uid);
+    let private_key = X25519PrivateKey::new(rng);
+    let public_key = X25519PublicKey::from(&private_key);
+
+    let private_key = to_curve_25519_256_private_key(private_key.as_bytes(), public_key_uid);
+    let public_key = to_curve_25519_256_public_key(public_key.as_bytes(), private_key_uid);
     Ok(KeyPair::new(private_key, public_key))
 }

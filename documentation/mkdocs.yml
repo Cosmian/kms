@@ -52,13 +52,13 @@ nav:
   - Deploying in replicated mode: replicated_mode.md
   - Authenticating to the server: authentication.md
   - Authorizing using access rights: authorization.md
-  - Using the ckms command line interface: 
+  - Using the ckms command line interface:
       - Installing and configuring: cli/cli.md
       - Using the CLI: cli/main_commands.md
-      - Covercrypt: 
-        - Commands: cli/covercrypt/covercrypt.md
-        - Keys management: cli/covercrypt/keys.md
-        - Policy management: cli/covercrypt/policy.md
+      - Covercrypt:
+          - Commands: cli/covercrypt/covercrypt.md
+          - Keys management: cli/covercrypt/keys.md
+          - Policy management: cli/covercrypt/policy.md
       - Elliptic curves:
         - Commands: cli/ec/ec.md
         - Keys management: cli/ec/keys.md

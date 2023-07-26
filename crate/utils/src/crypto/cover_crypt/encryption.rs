@@ -1,8 +1,7 @@
 use cloudproof::reexport::{
     cover_crypt::{
         abe_policy::{AccessPolicy, Policy},
-        statics::{CoverCryptX25519Aes256, EncryptedHeader, PublicKey},
-        CoverCrypt,
+        Covercrypt, EncryptedHeader, MasterPublicKey,
     },
     crypto_core::bytes_ser_de::Serializable,
 };
@@ -21,18 +20,15 @@ use crate::{
 /// Encrypt a single block of data using an hybrid encryption mode
 /// Cannot be used as a stream cipher
 pub struct CoverCryptEncryption {
-    cover_crypt: CoverCryptX25519Aes256,
+    cover_crypt: Covercrypt,
     public_key_uid: String,
     public_key_bytes: Vec<u8>,
     policy: Policy,
 }
 
-/// Maximum clear text size that can be safely encrypted with AES GCM (using a single random nonce)
-pub const MAX_CLEAR_TEXT_SIZE: usize = 1_usize << 30;
-
 impl CoverCryptEncryption {
     pub fn instantiate(
-        cover_crypt: CoverCryptX25519Aes256,
+        cover_crypt: Covercrypt,
         public_key_uid: &str,
         public_key: &Object,
     ) -> Result<Self, KmipUtilsError> {
@@ -54,7 +50,7 @@ impl CoverCryptEncryption {
         Ok(Self {
             cover_crypt,
             public_key_uid: public_key_uid.into(),
-            public_key_bytes: public_key_bytes.to_vec(),
+            public_key_bytes,
             policy,
         })
     }
@@ -81,7 +77,7 @@ impl EncryptionSystem for CoverCryptEncryption {
         )?;
 
         let public_key =
-            PublicKey::try_from_bytes(self.public_key_bytes.as_slice()).map_err(|e| {
+            MasterPublicKey::deserialize(self.public_key_bytes.as_slice()).map_err(|e| {
                 KmipUtilsError::Kmip(
                     ErrorReason::Codec_Error,
                     format!("cover crypt encipher: failed recovering the public key: {e}"),
@@ -126,7 +122,7 @@ impl EncryptionSystem for CoverCryptEncryption {
                 KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string())
             })?;
 
-        let mut ciphertext = encrypted_header.try_to_bytes().map_err(|e| {
+        let mut ciphertext = encrypted_header.serialize().map_err(|e| {
             KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string())
         })?;
         ciphertext.append(&mut encrypted_block);
@@ -139,7 +135,7 @@ impl EncryptionSystem for CoverCryptEncryption {
         );
         Ok(EncryptResponse {
             unique_identifier: self.public_key_uid.clone(),
-            data: Some(ciphertext),
+            data: Some(ciphertext.to_vec()),
             iv_counter_nonce: None,
             correlation_value: None,
             authenticated_encryption_tag: Some(authenticated_encryption_additional_data.clone()),

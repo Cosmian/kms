@@ -19,7 +19,7 @@ use crate::{
     result::KResult,
 };
 
-pub async fn revoke_operation(
+pub(crate) async fn revoke_operation(
     kms: &KMS,
     request: Revoke,
     user: &str,
@@ -103,8 +103,7 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
                 //add this key to the ids to skip
                 ids_to_skip.insert(owm.id.clone());
                 // for Covercrypt, if that is a master secret key, revoke the user decryption keys
-                if let KeyFormatType::CoverCryptSecretKey = owm.object.key_block()?.key_format_type
-                {
+                if owm.object.key_block()?.key_format_type == KeyFormatType::CoverCryptSecretKey {
                     revoke_user_decryption_keys(
                         &owm.id,
                         revocation_reason.clone(),

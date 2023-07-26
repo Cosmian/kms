@@ -1,8 +1,7 @@
 use cloudproof::reexport::{
     cover_crypt::{
         abe_policy::{AccessPolicy, Policy},
-        core::api::CoverCrypt,
-        statics::{CoverCryptX25519Aes256, MasterSecretKey, UserSecretKey},
+        Covercrypt, MasterSecretKey, UserSecretKey,
     },
     crypto_core::bytes_ser_de::Serializable,
 };
@@ -72,19 +71,19 @@ pub(crate) fn unwrap_user_decryption_key_object(
 /// Handles operations on user keys, caching the engine
 /// and the master key information for efficiency
 pub struct UserDecryptionKeysHandler {
-    cover_crypt: CoverCryptX25519Aes256,
+    cover_crypt: Covercrypt,
     master_private_key: MasterSecretKey,
     policy: Policy,
 }
 
 impl UserDecryptionKeysHandler {
     pub fn instantiate(
-        cover_crypt: CoverCryptX25519Aes256,
+        cover_crypt: Covercrypt,
         master_private_key: &Object,
     ) -> Result<Self, KmipError> {
         let msk_key_block = master_private_key.key_block()?;
         let msk_key_bytes = msk_key_block.key_bytes()?;
-        let msk = MasterSecretKey::try_from_bytes(&msk_key_bytes).map_err(|e| {
+        let msk = MasterSecretKey::deserialize(&msk_key_bytes).map_err(|e| {
             KmipError::KmipError(
                 ErrorReason::Codec_Error,
                 format!("cover crypt: failed deserializing the master private key: {e}"),
@@ -122,7 +121,7 @@ impl UserDecryptionKeysHandler {
                 KmipError::InvalidKmipValue(ErrorReason::Invalid_Attribute_Value, e.to_string())
             })?;
         trace!("Created user decryption key {uk:?} with access policy: {access_policy:?}");
-        let user_decryption_key_bytes = uk.try_to_bytes().map_err(|e| {
+        let user_decryption_key_bytes = uk.serialize().map_err(|e| {
             KmipError::KmipError(
                 ErrorReason::Codec_Error,
                 format!("cover crypt: failed serializing the user key: {e}"),
@@ -154,7 +153,7 @@ impl UserDecryptionKeysHandler {
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: KeyValue {
-                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
+                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes.to_vec()),
                     attributes: Some(attributes),
                 },
                 cryptographic_length: user_decryption_key_len as i32 * 8,
@@ -171,7 +170,7 @@ impl UserDecryptionKeysHandler {
     ) -> Result<Object, KmipError> {
         let (usk_key_bytes, usk_access_policy, usk_attributes) =
             unwrap_user_decryption_key_object(user_decryption_key)?;
-        let mut usk = UserSecretKey::try_from_bytes(&usk_key_bytes).map_err(|e| {
+        let mut usk = UserSecretKey::deserialize(&usk_key_bytes).map_err(|e| {
             KmipError::KmipError(
                 ErrorReason::Codec_Error,
                 format!("cover crypt: failed deserializing the user decryption key: {e}"),
@@ -195,7 +194,7 @@ impl UserDecryptionKeysHandler {
 
         trace!("Refreshed  user decryption key {usk:?} with access policy: {usk_access_policy:?}");
 
-        let user_decryption_key_bytes = usk.try_to_bytes().map_err(|e| {
+        let user_decryption_key_bytes = usk.serialize().map_err(|e| {
             KmipError::KmipError(
                 ErrorReason::Codec_Error,
                 format!("cover crypt: failed serializing the user key: {e}"),
@@ -209,7 +208,7 @@ impl UserDecryptionKeysHandler {
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: KeyValue {
-                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
+                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes.to_vec()),
                     attributes: Some(usk_attributes),
                 },
                 cryptographic_length: user_decryption_key_len,

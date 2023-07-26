@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::SeedableRng, symmetric_crypto::key::Key, CsRng, KeyTrait,
+    reexport::rand_core::SeedableRng, CsRng, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 
@@ -30,7 +30,7 @@ async fn get_sql_cipher() -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParam
 
     // generate a database key
     let mut cs_rng = CsRng::from_entropy();
-    let db_key = Key::<32>::new(&mut cs_rng);
+    let db_key = SymmetricKey::<32>::new(&mut cs_rng);
 
     // SQLCipher uses a directory
     let dir_path = dir.join("test_sqlite_enc.db");
@@ -42,7 +42,7 @@ async fn get_sql_cipher() -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParam
     let db = CachedSqlCipher::instantiate(&dir_path, true).await?;
     let params = ExtraDatabaseParams {
         group_id: 0,
-        key: db_key.clone(),
+        key: db_key,
     };
     Ok((db, Some(params)))
 }

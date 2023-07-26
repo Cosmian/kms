@@ -1,5 +1,7 @@
 # Cosmian KMS
 
+![Build status](https://github.com/Cosmian/kms/actions/workflows/ci.yml/badge.svg)
+
 It's the implementation of the **Key Management Services** provided by _Cosmian_.
 
 It is broken down into several binaries:

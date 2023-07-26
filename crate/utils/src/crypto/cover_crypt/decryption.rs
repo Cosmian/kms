@@ -1,8 +1,5 @@
 use cloudproof::reexport::{
-    cover_crypt::{
-        statics::{CoverCryptX25519Aes256, EncryptedHeader, UserSecretKey},
-        CoverCrypt,
-    },
+    cover_crypt::{Covercrypt, EncryptedHeader, UserSecretKey},
     crypto_core::bytes_ser_de::{Deserializer, Serializable},
 };
 use cosmian_kmip::kmip::{
@@ -17,14 +14,14 @@ use crate::{error::KmipUtilsError, DecryptionSystem};
 /// Decrypt a single block of data encrypted using an hybrid encryption mode
 /// Cannot be used as a stream decipher
 pub struct CovercryptDecryption {
-    cover_crypt: CoverCryptX25519Aes256,
+    cover_crypt: Covercrypt,
     user_decryption_key_uid: String,
     user_decryption_key_bytes: Vec<u8>,
 }
 
 impl CovercryptDecryption {
     pub fn instantiate(
-        cover_crypt: CoverCryptX25519Aes256,
+        cover_crypt: Covercrypt,
         user_decryption_key_uid: &str,
         user_decryption_key: &Object,
     ) -> Result<Self, KmipUtilsError> {
@@ -46,7 +43,7 @@ impl CovercryptDecryption {
 
 impl DecryptionSystem for CovercryptDecryption {
     fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, KmipUtilsError> {
-        let user_decryption_key = UserSecretKey::try_from_bytes(&self.user_decryption_key_bytes)
+        let user_decryption_key = UserSecretKey::deserialize(&self.user_decryption_key_bytes)
             .map_err(|e| {
                 KmipUtilsError::Kmip(
                     ErrorReason::Codec_Error,
@@ -95,7 +92,7 @@ impl DecryptionSystem for CovercryptDecryption {
         );
 
         let decrypted_data = DecryptedData {
-            metadata: header_.metadata,
+            metadata: header_.metadata.unwrap_or_default(),
             plaintext: cleartext,
         };
 

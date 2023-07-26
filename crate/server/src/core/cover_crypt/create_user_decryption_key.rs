@@ -1,4 +1,4 @@
-use cloudproof::reexport::cover_crypt::statics::CoverCryptX25519Aes256;
+use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Create, CreateKeyPair, Get},
@@ -24,7 +24,7 @@ use crate::{
 /// `Access Policy`
 pub async fn create_user_decryption_key(
     kmip_server: &KMS,
-    cover_crypt: CoverCryptX25519Aes256,
+    cover_crypt: Covercrypt,
     create_request: &Create,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
@@ -41,7 +41,7 @@ pub async fn create_user_decryption_key(
 
 async fn create_user_decryption_key_(
     kmip_server: &KMS,
-    cover_crypt: CoverCryptX25519Aes256,
+    cover_crypt: Covercrypt,
     create_attributes: &Attributes,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
@@ -85,7 +85,7 @@ async fn create_user_decryption_key_(
     // there can only be one object
     let owm = owm_s
         .pop()
-        .ok_or_else(|| KmsError::ItemNotFound(msk_uid_or_tag.to_owned()))?;
+        .ok_or_else(|| KmsError::ItemNotFound(msk_uid_or_tag.clone()))?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(
@@ -111,7 +111,7 @@ async fn create_user_decryption_key_(
 /// Create a KMIP tuple (`Object::PrivateKey`, `Object::PublicKey`)
 pub async fn create_user_decryption_key_pair(
     kmip_server: &KMS,
-    cover_crypt: CoverCryptX25519Aes256,
+    cover_crypt: Covercrypt,
     create_key_pair_request: &CreateKeyPair,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,

@@ -5,7 +5,7 @@ from cloudproof_cover_crypt import (
     Attribute,
     MasterSecretKey,
     Policy,
-    PublicKey,
+    MasterPublicKey,
     UserSecretKey,
 )
 
@@ -60,7 +60,7 @@ class KmsClient:
         replace_existing: bool,
         link_master_public_key_id: str,
         policy: bytes,
-        tags:  Optional[List[str]],
+        tags: Optional[List[str]],
         is_wrapped: bool,
         wrapping_password: Optional[str] = None,
         unique_identifier: Optional[str] = None,
@@ -100,11 +100,10 @@ class KmsClient:
             Future[str]: the unique identifier of the key
         """
     def rotate_cover_crypt_attributes(
-        self, 
+        self,
         attributes: List[Union[Attribute, str]],
         master_secret_key_identifier: Optional[str],
         tags: Optional[List[str]] = None,
-
     ) -> Future[Tuple[str, str]]:
         """Rotate the given policy attributes. This will rekey in the KMS:
             - the Master Keys
@@ -112,7 +111,7 @@ class KmsClient:
 
         Args:
             attributes (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
-            master_secret_key_identifier (Optional[str]): master secret key UID. Tags should be supplied if the ID is not given. 
+            master_secret_key_identifier (Optional[str]): master secret key UID. Tags should be supplied if the ID is not given.
             tags: (Optional[List[str][]) tags to retrieve the master secret key if it the id is not satisfied
 
         Returns:
@@ -138,7 +137,7 @@ class KmsClient:
         link_master_private_key_id: str,
         access_policy_str: str,
         tags: Optional[List[str]] = None,
-        is_wrapped: Optional[bool]=None,
+        is_wrapped: Optional[bool] = None,
         wrapping_password: Optional[str] = None,
         unique_identifier: Optional[str] = None,
     ) -> Future[str]:
@@ -224,10 +223,10 @@ class KmsClient:
             Future[str]: uid of the revoked key
         """
     def destroy_cover_crypt_key(
-            self, 
-            key_identifier: Optional[str],
-            tags: Optional[List[str]] = None,
-        ) -> Future[str]:
+        self,
+        key_identifier: Optional[str],
+        tags: Optional[List[str]] = None,
+    ) -> Future[str]:
         """Mark a CoverCrypt Key as destroyed
 
         Args:

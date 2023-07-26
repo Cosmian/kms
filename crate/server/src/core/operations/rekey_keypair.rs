@@ -1,4 +1,4 @@
-use cloudproof::reexport::cover_crypt::statics::CoverCryptX25519Aes256;
+use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
@@ -67,7 +67,7 @@ pub async fn rekey_keypair(
     // there can only be one private key
     let owm = owm_s
         .pop()
-        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.to_owned()))?;
+        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.clone()))?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(
@@ -79,7 +79,7 @@ pub async fn rekey_keypair(
         Some(CryptographicAlgorithm::CoverCrypt) => {
             rekey_keypair_cover_crypt(
                 kms,
-                CoverCryptX25519Aes256::default(),
+                Covercrypt::default(),
                 &owm.id,
                 attributes,
                 user,

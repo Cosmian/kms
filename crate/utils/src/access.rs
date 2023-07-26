@@ -1,4 +1,4 @@
-use cloudproof::reexport::crypto_core::symmetric_crypto::{key::Key, SymKey};
+use cloudproof::reexport::crypto_core::{FixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::kmip_types::{Attributes, StateEnumeration, UniqueIdentifier};
 use serde::{Deserialize, Serialize};
 
@@ -33,32 +33,31 @@ pub enum ObjectOperationType {
 
 impl std::fmt::Debug for ObjectOperationType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{self}")
     }
 }
 
 impl std::fmt::Display for ObjectOperationType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
-            ObjectOperationType::Create => "create",
-            ObjectOperationType::Decrypt => "decrypt",
-            ObjectOperationType::Destroy => "destroy",
-            ObjectOperationType::Encrypt => "encrypt",
-            ObjectOperationType::Export => "export",
-            ObjectOperationType::Get => "get",
-            ObjectOperationType::Import => "import",
-            ObjectOperationType::Locate => "locate",
-            ObjectOperationType::Revoke => "revoke",
-            ObjectOperationType::Rekey => "rekey",
+            Self::Create => "create",
+            Self::Decrypt => "decrypt",
+            Self::Destroy => "destroy",
+            Self::Encrypt => "encrypt",
+            Self::Export => "export",
+            Self::Get => "get",
+            Self::Import => "import",
+            Self::Locate => "locate",
+            Self::Revoke => "revoke",
+            Self::Rekey => "rekey",
         };
         write!(f, "{str}")
     }
 }
 
-#[derive(Clone)]
 pub struct ExtraDatabaseParams {
     pub group_id: u128,
-    pub key: Key<32>,
+    pub key: SymmetricKey<32>,
 }
 
 impl Serialize for ExtraDatabaseParams {
@@ -67,25 +66,22 @@ impl Serialize for ExtraDatabaseParams {
         S: serde::Serializer,
     {
         serializer.serialize_bytes(
-            vec![
-                self.group_id.to_be_bytes().to_vec(),
-                self.key.as_bytes().to_vec(),
-            ]
-            .concat()
-            .as_slice(),
+            [self.group_id.to_be_bytes().to_vec(), self.key.to_vec()]
+                .concat()
+                .as_slice(),
         )
     }
 }
 
 impl<'de> Deserialize<'de> for ExtraDatabaseParams {
-    fn deserialize<D>(deserializer: D) -> Result<ExtraDatabaseParams, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let bytes = <Vec<u8>>::deserialize(deserializer)?;
         let group_id = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
-        let key = SymKey::from_bytes(bytes[16..48].try_into().unwrap());
-        Ok(ExtraDatabaseParams { group_id, key })
+        let key = SymmetricKey::try_from_bytes(bytes[16..48].try_into().unwrap()).unwrap();
+        Ok(Self { group_id, key })
     }
 }
 

@@ -4,11 +4,10 @@ use std::{
 };
 
 use cloudproof::reexport::{
-    cover_crypt::statics::CoverCryptX25519Aes256,
+    cover_crypt::Covercrypt,
     crypto_core::{
         reexport::rand_core::{RngCore, SeedableRng},
-        symmetric_crypto::aes_256_gcm_pure,
-        CsRng,
+        Aes256Gcm, CsRng,
     },
 };
 use cosmian_kmip::kmip::{
@@ -70,6 +69,7 @@ impl KMS {
     }
 
     /// Get the CS-RNG
+    #[must_use]
     pub fn rng(&self) -> Arc<Mutex<CsRng>> {
         self.rng.clone()
     }
@@ -110,13 +110,10 @@ impl KMS {
                 other => kms_not_supported!("encryption with keys of format: {other}"),
             },
             Object::PublicKey { key_block } => match &key_block.key_format_type {
-                KeyFormatType::CoverCryptPublicKey => {
-                    Ok(Box::new(CoverCryptEncryption::instantiate(
-                        CoverCryptX25519Aes256::default(),
-                        &owm.id,
-                        &owm.object,
-                    )?) as Box<dyn EncryptionSystem>)
-                }
+                KeyFormatType::CoverCryptPublicKey => Ok(Box::new(
+                    CoverCryptEncryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?,
+                )
+                    as Box<dyn EncryptionSystem>),
                 KeyFormatType::TransparentECPublicKey => match key_block.cryptographic_algorithm {
                     CryptographicAlgorithm::ECDH => Ok(Box::new(EciesEncryption::instantiate(
                         &owm.id,
@@ -137,7 +134,7 @@ impl KMS {
     /// Return a decryption system based on the type of key
     pub(crate) async fn get_decryption_system(
         &self,
-        cover_crypt: CoverCryptX25519Aes256,
+        cover_crypt: Covercrypt,
         mut owm: ObjectWithMetadata,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn DecryptionSystem>> {
@@ -225,8 +222,7 @@ impl KMS {
                     // create the key
                     let key_len: usize = attributes
                         .cryptographic_length
-                        .map(|v| v as usize / 8)
-                        .unwrap_or(aes_256_gcm_pure::KEY_LENGTH);
+                        .map_or(Aes256Gcm::KEY_LENGTH, |v| v as usize / 8);
                     let mut symmetric_key = vec![0; key_len];
                     rng.fill_bytes(&mut symmetric_key);
                     let object = create_symmetric_key(&symmetric_key, *cryptographic_algorithm);
@@ -277,7 +273,7 @@ impl KMS {
             CryptographicAlgorithm::CoverCrypt => {
                 let object = create_user_decryption_key(
                     self,
-                    CoverCryptX25519Aes256::default(),
+                    Covercrypt::default(),
                     create_request,
                     owner,
                     params,
@@ -357,7 +353,7 @@ impl KMS {
             },
             CryptographicAlgorithm::CoverCrypt => {
                 cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
-                    &CoverCryptX25519Aes256::default(),
+                    &Covercrypt::default(),
                     request,
                     private_key_uid,
                     public_key_uid,

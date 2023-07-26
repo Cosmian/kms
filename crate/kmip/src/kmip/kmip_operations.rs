@@ -328,7 +328,7 @@ pub struct CreateKeyPairResponse {
 /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
 /// together with its attributes.
 /// The Key Format Type, Key Wrap Type, Key Compression Type and Key Wrapping Specification
-/// SHALL have the same semantics as for the Get operation.  
+/// SHALL have the same semantics as for the Get operation.
 /// If the Managed Object has been Destroyed then the key material for the specified managed object
 /// SHALL not be returned in the response.
 /// The server SHALL copy the Unique Identifier returned by this operations
@@ -355,19 +355,20 @@ pub struct Export {
 }
 
 impl Export {
-    /// Create a ExportRequest for an Object
+    /// Create a `ExportRequest` for an Object
     /// # Arguments
     /// * `uid` - The Unique Identifier of the object to be retrieved
     /// * `unwrap` - If true, the object is returned unwrapped
     /// * `key_wrapping_data` - If unwrap is false, this is the key wrapping data to be used
     /// # Returns
-    /// A ExportRequest
+    /// A `ExportRequest`
     /// # Example
     /// ```
     /// use cosmian_kmip::kmip::kmip_operations::Export;
     ///
     /// let export_request = Export::new("1234", false, None);
     /// ```
+    #[must_use]
     pub fn new(uid: &str, unwrap: bool, key_wrapping_data: Option<KeyWrappingData>) -> Self {
         let key_wrap_type = if unwrap {
             // ignore key_wrapping_data if unwrap is true
@@ -391,19 +392,19 @@ impl Export {
 impl From<String> for Export {
     // Create a ExportRequest for an object to be returned "as registered"
     fn from(uid: String) -> Self {
-        Export::new(&uid, false, None)
+        Self::new(&uid, false, None)
     }
 }
 impl From<&String> for Export {
     // Create a ExportRequest for an object to be returned "as registered"
     fn from(uid: &String) -> Self {
-        Export::new(uid, false, None)
+        Self::new(uid, false, None)
     }
 }
 impl From<&str> for Export {
     // Create a ExportRequest for an object to be returned "as registered"
     fn from(uid: &str) -> Self {
-        Export::new(uid, false, None)
+        Self::new(uid, false, None)
     }
 }
 
@@ -432,15 +433,15 @@ pub struct ExportResponse {
 /// If Key Format Type is specified to be PKCS#12, then the response payload shall be a PKCS#12 container as
 /// specified by RFC7292. The Unique Identifier shall be either that of a private key or certificate to be
 /// included in the response. The container shall be protected using the Secret Data object specified via the
-/// private key or certificate’s PKCS#12 Password Link. The current certificate chain shall also be included as
-/// determined by using the private key’s Public Key link to get the corresponding public key (where relevant),
-/// and then using that public key’s PKCS#12 Certificate Link to get the base certificate, and then using each
-/// certificate’s Certificate Link to build the certificate chain. It is an error if there is more than one valid
+/// private key or certificate's PKCS#12 Password Link. The current certificate chain shall also be included as
+/// determined by using the private key's Public Key link to get the corresponding public key (where relevant),
+/// and then using that public key's PKCS#12 Certificate Link to get the base certificate, and then using each
+/// certificate's Certificate Link to build the certificate chain. It is an error if there is more than one valid
 /// certificate chain.
 ///
 /// Specifying a value of Not Wrapped ensures that the server returns the unwrapped key value.
-/// A value of As Registered can be used to retrieve the key value as it was provided in the Register operation.  
-/// In the latter case, the wrapping key need not be known to the server.  
+/// A value of As Registered can be used to retrieve the key value as it was provided in the Register operation.
+/// In the latter case, the wrapping key need not be known to the server.
 ///
 /// If no Key Wrap Type is provided, then the server may choose to return the key either wrapped or unwrapped.
 /// A Get operation may use both a Key Wrap Type and a Wrapping Key Specification,
@@ -468,19 +469,20 @@ pub struct Get {
 }
 
 impl Get {
-    /// Create a GetRequest for an Object
+    /// Create a `GetRequest` for an Object
     /// # Arguments
     /// * `uid` - The Unique Identifier of the object to be retrieved
     /// * `unwrap` - If true, the object is returned unwrapped
     /// * `key_wrapping_data` - If unwrap is false, this is the key wrapping data to be used
     /// # Returns
-    /// A GetRequest
+    /// A `GetRequest`
     /// # Example
     /// ```
     /// use cosmian_kmip::kmip::kmip_operations::Get;
     ///
     /// let get_request = Get::new("1234", false, None);
     /// ```
+    #[must_use]
     pub fn new(uid: &str, unwrap: bool, key_wrapping_data: Option<KeyWrappingData>) -> Self {
         let key_wrap_type = if unwrap {
             // ignore key_wrapping_data if unwrap is true
@@ -504,19 +506,19 @@ impl Get {
 impl From<String> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: String) -> Self {
-        Get::new(&uid, false, None)
+        Self::new(&uid, false, None)
     }
 }
 impl From<&String> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: &String) -> Self {
-        Get::new(uid, false, None)
+        Self::new(uid, false, None)
     }
 }
 impl From<&str> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: &str) -> Self {
-        Get::new(uid, false, None)
+        Self::new(uid, false, None)
     }
 }
 

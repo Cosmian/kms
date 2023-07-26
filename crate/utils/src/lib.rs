@@ -31,16 +31,19 @@ pub trait DecryptionSystem {
 pub struct KeyPair(pub (Object, Object));
 impl KeyPair {
     /// Create a new `KeyPair` from a private and public key
+    #[must_use]
     pub fn new(private_key: Object, public_key: Object) -> Self {
         Self((private_key, public_key))
     }
 
     /// Get the private key
+    #[must_use]
     pub fn private_key(&self) -> &Object {
         &self.0.0
     }
 
     /// Get the public key
+    #[must_use]
     pub fn public_key(&self) -> &Object {
         &self.0.1
     }
