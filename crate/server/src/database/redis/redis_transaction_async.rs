@@ -5,8 +5,10 @@ use redis::{aio::ConnectionManager, cmd, pipe, Pipeline, RedisResult, ToRedisArg
 
 use crate::result::KResult;
 
-#[allow(dead_code)]
-pub async fn transaction_async<
+/// This function encapsulates the boilerplate required to establish a Redis transaction.
+/// Do not use it directly but use the `transaction_async!` macro instead.
+/// See the `transaction_async!` macro for more details.
+pub(crate) async fn transaction_async<
     T,
     K: ToRedisArgs,
     F: FnMut(
@@ -68,15 +70,20 @@ pub async fn transaction_async<
 /// Example with function path:
 ///
 /// ```
-/// async fn return_blah(
-///     _mgr: ConnectionManager,
-///     _pipeline: Pipeline,
-/// ) -> Result<Option<String>, RedisError> {
-///     Ok(Some("blah".to_string()))
-/// }
+///async fn return_blah(
+///     mut mgr: ConnectionManager,
+///     mut pipeline: Pipeline,
+///) -> Result<Option<Vec<String>>, RedisError> {
+///     pipeline
+///         .set("key", "blah")
+///         .ignore()
+///         .get("key")
+///         .query_async(&mut mgr)
+///     .await
+///}
 ///
 /// let res = transaction_async!(mgr.clone(), &["key"], return_blah)?;
-/// assert_eq!(res, "blah".to_string());
+/// assert_eq!(res, vec!["blah".to_string()]);
 /// ```
 ///
 /// Example with lambda function:
@@ -143,14 +150,19 @@ mod tests {
         let mgr = ConnectionManager::new(client).await?;
 
         async fn return_blah(
-            _mgr: ConnectionManager,
-            _pipeline: Pipeline,
-        ) -> Result<Option<String>, RedisError> {
-            Ok(Some("blah".to_string()))
+            mut mgr: ConnectionManager,
+            mut pipeline: Pipeline,
+        ) -> Result<Option<Vec<String>>, RedisError> {
+            pipeline
+                .set("key", "blah")
+                .ignore()
+                .get("key")
+                .query_async(&mut mgr)
+                .await
         }
 
         let res = transaction_async!(mgr.clone(), &["key"], return_blah)?;
-        assert_eq!(res, "blah".to_string());
+        assert_eq!(res, vec!["blah".to_string()]);
 
         let res: Vec<String> = transaction_async!(
             mgr.clone(),

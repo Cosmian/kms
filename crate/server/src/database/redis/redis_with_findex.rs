@@ -16,7 +16,7 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
 use futures::lock::Mutex;
-use redis::{aio::ConnectionManager, pipe, AsyncCommands};
+use redis::{aio::ConnectionManager, pipe, AsyncCommands, Pipeline};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -24,6 +24,7 @@ use crate::{
     database::{object_with_metadata::ObjectWithMetadata, Database},
     kms_error,
     result::{KResult, KResultHelper},
+    transaction_async,
 };
 
 fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<Location> {
@@ -236,6 +237,19 @@ impl ObjectsDB {
         permissions: HashSet<ObjectOperationType>,
     ) -> KResult<HashSet<ObjectOperationType>> {
         let key = ObjectsDB::permissions_key(uid, user_id);
+        transaction_async!(
+            self.mgr.clone(),
+            &[key],
+            |mut mgr: ConnectionManager, mut pipeline: Pipeline| async move {
+                let old_val: Vec<u8> = mgr.get(key).await?;
+                let mut permissions: HashSet<ObjectOperationType> =
+                    serde_json::from_slice(&old_val)
+                        .map_err(|_| kms_error!("Invalid permissions"))?;
+                permissions.extend(permissions);
+                pipeline.set(key, serde_json::to_vec(&permissions)?);
+                pipeline.query_async(&mut mgr).await
+            }
+        )?;
 
         // loop {
         //     cmd("WATCH").arg(vec![key]).query_async(&mut self.mgr.clone()).await?;
