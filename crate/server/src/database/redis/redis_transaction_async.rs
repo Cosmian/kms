@@ -10,19 +10,22 @@ pub(crate) async fn transaction_async<
     T,
     E: From<RedisError>,
     K: ToRedisArgs,
-    F: FnMut(
+    F: Fn(
         ConnectionManager,
         &mut Pipeline,
+        CTX,
     ) -> Pin<Box<dyn Future<Output = Result<Option<T>, E>> + Send>>,
+    CTX: Clone,
 >(
     mut mgr: ConnectionManager,
     keys: &[K],
-    mut func: F,
+    context: CTX,
+    func: F,
 ) -> Result<T, E> {
     loop {
         cmd("WATCH").arg(keys).query_async(&mut mgr).await?;
         let mut p = pipe();
-        let response: Option<T> = func(mgr.clone(), p.atomic()).await?;
+        let response: Option<T> = func(mgr.clone(), p.atomic(), context.clone()).await?;
         match response {
             None => {
                 println!("retrying transaction");
@@ -60,48 +63,12 @@ pub(crate) async fn transaction_async<
 ///
 /// - `$mgr`: A cloned connection manager for Redis.
 /// - `$key`: A key (or array of keys) for the Redis operation.
+/// - `$context`: An optional cloneable context passed to the function.
 /// - `$func`: Either a path to a function or a lambda function. This function
 ///   should have the signature `async fn(ConnectionManager, Pipeline) -> Result<Option<T>, RedisError>`
 ///   where `T` is the expected return type.
 ///
 /// # Examples
-///
-/// Example with function path:
-///
-/// ```
-///async fn return_blah(
-///     mut mgr: ConnectionManager,
-///     mut pipeline: Pipeline,
-///) -> Result<Option<Vec<String>>, RedisError> {
-///     pipeline
-///         .set("key", "blah")
-///         .ignore()
-///         .get("key")
-///         .query_async(&mut mgr)
-///     .await
-///}
-///
-/// let res = transaction_async!(mgr.clone(), &["key"], return_blah)?;
-/// assert_eq!(res, vec!["blah".to_string()]);
-/// ```
-///
-/// Example with lambda function:
-///
-/// ```
-/// let res: Vec<String> = transaction_async!(
-///     mgr.clone(),
-///     &["key"],
-///     |mut mgr: ConnectionManager, mut pipeline: Pipeline| async move {
-///         pipeline
-///             .set("key", "blah")
-///             .ignore()
-///             .get("key")
-///             .query_async(&mut mgr)
-///             .await
-///     }
-/// )?;
-/// assert_eq!(res, vec!["blah".to_string()]);
-/// ```
 ///
 /// # Returns
 ///
@@ -110,18 +77,28 @@ pub(crate) async fn transaction_async<
 /// Note: This macro is exported so it can be used in other modules.
 #[macro_export]
 macro_rules! transaction_async {
-    ($mgr:expr, $key:expr, $func:path) => {{
-        $crate::database::redis::transaction_async($mgr, $key, |mgr, pipeline| {
-            let pipeline = pipeline.clone();
-            Box::pin(async move { $func(mgr, pipeline).await })
-        })
+    ($mgr:expr, $key:expr, $context:expr, $func:path) => {{
+        $crate::database::redis::transaction_async(
+            $mgr,
+            $key,
+            $context,
+            |mgr, pipeline, context| {
+                let pipeline = pipeline.clone();
+                Box::pin(async move { $func(mgr, pipeline, context).await })
+            },
+        )
         .await
     }};
-    ($mgr:expr, $key:expr, $func:expr) => {{
-        $crate::database::redis::transaction_async($mgr, $key, |mgr, pipeline| {
-            let pipeline = pipeline.clone();
-            Box::pin($func(mgr, pipeline))
-        })
+    ($mgr:expr, $key:expr, $context:expr, $func:expr) => {{
+        $crate::database::redis::transaction_async(
+            $mgr,
+            $key,
+            $context,
+            |mgr, pipeline, context| {
+                let pipeline = pipeline.clone();
+                Box::pin($func(mgr, pipeline, context))
+            },
+        )
         .await
     }};
 }
@@ -143,32 +120,47 @@ mod tests {
         log_init("test_permissions_db=trace");
         trace!("test_permissions_db");
 
-        // transaction(con, keys, func)
-
         let client = redis::Client::open(REDIS_URL)?;
         let mgr = ConnectionManager::new(client).await?;
+
+        #[derive(Clone)]
+        struct Context {
+            new_value: String,
+        }
 
         async fn return_blah(
             mut mgr: ConnectionManager,
             mut pipeline: Pipeline,
-        ) -> Result<Option<Vec<String>>, RedisError> {
-            pipeline
-                .set("key", "blah")
+            context: Context,
+        ) -> KResult<Option<Vec<String>>> {
+            let res = pipeline
+                .set("key", context.new_value)
                 .ignore()
                 .get("key")
                 .query_async(&mut mgr)
-                .await
+                .await?;
+            Ok(res)
         }
 
-        let res = transaction_async!(mgr.clone(), &["key"], return_blah)?;
+        let res = transaction_async!(
+            mgr.clone(),
+            &["key"],
+            Context {
+                new_value: "blah".to_string(),
+            },
+            return_blah
+        )?;
         assert_eq!(res, vec!["blah".to_string()]);
 
         let res: Vec<String> = transaction_async!(
             mgr.clone(),
             &["key"],
-            |mut mgr: ConnectionManager, mut pipeline: Pipeline| async move {
+            Context {
+                new_value: "blah".to_string(),
+            },
+            |mut mgr: ConnectionManager, mut pipeline: Pipeline, context: Context| async move {
                 pipeline
-                    .set("key", "blah")
+                    .set("key", context.new_value)
                     .ignore()
                     .get("key")
                     .query_async(&mut mgr)
@@ -182,10 +174,11 @@ mod tests {
         async fn modify_key(
             mut mgr: ConnectionManager,
             mut pipeline: Pipeline,
+            context: Context,
         ) -> Result<Option<Vec<String>>, RedisError> {
             let value: String = mgr.get("key").await?;
             // do some dummy stuff
-            let new_value = format!("{}{}", value, value);
+            let new_value = format!("{}->{}", value, context.new_value);
             pipeline
                 .set("key", &new_value)
                 .ignore()
@@ -193,7 +186,14 @@ mod tests {
                 .query_async(&mut mgr)
                 .await
         }
-        let new_value: Vec<String> = transaction_async!(mgr.clone(), &["key"], modify_key)?;
+        let new_value: Vec<String> = transaction_async!(
+            mgr.clone(),
+            &["key"],
+            Context {
+                new_value: "new".to_string()
+            },
+            modify_key
+        )?;
         let actual_value: String = mgr.clone().get("key").await?;
         assert_eq!(new_value[0], actual_value);
 

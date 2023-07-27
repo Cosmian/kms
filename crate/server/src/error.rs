@@ -8,6 +8,7 @@ use cosmian_kmip::{
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
 use cosmian_kms_utils::error::KmipUtilsError;
+use redis::ErrorKind;
 use thiserror::Error;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
@@ -175,6 +176,12 @@ impl From<SendError<ServerHandle>> for KmsError {
 impl From<redis::RedisError> for KmsError {
     fn from(err: redis::RedisError) -> Self {
         KmsError::Redis(err.to_string())
+    }
+}
+
+impl From<KmsError> for redis::RedisError {
+    fn from(val: KmsError) -> Self {
+        redis::RedisError::from((ErrorKind::ClientError, "KMS Error", val.to_string()))
     }
 }
 

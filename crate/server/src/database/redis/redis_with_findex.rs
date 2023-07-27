@@ -14,9 +14,12 @@ use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
+use cosmian_kms_utils::{
+    access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType},
+    tagging::get_tags,
+};
 use futures::lock::Mutex;
-use redis::{aio::ConnectionManager, pipe, AsyncCommands, Pipeline};
+use redis::{aio::ConnectionManager, pipe, AsyncCommands, ErrorKind, Pipeline};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -27,10 +30,35 @@ use crate::{
     transaction_async,
 };
 
+/// Find the intersection of all the sets
 fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<Location> {
     let mut iter = sets.into_iter();
     let first = iter.next().unwrap_or_default();
     iter.fold(first, |acc, set| acc.intersection(&set).cloned().collect())
+}
+
+/// Extract the keywords from the attributes
+fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keyword> {
+    let mut keywords = HashSet::new();
+    if let Some(algo) = attributes.cryptographic_algorithm {
+        keywords.insert(Keyword::from(algo.to_string().as_bytes()));
+    }
+    if let Some(key_format_type) = attributes.key_format_type {
+        keywords.insert(Keyword::from(key_format_type.to_string().as_bytes()));
+    }
+    if let Some(cryptographic_length) = attributes.cryptographic_length {
+        keywords.insert(Keyword::from(cryptographic_length.to_be_bytes().as_slice()));
+    }
+    if let Some(links) = &attributes.link {
+        for link in links {
+            match serde_json::to_vec(link) {
+                Ok(bytes) => keywords.insert(Keyword::from(bytes.as_slice())),
+                // ignore malformed links (this should never be possible)
+                Err(_) => continue,
+            };
+        }
+    }
+    keywords
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -72,15 +100,7 @@ impl RedisDbObject {
             .collect::<HashSet<Keyword>>();
         // index some of the attributes
         if let Ok(attributes) = self.object.attributes() {
-            if let Some(algo) = attributes.cryptographic_algorithm {
-                keywords.insert(Keyword::from(algo.to_string().as_bytes()));
-            }
-            if let Some(key_format_type) = attributes.key_format_type {
-                keywords.insert(Keyword::from(key_format_type.to_string().as_bytes()));
-            }
-            if let Some(cryptographic_length) = attributes.cryptographic_length {
-                keywords.insert(Keyword::from(cryptographic_length.to_be_bytes().as_slice()));
-            }
+            keywords.extend(keywords_from_attributes(&attributes));
         }
         // index the owner
         keywords.insert(Keyword::from(self.owner.as_bytes()));
@@ -230,60 +250,104 @@ impl ObjectsDB {
         Ok(permissions)
     }
 
-    pub async fn permissions_add(
+    pub async fn permission_add(
         &self,
         uid: &str,
         user_id: &str,
-        permissions: HashSet<ObjectOperationType>,
-    ) -> KResult<HashSet<ObjectOperationType>> {
+        permission: ObjectOperationType,
+    ) -> KResult<()> {
+        #[derive(Clone)]
+        struct Context {
+            key: String,
+            permission: ObjectOperationType,
+        }
         let key = ObjectsDB::permissions_key(uid, user_id);
+        let ctx = Context {
+            key: key.clone(),
+            permission,
+        };
         transaction_async!(
             self.mgr.clone(),
-            &[key],
-            |mut mgr: ConnectionManager, mut pipeline: Pipeline| async move {
-                let old_val: Vec<u8> = mgr.get(key).await?;
-                let mut permissions: HashSet<ObjectOperationType> =
-                    serde_json::from_slice(&old_val)
-                        .map_err(|_| kms_error!("Invalid permissions"))?;
-                permissions.extend(permissions);
-                pipeline.set(key, serde_json::to_vec(&permissions)?);
-                pipeline.query_async(&mut mgr).await
+            &[key.clone()],
+            ctx,
+            |mut mgr: ConnectionManager, mut pipeline: Pipeline, ctx: Context| async move {
+                let old_val: Vec<u8> = mgr.get(&ctx.key).await?;
+                let mut current_permissions: HashSet<ObjectOperationType> =
+                    serde_json::from_slice(&old_val).map_err(|e| {
+                        redis::RedisError::from((
+                            ErrorKind::ClientError,
+                            "Permissions deserialization error",
+                            e.to_string(),
+                        ))
+                    })?;
+                current_permissions.insert(ctx.permission);
+                pipeline
+                    .set(
+                        &ctx.key,
+                        serde_json::to_vec(&current_permissions).map_err(|e| {
+                            redis::RedisError::from((
+                                ErrorKind::ClientError,
+                                "Permissions serialization error",
+                                e.to_string(),
+                            ))
+                        })?,
+                    )
+                    .ignore()
+                    .query_async(&mut mgr)
+                    .await
             }
         )?;
+        Ok(())
+    }
 
-        // loop {
-        //     cmd("WATCH").arg(vec![key]).query_async(&mut self.mgr.clone()).await?;
-
-        //     let permissions = self.permissions_get(uid, user_id).await ?;
-
-        //     let response: Option<T> = ;
-        //     match response {
-        //         None => continue,
-        //         Some(response) => {
-        //             // make sure no watch is left in the connection, even if
-        //             // someone forgot to use the pipeline.
-        //             cmd("UNWATCH").query_async(&mut mgr).await?;
-        //             return Ok(response)
-        //         }
-        //     }
-        // }
-
-        // transaction_async(self.mgr.clone(), &[key], async move |con, pipe| {
-        //     let old_val: isize = con.get(key).await?;
-        //     // pipe.set(key, old_val + 1)
-        //     //     .ignore()
-        //     //     .get(key)
-        //     //     .query_async(con.clone())
-        //     //     .await
-        // })
-        // .await?;
-        let bytes: Vec<u8> = self
-            .mgr
-            .clone()
-            .get(ObjectsDB::permissions_key(uid, user_id))
-            .await?;
-        let permissions: HashSet<ObjectOperationType> = serde_json::from_slice(&bytes)?;
-        Ok(permissions)
+    pub async fn permission_remove(
+        &self,
+        uid: &str,
+        user_id: &str,
+        permission: ObjectOperationType,
+    ) -> KResult<()> {
+        #[derive(Clone)]
+        struct Context {
+            key: String,
+            permission: ObjectOperationType,
+        }
+        let key = ObjectsDB::permissions_key(uid, user_id);
+        let ctx = Context {
+            key: key.clone(),
+            permission,
+        };
+        transaction_async!(
+            self.mgr.clone(),
+            &[key.clone()],
+            ctx,
+            |mut mgr: ConnectionManager, mut pipeline: Pipeline, ctx: Context| async move {
+                let old_val: Vec<u8> = mgr.get(&ctx.key).await?;
+                let mut current_permissions: HashSet<ObjectOperationType> =
+                    serde_json::from_slice(&old_val).map_err(|e| {
+                        redis::RedisError::from((
+                            ErrorKind::ClientError,
+                            "Permissions deserialization error",
+                            e.to_string(),
+                        ))
+                    })?;
+                current_permissions.remove(&ctx.permission);
+                pipeline
+                    .set(
+                        &ctx.key,
+                        serde_json::to_vec(&current_permissions).map_err(|e| {
+                            redis::RedisError::from((
+                                ErrorKind::ClientError,
+                                "Permissions serialization error",
+                                e.to_string(),
+                            ))
+                        })?,
+                    )
+                    .ignore()
+                    .query_async(&mut mgr)
+                    .await
+            }
+        )?;
+        Ok(())
     }
 
     pub async fn permissions_delete(&self, uid: &str, user_id: &str) -> KResult<()> {
@@ -666,9 +730,7 @@ impl Database for RedisWithFindex {
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        let mut permissions = self.db.permissions_get(uid, user).await?;
-        permissions.insert(operation_type);
-        self.db.permissions_upsert(uid, user, permissions).await?;
+        self.db.permission_add(uid, user, operation_type).await?;
         Ok(())
     }
 
@@ -679,9 +741,10 @@ impl Database for RedisWithFindex {
         uid: &str,
         user: &str,
         operation_type: ObjectOperationType,
-        params: Option<&ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        todo!()
+        self.db.permission_remove(uid, user, operation_type).await?;
+        Ok(())
     }
 
     /// Test if an object identified by its `uid` is currently owned by `owner`
@@ -689,9 +752,12 @@ impl Database for RedisWithFindex {
         &self,
         uid: &str,
         owner: &str,
-        params: Option<&ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
-        todo!()
+        self.db
+            .object_get(uid)
+            .await
+            .map(|object| object.owner == owner)
     }
 
     /// Return uid, state and attributes of the object identified by its owner,
@@ -704,7 +770,25 @@ impl Database for RedisWithFindex {
         user_must_be_owner: bool,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
-        todo!()
+        let keywords = {
+            if let Some(attributes) = researched_attributes {
+                let tags = get_tags(attributes);
+                let mut keywords = tags
+                    .iter()
+                    .map(|tag| Keyword::from(tag.as_bytes()))
+                    .collect::<HashSet<Keyword>>();
+                // index some of the attributes
+                keywords.extend(keywords_from_attributes(&attributes));
+                if user_must_be_owner {
+                    keywords.insert(Keyword::from(user.as_bytes()));
+                }
+                keywords
+            } else {
+                HashSet::new()
+            }
+        };
+
+        Ok(())
     }
 
     #[cfg(test)]
