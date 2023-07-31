@@ -6,11 +6,10 @@ use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_types::{Attributes, StateEnumeration},
 };
-use cosmian_kms_utils::access::ObjectOperationType;
-use redis::{aio::ConnectionManager, pipe, AsyncCommands, ErrorKind, Pipeline};
+use redis::{aio::ConnectionManager, pipe, AsyncCommands};
 use serde::{Deserialize, Serialize};
 
-use crate::{result::KResult, transaction_async};
+use crate::result::KResult;
 
 /// Extract the keywords from the attributes
 pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keyword> {
@@ -144,6 +143,9 @@ impl ObjectsDB {
         let bytes: Vec<Vec<u8>> = pipeline.query_async(&mut self.mgr.clone()).await?;
         let mut results = HashMap::new();
         for (uid, bytes) in uids.iter().zip(bytes) {
+            if bytes.is_empty() {
+                continue
+            }
             let mut dbo: RedisDbObject = serde_json::from_slice(&bytes)?;
             dbo.object = Object::post_fix(dbo.object_type, dbo.object);
             results.insert(uid.to_string(), dbo);
@@ -151,192 +153,11 @@ impl ObjectsDB {
         Ok(results)
     }
 
-    fn permissions_key(uid: &str, user_id: &str) -> String {
-        format!("dp::{}::{}", uid, user_id)
-    }
-
-    /// List all the permissions granted to the user
-    /// per object uid
-    pub async fn list_user_permissions(
-        &self,
-        user_id: &str,
-    ) -> KResult<HashMap<String, Vec<ObjectOperationType>>> {
-        let wildcard = format!("dp::*::{}", user_id);
-        let keys: Vec<String> = self.mgr.clone().keys(&wildcard).await?;
-        // recover the corresponding permissions
-        let values: Vec<Vec<u8>> = self.mgr.clone().mget(&keys).await?;
-        keys.into_iter()
-            .zip(values)
-            .map(|(k, v)| {
-                let uid = k.replace(&wildcard, "");
-                let permissions: HashSet<ObjectOperationType> = serde_json::from_slice(&v)?;
-                Ok((uid, permissions.into_iter().collect()))
-            })
-            .collect::<KResult<HashMap<String, Vec<ObjectOperationType>>>>()
-    }
-
-    /// List all the permissions granted on an object
-    /// per user id
-    pub async fn list_object_permissions(
-        &self,
-        uid: &str,
-    ) -> KResult<HashMap<String, Vec<ObjectOperationType>>> {
-        let wildcard = format!("dp::{}::*", uid);
-        let keys: Vec<String> = self.mgr.clone().keys(&wildcard).await?;
-        // recover the corresponding permissions
-        let values: Vec<Vec<u8>> = self.mgr.clone().mget(&keys).await?;
-        keys.into_iter()
-            .zip(values)
-            .map(|(k, v)| {
-                let user_id = k.replace(&wildcard, "");
-                let permissions: HashSet<ObjectOperationType> = serde_json::from_slice(&v)?;
-                Ok((user_id, permissions.into_iter().collect()))
-            })
-            .collect::<KResult<HashMap<String, Vec<ObjectOperationType>>>>()
-    }
-
-    pub async fn permissions_upsert(
-        &self,
-        uid: &str,
-        user_id: &str,
-        permissions: HashSet<ObjectOperationType>,
-    ) -> KResult<()> {
-        self.mgr
-            .clone()
-            .set(
-                ObjectsDB::permissions_key(uid, user_id),
-                serde_json::to_vec(&permissions)?,
-            )
-            .await?;
-        Ok(())
-    }
-
-    pub async fn permissions_get(
-        &self,
-        uid: &str,
-        user_id: &str,
-    ) -> KResult<HashSet<ObjectOperationType>> {
-        let bytes: Vec<u8> = self
-            .mgr
-            .clone()
-            .get(ObjectsDB::permissions_key(uid, user_id))
-            .await?;
-        let permissions: HashSet<ObjectOperationType> = serde_json::from_slice(&bytes)?;
-        Ok(permissions)
-    }
-
-    pub async fn permission_add(
-        &self,
-        uid: &str,
-        user_id: &str,
-        permission: ObjectOperationType,
-    ) -> KResult<()> {
-        #[derive(Clone)]
-        struct Context {
-            key: String,
-            permission: ObjectOperationType,
-        }
-        let key = ObjectsDB::permissions_key(uid, user_id);
-        let ctx = Context {
-            key: key.clone(),
-            permission,
-        };
-        transaction_async!(
-            self.mgr.clone(),
-            &[key.clone()],
-            ctx,
-            |mut mgr: ConnectionManager, mut pipeline: Pipeline, ctx: Context| async move {
-                let old_val: Vec<u8> = mgr.get(&ctx.key).await?;
-                let mut current_permissions: HashSet<ObjectOperationType> =
-                    serde_json::from_slice(&old_val).map_err(|e| {
-                        redis::RedisError::from((
-                            ErrorKind::ClientError,
-                            "Permissions deserialization error",
-                            e.to_string(),
-                        ))
-                    })?;
-                current_permissions.insert(ctx.permission);
-                pipeline
-                    .set(
-                        &ctx.key,
-                        serde_json::to_vec(&current_permissions).map_err(|e| {
-                            redis::RedisError::from((
-                                ErrorKind::ClientError,
-                                "Permissions serialization error",
-                                e.to_string(),
-                            ))
-                        })?,
-                    )
-                    .ignore()
-                    .query_async(&mut mgr)
-                    .await
-            }
-        )?;
-        Ok(())
-    }
-
-    pub async fn permission_remove(
-        &self,
-        uid: &str,
-        user_id: &str,
-        permission: ObjectOperationType,
-    ) -> KResult<()> {
-        #[derive(Clone)]
-        struct Context {
-            key: String,
-            permission: ObjectOperationType,
-        }
-        let key = ObjectsDB::permissions_key(uid, user_id);
-        let ctx = Context {
-            key: key.clone(),
-            permission,
-        };
-        transaction_async!(
-            self.mgr.clone(),
-            &[key.clone()],
-            ctx,
-            |mut mgr: ConnectionManager, mut pipeline: Pipeline, ctx: Context| async move {
-                let old_val: Vec<u8> = mgr.get(&ctx.key).await?;
-                let mut current_permissions: HashSet<ObjectOperationType> =
-                    serde_json::from_slice(&old_val).map_err(|e| {
-                        redis::RedisError::from((
-                            ErrorKind::ClientError,
-                            "Permissions deserialization error",
-                            e.to_string(),
-                        ))
-                    })?;
-                current_permissions.remove(&ctx.permission);
-                pipeline
-                    .set(
-                        &ctx.key,
-                        serde_json::to_vec(&current_permissions).map_err(|e| {
-                            redis::RedisError::from((
-                                ErrorKind::ClientError,
-                                "Permissions serialization error",
-                                e.to_string(),
-                            ))
-                        })?,
-                    )
-                    .ignore()
-                    .query_async(&mut mgr)
-                    .await
-            }
-        )?;
-        Ok(())
-    }
-
-    pub async fn permissions_delete(&self, uid: &str, user_id: &str) -> KResult<()> {
-        self.mgr
-            .clone()
-            .del(ObjectsDB::permissions_key(uid, user_id))
-            .await?;
-        Ok(())
-    }
-
     /// Clear all data
     ///
     /// # Warning
     /// This is definitive
+    #[cfg(test)]
     pub async fn clear_all(&self) -> KResult<()> {
         redis::cmd("FLUSHDB")
             .query_async(&mut self.mgr.clone())
@@ -364,7 +185,7 @@ mod tests {
         CsRng,
     };
     use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration};
-    use cosmian_kms_utils::{access::ObjectOperationType, crypto::symmetric::create_symmetric_key};
+    use cosmian_kms_utils::crypto::symmetric::create_symmetric_key;
     use redis::aio::ConnectionManager;
     use serial_test::serial;
     use tracing::trace;
@@ -422,41 +243,6 @@ mod tests {
 
         o_db.object_delete(uid).await?;
         assert!(o_db.object_get(uid).await.is_err());
-
-        Ok(())
-    }
-
-    #[actix_web::test]
-    #[serial]
-    pub async fn test_permissions_db() -> KResult<()> {
-        log_init("test_permissions_db=trace");
-        trace!("test_permissions_db");
-
-        let client = redis::Client::open(REDIS_URL)?;
-        let mgr = ConnectionManager::new(client).await?;
-
-        let o_db = ObjectsDB::new(mgr.clone()).await?;
-
-        // single upsert - get - delete
-        let uid = "test_permissions_db";
-        let user_id = "user";
-
-        let permissions =
-            HashSet::from([ObjectOperationType::Encrypt, ObjectOperationType::Decrypt]);
-
-        // clean up
-        o_db.clear_all().await?;
-
-        // check that the permissions is not there
-        assert!(o_db.permissions_get(uid, user_id).await.is_err());
-
-        o_db.permissions_upsert(uid, user_id, permissions.clone())
-            .await?;
-        let permissions2 = o_db.permissions_get(uid, user_id).await?;
-        assert_eq!(permissions2, permissions);
-
-        o_db.permissions_delete(uid, user_id).await?;
-        assert!(o_db.permissions_get(uid, user_id).await.is_err());
 
         Ok(())
     }

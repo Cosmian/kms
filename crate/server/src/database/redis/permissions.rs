@@ -72,7 +72,7 @@ impl TryFrom<&Location> for Triple {
     type Error = KmsError;
 
     fn try_from(value: &Location) -> Result<Self, Self::Error> {
-        let value = String::from_utf8((&value).to_vec())?;
+        let value = String::from_utf8((value).to_vec())?;
         let mut parts = value.split("::");
         let uid = parts.next().ok_or_else(|| {
             KmsError::ConversionError(format!("invalid permissions triple: {:?}", parts))
@@ -180,11 +180,7 @@ impl PermissionsDB {
     }
 
     /// List all the permissions granted to the user on an object
-    pub async fn permissions_get(
-        &self,
-        obj_uid: &str,
-        user_id: &str,
-    ) -> KResult<HashSet<ObjectOperationType>> {
+    pub async fn get(&self, obj_uid: &str, user_id: &str) -> KResult<HashSet<ObjectOperationType>> {
         Ok(self
             .search_one_keyword(&Triple::build_key(obj_uid, user_id))
             .await?
@@ -194,7 +190,7 @@ impl PermissionsDB {
     }
 
     /// Add a permission to the user on an object
-    pub async fn permission_add(
+    pub async fn add(
         &self,
         obj_uid: &str,
         user_id: &str,
@@ -265,7 +261,7 @@ impl PermissionsDB {
     }
 
     /// Remove a permission to the user on an object
-    pub async fn permission_remove(
+    pub async fn remove(
         &self,
         obj_uid: &str,
         user_id: &str,
@@ -398,11 +394,11 @@ mod tests {
 
         // let us add the permission Encrypt on object O1 for user U1
         permissions_db
-            .permission_add("O1", "U1", ObjectOperationType::Encrypt)
+            .add("O1", "U1", ObjectOperationType::Encrypt)
             .await?;
 
         // verify that the permission is present
-        let permissions = permissions_db.permissions_get("O1", "U1").await?;
+        let permissions = permissions_db.get("O1", "U1").await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains(&ObjectOperationType::Encrypt));
 
@@ -426,11 +422,11 @@ mod tests {
 
         // add the permission Decrypt to user U1 for object O1
         permissions_db
-            .permission_add("O1", "U1", ObjectOperationType::Decrypt)
+            .add("O1", "U1", ObjectOperationType::Decrypt)
             .await?;
 
         // assert the permission is present
-        let permissions = permissions_db.permissions_get("O1", "U1").await?;
+        let permissions = permissions_db.get("O1", "U1").await?;
         assert_eq!(permissions.len(), 2);
         assert!(permissions.contains(&ObjectOperationType::Encrypt));
         assert!(permissions.contains(&ObjectOperationType::Decrypt));
@@ -458,10 +454,10 @@ mod tests {
 
         // let us add the permission Encrypt on object O1 for user U2
         permissions_db
-            .permission_add("O1", "U2", ObjectOperationType::Encrypt)
+            .add("O1", "U2", ObjectOperationType::Encrypt)
             .await?;
         // assert the permission is present
-        let permissions = permissions_db.permissions_get("O1", "U2").await?;
+        let permissions = permissions_db.get("O1", "U2").await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains(&ObjectOperationType::Encrypt));
 
@@ -494,10 +490,10 @@ mod tests {
 
         // let us add the permission Encrypt on object O2 for user U2
         permissions_db
-            .permission_add("O2", "U2", ObjectOperationType::Encrypt)
+            .add("O2", "U2", ObjectOperationType::Encrypt)
             .await?;
         // assert the permission is present
-        let permissions = permissions_db.permissions_get("O2", "U2").await?;
+        let permissions = permissions_db.get("O2", "U2").await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains(&ObjectOperationType::Encrypt));
 
@@ -531,10 +527,10 @@ mod tests {
 
         // let us remove the permission Decrypt on object O1 for user U1
         permissions_db
-            .permission_remove("O1", "U1", ObjectOperationType::Decrypt)
+            .remove("O1", "U1", ObjectOperationType::Decrypt)
             .await?;
         // assert the permission Encrypt is present and Decrypt is not
-        let permissions = permissions_db.permissions_get("O1", "U1").await?;
+        let permissions = permissions_db.get("O1", "U1").await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains(&ObjectOperationType::Encrypt));
 
@@ -563,10 +559,10 @@ mod tests {
 
         // let us remove the permission Encrypt on object O1 for user U1
         permissions_db
-            .permission_remove("O1", "U1", ObjectOperationType::Encrypt)
+            .remove("O1", "U1", ObjectOperationType::Encrypt)
             .await?;
         // assert the permission is not present
-        let permissions = permissions_db.permissions_get("O1", "U1").await?;
+        let permissions = permissions_db.get("O1", "U1").await?;
         assert_eq!(permissions.len(), 0);
 
         // find the permissions for user U1
@@ -584,10 +580,10 @@ mod tests {
 
         // let us remove the permission Encrypt on object O1 for user U2
         permissions_db
-            .permission_remove("O1", "U2", ObjectOperationType::Encrypt)
+            .remove("O1", "U2", ObjectOperationType::Encrypt)
             .await?;
         // assert the permission is not present
-        let permissions = permissions_db.permissions_get("O1", "U2").await?;
+        let permissions = permissions_db.get("O1", "U2").await?;
         assert_eq!(permissions.len(), 0);
 
         // find the permissions for user U2
@@ -628,11 +624,11 @@ mod tests {
 
         // remove a permission that does not exist
         permissions_db
-            .permission_remove("O1", "U1", ObjectOperationType::Encrypt)
+            .remove("O1", "U1", ObjectOperationType::Encrypt)
             .await?;
 
         // test that it does not exist
-        let permissions = permissions_db.permissions_get("O1", "U1").await?;
+        let permissions = permissions_db.get("O1", "U1").await?;
         assert_eq!(permissions.len(), 0);
 
         // test there are no permissions for user U1
@@ -645,7 +641,7 @@ mod tests {
 
         //add the permission Encrypt on object O1 for user U1
         permissions_db
-            .permission_add("O1", "U1", ObjectOperationType::Encrypt)
+            .add("O1", "U1", ObjectOperationType::Encrypt)
             .await?;
 
         // test there is one permission for user U1
@@ -668,7 +664,7 @@ mod tests {
 
         // remove the permission again
         permissions_db
-            .permission_remove("O1", "U1", ObjectOperationType::Encrypt)
+            .remove("O1", "U1", ObjectOperationType::Encrypt)
             .await?;
 
         // test there are no permissions for user U1

@@ -73,7 +73,7 @@ pub async fn tx_and_list<DB: Database>(
             assert_eq!(&StateEnumeration::Active, state_);
             assert!(!*is_wrapped);
         }
-        None => todo!(),
+        None => kms_bail!("The object 1, uid_1 should be in the list"),
     }
     match list
         .iter()
@@ -84,7 +84,7 @@ pub async fn tx_and_list<DB: Database>(
             assert_eq!(&StateEnumeration::Active, state_);
             assert!(!*is_wrapped);
         }
-        None => todo!(),
+        None => kms_bail!("The object 2, uid_2 should be in the list"),
     }
 
     db.delete(&uid_1, owner, db_params).await?;

@@ -14,6 +14,7 @@ use std::{
 
 use alcoholic_jwt::JWKS;
 use clap::Parser;
+use cloudproof::reexport::crypto_core::symmetric_crypto::key::Key;
 use libsgx::utils::is_running_inside_enclave;
 use openssl::{pkcs12::ParsedPkcs12_2, x509::X509};
 use tracing::info;
@@ -24,6 +25,7 @@ use crate::{
         jwe::JWEConfig, jwt_auth_config::JwtAuthConfig, workspace::WorkspaceConfig,
     },
     core::certbot::Certbot,
+    database::redis::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
     result::KResult,
 };
 
@@ -94,10 +96,12 @@ pub enum DbParams {
     Sqlite(PathBuf),
     // contains the dir of the sqlcipher db file (not the db file itself)
     SqliteEnc(PathBuf),
-    // contains the postgres connection URL
+    // contains the Postgres connection URL
     Postgres(String),
-    // contains the mysql connection URL
+    // contains the MySql connection URL
     Mysql(String),
+    // contains the Redis connection URL
+    RedisFindex(String, Key<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>, Vec<u8>),
 }
 
 #[derive(Clone, Debug)]

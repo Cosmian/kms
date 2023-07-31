@@ -36,7 +36,8 @@ use crate::{
     core::operations::unwrap_key,
     database::{
         cached_sqlcipher::CachedSqlCipher, mysql::MySqlPool,
-        object_with_metadata::ObjectWithMetadata, pgsql::PgPool, sqlite::SqlitePool, Database,
+        object_with_metadata::ObjectWithMetadata, pgsql::PgPool, redis::RedisWithFindex,
+        sqlite::SqlitePool, Database,
     },
     error::KmsError,
     kms_bail, kms_not_supported,
@@ -58,6 +59,9 @@ impl KMS {
             }
             DbParams::Mysql(url) => {
                 Box::new(MySqlPool::instantiate(url, shared_config.clear_db_on_start).await?)
+            }
+            DbParams::RedisFindex(url, master_key, label) => {
+                Box::new(RedisWithFindex::instantiate(url, master_key.clone(), label).await?)
             }
         };
 

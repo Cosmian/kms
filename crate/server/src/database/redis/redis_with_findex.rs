@@ -5,7 +5,11 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::crypto_core::kdf;
+use cloudproof::reexport::crypto_core::{
+    kdf,
+    symmetric_crypto::{key::Key, SymKey},
+    KeyTrait,
+};
 use cosmian_findex_redis::{FindexRedis, IndexedValue, Keyword, Location, MASTER_KEY_LENGTH};
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
@@ -19,12 +23,17 @@ use futures::lock::Mutex;
 use redis::aio::ConnectionManager;
 use uuid::Uuid;
 
-use super::objects_db::{keywords_from_attributes, ObjectsDB, RedisDbObject, DB_KEY_LENGTH};
+use super::{
+    objects_db::{keywords_from_attributes, ObjectsDB, RedisDbObject, DB_KEY_LENGTH},
+    permissions::PermissionsDB,
+};
 use crate::{
     database::{object_with_metadata::ObjectWithMetadata, Database},
     kms_error,
     result::{KResult, KResultHelper},
 };
+
+pub const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
 
 /// Find the intersection of all the sets
 fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<Location> {
@@ -34,31 +43,35 @@ fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<
 }
 
 pub struct RedisWithFindex {
-    db: Arc<ObjectsDB>,
+    objects_db: Arc<ObjectsDB>,
+    permissions_db: PermissionsDB,
     //TODO this Mutex should not be here; Findex needs to be changed to be thread-safe and not take &mut self
     findex: Arc<Mutex<FindexRedis>>,
-    findex_key: [u8; MASTER_KEY_LENGTH],
+    findex_key: Key<MASTER_KEY_LENGTH>,
     label: Vec<u8>,
-    _db_key: [u8; DB_KEY_LENGTH],
+    _db_key: Key<DB_KEY_LENGTH>,
 }
 
 impl RedisWithFindex {
-    pub async fn new(
+    pub async fn instantiate(
         redis_url: &str,
-        master_key: &[u8; 32],
+        master_key: Key<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         label: &[u8],
     ) -> KResult<RedisWithFindex> {
-        let findex_key = kdf!(MASTER_KEY_LENGTH, master_key);
-        let _db_key = kdf!(DB_KEY_LENGTH, master_key);
+        let findex_key =
+            Key::<MASTER_KEY_LENGTH>::from_bytes(kdf!(MASTER_KEY_LENGTH, master_key.as_bytes()));
+        let _db_key = Key::<DB_KEY_LENGTH>::from_bytes(kdf!(DB_KEY_LENGTH, master_key.as_bytes()));
 
         let client = redis::Client::open(redis_url)?;
         let mgr = ConnectionManager::new(client).await?;
-        let db = Arc::new(ObjectsDB::new(mgr.clone()).await?);
+        let objects_db = Arc::new(ObjectsDB::new(mgr.clone()).await?);
         let findex = Arc::new(Mutex::new(
-            FindexRedis::connect_with_manager(mgr.clone(), db.clone()).await?,
+            FindexRedis::connect_with_manager(mgr.clone(), objects_db.clone()).await?,
         ));
+        let permissions_db = PermissionsDB::new(findex.clone(), findex_key.clone(), label).await?;
         Ok(Self {
-            db,
+            objects_db,
+            permissions_db,
             findex,
             findex_key,
             _db_key,
@@ -111,11 +124,16 @@ impl Database for RedisWithFindex {
             .lock()
             .await
             // .expect("findex lock is poisoned")
-            .upsert(&self.findex_key, &self.label, additions, HashMap::new())
+            .upsert(
+                &self.findex_key.to_bytes(),
+                &self.label,
+                additions,
+                HashMap::new(),
+            )
             .await?;
 
         // upsert the object
-        self.db
+        self.objects_db
             .object_upsert(
                 &uid,
                 &RedisDbObject::new(
@@ -173,11 +191,16 @@ impl Database for RedisWithFindex {
             .lock()
             .await
             // .expect("findex lock is poisoned")
-            .upsert(&self.findex_key, &self.label, additions, HashMap::new())
+            .upsert(
+                &self.findex_key.to_bytes(),
+                &self.label,
+                additions,
+                HashMap::new(),
+            )
             .await?;
 
         // upsert the objects
-        self.db.objects_upsert(&db_objects).await?;
+        self.objects_db.objects_upsert(&db_objects).await?;
 
         Ok(uids.into_iter().map(UniqueIdentifier::from).collect())
     }
@@ -208,7 +231,7 @@ impl Database for RedisWithFindex {
                 .findex
                 .lock()
                 .await
-                .search(&self.findex_key, &self.label, keywords)
+                .search(&self.findex_key.to_bytes(), &self.label, keywords)
                 .await?;
             // we want the intersection of all the locations
             let locations = intersect_all(res.values().cloned());
@@ -219,11 +242,12 @@ impl Database for RedisWithFindex {
                 })
                 .collect::<KResult<HashSet<String>>>()?
         } else {
+            // it is an UID
             HashSet::from([uid_or_tags.to_string()])
         };
 
         // now retrieve the object
-        let results = self.db.objects_get(&uids).await?;
+        let results = self.objects_db.objects_get(&uids).await?;
         let mut objects: Vec<ObjectWithMetadata> = vec![];
         for (uid, redis_db_object) in results {
             // if the user is the owner, return it
@@ -240,8 +264,8 @@ impl Database for RedisWithFindex {
 
             // fetch the permissions for the user
             let permissions = self
-                .db
-                .permissions_get(&uid, user)
+                .permissions_db
+                .get(&uid, user)
                 .await
                 .unwrap_or_default();
             if permissions.contains(&query_access_grant) {
@@ -263,7 +287,7 @@ impl Database for RedisWithFindex {
         uid: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
-        let redis_db_object = self.db.object_get(uid).await?;
+        let redis_db_object = self.objects_db.object_get(uid).await?;
         Ok(redis_db_object.tags)
     }
 
@@ -277,12 +301,12 @@ impl Database for RedisWithFindex {
         tags: Option<&HashSet<String>>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        let mut db_object = self.db.object_get(uid).await?;
+        let mut db_object = self.objects_db.object_get(uid).await?;
         db_object.object = object.clone();
         if let Some(tags) = tags {
             db_object.tags = tags.clone();
         }
-        self.db.object_upsert(uid, &db_object).await?;
+        self.objects_db.object_upsert(uid, &db_object).await?;
         Ok(())
     }
 
@@ -292,9 +316,9 @@ impl Database for RedisWithFindex {
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        let mut db_object = self.db.object_get(uid).await?;
+        let mut db_object = self.objects_db.object_get(uid).await?;
         db_object.state = state;
-        self.db.object_upsert(uid, &db_object).await?;
+        self.objects_db.object_upsert(uid, &db_object).await?;
         Ok(())
     }
 
@@ -302,14 +326,17 @@ impl Database for RedisWithFindex {
     async fn upsert(
         &self,
         uid: &str,
-        user: &str,
+        owner: &str,
         object: &Object,
         tags: &HashSet<String>,
         state: StateEnumeration,
-        _params: Option<&ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        let db_object = RedisDbObject::new(object.clone(), user.to_string(), state, tags.clone());
-        self.db.object_upsert(uid, &db_object).await?;
+        self.create(Some(uid.to_owned()), owner, object, tags, params)
+            .await?;
+        if state != StateEnumeration::Active {
+            self.update_state(uid, state, params).await?;
+        }
         Ok(())
     }
 
@@ -319,11 +346,11 @@ impl Database for RedisWithFindex {
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        let db_object = self.db.object_get(uid).await?;
+        let db_object = self.objects_db.object_get(uid).await?;
         if db_object.owner != user {
             return Err(kms_error!("User is not the owner of the object"))
         }
-        self.db.object_delete(uid).await?;
+        self.objects_db.object_delete(uid).await?;
         Ok(())
     }
 
@@ -340,9 +367,9 @@ impl Database for RedisWithFindex {
             IsWrapped,
         )>,
     > {
-        let permissions = self.db.list_user_permissions(user).await?;
+        let permissions = self.permissions_db.list_user_permissions(user).await?;
         let redis_db_objects = self
-            .db
+            .objects_db
             .objects_get(
                 &permissions
                     .keys()
@@ -358,7 +385,9 @@ impl Database for RedisWithFindex {
                     UniqueIdentifier::from(uid),
                     redis_db_object.owner,
                     redis_db_object.state,
-                    permissions,
+                    permissions
+                        .into_iter()
+                        .collect::<Vec<ObjectOperationType>>(),
                     false, // TODO: de-hardcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
                 )
             })
@@ -372,8 +401,11 @@ impl Database for RedisWithFindex {
         uid: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>> {
-        let permissions = self.db.list_object_permissions(uid).await?;
-        Ok(permissions.into_iter().collect())
+        let permissions = self.permissions_db.list_object_permissions(uid).await?;
+        Ok(permissions
+            .into_iter()
+            .map(|(user, permissions)| (user, permissions.into_iter().collect()))
+            .collect())
     }
 
     /// Grant the access right to `user` to perform the `operation_type`
@@ -385,7 +417,7 @@ impl Database for RedisWithFindex {
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        self.db.permission_add(uid, user, operation_type).await?;
+        self.permissions_db.add(uid, user, operation_type).await?;
         Ok(())
     }
 
@@ -398,7 +430,9 @@ impl Database for RedisWithFindex {
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        self.db.permission_remove(uid, user, operation_type).await?;
+        self.permissions_db
+            .remove(uid, user, operation_type)
+            .await?;
         Ok(())
     }
 
@@ -409,7 +443,7 @@ impl Database for RedisWithFindex {
         owner: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
-        self.db
+        self.objects_db
             .object_get(uid)
             .await
             .map(|object| object.owner == owner)
@@ -425,7 +459,7 @@ impl Database for RedisWithFindex {
         user_must_be_owner: bool,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
-        let keywords = {
+        let mut keywords = {
             if let Some(attributes) = researched_attributes {
                 let tags = get_tags(attributes);
                 let mut keywords = tags
@@ -434,14 +468,14 @@ impl Database for RedisWithFindex {
                     .collect::<HashSet<Keyword>>();
                 // index some of the attributes
                 keywords.extend(keywords_from_attributes(attributes));
-                if user_must_be_owner {
-                    keywords.insert(Keyword::from(user.as_bytes()));
-                }
                 keywords
             } else {
                 HashSet::new()
             }
         };
+        if user_must_be_owner {
+            keywords.insert(Keyword::from(user.as_bytes()));
+        }
         // if there are now keywords, we return an empty list
         if keywords.is_empty() {
             return Ok(vec![])
@@ -451,7 +485,7 @@ impl Database for RedisWithFindex {
             .findex
             .lock()
             .await
-            .search(&self.findex_key, &self.label, keywords)
+            .search(&self.findex_key.to_bytes(), &self.label, keywords)
             .await?;
         // we want the intersection of all the locations
         let locations = intersect_all(res.values().cloned());
@@ -463,7 +497,7 @@ impl Database for RedisWithFindex {
             .collect::<KResult<HashSet<String>>>()?;
         // if the user is not the owner, we need to check the permissions
         let uids = if !user_must_be_owner {
-            let permissions = self.db.list_user_permissions(user).await?;
+            let permissions = self.permissions_db.list_user_permissions(user).await?;
             uids.into_iter()
                 .filter(|uid| permissions.contains_key(uid))
                 .collect::<HashSet<String>>()
@@ -472,7 +506,7 @@ impl Database for RedisWithFindex {
         };
 
         // fetch the corresponding objects
-        let redis_db_objects = self.db.objects_get(&uids).await?;
+        let redis_db_objects = self.objects_db.objects_get(&uids).await?;
         Ok(redis_db_objects
             .into_iter()
             .filter(|(_uid, redis_db_object)| {
@@ -505,8 +539,8 @@ impl Database for RedisWithFindex {
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectOperationType>> {
         Ok(self
-            .db
-            .permissions_get(uid, userid)
+            .permissions_db
+            .get(uid, userid)
             .await
             .unwrap_or_default()
             .into_iter()
