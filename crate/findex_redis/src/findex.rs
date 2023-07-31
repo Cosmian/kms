@@ -115,7 +115,7 @@ impl FindexRedis {
         label: &[u8],
         additions: HashMap<IndexedValue, HashSet<Keyword>>,
         deletions: HashMap<IndexedValue, HashSet<Keyword>>,
-    ) -> Result<(), FindexError> {
+    ) -> Result<HashMap<Keyword, bool>, FindexError> {
         FindexUpsert::upsert(
             self,
             &KeyingMaterial::<MASTER_KEY_LENGTH>::from(*master_key),
@@ -123,8 +123,8 @@ impl FindexRedis {
             additions,
             deletions,
         )
-        .await?;
-        Ok(())
+        .await
+        .map_err(FindexError::from)
     }
 
     /// Searches for the `Location`s indexed by the given `Keyword`s. This is

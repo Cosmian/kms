@@ -919,7 +919,7 @@ dependencies = [
 [[package]]
 name = "cosmian_findex"
 version = "5.0.0"
-source = "git+https://github.com/Cosmian/findex.git?branch=fix/make_compact_callback_async#b1a8248e3629e2f21fdac3eea7657e245b6953bc"
+source = "git+https://github.com/Cosmian/findex.git?branch=fix/make_compact_callback_async#7cbb58a40aea05d274f141955c16dea42b1a56ae"
 dependencies = [
  "base64 0.21.2",
  "cosmian_crypto_core 9.0.1",

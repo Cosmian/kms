@@ -89,6 +89,12 @@ impl From<CryptoCoreError> for KmsError {
     }
 }
 
+impl From<std::string::FromUtf8Error> for KmsError {
+    fn from(e: std::string::FromUtf8Error) -> Self {
+        Self::ConversionError(e.to_string())
+    }
+}
+
 impl From<sqlx::Error> for KmsError {
     fn from(e: sqlx::Error) -> Self {
         Self::DatabaseError(e.to_string())
