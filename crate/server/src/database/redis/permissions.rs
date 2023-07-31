@@ -14,6 +14,11 @@ use futures::lock::Mutex;
 
 use crate::{error::KmsError, result::KResult};
 
+/// The struct we store for each permission
+/// We store the permission itself as a Location
+/// Keeping the object uid and user id is necessary to be able to query
+/// the database for all permissions for a given object or user because
+/// there is no convenient access to the callback for a search
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
 struct Triple {
     obj_uid: String,
@@ -131,6 +136,7 @@ impl PermissionsDB {
         })
     }
 
+    /// Search for a keyword
     async fn search_one_keyword(&self, keyword: &str) -> KResult<HashSet<Triple>> {
         let keyword = Keyword::from(format!("p::{keyword}").as_bytes());
         self.findex
@@ -173,22 +179,7 @@ impl PermissionsDB {
         ))
     }
 
-    // pub async fn permissions_upsert(
-    //     &self,
-    //     uid: &str,
-    //     user_id: &str,
-    //     permissions: HashSet<ObjectOperationType>,
-    // ) -> KResult<()> {
-    //     self.mgr
-    //         .clone()
-    //         .set(
-    //             PermissionsDB::permissions_key(uid, user_id),
-    //             serde_json::to_vec(&permissions)?,
-    //         )
-    //         .await?;
-    //     Ok(())
-    // }
-
+    /// List all the permissions granted to the user on an object
     pub async fn permissions_get(
         &self,
         obj_uid: &str,
@@ -202,6 +193,7 @@ impl PermissionsDB {
             .collect::<HashSet<ObjectOperationType>>())
     }
 
+    /// Add a permission to the user on an object
     pub async fn permission_add(
         &self,
         obj_uid: &str,
@@ -272,6 +264,7 @@ impl PermissionsDB {
         Ok(())
     }
 
+    /// Remove a permission to the user on an object
     pub async fn permission_remove(
         &self,
         obj_uid: &str,
@@ -337,21 +330,6 @@ impl PermissionsDB {
         }
         Ok(())
     }
-
-    // pub async fn permissions_delete(&self, uid: &str, user_id: &str) -> KResult<()> {
-    //     todo!()
-    // }
-
-    // /// Clear all data
-    // ///
-    // /// # Warning
-    // /// This is definitive
-    // pub async fn clear_all(&self) -> KResult<()> {
-    //     redis::cmd("FLUSHDB")
-    //         .query_async(&mut self.mgr.clone())
-    //         .await?;
-    //     Ok(())
-    // }
 }
 
 #[async_trait]
