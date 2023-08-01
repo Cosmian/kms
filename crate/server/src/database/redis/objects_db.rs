@@ -172,6 +172,7 @@ impl RemovedLocationsFinder for ObjectsDB {
         &self,
         _locations: HashSet<Location>,
     ) -> Result<HashSet<Location>, FindexError> {
+        // Objects and permissions are never removed from the DB
         Ok(HashSet::new())
     }
 }

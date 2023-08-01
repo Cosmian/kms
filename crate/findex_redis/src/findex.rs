@@ -110,7 +110,7 @@ impl FindexRedis {
     /// - `deletions`   : values to remove from the indexes for a set of
     ///   keywords
     pub async fn upsert(
-        &mut self,
+        &self,
         master_key: &[u8; 16],
         label: &[u8],
         additions: HashMap<IndexedValue, HashSet<Keyword>>,
@@ -137,7 +137,7 @@ impl FindexRedis {
     /// - `keywords`            : keywords to search
     /// - `max_depth`           : maximum recursion depth allowed
     pub async fn search(
-        &mut self,
+        &self,
         master_key: &[u8; 16],
         label: &[u8],
         keywords: HashSet<Keyword>,
@@ -175,7 +175,7 @@ impl FindexRedis {
     /// **WARNING**: the compact operation *cannot* be done concurrently with
     /// upsert operations. This could result in corrupted indexes.
     pub async fn compact(
-        &mut self,
+        &self,
         master_key: &[u8; 16],
         new_master_key: &[u8; 16],
         label: &[u8],
@@ -283,7 +283,7 @@ impl FindexCallbacks<FindexError, UID_LENGTH> for FindexRedis {
     }
 
     async fn upsert_entry_table(
-        &mut self,
+        &self,
         modifications: UpsertData<UID_LENGTH>,
     ) -> Result<EncryptedTable<UID_LENGTH>, FindexError> {
         // Prevent upserting while compacting
@@ -311,7 +311,7 @@ impl FindexCallbacks<FindexError, UID_LENGTH> for FindexRedis {
     }
 
     async fn insert_chain_table(
-        &mut self,
+        &self,
         items: EncryptedTable<UID_LENGTH>,
     ) -> Result<(), FindexError> {
         let mut pipe = pipe();
@@ -323,7 +323,7 @@ impl FindexCallbacks<FindexError, UID_LENGTH> for FindexRedis {
     }
 
     async fn update_lines(
-        &mut self,
+        &self,
         chain_table_uids_to_remove: Uids<UID_LENGTH>,
         new_encrypted_entry_table_items: EncryptedTable<UID_LENGTH>,
         new_encrypted_chain_table_items: EncryptedTable<UID_LENGTH>,

@@ -19,7 +19,6 @@ use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType},
     tagging::get_tags,
 };
-use futures::lock::Mutex;
 use redis::aio::ConnectionManager;
 use uuid::Uuid;
 
@@ -46,7 +45,7 @@ pub struct RedisWithFindex {
     objects_db: Arc<ObjectsDB>,
     permissions_db: PermissionsDB,
     //TODO this Mutex should not be here; Findex needs to be changed to be thread-safe and not take &mut self
-    findex: Arc<Mutex<FindexRedis>>,
+    findex: Arc<FindexRedis>,
     findex_key: Key<MASTER_KEY_LENGTH>,
     label: Vec<u8>,
     _db_key: Key<DB_KEY_LENGTH>,
@@ -65,9 +64,8 @@ impl RedisWithFindex {
         let client = redis::Client::open(redis_url)?;
         let mgr = ConnectionManager::new(client).await?;
         let objects_db = Arc::new(ObjectsDB::new(mgr.clone()).await?);
-        let findex = Arc::new(Mutex::new(
-            FindexRedis::connect_with_manager(mgr.clone(), objects_db.clone()).await?,
-        ));
+        let findex =
+            Arc::new(FindexRedis::connect_with_manager(mgr.clone(), objects_db.clone()).await?);
         let permissions_db = PermissionsDB::new(findex.clone(), findex_key.clone(), label).await?;
         Ok(Self {
             objects_db,
@@ -121,9 +119,6 @@ impl Database for RedisWithFindex {
 
         //upsert the index
         self.findex
-            .lock()
-            .await
-            // .expect("findex lock is poisoned")
             .upsert(
                 &self.findex_key.to_bytes(),
                 &self.label,
@@ -188,9 +183,6 @@ impl Database for RedisWithFindex {
 
         //upsert the indexes
         self.findex
-            .lock()
-            .await
-            // .expect("findex lock is poisoned")
             .upsert(
                 &self.findex_key.to_bytes(),
                 &self.label,
@@ -229,8 +221,6 @@ impl Database for RedisWithFindex {
             // find the locations that match at least one of the tags
             let res = self
                 .findex
-                .lock()
-                .await
                 .search(&self.findex_key.to_bytes(), &self.label, keywords)
                 .await?;
             // we want the intersection of all the locations
@@ -483,8 +473,6 @@ impl Database for RedisWithFindex {
         // search the keywords in the index
         let res = self
             .findex
-            .lock()
-            .await
             .search(&self.findex_key.to_bytes(), &self.label, keywords)
             .await?;
         // we want the intersection of all the locations

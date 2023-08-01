@@ -7,7 +7,8 @@ edition = "2021"
 async-trait = { workspace = true }
 redis = { workspace = true }
 cloudproof = { workspace = true }
-cosmian_findex = { git = "https://github.com/Cosmian/findex.git", branch = "fix/make_compact_callback_async" }
+#branch = "fix/make_compact_callback_async",
+cosmian_findex = { git = "https://github.com/Cosmian/findex.git", rev = "01d9be7d9b5f7944f50a2dcad44d534a9fde257e" }
 thiserror = { workspace = true }
 tokio = { version = "1.25", features = ["full"] }
 tracing = { workspace = true }

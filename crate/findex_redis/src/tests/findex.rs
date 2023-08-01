@@ -178,7 +178,7 @@ pub async fn test_upsert_conflict() -> Result<(), FindexError> {
     let dummy = Arc::new(DummyDataset {});
 
     // let f: FindRemovedLocations = Box::new(|s| Box::pin(dataset.find_removed_locations(s)));
-    let mut findex = FindexRedis::connect(REDIS_URL, dummy.clone()).await?;
+    let findex = FindexRedis::connect(REDIS_URL, dummy.clone()).await?;
     findex.clear_indexes().await?;
 
     // generate 333 random Uids

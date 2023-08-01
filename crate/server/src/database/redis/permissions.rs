@@ -10,7 +10,6 @@ use cosmian_findex_redis::{
     MASTER_KEY_LENGTH,
 };
 use cosmian_kms_utils::access::ObjectOperationType;
-use futures::lock::Mutex;
 
 use crate::{error::KmsError, result::KResult};
 
@@ -117,15 +116,14 @@ impl TryFrom<&Triple> for Location {
 /// searching for either a userid or a uid, so wee need to store a triplet
 /// rather than just the permission
 pub(crate) struct PermissionsDB {
-    //TODO this Mutex should not be here; Findex needs to be changed to be thread-safe and not take &mut self
-    findex: Arc<Mutex<FindexRedis>>,
+    findex: Arc<FindexRedis>,
     findex_key: Key<MASTER_KEY_LENGTH>,
     label: Vec<u8>,
 }
 
 impl PermissionsDB {
     pub async fn new(
-        findex: Arc<Mutex<FindexRedis>>,
+        findex: Arc<FindexRedis>,
         findex_key: Key<MASTER_KEY_LENGTH>,
         label: &[u8],
     ) -> KResult<Self> {
@@ -140,8 +138,6 @@ impl PermissionsDB {
     async fn search_one_keyword(&self, keyword: &str) -> KResult<HashSet<Triple>> {
         let keyword = Keyword::from(format!("p::{keyword}").as_bytes());
         self.findex
-            .lock()
-            .await
             .search(
                 &self.findex_key.to_bytes(),
                 &self.label,
@@ -214,8 +210,6 @@ impl PermissionsDB {
         //upsert the index
         let already_present = self
             .findex
-            .lock()
-            .await
             .upsert(
                 &self.findex_key.to_bytes(),
                 &self.label,
@@ -247,8 +241,6 @@ impl PermissionsDB {
             ]),
         );
         self.findex
-            .lock()
-            .await
             .upsert(
                 &self.findex_key.to_bytes(),
                 &self.label,
@@ -280,8 +272,6 @@ impl PermissionsDB {
         //upsert the deletions in the index
         let already_present = self
             .findex
-            .lock()
-            .await
             .upsert(
                 &self.findex_key.to_bytes(),
                 &self.label,
@@ -314,8 +304,6 @@ impl PermissionsDB {
                 ]),
             );
             self.findex
-                .lock()
-                .await
                 .upsert(
                     &self.findex_key.to_bytes(),
                     &self.label,
@@ -348,7 +336,6 @@ mod tests {
     };
     use cosmian_findex_redis::{FindexError, FindexRedis, Location, RemovedLocationsFinder};
     use cosmian_kms_utils::access::ObjectOperationType;
-    use futures::lock::Mutex;
     use redis::aio::ConnectionManager;
     use serial_test::serial;
 
@@ -387,9 +374,8 @@ mod tests {
         // clear the DB
         clear_all(&mut mgr).await?;
         // create the findex
-        let findex = Arc::new(Mutex::new(
-            FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?,
-        ));
+        let findex =
+            Arc::new(FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?);
         let permissions_db = PermissionsDB::new(findex, findex_key, label).await?;
 
         // let us add the permission Encrypt on object O1 for user U1
@@ -617,9 +603,8 @@ mod tests {
         // clear the DB
         clear_all(&mut mgr).await?;
         // create the findex
-        let findex = Arc::new(Mutex::new(
-            FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?,
-        ));
+        let findex =
+            Arc::new(FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?);
         let permissions_db = PermissionsDB::new(findex, findex_key, label).await?;
 
         // remove a permission that does not exist
