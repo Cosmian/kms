@@ -953,7 +953,6 @@ dependencies = [
  "cosmian_kms_utils",
  "env_logger",
  "hex",
- "josekit",
  "libsgx",
  "predicates",
  "rand",
@@ -962,7 +961,6 @@ dependencies = [
  "serde",
  "serde_json",
  "strum",
- "strum_macros",
  "tempfile",
  "thiserror",
  "tokio",
@@ -979,14 +977,12 @@ version = "4.5.0"
 dependencies = [
  "cosmian_kmip",
  "cosmian_kms_utils",
- "hex",
  "http",
  "josekit",
  "reqwest",
  "serde",
  "serde_json",
  "thiserror",
- "tracing",
 ]
 
 [[package]]
@@ -1021,7 +1017,6 @@ dependencies = [
  "async-recursion",
  "async-trait",
  "base64 0.21.2",
- "bitflags 2.3.3",
  "clap",
  "cloudproof",
  "cosmian_kmip",
@@ -1036,8 +1031,6 @@ dependencies = [
  "josekit",
  "lazy_static",
  "libsgx",
- "libsqlite3-sys",
- "once_cell",
  "openssl",
  "rawsql",
  "reqwest",
@@ -1058,15 +1051,11 @@ name = "cosmian_kms_utils"
 version = "4.5.0"
 dependencies = [
  "argon2",
- "bitflags 2.3.3",
  "cloudproof",
  "cosmian_kmip",
- "leb128",
  "num-bigint",
  "serde",
  "serde_json",
- "strum",
- "strum_macros",
  "thiserror",
  "tiny-keccak",
  "tracing",
@@ -2031,7 +2020,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "afc22eff61b133b115c6e8c74e818c628d6d5e7a502afea6f64dee076dd94326"
 dependencies = [
  "cc",
- "openssl-sys",
  "pkg-config",
  "vcpkg",
 ]

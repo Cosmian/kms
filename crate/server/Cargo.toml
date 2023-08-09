@@ -35,7 +35,6 @@ alcoholic_jwt = "4091"
 async-recursion = "1.0"
 async-trait = "0.1"
 base64 = { workspace = true }
-bitflags = { workspace = true }
 clap = { workspace = true, features = ["env", "std"] }
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
@@ -50,8 +49,6 @@ http = { workspace = true }
 josekit = { workspace = true }
 lazy_static = "1.4"
 libsgx = { path = "../libsgx" }
-libsqlite3-sys = { version = "0.26.0", default-features = false, features = ["bundled-sqlcipher-vendored-openssl"] }
-once_cell = "1.17"
 openssl = { workspace = true }
 rawsql = "0.1"
 reqwest = { workspace = true }
