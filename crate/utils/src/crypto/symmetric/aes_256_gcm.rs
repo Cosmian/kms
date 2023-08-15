@@ -1,8 +1,8 @@
 use std::{convert::TryFrom, sync::Mutex};
 
 use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, DemInPlace, FixedSizeCBytes, Instantiable,
-    Nonce, RandomFixedSizeCBytes, SymmetricKey,
+    reexport::{aead::AeadInPlace, rand_core::SeedableRng},
+    Aes256Gcm, CsRng, DemInPlace, Nonce,
 };
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyBlock,
@@ -70,7 +70,7 @@ impl EncryptionSystem for AesGcmSystem {
         let key = SymmetricKey::try_from_bytes(key)?;
 
         // supplied Nonce or fresh
-        let nonce: Nonce<{ Aes256Gcm::NONCE_LENGTH }> = match request.iv_counter_nonce.as_ref() {
+        let nonce: Nonce<Aes256Gcm::NONCE_LENGTH> = match request.iv_counter_nonce.as_ref() {
             Some(v) => Nonce::try_from(v.as_slice())
                 .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?,
             None => {
