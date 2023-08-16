@@ -67,7 +67,7 @@ impl DecryptionSystem for CovercryptDecryption {
         })?;
         let encrypted_block = de.finalize();
 
-        let header_ = encrypted_header
+        let header = encrypted_header
             .decrypt(
                 &self.cover_crypt,
                 &user_decryption_key,
@@ -78,7 +78,7 @@ impl DecryptionSystem for CovercryptDecryption {
         let cleartext = self
             .cover_crypt
             .decrypt(
-                &header_.symmetric_key,
+                &header.symmetric_key,
                 &encrypted_block,
                 request.authenticated_encryption_additional_data.as_deref(),
             )
@@ -92,7 +92,7 @@ impl DecryptionSystem for CovercryptDecryption {
         );
 
         let decrypted_data = DecryptedData {
-            metadata: header_.metadata.unwrap_or_default(),
+            metadata: header.metadata.unwrap_or(Vec::default()),
             plaintext: cleartext,
         };
 

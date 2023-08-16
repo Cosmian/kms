@@ -130,7 +130,7 @@ pub fn decrypt_bytes(
                                     X25519PrivateKey::try_from_bytes(private_key_bytes)?;
 
                                 let plaintext =
-                                    EciesSalsaSealBox::decrypt(&private_key, &ciphertext, None)?;
+                                    EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?;
                                 Ok(plaintext)
                             }
                             x => {

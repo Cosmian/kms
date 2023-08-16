@@ -58,11 +58,6 @@ impl EciesEncryption {
 
 impl EncryptionSystem for EciesEncryption {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError> {
-        let authenticated_encryption_additional_data = &request
-            .authenticated_encryption_additional_data
-            .clone()
-            .unwrap_or_default();
-
         if request
             .authenticated_encryption_additional_data
             .as_deref()
@@ -136,7 +131,7 @@ impl DecryptionSystem for EciesDecryption {
         })?;
 
         // Decrypt the encrypted message
-        let plaintext = EciesSalsaSealBox::decrypt(&self.private_key, &ciphertext, None)?;
+        let plaintext = EciesSalsaSealBox::decrypt(&self.private_key, ciphertext, None)?;
 
         debug!(
             "Decrypted data with user key {} of len (CT/Enc): {}/{}",

@@ -35,7 +35,7 @@ impl AesGcmSystem {
             }
         };
         let symmetric_key_bytes: [u8; KEY_LENGTH] =
-            key_block.key_bytes()?.as_slice().try_into().map_err(|e| {
+            key_block.key_bytes()?.as_slice().try_into().map_err(|_| {
                 KmipUtilsError::NotSupported(format!(
                     "Expected a KMIP Symmetric Key of length {}",
                     KEY_LENGTH
