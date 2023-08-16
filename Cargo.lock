@@ -542,15 +542,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-<<<<<<< HEAD
-version = "2.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "630be753d4e58660abd17930c71b647fe46c27ea6b63cc59e1e3851406972e42"
-=======
 version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4682ae6287fcf752ecaabbfcc7b6f9b72aa33933dc23a554d853aea8eea8635"
->>>>>>> 038967f (fixed ECIES and keywrapping)
 dependencies = [
  "serde",
 ]
@@ -659,49 +653,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chacha20"
-<<<<<<< HEAD
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7fc89c7c5b9e7a02dfe45cd2367bae382f9ed31c61ca8debe5f827c420a2f08"
-dependencies = [
- "cfg-if",
- "cipher",
- "cpufeatures",
-]
-
-[[package]]
-name = "chacha20poly1305"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10cd79432192d1c0f4e1a0fef9527696cc039165d729fb41b3f4f4f354c2dc35"
-dependencies = [
- "aead",
- "chacha20",
- "cipher",
- "poly1305",
- "zeroize",
-]
-
-[[package]]
-name = "chrono"
-version = "0.4.26"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec837a71355b28f6556dbd569b37b3f363091c0bd4b2e735674521b4c5fd9bc5"
-dependencies = [
- "android-tzdata",
- "iana-time-zone",
- "js-sys",
- "num-traits",
- "wasm-bindgen",
- "winapi",
-]
-
-[[package]]
-name = "cipher"
-version = "0.4.3"
-=======
 version = "0.9.1"
->>>>>>> 038967f (fixed ECIES and keywrapping)
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3613f74bd2eac03dad61bd53dbe620703d4371614fe0bc3b9f04dd36fe4e818"
 dependencies = [
@@ -790,14 +742,8 @@ checksum = "2da6da31387c7e4ef160ffab6d5e7f00c42626fe39aea70a7b0f1773f7dd6c1b"
 
 [[package]]
 name = "cloudproof"
-<<<<<<< HEAD
-version = "2.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cb5762e5c6340aac4e7077f5be4de5666e6044d3bee2d3fb9f9972aa4a7e42f"
-=======
 version = "2.2.0"
 source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=feature/findex_5_0_0#86ef1e57b18f9d58ff7cf8f95c937f213724d0fe"
->>>>>>> 038967f (fixed ECIES and keywrapping)
 dependencies = [
  "cloudproof_aesgcm",
  "cloudproof_anonymization",
@@ -850,18 +796,6 @@ name = "cloudproof_ecies"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4eeb36dea282803d442e11c2420077c0e717adb4caa60a9a0964c5db75619a0"
-<<<<<<< HEAD
-dependencies = [
- "cloudproof_cover_crypt",
-]
-
-[[package]]
-name = "cloudproof_findex"
-version = "4.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16c18b84647bc4cb2919339275ef6ace5ff3228b0c95c996741efbc7ee3b78d0"
-=======
->>>>>>> 038967f (fixed ECIES and keywrapping)
 dependencies = [
  "cloudproof_cover_crypt",
 ]
@@ -971,32 +905,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tiny-keccak",
-<<<<<<< HEAD
- "zeroize",
-]
-
-[[package]]
-name = "cosmian_crypto_core"
-version = "9.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8cf6eece34fddc7889b1af460511310160be5d50d9e95e587b0ffc1188a2b29a"
-dependencies = [
- "aead",
- "aes-gcm",
- "blake2",
- "chacha20",
- "chacha20poly1305",
- "crypto_box",
- "curve25519-dalek",
- "ed25519-dalek",
- "getrandom",
- "leb128",
- "rand_chacha",
- "rand_core",
- "signature",
- "tiny-keccak",
-=======
->>>>>>> 038967f (fixed ECIES and keywrapping)
  "zeroize",
 ]
 
@@ -1025,15 +933,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_findex"
-<<<<<<< HEAD
-version = "4.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53293c295643a29a338a3130e0bb5bbd30de711f1c44890a1e5326080ba42436"
-=======
 version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2ff5fb3ac568e872a6b994cd31a5b99edbfc1c64afb6f3318c7ae234a40fff1"
->>>>>>> 038967f (fixed ECIES and keywrapping)
 dependencies = [
  "base64 0.21.2",
  "cosmian_crypto_core",
@@ -1092,11 +994,7 @@ dependencies = [
 name = "cosmian_kmip"
 version = "4.5.0"
 dependencies = [
-<<<<<<< HEAD
- "bitflags 2.3.3",
-=======
  "bitflags 2.4.0",
->>>>>>> 038967f (fixed ECIES and keywrapping)
  "cloudproof",
  "hex",
  "leb128",
@@ -1233,10 +1131,7 @@ name = "cosmian_kms_utils"
 version = "4.5.0"
 dependencies = [
  "argon2",
-<<<<<<< HEAD
-=======
  "bitflags 2.4.0",
->>>>>>> 038967f (fixed ECIES and keywrapping)
  "cloudproof",
  "cosmian_kmip",
  "num-bigint",
@@ -1321,15 +1216,9 @@ dependencies = [
 
 [[package]]
 name = "crypto_box"
-<<<<<<< HEAD
-version = "0.9.0-rc.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20e2e9da0705c71ce86168d6e906af19123543130e4bff7149b55c0d4a729086"
-=======
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf9110046be7209b9ede918929c7bb18f4438a4e533c0e78746994fc9979348e"
->>>>>>> 038967f (fixed ECIES and keywrapping)
 dependencies = [
  "aead",
  "blake2",
@@ -1365,15 +1254,9 @@ dependencies = [
 
 [[package]]
 name = "curve25519-dalek"
-<<<<<<< HEAD
-version = "4.0.0-rc.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "436ace70fc06e06f7f689d2624dc4e2f0ea666efb5aa704215f7249ae6e047a7"
-=======
 version = "4.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f711ade317dd348950a9910f81c5947e3d8907ebd2b83f76203ff1807e6a2bc2"
->>>>>>> 038967f (fixed ECIES and keywrapping)
 dependencies = [
  "cfg-if",
  "cpufeatures",
@@ -1391,12 +1274,6 @@ name = "curve25519-dalek-derive"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83fdaf97f4804dcebfa5862639bc9ce4121e82140bec2a987ac5140294865b5b"
-<<<<<<< HEAD
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.15",
-=======
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1414,7 +1291,6 @@ dependencies = [
  "lock_api",
  "once_cell",
  "parking_lot_core",
->>>>>>> 038967f (fixed ECIES and keywrapping)
 ]
 
 [[package]]
@@ -1458,15 +1334,9 @@ checksum = "6184e33543162437515c2e2b48714794e37845ec9851711914eec9d308f6ebe8"
 
 [[package]]
 name = "digest"
-<<<<<<< HEAD
-version = "0.10.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8168378f4e5023e7218c89c891c0fd8ecdb5e5e4f18cb78f38cf245dd021e76f"
-=======
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
->>>>>>> 038967f (fixed ECIES and keywrapping)
 dependencies = [
  "block-buffer",
  "const-oid",
@@ -1830,15 +1700,9 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-<<<<<<< HEAD
-version = "0.2.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c05aeb6a22b8f62540c194aac980f2115af067bfe15a0734d7277a768d396b31"
-=======
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be4136b2a15dd319360be1c07d9933517ccf0be8f16bf62a3bee4f0d618df427"
->>>>>>> 038967f (fixed ECIES and keywrapping)
 dependencies = [
  "cfg-if",
  "js-sys",
@@ -2044,32 +1908,6 @@ dependencies = [
 [[package]]
 name = "iana-time-zone"
 version = "0.1.57"
-<<<<<<< HEAD
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fad5b825842d2b38bd206f3e81d6957625fd7f0a361e345c30e01a0ae2dd613"
-dependencies = [
- "android_system_properties",
- "core-foundation-sys",
- "iana-time-zone-haiku",
- "js-sys",
- "wasm-bindgen",
- "windows",
-]
-
-[[package]]
-name = "iana-time-zone-haiku"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
-dependencies = [
- "cc",
-]
-
-[[package]]
-name = "idna"
-version = "0.3.0"
-=======
->>>>>>> 038967f (fixed ECIES and keywrapping)
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2fad5b825842d2b38bd206f3e81d6957625fd7f0a361e345c30e01a0ae2dd613"
 dependencies = [
@@ -2547,15 +2385,9 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
 name = "openssl"
-<<<<<<< HEAD
-version = "0.10.55"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "345df152bc43501c5eb9e4654ff05f794effb78d4efe3d53abc158baddc0703d"
-=======
 version = "0.10.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "729b745ad4a5575dd06a3e1af1414bd330ee561c01b3899eb584baeaa8def17e"
->>>>>>> 038967f (fixed ECIES and keywrapping)
 dependencies = [
  "bitflags 1.3.2",
  "cfg-if",
@@ -2594,15 +2426,9 @@ dependencies = [
 
 [[package]]
 name = "openssl-sys"
-<<<<<<< HEAD
-version = "0.9.90"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "374533b0e45f3a7ced10fcaeccca020e66656bc03dac384f852e4e5a7a8104a6"
-=======
 version = "0.9.91"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "866b5f16f90776b9bb8dc1e1802ac6f0513de3a7a7465867bfbc563dc737faac"
->>>>>>> 038967f (fixed ECIES and keywrapping)
 dependencies = [
  "cc",
  "libc",
@@ -3046,11 +2872,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b033d837a7cf162d7993aded9304e30a83213c648b6e389db233191f891e5c2b"
 dependencies = [
  "getrandom",
-<<<<<<< HEAD
- "redox_syscall",
-=======
  "redox_syscall 0.2.16",
->>>>>>> 038967f (fixed ECIES and keywrapping)
  "thiserror",
 ]
 
@@ -3173,8 +2995,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-=======
 name = "rusqlite"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3195,7 +3015,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d626bb9dae77e28219937af045c257c28bfd3f69333c512553507f5f9798cb76"
 
 [[package]]
->>>>>>> 038967f (fixed ECIES and keywrapping)
 name = "rustc_version"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3378,8 +3197,6 @@ dependencies = [
 ]
 
 [[package]]
-<<<<<<< HEAD
-=======
 name = "serial_test"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3405,7 +3222,6 @@ dependencies = [
 ]
 
 [[package]]
->>>>>>> 038967f (fixed ECIES and keywrapping)
 name = "sha1"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4387,18 +4203,6 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 [[package]]
 name = "windows"
 version = "0.48.0"
-<<<<<<< HEAD
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e686886bc078bc1b0b600cac0147aadb815089b6e4da64016cbd754b6342700f"
-dependencies = [
- "windows-targets 0.48.0",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.42.0"
-=======
->>>>>>> 038967f (fixed ECIES and keywrapping)
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e686886bc078bc1b0b600cac0147aadb815089b6e4da64016cbd754b6342700f"
 dependencies = [

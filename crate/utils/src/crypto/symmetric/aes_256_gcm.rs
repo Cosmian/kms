@@ -1,20 +1,26 @@
 use std::{convert::TryFrom, sync::Mutex};
 
 use cloudproof::reexport::crypto_core::{
-    reexport::{aead::AeadInPlace, rand_core::SeedableRng},
-    Aes256Gcm, CsRng, DemInPlace, Nonce,
+    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, DemInPlace, FixedSizeCBytes, Instantiable,
+    Nonce, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::kmip::{
-    kmip_data_structures::KeyBlock,
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
 };
 
 use crate::{error::KmipUtilsError, DecryptionSystem, EncryptionSystem};
 
+/// AES 256 GCM key length in bytes
+pub const KEY_LENGTH: usize = Aes256Gcm::KEY_LENGTH;
+/// AES 256 GCM nonce length in bytes
+pub const NONCE_LENGTH: usize = Aes256Gcm::NONCE_LENGTH;
+/// AES 256 GCM tag/mac length in bytes
+pub const MAC_LENGTH: usize = Aes256Gcm::MAC_LENGTH;
+
 pub struct AesGcmSystem {
     key_uid: String,
-    symmetric_key_key_block: KeyBlock,
+    symmetric_key: SymmetricKey<{ KEY_LENGTH }>,
     rng: Mutex<CsRng>,
 }
 
@@ -28,9 +34,19 @@ impl AesGcmSystem {
                 ))
             }
         };
+        let symmetric_key_bytes: [u8; KEY_LENGTH] =
+            key_block.key_bytes()?.as_slice().try_into().map_err(|e| {
+                KmipUtilsError::NotSupported(format!(
+                    "Expected a KMIP Symmetric Key of length {}",
+                    KEY_LENGTH
+                ))
+            })?;
+        let symmetric_key = SymmetricKey::try_from_bytes(symmetric_key_bytes)
+            .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
+
         Ok(Self {
             key_uid: uid.into(),
-            symmetric_key_key_block: key_block,
+            symmetric_key,
             rng: Mutex::new(CsRng::from_entropy()),
         })
     }
@@ -64,13 +80,8 @@ impl EncryptionSystem for AesGcmSystem {
             Some(data) => data.clone(),
         };
 
-        // recover key
-        let key: [u8; Aes256Gcm::KEY_LENGTH] =
-            self.symmetric_key_key_block.key_bytes()?.try_into()?;
-        let key = SymmetricKey::try_from_bytes(key)?;
-
         // supplied Nonce or fresh
-        let nonce: Nonce<Aes256Gcm::NONCE_LENGTH> = match request.iv_counter_nonce.as_ref() {
+        let nonce: Nonce<{ NONCE_LENGTH }> = match request.iv_counter_nonce.as_ref() {
             Some(v) => Nonce::try_from(v.as_slice())
                 .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?,
             None => {
@@ -90,7 +101,7 @@ impl EncryptionSystem for AesGcmSystem {
         }
 
         // now encrypt
-        let tag = Aes256Gcm::new(&key)
+        let tag = Aes256Gcm::new(&self.symmetric_key)
             .encrypt_in_place_detached(
                 &nonce,
                 &mut data,
@@ -132,14 +143,6 @@ impl DecryptionSystem for AesGcmSystem {
             Some(ciphertext) => ciphertext.clone(),
         };
 
-        // recover key
-        let key: [u8; Aes256Gcm::KEY_LENGTH] = self
-            .symmetric_key_key_block
-            .key_bytes()?
-            .as_slice()
-            .try_into()?;
-        let key = SymmetricKey::try_from_bytes(key)?;
-
         // recover tag
         let tag = request
             .authenticated_encryption_tag
@@ -150,7 +153,7 @@ impl DecryptionSystem for AesGcmSystem {
         let nonce_bytes = request.iv_counter_nonce.clone().ok_or_else(|| {
             KmipUtilsError::NotSupported("the nonce is mandatory for AES GCM".to_string())
         })?;
-        let nonce: Nonce<{ Aes256Gcm::NONCE_LENGTH }> = Nonce::try_from(nonce_bytes.as_slice())
+        let nonce: Nonce<{ NONCE_LENGTH }> = Nonce::try_from(nonce_bytes.as_slice())
             .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
 
         // Additional data
@@ -163,7 +166,7 @@ impl DecryptionSystem for AesGcmSystem {
             }
         }
 
-        Aes256Gcm::new(&key)
+        Aes256Gcm::new(&self.symmetric_key)
             .decrypt_in_place_detached(
                 &nonce,
                 &mut bytes,
