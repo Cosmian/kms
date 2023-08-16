@@ -1,4 +1,4 @@
-use argon2::{password_hash::Salt, PasswordHasher};
+use argon2::{password_hash::Salt, Algorithm, ParamsBuilder, PasswordHasher, Version};
 use cloudproof::reexport::crypto_core::{key_unwrap, key_wrap};
 use cosmian_kmip::{error::KmipError, kmip::kmip_operations::ErrorReason};
 
@@ -23,7 +23,16 @@ pub fn unwrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, 
 }
 
 fn argon2_hash(password: &str) -> Result<Vec<u8>, KmipError> {
-    let argon2 = argon2::Argon2::default();
+    let params = ParamsBuilder::new()
+        .output_len(WRAPPING_SECRET_LENGTH)
+        .build()
+        .map_err(|_| {
+            KmipError::KmipError(
+                ErrorReason::Invalid_Data_Type,
+                "invalid params for argon2".to_string(),
+            )
+        })?;
+    let argon2 = argon2::Argon2::new(Algorithm::default(), Version::default(), params);
     let salt = Salt::from_b64(SALT).map_err(|_| {
         KmipError::KmipError(
             ErrorReason::Invalid_Data_Type,
