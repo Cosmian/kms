@@ -315,7 +315,7 @@ pub(crate) fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<
 pub(crate) fn generate_invalid_conf(correct_conf: &CliConf) -> String {
     // Create a new database key
     let mut cs_rng = CsRng::from_entropy();
-    let db_key = SymmetricKey::new(&mut cs_rng);
+    let db_key = SymmetricKey::<32>::new(&mut cs_rng);
 
     let mut invalid_conf = correct_conf.clone();
     // and a temp file

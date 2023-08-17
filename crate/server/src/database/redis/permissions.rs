@@ -4,7 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::crypto_core::{symmetric_crypto::key::Key, KeyTrait};
+use cloudproof::reexport::crypto_core::{FixedSizeCBytes, SymmetricKey};
 use cosmian_findex_redis::{
     FindexError, FindexRedis, IndexedValue, Keyword, Location, RemovedLocationsFinder,
     MASTER_KEY_LENGTH,
@@ -117,29 +117,27 @@ impl TryFrom<&Triple> for Location {
 /// rather than just the permission
 pub(crate) struct PermissionsDB {
     findex: Arc<FindexRedis>,
-    findex_key: Key<MASTER_KEY_LENGTH>,
     label: Vec<u8>,
 }
 
 impl PermissionsDB {
-    pub async fn new(
-        findex: Arc<FindexRedis>,
-        findex_key: Key<MASTER_KEY_LENGTH>,
-        label: &[u8],
-    ) -> KResult<Self> {
+    pub async fn new(findex: Arc<FindexRedis>, label: &[u8]) -> KResult<Self> {
         Ok(Self {
             findex,
-            findex_key,
             label: label.to_vec(),
         })
     }
 
     /// Search for a keyword
-    async fn search_one_keyword(&self, keyword: &str) -> KResult<HashSet<Triple>> {
+    async fn search_one_keyword(
+        &self,
+        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
+        keyword: &str,
+    ) -> KResult<HashSet<Triple>> {
         let keyword = Keyword::from(format!("p::{keyword}").as_bytes());
         self.findex
             .search(
-                &self.findex_key.to_bytes(),
+                &findex_key.to_bytes(),
                 &self.label,
                 HashSet::from([keyword.clone()]),
             )
@@ -157,10 +155,11 @@ impl PermissionsDB {
     /// per object uid
     pub async fn list_user_permissions(
         &self,
+        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         user_id: &str,
     ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>> {
         Ok(Triple::permissions_per_object(
-            self.search_one_keyword(user_id).await?,
+            self.search_one_keyword(findex_key, user_id).await?,
         ))
     }
 
@@ -168,17 +167,23 @@ impl PermissionsDB {
     /// per user id
     pub async fn list_object_permissions(
         &self,
+        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         obj_uid: &str,
     ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>> {
         Ok(Triple::permissions_per_user(
-            self.search_one_keyword(obj_uid).await?,
+            self.search_one_keyword(findex_key, obj_uid).await?,
         ))
     }
 
     /// List all the permissions granted to the user on an object
-    pub async fn get(&self, obj_uid: &str, user_id: &str) -> KResult<HashSet<ObjectOperationType>> {
+    pub async fn get(
+        &self,
+        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
+        obj_uid: &str,
+        user_id: &str,
+    ) -> KResult<HashSet<ObjectOperationType>> {
         Ok(self
-            .search_one_keyword(&Triple::build_key(obj_uid, user_id))
+            .search_one_keyword(findex_key, &Triple::build_key(obj_uid, user_id))
             .await?
             .into_iter()
             .map(|triple| triple.permission)
@@ -188,6 +193,7 @@ impl PermissionsDB {
     /// Add a permission to the user on an object
     pub async fn add(
         &self,
+        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         obj_uid: &str,
         user_id: &str,
         permission: ObjectOperationType,
@@ -211,7 +217,7 @@ impl PermissionsDB {
         let already_present = self
             .findex
             .upsert(
-                &self.findex_key.to_bytes(),
+                &findex_key.to_bytes(),
                 &self.label,
                 additions,
                 HashMap::new(),
@@ -242,7 +248,7 @@ impl PermissionsDB {
         );
         self.findex
             .upsert(
-                &self.findex_key.to_bytes(),
+                &findex_key.to_bytes(),
                 &self.label,
                 additions,
                 HashMap::new(),
@@ -255,6 +261,7 @@ impl PermissionsDB {
     /// Remove a permission to the user on an object
     pub async fn remove(
         &self,
+        findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         obj_uid: &str,
         user_id: &str,
         permission: ObjectOperationType,
@@ -273,7 +280,7 @@ impl PermissionsDB {
         let already_present = self
             .findex
             .upsert(
-                &self.findex_key.to_bytes(),
+                &findex_key.to_bytes(),
                 &self.label,
                 HashMap::new(),
                 deletions,
@@ -305,7 +312,7 @@ impl PermissionsDB {
             );
             self.findex
                 .upsert(
-                    &self.findex_key.to_bytes(),
+                    &findex_key.to_bytes(),
                     &self.label,
                     additions,
                     HashMap::new(),
@@ -332,7 +339,7 @@ mod tests {
 
     use async_trait::async_trait;
     use cloudproof::reexport::crypto_core::{
-        reexport::rand_core::SeedableRng, symmetric_crypto::key::Key, CsRng, KeyTrait,
+        reexport::rand_core::SeedableRng, CsRng, RandomFixedSizeCBytes, SymmetricKey,
     };
     use cosmian_findex_redis::{FindexError, FindexRedis, Location, RemovedLocationsFinder};
     use cosmian_kms_utils::access::ObjectOperationType;
@@ -364,7 +371,7 @@ mod tests {
     pub async fn test_permissions_db() -> KResult<()> {
         // generate the findex key
         let mut rng = CsRng::from_entropy();
-        let findex_key = Key::new(&mut rng);
+        let findex_key = SymmetricKey::new(&mut rng);
 
         // the findex label
         let label = b"label";
@@ -376,20 +383,22 @@ mod tests {
         // create the findex
         let findex =
             Arc::new(FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?);
-        let permissions_db = PermissionsDB::new(findex, findex_key, label).await?;
+        let permissions_db = PermissionsDB::new(findex, label).await?;
 
         // let us add the permission Encrypt on object O1 for user U1
         permissions_db
-            .add("O1", "U1", ObjectOperationType::Encrypt)
+            .add(&findex_key, "O1", "U1", ObjectOperationType::Encrypt)
             .await?;
 
         // verify that the permission is present
-        let permissions = permissions_db.get("O1", "U1").await?;
+        let permissions = permissions_db.get(&findex_key, "O1", "U1").await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains(&ObjectOperationType::Encrypt));
 
         // find the permissions for user U1
-        let permissions = permissions_db.list_user_permissions("U1").await?;
+        let permissions = permissions_db
+            .list_user_permissions(&findex_key, "U1")
+            .await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains_key("O1"));
         assert_eq!(
@@ -398,7 +407,9 @@ mod tests {
         );
 
         //find the permission for the object O1
-        let permissions = permissions_db.list_object_permissions("O1").await?;
+        let permissions = permissions_db
+            .list_object_permissions(&findex_key, "O1")
+            .await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains_key("U1"));
         assert_eq!(
@@ -408,17 +419,19 @@ mod tests {
 
         // add the permission Decrypt to user U1 for object O1
         permissions_db
-            .add("O1", "U1", ObjectOperationType::Decrypt)
+            .add(&findex_key, "O1", "U1", ObjectOperationType::Decrypt)
             .await?;
 
         // assert the permission is present
-        let permissions = permissions_db.get("O1", "U1").await?;
+        let permissions = permissions_db.get(&findex_key, "O1", "U1").await?;
         assert_eq!(permissions.len(), 2);
         assert!(permissions.contains(&ObjectOperationType::Encrypt));
         assert!(permissions.contains(&ObjectOperationType::Decrypt));
 
         // find the permissions for user U1
-        let permissions = permissions_db.list_user_permissions("U1").await?;
+        let permissions = permissions_db
+            .list_user_permissions(&findex_key, "U1")
+            .await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains_key("O1"));
         assert_eq!(
@@ -427,7 +440,9 @@ mod tests {
         );
 
         //find the permission for the object O1
-        let permissions = permissions_db.list_object_permissions("O1").await?;
+        let permissions = permissions_db
+            .list_object_permissions(&findex_key, "O1")
+            .await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains_key("U1"));
         assert_eq!(
@@ -440,15 +455,17 @@ mod tests {
 
         // let us add the permission Encrypt on object O1 for user U2
         permissions_db
-            .add("O1", "U2", ObjectOperationType::Encrypt)
+            .add(&findex_key, "O1", "U2", ObjectOperationType::Encrypt)
             .await?;
         // assert the permission is present
-        let permissions = permissions_db.get("O1", "U2").await?;
+        let permissions = permissions_db.get(&findex_key, "O1", "U2").await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains(&ObjectOperationType::Encrypt));
 
         // find the permissions for user U2
-        let permissions = permissions_db.list_user_permissions("U2").await?;
+        let permissions = permissions_db
+            .list_user_permissions(&findex_key, "U2")
+            .await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains_key("O1"));
         assert_eq!(
@@ -457,7 +474,9 @@ mod tests {
         );
 
         //find the permission for the object O1
-        let permissions = permissions_db.list_object_permissions("O1").await?;
+        let permissions = permissions_db
+            .list_object_permissions(&findex_key, "O1")
+            .await?;
         assert_eq!(permissions.len(), 2);
         assert!(permissions.contains_key("U1"));
         assert_eq!(
@@ -476,15 +495,17 @@ mod tests {
 
         // let us add the permission Encrypt on object O2 for user U2
         permissions_db
-            .add("O2", "U2", ObjectOperationType::Encrypt)
+            .add(&findex_key, "O2", "U2", ObjectOperationType::Encrypt)
             .await?;
         // assert the permission is present
-        let permissions = permissions_db.get("O2", "U2").await?;
+        let permissions = permissions_db.get(&findex_key, "O2", "U2").await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains(&ObjectOperationType::Encrypt));
 
         // find the permissions for user U2
-        let permissions = permissions_db.list_user_permissions("U2").await?;
+        let permissions = permissions_db
+            .list_user_permissions(&findex_key, "U2")
+            .await?;
         assert_eq!(permissions.len(), 2);
         assert!(permissions.contains_key("O1"));
         assert_eq!(
@@ -498,7 +519,9 @@ mod tests {
         );
 
         //find the permission for the object O2
-        let permissions = permissions_db.list_object_permissions("O2").await?;
+        let permissions = permissions_db
+            .list_object_permissions(&findex_key, "O2")
+            .await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains_key("U2"));
         assert_eq!(
@@ -513,15 +536,17 @@ mod tests {
 
         // let us remove the permission Decrypt on object O1 for user U1
         permissions_db
-            .remove("O1", "U1", ObjectOperationType::Decrypt)
+            .remove(&findex_key, "O1", "U1", ObjectOperationType::Decrypt)
             .await?;
         // assert the permission Encrypt is present and Decrypt is not
-        let permissions = permissions_db.get("O1", "U1").await?;
+        let permissions = permissions_db.get(&findex_key, "O1", "U1").await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains(&ObjectOperationType::Encrypt));
 
         // find the permissions for user U1
-        let permissions = permissions_db.list_user_permissions("U1").await?;
+        let permissions = permissions_db
+            .list_user_permissions(&findex_key, "U1")
+            .await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains_key("O1"));
         assert_eq!(
@@ -530,7 +555,9 @@ mod tests {
         );
 
         //find the permission for the object O1
-        let permissions = permissions_db.list_object_permissions("O1").await?;
+        let permissions = permissions_db
+            .list_object_permissions(&findex_key, "O1")
+            .await?;
         assert_eq!(permissions.len(), 2);
         assert!(permissions.contains_key("U1"));
         assert_eq!(
@@ -545,18 +572,22 @@ mod tests {
 
         // let us remove the permission Encrypt on object O1 for user U1
         permissions_db
-            .remove("O1", "U1", ObjectOperationType::Encrypt)
+            .remove(&findex_key, "O1", "U1", ObjectOperationType::Encrypt)
             .await?;
         // assert the permission is not present
-        let permissions = permissions_db.get("O1", "U1").await?;
+        let permissions = permissions_db.get(&findex_key, "O1", "U1").await?;
         assert_eq!(permissions.len(), 0);
 
         // find the permissions for user U1
-        let permissions = permissions_db.list_user_permissions("U1").await?;
+        let permissions = permissions_db
+            .list_user_permissions(&findex_key, "U1")
+            .await?;
         assert_eq!(permissions.len(), 0);
 
         //find the permission for the object O1
-        let permissions = permissions_db.list_object_permissions("O1").await?;
+        let permissions = permissions_db
+            .list_object_permissions(&findex_key, "O1")
+            .await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains_key("U2"));
         assert_eq!(
@@ -566,14 +597,16 @@ mod tests {
 
         // let us remove the permission Encrypt on object O1 for user U2
         permissions_db
-            .remove("O1", "U2", ObjectOperationType::Encrypt)
+            .remove(&findex_key, "O1", "U2", ObjectOperationType::Encrypt)
             .await?;
         // assert the permission is not present
-        let permissions = permissions_db.get("O1", "U2").await?;
+        let permissions = permissions_db.get(&findex_key, "O1", "U2").await?;
         assert_eq!(permissions.len(), 0);
 
         // find the permissions for user U2
-        let permissions = permissions_db.list_user_permissions("U2").await?;
+        let permissions = permissions_db
+            .list_user_permissions(&findex_key, "U2")
+            .await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains_key("O2"));
         assert_eq!(
@@ -582,7 +615,9 @@ mod tests {
         );
 
         //find the permission for the object O1
-        let permissions = permissions_db.list_object_permissions("O1").await?;
+        let permissions = permissions_db
+            .list_object_permissions(&findex_key, "O1")
+            .await?;
         assert_eq!(permissions.len(), 0);
 
         Ok(())
@@ -593,7 +628,7 @@ mod tests {
     pub async fn test_corner_case() -> KResult<()> {
         // generate the findex key
         let mut rng = CsRng::from_entropy();
-        let findex_key = Key::new(&mut rng);
+        let findex_key = SymmetricKey::new(&mut rng);
 
         // the findex label
         let label = b"label";
@@ -605,32 +640,38 @@ mod tests {
         // create the findex
         let findex =
             Arc::new(FindexRedis::connect_with_manager(mgr.clone(), Arc::new(DummyDB {})).await?);
-        let permissions_db = PermissionsDB::new(findex, findex_key, label).await?;
+        let permissions_db = PermissionsDB::new(findex, label).await?;
 
         // remove a permission that does not exist
         permissions_db
-            .remove("O1", "U1", ObjectOperationType::Encrypt)
+            .remove(&findex_key, "O1", "U1", ObjectOperationType::Encrypt)
             .await?;
 
         // test that it does not exist
-        let permissions = permissions_db.get("O1", "U1").await?;
+        let permissions = permissions_db.get(&findex_key, "O1", "U1").await?;
         assert_eq!(permissions.len(), 0);
 
         // test there are no permissions for user U1
-        let permissions = permissions_db.list_user_permissions("U1").await?;
+        let permissions = permissions_db
+            .list_user_permissions(&findex_key, "U1")
+            .await?;
         assert_eq!(permissions.len(), 0);
 
         // test there are no permissions for object O1
-        let permissions = permissions_db.list_object_permissions("O1").await?;
+        let permissions = permissions_db
+            .list_object_permissions(&findex_key, "O1")
+            .await?;
         assert_eq!(permissions.len(), 0);
 
         //add the permission Encrypt on object O1 for user U1
         permissions_db
-            .add("O1", "U1", ObjectOperationType::Encrypt)
+            .add(&findex_key, "O1", "U1", ObjectOperationType::Encrypt)
             .await?;
 
         // test there is one permission for user U1
-        let permissions = permissions_db.list_user_permissions("U1").await?;
+        let permissions = permissions_db
+            .list_user_permissions(&findex_key, "U1")
+            .await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains_key("O1"));
         assert_eq!(
@@ -639,7 +680,9 @@ mod tests {
         );
 
         // test there is one permission for object O1
-        let permissions = permissions_db.list_object_permissions("O1").await?;
+        let permissions = permissions_db
+            .list_object_permissions(&findex_key, "O1")
+            .await?;
         assert_eq!(permissions.len(), 1);
         assert!(permissions.contains_key("U1"));
         assert_eq!(
@@ -649,15 +692,19 @@ mod tests {
 
         // remove the permission again
         permissions_db
-            .remove("O1", "U1", ObjectOperationType::Encrypt)
+            .remove(&findex_key, "O1", "U1", ObjectOperationType::Encrypt)
             .await?;
 
         // test there are no permissions for user U1
-        let permissions = permissions_db.list_user_permissions("U1").await?;
+        let permissions = permissions_db
+            .list_user_permissions(&findex_key, "U1")
+            .await?;
         assert_eq!(permissions.len(), 0);
 
         // test there are no permissions for object O1
-        let permissions = permissions_db.list_object_permissions("O1").await?;
+        let permissions = permissions_db
+            .list_object_permissions(&findex_key, "O1")
+            .await?;
         assert_eq!(permissions.len(), 0);
 
         Ok(())

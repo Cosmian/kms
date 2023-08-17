@@ -40,7 +40,9 @@
     "upserting",
     "Upserting",
     "uuid",
-    "Uuid"
+    "Uuid",
+    "zeroizable",
+    "zerorize"
   ],
   "[md]": {
     "editor.formatOnSave": false,

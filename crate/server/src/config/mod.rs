@@ -14,7 +14,7 @@ use std::{
 
 use alcoholic_jwt::JWKS;
 use clap::Parser;
-use cloudproof::reexport::crypto_core::symmetric_crypto::key::Key;
+use cloudproof::reexport::crypto_core::SymmetricKey;
 use libsgx::utils::is_running_inside_enclave;
 use openssl::{pkcs12::ParsedPkcs12_2, x509::X509};
 use tracing::info;
@@ -90,7 +90,7 @@ impl fmt::Debug for ClapConfig {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum DbParams {
     // contains the dir of the sqlite db file (not the db file itself)
     Sqlite(PathBuf),
@@ -101,7 +101,11 @@ pub enum DbParams {
     // contains the MySql connection URL
     Mysql(String),
     // contains the Redis connection URL
-    RedisFindex(String, Key<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>, Vec<u8>),
+    RedisFindex(
+        String,
+        SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+        Vec<u8>,
+    ),
 }
 
 #[derive(Clone, Debug)]

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::SeedableRng, symmetric_crypto::key::Key, CsRng, KeyTrait,
+    reexport::rand_core::SeedableRng, CsRng, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 
@@ -84,7 +84,7 @@ async fn get_mysql() -> KResult<(MySqlPool, Option<ExtraDatabaseParams>)> {
 async fn get_redis_with_findex() -> KResult<(RedisWithFindex, Option<ExtraDatabaseParams>)> {
     let redis_url = std::option_env!("KMS_REDIS_URL").unwrap_or("redis://localhost:6379");
     let mut rng = CsRng::from_entropy();
-    let master_key = Key::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::new(&mut rng);
+    let master_key = SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::new(&mut rng);
     let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, b"label").await?;
     Ok((redis_findex, None))
 }

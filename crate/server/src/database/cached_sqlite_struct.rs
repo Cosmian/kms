@@ -8,20 +8,31 @@ use std::{
     time::SystemTime,
 };
 
-use cloudproof::reexport::crypto_core::{
-    Aes256Gcm, FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey,
-};
+use cloudproof::reexport::crypto_core::SymmetricKey;
 use sqlx::{Pool, Sqlite};
 use tracing::info;
 
 use crate::{kms_bail, kms_error, result::KResult};
 
+macro_rules! mac {
+    ($res: expr, $key:expr, $($bytes: expr),+) => {
+        {
+            let mut hasher = tiny_keccak::Sha3::v256();
+            <tiny_keccak::Sha3 as tiny_keccak::Hasher>::update(&mut hasher, $key);
+            $(
+                <tiny_keccak::Sha3 as tiny_keccak::Hasher>::update(&mut hasher, $bytes);
+            )*
+            <tiny_keccak::Sha3 as tiny_keccak::Hasher>::finalize(hasher, $res);
+        }
+    };
+}
+
 /// The item of the KMS sqlite cache
 pub struct KMSSqliteCacheItem {
     /// The handler to the sqlite
     sqlite: Arc<Pool<Sqlite>>,
-    /// They key of the sqlite
-    key: SymmetricKey<{ Aes256Gcm::KEY_LENGTH }>,
+    /// They MAC of the inserted item computed using the DB secret key
+    mac: Vec<u8>,
     /// The date of the first insertion
     #[allow(dead_code)]
     inserted_at: u64,
@@ -40,7 +51,7 @@ pub struct KMSSqliteCacheItem {
 impl fmt::Debug for KMSSqliteCacheItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("KMSSqliteCacheItem")
-            .field("group_id", &self.key)
+            .field("MAC", &self.mac)
             .field("inserted_at", &self.inserted_at)
             .field("in_used", &self.in_used)
             .field("last_used_at", &self.last_used_at)
@@ -60,16 +71,11 @@ pub fn _now() -> u64 {
 }
 
 impl KMSSqliteCacheItem {
-    pub fn new(
-        sqlite: Pool<Sqlite>,
-        key: &SymmetricKey<{ Aes256Gcm::KEY_LENGTH }>,
-        freeable_cache_index: usize,
-    ) -> KResult<Self> {
-        let key_bytes: [u8; Aes256Gcm::KEY_LENGTH] = key.as_bytes().try_into()?;
-        let key = SymmetricKey::try_from_bytes(key_bytes)?;
-        Ok(Self {
+    #[must_use]
+    pub fn new(sqlite: Pool<Sqlite>, mac: Vec<u8>, freeable_cache_index: usize) -> Self {
+        Self {
             sqlite: Arc::new(sqlite),
-            key,
+            mac,
             inserted_at: _now(),
             in_used: 0,
             last_used_at: 0,
@@ -135,11 +141,7 @@ impl KMSSqliteCache {
     /// Get the sqlite handler and tag it as "used"
     ///
     /// The function will return an error if the database is closed or the key is not the right one
-    pub fn get(
-        &self,
-        id: u128,
-        key: &SymmetricKey<{ Aes256Gcm::KEY_LENGTH }>,
-    ) -> KResult<Arc<Pool<Sqlite>>> {
+    pub fn get(&self, id: u128, key: &SymmetricKey<32>) -> KResult<Arc<Pool<Sqlite>>> {
         let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
 
         let item = sqlites
@@ -152,7 +154,10 @@ impl KMSSqliteCache {
 
         // We need to check if the key provided by the user is the same that was used to open the database
         // If we do not, we can just send any password: the database is already opened anyway.
-        if key.as_bytes() != item.key.as_bytes() {
+        // Do this by checking the macs
+        let mut mac = vec![0u8; 32];
+        mac!(mac.as_mut_slice(), key, id.to_be_bytes().as_slice());
+        if mac != item.mac {
             kms_bail!("Database secret is wrong");
         }
 
@@ -249,12 +254,7 @@ impl KMSSqliteCache {
     /// The handler is considered as used until it is explicitly release.
     ///
     /// This function will call a `flush` if needed to close the oldest unused databases.
-    pub async fn save(
-        &self,
-        id: u128,
-        key: &SymmetricKey<{ Aes256Gcm::KEY_LENGTH }>,
-        pool: Pool<Sqlite>,
-    ) -> KResult<()> {
+    pub async fn save(&self, id: u128, key: &SymmetricKey<32>, pool: Pool<Sqlite>) -> KResult<()> {
         // Flush the cache if necessary
         self.flush().await?;
         // If nothing has been flush, allow to exceed max cache size
@@ -289,7 +289,10 @@ impl KMSSqliteCache {
                 let freeable_cache_id = freeable_sqlites.push(id)?;
 
                 // Add it to the SqliteCache
-                let mut item = KMSSqliteCacheItem::new(pool, key, freeable_cache_id)?;
+                // compute the mac
+                let mut mac = vec![0u8; 32];
+                mac!(mac.as_mut_slice(), key, id.to_be_bytes().as_slice());
+                let mut item = KMSSqliteCacheItem::new(pool, mac, freeable_cache_id);
 
                 freeable_sqlites.uncache(freeable_cache_id)?;
 
@@ -705,7 +708,7 @@ mod tests {
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 0);
 
         let mut cs_rng = CsRng::from_entropy();
-        let password = SymmetricKey::new(&mut cs_rng);
+        let password = SymmetricKey::<32>::new(&mut cs_rng);
 
         let sqlite = connect().await.expect("Can't create database");
         let sqlite2 = connect().await.expect("Can't create database");
@@ -742,7 +745,7 @@ mod tests {
         assert!(cache.opened(2));
 
         assert!(cache.get(4, &password).is_err());
-        assert!(cache.get(1, &SymmetricKey::new(&mut cs_rng)).is_err()); // bad &password
+        assert!(cache.get(1, &SymmetricKey::<32>::new(&mut cs_rng)).is_err()); // bad &password
         assert!(cache.get(1, &password).is_ok()); // 2 uses of sqlite1
 
         let sqlite4 = connect().await.expect("Can't create database");

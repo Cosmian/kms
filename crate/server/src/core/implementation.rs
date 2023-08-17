@@ -7,7 +7,7 @@ use cloudproof::reexport::{
     cover_crypt::Covercrypt,
     crypto_core::{
         reexport::rand_core::{RngCore, SeedableRng},
-        Aes256Gcm, CsRng,
+        Aes256Gcm, CsRng, FixedSizeCBytes, SymmetricKey,
     },
 };
 use cosmian_kmip::kmip::{
@@ -29,15 +29,20 @@ use cosmian_kms_utils::{
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
 use tracing::trace;
+use zeroize::Zeroize;
 
 use super::{cover_crypt::create_user_decryption_key, KMS};
 use crate::{
     config::{DbParams, ServerConfig},
     core::operations::unwrap_key,
     database::{
-        cached_sqlcipher::CachedSqlCipher, mysql::MySqlPool,
-        object_with_metadata::ObjectWithMetadata, pgsql::PgPool, redis::RedisWithFindex,
-        sqlite::SqlitePool, Database,
+        cached_sqlcipher::CachedSqlCipher,
+        mysql::MySqlPool,
+        object_with_metadata::ObjectWithMetadata,
+        pgsql::PgPool,
+        redis::{RedisWithFindex, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH},
+        sqlite::SqlitePool,
+        Database,
     },
     error::KmsError,
     kms_bail, kms_not_supported,
@@ -45,8 +50,8 @@ use crate::{
 };
 
 impl KMS {
-    pub async fn instantiate(shared_config: ServerConfig) -> KResult<Self> {
-        let db: Box<dyn Database + Sync + Send> = match &shared_config.db_params {
+    pub async fn instantiate(mut shared_config: ServerConfig) -> KResult<Self> {
+        let db: Box<dyn Database + Sync + Send> = match &mut shared_config.db_params {
             DbParams::SqliteEnc(db_path) => Box::new(
                 CachedSqlCipher::instantiate(db_path, shared_config.clear_db_on_start).await?,
             ),
@@ -61,7 +66,14 @@ impl KMS {
                 Box::new(MySqlPool::instantiate(url, shared_config.clear_db_on_start).await?)
             }
             DbParams::RedisFindex(url, master_key, label) => {
-                Box::new(RedisWithFindex::instantiate(url, master_key.clone(), label).await?)
+                // There is no reason to keep a copy of the key in the shared config
+                // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
+                // and zerorize the one in the shared config
+                let key_bytes = master_key.to_bytes();
+                let new_master_key =
+                    SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::try_from_bytes(key_bytes)?;
+                master_key.zeroize();
+                Box::new(RedisWithFindex::instantiate(url, new_master_key, label).await?)
             }
         };
 
@@ -226,7 +238,8 @@ impl KMS {
                     // create the key
                     let key_len: usize = attributes
                         .cryptographic_length
-                        .map_or(Aes256Gcm::KEY_LENGTH, |v| v as usize / 8);
+                        .map(|v| v as usize / 8)
+                        .unwrap_or(Aes256Gcm::KEY_LENGTH);
                     let mut symmetric_key = vec![0; key_len];
                     rng.fill_bytes(&mut symmetric_key);
                     let object = create_symmetric_key(&symmetric_key, *cryptographic_algorithm);

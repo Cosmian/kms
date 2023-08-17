@@ -743,7 +743,8 @@ checksum = "2da6da31387c7e4ef160ffab6d5e7f00c42626fe39aea70a7b0f1773f7dd6c1b"
 [[package]]
 name = "cloudproof"
 version = "2.2.0"
-source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=feature/findex_5_0_0#86ef1e57b18f9d58ff7cf8f95c937f213724d0fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7d78ef65071b74298ef7c5351f08598f2ee077103a22a44714667db7ab9ab82"
 dependencies = [
  "cloudproof_aesgcm",
  "cloudproof_anonymization",
@@ -803,7 +804,8 @@ dependencies = [
 [[package]]
 name = "cloudproof_findex"
 version = "5.0.0"
-source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=feature/findex_5_0_0#86ef1e57b18f9d58ff7cf8f95c937f213724d0fe"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d1ecac206e6f91df97416b1493af502eea751492e051cc40b8b914e95200ff0"
 dependencies = [
  "cosmian_crypto_core",
  "cosmian_findex 5.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1119,11 +1121,13 @@ dependencies = [
  "sqlx",
  "thiserror",
  "time 0.3.25",
+ "tiny-keccak",
  "tracing",
  "tracing-log",
  "tracing-subscriber",
  "tracing-tree",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
