@@ -38,7 +38,6 @@ base64 = { workspace = true }
 clap = { workspace = true, features = ["env", "std"] }
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
-cosmian_findex_redis = { path = "../findex_redis" }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
 dirs = "5.0"
 dotenvy = "0.15"

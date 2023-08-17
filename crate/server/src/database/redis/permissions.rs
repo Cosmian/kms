@@ -4,10 +4,13 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::crypto_core::{FixedSizeCBytes, SymmetricKey};
-use cosmian_findex_redis::{
-    FindexError, FindexRedis, IndexedValue, Keyword, Location, RemovedLocationsFinder,
-    MASTER_KEY_LENGTH,
+use cloudproof::reexport::{
+    crypto_core::{FixedSizeCBytes, SymmetricKey},
+    findex::{
+        implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
+        parameters::MASTER_KEY_LENGTH,
+        IndexedValue, Keyword, Location,
+    },
 };
 use cosmian_kms_utils::access::ObjectOperationType;
 
@@ -214,7 +217,7 @@ impl PermissionsDB {
         additions.insert(indexed_value, HashSet::from([keyword.clone()]));
 
         //upsert the index
-        let already_present = self
+        let new_keywords = self
             .findex
             .upsert(
                 &findex_key.to_bytes(),
@@ -223,16 +226,8 @@ impl PermissionsDB {
                 HashMap::new(),
             )
             .await?;
-        let already_present = match already_present.get(&keyword) {
-            Some(already_present) => *already_present,
-            None => {
-                return Err(KmsError::Findex(
-                    "Unexpected error: keyword not found in the return call of upsert".to_string(),
-                ))
-            }
-        };
-
-        if already_present {
+        let is_already_present = !new_keywords.contains(&keyword);
+        if is_already_present {
             // we assume that the other two keywords are already present
             return Ok(())
         }
@@ -277,7 +272,7 @@ impl PermissionsDB {
         deletions.insert(indexed_value, HashSet::from([keyword.clone()]));
 
         //upsert the deletions in the index
-        let already_present = self
+        let new_keywords = self
             .findex
             .upsert(
                 &findex_key.to_bytes(),
@@ -286,21 +281,14 @@ impl PermissionsDB {
                 deletions,
             )
             .await?;
-        let already_present = match already_present.get(&keyword) {
-            Some(already_present) => *already_present,
-            None => {
-                return Err(KmsError::Findex(
-                    "Unexpected error: keyword not found in the return call of upsert".to_string(),
-                ))
-            }
-        };
+        let is_new = new_keywords.contains(&keyword);
 
         // we need to handle a corner case where the first addition of the keyword
         // to the index is actually a deletion. An entry will be created anyway and
         // the keyword will show as present on the next addition. Since we are not
         // going to create the other two keywords on the next addition,
         // we need to do it now
-        if !already_present {
+        if is_new {
             // we need to add the other two keywords
             let mut additions = HashMap::new();
             additions.insert(
@@ -328,7 +316,7 @@ impl RemovedLocationsFinder for PermissionsDB {
     async fn find_removed_locations(
         &self,
         _locations: HashSet<Location>,
-    ) -> Result<HashSet<Location>, FindexError> {
+    ) -> Result<HashSet<Location>, FindexRedisError> {
         Ok(HashSet::new())
     }
 }
@@ -338,10 +326,15 @@ mod tests {
     use std::{collections::HashSet, sync::Arc};
 
     use async_trait::async_trait;
-    use cloudproof::reexport::crypto_core::{
-        reexport::rand_core::SeedableRng, CsRng, RandomFixedSizeCBytes, SymmetricKey,
+    use cloudproof::reexport::{
+        crypto_core::{
+            reexport::rand_core::SeedableRng, CsRng, RandomFixedSizeCBytes, SymmetricKey,
+        },
+        findex::{
+            implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
+            Location,
+        },
     };
-    use cosmian_findex_redis::{FindexError, FindexRedis, Location, RemovedLocationsFinder};
     use cosmian_kms_utils::access::ObjectOperationType;
     use redis::aio::ConnectionManager;
     use serial_test::serial;
@@ -356,7 +349,7 @@ mod tests {
         async fn find_removed_locations(
             &self,
             _locations: HashSet<Location>,
-        ) -> Result<HashSet<Location>, FindexError> {
+        ) -> Result<HashSet<Location>, FindexRedisError> {
             Ok(HashSet::new())
         }
     }

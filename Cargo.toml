@@ -7,7 +7,6 @@ members = [
     "crate/utils",
     "crate/libsgx",
     "crate/pyo3",
-    # "crate/findex_redis",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli. For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
 resolver = "2"
@@ -28,7 +27,11 @@ clap = { version = "4.1", default-features = false, features = [
     "derive",
     "cargo",
 ] }
-cloudproof = "2.2.0"
+# cloudproof = "2.2.0"
+cloudproof = { git = "https://github.com/Cosmian/cloudproof_rust.git", branch = "findex_reexports", features = [
+    "default",
+    "findex-redis",
+] }
 env_logger = "0.10"
 eyre = "0.6"
 hex = "0.4"

@@ -1,8 +1,9 @@
 use std::{array::TryFromSliceError, sync::mpsc::SendError};
 
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
-use cloudproof::reexport::crypto_core::CryptoCoreError;
-use cosmian_findex_redis::FindexError;
+use cloudproof::reexport::{
+    crypto_core::CryptoCoreError, findex::implementations::redis::FindexRedisError,
+};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
@@ -86,6 +87,12 @@ impl From<TtlvError> for KmsError {
 impl From<CryptoCoreError> for KmsError {
     fn from(e: CryptoCoreError) -> Self {
         Self::CryptographicError(e.to_string())
+    }
+}
+
+impl From<FindexRedisError> for KmsError {
+    fn from(e: FindexRedisError) -> Self {
+        Self::Findex(e.to_string())
     }
 }
 
@@ -188,12 +195,6 @@ impl From<redis::RedisError> for KmsError {
 impl From<KmsError> for redis::RedisError {
     fn from(val: KmsError) -> Self {
         redis::RedisError::from((ErrorKind::ClientError, "KMS Error", val.to_string()))
-    }
-}
-
-impl From<FindexError> for KmsError {
-    fn from(err: FindexError) -> Self {
-        KmsError::Findex(err.to_string())
     }
 }
 

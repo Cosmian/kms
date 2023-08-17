@@ -1,7 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
-use cosmian_findex_redis::{FindexError, Keyword, Location, RemovedLocationsFinder};
+use cloudproof::reexport::findex::{
+    implementations::redis::{FindexRedisError, RemovedLocationsFinder},
+    Keyword, Location,
+};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_types::{Attributes, StateEnumeration},
@@ -171,7 +174,7 @@ impl RemovedLocationsFinder for ObjectsDB {
     async fn find_removed_locations(
         &self,
         _locations: HashSet<Location>,
-    ) -> Result<HashSet<Location>, FindexError> {
+    ) -> Result<HashSet<Location>, FindexRedisError> {
         // Objects and permissions are never removed from the DB
         Ok(HashSet::new())
     }
