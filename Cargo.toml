@@ -27,11 +27,7 @@ clap = { version = "4.1", default-features = false, features = [
     "derive",
     "cargo",
 ] }
-# cloudproof = "2.2.0"
-cloudproof = { git = "https://github.com/Cosmian/cloudproof_rust.git", branch = "findex_reexports", features = [
-    "default",
-    "findex-redis",
-] }
+cloudproof = "2.2.1"
 env_logger = "0.10"
 eyre = "0.6"
 hex = "0.4"

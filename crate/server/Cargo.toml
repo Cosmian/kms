@@ -75,7 +75,6 @@ zeroize = { workspace = true }
 [dev-dependencies]
 actix-http = "3.3"
 actix-rt = "2.8"
-serial_test = "2"
 
 [build-dependencies]
 time = { workspace = true, features = ["local-offset", "formatting"] }
