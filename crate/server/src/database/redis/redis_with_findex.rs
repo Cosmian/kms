@@ -146,7 +146,7 @@ impl Database for RedisWithFindex {
             )
             .await?;
 
-        Ok(UniqueIdentifier::from(uid))
+        Ok(uid)
     }
 
     /// Insert the provided Objects in the database in a transaction
@@ -381,7 +381,7 @@ impl Database for RedisWithFindex {
             .zip(redis_db_objects)
             .map(|((uid, permissions), (_, redis_db_object))| {
                 (
-                    UniqueIdentifier::from(uid),
+                    uid,
                     redis_db_object.owner,
                     redis_db_object.state,
                     permissions
@@ -523,7 +523,7 @@ impl Database for RedisWithFindex {
             })
             .map(|(uid, redis_db_object)| {
                 (
-                    UniqueIdentifier::from(uid),
+                    uid,
                     redis_db_object.state,
                     redis_db_object
                         .object

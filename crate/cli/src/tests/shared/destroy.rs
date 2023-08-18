@@ -22,9 +22,9 @@ use crate::{
 };
 
 pub fn destroy(cli_conf_path: &str, sub_command: &str, key_id: &str) -> Result<(), CliError> {
-    let args: Vec<String> = vec!["keys", "destroy", "--key-id", key_id]
-        .into_iter()
-        .map(std::string::ToString::to_string)
+    let args: Vec<String> = ["keys", "destroy", "--key-id", key_id]
+        .iter()
+        .map(|s| s.to_string())
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);

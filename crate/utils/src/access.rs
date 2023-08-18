@@ -66,9 +66,12 @@ impl Serialize for ExtraDatabaseParams {
         S: serde::Serializer,
     {
         serializer.serialize_bytes(
-            [self.group_id.to_be_bytes().to_vec(), self.key.to_vec()]
-                .concat()
-                .as_slice(),
+            [
+                self.group_id.to_be_bytes().to_vec(),
+                self.key.as_bytes().to_vec(),
+            ]
+            .concat()
+            .as_slice(),
         )
     }
 }
