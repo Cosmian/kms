@@ -82,7 +82,7 @@ impl KMSSqliteCacheItem {
             closed: false,
             closed_at: 0,
             freeable_cache_index,
-        })
+        }
     }
 }
 

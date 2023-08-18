@@ -29,10 +29,6 @@ pub struct EciesEncryption {
     public_key: X25519PublicKey,
 }
 
-/// x25519 key length
-pub const X25519_PUBLIC_KEY_LENGTH: usize = 32;
-pub const X25519_PRIVATE_KEY_LENGTH: usize = 32;
-
 impl EciesEncryption {
     pub fn instantiate(public_key_uid: &str, public_key: &Object) -> Result<Self, KmipUtilsError> {
         let rng = CsRng::from_entropy();

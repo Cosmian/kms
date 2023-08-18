@@ -6,6 +6,7 @@ use cloudproof::reexport::crypto_core::{
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 
 use self::{
+    additional_redis_findex_tests::{test_corner_case, test_objects_db, test_permissions_db},
     database_tests::{crud, tx_and_list, upsert},
     find_attributes_test::find_attributes,
     json_access_test::json_access,
@@ -22,6 +23,7 @@ use super::{
 };
 use crate::result::KResult;
 
+mod additional_redis_findex_tests;
 mod database_tests;
 mod find_attributes_test;
 mod json_access_test;
@@ -91,6 +93,9 @@ async fn get_redis_with_findex() -> KResult<(RedisWithFindex, Option<ExtraDataba
 
 #[actix_rt::test]
 pub async fn test_redis_with_findex() -> KResult<()> {
+    test_objects_db().await?;
+    test_permissions_db().await?;
+    test_corner_case().await?;
     json_access(&get_redis_with_findex().await?).await?;
     find_attributes(&get_redis_with_findex().await?).await?;
     owner(&get_redis_with_findex().await?).await?;

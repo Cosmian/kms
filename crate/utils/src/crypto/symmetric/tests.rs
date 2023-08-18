@@ -23,7 +23,7 @@ pub fn test_aes() {
     rng.fill_bytes(&mut data);
     let mut uid = vec![0_u8; 32];
     rng.fill_bytes(&mut uid);
-    let nonce: Nonce<{ Aes256Gcm::NONCE_LENGTH }> = Nonce::new(&mut rng);
+    let nonce: Nonce<NONCE_LENGTH> = Nonce::new(&mut rng);
     // encrypt
     let enc_res = aes
         .encrypt(&Encrypt {
