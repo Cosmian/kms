@@ -37,6 +37,7 @@ pub fn https_clap_config() -> ClapConfig {
             database_url: None,
             sqlite_path,
             clear_database: true,
+            ..Default::default()
         },
         ..Default::default()
     }

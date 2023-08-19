@@ -27,9 +27,8 @@ clap = { version = "4.1", default-features = false, features = [
     "derive",
     "cargo",
 ] }
-cloudproof = "2.2.1"
+cloudproof = { version = "2.2.1", features = ["findex-redis"] }
 env_logger = "0.10"
-eyre = "0.6"
 hex = "0.4"
 http = "0.2"
 josekit = "0.8.3"

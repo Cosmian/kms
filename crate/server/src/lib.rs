@@ -223,7 +223,7 @@ async fn start_https_kms_server(
     let p12 = shared_config
         .server_pkcs_12
         .as_ref()
-        .ok_or_else(|| eyre::eyre!("http/s: a PKCS#12 file must be provided"))?;
+        .ok_or_else(|| kms_error!("http/s: a PKCS#12 file must be provided"))?;
 
     // Create and configure an SSL acceptor with the certificate and key
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;

@@ -7,7 +7,7 @@ use clap::Args;
 use tracing::info;
 
 use super::workspace::WorkspaceConfig;
-use crate::core::certbot::Certbot;
+use crate::{core::certbot::Certbot, kms_error, result::KResult};
 
 #[derive(Debug, Args)]
 pub struct HttpsCertbotConfig {
@@ -55,7 +55,7 @@ impl Default for HttpsCertbotConfig {
 }
 
 impl HttpsCertbotConfig {
-    pub fn init(&self, workspace: &WorkspaceConfig) -> eyre::Result<Certbot> {
+    pub fn init(&self, workspace: &WorkspaceConfig) -> KResult<Certbot> {
         let certbot_ssl_path = workspace.finalize_directory(&self.certbot_ssl_path)?;
 
         let http_root_path = workspace.tmp_path.join("html");
@@ -68,8 +68,8 @@ impl HttpsCertbotConfig {
         Ok(Certbot::new(
             self.certbot_email.clone(),
             self.certbot_hostname.clone(),
-            std::fs::canonicalize(http_root_path).map_err(|e| eyre::eyre!(e))?,
-            std::fs::canonicalize(certbot_ssl_path).map_err(|e| eyre::eyre!(e))?,
+            std::fs::canonicalize(http_root_path).map_err(|e| kms_error!(e))?,
+            std::fs::canonicalize(certbot_ssl_path).map_err(|e| kms_error!(e))?,
         ))
     }
 }

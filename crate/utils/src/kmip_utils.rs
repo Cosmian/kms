@@ -1,55 +1,29 @@
-use argon2::{password_hash::Salt, Algorithm, ParamsBuilder, PasswordHasher, Version};
 use cloudproof::reexport::crypto_core::{key_unwrap, key_wrap};
-use cosmian_kmip::{error::KmipError, kmip::kmip_operations::ErrorReason};
+
+use crate::{
+    crypto::password_derivation::{derive_key_from_password, KMS_ARGON2_SALT},
+    error::KmipUtilsError,
+};
 
 /// The vendor ID to use for Cosmian specific attributes
 pub const VENDOR_ID_COSMIAN: &str = "cosmian";
 
 const WRAPPING_SECRET_LENGTH: usize = 32;
-const SALT: &str = "Y29zbWlhbl9rbXNfc2VydmVy";
 
 /// Wrap a key using a password
-pub fn wrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, KmipError> {
-    let wrapping_secret = argon2_hash(wrapping_password)?;
-    key_wrap(key, &wrapping_secret)
-        .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Data_Type, e.to_string()))
+pub fn wrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, KmipUtilsError> {
+    let wrapping_secret = derive_key_from_password::<WRAPPING_SECRET_LENGTH>(
+        wrapping_password.as_bytes(),
+        KMS_ARGON2_SALT,
+    )?;
+    key_wrap(key, &wrapping_secret).map_err(|e| KmipUtilsError::Default(e.to_string()))
 }
 
 /// Unwrap a key using a password
-pub fn unwrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, KmipError> {
-    let wrapping_secret = argon2_hash(wrapping_password)?;
-    key_unwrap(key, &wrapping_secret)
-        .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Data_Type, e.to_string()))
-}
-
-fn argon2_hash(password: &str) -> Result<Vec<u8>, KmipError> {
-    let params = ParamsBuilder::new()
-        .output_len(WRAPPING_SECRET_LENGTH)
-        .build()
-        .map_err(|_| {
-            KmipError::KmipError(
-                ErrorReason::Invalid_Data_Type,
-                "invalid params for argon2".to_string(),
-            )
-        })?;
-    let argon2 = argon2::Argon2::new(Algorithm::default(), Version::default(), params);
-    let salt = Salt::from_b64(SALT).map_err(|_| {
-        KmipError::KmipError(
-            ErrorReason::Invalid_Data_Type,
-            "invalid salt for argon2".to_string(),
-        )
-    })?;
-    let hash = argon2
-        .hash_password(password.as_bytes(), salt)
-        .map_err(|_| {
-            KmipError::KmipError(
-                ErrorReason::Invalid_Data_Type,
-                "invalid password for argon2".to_string(),
-            )
-        })?;
-    Ok(hash
-        .hash
-        .expect("hash should be present")
-        .as_bytes()
-        .to_vec())
+pub fn unwrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, KmipUtilsError> {
+    let wrapping_secret = derive_key_from_password::<WRAPPING_SECRET_LENGTH>(
+        wrapping_password.as_bytes(),
+        KMS_ARGON2_SALT,
+    )?;
+    key_unwrap(key, &wrapping_secret).map_err(|e| KmipUtilsError::Default(e.to_string()))
 }

@@ -120,12 +120,6 @@ impl From<openssl::error::ErrorStack> for KmsError {
     }
 }
 
-impl From<eyre::Report> for KmsError {
-    fn from(e: eyre::Report) -> Self {
-        Self::ServerError(e.to_string())
-    }
-}
-
 impl From<acme_lib::Error> for KmsError {
     fn from(e: acme_lib::Error) -> Self {
         Self::ServerError(e.to_string())

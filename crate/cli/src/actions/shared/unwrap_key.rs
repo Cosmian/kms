@@ -5,13 +5,16 @@ use clap::Parser;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::{
-    password_derivation::{derive_key, KMS_ARGON2_SALT},
+    password_derivation::{derive_key_from_password, KMS_ARGON2_SALT},
     symmetric::create_symmetric_key,
     wrap::unwrap_key_block,
 };
 
 use crate::{
-    actions::shared::utils::{export_object, read_key_from_file, write_kmip_object_to_file},
+    actions::shared::{
+        utils::{export_object, read_key_from_file, write_kmip_object_to_file},
+        SYMMETRIC_WRAPPING_KEY_SIZE,
+    },
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -91,7 +94,11 @@ impl UnwrapKeyAction {
                 .with_context(|| "failed decoding the unwrap key")?;
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(password) = &self.unwrap_password {
-            let key_bytes = derive_key(password.as_bytes(), KMS_ARGON2_SALT)?.to_vec();
+            let key_bytes = derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(
+                password.as_bytes(),
+                KMS_ARGON2_SALT,
+            )?
+            .to_vec();
             println!("unwrap derived key {}", hex::encode(&key_bytes));
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.unwrap_key_id {

@@ -92,15 +92,18 @@ impl fmt::Debug for ClapConfig {
 
 #[derive(Debug)]
 pub enum DbParams {
-    // contains the dir of the sqlite db file (not the db file itself)
+    /// contains the dir of the sqlite db file (not the db file itself)
     Sqlite(PathBuf),
-    // contains the dir of the sqlcipher db file (not the db file itself)
+    /// contains the dir of the sqlcipher db file (not the db file itself)
     SqliteEnc(PathBuf),
-    // contains the Postgres connection URL
+    /// contains the Postgres connection URL
     Postgres(String),
-    // contains the MySql connection URL
+    /// contains the MySql connection URL
     Mysql(String),
-    // contains the Redis connection URL
+    /// contains
+    /// - the Redis connection URL
+    /// - the master key used to encrypt the DB and the Index
+    /// - a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
     RedisFindex(
         String,
         SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,

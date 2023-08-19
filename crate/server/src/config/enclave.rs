@@ -4,6 +4,7 @@ use clap::Args;
 use libsgx::utils::is_running_inside_enclave;
 
 use super::{workspace::WorkspaceConfig, EnclaveParams};
+use crate::{kms_bail, result::KResult};
 
 #[derive(Debug, Args)]
 pub struct EnclaveConfig {
@@ -42,7 +43,7 @@ impl Default for EnclaveConfig {
 }
 
 impl EnclaveConfig {
-    pub fn init(&self, workspace: &WorkspaceConfig) -> eyre::Result<EnclaveParams> {
+    pub fn init(&self, workspace: &WorkspaceConfig) -> KResult<EnclaveParams> {
         if !is_running_inside_enclave() {
             let default = Self::default();
             // these paths are never used nor created
@@ -57,12 +58,12 @@ impl EnclaveConfig {
 
         let manifest_path = enclave_dir_path.join(&self.manifest_filename);
         if !Path::new(&manifest_path).exists() {
-            eyre::bail!("Can't find '{manifest_path:?}' as manifest_path");
+            kms_bail!("Can't find '{manifest_path:?}' as manifest_path");
         }
 
         let public_key_path = enclave_dir_path.join(&self.public_key_filename);
         if !Path::new(&public_key_path).exists() {
-            eyre::bail!("Can't find '{public_key_path:?}' as public_key_path");
+            kms_bail!("Can't find '{public_key_path:?}' as public_key_path");
         }
 
         Ok(EnclaveParams {
