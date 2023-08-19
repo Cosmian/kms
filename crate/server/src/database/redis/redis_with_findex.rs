@@ -21,6 +21,7 @@ use cosmian_kms_utils::{
     tagging::get_tags,
 };
 use redis::aio::ConnectionManager;
+use tracing::trace;
 use uuid::Uuid;
 
 use super::{
@@ -466,6 +467,7 @@ impl Database for RedisWithFindex {
         let mut keywords = {
             if let Some(attributes) = researched_attributes {
                 let tags = get_tags(attributes);
+                trace!("find: tags: {:?}", tags);
                 let mut keywords = tags
                     .iter()
                     .map(|tag| Keyword::from(tag.as_bytes()))
@@ -478,6 +480,7 @@ impl Database for RedisWithFindex {
             }
         };
         if user_must_be_owner {
+            trace!("find: user must be owner");
             keywords.insert(Keyword::from(user.as_bytes()));
         }
         // if there are now keywords, we return an empty list
@@ -489,6 +492,7 @@ impl Database for RedisWithFindex {
             .findex
             .search(&self.findex_key.to_bytes(), &self.label, keywords)
             .await?;
+        trace!("find: res: {:?}", res);
         // we want the intersection of all the locations
         let locations = intersect_all(res.values().cloned());
         let uids = locations
@@ -497,29 +501,31 @@ impl Database for RedisWithFindex {
                 String::from_utf8(location.to_vec()).map_err(|_| kms_error!("Invalid uid"))
             })
             .collect::<KResult<HashSet<String>>>()?;
+        trace!("find: uids before permissions: {:?}", uids);
         // if the user is not the owner, we need to check the permissions
-        let uids = if !user_must_be_owner {
-            let permissions = self
-                .permissions_db
+        let permissions = if !user_must_be_owner {
+            self.permissions_db
                 .list_user_permissions(&self.findex_key, user)
-                .await?;
-            uids.into_iter()
-                .filter(|uid| permissions.contains_key(uid))
-                .collect::<HashSet<String>>()
+                .await?
         } else {
-            uids
+            HashMap::new()
         };
 
         // fetch the corresponding objects
         let redis_db_objects = self.objects_db.objects_get(&uids).await?;
+        trace!("find: redis_db_objects: {:?}", redis_db_objects);
         Ok(redis_db_objects
             .into_iter()
-            .filter(|(_uid, redis_db_object)| {
-                if let Some(state) = state {
+            .filter(|(uid, redis_db_object)| {
+                (if let Some(state) = state {
                     redis_db_object.state == state
                 } else {
                     true
-                }
+                }) && (if user != redis_db_object.owner {
+                    permissions.contains_key(uid)
+                } else {
+                    true
+                })
             })
             .map(|(uid, redis_db_object)| {
                 (
