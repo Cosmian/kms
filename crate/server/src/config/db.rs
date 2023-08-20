@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
 use cloudproof::reexport::crypto_core::{FixedSizeCBytes, SymmetricKey};
@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// Configuration for the database
-#[derive(Debug, Args, Clone)]
+#[derive(Args, Clone)]
 pub struct DBConfig {
     /// The type of database used as backend
     /// - postgresql: PostgreSQL. The database url must be provided
@@ -56,6 +56,49 @@ pub struct DBConfig {
         verbatim_doc_comment
     )]
     pub clear_database: bool,
+}
+
+impl Display for DBConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.database_type.as_str() {
+            "postgresql" => write!(
+                f,
+                "postgresql: {}",
+                self.database_url
+                    .as_ref()
+                    .unwrap_or(&"[INVALID URL]".to_string())
+            ),
+            "mysql" => write!(
+                f,
+                "mysql: {}",
+                self.database_url
+                    .as_ref()
+                    .unwrap_or(&"[INVALID URL]".to_string())
+            ),
+            "sqlite" => write!(f, "sqlite: {}", self.sqlite_path.display()),
+            "sqlite-enc" => write!(f, "sqlcipher: {}", self.sqlite_path.display()),
+            "redis-findex" => write!(
+                f,
+                "redis-findex: {}, password: [****], label: 0x{}",
+                self.database_url
+                    .as_ref()
+                    .unwrap_or(&"[INVALID URL]".to_string()),
+                hex::encode(
+                    self.redis_findex_label
+                        .as_ref()
+                        .unwrap_or(&"[INVALID LABEL]".to_string())
+                )
+            ),
+            unknown => write!(f, "Unknown database type: {}", unknown),
+        }?;
+        write!(f, ", clear_database?: {}", self.clear_database)
+    }
+}
+
+impl std::fmt::Debug for DBConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", &self))
+    }
 }
 
 impl Default for DBConfig {

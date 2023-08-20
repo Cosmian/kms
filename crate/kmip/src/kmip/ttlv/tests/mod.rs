@@ -247,7 +247,6 @@ fn test_ser_array() {
     let ttlv = to_ttlv(&test).unwrap();
     let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "Seq", value: Structure([TTLV { tag: "Seq", value: TextString("a") }, TTLV { tag: "Seq", value: TextString("b") }]) }]) }"#;
     let ttlv_s = format!("{ttlv:?}");
-    // println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
     assert_eq!(ttlv_s, expected);
 }
 
@@ -264,7 +263,6 @@ fn test_ser_big_int() {
         big_int: BigUint::from(0x1111_1111_1222_2222_u128),
     };
     let ttlv = to_ttlv(&test).unwrap();
-    // println!("{:#?}", ttlv);
     let expected = r#"TTLV {
     tag: "Test",
     value: Structure(
@@ -279,7 +277,6 @@ fn test_ser_big_int() {
     ),
 }"#;
     let ttlv_s = format!("{ttlv:#?}");
-    // println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
     assert_eq!(ttlv_s, expected);
 }
 
@@ -498,7 +495,6 @@ fn test_aes_key_value() {
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_value(key_bytes)).unwrap();
-    // println!("JSON {:?}", json);
     let kv: KeyValue = serde_json::from_value(json).unwrap();
     assert_eq!(aes_key_value(key_bytes), kv);
 
@@ -535,13 +531,10 @@ fn test_some_attributes() {
         attributes: Some(Attributes::new(ObjectType::SymmetricKey)),
     };
     let ttlv = to_ttlv(&value).unwrap();
-    // println!("TTLV: {:#?}", &ttlv);
     let json = serde_json::to_value(&ttlv).unwrap();
-    // println!("JSON: {:#?}", &json);
     let ttlv_: TTLV = serde_json::from_value(json).unwrap();
     assert_eq!(ttlv, ttlv_);
     let rec: Wrapper = from_ttlv(&ttlv_).unwrap();
-    // println!("REC: {:#?}", &rec);
     assert_eq!(value, rec);
 }
 
@@ -632,7 +625,6 @@ fn test_byte_string_key_material() {
         attributes: Some(Attributes::new(ObjectType::SymmetricKey)),
     };
     let ttlv = to_ttlv(&key_value).unwrap();
-    // println!("{:#?}", &ttlv);
     let key_value_: KeyValue = from_ttlv(&ttlv).unwrap();
     assert_eq!(key_value, key_value_);
 }
@@ -643,7 +635,6 @@ fn test_aes_key_full() {
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
-    // println!("{:#?}", &ttlv);
     let aes_key_: Object = from_ttlv(&ttlv).unwrap();
     assert_eq!(
         aes_key,
@@ -695,7 +686,6 @@ pub fn test_create() {
         protection_storage_masks: None,
     };
     let ttlv = to_ttlv(&create).unwrap();
-    // println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
     let create_: Create = from_ttlv(&ttlv).unwrap();
     assert_eq!(ObjectType::SymmetricKey, create_.object_type);
     assert_eq!(

@@ -99,7 +99,6 @@ impl UnwrapKeyAction {
                 KMS_ARGON2_SALT,
             )?
             .to_vec();
-            println!("unwrap derived key {}", hex::encode(&key_bytes));
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.unwrap_key_id {
             export_object(client_connector, key_id, false, &None, false).await?

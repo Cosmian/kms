@@ -62,7 +62,6 @@ pub fn wrap(
         args.push(wrap_key_file.to_str().unwrap().to_owned());
     }
     cmd.arg(sub_command).args(args);
-    println!("cmd: {cmd:?}");
     let output = cmd.output()?;
     if output.status.success() {
         return Ok(())
@@ -108,7 +107,6 @@ pub fn unwrap(
         args.push(unwrap_key_file.to_str().unwrap().to_owned());
     }
     cmd.arg(sub_command).args(args);
-    println!("cmd: {cmd:?}");
     let output = cmd.output()?;
     if output.status.success() {
         return Ok(())

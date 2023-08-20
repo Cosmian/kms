@@ -7,7 +7,7 @@ pub mod jwt_auth_config;
 mod workspace;
 
 use std::{
-    fmt,
+    fmt::{self, Display},
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -90,7 +90,6 @@ impl fmt::Debug for ClapConfig {
     }
 }
 
-#[derive(Debug)]
 pub enum DbParams {
     /// contains the dir of the sqlite db file (not the db file itself)
     Sqlite(PathBuf),
@@ -109,6 +108,31 @@ pub enum DbParams {
         SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         Vec<u8>,
     ),
+}
+
+impl Display for DbParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DbParams::Sqlite(path) => write!(f, "sqlite: {}", path.display()),
+            DbParams::SqliteEnc(path) => write!(f, "sqlcipher: {}", path.display()),
+            DbParams::Postgres(url) => write!(f, "postgres: {}", url),
+            DbParams::Mysql(url) => write!(f, "mysql: {}", url),
+            DbParams::RedisFindex(url, _, label) => {
+                write!(
+                    f,
+                    "redis-findex: {}, key: [****], label: 0x{}",
+                    url,
+                    hex::encode(label)
+                )
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for DbParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}", &self))
+    }
 }
 
 #[derive(Clone, Debug)]

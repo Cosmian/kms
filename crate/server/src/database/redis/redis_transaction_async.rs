@@ -27,10 +27,7 @@ pub(crate) async fn transaction_async<
         let mut p = pipe();
         let response: Option<T> = func(mgr.clone(), p.atomic(), context.clone()).await?;
         match response {
-            None => {
-                println!("retrying transaction");
-                continue
-            }
+            None => continue,
             Some(response) => {
                 // make sure no watch is left in the connection, even if
                 // someone forgot to use the pipeline.
