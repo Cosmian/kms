@@ -2,9 +2,16 @@
 
 ![Build status](https://github.com/Cosmian/kms/actions/workflows/ci.yml/badge.svg)
 
-It's the implementation of the **Key Management Services** provided by _Cosmian_.
+Cosmian KMS is an open-source implementation of a high-performance, massively scalable, **Key Management System** that presents some unique features, such as the ability to run in a public cloud or zero-trust environment, and a KMIP 2.1 compliant interface.
 
-It is broken down into several binaries:
+It has extensive [documentation](https://docs.cosmian.com/cosmian_key_management_system/) and is also available as docker images (`docker pull ghcr.io/cosmian/kms`) to get you started quickly.
+
+ The KMS can manage keys and secrets used with a comprehensive list of common (AES, ECIES, ...) and Cosmian advanced cryptographic stacks such as [Covercrypt](https://github.com/Cosmian/cover_crypt).
+
+
+## Repository content
+
+The server is written in [Rust](https://www.rust-lang.org/) and is broken down into several binaries:
 
 - A server (`cosmian_kms_server`) which is the KMS itself
 - A CLI (`ckms`) to interact with this server
@@ -34,7 +41,7 @@ The `delivery` directory contains all the requirements to proceed a KMS delivery
 
 Find the public documentation of the KMS in the `documentation` directory.
 
-## Quick start
+## Build quick start
 
 From the root of the project, on your local machine, for developing:
 
