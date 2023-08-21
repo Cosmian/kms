@@ -39,6 +39,7 @@ markdown_extensions:
 plugins:
   - search
   - kroki
+  - meta-descriptions
 extra_css:
   - css/extra.css
 extra_javascript:
