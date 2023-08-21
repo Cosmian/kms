@@ -803,7 +803,7 @@ pub struct DecryptResponse {
     pub correlation_value: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Locate {
     /// An Integer object that indicates the maximum number of object
@@ -913,13 +913,13 @@ pub struct Locate {
 /// Status Mask field includes the Archived Storage indicator.
 impl Locate {
     #[must_use]
-    pub fn new(object_type: ObjectType) -> Self {
+    pub fn new() -> Self {
         Self {
             maximum_items: None,
             offset_items: None,
             storage_status_mask: None,
             object_group_member: None,
-            attributes: Attributes::new(object_type),
+            attributes: Attributes::default(),
         }
     }
 }

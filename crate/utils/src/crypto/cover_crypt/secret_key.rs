@@ -42,8 +42,9 @@ pub fn wrapped_secret_key(
     // Since KMIP 2.1 does not plan to locate wrapped key, we serialize vendor
     // attributes and symmetric key consecutively
     let wrapped_key_attributes = Attributes {
+        object_type: Some(ObjectType::SymmetricKey),
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-        ..Attributes::new(ObjectType::SymmetricKey)
+        ..Attributes::default()
     };
 
     let cryptographic_length = sk.encrypted_symmetric_key.len() as i32;

@@ -741,7 +741,7 @@ pub struct VendorAttribute {
 /// the server MAY retain all, some or none of the object attributes,
 /// depending on the object type and server policy.
 // TODO: there are 56 attributes in the specs. Only a handful are implemented here
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Attributes {
     /// The Activation Date attribute contains the date and time when the
@@ -830,7 +830,8 @@ pub struct Attributes {
     /// symmetric key, etc.) SHALL be set by the server when the object is
     /// created or registered and then SHALL NOT be changed or deleted before
     /// the object is destroyed.
-    pub object_type: ObjectType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<ObjectType>,
     /// A vendor specific Attribute is a structure used for sending and
     /// receiving a Managed Object attribute. The Vendor Identification and
     /// Attribute Name are text-strings that are used to identify the attribute.
@@ -849,22 +850,6 @@ pub struct Attributes {
 }
 
 impl Attributes {
-    #[must_use]
-    pub fn new(object_type: ObjectType) -> Self {
-        Self {
-            activation_date: None,
-            cryptographic_algorithm: None,
-            cryptographic_length: None,
-            cryptographic_domain_parameters: None,
-            cryptographic_parameters: None,
-            cryptographic_usage_mask: None,
-            key_format_type: None,
-            link: None,
-            object_type,
-            vendor_attributes: None,
-        }
-    }
-
     /// Add a vendor attribute to the list of vendor attributes.
     pub fn add_vendor_attribute(&mut self, vendor_attribute: VendorAttribute) -> &mut Self {
         if let Some(vas) = &mut self.vendor_attributes {
@@ -955,7 +940,7 @@ impl Attributes {
 
     /// Set the attributes's object type.
     pub fn set_object_type(&mut self, object_type: ObjectType) {
-        self.object_type = object_type;
+        self.object_type = Some(object_type);
     }
 }
 

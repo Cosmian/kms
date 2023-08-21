@@ -33,7 +33,7 @@ pub fn create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ),
         key_format_type: Some(KeyFormatType::ECPrivateKey),
         link: None,
-        object_type: ObjectType::PrivateKey,
+        object_type: Some(ObjectType::PrivateKey),
         vendor_attributes: None,
     };
     // add the tags

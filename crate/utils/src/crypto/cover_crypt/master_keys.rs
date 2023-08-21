@@ -95,13 +95,8 @@ fn create_master_private_key_object(
     attributes: Option<&Attributes>,
     master_public_key_uid: &str,
 ) -> Result<Object, KmipError> {
-    let mut attributes = attributes
-        .map(|att| {
-            let mut att = att.clone();
-            att.object_type = ObjectType::PrivateKey;
-            att
-        })
-        .unwrap_or_else(|| Attributes::new(ObjectType::PrivateKey));
+    let mut attributes = attributes.cloned().unwrap_or_default();
+    attributes.object_type = Some(ObjectType::PrivateKey);
     // add the policy to the attributes
     upsert_policy_in_attributes(&mut attributes, policy)?;
     // link the private key to the public key
@@ -136,13 +131,8 @@ fn create_master_public_key_object(
     attributes: Option<&Attributes>,
     master_private_key_uid: &str,
 ) -> Result<Object, KmipError> {
-    let mut attributes = attributes
-        .map(|att| {
-            let mut att = att.clone();
-            att.object_type = ObjectType::PublicKey;
-            att
-        })
-        .unwrap_or_else(|| Attributes::new(ObjectType::PublicKey));
+    let mut attributes = attributes.cloned().unwrap_or_default();
+    attributes.object_type = Some(ObjectType::PublicKey);
     // add the policy to the attributes
     upsert_policy_in_attributes(&mut attributes, policy)?;
     // link the public key to the private key

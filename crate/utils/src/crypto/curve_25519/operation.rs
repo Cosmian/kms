@@ -36,6 +36,7 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Obj
                     q_string: bytes.to_vec(),
                 },
                 attributes: Some(Attributes {
+                    object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                     cryptographic_length: Some(Q_LENGTH_BITS),
                     cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
@@ -55,7 +56,7 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Obj
                             private_key_uid.to_string(),
                         ),
                     }]),
-                    ..Attributes::new(ObjectType::PublicKey)
+                    ..Attributes::default()
                 }),
             },
             cryptographic_length: Q_LENGTH_BITS,
@@ -79,6 +80,7 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Obj
                     d: BigUint::from_bytes_be(bytes),
                 },
                 attributes: Some(Attributes {
+                    object_type: Some(ObjectType::PrivateKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                     cryptographic_length: Some(Q_LENGTH_BITS),
                     cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
@@ -98,7 +100,7 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Obj
                             public_key_uid.to_string(),
                         ),
                     }]),
-                    ..Attributes::new(ObjectType::PrivateKey)
+                    ..Attributes::default()
                 }),
             },
             cryptographic_length: Q_LENGTH_BITS,

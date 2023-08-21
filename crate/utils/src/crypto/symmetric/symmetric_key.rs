@@ -26,6 +26,7 @@ pub fn create_symmetric_key(
                     key: key_bytes.to_vec(),
                 },
                 attributes: Some(Attributes {
+                    object_type: Some(ObjectType::SymmetricKey),
                     cryptographic_algorithm: Some(cryptographic_algorithm),
                     cryptographic_length: Some(symmetric_key_len),
                     cryptographic_usage_mask: Some(
@@ -36,7 +37,7 @@ pub fn create_symmetric_key(
                             | CryptographicUsageMask::KeyAgreement,
                     ),
                     key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-                    ..Attributes::new(ObjectType::SymmetricKey)
+                    ..Attributes::default()
                 }),
             },
             cryptographic_length: symmetric_key_len,
@@ -65,7 +66,7 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
         link: None,
-        object_type: ObjectType::SymmetricKey,
+        object_type: Some(ObjectType::SymmetricKey),
         vendor_attributes: None,
         cryptographic_domain_parameters: None,
     };

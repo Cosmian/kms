@@ -39,7 +39,8 @@ pub async fn get_attributes(
         }
         Some(attrs) => attrs,
     };
-    let mut res = Attributes::new(object_type);
+    let mut res = Attributes::default();
+    res.object_type = Some(object_type);
     for requested in req_attributes {
         match requested {
             AttributeReference::Vendor(req_vdr_attr) => {
