@@ -129,7 +129,10 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         object_type: ObjectType::PublicKey,
         replace_existing: Some(false),
         key_wrap_type: None,
-        attributes: Attributes::new(ObjectType::PublicKey),
+        attributes: Attributes {
+            object_type: Some(ObjectType::PublicKey),
+            ..Attributes::default()
+        },
         object: pk.clone(),
     };
     assert!(kms.import(request, owner, None).await.is_err());
@@ -140,7 +143,10 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: Attributes::new(ObjectType::PublicKey),
+        attributes: Attributes {
+            object_type: Some(ObjectType::PublicKey),
+            ..Attributes::default()
+        },
         object: pk.clone(),
     };
     let _update_response = kms.import(request, owner, None).await?;
@@ -468,13 +474,14 @@ async fn test_abe_json_access() -> KResult<()> {
                 master_private_key_uid.clone(),
             ),
         }]),
-        ..Attributes::new(ObjectType::PrivateKey)
+        object_type: Some(ObjectType::PrivateKey),
+        ..Attributes::default()
     };
 
     // locate request
     let locate = Locate {
         attributes: search_attrs.clone(),
-        ..Locate::new(ObjectType::PrivateKey)
+        ..Locate::default()
     };
 
     // println!("Rq attrs: {:#?}", locate.attributes);
@@ -503,7 +510,7 @@ async fn test_abe_json_access() -> KResult<()> {
     // Redo search
     let locate = Locate {
         attributes: search_attrs.clone(),
-        ..Locate::new(ObjectType::PrivateKey)
+        ..Locate::default()
     };
 
     let locate_response = kms.locate(locate, owner, None).await?;
@@ -612,7 +619,10 @@ async fn test_import_decrypt() -> KResult<()> {
         key_wrap_type: None,
         // Bad attributes. Import will succeed, but
         // researched attributes won't matched stored attributes
-        attributes: Attributes::new(ObjectType::PrivateKey),
+        attributes: Attributes {
+            object_type: Some(ObjectType::PrivateKey),
+            ..Attributes::default()
+        },
         object: gr_sk.object.clone(),
     };
     kms.import(request, owner, None)

@@ -132,7 +132,10 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         object_type: ObjectType::PublicKey,
         replace_existing: None,
         key_wrap_type: None,
-        attributes: Attributes::new(ObjectType::PublicKey),
+        attributes: Attributes {
+            object_type: Some(ObjectType::PublicKey),
+            ..Attributes::default()
+        },
         object: pk.clone(),
     };
     let new_uid = kms.import(request, owner, None).await?.unique_identifier;
@@ -143,7 +146,10 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: Attributes::new(ObjectType::PublicKey),
+        attributes: Attributes {
+            object_type: Some(ObjectType::PublicKey),
+            ..Attributes::default()
+        },
         object: pk,
     };
     let update_response = kms.import(request, owner, None).await?;
@@ -191,11 +197,11 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
         replace_existing: Some(false),
         key_wrap_type: Some(KeyWrapType::AsRegistered),
         attributes: Attributes {
+            object_type: Some(ObjectType::SymmetricKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(wrapped_symmetric_key.len() as i32),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-            object_type: ObjectType::SymmetricKey,
-            ..Attributes::new(ObjectType::SymmetricKey)
+            ..Attributes::default()
         },
         object: symmetric_key,
     };

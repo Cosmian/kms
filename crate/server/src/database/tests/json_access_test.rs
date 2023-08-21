@@ -65,7 +65,8 @@ pub async fn json_access<DB: Database>(
 
     let researched_attributes = Some(Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-        ..Attributes::new(ObjectType::SymmetricKey)
+        object_type: Some(ObjectType::SymmetricKey),
+        ..Attributes::default()
     });
     let found = db
         .find(
@@ -83,7 +84,8 @@ pub async fn json_access<DB: Database>(
 
     let researched_attributes = Some(Attributes {
         cryptographic_length: Some(symmetric_key.attributes()?.cryptographic_length.unwrap()),
-        ..Attributes::new(ObjectType::SymmetricKey)
+        object_type: Some(ObjectType::SymmetricKey),
+        ..Attributes::default()
     });
     let found = db
         .find(
@@ -102,7 +104,8 @@ pub async fn json_access<DB: Database>(
     let researched_attributes = Some(Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         cryptographic_length: Some(symmetric_key.attributes()?.cryptographic_length.unwrap()),
-        ..Attributes::new(ObjectType::SymmetricKey)
+        object_type: Some(ObjectType::SymmetricKey),
+        ..Attributes::default()
     });
     let found = db
         .find(
@@ -120,7 +123,8 @@ pub async fn json_access<DB: Database>(
 
     let researched_attributes = Some(Attributes {
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-        ..Attributes::new(ObjectType::SymmetricKey)
+        object_type: Some(ObjectType::SymmetricKey),
+        ..Attributes::default()
     });
     let found = db
         .find(
@@ -141,7 +145,8 @@ pub async fn json_access<DB: Database>(
         cryptographic_length: Some(symmetric_key.attributes()?.cryptographic_length.unwrap()),
         cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-        ..Attributes::new(ObjectType::SymmetricKey)
+        object_type: Some(ObjectType::SymmetricKey),
+        ..Attributes::default()
     });
     let found = db
         .find(
@@ -159,7 +164,8 @@ pub async fn json_access<DB: Database>(
 
     let researched_attributes = Some(Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
-        ..Attributes::new(ObjectType::SymmetricKey)
+        object_type: Some(ObjectType::SymmetricKey),
+        ..Attributes::default()
     });
     let found = db
         .find(
@@ -176,7 +182,8 @@ pub async fn json_access<DB: Database>(
 
     let researched_attributes = Some(Attributes {
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
-        ..Attributes::new(ObjectType::SymmetricKey)
+        object_type: Some(ObjectType::SymmetricKey),
+        ..Attributes::default()
     });
     let found = db
         .find(
