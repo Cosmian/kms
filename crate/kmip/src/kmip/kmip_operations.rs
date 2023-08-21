@@ -803,31 +803,6 @@ pub struct DecryptResponse {
     pub correlation_value: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
-#[serde(rename_all = "PascalCase")]
-pub struct Locate {
-    /// An Integer object that indicates the maximum number of object
-    /// identifiers the server MAY return.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub maximum_items: Option<i32>,
-    /// An Integer object that indicates the number of object identifiers to
-    /// skip that satisfy the identification criteria specified in the request.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub offset_items: Option<i32>,
-    /// An Integer object (used as a bit mask) that indicates whether only
-    /// on-line objects, only archived objects, destroyed objects or any
-    /// combination of these, are to be searched. If omitted, then only on-line
-    /// objects SHALL be returned.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub storage_status_mask: Option<StorageStatusMask>,
-    /// An Enumeration object that indicates the object group member type.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub object_group_member: Option<ObjectGroupMember>,
-    /// Specifies an attribute and its value(s) that are REQUIRED to match those
-    /// in a candidate object (according to the matching rules defined above).
-    pub attributes: Attributes,
-}
-
 /// This operation requests that the server search for one or more Managed
 /// Objects, depending on the attributes specified in the request. All attributes
 /// are allowed to be used. The request MAY contain a Maximum Items field, which
@@ -911,17 +886,29 @@ pub struct Locate {
 /// Mask field includes the Destroyed Storage indicator. The server SHALL NOT
 /// return unique identifiers for objects that are archived unless the Storage
 /// Status Mask field includes the Archived Storage indicator.
-impl Locate {
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            maximum_items: None,
-            offset_items: None,
-            storage_status_mask: None,
-            object_group_member: None,
-            attributes: Attributes::default(),
-        }
-    }
+#[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(rename_all = "PascalCase")]
+pub struct Locate {
+    /// An Integer object that indicates the maximum number of object
+    /// identifiers the server MAY return.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maximum_items: Option<i32>,
+    /// An Integer object that indicates the number of object identifiers to
+    /// skip that satisfy the identification criteria specified in the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub offset_items: Option<i32>,
+    /// An Integer object (used as a bit mask) that indicates whether only
+    /// on-line objects, only archived objects, destroyed objects or any
+    /// combination of these, are to be searched. If omitted, then only on-line
+    /// objects SHALL be returned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub storage_status_mask: Option<StorageStatusMask>,
+    /// An Enumeration object that indicates the object group member type.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_group_member: Option<ObjectGroupMember>,
+    /// Specifies an attribute and its value(s) that are REQUIRED to match those
+    /// in a candidate object (according to the matching rules defined above).
+    pub attributes: Attributes,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
