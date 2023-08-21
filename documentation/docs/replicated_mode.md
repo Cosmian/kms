@@ -4,7 +4,8 @@ The KMS servers are stateless, so they can simply be scaled horizontally by conn
 
 ### Selecting the database
 
-The KMS server has support for PostgreSQL, Maria DB, MySQL databases, as well as Redis-with-Findex (sse [below](#redis-with-findex)).
+The KMS server has support for PostgreSQL, Maria DB, MySQL databases, as well as Redis-with-Findex (see [below](#redis-with-findex)).
+
 For
 
 - PostgreSQL, use `--database-type=postgresql`
