@@ -63,7 +63,8 @@ impl LocateObjectsAction {
     /// Export a key from the KMS
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         // the object type is ignored
-        let mut attributes = Attributes::new(ObjectType::SecretData);
+        let mut attributes = Attributes::default();
+        attributes.object_type = Some(ObjectType::SecretData);
 
         if let Some(crypto_algo) = self.cryptographic_algorithm {
             attributes.cryptographic_algorithm = Some(crypto_algo);
