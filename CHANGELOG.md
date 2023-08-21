@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [4.5.0] - 2023-07-18
+## [4.5.0] - 2023-08-21
 
 ### Bug Fixes
 
@@ -22,6 +22,8 @@ In addition, the user server will automatically add a system tag based on the ob
 Use the tags to export objects, locate them, or request data encryption and decryption.
 
 - Added `locate` to the `ckms`client
+
+- Added `Redis-Findex` backend support so that the KMS server data and indexes can be encrypted by the KMS at the application level. 
 
 
 ## [4.4.3] - 2023-07-17
