@@ -130,7 +130,10 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         object_type: ObjectType::PublicKey,
         replace_existing: None,
         key_wrap_type: None,
-        attributes: Attributes::new(ObjectType::PublicKey),
+        attributes: Attributes {
+            object_type: Some(ObjectType::PublicKey),
+            ..Attributes::default()
+        },
         object: pk.clone(),
     };
     let new_uid = kms.import(request, owner, None).await?.unique_identifier;
@@ -141,7 +144,10 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: Attributes::new(ObjectType::PublicKey),
+        attributes: Attributes {
+            object_type: Some(ObjectType::PublicKey),
+            ..Attributes::default()
+        },
         object: pk,
     };
     let update_response = kms.import(request, owner, None).await?;

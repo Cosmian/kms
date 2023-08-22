@@ -74,8 +74,9 @@ pub async fn find_attributes<DB: Database>(
     }
 
     let researched_attributes = Some(Attributes {
+        object_type: Some(ObjectType::SymmetricKey),
         link: Some(link.clone()),
-        ..Attributes::new(ObjectType::SymmetricKey)
+        ..Attributes::default()
     });
     let found = db
         .find(

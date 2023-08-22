@@ -26,11 +26,12 @@ pub fn aes_key_value(key_value: &[u8]) -> KeyValue {
     KeyValue {
         key_material: aes_key_material(key_value),
         attributes: Some(Attributes {
+            object_type: Some(ObjectType::SymmetricKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(256),
             cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-            ..Attributes::new(ObjectType::SymmetricKey)
+            ..Attributes::default()
         }),
     }
 }
@@ -532,7 +533,10 @@ fn test_some_attributes() {
         },
     }
     let value = Wrapper::Attr {
-        attributes: Some(Attributes::new(ObjectType::SymmetricKey)),
+        attributes: Some(Attributes {
+            object_type: Some(ObjectType::SymmetricKey),
+            ..Attributes::default()
+        }),
     };
     let ttlv = to_ttlv(&value).unwrap();
     // println!("TTLV: {:#?}", &ttlv);
@@ -629,7 +633,10 @@ fn test_byte_string_key_material() {
     let key_bytes: &[u8] = b"this_is_a_test";
     let key_value = KeyValue {
         key_material: KeyMaterial::ByteString(key_bytes.to_vec()),
-        attributes: Some(Attributes::new(ObjectType::SymmetricKey)),
+        attributes: Some(Attributes {
+            object_type: Some(ObjectType::SymmetricKey),
+            ..Attributes::default()
+        }),
     };
     let ttlv = to_ttlv(&key_value).unwrap();
     // println!("{:#?}", &ttlv);
@@ -680,6 +687,7 @@ pub fn test_import_correct_object() {
 #[test]
 pub fn test_create() {
     let attributes = Attributes {
+        object_type: Some(ObjectType::SymmetricKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         link: Some(vec![Link {
             link_type: crate::kmip::kmip_types::LinkType::ParentLink,
@@ -687,7 +695,7 @@ pub fn test_create() {
                 "SK".to_string(),
             ),
         }]),
-        ..Attributes::new(ObjectType::SymmetricKey)
+        ..Attributes::default()
     };
     let create = Create {
         object_type: ObjectType::SymmetricKey,

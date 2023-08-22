@@ -19,10 +19,11 @@ pub fn build_create_master_keypair_request<T: IntoIterator<Item = impl AsRef<str
     tags: T,
 ) -> Result<CreateKeyPair, KmipUtilsError> {
     let mut attributes = Attributes {
+        object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
-        ..Attributes::new(ObjectType::PrivateKey)
+        ..Attributes::default()
     };
     set_tags(&mut attributes, tags)?;
     Ok(CreateKeyPair {
@@ -38,6 +39,7 @@ pub fn build_create_user_decryption_private_key_request<T: IntoIterator<Item = i
     tags: T,
 ) -> Result<Create, KmipUtilsError> {
     let mut attributes = Attributes {
+        object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
@@ -47,7 +49,7 @@ pub fn build_create_user_decryption_private_key_request<T: IntoIterator<Item = i
                 cover_crypt_master_private_key_id.to_owned(),
             ),
         }]),
-        ..Attributes::new(ObjectType::PrivateKey)
+        ..Attributes::default()
     };
     set_tags(&mut attributes, tags)?;
     Ok(Create {
@@ -72,6 +74,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
     tags: T,
 ) -> Result<Import, KmipUtilsError> {
     let mut attributes = Attributes {
+        object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         link: Some(vec![Link {
@@ -81,7 +84,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
             ),
         }]),
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-        ..Attributes::new(ObjectType::PrivateKey)
+        ..Attributes::default()
     };
     set_tags(&mut attributes, tags)?;
 
@@ -145,6 +148,7 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
     tags: T,
 ) -> Result<Import, KmipUtilsError> {
     let mut attributes = Attributes {
+        object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
@@ -154,7 +158,7 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
                 cover_crypt_master_public_key_id.to_owned(),
             ),
         }]),
-        ..Attributes::new(ObjectType::PrivateKey)
+        ..Attributes::default()
     };
     set_tags(&mut attributes, tags)?;
 
@@ -214,6 +218,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
 ) -> Result<Import, KmipUtilsError> {
     let mut attributes = Attributes {
+        object_type: Some(ObjectType::PublicKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
@@ -223,7 +228,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
                 cover_crypt_master_private_key_id.to_owned(),
             ),
         }]),
-        ..Attributes::new(ObjectType::PublicKey)
+        ..Attributes::default()
     };
     set_tags(&mut attributes, tags)?;
 
@@ -255,11 +260,11 @@ pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate,
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-            object_type: ObjectType::SymmetricKey,
+            object_type: Some(ObjectType::SymmetricKey),
             vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-            ..Attributes::new(ObjectType::SymmetricKey)
+            ..Attributes::default()
         },
-        ..Locate::new(ObjectType::SymmetricKey)
+        ..Locate::default()
     })
 }
 
@@ -282,12 +287,13 @@ pub fn build_rekey_keypair_request(
     Ok(ReKeyKeyPair {
         private_key_unique_identifier: Some(master_private_key_unique_identifier.to_string()),
         private_key_attributes: Some(Attributes {
+            object_type: Some(ObjectType::PrivateKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
             vendor_attributes: Some(vec![attributes_as_vendor_attribute(
                 cover_crypt_policy_attributes,
             )?]),
-            ..Attributes::new(ObjectType::PrivateKey)
+            ..Attributes::default()
         }),
         ..ReKeyKeyPair::default()
     })

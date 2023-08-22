@@ -129,13 +129,8 @@ impl UserDecryptionKeysHandler {
         })?;
         let user_decryption_key_len = user_decryption_key_bytes.len();
 
-        let mut attributes = attributes
-            .map(|att| {
-                let mut att = att.clone();
-                att.object_type = ObjectType::PrivateKey;
-                att
-            })
-            .unwrap_or_else(|| Attributes::new(ObjectType::PrivateKey));
+        let mut attributes = attributes.cloned().unwrap_or_default();
+        attributes.object_type = Some(ObjectType::PrivateKey);
 
         // Add the access policy to the attributes
         upsert_access_policy_in_attributes(&mut attributes, access_policy_str)?;
