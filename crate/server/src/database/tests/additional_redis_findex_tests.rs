@@ -25,7 +25,13 @@ use crate::{
     result::KResult,
 };
 
-const REDIS_URL: &str = "redis://localhost:6379";
+fn get_redis_url() -> String {
+    if let Ok(var_env) = std::env::var("REDIS_HOST") {
+        format!("redis://{var_env}:6379")
+    } else {
+        "redis://localhost:6379".to_string()
+    }
+}
 
 struct DummyDB {}
 #[async_trait]
@@ -47,7 +53,7 @@ pub async fn test_objects_db() -> KResult<()> {
     log_init("test_objects_db=trace");
     trace!("test_objects_db");
 
-    let client = redis::Client::open(REDIS_URL)?;
+    let client = redis::Client::open(get_redis_url())?;
     let mgr = ConnectionManager::new(client).await?;
 
     let o_db = ObjectsDB::new(mgr.clone()).await?;
@@ -98,7 +104,7 @@ pub async fn test_permissions_db() -> KResult<()> {
     // the findex label
     let label = b"label";
 
-    let client = redis::Client::open(REDIS_URL)?;
+    let client = redis::Client::open(get_redis_url())?;
     let mut mgr = ConnectionManager::new(client).await?;
     // clear the DB
     clear_all(&mut mgr).await?;
@@ -353,7 +359,7 @@ pub async fn test_corner_case() -> KResult<()> {
     // the findex label
     let label = b"label";
 
-    let client = redis::Client::open(REDIS_URL)?;
+    let client = redis::Client::open(get_redis_url())?;
     let mut mgr = ConnectionManager::new(client).await?;
     // clear the DB
     clear_all(&mut mgr).await?;

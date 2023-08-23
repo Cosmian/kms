@@ -109,6 +109,8 @@ jobs:
           KMS_SQLITE_PATH: data/shared
           KMS_CERTBOT_SSL_PATH: data/private
 
+          REDIS_HOST: redis
+
       - name: Run doc tests
         uses: actions-rs/cargo@v1
         with:
