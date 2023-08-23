@@ -40,6 +40,7 @@ impl Triple {
     pub fn key(&self) -> String {
         Self::build_key(&self.obj_uid, &self.user_id)
     }
+
     pub fn build_key(obj_uid: &str, user_id: &str) -> String {
         format!("{}::{}", obj_uid, user_id)
     }
