@@ -31,6 +31,14 @@ mod owner_test;
 mod permissions_test;
 mod tagging_tests;
 
+fn get_redis_url() -> String {
+    if let Ok(var_env) = std::env::var("REDIS_HOST") {
+        format!("redis://{var_env}:6379")
+    } else {
+        "redis://localhost:6379".to_string()
+    }
+}
+
 async fn get_sql_cipher() -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParams>)> {
     let dir = PathBuf::from("/tmp");
 
@@ -84,7 +92,8 @@ async fn get_mysql() -> KResult<(MySqlPool, Option<ExtraDatabaseParams>)> {
 // To run local tests with a Redis in Docker (and local storage - needed for transactions), run
 // docker run --name redis -p 6379:6379 -d redis redis-server --save 60 1 --loglevel verbose
 async fn get_redis_with_findex() -> KResult<(RedisWithFindex, Option<ExtraDatabaseParams>)> {
-    let redis_url = std::option_env!("KMS_REDIS_URL").unwrap_or("redis://localhost:6379");
+    let redis_url = get_redis_url();
+    let redis_url = std::option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
     let mut rng = CsRng::from_entropy();
     let master_key = SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::new(&mut rng);
     let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, b"label").await?;

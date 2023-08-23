@@ -17,21 +17,16 @@ use redis::aio::ConnectionManager;
 use tracing::trace;
 
 use crate::{
-    database::redis::{
-        objects_db::{ObjectsDB, RedisDbObject},
-        permissions::PermissionsDB,
+    database::{
+        redis::{
+            objects_db::{ObjectsDB, RedisDbObject},
+            permissions::PermissionsDB,
+        },
+        tests::get_redis_url,
     },
     log_utils::log_init,
     result::KResult,
 };
-
-fn get_redis_url() -> String {
-    if let Ok(var_env) = std::env::var("REDIS_HOST") {
-        format!("redis://{var_env}:6379")
-    } else {
-        "redis://localhost:6379".to_string()
-    }
-}
 
 struct DummyDB {}
 #[async_trait]
