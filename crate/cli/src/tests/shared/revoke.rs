@@ -27,7 +27,7 @@ pub fn revoke(
 ) -> Result<(), CliError> {
     let args: Vec<String> = ["keys", "revoke", "--key-id", key_id, revocation_reason]
         .iter()
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);

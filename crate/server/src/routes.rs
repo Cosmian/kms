@@ -43,21 +43,24 @@ impl actix_web::error::ResponseError for KmsError {
     fn status_code(&self) -> StatusCode {
         match self {
             KmsError::RouteNotFound(_) => StatusCode::NOT_FOUND,
+
             KmsError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            KmsError::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            KmsError::KmipError(..) => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::NotSupported(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::UnsupportedProtectionMasks => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::UnsupportedPlaceholder => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::InconsistentOperation(..) => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::InvalidRequest(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            KmsError::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            KmsError::SGXError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            KmsError::ConversionError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            KmsError::CryptographicError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            KmsError::Redis(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            KmsError::Findex(_) => StatusCode::INTERNAL_SERVER_ERROR,
+
+            KmsError::DatabaseError(_)
+            | KmsError::SGXError(_)
+            | KmsError::ConversionError(_)
+            | KmsError::CryptographicError(_)
+            | KmsError::Redis(_)
+            | KmsError::Findex(_)
+            | KmsError::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+
+            KmsError::KmipError(..)
+            | KmsError::NotSupported(_)
+            | KmsError::UnsupportedProtectionMasks
+            | KmsError::UnsupportedPlaceholder
+            | KmsError::InconsistentOperation(..)
+            | KmsError::InvalidRequest(_)
+            | KmsError::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
         }
     }
 }

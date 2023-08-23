@@ -31,7 +31,7 @@ macro_rules! mac {
 pub struct KMSSqliteCacheItem {
     /// The handler to the sqlite
     sqlite: Arc<Pool<Sqlite>>,
-    /// They MAC of the inserted item computed using the DB secret key
+    /// The MAC of the inserted item computed using the DB secret key
     mac: Vec<u8>,
     /// The date of the first insertion
     #[allow(dead_code)]

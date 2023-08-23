@@ -64,29 +64,32 @@ impl Display for DBConfig {
             "postgresql" => write!(
                 f,
                 "postgresql: {}",
-                self.database_url
+                &self
+                    .database_url
                     .as_ref()
-                    .unwrap_or(&"[INVALID URL]".to_string())
+                    .map_or("[INVALID URL]", |url| url.as_str())
             ),
             "mysql" => write!(
                 f,
                 "mysql: {}",
-                self.database_url
+                &self
+                    .database_url
                     .as_ref()
-                    .unwrap_or(&"[INVALID URL]".to_string())
+                    .map_or("[INVALID URL]", |url| url.as_str())
             ),
             "sqlite" => write!(f, "sqlite: {}", self.sqlite_path.display()),
             "sqlite-enc" => write!(f, "sqlcipher: {}", self.sqlite_path.display()),
             "redis-findex" => write!(
                 f,
                 "redis-findex: {}, password: [****], label: 0x{}",
-                self.database_url
+                &self
+                    .database_url
                     .as_ref()
-                    .unwrap_or(&"[INVALID URL]".to_string()),
+                    .map_or("[INVALID LABEL]", |url| url.as_str()),
                 hex::encode(
                     self.redis_findex_label
                         .as_ref()
-                        .unwrap_or(&"[INVALID LABEL]".to_string())
+                        .map_or("[INVALID LABEL]", |url| url.as_str()),
                 )
             ),
             unknown => write!(f, "Unknown database type: {}", unknown),

@@ -97,7 +97,7 @@ impl ObjectsDB {
     }
 
     fn object_key(uid: &str) -> String {
-        format!("do::{}", uid)
+        format!("do::{uid}")
     }
 
     pub async fn object_upsert(&self, uid: &str, redis_db_object: &RedisDbObject) -> KResult<()> {

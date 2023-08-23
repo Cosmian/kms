@@ -40,9 +40,6 @@ impl Triple {
     pub fn key(&self) -> String {
         Self::build_key(&self.obj_uid, &self.user_id)
     }
-}
-
-impl Triple {
     pub fn build_key(obj_uid: &str, user_id: &str) -> String {
         format!("{}::{}", obj_uid, user_id)
     }
@@ -149,8 +146,8 @@ impl PermissionsDB {
             .next()
             .unwrap_or((keyword, HashSet::new()))
             .1
-            .into_iter()
-            .map(|l| Triple::try_from(&l))
+            .iter()
+            .map(Triple::try_from)
             .collect::<KResult<HashSet<Triple>>>()
     }
 

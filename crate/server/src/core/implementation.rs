@@ -238,8 +238,7 @@ impl KMS {
                     // create the key
                     let key_len: usize = attributes
                         .cryptographic_length
-                        .map(|v| v as usize / 8)
-                        .unwrap_or(Aes256Gcm::KEY_LENGTH);
+                        .map_or(Aes256Gcm::KEY_LENGTH, |v| v as usize / 8);
                     let mut symmetric_key = vec![0; key_len];
                     rng.fill_bytes(&mut symmetric_key);
                     let object = create_symmetric_key(&symmetric_key, *cryptographic_algorithm);

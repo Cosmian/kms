@@ -86,7 +86,7 @@ impl EncryptionSystem for EciesEncryption {
     }
 }
 
-/// Decrypt a single block of data encrypted  using a Salsa Sealed Box
+/// Decrypt a single block of data encrypted using a Salsa Sealed Box
 /// Cannot be used as a stream decipher
 pub struct EciesDecryption {
     private_key_uid: String,
