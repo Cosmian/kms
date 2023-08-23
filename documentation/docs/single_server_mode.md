@@ -31,11 +31,7 @@ To start the KMS server with client-secret encrypted SQLite databases, pass the 
 ```sh
 docker run --rm -p 9998:9998 \
   -v cosmian-kms:/root/cosmian-kms/sqlite-data \
-<<<<<<< HEAD
   --name kms ghcr.io/cosmian/kms:4.5.0 \
-=======
-  --name kms ghcr.io/cosmian/kms:4.5.0 \
->>>>>>> 9795148 (bump to version4.5.0)
   --database-type=sqlite-enc
 ```
 

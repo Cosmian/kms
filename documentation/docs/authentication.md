@@ -65,11 +65,7 @@ The KMS server JWT authentication is configured using three command line options
     Below is an example of a JWT configuration for the KMS server using Google as the authorization server.
 
     ```sh
-<<<<<<< HEAD
     docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.5.0 \
-=======
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.5.0 \
->>>>>>> 9795148 (bump to version4.5.0)
         --jwt-issuer-uri=https://accounts.google.com \
         --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
         --jwt-audience=cosmian_kms
