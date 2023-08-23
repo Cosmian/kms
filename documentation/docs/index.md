@@ -68,7 +68,7 @@ The KMS has an easy-to-use command line interface client for many operating syst
 
 #### Integrated with Cloudproof libraries
 
-To build the next generation of privacy-by-design applications with end-to-end encryption, the KMS server is integrated with the [**Cloudproof**](https://docs.cosmian.com/cloudproof_encryption/use_cases_benefits/) libraries to deliver keys and secrets to the client-side cryptographic stacks or perform delegated encryption and decryption.
+To build the next generation of privacy-by-design applications with end-to-end encryption, the KMS server is integrated with the [**Cloudproof**](https://docs.cosmian.com/cloudproof_encryption/how_it_works/) libraries to deliver keys and secrets to the client-side cryptographic stacks or perform delegated encryption and decryption.
 
 The libraries are available in many languages, including Javascript, Java, Dart, and Python. Check their [documentation](https://docs.cosmian.com/cloudproof_encryption/application_level_encryption/) for details.
 
