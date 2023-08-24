@@ -132,11 +132,11 @@ impl DBConfig {
     pub fn init(&self, workspace: &WorkspaceConfig) -> KResult<DbParams> {
         match self.database_type.as_str() {
             "postgresql" => {
-                let url = ensure_url(&self.database_url, "KMS_POSTGRES_URL")?;
+                let url = ensure_url(self.database_url.as_deref(), "KMS_POSTGRES_URL")?;
                 Ok(DbParams::Postgres(url))
             }
             "mysql" => {
-                let url = ensure_url(&self.database_url, "KMS_MYSQL_URL")?;
+                let url = ensure_url(self.database_url.as_deref(), "KMS_MYSQL_URL")?;
                 Ok(DbParams::Mysql(url))
             }
             "sqlite" => {
@@ -148,14 +148,14 @@ impl DBConfig {
                 Ok(DbParams::SqliteEnc(path))
             }
             "redis-findex" => {
-                let url = ensure_url(&self.database_url, "KMS_REDIS_URL")?;
+                let url = ensure_url(self.database_url.as_deref(), "KMS_REDIS_URL")?;
                 let master_redis_password = ensure_value(
-                    &self.redis_master_password,
+                    self.redis_master_password.as_deref(),
                     "redis-master-password",
                     "KMS_REDIS_MASTER_PASSWORD",
                 )?;
                 let redis_findex_label = ensure_value(
-                    &self.redis_findex_label,
+                    self.redis_findex_label.as_deref(),
                     "redis-findex-label",
                     "KMS_REDIS_FINDEX_LABEL",
                 )?;
@@ -173,32 +173,31 @@ impl DBConfig {
                     redis_findex_label.into_bytes(),
                 ))
             }
-            unknown => kms_bail!("Unknown database type: {}", unknown),
+            unknown => kms_bail!("Unknown database type: {unknown}"),
         }
     }
 }
 
-fn ensure_url(database_url: &Option<String>, alternate_env_variable: &str) -> KResult<String> {
+fn ensure_url(database_url: Option<&str>, alternate_env_variable: &str) -> KResult<String> {
     if let Some(url) = database_url {
-        Ok(url.clone())
+        Ok(url.to_string())
     } else {
         std::env::var(alternate_env_variable).map_err(|_e| {
             kms_error!(
                 "No database URL supplied either using the 'database-url' option, or the \
-                 KMS_DATABASE_URL or the {} environment variables",
-                alternate_env_variable
+                 KMS_DATABASE_URL or the {alternate_env_variable} environment variables",
             )
         })
     }
 }
 
 fn ensure_value(
-    value: &Option<String>,
+    value: Option<&str>,
     option_name: &str,
     env_variable_name: &str,
 ) -> KResult<String> {
     if let Some(value) = value {
-        Ok(value.clone())
+        Ok(value.to_string())
     } else {
         std::env::var(env_variable_name).map_err(|_e| {
             kms_error!(

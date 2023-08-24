@@ -222,14 +222,14 @@ impl CreateAction {
 
 /// Recover the Policy from a key store in the KMS or in a TTLV file
 async fn recover_policy(
-    key_id: &Option<String>,
-    key_file: &Option<PathBuf>,
+    key_id: Option<&str>,
+    key_file: Option<&PathBuf>,
     unwrap: bool,
     client_connector: &KmsRestClient,
 ) -> Result<Policy, CliError> {
     // Recover the KMIP Object
     let object: Object = if let Some(key_id) = key_id {
-        export_object(client_connector, key_id, unwrap, &None, false).await?
+        export_object(client_connector, key_id, unwrap, None, false).await?
     } else if let Some(f) = key_file {
         let ttlv: TTLV = read_from_json_file(f)?;
         from_ttlv(&ttlv)?
@@ -268,7 +268,13 @@ pub struct SpecsAction {
 impl SpecsAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         // Recover the policy
-        let policy = recover_policy(&self.key_id, &self.key_file, true, client_connector).await?;
+        let policy = recover_policy(
+            self.key_id.as_deref(),
+            self.key_file.as_ref(),
+            true,
+            client_connector,
+        )
+        .await?;
         let specs = PolicySpecifications::try_from(&policy)?;
         // save the policy to the specifications file
         write_json_object_to_file(&specs, &self.policy_specs_file)
@@ -302,7 +308,13 @@ pub struct BinaryAction {
 impl BinaryAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         // Recover the policy
-        let policy = recover_policy(&self.key_id, &self.key_file, true, client_connector).await?;
+        let policy = recover_policy(
+            self.key_id.as_deref(),
+            self.key_file.as_ref(),
+            true,
+            client_connector,
+        )
+        .await?;
         // save the policy to the binary file
         write_json_object_to_file(&policy, &self.policy_binary_file)
     }
@@ -335,7 +347,13 @@ pub struct ViewAction {
 impl ViewAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         // Recover the policy
-        let policy = recover_policy(&self.key_id, &self.key_file, true, client_connector).await?;
+        let policy = recover_policy(
+            self.key_id.as_deref(),
+            self.key_file.as_ref(),
+            true,
+            client_connector,
+        )
+        .await?;
         // get a pretty json and print it
         let json = if self.detailed {
             serde_json::to_string_pretty(&policy)?
