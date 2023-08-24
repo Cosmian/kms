@@ -30,7 +30,7 @@ use super::{
 };
 use crate::{
     database::{object_with_metadata::ObjectWithMetadata, Database},
-    kms_error,
+    kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
 
@@ -86,9 +86,8 @@ impl RedisWithFindex {
 
 #[async_trait]
 impl Database for RedisWithFindex {
-    /// Return the filename of the database if supported
-    fn filename(&self, _group_id: u128) -> PathBuf {
-        PathBuf::from("")
+    fn filename(&self, _group_id: u128) -> Option<PathBuf> {
+        None
     }
 
     /// Insert the given Object in the database.
@@ -123,7 +122,7 @@ impl Database for RedisWithFindex {
         let mut additions = HashMap::new();
         additions.insert(indexed_value, keywords);
 
-        //upsert the index
+        // upsert the index
         self.findex
             .upsert(
                 &self.findex_key.to_bytes(),
@@ -182,12 +181,12 @@ impl Database for RedisWithFindex {
             // additions to the index
             additions.insert(indexed_value, keywords);
 
-            //upsert the object
+            // upsert the object
             db_objects.insert(uid.clone(), db_object);
             uids.push(uid);
         }
 
-        //upsert the indexes
+        // upsert the indexes
         self.findex
             .upsert(
                 &self.findex_key.to_bytes(),
@@ -318,7 +317,6 @@ impl Database for RedisWithFindex {
         Ok(())
     }
 
-    /// upsert (update or create if not exists)
     async fn upsert(
         &self,
         uid: &str,
@@ -344,7 +342,7 @@ impl Database for RedisWithFindex {
     ) -> KResult<()> {
         let db_object = self.objects_db.object_get(uid).await?;
         if db_object.owner != user {
-            return Err(kms_error!("User is not the owner of the object"))
+            kms_bail!("User is not the owner of the object");
         }
         self.objects_db.object_delete(uid).await?;
         Ok(())

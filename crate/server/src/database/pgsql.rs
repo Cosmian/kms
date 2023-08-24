@@ -76,8 +76,8 @@ impl PgPool {
 
 #[async_trait]
 impl Database for PgPool {
-    fn filename(&self, _group_id: u128) -> PathBuf {
-        PathBuf::from("")
+    fn filename(&self, _group_id: u128) -> Option<PathBuf> {
+        None
     }
 
     async fn create(

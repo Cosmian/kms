@@ -56,7 +56,9 @@ impl CachedSqlCipher {
         group_id: u128,
         key: &SymmetricKey<32>,
     ) -> KResult<Pool<Sqlite>> {
-        let path = self.filename(group_id);
+        let path = self
+            .filename(group_id)
+            .ok_or_else(|| kms_error!("Path for group database does not exist"))?;
         let options = SqliteConnectOptions::new()
             // create the database file if it doesn't exist
             .create_if_missing(true)
@@ -127,8 +129,8 @@ impl CachedSqlCipher {
 
 #[async_trait]
 impl Database for CachedSqlCipher {
-    fn filename(&self, group_id: u128) -> PathBuf {
-        self.path.join(format!("{group_id}.sqlite"))
+    fn filename(&self, group_id: u128) -> Option<PathBuf> {
+        Some(self.path.join(format!("{group_id}.sqlite")))
     }
 
     async fn create(
