@@ -54,10 +54,19 @@ redis = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sqlx = { version = "0.7.0-alpha.3", default-features = false, features = ["json", "runtime-tokio-native-tls", "mysql", "postgres", "sqlite"] }
+sqlx = { version = "0.7.0-alpha.3", default-features = false, features = [
+    "json",
+    "runtime-tokio-native-tls",
+    "mysql",
+    "postgres",
+    "sqlite",
+] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
 tiny-keccak = { workspace = true }
+# this version of tokio should be the same as the one used in actix-web
+# run `cargo tree -i tokio` to check
+tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true }

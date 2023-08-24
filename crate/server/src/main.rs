@@ -14,7 +14,7 @@ mod expiry;
 
 use clap::Parser;
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> KResult<()> {
     if option_env!("RUST_BACKTRACE").is_none() {
         std::env::set_var("RUST_BACKTRACE", "1");

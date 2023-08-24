@@ -1,3 +1,4 @@
+pub mod bootstrap_server_config;
 mod certbot_https;
 pub mod db;
 mod enclave;
@@ -19,6 +20,7 @@ use libsgx::utils::is_running_inside_enclave;
 use openssl::{pkcs12::ParsedPkcs12_2, x509::X509};
 use tracing::info;
 
+use self::bootstrap_server_config::BootstrapServerConfig;
 use crate::{
     config::{
         certbot_https::HttpsCertbotConfig, db::DBConfig, enclave::EnclaveConfig, http::HTTPConfig,
@@ -61,6 +63,9 @@ pub struct ClapConfig {
     /// but always use the default username instead of the one provided by the authentication method
     #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME", default_value = "false")]
     pub force_default_username: bool,
+
+    #[clap(flatten)]
+    pub bootstrap_server: BootstrapServerConfig,
 }
 
 impl fmt::Debug for ClapConfig {
@@ -184,6 +189,9 @@ pub struct ServerConfig {
     /// The certificate used to verify the client TLS certificates
     /// used for authentication
     pub verify_cert: Option<X509>,
+
+    /// Use a bootstrap server (inside an enclave for instance)
+    pub bootstrap_server_config: BootstrapServerConfig,
 }
 
 impl ServerConfig {
@@ -217,6 +225,7 @@ impl ServerConfig {
             force_default_username: conf.force_default_username,
             server_pkcs_12,
             verify_cert,
+            bootstrap_server_config: conf.bootstrap_server.clone(),
         };
 
         info!("generated server conf: {server_conf:#?}");

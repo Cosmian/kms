@@ -1,5 +1,6 @@
 {
   "cSpell.words": [
+    "actix",
     "ascii",
     "canonicalize",
     "certbot",
@@ -26,6 +27,7 @@
     "kmip",
     "KMIP",
     "libsgx",
+    "mozilla",
     "mysql",
     "openssl",
     "pkcs",
@@ -37,6 +39,7 @@
     "Sqlite",
     "structopt",
     "TFHE",
+    "tokio",
     "ttlv",
     "uids",
     "upserting",
