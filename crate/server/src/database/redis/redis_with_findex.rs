@@ -46,7 +46,6 @@ fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<
 pub struct RedisWithFindex {
     objects_db: Arc<ObjectsDB>,
     permissions_db: PermissionsDB,
-    //TODO this Mutex should not be here; Findex needs to be changed to be thread-safe and not take &mut self
     findex: Arc<FindexRedis>,
     findex_key: SymmetricKey<MASTER_KEY_LENGTH>,
     label: Vec<u8>,
@@ -161,11 +160,11 @@ impl Database for RedisWithFindex {
         objects: &[(Option<String>, Object, &HashSet<String>)],
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
-        // If the uid is not provided, generate a new one
-        let mut uids = vec![];
+        let mut uids = Vec::with_capacity(objects.len());
         let mut additions = HashMap::new();
         let mut db_objects = HashMap::new();
-        for (uid, object, tags) in objects.iter() {
+        for (uid, object, tags) in objects {
+            // If the uid is not provided, generate a new one
             let uid = uid.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
             let indexed_value = IndexedValue::Location(Location::from(uid.as_bytes()));
 
