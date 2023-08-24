@@ -23,7 +23,8 @@ Use the tags to export objects, locate them, or request data encryption and decr
 
 - Added `locate` to the `ckms`client
 
-- Added `Redis-Findex` backend support so that the KMS server data and indexes can be encrypted by the KMS at the application level. 
+- Added `Redis-Findex` backend support so that the KMS can encrypt the KMS server data and indexes at the application level. 
+
 
 
 ## [4.4.3] - 2023-07-17
