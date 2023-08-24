@@ -1,5 +1,6 @@
 use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::CryptoRngCore, RandomFixedSizeCBytes, X25519PrivateKey, X25519PublicKey,
+    reexport::rand_core::CryptoRngCore, FixedSizeCBytes, RandomFixedSizeCBytes, X25519PrivateKey,
+    X25519PublicKey,
 };
 use cosmian_kmip::{
     error::KmipError,
@@ -15,13 +16,13 @@ use cosmian_kmip::{
 };
 use num_bigint::BigUint;
 
-use super::encryption_decryption::X25519_PRIVATE_KEY_LENGTH;
+use super::CURVE_25519_PRIVATE_KEY_LENGTH;
 use crate::KeyPair;
 
-pub const SECRET_KEY_LENGTH: usize = X25519_PRIVATE_KEY_LENGTH;
-pub const Q_LENGTH_BITS: i32 = X25519_PRIVATE_KEY_LENGTH as i32;
+pub const SECRET_KEY_LENGTH: usize = CURVE_25519_PRIVATE_KEY_LENGTH;
+pub const Q_LENGTH_BITS: i32 = (SECRET_KEY_LENGTH * 8) as i32;
 
-/// convert to a curve 25519 256 bits KMIP Public Key
+/// convert to a X25519 256 bits KMIP Public Key
 /// no check performed
 #[must_use]
 pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Object {
@@ -121,7 +122,7 @@ where
     let private_key = X25519PrivateKey::new(rng);
     let public_key = X25519PublicKey::from(&private_key);
 
-    let private_key = to_curve_25519_256_private_key(private_key.as_bytes(), public_key_uid);
-    let public_key = to_curve_25519_256_public_key(public_key.as_bytes(), private_key_uid);
+    let private_key = to_curve_25519_256_private_key(&private_key.to_bytes(), public_key_uid);
+    let public_key = to_curve_25519_256_public_key(&public_key.to_bytes(), private_key_uid);
     Ok(KeyPair::new(private_key, public_key))
 }

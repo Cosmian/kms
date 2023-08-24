@@ -26,7 +26,7 @@ pub fn revoke(
     revocation_reason: &str,
 ) -> Result<(), CliError> {
     let args: Vec<String> = ["keys", "revoke", "--key-id", key_id, revocation_reason]
-        .into_iter()
+        .iter()
         .map(std::string::ToString::to_string)
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;

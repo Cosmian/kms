@@ -1,5 +1,5 @@
 use cloudproof::reexport::crypto_core::{
-    key_unwrap, key_wrap, reexport::rand_core::CryptoRngCore, Ecies, EciesX25519XChaCha20,
+    key_unwrap, key_wrap, reexport::rand_core::CryptoRngCore, Ecies, EciesSalsaSealBox,
     FixedSizeCBytes, X25519PrivateKey, X25519PublicKey,
 };
 use cosmian_kmip::kmip::{
@@ -9,12 +9,14 @@ use cosmian_kmip::kmip::{
 };
 
 use crate::{
-    crypto::curve_25519::encryption_decryption::{
-        X25519_PRIVATE_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH,
-    },
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail,
 };
+
+//TODO These should be re-exported from crypto_core in a future release
+// Sizes in bytes
+pub const X25519_PUBLIC_KEY_LENGTH: usize = 32;
+pub const CURVE_25519_PRIVATE_KEY_LENGTH: usize = 32;
 
 /// Encrypt bytes using the wrapping key
 pub fn encrypt_bytes<R>(
@@ -47,12 +49,16 @@ where
                         q_string,
                     } => match recommended_curve {
                         RecommendedCurve::CURVE25519 => {
-                            let q: [u8; X25519_PUBLIC_KEY_LENGTH] = q_string[..].try_into()?;
-                            let public_key = X25519PublicKey::try_from_bytes(q).context(
-                                "Unable to wrap key: wrapping key: failed to parse X25519 public \
-                                 key",
-                            )?;
-                            EciesX25519XChaCha20::encrypt(rng, &public_key, plaintext, None)
+                            let public_key_bytes: [u8; X25519_PUBLIC_KEY_LENGTH] =
+                                q_string.as_slice().try_into().map_err(|_| {
+                                    KmipUtilsError::ConversionError(
+                                        "invalid X25519 public key length".to_string(),
+                                    )
+                                })?;
+                            let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
+                            let ciphertext =
+                                EciesSalsaSealBox::encrypt(rng, &public_key, plaintext, None)?;
+                            Ok(ciphertext)
                         }
                         x => {
                             kmip_utils_bail!(
@@ -114,15 +120,18 @@ pub fn decrypt_bytes(
                             d,
                         } => match recommended_curve {
                             RecommendedCurve::CURVE25519 => {
-                                let private_key: [u8; X25519_PRIVATE_KEY_LENGTH] =
-                                    d.to_bytes_be()[..].try_into()?;
-                                let private_key = X25519PrivateKey::try_from_bytes(private_key)
-                                    .context(
-                                        "Unable to unwrap: unwrapping key: failed to parse X25519 \
-                                         private key",
-                                    )?;
+                                let private_key_bytes: [u8; CURVE_25519_PRIVATE_KEY_LENGTH] =
+                                    d.to_bytes_be().try_into().map_err(|_| {
+                                        KmipUtilsError::ConversionError(
+                                            "invalid Curve 25519 private key length".to_string(),
+                                        )
+                                    })?;
+                                let private_key =
+                                    X25519PrivateKey::try_from_bytes(private_key_bytes)?;
 
-                                EciesX25519XChaCha20::decrypt(&private_key, ciphertext, None)
+                                let plaintext =
+                                    EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?;
+                                Ok(plaintext)
                             }
                             x => {
                                 kmip_utils_bail!(

@@ -119,9 +119,9 @@ impl KMS {
             };
 
             // Generate a new key
-            let key = {
+            let key: SymmetricKey<32> = {
                 let mut rng = self.rng.lock().expect("failed locking the RNG");
-                SymmetricKey::new(&mut *rng)
+                SymmetricKey::<32>::new(&mut *rng)
             };
 
             // Encode ExtraDatabaseParams
@@ -589,7 +589,8 @@ impl KMS {
         Ok(())
     }
 
-    /// Get all the access authorization for a given object
+    /// Get all the access granted for a given object
+    /// per user
     pub async fn list_accesses(
         &self,
         object_id: &UniqueIdentifier,

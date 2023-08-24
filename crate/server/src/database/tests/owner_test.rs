@@ -20,8 +20,8 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
 
     let mut rng = CsRng::from_entropy();
     let owner = "eyJhbGciOiJSUzI1Ni";
-    let userid = "foo@example.org";
-    let userid2 = "bar@example.org";
+    let user_id_1 = "user_id_1@example.org";
+    let user_id_2 = "user_id_2@example.org";
     let invalid_owner = "invalid_owner";
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
@@ -65,22 +65,22 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
 
     // Add authorized `userid` to `read_access` table
 
-    db.grant_access(&uid, userid, ObjectOperationType::Get, db_params)
+    db.grant_access(&uid, user_id_1, ObjectOperationType::Get, db_params)
         .await?;
 
-    // Retrieve object with authorized `userid` with `Create` operation type - ko
+    // Retrieve object with authorized `user_id_1` with `Create` operation type - ko
 
     if !db
-        .retrieve(&uid, userid, ObjectOperationType::Create, db_params)
+        .retrieve(&uid, user_id_1, ObjectOperationType::Create, db_params)
         .await?
         .is_empty()
     {
         kms_bail!("It should not be possible to get this object with `Create` request")
     }
 
-    // Retrieve object with authorized `userid` with `Get` operation type - OK
+    // Retrieve object with authorized `user_id_1` with `Get` operation type - OK
     let objs_ = db
-        .retrieve(&uid, userid, ObjectOperationType::Get, db_params)
+        .retrieve(&uid, user_id_1, ObjectOperationType::Get, db_params)
         .await?;
     match objs_.len() {
         0 => kms_bail!("There should be an object"),
@@ -92,23 +92,25 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
     }
 
     // Add authorized `userid2` to `read_access` table
-    db.grant_access(&uid, userid2, ObjectOperationType::Get, db_params)
+    db.grant_access(&uid, user_id_2, ObjectOperationType::Get, db_params)
         .await?;
 
     // Try to add same access again - OK
-    db.grant_access(&uid, userid2, ObjectOperationType::Get, db_params)
+    db.grant_access(&uid, user_id_2, ObjectOperationType::Get, db_params)
         .await?;
 
+    // We should still be able to find the object by its owner
     let objects = db.find(None, None, owner, true, db_params).await?;
     assert_eq!(objects.len(), 1);
     let (o_uid, o_state, _, _) = &objects[0];
     assert_eq!(o_uid, &uid);
     assert_eq!(o_state, &StateEnumeration::Active);
 
-    let objects = db.find(None, None, userid2, true, db_params).await?;
+    // We should not be able to find the object by specifying  that user_id_2 is the owner
+    let objects = db.find(None, None, user_id_2, true, db_params).await?;
     assert!(objects.is_empty());
 
-    let objects = db.list_access_rights_obtained(userid2, db_params).await?;
+    let objects = db.list_access_rights_obtained(user_id_2, db_params).await?;
     assert_eq!(
         objects,
         vec![(
@@ -122,7 +124,7 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
 
     // Retrieve object with authorized `userid2` with `Create` operation type - ko
     if !db
-        .retrieve(&uid, userid2, ObjectOperationType::Create, db_params)
+        .retrieve(&uid, user_id_2, ObjectOperationType::Create, db_params)
         .await?
         .is_empty()
     {
@@ -131,7 +133,7 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
 
     // Retrieve object with authorized `userid` with `Get` operation type - OK
     let objs_ = db
-        .retrieve(&uid, userid2, ObjectOperationType::Get, db_params)
+        .retrieve(&uid, user_id_2, ObjectOperationType::Get, db_params)
         .await?;
     match objs_.len() {
         0 => kms_bail!("There should be an object"),
@@ -144,7 +146,7 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
 
     // Be sure we can still retrieve object with authorized `userid` with `Get` operation type - OK
     let objs_ = db
-        .retrieve(&uid, userid, ObjectOperationType::Get, db_params)
+        .retrieve(&uid, user_id_1, ObjectOperationType::Get, db_params)
         .await?;
     match objs_.len() {
         0 => kms_bail!("There should be an object"),
@@ -156,12 +158,12 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
     }
 
     // Remove `userid2` authorization
-    db.remove_access(&uid, userid2, ObjectOperationType::Get, db_params)
+    db.remove_access(&uid, user_id_2, ObjectOperationType::Get, db_params)
         .await?;
 
     // Retrieve object with `userid2` with `Get` operation type - ko
     if !db
-        .retrieve(&uid, userid2, ObjectOperationType::Get, db_params)
+        .retrieve(&uid, user_id_2, ObjectOperationType::Get, db_params)
         .await?
         .is_empty()
     {

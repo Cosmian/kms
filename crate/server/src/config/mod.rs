@@ -7,13 +7,14 @@ pub mod jwt_auth_config;
 mod workspace;
 
 use std::{
-    fmt,
+    fmt::{self, Display},
     path::PathBuf,
     sync::{Arc, Mutex},
 };
 
 use alcoholic_jwt::JWKS;
 use clap::Parser;
+use cloudproof::reexport::crypto_core::SymmetricKey;
 use libsgx::utils::is_running_inside_enclave;
 use openssl::{pkcs12::ParsedPkcs12_2, x509::X509};
 use tracing::info;
@@ -24,6 +25,7 @@ use crate::{
         jwe::JWEConfig, jwt_auth_config::JwtAuthConfig, workspace::WorkspaceConfig,
     },
     core::certbot::Certbot,
+    database::redis::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
     result::KResult,
 };
 
@@ -88,16 +90,49 @@ impl fmt::Debug for ClapConfig {
     }
 }
 
-#[derive(Clone, Debug)]
 pub enum DbParams {
-    // contains the dir of the sqlite db file (not the db file itself)
+    /// contains the dir of the sqlite db file (not the db file itself)
     Sqlite(PathBuf),
-    // contains the dir of the sqlcipher db file (not the db file itself)
+    /// contains the dir of the sqlcipher db file (not the db file itself)
     SqliteEnc(PathBuf),
-    // contains the postgres connection URL
+    /// contains the Postgres connection URL
     Postgres(String),
-    // contains the mysql connection URL
+    /// contains the MySql connection URL
     Mysql(String),
+    /// contains
+    /// - the Redis connection URL
+    /// - the master key used to encrypt the DB and the Index
+    /// - a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
+    RedisFindex(
+        String,
+        SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+        Vec<u8>,
+    ),
+}
+
+impl Display for DbParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DbParams::Sqlite(path) => write!(f, "sqlite: {}", path.display()),
+            DbParams::SqliteEnc(path) => write!(f, "sqlcipher: {}", path.display()),
+            DbParams::Postgres(url) => write!(f, "postgres: {}", url),
+            DbParams::Mysql(url) => write!(f, "mysql: {}", url),
+            DbParams::RedisFindex(url, _, label) => {
+                write!(
+                    f,
+                    "redis-findex: {}, key: [****], label: 0x{}",
+                    url,
+                    hex::encode(label)
+                )
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for DbParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}", &self))
+    }
 }
 
 #[derive(Clone, Debug)]

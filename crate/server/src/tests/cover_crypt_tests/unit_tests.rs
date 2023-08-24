@@ -211,7 +211,6 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 pub fn access_policy_serialization() -> KResult<()> {
     let access_policy = "(Department::MKG ||Department::FIN) && Level::confidential";
     let _json = serde_json::to_string(&access_policy)?;
-    // println!("{}", &json);
     Ok(())
 }
 
@@ -484,10 +483,7 @@ async fn test_abe_json_access() -> KResult<()> {
         ..Locate::default()
     };
 
-    // println!("Rq attrs: {:#?}", locate.attributes);
-
     let locate_response = kms.locate(locate, owner, None).await?;
-    // println!("1 - {locate_response:#?}");
 
     // we only have 1 master keypair, but 0 decryption keys as
     // requested in `locate` request
@@ -514,7 +510,6 @@ async fn test_abe_json_access() -> KResult<()> {
     };
 
     let locate_response = kms.locate(locate, owner, None).await?;
-    // println!("2 - {locate_response:#?}");
 
     // now we have 1 key
     assert_eq!(locate_response.located_items.unwrap(), 1);

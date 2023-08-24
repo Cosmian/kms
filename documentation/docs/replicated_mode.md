@@ -4,11 +4,13 @@ The KMS servers are stateless, so they can simply be scaled horizontally by conn
 
 ### Selecting the database
 
-The KMS server has support for PostgreSQL, Maria DB, and MySQL databases
+The KMS server has support for PostgreSQL, Maria DB, MySQL databases, as well as Redis-with-Findex (see [below](#redis-with-findex)).
+
 For
 
 - PostgreSQL, use `--database-type=postgresql`
 - MySQL or MariaDB, use `--database-type=mysql`
+- Redis-with-Findex, use `--database-type=redis-findex`
 
 e.g.
 
@@ -52,3 +54,30 @@ docker run --rm -p 9998:9998 \
   --database-url=mysql://mysql_server:3306/kms \
   --mysql-user-cert-file=cert.p12
 ```
+
+### Redis with Findex
+
+Redis-with-Findex makes the Cosmian KMS an excellent choice for a KMS in a zero-trust environment.
+
+Redis with Findex offers the ability to use Redis as a database with application-level encryption: all data is encrypted by the KMS before being sent to Redis. 
+
+[Findex](https://github.com/Cosmian/findex/) is a Cosmian cryptographic algorithm used to build encrypted indexes on encrypted data. This allows the KMS to perform fast encrypted queries on encrypted data. Findex indexes are also stored in Redis.
+
+Redis-with-Findex is most useful when the KMS is used inside a confidential VM or in an enclave. In this case, the secret used to encrypt the Redis data is protected by the VM or enclave and cannot be recovered at runtime by inspecting the machine memory.
+
+As with the other databases, the Redis-with-Findex database mode is stateless and can be scaled horizontally.
+
+
+Example:
+```sh
+docker run --rm -p 9998:9998 \
+  --name kms ghcr.io/cosmian/kms:4.5.0 \
+  --database-type=redis-findex \
+  --database-url=redis://localhost:6379 \
+  --redis-master-password password \
+  --redis-findex-label label
+```
+
+The `redis-master-password` is the password from which a key will be derived (using Argon 2) to encrypt the Redis data and indexes.
+
+The `redis-findex-label` is a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the password/key.

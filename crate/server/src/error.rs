@@ -1,12 +1,15 @@
 use std::{array::TryFromSliceError, sync::mpsc::SendError};
 
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
-use cloudproof::reexport::crypto_core::CryptoCoreError;
+use cloudproof::reexport::{
+    crypto_core::CryptoCoreError, findex::implementations::redis::FindexRedisError,
+};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
 use cosmian_kms_utils::error::KmipUtilsError;
+use redis::ErrorKind;
 use thiserror::Error;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
@@ -67,6 +70,12 @@ pub enum KmsError {
     // A failure originating from one of the cryptographic algorithms
     #[error("Cryptographic error: {0}")]
     CryptographicError(String),
+
+    #[error("Redis Error: {0}")]
+    Redis(String),
+
+    #[error("Findex Error: {0}")]
+    Findex(String),
 }
 
 impl From<TtlvError> for KmsError {
@@ -78,6 +87,18 @@ impl From<TtlvError> for KmsError {
 impl From<CryptoCoreError> for KmsError {
     fn from(e: CryptoCoreError) -> Self {
         Self::CryptographicError(e.to_string())
+    }
+}
+
+impl From<FindexRedisError> for KmsError {
+    fn from(e: FindexRedisError) -> Self {
+        Self::Findex(e.to_string())
+    }
+}
+
+impl From<std::string::FromUtf8Error> for KmsError {
+    fn from(e: std::string::FromUtf8Error) -> Self {
+        Self::ConversionError(e.to_string())
     }
 }
 
@@ -95,12 +116,6 @@ impl From<std::io::Error> for KmsError {
 
 impl From<openssl::error::ErrorStack> for KmsError {
     fn from(e: openssl::error::ErrorStack) -> Self {
-        Self::ServerError(e.to_string())
-    }
-}
-
-impl From<eyre::Report> for KmsError {
-    fn from(e: eyre::Report) -> Self {
         Self::ServerError(e.to_string())
     }
 }
@@ -162,6 +177,18 @@ impl From<KmipError> for KmsError {
 impl From<SendError<ServerHandle>> for KmsError {
     fn from(e: SendError<ServerHandle>) -> Self {
         Self::ServerError(format!("Failed to send the server handle: {e}"))
+    }
+}
+
+impl From<redis::RedisError> for KmsError {
+    fn from(err: redis::RedisError) -> Self {
+        KmsError::Redis(err.to_string())
+    }
+}
+
+impl From<KmsError> for redis::RedisError {
+    fn from(val: KmsError) -> Self {
+        redis::RedisError::from((ErrorKind::ClientError, "KMS Error", val.to_string()))
     }
 }
 

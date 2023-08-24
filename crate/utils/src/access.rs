@@ -1,4 +1,4 @@
-use cloudproof::reexport::crypto_core::{FixedSizeCBytes, SymmetricKey};
+use cloudproof::reexport::crypto_core::{FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::kmip_types::{Attributes, StateEnumeration, UniqueIdentifier};
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +16,7 @@ pub struct Access {
 
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
-#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone)]
+#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum ObjectOperationType {
     Create,
@@ -66,9 +66,12 @@ impl Serialize for ExtraDatabaseParams {
         S: serde::Serializer,
     {
         serializer.serialize_bytes(
-            [self.group_id.to_be_bytes().to_vec(), self.key.to_vec()]
-                .concat()
-                .as_slice(),
+            [
+                self.group_id.to_be_bytes().to_vec(),
+                self.key.as_bytes().to_vec(),
+            ]
+            .concat()
+            .as_slice(),
         )
     }
 }
@@ -79,9 +82,16 @@ impl<'de> Deserialize<'de> for ExtraDatabaseParams {
         D: serde::Deserializer<'de>,
     {
         let bytes = <Vec<u8>>::deserialize(deserializer)?;
-        let group_id = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
-        let key = SymmetricKey::try_from_bytes(bytes[16..48].try_into().unwrap()).unwrap();
-        Ok(Self { group_id, key })
+        let group_id_bytes: [u8; 16] = bytes[0..16]
+            .try_into()
+            .map_err(|_| serde::de::Error::custom("Could not deserialize ExtraDatabaseParams"))?;
+        let group_id = u128::from_be_bytes(group_id_bytes);
+        let key_bytes: [u8; 32] = bytes[16..48]
+            .try_into()
+            .map_err(|_| serde::de::Error::custom("Could not deserialize ExtraDatabaseParams"))?;
+        let key = SymmetricKey::try_from_bytes(key_bytes)
+            .map_err(|_| serde::de::Error::custom("Could not deserialize ExtraDatabaseParams"))?;
+        Ok(ExtraDatabaseParams { group_id, key })
     }
 }
 

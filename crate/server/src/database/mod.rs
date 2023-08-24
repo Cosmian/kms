@@ -16,6 +16,7 @@ mod database_trait;
 pub(crate) mod mysql;
 pub(crate) mod object_with_metadata;
 pub(crate) mod pgsql;
+pub(crate) mod redis;
 pub(crate) mod sqlite;
 pub(crate) use database_trait::Database;
 mod locate_query;

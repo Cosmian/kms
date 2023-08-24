@@ -23,7 +23,7 @@ pub trait Database {
     async fn create(
         &self,
         uid: Option<String>,
-        user: &str,
+        owner: &str,
         object: &Object,
         tags: &HashSet<String>,
         params: Option<&ExtraDatabaseParams>,
@@ -36,7 +36,7 @@ pub trait Database {
     /// and an object with the same id already exists
     async fn create_objects(
         &self,
-        user: &str,
+        owner: &str,
         objects: &[(Option<String>, Object, &HashSet<String>)],
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>>;
@@ -46,13 +46,13 @@ pub trait Database {
     /// The `uid_or_tags` parameter can be either a `uid` or a comma-separated list of tags
     /// in a JSON array.
     ///
-    /// The `query_read_access` allows additional filtering in `read_access` table to see
-    /// if a `user`, that is not a user, has the corresponding `read_access` authorization
+    /// The `query_access_grant` allows additional filtering in the `access` table to see
+    /// if a `user`, that is not a owner, has the corresponding access granted
     async fn retrieve(
         &self,
         uid_or_tags: &str,
         user: &str,
-        query_read_access: ObjectOperationType,
+        query_access_grant: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectWithMetadata>>;
 
@@ -74,6 +74,7 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
+    /// Update the state of an object in the database.
     async fn update_state(
         &self,
         uid: &str,
@@ -92,6 +93,7 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
+    /// Delete an object from the database.
     async fn delete(
         &self,
         uid: &str,
@@ -99,6 +101,12 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
+    /// List all the access rights obtained by `user`
+    /// on all the objects in the database
+    /// (i.e. the objects for which `user` is not the owner)
+    /// The result is a list of tuples (uid, owner, state, operations, is_wrapped)
+    /// where `operations` is a list of operations that `user` can perform on the object
+    /// and `is_wrapped` is a boolean indicating if the object is wrapped
     async fn list_access_rights_obtained(
         &self,
         user: &str,
@@ -113,6 +121,8 @@ pub trait Database {
         )>,
     >;
 
+    /// List all the accessed granted per `user`
+    /// This is called by the owner only
     async fn list_accesses(
         &self,
         uid: &str,

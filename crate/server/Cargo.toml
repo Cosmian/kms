@@ -33,7 +33,7 @@ actix-tls = "3.0.3"
 actix-web = { version = "4.3", features = ["openssl"] }
 alcoholic_jwt = "4091"
 async-recursion = "1.0"
-async-trait = "0.1"
+async-trait = { workspace = true }
 base64 = { workspace = true }
 clap = { workspace = true, features = ["env", "std"] }
 cloudproof = { workspace = true }
@@ -42,7 +42,6 @@ cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
 dirs = "5.0"
 dotenvy = "0.15"
 env_logger = { workspace = true }
-eyre = { workspace = true }
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
@@ -51,17 +50,26 @@ lazy_static = "1.4"
 libsgx = { path = "../libsgx" }
 openssl = { workspace = true }
 rawsql = "0.1"
+redis = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sqlx = { version = "0.7.0-alpha.3", default-features = false, features = ["json", "runtime-tokio-native-tls", "mysql", "postgres", "sqlite"] }
+sqlx = { version = "0.7.0-alpha.3", default-features = false, features = [
+    "json",
+    "runtime-tokio-native-tls",
+    "mysql",
+    "postgres",
+    "sqlite",
+] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
+tiny-keccak = { workspace = true }
 tracing = { workspace = true }
 tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true }
 tracing-tree = { workspace = true }
 uuid = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = "3.3"

@@ -92,7 +92,7 @@ async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
         input_file.to_str().unwrap(),
         &public_key_id,
         Some(output_file.to_str().unwrap()),
-        Some("myid"),
+        None,
     )?;
 
     // the user key should be able to decrypt the file
@@ -101,7 +101,7 @@ async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
         output_file.to_str().unwrap(),
         &private_key_id,
         Some(recovered_file.to_str().unwrap()),
-        Some("myid"),
+        None,
     )?;
     assert!(recovered_file.exists());
 
@@ -134,7 +134,7 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
         input_file.to_str().unwrap(),
         "[\"tag_ec\"]",
         Some(output_file.to_str().unwrap()),
-        Some("myid"),
+        None,
     )?;
 
     // the user key should be able to decrypt the file
@@ -143,7 +143,7 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
         output_file.to_str().unwrap(),
         "[\"tag_ec\"]",
         Some(recovered_file.to_str().unwrap()),
-        Some("myid"),
+        None,
     )?;
     assert!(recovered_file.exists());
 

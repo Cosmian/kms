@@ -6,6 +6,7 @@ use cloudproof::reexport::crypto_core::{
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 
 use self::{
+    additional_redis_findex_tests::{test_corner_case, test_objects_db, test_permissions_db},
     database_tests::{crud, tx_and_list, upsert},
     find_attributes_test::find_attributes,
     json_access_test::json_access,
@@ -14,16 +15,29 @@ use self::{
     tagging_tests::tags,
 };
 use super::{
-    cached_sqlcipher::CachedSqlCipher, mysql::MySqlPool, pgsql::PgPool, sqlite::SqlitePool,
+    cached_sqlcipher::CachedSqlCipher,
+    mysql::MySqlPool,
+    pgsql::PgPool,
+    redis::{RedisWithFindex, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH},
+    sqlite::SqlitePool,
 };
 use crate::result::KResult;
 
+mod additional_redis_findex_tests;
 mod database_tests;
 mod find_attributes_test;
 mod json_access_test;
 mod owner_test;
 mod permissions_test;
 mod tagging_tests;
+
+fn get_redis_url() -> String {
+    if let Ok(var_env) = std::env::var("REDIS_HOST") {
+        format!("redis://{var_env}:6379")
+    } else {
+        "redis://localhost:6379".to_string()
+    }
+}
 
 async fn get_sql_cipher() -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParams>)> {
     let dir = PathBuf::from("/tmp");
@@ -73,6 +87,33 @@ async fn get_mysql() -> KResult<(MySqlPool, Option<ExtraDatabaseParams>)> {
         std::option_env!("KMS_MYSQL_URL").unwrap_or("mysql://kms:kms@localhost:3306/kms");
     let my_sql = MySqlPool::instantiate(mysql_url, true).await?;
     Ok((my_sql, None))
+}
+
+// To run local tests with a Redis in Docker (and local storage - needed for transactions), run
+// docker run --name redis -p 6379:6379 -d redis redis-server --save 60 1 --loglevel verbose
+async fn get_redis_with_findex() -> KResult<(RedisWithFindex, Option<ExtraDatabaseParams>)> {
+    let redis_url = get_redis_url();
+    let redis_url = std::option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
+    let mut rng = CsRng::from_entropy();
+    let master_key = SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::new(&mut rng);
+    let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, b"label").await?;
+    Ok((redis_findex, None))
+}
+
+#[actix_rt::test]
+pub async fn test_redis_with_findex() -> KResult<()> {
+    test_objects_db().await?;
+    test_permissions_db().await?;
+    test_corner_case().await?;
+    json_access(&get_redis_with_findex().await?).await?;
+    find_attributes(&get_redis_with_findex().await?).await?;
+    owner(&get_redis_with_findex().await?).await?;
+    permissions(&get_redis_with_findex().await?).await?;
+    tags(&get_redis_with_findex().await?).await?;
+    tx_and_list(&get_redis_with_findex().await?).await?;
+    upsert(&get_redis_with_findex().await?).await?;
+    crud(&get_redis_with_findex().await?).await?;
+    Ok(())
 }
 
 #[actix_rt::test]

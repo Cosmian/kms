@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read, path::PathBuf};
+use std::{fmt::Display, fs::File, io::Read, path::PathBuf};
 
 use clap::Args;
 use openssl::{
@@ -8,7 +8,7 @@ use openssl::{
 
 use crate::{kms_bail, result::KResult};
 
-#[derive(Debug, Args, Clone)]
+#[derive(Args, Clone)]
 pub struct HTTPConfig {
     /// The server http port
     #[clap(long, env = "KMS_PORT", default_value = "9998")]
@@ -31,6 +31,33 @@ pub struct HTTPConfig {
     /// The server must run in TLS mode for this to be used.
     #[clap(long, env = "KMS_AUTHORITY_CERT_FILE")]
     pub authority_cert_file: Option<PathBuf>,
+}
+
+impl Display for HTTPConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.https_p12_file.is_some() {
+            write!(f, "https://{}:{}, ", self.hostname, self.port)?;
+            write!(f, "Pkcs12 file: {:?}, ", self.https_p12_file.as_ref())?;
+            write!(
+                f,
+                "password: {}, ",
+                self.https_p12_password.replace('.', "*")
+            )?;
+            write!(
+                f,
+                "authority cert file: {:?}",
+                self.authority_cert_file.as_ref()
+            )
+        } else {
+            write!(f, "http://{}:{}", self.hostname, self.port)
+        }
+    }
+}
+
+impl std::fmt::Debug for HTTPConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}", &self))
+    }
 }
 
 impl Default for HTTPConfig {

@@ -31,7 +31,7 @@ pub fn export(
     allow_revoked: bool,
 ) -> Result<(), CliError> {
     let mut args: Vec<String> = ["keys", "export", "--key-id", key_id, key_file]
-        .into_iter()
+        .iter()
         .map(std::string::ToString::to_string)
         .collect();
     if bytes {

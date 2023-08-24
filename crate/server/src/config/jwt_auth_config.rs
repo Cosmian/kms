@@ -1,6 +1,10 @@
 use alcoholic_jwt::JWKS;
 use clap::Args;
-use eyre::Context;
+
+use crate::{
+    kms_error,
+    result::{KResult, KResultHelper},
+};
 
 // Support for JWT token inspired by the doc at : https://cloud.google.com/api-gateway/docs/authenticating-users-jwt
 // and following pages
@@ -34,7 +38,7 @@ pub struct JwtAuthConfig {
 }
 
 impl JwtAuthConfig {
-    pub async fn fetch_jwks(&self) -> eyre::Result<Option<JWKS>> {
+    pub async fn fetch_jwks(&self) -> KResult<Option<JWKS>> {
         match &self.jwt_issuer_uri {
             None => Ok(None),
             Some(jwt_issuer_uri) => {
@@ -45,10 +49,10 @@ impl JwtAuthConfig {
                 };
                 reqwest::get(jwks_uri)
                     .await
-                    .with_context(|| "Unable to connect to retrieve JWKS")?
+                    .context("Unable to connect to retrieve JWKS")?
                     .json::<JWKS>()
                     .await
-                    .map_err(|e| eyre::eyre!(format!("Unable to get JWKS as a JSON: {e}")))
+                    .map_err(|e| kms_error!(format!("Unable to get JWKS as a JSON: {e}")))
                     .map(Option::Some)
             }
         }
