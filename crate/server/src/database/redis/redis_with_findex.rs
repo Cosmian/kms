@@ -534,7 +534,10 @@ impl Database for RedisWithFindex {
                         .object
                         .attributes()
                         .cloned()
-                        .unwrap_or_else(|_| Attributes::new(redis_db_object.object.object_type())),
+                        .unwrap_or_else(|_| Attributes {
+                            object_type: Some(redis_db_object.object.object_type()),
+                            ..Default::default()
+                        }),
                     false, // TODO: de-hardcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
                 )
             })

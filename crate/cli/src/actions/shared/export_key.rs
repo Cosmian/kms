@@ -87,7 +87,7 @@ impl ExportKeyAction {
             client_connector,
             &id,
             self.unwrap,
-            &self.wrap_key_id,
+            self.wrap_key_id.as_deref(),
             self.allow_revoked,
         )
         .await?;
