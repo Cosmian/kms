@@ -5,7 +5,7 @@ use cosmian_kmip::{
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
 use cosmian_kms_client::error::KmsClientError;
-use cosmian_kms_utils::crypto::error::CryptoError;
+use cosmian_kms_utils::error::KmipUtilsError;
 use thiserror::Error;
 pub mod result;
 
@@ -64,89 +64,89 @@ pub enum CliError {
     Default(String),
 }
 
-impl From<CryptoError> for CliError {
-    fn from(e: CryptoError) -> Self {
-        CliError::Cryptographic(e.to_string())
+impl From<KmipUtilsError> for CliError {
+    fn from(e: KmipUtilsError) -> Self {
+        Self::Cryptographic(e.to_string())
     }
 }
 
 impl From<TtlvError> for CliError {
     fn from(e: TtlvError) -> Self {
-        CliError::KmipError(ErrorReason::Codec_Error, e.to_string())
+        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
     }
 }
 
 impl From<std::io::Error> for CliError {
     fn from(e: std::io::Error) -> Self {
-        CliError::ServerError(e.to_string())
+        Self::ServerError(e.to_string())
     }
 }
 
 impl From<serde_json::Error> for CliError {
     fn from(e: serde_json::Error) -> Self {
-        CliError::InvalidRequest(e.to_string())
+        Self::InvalidRequest(e.to_string())
     }
 }
 
 impl From<cloudproof::reexport::cover_crypt::Error> for CliError {
     fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
-        CliError::InvalidRequest(e.to_string())
+        Self::InvalidRequest(e.to_string())
     }
 }
 
 impl From<libsgx::error::SgxError> for CliError {
     fn from(e: libsgx::error::SgxError) -> Self {
-        CliError::SGXError(e.to_string())
+        Self::SGXError(e.to_string())
     }
 }
 
 impl From<Utf8Error> for CliError {
     fn from(e: Utf8Error) -> Self {
-        CliError::Default(e.to_string())
+        Self::Default(e.to_string())
     }
 }
 
 impl From<std::string::FromUtf8Error> for CliError {
     fn from(e: std::string::FromUtf8Error) -> Self {
-        CliError::Default(e.to_string())
+        Self::Default(e.to_string())
     }
 }
 
 #[cfg(test)]
 impl From<reqwest::Error> for CliError {
     fn from(e: reqwest::Error) -> Self {
-        CliError::Default(e.to_string())
+        Self::Default(e.to_string())
     }
 }
 
 #[cfg(test)]
 impl From<CargoError> for CliError {
     fn from(e: CargoError) -> Self {
-        CliError::Default(e.to_string())
+        Self::Default(e.to_string())
     }
 }
 
 impl From<KmipError> for CliError {
     fn from(e: KmipError) -> Self {
         match e {
-            KmipError::InvalidKmipValue(r, s) => CliError::KmipError(r, s),
-            KmipError::InvalidKmipObject(r, s) => CliError::KmipError(r, s),
-            KmipError::KmipNotSupported(_, s) => CliError::NotSupported(s),
-            KmipError::NotSupported(s) => CliError::NotSupported(s),
-            KmipError::KmipError(r, s) => CliError::KmipError(r, s),
+            KmipError::InvalidKmipValue(r, s) => Self::KmipError(r, s),
+            KmipError::InvalidKmipObject(r, s) => Self::KmipError(r, s),
+            KmipError::KmipNotSupported(_, s) => Self::NotSupported(s),
+            KmipError::NotSupported(s) => Self::NotSupported(s),
+            KmipError::KmipError(r, s) => Self::KmipError(r, s),
         }
     }
 }
 
 impl From<base64::DecodeError> for CliError {
     fn from(e: base64::DecodeError) -> Self {
-        CliError::Default(e.to_string())
+        Self::Default(e.to_string())
     }
 }
 
 impl From<KmsClientError> for CliError {
     fn from(e: KmsClientError) -> Self {
-        CliError::KmsClientError(e.to_string())
+        Self::KmsClientError(e.to_string())
     }
 }
 
@@ -154,8 +154,8 @@ impl CliError {
     #[must_use]
     pub fn reason(&self, reason: ErrorReason) -> Self {
         match self {
-            CliError::KmipError(_r, e) => CliError::KmipError(reason, e.clone()),
-            e => CliError::KmipError(reason, e.to_string()),
+            Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
+            e => Self::KmipError(reason, e.to_string()),
         }
     }
 }

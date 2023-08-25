@@ -2,17 +2,19 @@ mod certbot_https;
 pub mod db;
 mod enclave;
 pub mod http;
+pub mod jwe;
 pub mod jwt_auth_config;
 mod workspace;
 
 use std::{
-    fmt,
+    fmt::{self, Display},
     path::PathBuf,
     sync::{Arc, Mutex},
 };
 
 use alcoholic_jwt::JWKS;
 use clap::Parser;
+use cloudproof::reexport::crypto_core::SymmetricKey;
 use libsgx::utils::is_running_inside_enclave;
 use openssl::{pkcs12::ParsedPkcs12_2, x509::X509};
 use tracing::info;
@@ -20,9 +22,10 @@ use tracing::info;
 use crate::{
     config::{
         certbot_https::HttpsCertbotConfig, db::DBConfig, enclave::EnclaveConfig, http::HTTPConfig,
-        jwt_auth_config::JwtAuthConfig, workspace::WorkspaceConfig,
+        jwe::JWEConfig, jwt_auth_config::JwtAuthConfig, workspace::WorkspaceConfig,
     },
     core::certbot::Certbot,
+    database::redis::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
     result::KResult,
 };
 
@@ -43,6 +46,9 @@ pub struct ClapConfig {
 
     #[clap(flatten)]
     pub http: HTTPConfig,
+
+    #[clap(flatten)]
+    pub jwe: JWEConfig,
 
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
@@ -84,16 +90,49 @@ impl fmt::Debug for ClapConfig {
     }
 }
 
-#[derive(Clone, Debug)]
 pub enum DbParams {
-    // contains the dir of the sqlite db file (not the db file itself)
+    /// contains the dir of the sqlite db file (not the db file itself)
     Sqlite(PathBuf),
-    // contains the dir of the sqlcipher db file (not the db file itself)
+    /// contains the dir of the sqlcipher db file (not the db file itself)
     SqliteEnc(PathBuf),
-    // contains the postgres connection URL
+    /// contains the Postgres connection URL
     Postgres(String),
-    // contains the mysql connection URL
+    /// contains the MySql connection URL
     Mysql(String),
+    /// contains
+    /// - the Redis connection URL
+    /// - the master key used to encrypt the DB and the Index
+    /// - a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
+    RedisFindex(
+        String,
+        SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+        Vec<u8>,
+    ),
+}
+
+impl Display for DbParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DbParams::Sqlite(path) => write!(f, "sqlite: {}", path.display()),
+            DbParams::SqliteEnc(path) => write!(f, "sqlcipher: {}", path.display()),
+            DbParams::Postgres(url) => write!(f, "postgres: {}", url),
+            DbParams::Mysql(url) => write!(f, "mysql: {}", url),
+            DbParams::RedisFindex(url, _, label) => {
+                write!(
+                    f,
+                    "redis-findex: {}, key: [****], label: 0x{}",
+                    url,
+                    hex::encode(label)
+                )
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for DbParams {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}", &self))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -114,6 +153,8 @@ pub struct ServerConfig {
     // The JWKS if Auth is enabled
     pub jwks: Option<JWKS>,
 
+    pub jwe_config: JWEConfig,
+
     /// The JWT audience if Auth is enabled
     pub jwt_audience: Option<String>,
 
@@ -125,6 +166,9 @@ pub struct ServerConfig {
     pub force_default_username: bool,
 
     pub db_params: DbParams,
+
+    /// Whether to clear the database on start
+    pub clear_db_on_start: bool,
 
     pub hostname_port: String,
 
@@ -152,11 +196,13 @@ impl ServerConfig {
         // Initialize the HTTP server
         let (hostname_port, server_pkcs_12, verify_cert) = conf.http.init()?;
 
-        let server_conf = ServerConfig {
+        let server_conf = Self {
             jwks: conf.auth.fetch_jwks().await?,
             jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
+            jwe_config: conf.jwe.clone(),
             jwt_audience: conf.auth.jwt_audience.clone(),
             db_params: conf.db.init(&workspace)?,
+            clear_db_on_start: conf.db.clear_database,
             hostname_port,
             enclave_params: conf.enclave.init(&workspace)?,
             certbot: if conf.certbot_https.use_certbot {

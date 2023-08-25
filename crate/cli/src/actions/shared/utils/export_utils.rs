@@ -30,17 +30,17 @@ pub async fn export_object(
     client_connector: &KmsRestClient,
     object_id: &str,
     unwrap: bool,
-    wrapping_key_id: &Option<String>,
+    wrapping_key_id: Option<&str>,
     allow_revoked: bool,
 ) -> Result<Object, CliError> {
     // If an unwrapping key is specified, generate the key (un)wrapping data
     let key_wrapping_data: Option<KeyWrappingData> = if unwrap {
         None
     } else {
-        wrapping_key_id.as_ref().map(|id| KeyWrappingData {
+        wrapping_key_id.map(|id| KeyWrappingData {
             wrapping_method: WrappingMethod::Encrypt,
             encryption_key_information: Some(EncryptionKeyInformation {
-                unique_identifier: id.to_owned(),
+                unique_identifier: id.to_string(),
                 cryptographic_parameters: None,
             }),
             mac_or_signature_key_information: None,
@@ -54,14 +54,14 @@ pub async fn export_object(
         let export_response = client_connector
             .export(Export::new(object_id, unwrap, key_wrapping_data))
             .await
-            .with_context(|| "export: cannot connect to the kms server")?;
+            .with_context(|| "export")?;
         (export_response.object, export_response.object_type)
     } else {
         // Query the KMS with your kmip data and get the key pair ids
         let get_response = client_connector
             .get(Get::new(object_id, unwrap, key_wrapping_data))
             .await
-            .with_context(|| "export: cannot connect to the kms server")?;
+            .with_context(|| "export")?;
         (get_response.object, get_response.object_type)
     };
     // Return the object after post fixing the object type

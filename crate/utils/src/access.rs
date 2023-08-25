@@ -1,4 +1,4 @@
-use cloudproof::reexport::crypto_core::symmetric_crypto::{key::Key, SymKey};
+use cloudproof::reexport::crypto_core::{FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::kmip_types::{Attributes, StateEnumeration, UniqueIdentifier};
 use serde::{Deserialize, Serialize};
 
@@ -11,14 +11,14 @@ pub struct Access {
     /// User identifier, beneficiary of the access
     pub user_id: String,
     /// Operation type for the access
-    pub operation_type: ObjectOperationTypes,
+    pub operation_type: ObjectOperationType,
 }
 
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
-#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone)]
+#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone, Hash)]
 #[serde(rename_all = "lowercase")]
-pub enum ObjectOperationTypes {
+pub enum ObjectOperationType {
     Create,
     Decrypt,
     Destroy,
@@ -31,34 +31,33 @@ pub enum ObjectOperationTypes {
     Rekey,
 }
 
-impl std::fmt::Debug for ObjectOperationTypes {
+impl std::fmt::Debug for ObjectOperationType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{self}")
     }
 }
 
-impl std::fmt::Display for ObjectOperationTypes {
+impl std::fmt::Display for ObjectOperationType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
-            ObjectOperationTypes::Create => "create",
-            ObjectOperationTypes::Decrypt => "decrypt",
-            ObjectOperationTypes::Destroy => "destroy",
-            ObjectOperationTypes::Encrypt => "encrypt",
-            ObjectOperationTypes::Export => "export",
-            ObjectOperationTypes::Get => "get",
-            ObjectOperationTypes::Import => "import",
-            ObjectOperationTypes::Locate => "locate",
-            ObjectOperationTypes::Revoke => "revoke",
-            ObjectOperationTypes::Rekey => "rekey",
+            Self::Create => "create",
+            Self::Decrypt => "decrypt",
+            Self::Destroy => "destroy",
+            Self::Encrypt => "encrypt",
+            Self::Export => "export",
+            Self::Get => "get",
+            Self::Import => "import",
+            Self::Locate => "locate",
+            Self::Revoke => "revoke",
+            Self::Rekey => "rekey",
         };
         write!(f, "{str}")
     }
 }
 
-#[derive(Clone)]
 pub struct ExtraDatabaseParams {
     pub group_id: u128,
-    pub key: Key<32>,
+    pub key: SymmetricKey<32>,
 }
 
 impl Serialize for ExtraDatabaseParams {
@@ -67,7 +66,7 @@ impl Serialize for ExtraDatabaseParams {
         S: serde::Serializer,
     {
         serializer.serialize_bytes(
-            vec![
+            [
                 self.group_id.to_be_bytes().to_vec(),
                 self.key.as_bytes().to_vec(),
             ]
@@ -78,13 +77,20 @@ impl Serialize for ExtraDatabaseParams {
 }
 
 impl<'de> Deserialize<'de> for ExtraDatabaseParams {
-    fn deserialize<D>(deserializer: D) -> Result<ExtraDatabaseParams, D::Error>
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
         let bytes = <Vec<u8>>::deserialize(deserializer)?;
-        let group_id = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
-        let key = SymKey::from_bytes(bytes[16..48].try_into().unwrap());
+        let group_id_bytes: [u8; 16] = bytes[0..16]
+            .try_into()
+            .map_err(|_| serde::de::Error::custom("Could not deserialize ExtraDatabaseParams"))?;
+        let group_id = u128::from_be_bytes(group_id_bytes);
+        let key_bytes: [u8; 32] = bytes[16..48]
+            .try_into()
+            .map_err(|_| serde::de::Error::custom("Could not deserialize ExtraDatabaseParams"))?;
+        let key = SymmetricKey::try_from_bytes(key_bytes)
+            .map_err(|_| serde::de::Error::custom("Could not deserialize ExtraDatabaseParams"))?;
         Ok(ExtraDatabaseParams { group_id, key })
     }
 }
@@ -94,7 +100,7 @@ use std::{fmt, str::FromStr};
 // any error type implementing Display is acceptable.
 type ParseError = &'static str;
 
-impl FromStr for ObjectOperationTypes {
+impl FromStr for ObjectOperationType {
     type Err = ParseError;
 
     fn from_str(op: &str) -> Result<Self, Self::Err> {
@@ -117,11 +123,11 @@ impl FromStr for ObjectOperationTypes {
 #[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
 pub struct UserAccessResponse {
     pub user_id: String,
-    pub operations: Vec<ObjectOperationTypes>,
+    pub operations: Vec<ObjectOperationType>,
 }
 
-impl From<(String, Vec<ObjectOperationTypes>)> for UserAccessResponse {
-    fn from(e: (String, Vec<ObjectOperationTypes>)) -> Self {
+impl From<(String, Vec<ObjectOperationType>)> for UserAccessResponse {
+    fn from(e: (String, Vec<ObjectOperationType>)) -> Self {
         Self {
             user_id: e.0,
             operations: e.1,
@@ -172,7 +178,7 @@ pub struct AccessRightsObtainedResponse {
     pub object_id: UniqueIdentifier,
     pub owner_id: String,
     pub state: StateEnumeration,
-    pub operations: Vec<ObjectOperationTypes>,
+    pub operations: Vec<ObjectOperationType>,
     pub is_wrapped: IsWrapped,
 }
 
@@ -195,7 +201,7 @@ impl
         UniqueIdentifier,
         String,
         StateEnumeration,
-        Vec<ObjectOperationTypes>,
+        Vec<ObjectOperationType>,
         IsWrapped,
     )> for AccessRightsObtainedResponse
 {
@@ -204,7 +210,7 @@ impl
             UniqueIdentifier,
             String,
             StateEnumeration,
-            Vec<ObjectOperationTypes>,
+            Vec<ObjectOperationType>,
             IsWrapped,
         ),
     ) -> Self {

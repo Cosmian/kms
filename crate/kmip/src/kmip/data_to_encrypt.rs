@@ -27,9 +27,21 @@ pub struct DataToEncrypt {
 
 impl DataToEncrypt {
     /// Serialize the data to encrypt to bytes
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
+        // Compute the size of the buffer
+        let mut mem_size = 1 // for encryption policy
+            + 1 // for metadata
+            + self.plaintext.len();
+        if let Some(encryption_policy) = &self.encryption_policy {
+            mem_size += encryption_policy.as_bytes().len();
+        }
+        if let Some(metadata) = &self.header_metadata {
+            mem_size += metadata.len();
+        }
+
         // Write the encryption policy
+        let mut bytes = Vec::with_capacity(mem_size);
         if let Some(encryption_policy) = &self.encryption_policy {
             let encryption_policy_bytes = encryption_policy.as_bytes();
             leb128::write::unsigned(&mut bytes, encryption_policy_bytes.len() as u64).unwrap();

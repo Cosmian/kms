@@ -38,6 +38,8 @@ use crate::error::{result::CliResultHelper, CliError};
 ///        ]
 ///    }
 /// ```
+///
+/// Tags can later be used to retrieve the key. Tags are optional.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateUserKeyAction {
@@ -50,6 +52,11 @@ pub struct CreateUserKeyAction {
     /// Example: "(Department::HR || Department::MKG) && Security Level::Confidential"
     #[clap(required = true)]
     access_policy: String,
+
+    /// The tag to associate with the user decryption key.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG")]
+    tags: Vec<String>,
 }
 
 impl CreateUserKeyAction {
@@ -62,6 +69,7 @@ impl CreateUserKeyAction {
         let create_user_key = build_create_user_decryption_private_key_request(
             &self.access_policy,
             &self.master_private_key_id,
+            &self.tags,
         )?;
 
         // Query the KMS with your kmip data
@@ -73,7 +81,12 @@ impl CreateUserKeyAction {
         let user_key_unique_identifier = &create_response.unique_identifier;
 
         println!("Created the user decryption key with ID: {user_key_unique_identifier}");
-        println!("Store this ID securely");
+        if !self.tags.is_empty() {
+            println!("Tags:");
+            for tag in &self.tags {
+                println!("    - {}", tag);
+            }
+        }
 
         Ok(())
     }

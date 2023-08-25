@@ -14,11 +14,12 @@ use cosmian_kmip::kmip::{
     kmip_types::UniqueIdentifier,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use cosmian_kms_utils::types::{
+use cosmian_kms_utils::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, QuoteParams, SuccessResponse,
     UserAccessResponse,
 };
 use http::{header, StatusCode};
+use josekit::jwe::{alg::ecdh_es::EcdhEsJweAlgorithm, deserialize_compact};
 use tracing::{debug, error, info, warn};
 
 use crate::{database::KMSServer, error::KmsError, kms_bail, result::KResult};
@@ -41,20 +42,25 @@ impl actix_web::error::ResponseError for KmsError {
 
     fn status_code(&self) -> StatusCode {
         match self {
-            Self::RouteNotFound(_) => StatusCode::NOT_FOUND,
-            Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            Self::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::KmipError(..) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::NotSupported(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::UnsupportedProtectionMasks => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::UnsupportedPlaceholder => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::InconsistentOperation(..) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::InvalidRequest(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::DatabaseError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::SGXError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::ConversionError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::CryptographicError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            KmsError::RouteNotFound(_) => StatusCode::NOT_FOUND,
+
+            KmsError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+
+            KmsError::DatabaseError(_)
+            | KmsError::SGXError(_)
+            | KmsError::ConversionError(_)
+            | KmsError::CryptographicError(_)
+            | KmsError::Redis(_)
+            | KmsError::Findex(_)
+            | KmsError::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+
+            KmsError::KmipError(..)
+            | KmsError::NotSupported(_)
+            | KmsError::UnsupportedProtectionMasks
+            | KmsError::UnsupportedPlaceholder
+            | KmsError::InconsistentOperation(..)
+            | KmsError::InvalidRequest(_)
+            | KmsError::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
         }
     }
 }
@@ -63,78 +69,104 @@ impl actix_web::error::ResponseError for KmsError {
 #[post("/kmip/2_1")]
 pub async fn kmip(
     req_http: HttpRequest,
-    item: Json<TTLV>,
+    body: String,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<TTLV>> {
-    let ttlv_req = item.into_inner();
+    let ttlv = match serde_json::from_str::<TTLV>(&body) {
+        Ok(ttlv) => ttlv,
+        Err(_) => {
+            let key = kms
+                .config
+                .jwe_config
+                .jwk_private_key
+                .as_ref()
+                .ok_or_else(|| {
+                    KmsError::NotSupported("this server doesn't support JWE encryption".to_string())
+                })?;
+
+            let decrypter = EcdhEsJweAlgorithm::EcdhEs
+                .decrypter_from_jwk(key)
+                .map_err(|err| {
+                    KmsError::ServerError(format!(
+                        "Fail to create decrypter from JWE private key ({err})."
+                    ))
+                })?;
+            let payload = deserialize_compact(&body, &decrypter).map_err(|err| {
+                KmsError::InvalidRequest(format!("Fail to decrypt with JWE private key ({err})."))
+            })?;
+
+            serde_json::from_slice::<TTLV>(&payload.0)?
+        }
+    };
+
     let database_params = kms.get_database_secrets(&req_http)?;
     let user = kms.get_user(req_http)?;
-    info!("POST /kmip. Request: {:?} {}", ttlv_req.tag.as_str(), user);
+    info!("POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
-    let ttlv_resp = match ttlv_req.tag.as_str() {
+    let ttlv_resp = match ttlv.tag.as_str() {
         "Create" => {
-            let req = from_ttlv::<Create>(&ttlv_req)?;
+            let req = from_ttlv::<Create>(&ttlv)?;
             let resp = kms.create(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "CreateKeyPair" => {
-            let req = from_ttlv::<CreateKeyPair>(&ttlv_req)?;
+            let req = from_ttlv::<CreateKeyPair>(&ttlv)?;
             let resp = kms
                 .create_key_pair(req, &user, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
         "Decrypt" => {
-            let req = from_ttlv::<Decrypt>(&ttlv_req)?;
+            let req = from_ttlv::<Decrypt>(&ttlv)?;
             let resp = kms.decrypt(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Destroy" => {
-            let req = from_ttlv::<Destroy>(&ttlv_req)?;
+            let req = from_ttlv::<Destroy>(&ttlv)?;
             let resp = kms.destroy(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Encrypt" => {
-            let req = from_ttlv::<Encrypt>(&ttlv_req)?;
+            let req = from_ttlv::<Encrypt>(&ttlv)?;
             let resp = kms.encrypt(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Export" => {
-            let req = from_ttlv::<Export>(&ttlv_req)?;
+            let req = from_ttlv::<Export>(&ttlv)?;
             let resp = kms.export(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Get" => {
-            let req = from_ttlv::<Get>(&ttlv_req)?;
+            let req = from_ttlv::<Get>(&ttlv)?;
             let resp = kms.get(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "GetAttributes" => {
-            let req = from_ttlv::<GetAttributes>(&ttlv_req)?;
+            let req = from_ttlv::<GetAttributes>(&ttlv)?;
             let resp = kms
                 .get_attributes(req, &user, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
         "Import" => {
-            let req = from_ttlv::<Import>(&ttlv_req)?;
+            let req = from_ttlv::<Import>(&ttlv)?;
             let resp = kms.import(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "Locate" => {
-            let req = from_ttlv::<Locate>(&ttlv_req)?;
+            let req = from_ttlv::<Locate>(&ttlv)?;
             let resp = kms.locate(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }
         "ReKeyKeyPair" => {
-            let req = from_ttlv::<ReKeyKeyPair>(&ttlv_req)?;
+            let req = from_ttlv::<ReKeyKeyPair>(&ttlv)?;
             let resp = kms
                 .rekey_keypair(req, &user, database_params.as_ref())
                 .await?;
             to_ttlv(&resp)?
         }
         "Revoke" => {
-            let req = from_ttlv::<Revoke>(&ttlv_req)?;
+            let req = from_ttlv::<Revoke>(&ttlv)?;
             let resp = kms.revoke(req, &user, database_params.as_ref()).await?;
             to_ttlv(&resp)?
         }

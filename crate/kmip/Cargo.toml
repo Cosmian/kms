@@ -1,7 +1,8 @@
 [package]
 name = "cosmian_kmip"
-version = "4.4.3"
+version = "4.5.0"
 edition = "2021"
+license-file = "../../LICENSE.md"
 
 [dependencies]
 bitflags = { workspace = true }

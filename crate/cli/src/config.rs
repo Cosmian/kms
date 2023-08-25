@@ -69,6 +69,8 @@ pub struct CliConf {
     pub(crate) ssl_client_pkcs12_password: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) kms_database_secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) jwe_public_key: Option<String>,
 }
 
 impl Default for CliConf {
@@ -80,6 +82,7 @@ impl Default for CliConf {
             kms_database_secret: None,
             ssl_client_pkcs12_path: None,
             ssl_client_pkcs12_password: None,
+            jwe_public_key: None,
         }
     }
 }
@@ -112,8 +115,7 @@ impl CliConf {
             // Error if the specified file does not exist
             if !conf_path.exists() {
                 return Err(CliError::NotSupported(format!(
-                    "Configuration file {:?} does not exist",
-                    conf_path
+                    "Configuration file {conf_path:?} does not exist"
                 )))
             }
             conf_path
@@ -140,7 +142,7 @@ impl CliConf {
                     parent
                 )
             })?;
-            let default_conf = CliConf::default();
+            let default_conf = Self::default();
             fs::write(
                 &conf_path,
                 serde_json::to_string(&default_conf).with_context(|| {
@@ -167,6 +169,7 @@ impl CliConf {
             conf.ssl_client_pkcs12_password.as_deref(),
             conf.kms_database_secret.as_deref(),
             conf.accept_invalid_certs,
+            conf.jwe_public_key.as_deref(),
         )
         .with_context(|| {
             format!(

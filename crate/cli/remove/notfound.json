@@ -1,1 +1,6 @@
-{"insecure":false,"kms_server_url":"http://localhost:9998","kms_access_token":"","kms_database_secret":null}
+{
+  "insecure": false,
+  "kms_server_url": "http://localhost:9998",
+  "kms_access_token": "",
+  "kms_database_secret": null
+}

@@ -101,6 +101,7 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     export_import_test(
         &ctx.owner_cli_conf_path,
@@ -110,7 +111,7 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
     )?;
 
     // generate a new key pair
-    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     export_import_test(
         &ctx.owner_cli_conf_path,
         "ec",
@@ -119,7 +120,7 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
     )?;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     export_import_test(
         &ctx.owner_cli_conf_path,
         "sym",

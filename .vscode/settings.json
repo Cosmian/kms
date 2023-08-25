@@ -1,5 +1,6 @@
 {
   "cSpell.words": [
+    "ascii",
     "canonicalize",
     "certbot",
     "Certbot",
@@ -11,17 +12,22 @@
     "cloudproof",
     "cosmian",
     "Cosmian",
+    "covercrypt",
     "Covercrypt",
     "ECDH",
     "ecies",
     "ECIES",
+    "findex",
+    "Findex",
     "gpsw",
     "Gpsw",
     "jwks",
     "keypair",
     "kmip",
     "KMIP",
+    "libsgx",
     "mysql",
+    "openssl",
     "pkcs",
     "postgres",
     "postgresql",
@@ -33,9 +39,12 @@
     "TFHE",
     "ttlv",
     "uids",
+    "upserting",
     "Upserting",
     "uuid",
-    "Uuid"
+    "Uuid",
+    "zeroizable",
+    "zerorize"
   ],
   "[md]": {
     "editor.formatOnSave": false,
@@ -60,5 +69,38 @@
   "[python]": {
     "editor.defaultFormatter": "ms-python.black-formatter"
   },
-  "python.formatting.provider": "none"
+  "python.formatting.provider": "none",
+  "sqltools.connections": [
+    {
+      "previewLimit": 50,
+      "server": "localhost",
+      "port": 5432,
+      "driver": "PostgreSQL",
+      "name": "localhost_kmd",
+      "database": "kms",
+      "username": "kms",
+      "password": "kms"
+    },
+    {
+      "mysqlOptions": {
+        "authProtocol": "default",
+        "enableSsl": "Disabled"
+      },
+      "previewLimit": 50,
+      "server": "localhost",
+      "port": 3306,
+      "driver": "MariaDB",
+      "name": "localhost kms",
+      "database": "kms",
+      "username": "kms",
+      "password": "kms"
+    },
+    {
+      "previewLimit": 50,
+      "driver": "SQLite",
+      "name": "kms.db",
+      "database": "/Users/bgrieder/cosmian-kms/sqlite-data/kms.db"
+    }
+  ],
+  "sqltools.useNodeRuntime": true
 }

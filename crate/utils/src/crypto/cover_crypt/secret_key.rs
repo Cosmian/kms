@@ -1,11 +1,7 @@
 use std::convert::TryFrom;
 
 use cloudproof::reexport::{
-    cover_crypt::{
-        abe_policy::AccessPolicy,
-        statics::{CoverCryptX25519Aes256, PublicKey},
-        CoverCrypt,
-    },
+    cover_crypt::{abe_policy::AccessPolicy, Covercrypt, MasterPublicKey},
     crypto_core::bytes_ser_de::Serializable,
 };
 use cosmian_kmip::{
@@ -32,7 +28,7 @@ use crate::crypto::cover_crypt::attributes::{
 /// A reference to the `CoverCrypt` master public key is kept to access the policy later
 /// when locating symmetric keys
 pub fn wrapped_secret_key(
-    cover_crypt: &CoverCryptX25519Aes256,
+    cover_crypt: &Covercrypt,
     public_key_response: &GetResponse,
     access_policy: &str,
     cover_crypt_header_uid: &[u8],
@@ -46,8 +42,9 @@ pub fn wrapped_secret_key(
     // Since KMIP 2.1 does not plan to locate wrapped key, we serialize vendor
     // attributes and symmetric key consecutively
     let wrapped_key_attributes = Attributes {
+        object_type: Some(ObjectType::SymmetricKey),
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-        ..Attributes::new(ObjectType::SymmetricKey)
+        ..Attributes::default()
     };
 
     let cryptographic_length = sk.encrypted_symmetric_key.len() as i32;
@@ -81,7 +78,7 @@ pub struct CoverCryptSymmetricKey {
 }
 
 fn prepare_symmetric_key(
-    cover_crypt: &CoverCryptX25519Aes256,
+    cover_crypt: &Covercrypt,
     public_key_response: &GetResponse,
     access_policy: &AccessPolicy,
     cover_crypt_header_uid: &[u8],
@@ -93,7 +90,7 @@ fn prepare_symmetric_key(
         .key_block()?
         .key_bytes_and_attributes()?;
 
-    let public_key = PublicKey::try_from_bytes(&public_key_bytes).map_err(|e| {
+    let public_key = MasterPublicKey::deserialize(&public_key_bytes).map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Codec_Error,
             format!("cover crypt: failed deserializing the master public key: {e}"),
@@ -117,12 +114,15 @@ fn prepare_symmetric_key(
     Ok(CoverCryptSymmetricKey {
         uid: cover_crypt_header_uid.to_vec(),
         symmetric_key: sk.to_vec(),
-        encrypted_symmetric_key: sk_enc.try_to_bytes().map_err(|e| {
-            KmipError::KmipError(
-                ErrorReason::Codec_Error,
-                format!("cover crypt: failed serializing the encapsulation: {e}"),
-            )
-        })?,
+        encrypted_symmetric_key: sk_enc
+            .serialize()
+            .map_err(|e| {
+                KmipError::KmipError(
+                    ErrorReason::Codec_Error,
+                    format!("cover crypt: failed serializing the encapsulation: {e}"),
+                )
+            })?
+            .to_vec(),
     })
 }
 

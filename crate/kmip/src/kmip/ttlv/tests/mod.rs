@@ -26,11 +26,12 @@ pub fn aes_key_value(key_value: &[u8]) -> KeyValue {
     KeyValue {
         key_material: aes_key_material(key_value),
         attributes: Some(Attributes {
+            object_type: Some(ObjectType::SymmetricKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(256),
             cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-            ..Attributes::new(ObjectType::SymmetricKey)
+            ..Attributes::default()
         }),
     }
 }
@@ -247,7 +248,6 @@ fn test_ser_array() {
     let ttlv = to_ttlv(&test).unwrap();
     let expected = r#"TTLV { tag: "Test", value: Structure([TTLV { tag: "Seq", value: Structure([TTLV { tag: "Seq", value: TextString("a") }, TTLV { tag: "Seq", value: TextString("b") }]) }]) }"#;
     let ttlv_s = format!("{ttlv:?}");
-    // println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
     assert_eq!(ttlv_s, expected);
 }
 
@@ -264,7 +264,6 @@ fn test_ser_big_int() {
         big_int: BigUint::from(0x1111_1111_1222_2222_u128),
     };
     let ttlv = to_ttlv(&test).unwrap();
-    // println!("{:#?}", ttlv);
     let expected = r#"TTLV {
     tag: "Test",
     value: Structure(
@@ -279,7 +278,6 @@ fn test_ser_big_int() {
     ),
 }"#;
     let ttlv_s = format!("{ttlv:#?}");
-    // println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
     assert_eq!(ttlv_s, expected);
 }
 
@@ -494,11 +492,10 @@ fn test_aes_key_block() {
 
 #[test]
 fn test_aes_key_value() {
-    log_init("trace,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
     let key_bytes: &[u8] = b"this_is_a_test";
     //
     let json = serde_json::to_value(aes_key_value(key_bytes)).unwrap();
-    // println!("JSON {:?}", json);
     let kv: KeyValue = serde_json::from_value(json).unwrap();
     assert_eq!(aes_key_value(key_bytes), kv);
 
@@ -532,16 +529,16 @@ fn test_some_attributes() {
         },
     }
     let value = Wrapper::Attr {
-        attributes: Some(Attributes::new(ObjectType::SymmetricKey)),
+        attributes: Some(Attributes {
+            object_type: Some(ObjectType::SymmetricKey),
+            ..Attributes::default()
+        }),
     };
     let ttlv = to_ttlv(&value).unwrap();
-    // println!("TTLV: {:#?}", &ttlv);
     let json = serde_json::to_value(&ttlv).unwrap();
-    // println!("JSON: {:#?}", &json);
     let ttlv_: TTLV = serde_json::from_value(json).unwrap();
     assert_eq!(ttlv, ttlv_);
     let rec: Wrapper = from_ttlv(&ttlv_).unwrap();
-    // println!("REC: {:#?}", &rec);
     assert_eq!(value, rec);
 }
 
@@ -629,10 +626,12 @@ fn test_byte_string_key_material() {
     let key_bytes: &[u8] = b"this_is_a_test";
     let key_value = KeyValue {
         key_material: KeyMaterial::ByteString(key_bytes.to_vec()),
-        attributes: Some(Attributes::new(ObjectType::SymmetricKey)),
+        attributes: Some(Attributes {
+            object_type: Some(ObjectType::SymmetricKey),
+            ..Attributes::default()
+        }),
     };
     let ttlv = to_ttlv(&key_value).unwrap();
-    // println!("{:#?}", &ttlv);
     let key_value_: KeyValue = from_ttlv(&ttlv).unwrap();
     assert_eq!(key_value, key_value_);
 }
@@ -643,7 +642,6 @@ fn test_aes_key_full() {
     let key_bytes: &[u8] = b"this_is_a_test";
     let aes_key = aes_key(key_bytes);
     let ttlv = to_ttlv(&aes_key).unwrap();
-    // println!("{:#?}", &ttlv);
     let aes_key_: Object = from_ttlv(&ttlv).unwrap();
     assert_eq!(
         aes_key,
@@ -680,6 +678,7 @@ pub fn test_import_correct_object() {
 #[test]
 pub fn test_create() {
     let attributes = Attributes {
+        object_type: Some(ObjectType::SymmetricKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         link: Some(vec![Link {
             link_type: crate::kmip::kmip_types::LinkType::ParentLink,
@@ -687,7 +686,7 @@ pub fn test_create() {
                 "SK".to_string(),
             ),
         }]),
-        ..Attributes::new(ObjectType::SymmetricKey)
+        ..Attributes::default()
     };
     let create = Create {
         object_type: ObjectType::SymmetricKey,
@@ -695,7 +694,6 @@ pub fn test_create() {
         protection_storage_masks: None,
     };
     let ttlv = to_ttlv(&create).unwrap();
-    // println!("{}", serde_json::to_string_pretty(&ttlv).unwrap());
     let create_: Create = from_ttlv(&ttlv).unwrap();
     assert_eq!(ObjectType::SymmetricKey, create_.object_type);
     assert_eq!(

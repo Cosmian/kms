@@ -7,7 +7,8 @@ use cosmian_kmip::{
     },
 };
 
-pub const VENDOR_ID_COSMIAN: &str = "cosmian";
+use crate::kmip_utils::VENDOR_ID_COSMIAN;
+
 pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
 pub const VENDOR_ATTR_COVER_CRYPT_POLICY: &str = "cover_crypt_policy";
 pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_policy";
@@ -32,7 +33,7 @@ pub fn policy_as_vendor_attribute(policy: &Policy) -> Result<VendorAttribute, Km
 /// Extract an `CoverCrypt` policy from attributes
 pub fn policy_from_attributes(attributes: &Attributes) -> Result<Policy, KmipError> {
     if let Some(bytes) =
-        attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY)
+        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_POLICY)
     {
         Policy::parse_and_convert(bytes).map_err(|e| {
             KmipError::InvalidKmipValue(
@@ -91,7 +92,7 @@ pub fn attributes_from_attributes(
     attributes: &Attributes,
 ) -> Result<Vec<abe_policy::Attribute>, KmipError> {
     if let Some(bytes) =
-        attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ATTR)
+        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ATTR)
     {
         let attribute_strings = serde_json::from_slice::<Vec<String>>(bytes).map_err(|e| {
             KmipError::InvalidKmipValue(
@@ -123,8 +124,8 @@ pub fn attributes_from_attributes(
 
 /// Extract an `CoverCrypt` Access policy from attributes
 pub fn access_policy_from_attributes(attributes: &Attributes) -> Result<String, KmipError> {
-    if let Some(bytes) =
-        attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY)
+    if let Some(bytes) = attributes
+        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY)
     {
         String::from_utf8(bytes.to_vec()).map_err(|e| {
             KmipError::InvalidKmipValue(
@@ -166,7 +167,7 @@ pub fn master_private_key_id_as_vendor_attribute(
 }
 
 pub fn master_private_key_id_from_attributes(attributes: &Attributes) -> Result<&str, KmipError> {
-    if let Some(bytes) = attributes.get_vendor_attribute(
+    if let Some(bytes) = attributes.get_vendor_attribute_value(
         VENDOR_ID_COSMIAN,
         VENDOR_ATTR_COVER_CRYPT_MASTER_PRIV_KEY_ID,
     ) {
@@ -199,7 +200,7 @@ pub fn master_public_key_id_to_vendor_attribute(
 
 pub fn master_public_key_id_from_attributes(attributes: &Attributes) -> Result<&str, KmipError> {
     if let Some(bytes) = attributes
-        .get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_MASTER_PUB_KEY_ID)
+        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_MASTER_PUB_KEY_ID)
     {
         std::str::from_utf8(bytes).map_err(|_| {
             KmipError::InvalidKmipValue(
@@ -228,7 +229,7 @@ pub fn header_uid_to_vendor_attribute(uid: &[u8]) -> VendorAttribute {
 
 pub fn header_uid_from_attributes(attributes: &Attributes) -> Result<&[u8], KmipError> {
     if let Some(bytes) =
-        attributes.get_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_HEADER_UID)
+        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_HEADER_UID)
     {
         Ok(bytes)
     } else {
@@ -238,15 +239,3 @@ pub fn header_uid_from_attributes(attributes: &Attributes) -> Result<&[u8], Kmip
         ))
     }
 }
-
-//TODO: BGR: this seems unused - must be revisited _ see issue #192
-// /// This UID is used to build the asymmetric CoverCrypt Header object
-// #[cfg(test)]
-// #[allow(deprecated)]
-// pub fn cover_crypt_header_uid_to_vendor_attribute(uid: &[u8]) -> VendorAttribute {
-//     VendorAttribute {
-//         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-//         attribute_name: VENDOR_ATTR_COVER_CRYPT_HEADER_UID.to_owned(),
-//         attribute_value: uid.to_vec(),
-//     }
-// }

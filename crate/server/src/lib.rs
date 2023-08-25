@@ -81,9 +81,13 @@ pub fn prepare_server(
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the routes.
         let app = App::new()
-            .wrap(Cors::permissive()) // Enable CORS for the application.
             .wrap(Condition::new(use_jwt_auth, jwt_auth.clone())) // Use JWT for authentication if necessary.
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
+            // Enable CORS for the application.
+            // Since Actix is running the middlewares in reverse order, it's important that the
+            // CORS middleware is the last one so that the auth middlewares do not run on
+            // preflight (OPTION) requests.
+            .wrap(Cors::permissive())
             .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
@@ -219,7 +223,7 @@ async fn start_https_kms_server(
     let p12 = shared_config
         .server_pkcs_12
         .as_ref()
-        .ok_or_else(|| eyre::eyre!("http/s: a PKCS#12 file must be provided"))?;
+        .ok_or_else(|| kms_error!("http/s: a PKCS#12 file must be provided"))?;
 
     // Create and configure an SSL acceptor with the certificate and key
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;

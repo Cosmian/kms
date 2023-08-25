@@ -22,7 +22,7 @@ on:
 
 jobs:
   kms-build:
-    name: Build KMS on ${{ inputs.distribution }}
+    name: Build ${{ inputs.archive-name }}
     runs-on: ${{ inputs.distribution }}
     steps:
       - name: Display cpuinfo

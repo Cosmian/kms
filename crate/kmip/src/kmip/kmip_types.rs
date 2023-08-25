@@ -4,13 +4,13 @@
 // see CryptographicUsageMask
 #![allow(non_upper_case_globals)]
 
-use std::fmt;
+use std::{fmt, vec::Vec};
 
 use serde::{
     de::{self, Visitor},
     Deserialize, Serialize,
 };
-use strum_macros::{Display, EnumString};
+use strum_macros::{Display, EnumIter, EnumString};
 
 use super::kmip_objects::ObjectType;
 
@@ -56,7 +56,7 @@ pub enum SplitKeyMethod {
 }
 
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumIter)]
 pub enum KeyFormatType {
     Raw = 0x01,
     Opaque = 0x02,
@@ -92,7 +92,7 @@ pub enum KeyFormatType {
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Display, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Display, Eq, PartialEq, EnumIter)]
 pub enum CryptographicAlgorithm {
     DES = 0x0000_0001,
     THREE_DES = 0x0000_0002,
@@ -741,7 +741,7 @@ pub struct VendorAttribute {
 /// the server MAY retain all, some or none of the object attributes,
 /// depending on the object type and server policy.
 // TODO: there are 56 attributes in the specs. Only a handful are implemented here
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct Attributes {
     /// The Activation Date attribute contains the date and time when the
@@ -830,7 +830,8 @@ pub struct Attributes {
     /// symmetric key, etc.) SHALL be set by the server when the object is
     /// created or registered and then SHALL NOT be changed or deleted before
     /// the object is destroyed.
-    pub object_type: ObjectType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<ObjectType>,
     /// A vendor specific Attribute is a structure used for sending and
     /// receiving a Managed Object attribute. The Vendor Identification and
     /// Attribute Name are text-strings that are used to identify the attribute.
@@ -849,22 +850,6 @@ pub struct Attributes {
 }
 
 impl Attributes {
-    #[must_use]
-    pub fn new(object_type: ObjectType) -> Self {
-        Self {
-            activation_date: None,
-            cryptographic_algorithm: None,
-            cryptographic_length: None,
-            cryptographic_domain_parameters: None,
-            cryptographic_parameters: None,
-            cryptographic_usage_mask: None,
-            key_format_type: None,
-            link: None,
-            object_type,
-            vendor_attributes: None,
-        }
-    }
-
     /// Add a vendor attribute to the list of vendor attributes.
     pub fn add_vendor_attribute(&mut self, vendor_attribute: VendorAttribute) -> &mut Self {
         if let Some(vas) = &mut self.vendor_attributes {
@@ -875,9 +860,10 @@ impl Attributes {
         self
     }
 
-    ///
+    /// Return the vendor attribute with the given vendor identification and
+    /// attribute name.
     #[must_use]
-    pub fn get_vendor_attribute(
+    pub fn get_vendor_attribute_value(
         &self,
         vendor_identification: &str,
         attribute_name: &str,
@@ -892,6 +878,33 @@ impl Attributes {
         })
     }
 
+    /// Return the vendor attribute with the given vendor identification and
+    /// attribute name. If the attribute does not exist, an empty
+    /// vendor attribute is created and returned.
+    #[must_use]
+    pub fn get_vendor_attribute_mut(
+        &mut self,
+        vendor_identification: &str,
+        attribute_name: &str,
+    ) -> &mut VendorAttribute {
+        let vas = self.vendor_attributes.get_or_insert_with(Vec::new);
+        let position = vas.iter().position(|va| {
+            va.vendor_identification == vendor_identification && va.attribute_name == attribute_name
+        });
+        let len = vas.len();
+        match position {
+            None => {
+                vas.push(VendorAttribute {
+                    vendor_identification: vendor_identification.to_owned(),
+                    attribute_name: attribute_name.to_owned(),
+                    attribute_value: vec![],
+                });
+                &mut vas[len]
+            }
+            Some(position) => &mut vas[position],
+        }
+    }
+
     /// Remove a vendor attribute from the list of vendor attributes.
     pub fn remove_vendor_attribute(&mut self, vendor_identification: &str, attribute_name: &str) {
         if let Some(vas) = self.vendor_attributes.as_mut() {
@@ -903,6 +916,7 @@ impl Attributes {
     }
 
     /// Get the link to the object.
+    #[must_use]
     pub fn get_link(&self, link_type: LinkType) -> Option<String> {
         if let Some(links) = &self.link {
             links
@@ -926,7 +940,7 @@ impl Attributes {
 
     /// Set the attributes's object type.
     pub fn set_object_type(&mut self, object_type: ObjectType) {
-        self.object_type = object_type;
+        self.object_type = Some(object_type);
     }
 }
 

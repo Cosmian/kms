@@ -92,6 +92,18 @@ This authentication enables the KMS to deal with several users with the same dat
 If there is no `KMS_JWT_ISSUER_URI` provided, the KMS disables the authentication. Only one user is allowed.
 If so, `admin` will be the user id.
 
+## Configure the encryption
+
+KMIP requests to the KMS can be encrypted using JWE. After generating a a private JWK with the "ECDH-ES" algorithm and the "X25519" curve.
+
+Example of how to run with JWE encryption:
+
+```sh
+JWK_PRIVATE_KEY="{\"kty\": \"OKP\",\"d\": \"MPEVJwdRqGM_qhJOUb5hR0Xr9EvwMLZGnkf-eDj5fU8\",\"use\": \"enc\",\"crv\": \"X25519\",\"kid\": \"DX3GC+Fx3etxfRJValQNbqaB0gs=\",\"x\": \"gdF-1TtAjsFqNWr9nwhGUlFG38qrDUqYgcILgtYrpTY\",\"alg\": \"ECDH-ES\"}" cargo run
+```
+
+The KMS server will accept unencrypted requests. We may add an option in the future to disable unencrypted requests if the server is run with encryption enabled.
+
 ## Configure the SGDB
 
 The KMS relies on a database using various kinds of connector to store all the user secrets.

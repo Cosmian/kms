@@ -4,7 +4,10 @@ use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_decryption_request;
 
-use crate::error::{result::CliResultHelper, CliError};
+use crate::{
+    cli_bail,
+    error::{result::CliResultHelper, CliError},
+};
 
 /// Decrypts a file using AES GCM
 ///
@@ -21,9 +24,15 @@ pub struct DecryptAction {
     #[clap(required = true, name = "FILE")]
     input_file: PathBuf,
 
-    /// The symmetric key unique identifier stored in the KMS
-    #[clap(required = true)]
-    key_id: String,
+    /// The private key unique identifier
+    /// If not specified, tags should be specified
+    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
 
     /// The encrypted output file path
     #[clap(required = false, long, short = 'o')]
@@ -42,13 +51,22 @@ impl DecryptAction {
         f.read_to_end(&mut data)
             .context("Fail to read the file to decrypt")?;
 
+        // Recover the unique identifier or set of tags
+        let id = if let Some(key_id) = &self.key_id {
+            key_id.clone()
+        } else if let Some(tags) = &self.tags {
+            serde_json::to_string(&tags)?
+        } else {
+            cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
         // Extract the nonce, the encrypted data and the tag
         let nonce = data.drain(..12).collect::<Vec<u8>>();
         let tag = data.drain(data.len() - 16..).collect::<Vec<u8>>();
 
         // Create the kmip query
         let decrypt_request = build_decryption_request(
-            &self.key_id,
+            &id,
             Some(nonce),
             data,
             Some(tag),

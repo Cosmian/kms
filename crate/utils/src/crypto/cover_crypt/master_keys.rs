@@ -1,9 +1,5 @@
 use cloudproof::reexport::{
-    cover_crypt::{
-        abe_policy::Policy,
-        core::api::CoverCrypt,
-        statics::{CoverCryptX25519Aes256, MasterSecretKey, PublicKey},
-    },
+    cover_crypt::{abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey},
     crypto_core::bytes_ser_de::Serializable,
 };
 use cosmian_kmip::{
@@ -24,10 +20,10 @@ use crate::{
     KeyPair,
 };
 
-/// Generate a `KeyPair` `(PrivateKey, PublicKey)` from the attributes
+/// Generate a `KeyPair` `(PrivateKey, MasterPublicKey)` from the attributes
 /// of a `CreateKeyPair` operation
 pub fn create_master_keypair(
-    cover_crypt: &CoverCryptX25519Aes256,
+    cover_crypt: &Covercrypt,
     request: &CreateKeyPair,
     private_key_uid: &str,
     public_key_uid: &str,
@@ -58,7 +54,7 @@ pub fn create_master_keypair(
         .private_key_attributes
         .as_ref()
         .or(request.common_attributes.as_ref());
-    let sk_bytes = sk.try_to_bytes().map_err(|e| {
+    let sk_bytes = sk.serialize().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Codec_Error,
             format!("cover crypt: failed serializing the master private key: {e}"),
@@ -77,7 +73,7 @@ pub fn create_master_keypair(
         .public_key_attributes
         .as_ref()
         .or(request.common_attributes.as_ref());
-    let pk_bytes = pk.try_to_bytes().map_err(|e| {
+    let pk_bytes = pk.serialize().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Codec_Error,
             format!("cover crypt: failed serializing the master public key: {e}"),
@@ -99,13 +95,8 @@ fn create_master_private_key_object(
     attributes: Option<&Attributes>,
     master_public_key_uid: &str,
 ) -> Result<Object, KmipError> {
-    let mut attributes = attributes
-        .map(|att| {
-            let mut att = att.clone();
-            att.object_type = ObjectType::PrivateKey;
-            att
-        })
-        .unwrap_or_else(|| Attributes::new(ObjectType::PrivateKey));
+    let mut attributes = attributes.cloned().unwrap_or_default();
+    attributes.object_type = Some(ObjectType::PrivateKey);
     // add the policy to the attributes
     upsert_policy_in_attributes(&mut attributes, policy)?;
     // link the private key to the public key
@@ -140,13 +131,8 @@ fn create_master_public_key_object(
     attributes: Option<&Attributes>,
     master_private_key_uid: &str,
 ) -> Result<Object, KmipError> {
-    let mut attributes = attributes
-        .map(|att| {
-            let mut att = att.clone();
-            att.object_type = ObjectType::PublicKey;
-            att
-        })
-        .unwrap_or_else(|| Attributes::new(ObjectType::PublicKey));
+    let mut attributes = attributes.cloned().unwrap_or_default();
+    attributes.object_type = Some(ObjectType::PublicKey);
     // add the policy to the attributes
     upsert_policy_in_attributes(&mut attributes, policy)?;
     // link the public key to the private key
@@ -174,7 +160,7 @@ fn create_master_public_key_object(
 /// Update the master key with a new Policy
 /// (after rotation of some attributes typically)
 pub fn update_master_keys(
-    cover_crypt: &CoverCryptX25519Aes256,
+    cover_crypt: &Covercrypt,
     policy: &Policy,
     master_private_key: &Object,
     master_private_key_uid: &str,
@@ -185,7 +171,7 @@ pub fn update_master_keys(
     let msk_key_block = master_private_key.key_block()?;
     let msk_key_bytes = msk_key_block.key_bytes()?;
     let msk_attributes = msk_key_block.key_value.attributes()?;
-    let mut msk = MasterSecretKey::try_from_bytes(&msk_key_bytes).map_err(|e| {
+    let mut msk = MasterSecretKey::deserialize(&msk_key_bytes).map_err(|e| {
         KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
             format!(
@@ -195,11 +181,11 @@ pub fn update_master_keys(
         )
     })?;
 
-    // Recover the CoverCrypt PublicKey Object
+    // Recover the CoverCrypt MasterPublicKey Object
     let mpk_key_block = master_public_key.key_block()?;
     let mpk_key_bytes = mpk_key_block.key_bytes()?;
     let mpk_attributes = mpk_key_block.key_value.attributes()?;
-    let mut mpk = PublicKey::try_from_bytes(&mpk_key_bytes).map_err(|e| {
+    let mut mpk = MasterPublicKey::deserialize(&mpk_key_bytes).map_err(|e| {
         KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
             format!(
@@ -223,7 +209,7 @@ pub fn update_master_keys(
         })?;
 
     // Recreate the KMIP objects
-    let updated_master_private_key_bytes = &msk.try_to_bytes().map_err(|e| {
+    let updated_master_private_key_bytes = &msk.serialize().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Cryptographic_Failure,
             format!(
@@ -238,7 +224,7 @@ pub fn update_master_keys(
         Some(msk_attributes),
         master_public_key_uid,
     )?;
-    let updated_master_public_key_bytes = &mpk.try_to_bytes().map_err(|e| {
+    let updated_master_public_key_bytes = &mpk.serialize().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Cryptographic_Failure,
             format!("Failed serializing the CoverCrypt Master Public Key: {e}"),

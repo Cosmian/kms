@@ -7,39 +7,45 @@ use cosmian_kmip::kmip::{
     },
 };
 
-use crate::crypto::curve_25519::operation::Q_LENGTH_BITS;
+use crate::{
+    crypto::curve_25519::operation::Q_LENGTH_BITS, error::KmipUtilsError, tagging::set_tags,
+};
 
 /// Build a `CreateKeyPairRequest` for a curve 25519 key pair
-#[must_use]
-pub fn create_key_pair_request() -> CreateKeyPair {
-    CreateKeyPair {
-        common_attributes: Some(Attributes {
-            activation_date: None,
-            cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-            cryptographic_length: Some(Q_LENGTH_BITS),
-            cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-                q_length: Some(Q_LENGTH_BITS),
-                recommended_curve: Some(RecommendedCurve::CURVE25519),
-            }),
-            cryptographic_parameters: None,
-            cryptographic_usage_mask: Some(
-                CryptographicUsageMask::Encrypt
-                    | CryptographicUsageMask::Decrypt
-                    | CryptographicUsageMask::WrapKey
-                    | CryptographicUsageMask::UnwrapKey
-                    | CryptographicUsageMask::KeyAgreement,
-            ),
-            key_format_type: Some(KeyFormatType::ECPrivateKey),
-            link: None,
-            object_type: ObjectType::PrivateKey,
-            vendor_attributes: None,
+pub fn create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    tags: T,
+) -> Result<CreateKeyPair, KmipUtilsError> {
+    let mut attributes = Attributes {
+        activation_date: None,
+        cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+        cryptographic_length: Some(Q_LENGTH_BITS),
+        cryptographic_domain_parameters: Some(CryptographicDomainParameters {
+            q_length: Some(Q_LENGTH_BITS),
+            recommended_curve: Some(RecommendedCurve::CURVE25519),
         }),
+        cryptographic_parameters: None,
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::Encrypt
+                | CryptographicUsageMask::Decrypt
+                | CryptographicUsageMask::WrapKey
+                | CryptographicUsageMask::UnwrapKey
+                | CryptographicUsageMask::KeyAgreement,
+        ),
+        key_format_type: Some(KeyFormatType::ECPrivateKey),
+        link: None,
+        object_type: Some(ObjectType::PrivateKey),
+        vendor_attributes: None,
+    };
+    // add the tags
+    set_tags(&mut attributes, tags)?;
+    Ok(CreateKeyPair {
+        common_attributes: Some(attributes),
         private_key_attributes: None,
         public_key_attributes: None,
         common_protection_storage_masks: None,
         private_protection_storage_masks: None,
         public_protection_storage_masks: None,
-    }
+    })
 }
 
 #[must_use]

@@ -8,7 +8,7 @@ use base64::{
     engine::general_purpose::{self, STANDARD as b64},
     Engine as _,
 };
-use cloudproof::reexport::crypto_core::{symmetric_crypto::key::Key, CsRng, KeyTrait};
+use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_operations::{
         Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
@@ -18,7 +18,7 @@ use cosmian_kmip::kmip::{
     },
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::types::{
+use cosmian_kms_utils::access::{
     Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
     UserAccessResponse,
 };
@@ -95,7 +95,7 @@ impl KMS {
         )?)
     }
 
-    /// Adds a new encrypted SQLite database to the KMS server.
+    /// Adds a new encrypted `SQLite` database to the KMS server.
     ///
     /// # Returns
     ///
@@ -119,9 +119,9 @@ impl KMS {
             };
 
             // Generate a new key
-            let key: Key<32> = {
+            let key: SymmetricKey<32> = {
                 let mut rng = self.rng.lock().expect("failed locking the RNG");
-                Key::<32>::new(&mut *rng)
+                SymmetricKey::<32>::new(&mut *rng)
             };
 
             // Encode ExtraDatabaseParams
@@ -132,7 +132,7 @@ impl KMS {
             // Create a dummy query to initialize the database
             // Note: if we don't proceed like that, the password will be set at the first query of the user
             // which let him put the password he wants.
-            self.db.find(None, None, "", Some(&params)).await?;
+            self.db.find(None, None, "", true, Some(&params)).await?;
 
             return Ok(token)
         }
@@ -166,6 +166,11 @@ impl KMS {
     /// The response contains the Unique Identifier provided in the request or
     /// assigned by the server. The server SHALL copy the Unique Identifier
     /// returned by this operations into the ID Placeholder variable.
+    ///
+    /// Cosmian specific: unique identifiers starting with `[` are reserved
+    /// for queries on tags. See tagging.
+    /// For instance, a request for uniquer identifier `[tag1]` will
+    /// attempt to find a valid single object tagged with `tag1`
     pub async fn import(
         &self,
         request: Import,
@@ -297,7 +302,7 @@ impl KMS {
     /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
     /// together with its attributes.
     /// The Key Format Type, Key Wrap Type, Key Compression Type and Key Wrapping Specification
-    /// SHALL have the same semantics as for the Get operation.  
+    /// SHALL have the same semantics as for the Get operation.
     /// If the Managed Object has been Destroyed then the key material for the specified managed object
     /// SHALL not be returned in the response.
     /// The server SHALL copy the Unique Identifier returned by this operations
@@ -544,7 +549,7 @@ impl KMS {
         }
 
         self.db
-            .insert_access(uid, &access.user_id, access.operation_type, params)
+            .grant_access(uid, &access.user_id, access.operation_type, params)
             .await?;
         Ok(())
     }
@@ -579,12 +584,13 @@ impl KMS {
         }
 
         self.db
-            .delete_access(uid, &access.user_id, access.operation_type, params)
+            .remove_access(uid, &access.user_id, access.operation_type, params)
             .await?;
         Ok(())
     }
 
-    /// Get all the access authorization for a given object
+    /// Get all the access granted for a given object
+    /// per user
     pub async fn list_accesses(
         &self,
         object_id: &UniqueIdentifier,
@@ -611,7 +617,7 @@ impl KMS {
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<ObjectOwnedResponse>> {
-        let list = self.db.find(None, None, owner, params).await?;
+        let list = self.db.find(None, None, owner, true, params).await?;
         let ids = list.into_iter().map(ObjectOwnedResponse::from).collect();
         Ok(ids)
     }

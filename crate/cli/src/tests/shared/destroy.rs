@@ -22,9 +22,9 @@ use crate::{
 };
 
 pub fn destroy(cli_conf_path: &str, sub_command: &str, key_id: &str) -> Result<(), CliError> {
-    let args: Vec<String> = vec!["keys", "destroy", key_id]
+    let args: Vec<String> = ["keys", "destroy", "--key-id", key_id]
         .iter()
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -88,7 +88,7 @@ async fn test_destroy_symmetric_key() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // syn
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
 
     // destroy should not work when not revoked
     assert!(destroy(&ctx.owner_cli_conf_path, "sym", &key_id).is_err());
@@ -109,7 +109,7 @@ async fn test_destroy_ec_key() -> Result<(), CliError> {
     // destroy via private key
     {
         // syn
-        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
 
         // destroy should not work when not revoked
         assert!(destroy(&ctx.owner_cli_conf_path, "ec", &private_key_id).is_err());
@@ -132,10 +132,12 @@ async fn test_destroy_ec_key() -> Result<(), CliError> {
     // destroy via public key
     {
         // syn
-        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
 
         // destroy should not work when not revoked
         assert!(destroy(&ctx.owner_cli_conf_path, "ec", &public_key_id).is_err());
+
+        println!("OK. revoking");
 
         // revoke then destroy
         revoke(
@@ -144,6 +146,9 @@ async fn test_destroy_ec_key() -> Result<(), CliError> {
             &public_key_id,
             "revocation test",
         )?;
+
+        println!("OK. destroying");
+
         // destroy via the private key
         destroy(&ctx.owner_cli_conf_path, "ec", &public_key_id)?;
 
@@ -167,17 +172,20 @@ async fn test_destroy_cover_crypt() -> Result<(), CliError> {
             &ctx.owner_cli_conf_path,
             "--policy-specifications",
             "test_data/policy_specifications.json",
+            &[],
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+            &[],
         )?;
         let user_key_id_2 = create_user_decryption_key(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+            &[],
         )?;
 
         // destroy should not work when not revoked
@@ -206,17 +214,20 @@ async fn test_destroy_cover_crypt() -> Result<(), CliError> {
             &ctx.owner_cli_conf_path,
             "--policy-specifications",
             "test_data/policy_specifications.json",
+            &[],
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+            &[],
         )?;
         let user_key_id_2 = create_user_decryption_key(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+            &[],
         )?;
 
         // destroy should not work when not revoked
@@ -245,18 +256,21 @@ async fn test_destroy_cover_crypt() -> Result<(), CliError> {
             &ctx.owner_cli_conf_path,
             "--policy-specifications",
             "test_data/policy_specifications.json",
+            &[],
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+            &[],
         )?;
 
         let user_key_id_2 = create_user_decryption_key(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+            &[],
         )?;
 
         // destroy should not work when not revoked

@@ -25,9 +25,9 @@ pub fn revoke(
     key_id: &str,
     revocation_reason: &str,
 ) -> Result<(), CliError> {
-    let args: Vec<String> = vec!["keys", "revoke", key_id, revocation_reason]
+    let args: Vec<String> = ["keys", "revoke", "--key-id", key_id, revocation_reason]
         .iter()
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -84,7 +84,7 @@ async fn test_revoke_symmetric_key() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(init_test_server).await;
 
     // syn
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
 
     // revoke
     revoke(&ctx.owner_cli_conf_path, "sym", &key_id, "revocation test")?;
@@ -101,7 +101,7 @@ async fn test_revoke_ec_key() -> Result<(), CliError> {
     // revoke via private key
     {
         // syn
-        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
 
         // revoke via the private key
         revoke(
@@ -119,7 +119,7 @@ async fn test_revoke_ec_key() -> Result<(), CliError> {
     // revoke via public key
     {
         // syn
-        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
 
         // revoke via the private key
         revoke(
@@ -149,17 +149,20 @@ async fn test_revoke_cover_crypt() -> Result<(), CliError> {
             &ctx.owner_cli_conf_path,
             "--policy-specifications",
             "test_data/policy_specifications.json",
+            &[],
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+            &[],
         )?;
         let user_key_id_2 = create_user_decryption_key(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+            &[],
         )?;
 
         revoke(
@@ -183,17 +186,20 @@ async fn test_revoke_cover_crypt() -> Result<(), CliError> {
             &ctx.owner_cli_conf_path,
             "--policy-specifications",
             "test_data/policy_specifications.json",
+            &[],
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+            &[],
         )?;
         let user_key_id_2 = create_user_decryption_key(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+            &[],
         )?;
 
         revoke(
@@ -217,18 +223,21 @@ async fn test_revoke_cover_crypt() -> Result<(), CliError> {
             &ctx.owner_cli_conf_path,
             "--policy-specifications",
             "test_data/policy_specifications.json",
+            &[],
         )?;
 
         let user_key_id_1 = create_user_decryption_key(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+            &[],
         )?;
 
         let user_key_id_2 = create_user_decryption_key(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
             "(Department::MKG || Department::FIN) && Security Level::Top Secret",
+            &[],
         )?;
 
         revoke(

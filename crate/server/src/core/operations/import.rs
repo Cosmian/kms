@@ -4,11 +4,14 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Import, ImportResponse},
     kmip_types::{KeyWrapType, StateEnumeration},
 };
-use cosmian_kms_utils::types::ExtraDatabaseParams;
+use cosmian_kms_utils::{
+    access::ExtraDatabaseParams,
+    tagging::{check_user_tags, get_tags},
+};
 use tracing::{debug, warn};
 
 use super::wrapping::unwrap_key;
-use crate::{core::KMS, result::KResult};
+use crate::{core::KMS, kms_bail, result::KResult};
 
 /// Import a new object
 pub async fn import(
@@ -17,13 +20,25 @@ pub async fn import(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ImportResponse> {
+    // Unique identifiers starting with `[` are reserved for queries on tags
+    // see tagging
+    // For instance, a request for uniquer identifier `[tag1]` will
+    // attempt to find a valid single object tagged with `tag1`
+    if request.unique_identifier.starts_with('[') {
+        kms_bail!("Importing objects with uniquer identifiers starting with `[` is not supported");
+    }
+
+    // recover user tags
+    let mut tags = get_tags(&request.attributes);
+    check_user_tags(&tags)?;
+
     let mut object = request.object;
     let object_type = object.object_type();
     let object_key_block = object.key_block_mut()?;
     match object_type {
         ObjectType::SymmetricKey | ObjectType::PublicKey | ObjectType::PrivateKey => {
             // unwrap before storing if requested
-            if let Some(KeyWrapType::NotWrapped) = request.key_wrap_type {
+            if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
                 unwrap_key(object_type, object_key_block, kms, owner, params).await?;
             }
             // replace attributes
@@ -31,10 +46,22 @@ pub async fn import(
                 key_material: object_key_block.key_value.key_material.clone(),
                 attributes: Some(request.attributes),
             };
+            // insert the tag corresponding to the object type
+            match object_type {
+                ObjectType::SymmetricKey => {
+                    tags.insert("_kk".to_string());
+                }
+                ObjectType::PublicKey => {
+                    tags.insert("_pk".to_string());
+                }
+                ObjectType::PrivateKey => {
+                    tags.insert("_sk".to_string());
+                }
+                _ => unreachable!(),
+            }
         }
         x => {
-            //TODO keep attributes as separate column in DB
-            warn!("Attributes are not yet supported for objects of type : {x}")
+            warn!("Import is not yet supported for objects of type : {x}")
         }
     }
     // check if the object will be replaced if it already exists
@@ -54,6 +81,7 @@ pub async fn import(
                 &request.unique_identifier,
                 owner,
                 &object,
+                &tags,
                 StateEnumeration::Active,
                 params,
             )
@@ -66,7 +94,7 @@ pub async fn import(
         } else {
             Some(request.unique_identifier)
         };
-        kms.db.create(id, owner, &object, params).await?
+        kms.db.create(id, owner, &object, &tags, params).await?
     };
     Ok(ImportResponse {
         unique_identifier: uid,

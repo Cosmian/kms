@@ -10,15 +10,20 @@ use crate::error::{result::CliResultHelper, CliError};
 ///      and can be safely shared.
 ///  - The private key is used to decrypt
 ///      and must be kept secret.
+///
+/// Tags can later be used to retrieve the keys. Tags are optional.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateKeyPairAction {
-    //todo add algorithm choice
+    /// The tag to associate with the master key pair.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG")]
+    tags: Vec<String>,
 }
 
 impl CreateKeyPairAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
-        let create_key_pair_request = create_key_pair_request();
+        let create_key_pair_request = create_key_pair_request(&self.tags)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = client_connector

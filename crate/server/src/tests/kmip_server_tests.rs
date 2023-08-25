@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::crypto_core::asymmetric_crypto::curve25519::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType},
@@ -13,31 +12,25 @@ use cosmian_kmip::kmip::{
 use cosmian_kms_utils::crypto::curve_25519::{
     kmip_requests::{create_key_pair_request, get_private_key_request, get_public_key_request},
     operation::{to_curve_25519_256_public_key, Q_LENGTH_BITS},
+    X25519_PUBLIC_KEY_LENGTH,
 };
 use tracing::trace;
 use uuid::Uuid;
 
 use crate::{
-    config::{ClapConfig, ServerConfig},
-    error::KmsError,
-    log_utils::log_init,
-    result::KResult,
-    tests::test_utils,
-    KMSServer,
+    config::ServerConfig, error::KmsError, log_utils::log_init, result::KResult,
+    tests::test_utils::https_clap_config, KMSServer,
 };
 
 #[actix_rt::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = create_key_pair_request();
+    let request = create_key_pair_request(&[] as &[&str])?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
@@ -139,7 +132,10 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         object_type: ObjectType::PublicKey,
         replace_existing: None,
         key_wrap_type: None,
-        attributes: Attributes::new(ObjectType::PublicKey),
+        attributes: Attributes {
+            object_type: Some(ObjectType::PublicKey),
+            ..Attributes::default()
+        },
         object: pk.clone(),
     };
     let new_uid = kms.import(request, owner, None).await?.unique_identifier;
@@ -150,7 +146,10 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: Attributes::new(ObjectType::PublicKey),
+        attributes: Attributes {
+            object_type: Some(ObjectType::PublicKey),
+            ..Attributes::default()
+        },
         object: pk,
     };
     let update_response = kms.import(request, owner, None).await?;
@@ -162,12 +161,9 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     log_init("info");
 
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     let wrapped_symmetric_key = [0_u8; 32];
@@ -201,11 +197,11 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
         replace_existing: Some(false),
         key_wrap_type: Some(KeyWrapType::AsRegistered),
         attributes: Attributes {
+            object_type: Some(ObjectType::SymmetricKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(wrapped_symmetric_key.len() as i32),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-            object_type: ObjectType::SymmetricKey,
-            ..Attributes::new(ObjectType::SymmetricKey)
+            ..Attributes::default()
         },
         object: symmetric_key,
     };
@@ -221,16 +217,13 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 async fn test_database_user_tenant() -> KResult<()> {
     log_init("info");
 
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = create_key_pair_request();
+    let request = create_key_pair_request(&[] as &[&str])?;
     let response = kms.create_key_pair(request, owner, None).await?;
 
     // check that we can get the private and public key

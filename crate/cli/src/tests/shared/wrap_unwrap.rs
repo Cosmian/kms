@@ -62,7 +62,6 @@ pub fn wrap(
         args.push(wrap_key_file.to_str().unwrap().to_owned());
     }
     cmd.arg(sub_command).args(args);
-    println!("cmd: {:?}", cmd);
     let output = cmd.output()?;
     if output.status.success() {
         return Ok(())
@@ -108,7 +107,6 @@ pub fn unwrap(
         args.push(unwrap_key_file.to_str().unwrap().to_owned());
     }
     cmd.arg(sub_command).args(args);
-    println!("cmd: {:?}", cmd);
     let output = cmd.output()?;
     if output.status.success() {
         return Ok(())
@@ -127,15 +125,16 @@ pub async fn test_password_wrap_import() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
+        &[],
     )?;
     password_wrap_import_test(ctx, "cc", &private_key_id)?;
 
     // EC
-    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path)?;
+    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     password_wrap_import_test(ctx, "ec", &private_key_id)?;
 
     // syn
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     password_wrap_import_test(ctx, "sym", &key_id)?;
 
     Ok(())

@@ -48,7 +48,7 @@ pub fn extract_peer_certificate(cnx: &dyn Any, extensions: &mut Extensions) {
     }
 }
 
-/// The extension struct holding the peer common name in the HttpRequest.
+/// The extension struct holding the peer common name in the `HttpRequest`.
 ///
 /// This struct is used to store the peer common name in the request context.
 #[derive(Debug, Clone)]

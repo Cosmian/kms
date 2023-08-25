@@ -111,10 +111,10 @@ async fn test_multiple_databases() -> Result<(), CliError> {
     let tmp_path = tmp_dir.path();
     // init the test server
     // since we are going to rewrite the conf, use a different port
-    let ctx = init_test_server_options(9997, true, false, false).await;
+    let ctx = init_test_server_options(9997, true, false, false, false).await;
 
     // create a symmetric key in the default encrypted database
-    let key_1 = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_1 = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     // export the key 1
     // Export
     export(
@@ -138,7 +138,7 @@ async fn test_multiple_databases() -> Result<(), CliError> {
         .expect("Can't write the new conf");
 
     // create a symmetric key in the default encrypted database
-    let key_2 = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None)?;
+    let key_2 = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     // export the key 1
     // Export
     export(

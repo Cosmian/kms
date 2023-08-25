@@ -23,12 +23,16 @@ use cosmian_kmip::kmip::{
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use cosmian_kms_utils::types::{
+use cosmian_kms_utils::access::{
     Access, AccessRightsObtainedResponse, ObjectOwnedResponse, QuoteParams, SuccessResponse,
     UserAccessResponse,
 };
 use error::KmsClientError;
 use http::{HeaderMap, HeaderValue, StatusCode};
+use josekit::{
+    jwe::{alg::ecdh_es::EcdhEsJweAlgorithm, serialize_compact, JweHeader},
+    jwk::Jwk,
+};
 use reqwest::{Client, ClientBuilder, Identity, Response};
 use serde::{Deserialize, Serialize};
 
@@ -37,6 +41,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone)]
 pub struct KmsRestClient {
     server_url: String,
+    jwe_public_key: Option<Jwk>,
     client: Client,
 }
 
@@ -138,7 +143,7 @@ impl KmsRestClient {
     /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
     /// together with its attributes.
     /// The Key Format Type, Key Wrap Type, Key Compression Type and Key Wrapping Specification
-    /// SHALL have the same semantics as for the Get operation.  
+    /// SHALL have the same semantics as for the Get operation.
     /// If the Managed Object has been Destroyed then the key material for the specified managed object
     /// SHALL not be returned in the response.
     /// The server SHALL copy the Unique Identifier returned by this operations
@@ -431,11 +436,21 @@ impl KmsRestClient {
         ssl_client_pkcs12_password: Option<&str>,
         database_secret: Option<&str>,
         accept_invalid_certs: bool,
+        jwe_public_key: Option<&str>,
     ) -> Result<Self, KmsClientError> {
         let server_url = match server_url.strip_suffix('/') {
             Some(s) => s.to_string(),
             None => server_url.to_string(),
         };
+
+        let jwe_public_key = jwe_public_key
+            .map(|key| {
+                Jwk::from_reader(&mut key.as_bytes()).map_err(|err| {
+                    KmsClientError::UnexpectedError(format!("'{key}' is not a valid JWK ({err})"))
+                })
+            })
+            .transpose()?;
+
         let mut headers = HeaderMap::new();
         if let Some(bearer_token) = bearer_token {
             headers.insert(
@@ -474,6 +489,7 @@ impl KmsRestClient {
                 .default_headers(headers)
                 .build()?,
             server_url,
+            jwe_public_key,
         })
     }
 
@@ -550,12 +566,47 @@ impl KmsRestClient {
         O: Serialize,
         R: serde::de::DeserializeOwned + Sized + 'static,
     {
-        let response = self
-            .client
-            .post(self.server_url.clone() + "/kmip/2_1")
-            .json(&to_ttlv(kmip_request)?)
-            .send()
-            .await?;
+        let mut request = self.client.post(self.server_url.clone() + "/kmip/2_1");
+        let ttlv = to_ttlv(kmip_request)?;
+
+        request = if let Some(jwe_public_key) = &self.jwe_public_key {
+            let mut header = JweHeader::new();
+            header.set_algorithm("ECDH-ES");
+            header.set_content_encryption("A256GCM");
+            header.set_key_id(jwe_public_key.key_id().ok_or_else(|| {
+                KmsClientError::UnexpectedError(
+                    "JWE public key doesn't contains a key ID.".to_string(),
+                )
+            })?);
+
+            let encrypter = EcdhEsJweAlgorithm::EcdhEs
+                .encrypter_from_jwk(jwe_public_key)
+                .map_err(|err| {
+                    KmsClientError::UnexpectedError(format!(
+                        "Fail to create encrypter from JWE public key ({err})."
+                    ))
+                })?;
+            let payload = serialize_compact(
+                serde_json::to_string(&ttlv)
+                    .map_err(|_| {
+                        KmsClientError::UnexpectedError("Cannot transform TTLV to JSON".to_string())
+                    })?
+                    .as_bytes(),
+                &header,
+                &encrypter,
+            )
+            .map_err(|err| {
+                KmsClientError::UnexpectedError(format!(
+                    "Fail to encrypt payload with JWE public key ({err})."
+                ))
+            })?;
+
+            request.body(payload)
+        } else {
+            request.json(&ttlv)
+        };
+
+        let response = request.send().await?;
 
         let status_code = response.status();
         if status_code.is_success() {

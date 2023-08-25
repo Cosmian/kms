@@ -22,13 +22,13 @@ Check the enabling [TLS documentation](./tls.md) as well as the [authentication 
 
 The KMS server is available as a Docker image on the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
-Non-dockerized raw binaries are also available on [Cosmian public packages repository](https://package.cosmian.com/kms/4.4.3/)
+Non-dockerized raw binaries are also available on the [Cosmian public packages repository](https://package.cosmian.com/kms/4.5.0/)
 
 !!! info "Quick start"
-    To quick start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
+    To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.4.3
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.5.0
     ```
 
     Check the Cosmian KMS server version
@@ -43,6 +43,24 @@ The KMS server deploys either in [single-server mode](./single_server_mode.md) o
 
 The server supports concurrent client-secret encrypted databases in single-server mode for additional security.
 
+#### Support for Public Cloud and Zero-Trust environments
+
+Using Redis-with-Findex as a backend (see [here](./replicated_mode.md)), the KMS server data can be encrypted by the KMS at the application level. The use of Findex encrypted indexes provides blazing search performance without compromising security.  All that is required is to deploy the KMS in a confidential VM.
+
+#### Support for object tagging
+
+The KMS server supports user tagging of objects to facilitate their management.
+Specify as many user tags as needed when creating and importing objects.
+
+In addition, the user server will automatically add a system tag based on the object type:
+
+- `_sk`: for a private key
+- `_pk`: for a public key
+- `_kk`: for a symmetric key
+- `_uk`: for a Covercrypt user decryption key
+
+Use the tags to export objects, locate them, or request data encryption and decryption.
+
 #### Command line interface client
 
 The KMS has an easy-to-use command line interface client for many operating systems.
@@ -53,7 +71,7 @@ The KMS has an easy-to-use command line interface client for many operating syst
 
 #### Integrated with Cloudproof libraries
 
-To build the next generation of privacy-by-design applications with end-to-end encryption, the KMS server is integrated with the [**Cloudproof**](https://docs.cosmian.com/cloudproof_encryption/use_cases_benefits/) libraries to deliver keys and secrets to the client-side cryptographic stacks or perform delegated encryption and decryption.
+To build the next generation of privacy-by-design applications with end-to-end encryption, the KMS server is integrated with the [**Cloudproof**](https://docs.cosmian.com/cloudproof_encryption/how_it_works/) libraries to deliver keys and secrets to the client-side cryptographic stacks or perform delegated encryption and decryption.
 
 The libraries are available in many languages, including Javascript, Java, Dart, and Python. Check their [documentation](https://docs.cosmian.com/cloudproof_encryption/application_level_encryption/) for details.
 
@@ -62,7 +80,7 @@ The libraries are available in many languages, including Javascript, Java, Dart,
 Like the `ckms` CLI, the KMS server has a built-in help system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.4.3 --help
+docker run --rm ghcr.io/cosmian/kms:4.5.0 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the options help.
@@ -82,7 +100,7 @@ The options are enabled on the docker command line or using the environment vari
 --jwks-uri <JWKS_URI>
     The JWKS (Json Web Key Set) URI of the JWT token
 
-    For Auth0, this would be https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json"
+    For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
 
     For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
 
@@ -104,15 +122,16 @@ The options are enabled on the docker command line or using the environment vari
     - sqlite: SQLite. The data will be stored at the sqlite_path directory
     - sqlite-enc: SQLite encrypted at rest. the data will be stored at the sqlite_path directory.
     A key must be supplied on every call
-
+    - redis-findex: and encrypted redis database with an encrypted index using Findex.
+    The database url must be provided, as well as the redis-master-password and the redis-findex-label
     _
 
     [env: KMS_DATABASE_TYPE=]
     [default: sqlite]
-    [possible values: postgresql, mysql, sqlite, sqlite-enc]
+    [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
 
 --database-url <DATABASE_URL>
-    The url of the database for postgresql or mysql
+    The url of the database for postgresql, mysql or findex-redis
 
     [env: KMS_DATABASE_URL=]
 
@@ -121,6 +140,22 @@ The options are enabled on the docker command line or using the environment vari
 
     [env: KMS_SQLITE_PATH=]
     [default: ./sqlite-data]
+
+--redis-master-password <REDIS_MASTER_PASSWORD>
+    redis-findex: a master password used to encrypt the Redis data and indexes
+
+    [env: KMS_REDIS_MASTER_PASSWORD=]
+
+--redis-findex-label <REDIS_FINDEX_LABEL>
+    redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
+
+    [env: KMS_REDIS_FINDEX_LABEL=]
+
+--clear-database
+    Clear the database on start.
+    WARNING: This will delete ALL the data in the database
+
+    [env: KMS_CLEAR_DATABASE=]
 
 --enclave-dir-path <ENCLAVE_DIR_PATH>
     The directory where the manifest and public key files are located This path should not be encrypted by the enclave and should be directly readable from it
@@ -195,6 +230,11 @@ The options are enabled on the docker command line or using the environment vari
 
     [env: KMS_AUTHORITY_CERT_FILE=]
 
+--jwk-private-key <JWK_PRIVATE_KEY>
+    Enable the use of encryption by providing a JWK private key as JSON
+
+    [env: JWK_PRIVATE_KEY=]
+
 --root-data-path <ROOT_DATA_PATH>
     The root folder where the KMS will store its data A relative path is taken relative to the user HOME directory
 
@@ -222,5 +262,5 @@ The options are enabled on the docker command line or using the environment vari
     Print help (see a summary with '-h')
 
 -V, --version
-        Print version
+    Print version
 ```

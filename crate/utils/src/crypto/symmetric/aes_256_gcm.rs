@@ -1,50 +1,59 @@
 use std::{convert::TryFrom, sync::Mutex};
 
-pub use cloudproof::reexport::crypto_core::symmetric_crypto::aes_256_gcm_pure::{
-    MAC_LENGTH, NONCE_LENGTH,
-};
 use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::SeedableRng,
-    symmetric_crypto::{
-        aes_256_gcm_pure::{decrypt_in_place_detached, encrypt_in_place_detached},
-        nonce::{Nonce, NonceTrait},
-    },
-    CsRng,
+    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, DemInPlace, FixedSizeCBytes, Instantiable,
+    Nonce, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kmip::kmip::{
-    kmip_data_structures::KeyBlock,
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
 };
 
-use crate::{crypto::error::CryptoError, DecryptionSystem, EncryptionSystem};
+use crate::{error::KmipUtilsError, DecryptionSystem, EncryptionSystem};
+
+/// AES 256 GCM key length in bytes
+pub const KEY_LENGTH: usize = Aes256Gcm::KEY_LENGTH;
+/// AES 256 GCM nonce length in bytes
+pub const NONCE_LENGTH: usize = Aes256Gcm::NONCE_LENGTH;
+/// AES 256 GCM tag/mac length in bytes
+pub const MAC_LENGTH: usize = Aes256Gcm::MAC_LENGTH;
 
 pub struct AesGcmSystem {
     key_uid: String,
-    symmetric_key_key_block: KeyBlock,
+    symmetric_key: SymmetricKey<{ KEY_LENGTH }>,
     rng: Mutex<CsRng>,
 }
 
 impl AesGcmSystem {
-    pub fn instantiate(uid: &str, symmetric_key: &Object) -> Result<Self, CryptoError> {
+    pub fn instantiate(uid: &str, symmetric_key: &Object) -> Result<Self, KmipUtilsError> {
         let key_block = match symmetric_key {
             Object::SymmetricKey { key_block } => key_block.clone(),
             _ => {
-                return Err(CryptoError::NotSupported(
+                return Err(KmipUtilsError::NotSupported(
                     "Expected a KMIP Symmetric Key".to_owned(),
                 ))
             }
         };
+        let symmetric_key_bytes: [u8; KEY_LENGTH] =
+            key_block.key_bytes()?.as_slice().try_into().map_err(|_| {
+                KmipUtilsError::NotSupported(format!(
+                    "Expected a KMIP Symmetric Key of length {}",
+                    KEY_LENGTH
+                ))
+            })?;
+        let symmetric_key = SymmetricKey::try_from_bytes(symmetric_key_bytes)
+            .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
+
         Ok(Self {
             key_uid: uid.into(),
-            symmetric_key_key_block: key_block,
+            symmetric_key,
             rng: Mutex::new(CsRng::from_entropy()),
         })
     }
 }
 
 impl EncryptionSystem for AesGcmSystem {
-    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, CryptoError> {
+    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError> {
         let uid = request
             .authenticated_encryption_additional_data
             .clone()
@@ -71,13 +80,10 @@ impl EncryptionSystem for AesGcmSystem {
             Some(data) => data.clone(),
         };
 
-        // recover key
-        let key = self.symmetric_key_key_block.key_bytes()?;
-
         // supplied Nonce or fresh
-        let nonce: Nonce<NONCE_LENGTH> = match request.iv_counter_nonce.as_ref() {
+        let nonce: Nonce<{ NONCE_LENGTH }> = match request.iv_counter_nonce.as_ref() {
             Some(v) => Nonce::try_from(v.as_slice())
-                .map_err(|e| CryptoError::NotSupported(e.to_string()))?,
+                .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?,
             None => {
                 let mut rng = self.rng.lock().expect("a mutex lock failed");
                 Nonce::new(&mut *rng)
@@ -95,13 +101,13 @@ impl EncryptionSystem for AesGcmSystem {
         }
 
         // now encrypt
-        let tag = encrypt_in_place_detached(
-            &key,
-            &mut data,
-            nonce.as_bytes(),
-            if ad.is_empty() { None } else { Some(&ad) },
-        )
-        .map_err(|e| CryptoError::NotSupported(e.to_string()))?;
+        let tag = Aes256Gcm::new(&self.symmetric_key)
+            .encrypt_in_place_detached(
+                &nonce,
+                &mut data,
+                if ad.is_empty() { None } else { Some(&ad) },
+            )
+            .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
 
         Ok(EncryptResponse {
             unique_identifier: self.key_uid.clone(),
@@ -114,7 +120,7 @@ impl EncryptionSystem for AesGcmSystem {
 }
 
 impl DecryptionSystem for AesGcmSystem {
-    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, CryptoError> {
+    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, KmipUtilsError> {
         let uid = request
             .authenticated_encryption_additional_data
             .clone()
@@ -137,9 +143,6 @@ impl DecryptionSystem for AesGcmSystem {
             Some(ciphertext) => ciphertext.clone(),
         };
 
-        // recover key
-        let key = self.symmetric_key_key_block.key_bytes()?;
-
         // recover tag
         let tag = request
             .authenticated_encryption_tag
@@ -148,10 +151,10 @@ impl DecryptionSystem for AesGcmSystem {
 
         // recover Nonce
         let nonce_bytes = request.iv_counter_nonce.clone().ok_or_else(|| {
-            CryptoError::NotSupported("the nonce is mandatory for AES GCM".to_string())
+            KmipUtilsError::NotSupported("the nonce is mandatory for AES GCM".to_string())
         })?;
-        let nonce: Nonce<NONCE_LENGTH> = Nonce::try_from(nonce_bytes.as_slice())
-            .map_err(|e| CryptoError::NotSupported(e.to_string()))?;
+        let nonce: Nonce<{ NONCE_LENGTH }> = Nonce::try_from(nonce_bytes.as_slice())
+            .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
 
         // Additional data
         let mut ad = uid;
@@ -163,14 +166,14 @@ impl DecryptionSystem for AesGcmSystem {
             }
         }
 
-        decrypt_in_place_detached(
-            &key,
-            &mut bytes,
-            &tag,
-            nonce.as_bytes(),
-            if ad.is_empty() { None } else { Some(&ad) },
-        )
-        .map_err(|e| CryptoError::NotSupported(e.to_string()))?;
+        Aes256Gcm::new(&self.symmetric_key)
+            .decrypt_in_place_detached(
+                &nonce,
+                &mut bytes,
+                &tag,
+                if ad.is_empty() { None } else { Some(&ad) },
+            )
+            .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
 
         Ok(DecryptResponse {
             unique_identifier: self.key_uid.clone(),

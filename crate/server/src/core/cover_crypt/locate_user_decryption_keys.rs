@@ -8,7 +8,7 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_utils::{
-    crypto::cover_crypt::attributes::attributes_as_vendor_attribute, types::ExtraDatabaseParams,
+    access::ExtraDatabaseParams, crypto::cover_crypt::attributes::attributes_as_vendor_attribute,
 };
 
 use crate::{
@@ -33,6 +33,7 @@ pub(crate) async fn locate_user_decryption_keys(
     };
     // Search the user decryption keys that need to be refreshed
     let search_attributes = Attributes {
+        object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes,
@@ -42,11 +43,11 @@ pub(crate) async fn locate_user_decryption_keys(
                 master_private_key_uid.to_owned(),
             ),
         }]),
-        ..Attributes::new(ObjectType::PrivateKey)
+        ..Attributes::default()
     };
     let locate_request = Locate {
         attributes: search_attributes,
-        ..Locate::new(ObjectType::PrivateKey)
+        ..Locate::default()
     };
     let locate_response =
         operations::locate(kmip_server, locate_request, state, owner, params).await?;

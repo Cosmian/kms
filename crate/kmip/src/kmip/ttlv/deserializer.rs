@@ -242,8 +242,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                 visitor.visit_u8(*u)
             }
             x => Err(TtlvError::custom(format!(
-                "deserialize_u8. Unexpected {:?}",
-                x
+                "deserialize_u8. Unexpected {x:?}"
             ))),
         }
     }
@@ -279,8 +278,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                 })
             }
             x => Err(TtlvError::custom(format!(
-                "deserialize_str. Unexpected {:?}",
-                x
+                "deserialize_str. Unexpected {x:?}"
             ))),
         }
     }
@@ -483,8 +481,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                         })
                     }
                     x => Err(TtlvError::custom(format!(
-                        "deserialize_seq. Invalid type for value: {:?}",
-                        x
+                        "deserialize_seq. Invalid type for value: {x:?}"
                     ))),
                 }
             }
@@ -541,14 +538,12 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                         })
                     }
                     x => Err(TtlvError::custom(format!(
-                        "deserialize_map. Invalid type for value: {:?}",
-                        x
+                        "deserialize_map. Invalid type for value: {x:?}"
                     ))),
                 }
             }
             x => Err(TtlvError::custom(format!(
-                "deserialize_map. A map should not be deserialized when deserializing a {:?}",
-                x
+                "deserialize_map. A map should not be deserialized when deserializing a {x:?}"
             ))),
         }
     }
@@ -593,14 +588,12 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                     TTLValue::Enumeration(_e) => visitor.visit_enum(EnumWalker::new(self)),
                     // TTLValue::Structure(_s) => visitor.visit_enum(EnumWalker::new(self)),
                     x => Err(TtlvError::custom(format!(
-                        "deserialize_enum. Invalid type for value: {:?}",
-                        x
+                        "deserialize_enum. Invalid type for value: {x:?}"
                     ))),
                 }
             }
             x => Err(TtlvError::custom(format!(
-                "deserialize_enum. An enum should not be deserialized when deserializing a {:?}",
-                x
+                "deserialize_enum. An enum should not be deserialized when deserializing a {x:?}"
             ))),
         }
     }
@@ -626,15 +619,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                         TTLVEnumeration::Name(_n) => self.deserialize_str(visitor),
                     },
                     x => Err(TtlvError::custom(format!(
-                        "deserialize_identifier. Invalid type for value: {:?}",
-                        x
+                        "deserialize_identifier. Invalid type for value: {x:?}"
                     ))),
                 }
             }
             x => Err(TtlvError::custom(format!(
                 "deserialize_identifier. An identifier should not be deserialized when \
-                 deserializing a {:?}",
-                x
+                 deserializing a {x:?}"
             ))),
         }
     }
@@ -701,8 +692,7 @@ impl<'de> MapAccess<'de> for TtlvDeserializer<'de> {
             }
             x => Err(TtlvError::custom(format!(
                 "next_key_seed. An next key seed should not be deserialized when deserializing a \
-                 {:?}",
-                x
+                 {x:?}"
             ))),
         }
     }
@@ -728,8 +718,7 @@ impl<'de> MapAccess<'de> for TtlvDeserializer<'de> {
             )),
             x => Err(TtlvError::custom(format!(
                 "next_value_seed. A next value seed should not be deserialized when deserializing \
-                 a {:?}",
-                x
+                 a {x:?}"
             ))),
         }
     }
@@ -793,8 +782,7 @@ impl<'de> SeqAccess<'de> for TtlvDeserializer<'de> {
             }
             x => Err(TtlvError::custom(format!(
                 "next_element_seed. A next element seed should not be deserialized when \
-                 deserializing a {:?}",
-                x
+                 deserializing a {x:?}"
             ))),
         }
     }

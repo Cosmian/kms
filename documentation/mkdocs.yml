@@ -39,6 +39,7 @@ markdown_extensions:
 plugins:
   - search
   - kroki
+  - meta-descriptions
 extra_css:
   - css/extra.css
 extra_javascript:
@@ -52,21 +53,21 @@ nav:
   - Deploying in replicated mode: replicated_mode.md
   - Authenticating to the server: authentication.md
   - Authorizing using access rights: authorization.md
-  - Using the ckms command line interface: 
+  - Using the ckms command line interface:
       - Installing and configuring: cli/cli.md
       - Using the CLI: cli/main_commands.md
-      - Covercrypt: 
-        - Commands: cli/covercrypt/covercrypt.md
-        - Keys management: cli/covercrypt/keys.md
-        - Policy management: cli/covercrypt/policy.md
-      - Elliptic Curves Encryption:
+      - Covercrypt:
+          - Commands: cli/covercrypt/covercrypt.md
+          - Keys management: cli/covercrypt/keys.md
+          - Policy management: cli/covercrypt/policy.md
+      - Elliptic curves:
         - Commands: cli/ec/ec.md
         - Keys management: cli/ec/keys.md
-      - Symmetric Encryption:
+      - Symmetric encryption:
         - Commands: cli/sym/sym.md
         - Keys management: cli/sym/keys.md
-      - Access Rights: cli/access_rights.md
-      - Enclaves: cli/enclaves.md
+      - Access rights: cli/access_rights.md
+      - Enclaved KMS: cli/enclaves.md
   - KMIP 2.1 support:
       - Specifications: kmip_2_1/index.md
       - Objects: kmip_2_1/objects.md

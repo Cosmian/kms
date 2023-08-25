@@ -1,52 +1,59 @@
 use cloudproof::reexport::cover_crypt::abe_policy::Policy;
-use cosmian_kmip::{
-    error::KmipError,
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-        kmip_objects::{Object, ObjectType},
-        kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, Link, LinkType,
-            LinkedObjectIdentifier, WrappingMethod,
-        },
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, Link, LinkType,
+        LinkedObjectIdentifier, WrappingMethod,
     },
 };
 
 use super::attributes::{
     access_policy_as_vendor_attribute, attributes_as_vendor_attribute, policy_as_vendor_attribute,
 };
-use crate::kmip_utils::wrap_key_bytes;
+use crate::{error::KmipUtilsError, kmip_utils::wrap_key_bytes, tagging::set_tags};
 /// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key
-pub fn build_create_master_keypair_request(policy: &Policy) -> Result<CreateKeyPair, KmipError> {
+pub fn build_create_master_keypair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+    policy: &Policy,
+    tags: T,
+) -> Result<CreateKeyPair, KmipUtilsError> {
+    let mut attributes = Attributes {
+        object_type: Some(ObjectType::PrivateKey),
+        cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
+        key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
+        vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
+        ..Attributes::default()
+    };
+    set_tags(&mut attributes, tags)?;
     Ok(CreateKeyPair {
-        common_attributes: Some(Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
-            key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
-            vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
-            ..Attributes::new(ObjectType::PrivateKey)
-        }),
+        common_attributes: Some(attributes),
         ..CreateKeyPair::default()
     })
 }
 
 /// Build a `Create` request for an `CoverCrypt` User Decryption Key
-pub fn build_create_user_decryption_private_key_request(
+pub fn build_create_user_decryption_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     access_policy: &str,
     cover_crypt_master_private_key_id: &str,
-) -> Result<Create, KmipError> {
+    tags: T,
+) -> Result<Create, KmipUtilsError> {
+    let mut attributes = Attributes {
+        object_type: Some(ObjectType::PrivateKey),
+        cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
+        key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
+        vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
+        link: Some(vec![Link {
+            link_type: LinkType::ParentLink,
+            linked_object_identifier: LinkedObjectIdentifier::TextString(
+                cover_crypt_master_private_key_id.to_owned(),
+            ),
+        }]),
+        ..Attributes::default()
+    };
+    set_tags(&mut attributes, tags)?;
     Ok(Create {
-        attributes: Attributes {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
-            key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
-            vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-            link: Some(vec![Link {
-                link_type: LinkType::ParentLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(
-                    cover_crypt_master_private_key_id.to_owned(),
-                ),
-            }]),
-            ..Attributes::new(ObjectType::PrivateKey)
-        },
+        attributes,
         object_type: ObjectType::PrivateKey,
         protection_storage_masks: None,
     })
@@ -55,7 +62,8 @@ pub fn build_create_user_decryption_private_key_request(
 /// Build a `Import` request for an `CoverCrypt` User Decryption Key
 ///
 /// A unique identifier will be generated if none is supplied
-pub fn build_import_decryption_private_key_request(
+#[allow(clippy::too_many_arguments)]
+pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     private_key: &[u8],
     unique_identifier: Option<String>,
     replace_existing: bool,
@@ -63,8 +71,10 @@ pub fn build_import_decryption_private_key_request(
     access_policy: &str,
     is_wrapped: bool,
     wrapping_password: Option<String>,
-) -> Result<Import, KmipError> {
-    let attributes = Attributes {
+    tags: T,
+) -> Result<Import, KmipUtilsError> {
+    let mut attributes = Attributes {
+        object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         link: Some(vec![Link {
@@ -74,8 +84,9 @@ pub fn build_import_decryption_private_key_request(
             ),
         }]),
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-        ..Attributes::new(ObjectType::PrivateKey)
+        ..Attributes::default()
     };
+    set_tags(&mut attributes, tags)?;
 
     // The key could be:
     //  - already wrapped (is_wrapped is true)
@@ -125,7 +136,8 @@ pub fn build_import_decryption_private_key_request(
 /// Build a `Import` request for an Cover Crypt Master Private Key
 ///
 /// A unique identifier will be generated if none is supplied
-pub fn build_import_private_key_request(
+#[allow(clippy::too_many_arguments)]
+pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     private_key: &[u8],
     unique_identifier: Option<String>,
     replace_existing: bool,
@@ -133,8 +145,10 @@ pub fn build_import_private_key_request(
     policy: &Policy,
     is_wrapped: bool,
     wrapping_password: Option<String>,
-) -> Result<Import, KmipError> {
-    let attributes = Attributes {
+    tags: T,
+) -> Result<Import, KmipUtilsError> {
+    let mut attributes = Attributes {
+        object_type: Some(ObjectType::PrivateKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
@@ -144,8 +158,9 @@ pub fn build_import_private_key_request(
                 cover_crypt_master_public_key_id.to_owned(),
             ),
         }]),
-        ..Attributes::new(ObjectType::PrivateKey)
+        ..Attributes::default()
     };
+    set_tags(&mut attributes, tags)?;
 
     // The key could be:
     //  - already wrapped (is_wrapped is true)
@@ -194,14 +209,16 @@ pub fn build_import_private_key_request(
 /// Build a `Import` request for an Cover Crypt Master Public Key
 ///
 /// A unique identifier will be generated if none is supplied
-pub fn build_import_public_key_request(
+pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     public_key: &[u8],
     unique_identifier: Option<String>,
     replace_existing: bool,
     policy: &Policy,
     cover_crypt_master_private_key_id: &str,
-) -> Result<Import, KmipError> {
-    let attributes = Attributes {
+    tags: T,
+) -> Result<Import, KmipUtilsError> {
+    let mut attributes = Attributes {
+        object_type: Some(ObjectType::PublicKey),
         cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
         key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
@@ -211,8 +228,9 @@ pub fn build_import_public_key_request(
                 cover_crypt_master_private_key_id.to_owned(),
             ),
         }]),
-        ..Attributes::new(ObjectType::PublicKey)
+        ..Attributes::default()
     };
+    set_tags(&mut attributes, tags)?;
 
     Ok(Import {
         unique_identifier: unique_identifier.unwrap_or_default(),
@@ -237,21 +255,21 @@ pub fn build_import_public_key_request(
 }
 
 /// Build a `Locate` request to locate an `CoverCrypt` Symmetric Key
-pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate, KmipError> {
+pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate, KmipUtilsError> {
     Ok(Locate {
         attributes: Attributes {
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-            object_type: ObjectType::SymmetricKey,
+            object_type: Some(ObjectType::SymmetricKey),
             vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
-            ..Attributes::new(ObjectType::SymmetricKey)
+            ..Attributes::default()
         },
-        ..Locate::new(ObjectType::SymmetricKey)
+        ..Locate::default()
     })
 }
 
 /// Build a `Revoke` request to locate an `CoverCrypt` User Decryption Key
-pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, KmipError> {
+pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, KmipUtilsError> {
     Ok(Destroy {
         unique_identifier: Some(unique_identifier.to_string()),
     })
@@ -265,16 +283,17 @@ pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, Kmi
 pub fn build_rekey_keypair_request(
     master_private_key_unique_identifier: &str,
     cover_crypt_policy_attributes: Vec<cloudproof::reexport::cover_crypt::abe_policy::Attribute>,
-) -> Result<ReKeyKeyPair, KmipError> {
+) -> Result<ReKeyKeyPair, KmipUtilsError> {
     Ok(ReKeyKeyPair {
         private_key_unique_identifier: Some(master_private_key_unique_identifier.to_string()),
         private_key_attributes: Some(Attributes {
+            object_type: Some(ObjectType::PrivateKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
             vendor_attributes: Some(vec![attributes_as_vendor_attribute(
                 cover_crypt_policy_attributes,
             )?]),
-            ..Attributes::new(ObjectType::PrivateKey)
+            ..Attributes::default()
         }),
         ..ReKeyKeyPair::default()
     })

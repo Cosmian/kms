@@ -1,4 +1,4 @@
-# Elliptic Curve Encryption Commands
+# Elliptic Curve Commands
 
 Manage elliptic curve keys. Encrypt and decrypt data using ECIES.
 
@@ -38,7 +38,7 @@ Note: this is not a streaming call: the file is entirely loaded in memory before
 **Usage:**
 
 ```sh
-ckms ec encrypt [OPTIONS] <FILE> <PUBLIC_KEY_ID>
+ckms ec encrypt [OPTIONS] <FILE>
 ```
 
 **Arguments:**
@@ -46,14 +46,19 @@ ckms ec encrypt [OPTIONS] <FILE> <PUBLIC_KEY_ID>
 ```sh
 <FILE>
         The file to encrypt
-
-<PUBLIC_KEY_ID>
-        The public key unique identifier stored in the KMS
 ```
 
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The public key unique identifier. 
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+
 -o, --output-file <OUTPUT_FILE>
         The encrypted output file path
 
@@ -73,7 +78,7 @@ Note: this is not a streaming call: the file is entirely loaded in memory before
 **Usage:**
 
 ```sh
-ckms ec decrypt [OPTIONS] <FILE> <PRIVATE_KEY_ID>
+ckms ec decrypt [OPTIONS] <FILE>
 ```
 
 **Arguments:**
@@ -81,14 +86,19 @@ ckms ec decrypt [OPTIONS] <FILE> <PRIVATE_KEY_ID>
 ```sh
 <FILE>
         The file to decrypt
-
-<PRIVATE_KEY_ID>
-        The private key unique identifier stored in the KMS
 ```
 
 **Options:**
 
 ```sh
+-k, --key-id <KEY_ID>
+        The public key unique identifier. 
+        If not specified, tags should be specified
+
+-t, --tag <TAG>
+        Tag to use to retrieve the key when no key id is specified. 
+        To specify multiple tags, use the option multiple times
+
 -o, --output-file <OUTPUT_FILE>
         The encrypted output file path
 

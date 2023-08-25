@@ -1,13 +1,18 @@
-use cloudproof::reexport::cover_crypt::statics::CoverCryptX25519Aes256;
+use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::kmip::{
+    kmip_objects::ObjectType,
     kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
-    kmip_types::CryptographicAlgorithm,
+    kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
 };
-use cosmian_kms_utils::types::ExtraDatabaseParams;
+use cosmian_kms_utils::{
+    access::{ExtraDatabaseParams, ObjectOperationType},
+    crypto::cover_crypt::attributes::policy_from_attributes,
+};
 use tracing::trace;
 
 use crate::{
     core::{cover_crypt::rekey_keypair_cover_crypt, KMS},
+    database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -16,22 +21,10 @@ use crate::{
 pub async fn rekey_keypair(
     kms: &KMS,
     request: ReKeyKeyPair,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair");
-
-    let private_key_unique_identifier =
-        request
-            .private_key_unique_identifier
-            .as_ref()
-            .ok_or_else(|| {
-                KmsError::NotSupported(
-                    "Rekey keypair: ID place holder is not yet supported an a key ID must be \
-                     supplied"
-                        .to_string(),
-                )
-            })?;
 
     let attributes = request.private_key_attributes.as_ref().ok_or_else(|| {
         KmsError::InvalidRequest(
@@ -39,14 +32,57 @@ pub async fn rekey_keypair(
         )
     })?;
 
+    // there must be an identifier
+    let uid_or_tags = request
+        .private_key_unique_identifier
+        .clone()
+        .ok_or(KmsError::UnsupportedPlaceholder)?;
+
+    // retrieve from tags or use passed identifier
+    let mut owm_s = kms
+        .db
+        .retrieve(&uid_or_tags, user, ObjectOperationType::Rekey, params)
+        .await?
+        .into_iter()
+        .filter(|owm| {
+            // only active objects
+            if owm.state != StateEnumeration::Active {
+                return false
+            }
+            // only private keys
+            if owm.object.object_type() != ObjectType::PrivateKey {
+                return false
+            }
+            // if a Covercrypt key, it must be a master secret key
+            if let Ok(attributes) = owm.object.attributes() {
+                if attributes.key_format_type == Some(KeyFormatType::CoverCryptSecretKey) {
+                    // a master key should have policies in the attributes
+                    return policy_from_attributes(attributes).is_ok()
+                }
+            }
+            true
+        })
+        .collect::<Vec<ObjectWithMetadata>>();
+
+    // there can only be one private key
+    let owm = owm_s
+        .pop()
+        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.clone()))?;
+
+    if !owm_s.is_empty() {
+        return Err(KmsError::InvalidRequest(format!(
+            "get: too many objects for key {uid_or_tags}",
+        )))
+    }
+
     match &attributes.cryptographic_algorithm {
         Some(CryptographicAlgorithm::CoverCrypt) => {
             rekey_keypair_cover_crypt(
                 kms,
-                CoverCryptX25519Aes256::default(),
-                private_key_unique_identifier,
+                Covercrypt::default(),
+                &owm.id,
                 attributes,
-                owner,
+                user,
                 params,
             )
             .await

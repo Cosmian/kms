@@ -6,14 +6,17 @@ use cloudproof::reexport::crypto_core::CsRng;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::{
-    password_derivation::{derive_key, KMS_ARGON2_SALT},
+    password_derivation::{derive_key_from_password, KMS_ARGON2_SALT},
     symmetric::create_symmetric_key,
     wrap::wrap_key_block,
 };
 use rand::SeedableRng;
 
 use crate::{
-    actions::shared::utils::{export_object, read_key_from_file, write_kmip_object_to_file},
+    actions::shared::{
+        utils::{export_object, read_key_from_file, write_kmip_object_to_file},
+        SYMMETRIC_WRAPPING_KEY_SIZE,
+    },
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -26,8 +29,8 @@ use crate::{
 ///  - a key in the KMS (which will be exported first)
 ///  - a key in a KMIP JSON TTLV file
 ///
-/// For the latter 2 cases, the key may be a symmetric key
-/// and RFC 5649 will be used or a curve 25519 public key
+/// For the latter 2 cases, the key may be a symmetric key,
+/// and RFC 5649 will be used, or a curve 25519 public key
 /// and ECIES will be used.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
@@ -77,11 +80,14 @@ impl WrapKeyAction {
                 .with_context(|| "failed decoding the wrap key")?;
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(password) = &self.wrap_password {
-            let key_bytes = derive_key(password.as_bytes(), KMS_ARGON2_SALT)?.to_vec();
-            println!("wrap derived key {}", hex::encode(&key_bytes));
+            let key_bytes = derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(
+                password.as_bytes(),
+                KMS_ARGON2_SALT,
+            )?
+            .to_vec();
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.wrap_key_id {
-            export_object(client_connector, key_id, false, &None, false).await?
+            export_object(client_connector, key_id, false, None, false).await?
         } else if let Some(key_file) = &self.wrap_key_file {
             read_key_from_file(key_file)?
         } else {
@@ -96,7 +102,7 @@ impl WrapKeyAction {
             .key_file_out
             .as_ref()
             .unwrap_or(&self.key_file_in)
-            .to_path_buf();
+            .clone();
 
         write_kmip_object_to_file(&object, &output_file)?;
 

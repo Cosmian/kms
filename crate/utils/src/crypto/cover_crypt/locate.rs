@@ -31,7 +31,6 @@ pub fn compare_cover_crypt_attributes(
                 Ok(researched_access_policy) => {
                     let researched_access_policy =
                         AccessPolicy::from_boolean_expression(researched_access_policy.as_str())?;
-                    // println!("Compare: {access_policy:#?}  <==> {researched_access_policy:#?}");
                     if researched_access_policy == access_policy {
                         return Ok(true)
                     }

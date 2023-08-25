@@ -45,6 +45,16 @@ jobs:
           MYSQL_DATABASE: kms
           MYSQL_ROOT_PASSWORD: kms
 
+      redis:
+        image: redis
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
     runs-on: ubuntu-22.04
     # runs-on: [self-hosted, not-sgx] # currently not needed.
     container:
@@ -55,20 +65,6 @@ jobs:
         run: cat /proc/cpuinfo
 
       - uses: actions/checkout@v1
-
-      - name: Set up cargo cache
-        id: cargo_cache
-        uses: actions/cache@v3
-        continue-on-error: false
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-centos7-kms-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-centos7-kms-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: actions-rs/toolchain@v1
         with:
@@ -97,7 +93,7 @@ jobs:
         run: |
           rm -rf /tmp/sqlite-data /tmp/tmp.json
           export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
-          cargo test --workspace --features insecure --no-default-features -- --nocapture --skip test_curve_25519_key_pair,test_database_user_tenant,test_import_wrapped_symmetric_key
+          cargo test --workspace --features insecure --no-default-features -- --nocapture
           cargo test --bins -- --nocapture
         env:
           POSTGRES_USER: kms
@@ -114,6 +110,8 @@ jobs:
           KMS_ENCLAVE_DIR_PATH: data/public
           KMS_SQLITE_PATH: data/shared
           KMS_CERTBOT_SSL_PATH: data/private
+
+          REDIS_HOST: redis
 
       - name: Run doc tests
         uses: actions-rs/cargo@v1

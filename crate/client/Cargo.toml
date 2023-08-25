@@ -1,16 +1,16 @@
 [package]
 name = "cosmian_kms_client"
-version = "0.1.1"
+version = "4.5.0"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
+license-file = "../../LICENSE.md"
 
 [dependencies]
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils" }
-hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
+josekit = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }

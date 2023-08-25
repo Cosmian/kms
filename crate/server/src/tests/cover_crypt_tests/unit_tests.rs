@@ -8,35 +8,36 @@ use cosmian_kmip::kmip::{
         Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
     },
 };
-use cosmian_kms_utils::crypto::{
-    cover_crypt::{
-        attributes::access_policy_as_vendor_attribute,
-        kmip_requests::{
-            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
+use cosmian_kms_utils::{
+    crypto::{
+        cover_crypt::{
+            attributes::access_policy_as_vendor_attribute,
+            kmip_requests::{
+                build_create_master_keypair_request,
+                build_create_user_decryption_private_key_request,
+            },
         },
+        generic::kmip_requests::{build_decryption_request, build_encryption_request},
     },
-    generic::kmip_requests::{build_decryption_request, build_encryption_request},
+    tagging::EMPTY_TAGS,
 };
 use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
-    config::{ClapConfig, ServerConfig},
+    config::ServerConfig,
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
-    tests::test_utils,
+    tests::test_utils::https_clap_config,
     KMSServer,
 };
 
 #[actix_rt::test]
 async fn test_cover_crypt_keys() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     //
@@ -63,7 +64,11 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     debug!("ABE Create Master Key Pair");
 
     let cr = kms
-        .create_key_pair(build_create_master_keypair_request(&policy)?, owner, None)
+        .create_key_pair(
+            build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
+            owner,
+            None,
+        )
         .await?;
     debug!("  -> response {:?}", cr);
     let sk_uid = cr.private_key_unique_identifier;
@@ -124,7 +129,10 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         object_type: ObjectType::PublicKey,
         replace_existing: Some(false),
         key_wrap_type: None,
-        attributes: Attributes::new(ObjectType::PublicKey),
+        attributes: Attributes {
+            object_type: Some(ObjectType::PublicKey),
+            ..Attributes::default()
+        },
         object: pk.clone(),
     };
     assert!(kms.import(request, owner, None).await.is_err());
@@ -135,7 +143,10 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: Attributes::new(ObjectType::PublicKey),
+        attributes: Attributes {
+            object_type: Some(ObjectType::PublicKey),
+            ..Attributes::default()
+        },
         object: pk.clone(),
     };
     let _update_response = kms.import(request, owner, None).await?;
@@ -145,7 +156,8 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via KeyPair
     debug!(" .... user key via Keypair");
-    let request = build_create_user_decryption_private_key_request(access_policy, &sk_uid)?;
+    let request =
+        build_create_user_decryption_private_key_request(access_policy, &sk_uid, EMPTY_TAGS)?;
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
@@ -169,7 +181,8 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // ...via Private key
     debug!(" .... user key via Private Key");
-    let request = build_create_user_decryption_private_key_request(access_policy, &sk_uid)?;
+    let request =
+        build_create_user_decryption_private_key_request(access_policy, &sk_uid, EMPTY_TAGS)?;
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
@@ -198,18 +211,14 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 pub fn access_policy_serialization() -> KResult<()> {
     let access_policy = "(Department::MKG ||Department::FIN) && Level::confidential";
     let _json = serde_json::to_string(&access_policy)?;
-    // println!("{}", &json);
     Ok(())
 }
 
 #[actix_rt::test]
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
     //
@@ -234,14 +243,18 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 
     // create Key Pair
     let ckr = kms
-        .create_key_pair(build_create_master_keypair_request(&policy)?, owner, None)
+        .create_key_pair(
+            build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
+            owner,
+            None,
+        )
         .await?;
     let master_private_key_id = &ckr.private_key_unique_identifier;
     let master_public_key_id = &ckr.public_key_unique_identifier;
 
     // encrypt a resource MKG + confidential
-    let confidential_authentication_data = "cc the uid confidential".as_bytes().to_vec();
-    let confidential_mkg_data = "Confidential MKG Data".as_bytes();
+    let confidential_authentication_data = b"cc the uid confidential".to_vec();
+    let confidential_mkg_data = b"Confidential MKG Data";
     let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
     let er = kms
         .encrypt(
@@ -276,8 +289,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     assert!(er.is_err());
 
     // encrypt a resource FIN + Secret
-    let secret_authentication_data = "cc the uid secret".as_bytes().to_vec();
-    let secret_fin_data = "Secret FIN data".as_bytes();
+    let secret_authentication_data = b"cc the uid secret".to_vec();
+    let secret_fin_data = b"Secret FIN data";
     let secret_fin_policy_attributes = "Level::secret && Department::FIN";
     let er = kms
         .encrypt(
@@ -318,6 +331,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             build_create_user_decryption_private_key_request(
                 secret_mkg_fin_access_policy,
                 master_private_key_id,
+                EMPTY_TAGS,
             )?,
             owner,
             None,
@@ -347,7 +361,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext);
+    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext[..]);
     assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
 
     // check it doesn't work with invalid tenant
@@ -388,7 +402,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(secret_fin_data, &decrypted_data.plaintext);
+    assert_eq!(secret_fin_data, &decrypted_data.plaintext[..]);
     assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
 
     // check it doesn't work with invalid tenant
@@ -412,12 +426,9 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_abe_json_access() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     //
     let mut policy = Policy::new(10);
@@ -442,7 +453,7 @@ async fn test_abe_json_access() -> KResult<()> {
     let secret_mkg_fin_access_policy = "(Department::MKG||Department::FIN) && Level::secret";
 
     // Create CC master key pair
-    let master_keypair = build_create_master_keypair_request(&policy)?;
+    let master_keypair = build_create_master_keypair_request(&policy, EMPTY_TAGS)?;
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
@@ -462,19 +473,17 @@ async fn test_abe_json_access() -> KResult<()> {
                 master_private_key_uid.clone(),
             ),
         }]),
-        ..Attributes::new(ObjectType::PrivateKey)
+        object_type: Some(ObjectType::PrivateKey),
+        ..Attributes::default()
     };
 
     // locate request
     let locate = Locate {
         attributes: search_attrs.clone(),
-        ..Locate::new(ObjectType::PrivateKey)
+        ..Locate::default()
     };
 
-    // println!("Rq attrs: {:#?}", locate.attributes);
-
     let locate_response = kms.locate(locate, owner, None).await?;
-    // println!("1 - {locate_response:#?}");
 
     // we only have 1 master keypair, but 0 decryption keys as
     // requested in `locate` request
@@ -486,6 +495,7 @@ async fn test_abe_json_access() -> KResult<()> {
             build_create_user_decryption_private_key_request(
                 secret_mkg_fin_access_policy,
                 master_private_key_uid,
+                EMPTY_TAGS,
             )?,
             owner,
             None,
@@ -496,11 +506,10 @@ async fn test_abe_json_access() -> KResult<()> {
     // Redo search
     let locate = Locate {
         attributes: search_attrs.clone(),
-        ..Locate::new(ObjectType::PrivateKey)
+        ..Locate::default()
     };
 
     let locate_response = kms.locate(locate, owner, None).await?;
-    // println!("2 - {locate_response:#?}");
 
     // now we have 1 key
     assert_eq!(locate_response.located_items.unwrap(), 1);
@@ -514,12 +523,9 @@ async fn test_abe_json_access() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_import_decrypt() -> KResult<()> {
-    let config = ClapConfig {
-        auth: test_utils::get_auth0_jwt_config(),
-        ..Default::default()
-    };
+    let clap_config = https_clap_config();
 
-    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&config).await?).await?);
+    let kms = Arc::new(KMSServer::instantiate(ServerConfig::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     let mut policy = Policy::new(10);
@@ -543,7 +549,11 @@ async fn test_import_decrypt() -> KResult<()> {
 
     // create Key Pair
     let cr = kms
-        .create_key_pair(build_create_master_keypair_request(&policy)?, owner, None)
+        .create_key_pair(
+            build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
+            owner,
+            None,
+        )
         .await?;
     debug!("  -> response {:?}", cr);
     let sk_uid = cr.private_key_unique_identifier;
@@ -554,8 +564,8 @@ async fn test_import_decrypt() -> KResult<()> {
     assert_eq!(&sk_uid, &sk_uid_.to_string());
 
     // encrypt a resource MKG + confidential
-    let confidential_authentication_data = "cc the uid confidential".as_bytes().to_vec();
-    let confidential_mkg_data = "Confidential MKG Data".as_bytes();
+    let confidential_authentication_data = b"cc the uid confidential".to_vec();
+    let confidential_mkg_data = b"Confidential MKG Data";
     let confidential_mkg_policy_attributes = "Level::confidential && Department::MKG";
     let er = kms
         .encrypt(
@@ -580,6 +590,7 @@ async fn test_import_decrypt() -> KResult<()> {
             build_create_user_decryption_private_key_request(
                 secret_mkg_fin_access_policy,
                 &sk_uid,
+                EMPTY_TAGS,
             )?,
             owner,
             None,
@@ -603,7 +614,10 @@ async fn test_import_decrypt() -> KResult<()> {
         key_wrap_type: None,
         // Bad attributes. Import will succeed, but
         // researched attributes won't matched stored attributes
-        attributes: Attributes::new(ObjectType::PrivateKey),
+        attributes: Attributes {
+            object_type: Some(ObjectType::PrivateKey),
+            ..Attributes::default()
+        },
         object: gr_sk.object.clone(),
     };
     kms.import(request, owner, None)
@@ -666,7 +680,7 @@ async fn test_import_decrypt() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext);
+    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext[..]);
     assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
 
     Ok(())

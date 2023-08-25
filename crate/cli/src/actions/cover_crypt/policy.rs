@@ -75,7 +75,7 @@ impl PolicySpecifications {
     }
 
     /// Read a JSON policy specification from a file
-    pub fn from_json_file(file: &impl AsRef<Path>) -> Result<PolicySpecifications, CliError> {
+    pub fn from_json_file(file: &impl AsRef<Path>) -> Result<Self, CliError> {
         read_from_json_file(file)
     }
 }
@@ -95,10 +95,10 @@ impl TryFrom<&Policy> for PolicySpecifications {
         let mut result: HashMap<String, Vec<String>> = HashMap::new();
         for (axis_name, params) in &policy.axes {
             let axis_full_name =
-                axis_name.to_owned() + if params.is_hierarchical { "::+" } else { "" };
+                axis_name.clone() + if params.is_hierarchical { "::+" } else { "" };
             let mut attributes = Vec::with_capacity(params.attribute_names.len());
             for att in &params.attribute_names {
-                let name = att.to_owned()
+                let name = att.clone()
                     + match policy.attribute_hybridization_hint(&Attribute::new(axis_name, att))? {
                         EncryptionHint::Hybridized => "::+",
                         EncryptionHint::Classic => "",
@@ -107,7 +107,7 @@ impl TryFrom<&Policy> for PolicySpecifications {
             }
             result.insert(axis_full_name, attributes);
         }
-        Ok(PolicySpecifications(result))
+        Ok(Self(result))
     }
 }
 
@@ -141,10 +141,10 @@ pub enum PolicyCommands {
 impl PolicyCommands {
     pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         match self {
-            PolicyCommands::View(action) => action.run(client_connector).await?,
-            PolicyCommands::Specs(action) => action.run(client_connector).await?,
-            PolicyCommands::Binary(action) => action.run(client_connector).await?,
-            PolicyCommands::Create(action) => action.run().await?,
+            Self::View(action) => action.run(client_connector).await?,
+            Self::Specs(action) => action.run(client_connector).await?,
+            Self::Binary(action) => action.run(client_connector).await?,
+            Self::Create(action) => action.run().await?,
         };
 
         Ok(())
@@ -222,14 +222,14 @@ impl CreateAction {
 
 /// Recover the Policy from a key store in the KMS or in a TTLV file
 async fn recover_policy(
-    key_id: &Option<String>,
-    key_file: &Option<PathBuf>,
+    key_id: Option<&str>,
+    key_file: Option<&PathBuf>,
     unwrap: bool,
     client_connector: &KmsRestClient,
 ) -> Result<Policy, CliError> {
     // Recover the KMIP Object
     let object: Object = if let Some(key_id) = key_id {
-        export_object(client_connector, key_id, unwrap, &None, false).await?
+        export_object(client_connector, key_id, unwrap, None, false).await?
     } else if let Some(f) = key_file {
         let ttlv: TTLV = read_from_json_file(f)?;
         from_ttlv(&ttlv)?
@@ -268,7 +268,13 @@ pub struct SpecsAction {
 impl SpecsAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         // Recover the policy
-        let policy = recover_policy(&self.key_id, &self.key_file, true, client_connector).await?;
+        let policy = recover_policy(
+            self.key_id.as_deref(),
+            self.key_file.as_ref(),
+            true,
+            client_connector,
+        )
+        .await?;
         let specs = PolicySpecifications::try_from(&policy)?;
         // save the policy to the specifications file
         write_json_object_to_file(&specs, &self.policy_specs_file)
@@ -302,7 +308,13 @@ pub struct BinaryAction {
 impl BinaryAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         // Recover the policy
-        let policy = recover_policy(&self.key_id, &self.key_file, true, client_connector).await?;
+        let policy = recover_policy(
+            self.key_id.as_deref(),
+            self.key_file.as_ref(),
+            true,
+            client_connector,
+        )
+        .await?;
         // save the policy to the binary file
         write_json_object_to_file(&policy, &self.policy_binary_file)
     }
@@ -335,7 +347,13 @@ pub struct ViewAction {
 impl ViewAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         // Recover the policy
-        let policy = recover_policy(&self.key_id, &self.key_file, true, client_connector).await?;
+        let policy = recover_policy(
+            self.key_id.as_deref(),
+            self.key_file.as_ref(),
+            true,
+            client_connector,
+        )
+        .await?;
         // get a pretty json and print it
         let json = if self.detailed {
             serde_json::to_string_pretty(&policy)?
