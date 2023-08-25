@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Bug Fixes
 
-- Documentation 
+- Documentation
 
 ### Features
 
@@ -15,17 +15,15 @@ Specify as many user tags as needed when creating and importing objects.
 
 In addition, the user server will automatically add a system tag based on the object type:
 
- - `_sk`: for a private key
- - `_pk`: for a public key
- - `_kk`: for a symmetric key
- - `_uk`: for a Covercrypt user decryption key
+- `_sk`: for a private key
+- `_pk`: for a public key
+- `_kk`: for a symmetric key
+- `_uk`: for a Covercrypt user decryption key
 Use the tags to export objects, locate them, or request data encryption and decryption.
 
 - Added `locate` to the `ckms`client
 
-- Added `Redis-Findex` backend support so that the KMS can encrypt the KMS server data and indexes at the application level. 
-
-
+- Added `Redis-Findex` backend support so that the KMS can encrypt the KMS server data and indexes at the application level.
 
 ## [4.4.3] - 2023-07-17
 

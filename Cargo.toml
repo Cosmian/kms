@@ -1,12 +1,12 @@
 [workspace]
 members = [
-    "crate/cli",
-    "crate/client",
-    "crate/kmip",
-    "crate/server",
-    "crate/utils",
-    "crate/libsgx",
-    "crate/pyo3",
+  "crate/cli",
+  "crate/client",
+  "crate/kmip",
+  "crate/server",
+  "crate/utils",
+  "crate/libsgx",
+  "crate/pyo3",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli. For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
 resolver = "2"
@@ -20,13 +20,7 @@ async-trait = "0.1"
 base64 = "0.21"
 base64-url = "2.0"
 bitflags = "2.3"
-clap = { version = "4.1", default-features = false, features = [
-    "help",
-    "usage",
-    "error-context",
-    "derive",
-    "cargo",
-] }
+clap = { version = "4.1", default-features = false, features = ["help", "usage", "error-context", "derive", "cargo"] }
 cloudproof = { version = "2.2.1", features = ["findex-redis"] }
 env_logger = "0.10"
 hex = "0.4"
@@ -36,13 +30,7 @@ leb128 = "0.2"
 native-tls = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }
 openssl = { version = "0.10", features = ["vendored"] }
-redis = { version = "0.23", features = [
-    "aio",
-    "ahash",
-    "script",
-    "connection-manager",
-    "tokio-comp",
-] }
+redis = { version = "0.23", features = ["aio", "ahash", "script", "connection-manager", "tokio-comp"] }
 reqwest = { version = "0.11", features = ["json", "native-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.96"

@@ -59,7 +59,7 @@ docker run --rm -p 9998:9998 \
 
 Redis-with-Findex makes the Cosmian KMS an excellent choice for a KMS in a zero-trust environment.
 
-Redis with Findex offers the ability to use Redis as a database with application-level encryption: all data is encrypted by the KMS before being sent to Redis. 
+Redis with Findex offers the ability to use Redis as a database with application-level encryption: all data is encrypted by the KMS before being sent to Redis.
 
 [Findex](https://github.com/Cosmian/findex/) is a Cosmian cryptographic algorithm used to build encrypted indexes on encrypted data. This allows the KMS to perform fast encrypted queries on encrypted data. Findex indexes are also stored in Redis.
 
@@ -67,8 +67,8 @@ Redis-with-Findex is most useful when the KMS is used inside a confidential VM o
 
 As with the other databases, the Redis-with-Findex database mode is stateless and can be scaled horizontally.
 
-
 Example:
+
 ```sh
 docker run --rm -p 9998:9998 \
   --name kms ghcr.io/cosmian/kms:4.5.0 \
