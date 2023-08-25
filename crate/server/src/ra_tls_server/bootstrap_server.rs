@@ -103,8 +103,8 @@ pub fn prepare_bootstrap_server(
         let app = App::new()
             .app_data(Data::new(bootstrap_server.clone())) // Set the shared reference to the `BootstrapServer` instance.
             .app_data(PayloadConfig::new(1_000_000)) // Set the maximum size of the request payload.
-            .app_data(JsonConfig::default().limit(1_000_000)) // Set the maximum size of the JSON request payload.
-            .service(routes::kmip);
+            .app_data(JsonConfig::default().limit(1_000_000)); // Set the maximum size of the JSON request payload.
+        // .service(routes::kmip);
 
         app
     })

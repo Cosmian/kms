@@ -16,7 +16,7 @@ strip = true
 lto = true
 
 [workspace.dependencies]
-tiny-keccak = "2.0"
+
 async-trait = "0.1"
 base64 = "0.21"
 base64-url = "2.0"
@@ -30,7 +30,6 @@ clap = { version = "4.1", default-features = false, features = [
 ] }
 cloudproof = { version = "2.2.1", features = ["findex-redis"] }
 env_logger = "0.10"
-eyre = "0.6"
 hex = "0.4"
 http = "0.2"
 josekit = "0.8.3"
@@ -52,6 +51,7 @@ strum = "0.25"
 strum_macros = "0.25"
 thiserror = "1.0"
 time = "0.3"
+tiny-keccak = "2.0"
 # It is important to keep this version in sync with that of actix-web
 # use `cargo tree -i tokio` to check there is no other version of tokio
 
