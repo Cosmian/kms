@@ -109,7 +109,6 @@ ckms ec decrypt [OPTIONS] <FILE>
         Print help (see a summary with '-h')
 ```
 
-
 ## help
 
 Print the help message or the help of the given subcommand(s).

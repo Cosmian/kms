@@ -6,7 +6,6 @@ The goal of the OASIS KMIP is to define a single, comprehensive protocol for com
 
 KMIP is a massive specification, and support is limited to the requirements of Cosmian advanced cryptography. Although the KMS server functionalities evolve quickly to support the growing demand of customers, the Cosmian KMS server, like most KMS servers, is in no way claiming to be a complete solution for all cryptographic objects and operations.
 
-
 ### Tagging support extension
 
 The Cosmian KMS server supports the tagging of objects. Tags are arbitrary strings that can be attached to objects. Tags can be used to group objects together, and to search for objects.

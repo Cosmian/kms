@@ -109,7 +109,6 @@ help      Print this message or the help of the given subcommand(s)
 
 [> view subcommands details](./access_rights.md)
 
-
 ### locate
 
 Locate cryptographic objects inside the KMS
@@ -155,7 +154,6 @@ ckms locate [OPTIONS]
 -h, --help                 Print help
 ```
 
-
 ### new-database
 
 Initialize a new client-secret encrypted database and return the secret (SQLCipher only).
@@ -181,4 +179,3 @@ ckms new-database
 ```sh
 -h, --help                 Print help
 ```
-

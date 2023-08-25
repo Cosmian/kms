@@ -2,7 +2,7 @@
 
 ![Build status](https://github.com/Cosmian/kms/actions/workflows/ci.yml/badge.svg)
 
-Cosmian KMS is an open-source implementation of a high-performance, massively scalable, **Key Management System** that presents some unique features, such as 
+Cosmian KMS is an open-source implementation of a high-performance, massively scalable, **Key Management System** that presents some unique features, such as
 
 - the ability to run in a public cloud - or any zero-trust environment - using application-level encryption (see [Redis-Findex](https://docs.cosmian.com/cosmian_key_management_system/replicated_mode/))
 - a JSON KMIP 2.1 compliant interface
@@ -13,7 +13,6 @@ Cosmian KMS is an open-source implementation of a high-performance, massively sc
 It has extensive [documentation](https://docs.cosmian.com/cosmian_key_management_system/) and is also available packaged as docker images (`docker pull ghcr.io/cosmian/kms`) to get you started quickly.
 
  The KMS can manage keys and secrets used with a comprehensive list of common (AES, ECIES, ...) and Cosmian advanced cryptographic stacks such as [Covercrypt](https://github.com/Cosmian/cover_crypt). Keys can be wrapped and unwrapped using ECIES or RFC5649.
-
 
 ## Repository content
 
