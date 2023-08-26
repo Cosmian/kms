@@ -4,17 +4,22 @@ use std::{
     time::Duration,
 };
 
+use actix_multipart::Multipart;
 use actix_web::{
     dev::ServerHandle,
     middleware::Condition,
-    web::{Data, JsonConfig, PayloadConfig},
-    App, HttpServer,
+    post,
+    web::{Data, Json, JsonConfig, PayloadConfig},
+    App, HttpRequest, HttpServer,
 };
+use cosmian_kms_utils::access::SuccessResponse;
+use futures::{StreamExt, TryStreamExt};
 use openssl::{
+    pkcs12::Pkcs12,
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
-use tracing::trace;
+use tracing::{info, trace};
 
 use super::certificates::generate_self_signed_cert;
 use crate::{
@@ -30,11 +35,11 @@ use crate::{
 
 //let is_running_inside_enclave = is_running_inside_enclave();
 
-struct BootstrapServer {
+pub struct BootstrapServer {
     config: ServerConfig,
 }
 
-async fn start_bootstrap_server(
+pub async fn start_bootstrap_server(
     config: ServerConfig,
 ) -> Result<(ServerHandle, JoinHandle<Result<(), KmsError>>), KmsError> {
     // check that the config actually requests a bootstrap server
@@ -51,14 +56,18 @@ async fn start_bootstrap_server(
     let cs_thread_handle = thread::spawn(move || {
         tokio_handle
             .block_on(start_https_bootstrap_server(bootstrap_server, tx))
-            .map_err(|e| KmsError::ServerError(e.to_string()))
+            .map_err(|e| {
+                info!("Error starting the bootstrap server: {}", e);
+                KmsError::ServerError(e.to_string())
+            })
     });
 
     trace!("Waiting for server to start...");
     let cs_actix_handle = rx
         .recv_timeout(Duration::from_secs(25))
-        .expect("Can't get actix control server handle after 25 seconds");
+        .map_err(|e| kms_error!("Can't get bootstrap server handle after 25 seconds: {}", e))?;
     trace!("... got handle ...");
+
     Ok((cs_actix_handle, cs_thread_handle))
 }
 
@@ -147,7 +156,8 @@ fn prepare_bootstrap_server(
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the routes.
-        let app = App::new()
+
+        App::new()
             .wrap(Condition::new(
                 use_jwt_auth,
                 JwtAuth::new(jwt_config.clone()),
@@ -155,10 +165,8 @@ fn prepare_bootstrap_server(
             .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
             .app_data(Data::new(bootstrap_server.clone())) // Set the shared reference to the `BootstrapServer` instance.
             .app_data(PayloadConfig::new(1_000_000)) // Set the maximum size of the request payload.
-            .app_data(JsonConfig::default().limit(1_000_000)); // Set the maximum size of the JSON request payload.
-        // .service(routes::kmip);
-
-        app
+            .app_data(JsonConfig::default().limit(1_000_000)) // Set the maximum size of the JSON request payload.
+            .service(receive_pkcs12)
     })
     .client_request_timeout(std::time::Duration::from_secs(10));
 
@@ -172,4 +180,42 @@ fn prepare_bootstrap_server(
         // Start an HTTPS server with PKCS#12 but not client cert auth
         server.bind_openssl(address, builder)?.run()
     })
+}
+
+#[post("/pkcs12")]
+pub async fn receive_pkcs12(
+    req: HttpRequest,
+    mut payload: Multipart,
+    kms: Data<Arc<BootstrapServer>>,
+) -> KResult<Json<SuccessResponse>> {
+    // Extract the PKCS#12 bytes from the payload
+    let bytes = match payload.try_next().await {
+        Err(e) => kms_bail!("Error reading payload: {}", e),
+        Ok(field) => match field {
+            None => kms_bail!("Missing data in payload"),
+            Some(mut field) => {
+                let mut bytes = Vec::new();
+                while let Some(chunk) = field.next().await {
+                    bytes.extend_from_slice(
+                        &chunk.map_err(|e| kms_error!("Error reading payload: {}", e))?,
+                    );
+                }
+                bytes
+            }
+        },
+    };
+    // Parse the PKCS#12
+    let pkcs12 =
+        Pkcs12::from_der(&bytes).map_err(|e| kms_error!("Error parsing PKCS#12: {}", e))?;
+    // Verify the PKCS 12 by extracting the certificate, private key and chain
+    let p12 = pkcs12
+        .parse2("")
+        .map_err(|e| kms_error!("Error parsing PKCS#12: {}", e))?;
+    let cert = p12.cert.ok_or_else(|| kms_error!("Missing certificate"))?;
+    let _pkey = p12.pkey.ok_or_else(|| kms_error!("Missing private key"))?;
+    let _chain = p12.ca.ok_or_else(|| kms_error!("Missing chain"))?;
+    let response = SuccessResponse {
+        success: format!("PKCS#12 with CN:{:#?}, received", cert.subject_name()),
+    };
+    Ok(Json(response))
 }

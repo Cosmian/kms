@@ -1,4 +1,6 @@
 use openssl::{
+    asn1::{Asn1Integer, Asn1Time},
+    bn::BigNum,
     ec::{EcGroup, EcKey},
     nid::Nid,
     pkcs12::Pkcs12,
@@ -16,10 +18,6 @@ pub(crate) fn generate_self_signed_cert(
     let group = EcGroup::from_curve_name(nid)?;
     let ec_key = EcKey::generate(&group)?;
     let public_ec_key = ec_key.public_key_to_der()?;
-
-    // The certificate private key which will also be the signing key
-    // let private_key = PKey::generate_ed25519()?;
-    // let public_key = PKey::<Public>::public_key_from_der(&private_key.public_key_to_der()?)?;
 
     // We need to convert these keys to PKey objects to use in certificates
     let private_key = PKey::from_ec_key(ec_key)?;
@@ -40,6 +38,16 @@ pub(crate) fn generate_self_signed_cert(
     let x509_name = x509_name.build();
     builder.set_subject_name(&x509_name)?;
 
+    // Set the issuer name (the same as the subject name since this is a self-signed certificate).
+    builder.set_issuer_name(&x509_name)?;
+
+    // Set the certificate serial number to some value.
+    builder.set_serial_number(Asn1Integer::from_bn(BigNum::from_u32(12345)?.as_ref())?.as_ref())?;
+
+    // Set the certificate validity period to 1 day.
+    builder.set_not_before(Asn1Time::days_from_now(0)?.as_ref())?;
+    builder.set_not_after(Asn1Time::days_from_now(1)?.as_ref())?;
+
     // Set the key usage extension to allow the certificate to be used for TLS.
     builder.append_extension(
         openssl::x509::extension::KeyUsage::new()
@@ -58,4 +66,24 @@ pub(crate) fn generate_self_signed_cert(
         .cert(&cert)
         .build2(pkcs12_password)?;
     Ok(pkcs12)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::result::KResult;
+
+    #[test]
+    fn generate_self_signed_cert() -> KResult<()> {
+        let pkcs12 = super::generate_self_signed_cert("test", "pwd")?;
+        let p12 = pkcs12.parse2("pwd")?;
+        assert!(p12.pkey.is_some());
+        assert!(p12.cert.is_some());
+        assert!(p12.ca.is_none());
+        let cert = p12.cert.unwrap();
+        assert_eq!(
+            format!("{:?}", cert.subject_name()),
+            format!("{:?}", cert.issuer_name())
+        );
+        Ok(())
+    }
 }

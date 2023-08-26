@@ -18,7 +18,7 @@ use cosmian_kms_server::{
         jwt_auth_config::JwtAuthConfig,
         ClapConfig, ServerConfig,
     },
-    start_kms_server,
+    kms_server::start_kms_server,
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 use rand::SeedableRng;

@@ -71,6 +71,18 @@ pub struct ClapConfig {
 impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
+        let x = if self.bootstrap_server.use_bootstrap_server {
+            x.field(
+                "bootstrap server port",
+                &self.bootstrap_server.bootstrap_server_port,
+            )
+            .field(
+                "bootstrap server CN",
+                &self.bootstrap_server.bootstrap_server_common_name,
+            )
+        } else {
+            &mut x
+        };
         let x = x.field("db", &self.db);
         let x = if self.auth.jwt_issuer_uri.is_some() {
             x.field("auth0", &self.auth)
@@ -82,7 +94,7 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
-        let x = x.field("http", &self.http);
+        let x = x.field("KMS http", &self.http);
         let x = if self.certbot_https.use_certbot {
             x.field("certbot", &self.certbot_https)
         } else {
@@ -240,6 +252,21 @@ impl ServerConfig {
 impl fmt::Debug for ServerConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
+        let x = if self.bootstrap_server_config.use_bootstrap_server {
+            x.field(
+                "bootstrap server url",
+                &format!(
+                    "https://{}:{}",
+                    &self.hostname, &self.bootstrap_server_config.bootstrap_server_port
+                ),
+            )
+            .field(
+                "bootstrap server CN",
+                &self.bootstrap_server_config.bootstrap_server_common_name,
+            )
+        } else {
+            &mut x
+        };
         let x = x
             .field("kms_url", &format!("{}:{}", &self.hostname, &self.port))
             .field("db_params", &self.db_params);
