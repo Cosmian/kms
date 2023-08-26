@@ -80,3 +80,7 @@ actix-rt = "2.8"
 
 [build-dependencies]
 time = { workspace = true, features = ["local-offset", "formatting"] }
+
+[[bin]]
+name = "cosmian_kms_server"
+path = "src/main.rs"

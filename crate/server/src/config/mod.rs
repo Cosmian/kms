@@ -175,7 +175,9 @@ pub struct ServerConfig {
     /// Whether to clear the database on start
     pub clear_db_on_start: bool,
 
-    pub hostname_port: String,
+    pub hostname: String,
+
+    pub port: u16,
 
     /// The provided PKCS#12 when HTTPS is enabled
     pub server_pkcs_12: Option<ParsedPkcs12_2>,
@@ -202,7 +204,7 @@ impl ServerConfig {
         let workspace = conf.workspace.init()?;
 
         // Initialize the HTTP server
-        let (hostname_port, server_pkcs_12, verify_cert) = conf.http.init()?;
+        let (server_pkcs_12, verify_cert) = conf.http.init()?;
 
         let server_conf = Self {
             jwks: conf.auth.fetch_jwks().await?,
@@ -211,7 +213,8 @@ impl ServerConfig {
             jwt_audience: conf.auth.jwt_audience.clone(),
             db_params: conf.db.init(&workspace)?,
             clear_db_on_start: conf.db.clear_database,
-            hostname_port,
+            hostname: conf.http.hostname.clone(),
+            port: conf.http.port,
             enclave_params: conf.enclave.init(&workspace)?,
             certbot: if conf.certbot_https.use_certbot {
                 Some(Arc::new(Mutex::new(HttpsCertbotConfig::init(
@@ -238,7 +241,7 @@ impl fmt::Debug for ServerConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
         let x = x
-            .field("kms_url", &self.hostname_port)
+            .field("kms_url", &format!("{}:{}", &self.hostname, &self.port))
             .field("db_params", &self.db_params);
         let x = if let Some(jwt_issuer_uri) = &self.jwt_issuer_uri {
             x.field("jwt_issuer_uri", &jwt_issuer_uri)

@@ -32,7 +32,7 @@ use crate::{
     database::Database,
     error::KmsError,
     kms_bail,
-    middlewares::{jwt_auth::JwtAuthClaim, ssl_auth::PeerCommonName},
+    middlewares::{ssl_auth::PeerCommonName, JwtAuthClaim},
     result::KResult,
 };
 

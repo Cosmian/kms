@@ -16,10 +16,7 @@ use futures::{
 };
 use tracing::{debug, error, trace};
 
-use crate::{
-    config::ServerConfig,
-    middlewares::jwt::{decode_jwt, JwtConfig},
-};
+use crate::middlewares::jwt::{decode_jwt, JwtConfig};
 
 #[derive(Clone)]
 pub struct JwtAuth {
@@ -28,19 +25,8 @@ pub struct JwtAuth {
 
 impl JwtAuth {
     #[must_use]
-    pub fn new(config: &ServerConfig) -> Self {
-        if let Some(jwt_issuer_uri) = &config.jwt_issuer_uri {
-            if let Some(jwks) = &config.jwks {
-                return Self {
-                    jwt_config: Some(JwtConfig {
-                        jwt_issuer_uri: jwt_issuer_uri.clone(),
-                        jwks: jwks.clone(),
-                        jwt_audience: config.jwt_audience.clone(),
-                    }),
-                }
-            }
-        }
-        Self { jwt_config: None }
+    pub fn new(jwt_config: Option<JwtConfig>) -> Self {
+        Self { jwt_config }
     }
 }
 

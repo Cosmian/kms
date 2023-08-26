@@ -14,125 +14,25 @@ use actix_web::{
     web::{Data, JsonConfig, PayloadConfig},
     App, HttpServer,
 };
-use config::ServerConfig;
 use libsgx::utils::is_running_inside_enclave;
-use middlewares::{
-    jwt_auth::JwtAuth,
-    ssl_auth::{extract_peer_certificate, SslAuth},
-};
 use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
-use result::KResult;
 use tracing::{debug, error, info};
 
 use crate::{
+    config::{self, ServerConfig},
     core::{certbot::Certbot, KMS},
     error::KmsError,
+    kms_bail, kms_error,
+    middlewares::{
+        ssl_auth::{extract_peer_certificate, SslAuth},
+        JwtAuth, JwtConfig,
+    },
+    result::KResult,
+    routes, KMSServer,
 };
-
-pub mod config;
-pub mod core;
-pub mod database;
-pub mod error;
-pub mod log_utils;
-pub mod middlewares;
-pub mod ra_tls_server;
-pub mod result;
-pub mod routes;
-pub use database::KMSServer;
-
-#[cfg(test)]
-mod tests;
-
-/**
- * This function prepares a server for the application. It creates an `HttpServer` instance,
- * configures the routes for the application, and sets the request timeout. The server can be
- * configured to use OpenSSL for SSL encryption by providing an `SslAcceptorBuilder`.
- *
- * # Arguments
- *
- * * `kms_server`: A shared reference to the `KMS` instance to be used by the application.
- * * `builder`: An optional `SslAcceptorBuilder` to configure the SSL encryption for the server.
- *
- * # Returns
- *
- * Returns a `Result` type that contains a `Server` instance if successful, or an error if
- * something went wrong.
- *
- */
-pub fn prepare_server(
-    kms_server: Arc<KMS>,
-    builder: Option<SslAcceptorBuilder>,
-) -> KResult<actix_web::dev::Server> {
-    // Determine if JWT Auth should be used for authentication.
-    let use_jwt_auth = kms_server.config.jwt_issuer_uri.is_some();
-    // Determine if Client Cert Auth should be used for authentication.
-    let use_cert_auth = kms_server.config.verify_cert.is_some();
-    // Determine if the application is running inside an enclave.
-    let is_running_inside_enclave = is_running_inside_enclave();
-    // Determine if the application is using an encrypted SQLite database.
-    let is_using_sqlite_enc = matches!(kms_server.config.db_params, config::DbParams::SqliteEnc(_));
-
-    let jwt_auth = JwtAuth::new(&kms_server.config);
-    let port = kms_server.config.hostname_port.clone();
-
-    // Create the `HttpServer` instance.
-    let server = HttpServer::new(move || {
-        // Create an `App` instance and configure the routes.
-        let app = App::new()
-            .wrap(Condition::new(use_jwt_auth, jwt_auth.clone())) // Use JWT for authentication if necessary.
-            .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
-            // Enable CORS for the application.
-            // Since Actix is running the middlewares in reverse order, it's important that the
-            // CORS middleware is the last one so that the auth middlewares do not run on
-            // preflight (OPTION) requests.
-            .wrap(Cors::permissive())
-            .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
-            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
-            .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
-            .service(routes::kmip)
-            .service(routes::list_owned_objects)
-            .service(routes::list_access_rights_obtained)
-            .service(routes::list_accesses)
-            .service(routes::grant_access)
-            .service(routes::revoke_access)
-            .service(routes::get_version)
-            .service(routes::get_certificate);
-
-        let app = if is_using_sqlite_enc {
-            app.service(routes::add_new_database)
-        } else {
-            app
-        };
-
-        if is_running_inside_enclave {
-            app.service(routes::get_enclave_quote)
-                .service(routes::get_enclave_manifest)
-                .service(routes::get_enclave_public_key)
-        } else {
-            app
-        }
-    })
-    .client_request_timeout(std::time::Duration::from_secs(10));
-
-    Ok(match builder {
-        Some(b) => {
-            if use_cert_auth {
-                // Start an HTTPS server with PKCS#12 with client cert auth
-                server
-                    .on_connect(extract_peer_certificate)
-                    .bind_openssl(port, b)?
-                    .run()
-            } else {
-                // Start an HTTPS server with PKCS#12 but not client cert auth
-                server.bind_openssl(port, b)?.run()
-            }
-        }
-        _ => server.bind(port)?.run(),
-    })
-}
 
 /// Starts the Key Management System (KMS) server based on the provided configuration.
 ///
@@ -189,7 +89,7 @@ async fn start_plain_http_kms_server(
     let kms_server = Arc::new(KMSServer::instantiate(server_config).await?);
 
     // Prepare the server
-    let server = prepare_server(kms_server, None)?;
+    let server = prepare_kms_server(kms_server, None)?;
 
     // send the server handle to the caller
     if let Some(tx) = &server_handle_transmitter {
@@ -250,7 +150,7 @@ async fn start_https_kms_server(
 
     // Instantiate and prepare the KMS server
     let kms_server = Arc::new(KMSServer::instantiate(server_config).await?);
-    let server = prepare_server(kms_server, Some(builder))?;
+    let server = prepare_kms_server(kms_server, Some(builder))?;
 
     // send the server handle to the caller
     if let Some(tx) = &server_handle_transmitter {
@@ -286,7 +186,7 @@ async fn start_auto_renew_https(
             builder.add_extra_chain_cert(x)?;
         }
 
-        let server = prepare_server(kms_server.clone(), Some(builder))?;
+        let server = prepare_kms_server(kms_server.clone(), Some(builder))?;
 
         // send the server handle to the caller
         if let Some(tx) = &server_handle_transmitter {
@@ -447,4 +347,114 @@ async fn start_certbot_https_kms_server(
     }
 
     Ok(())
+}
+
+/**
+ * This function prepares a server for the application. It creates an `HttpServer` instance,
+ * configures the routes for the application, and sets the request timeout. The server can be
+ * configured to use OpenSSL for SSL encryption by providing an `SslAcceptorBuilder`.
+ *
+ * # Arguments
+ *
+ * * `kms_server`: A shared reference to the `KMS` instance to be used by the application.
+ * * `builder`: An optional `SslAcceptorBuilder` to configure the SSL encryption for the server.
+ *
+ * # Returns
+ *
+ * Returns a `Result` type that contains a `Server` instance if successful, or an error if
+ * something went wrong.
+ *
+ */
+pub fn prepare_kms_server(
+    kms_server: Arc<KMS>,
+    builder: Option<SslAcceptorBuilder>,
+) -> KResult<actix_web::dev::Server> {
+    // Determine if JWT Auth should be used for authentication.
+    let (use_jwt_auth, jwt_config) = if let Some(jwt_issuer_uri) = &kms_server.config.jwt_issuer_uri
+    {
+        (
+            true,
+            Some(JwtConfig {
+                jwt_issuer_uri: jwt_issuer_uri.clone(),
+                jwks: kms_server
+                    .config
+                    .jwks
+                    .as_ref()
+                    .ok_or_else(|| {
+                        kms_error!("The JWKS must be provided when using JWT authentication")
+                    })?
+                    .clone(),
+                jwt_audience: kms_server.config.jwt_audience.clone(),
+            }),
+        )
+    } else {
+        (false, None)
+    };
+    // Determine if Client Cert Auth should be used for authentication.
+    let use_cert_auth = kms_server.config.verify_cert.is_some();
+    // Determine if the application is running inside an enclave.
+    let is_running_inside_enclave = is_running_inside_enclave();
+    // Determine if the application is using an encrypted SQLite database.
+    let is_using_sqlite_enc = matches!(kms_server.config.db_params, config::DbParams::SqliteEnc(_));
+
+    // Determine the address to bind the server to.
+    let address = format!("{}:{}", kms_server.config.hostname, kms_server.config.port);
+
+    // Create the `HttpServer` instance.
+    let server = HttpServer::new(move || {
+        // Create an `App` instance and configure the routes.
+        let app = App::new()
+            .wrap(Condition::new(
+                use_jwt_auth,
+                JwtAuth::new(jwt_config.clone()),
+            )) // Use JWT for authentication if necessary.
+            .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
+            // Enable CORS for the application.
+            // Since Actix is running the middlewares in reverse order, it's important that the
+            // CORS middleware is the last one so that the auth middlewares do not run on
+            // preflight (OPTION) requests.
+            .wrap(Cors::permissive())
+            .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
+            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
+            .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
+            .service(routes::kmip)
+            .service(routes::list_owned_objects)
+            .service(routes::list_access_rights_obtained)
+            .service(routes::list_accesses)
+            .service(routes::grant_access)
+            .service(routes::revoke_access)
+            .service(routes::get_version)
+            .service(routes::get_certificate);
+
+        let app = if is_using_sqlite_enc {
+            app.service(routes::add_new_database)
+        } else {
+            app
+        };
+
+        if is_running_inside_enclave {
+            app.service(routes::get_enclave_quote)
+                .service(routes::get_enclave_manifest)
+                .service(routes::get_enclave_public_key)
+        } else {
+            app
+        }
+    })
+    .client_request_timeout(std::time::Duration::from_secs(10));
+
+    Ok(match builder {
+        Some(b) => {
+            if use_cert_auth {
+                // Start an HTTPS server with PKCS#12 with client cert auth
+                server
+                    .on_connect(extract_peer_certificate)
+                    .bind_openssl(address, b)?
+                    .run()
+            } else {
+                // Start an HTTPS server with PKCS#12 but not client cert auth
+                server.bind_openssl(address, b)?.run()
+            }
+        }
+        _ => server.bind(address)?.run(),
+    })
 }

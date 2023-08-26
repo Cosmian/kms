@@ -73,9 +73,7 @@ impl Default for HTTPConfig {
 }
 
 impl HTTPConfig {
-    pub fn init(&self) -> KResult<(String, Option<ParsedPkcs12_2>, Option<X509>)> {
-        let host_port = format!("{}:{}", self.hostname, self.port);
-
+    pub fn init(&self) -> KResult<(Option<ParsedPkcs12_2>, Option<X509>)> {
         // If the server is running in TLS mode, we need to load the PKCS#12 certificate
         let p12 = if let Some(p12_file) = &self.https_p12_file {
             // Open and read the file into a byte vector
@@ -110,6 +108,6 @@ impl HTTPConfig {
             None
         };
 
-        Ok((host_port, p12, x509))
+        Ok((p12, x509))
     }
 }

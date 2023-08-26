@@ -1,13 +1,28 @@
-use cosmian_kms_server::{
-    config::{ClapConfig, ServerConfig},
-    result::KResult,
-    start_kms_server,
-};
+pub mod config;
+pub mod core;
+pub mod database;
+pub mod error;
+pub mod kms_server;
+pub mod log_utils;
+pub mod middlewares;
+pub mod ra_tls_server;
+pub mod result;
+pub mod routes;
+pub use database::KMSServer;
 use dotenvy::dotenv;
 #[cfg(any(feature = "timeout", feature = "insecure"))]
 use tracing::info;
 #[cfg(feature = "timeout")]
 use tracing::warn;
+
+#[cfg(test)]
+mod tests;
+
+use crate::{
+    config::{ClapConfig, ServerConfig},
+    kms_server::start_kms_server,
+    result::KResult,
+};
 
 #[cfg(feature = "timeout")]
 mod expiry;
