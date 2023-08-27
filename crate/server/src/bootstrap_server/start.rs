@@ -1,5 +1,4 @@
 use std::{
-    ops::Deref,
     sync::{mpsc, Arc},
     thread::{self},
     time::Duration,
@@ -15,9 +14,9 @@ use actix_web::{
     App, HttpRequest, HttpServer,
 };
 use cosmian_kms_utils::access::SuccessResponse;
-use futures::{StreamExt, TryStreamExt};
+use futures::StreamExt;
 use openssl::{
-    pkcs12::Pkcs12,
+    pkcs12::{ParsedPkcs12_2, Pkcs12},
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
@@ -28,6 +27,7 @@ use crate::{
     config::ServerConfig,
     error::KmsError,
     kms_bail, kms_error,
+    kms_server::start_kms_server,
     middlewares::{
         ssl_auth::{extract_peer_certificate, SslAuth},
         JwtAuth, JwtConfig,
@@ -39,41 +39,68 @@ use crate::{
 
 pub struct BootstrapServer {
     config: ServerConfig,
+    pkcs12_tx: mpsc::Sender<ParsedPkcs12_2>,
 }
 
-pub async fn start_bootstrap_server(config: ServerConfig) -> Result<ServerHandle, KmsError> {
+pub async fn start_bootstrap_server(mut config: ServerConfig) -> Result<ServerHandle, KmsError> {
     // check that the config actually requests a bootstrap server
     if !config.bootstrap_server_config.use_bootstrap_server {
         kms_bail!("Start bootstrap server is called but config says to not start one!")
     }
 
-    let (tx, rx) = mpsc::channel::<ServerHandle>();
+    // Create a channel to send the bootstrap server handle to the main thread
+    let (bs_handle_tx, bs_handle_rx) = mpsc::channel::<ServerHandle>();
+    // Create a channel to send the PKCS12 ro the main thread
+    let (pkcs12_tx, pkcs12_rx) = mpsc::channel::<ParsedPkcs12_2>();
 
-    //
-    let bootstrap_server = Arc::new(BootstrapServer { config });
+    // Create the BootstrapServer instance
+    let bootstrap_server = Arc::new(BootstrapServer {
+        config: config.clone(),
+        pkcs12_tx,
+    });
 
     let tokio_handle = tokio::runtime::Handle::current();
-    let cs_thread_handle = thread::spawn(move || {
+    let bs_thread_handle = thread::spawn(move || {
         tokio_handle
-            .block_on(start_https_bootstrap_server(bootstrap_server, tx))
+            .block_on(start_https_bootstrap_server(bootstrap_server, bs_handle_tx))
             .map_err(|e| {
                 info!("Error starting the bootstrap server: {}", e);
                 KmsError::ServerError(e.to_string())
             })
     });
 
-    trace!("Waiting for server to start...");
-    let cs_actix_handle = rx
+    // Wait for the bootstrap server to start
+    trace!("Waiting for the bootstrap server to start...");
+    let bs_actix_handle = bs_handle_rx
         .recv_timeout(Duration::from_secs(25))
         .map_err(|e| kms_error!("Can't get bootstrap server handle after 25 seconds: {}", e))?;
-    trace!("... got handle ...");
+    info!("Bootstrap server started !");
 
-    cs_thread_handle
+    // Now wait for the bootstrap server to send a PKCS12
+    trace!("Waiting for the bootstrap server to send a PKCS12...");
+    let pkcs12 = pkcs12_rx
+        .recv()
+        .map_err(|e| kms_error!("Can't get PKCS12 from bootstrap server: {}", e))?;
+    info!("Received PKCS12 from the bootstrap server. Shutting it down...");
+
+    // We have a PKCS12 so we can stop the bootstrap server
+    bs_actix_handle.stop(true).await;
+
+    // Wait for the bootstrap server to thread to finish
+    bs_thread_handle
         .join()
         .map_err(|e| kms_error!("Error starting the bootstrap server: {:?}", e))?
         .map_err(|e| kms_error!("Error starting the bootstrap server: {}", e))?;
 
-    Ok(cs_actix_handle)
+    // Set the PKCS12 in the config
+    config.server_pkcs_12 = Some(pkcs12);
+
+    info!("Bootstrap server shut down. Starting KMS server...");
+
+    // Start the KMS server with the PKCS12
+    start_kms_server(config, None).await?;
+
+    Ok(bs_actix_handle)
 }
 
 async fn start_https_bootstrap_server(
@@ -191,7 +218,7 @@ fn prepare_bootstrap_server(
 pub async fn receive_pkcs12(
     req: HttpRequest,
     mut payload: Multipart,
-    kms: Data<Arc<BootstrapServer>>,
+    bootstrap_server: Data<Arc<BootstrapServer>>,
 ) -> KResult<Json<SuccessResponse>> {
     // print the request content-type
     match req.headers().get(header::CONTENT_TYPE) {
@@ -232,14 +259,28 @@ pub async fn receive_pkcs12(
     let p12 = pkcs12
         .parse2("")
         .map_err(|e| kms_error!("Error parsing PKCS#12: {}", e))?;
-    let cert = p12.cert.ok_or_else(|| kms_error!("Missing certificate"))?;
-    let _pkey = p12.pkey.ok_or_else(|| kms_error!("Missing private key"))?;
+    let cert = p12
+        .cert
+        .as_ref()
+        .ok_or_else(|| kms_error!("Missing certificate"))?;
+    let subject_name = cert.subject_name().to_owned()?;
+    let _pkey = p12
+        .pkey
+        .as_ref()
+        .ok_or_else(|| kms_error!("Missing private key"))?;
     // let _chain = p12.ca.ok_or_else(|| kms_error!("Missing chain"))?;
+
+    // Send the parsed PKCS12 to the main thread on the tx channel
+    bootstrap_server
+        .pkcs12_tx
+        .send(p12)
+        .map_err(|e| kms_error!("failed sending the PKCS12 to the main thread: {e}"))?;
+
     let response = SuccessResponse {
         success: format!(
             "PKCS#12 of {} bytes with CN:{:#?}, received",
             bytes.len(),
-            cert.subject_name()
+            subject_name.as_ref()
         ),
     };
     Ok(Json(response))

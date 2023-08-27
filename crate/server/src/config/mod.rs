@@ -306,3 +306,28 @@ impl fmt::Debug for ServerConfig {
         x.finish()
     }
 }
+
+/// Creates a partial clone of the ServerConfig
+/// the DbParams and PKCS#12 information is not copied
+/// since it may contain sensitive material
+impl Clone for ServerConfig {
+    fn clone(&self) -> Self {
+        Self {
+            jwt_issuer_uri: self.jwt_issuer_uri.clone(),
+            jwks: self.jwks.clone(),
+            jwe_config: self.jwe_config.clone(),
+            jwt_audience: self.jwt_audience.clone(),
+            default_username: self.default_username.clone(),
+            force_default_username: self.force_default_username,
+            db_params: DbParams::Sqlite(PathBuf::from("/tmp")),
+            clear_db_on_start: self.clear_db_on_start,
+            hostname: self.hostname.clone(),
+            port: self.port,
+            server_pkcs_12: None,
+            certbot: self.certbot.clone(),
+            enclave_params: self.enclave_params.clone(),
+            verify_cert: self.verify_cert.clone(),
+            bootstrap_server_config: self.bootstrap_server_config.clone(),
+        }
+    }
+}
