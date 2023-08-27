@@ -49,15 +49,19 @@ pub(crate) fn generate_self_signed_cert(
     builder.set_not_after(Asn1Time::days_from_now(1)?.as_ref())?;
 
     // Set the key usage extension to allow the certificate to be used for TLS.
-    builder.append_extension(
-        openssl::x509::extension::KeyUsage::new()
-            .key_agreement()
-            .build()?,
-    )?;
+    // builder.append_extension(
+    //     openssl::x509::extension::KeyUsage::new()
+    //         .key_agreement()
+    //         .build()?,
+    // )?;
 
     builder.sign(&private_key, openssl::hash::MessageDigest::sha256())?;
     // now build the certificate
     let cert = builder.build();
+
+    let pem = cert.to_pem()?;
+    // write the pem to a cert.pem file in /tmp
+    std::fs::write("/tmp/cert.pem", pem)?;
 
     // wrap it in a PKCS12 container
     let pkcs12 = Pkcs12::builder()

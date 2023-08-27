@@ -1097,6 +1097,7 @@ dependencies = [
  "josekit",
  "lazy_static",
  "libsgx",
+ "mime",
  "openssl",
  "rawsql",
  "redis",

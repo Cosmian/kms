@@ -12,7 +12,7 @@ pub struct BootstrapServerConfig {
     )]
     pub bootstrap_server_common_name: String,
 
-    #[clap(long, env("KMS_BOOTSTRAP_SERVER_PORT"), default_value("443"))]
+    #[clap(long, env("KMS_BOOTSTRAP_SERVER_PORT"), default_value("9998"))]
     pub bootstrap_server_port: usize,
 }
 

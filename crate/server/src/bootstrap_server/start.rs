@@ -1,12 +1,14 @@
 use std::{
+    ops::Deref,
     sync::{mpsc, Arc},
-    thread::{self, JoinHandle},
+    thread::{self},
     time::Duration,
 };
 
 use actix_multipart::Multipart;
 use actix_web::{
     dev::ServerHandle,
+    http::header,
     middleware::Condition,
     post,
     web::{Data, Json, JsonConfig, PayloadConfig},
@@ -21,7 +23,7 @@ use openssl::{
 };
 use tracing::{info, trace};
 
-use super::certificates::generate_self_signed_cert;
+use super::certificate::generate_self_signed_cert;
 use crate::{
     config::ServerConfig,
     error::KmsError,
@@ -39,9 +41,7 @@ pub struct BootstrapServer {
     config: ServerConfig,
 }
 
-pub async fn start_bootstrap_server(
-    config: ServerConfig,
-) -> Result<(ServerHandle, JoinHandle<Result<(), KmsError>>), KmsError> {
+pub async fn start_bootstrap_server(config: ServerConfig) -> Result<ServerHandle, KmsError> {
     // check that the config actually requests a bootstrap server
     if !config.bootstrap_server_config.use_bootstrap_server {
         kms_bail!("Start bootstrap server is called but config says to not start one!")
@@ -68,7 +68,12 @@ pub async fn start_bootstrap_server(
         .map_err(|e| kms_error!("Can't get bootstrap server handle after 25 seconds: {}", e))?;
     trace!("... got handle ...");
 
-    Ok((cs_actix_handle, cs_thread_handle))
+    cs_thread_handle
+        .join()
+        .map_err(|e| kms_error!("Error starting the bootstrap server: {:?}", e))?
+        .map_err(|e| kms_error!("Error starting the bootstrap server: {}", e))?;
+
+    Ok(cs_actix_handle)
 }
 
 async fn start_https_bootstrap_server(
@@ -188,34 +193,54 @@ pub async fn receive_pkcs12(
     mut payload: Multipart,
     kms: Data<Arc<BootstrapServer>>,
 ) -> KResult<Json<SuccessResponse>> {
-    // Extract the PKCS#12 bytes from the payload
-    let bytes = match payload.try_next().await {
-        Err(e) => kms_bail!("Error reading payload: {}", e),
-        Ok(field) => match field {
-            None => kms_bail!("Missing data in payload"),
-            Some(mut field) => {
-                let mut bytes = Vec::new();
-                while let Some(chunk) = field.next().await {
-                    bytes.extend_from_slice(
-                        &chunk.map_err(|e| kms_error!("Error reading payload: {}", e))?,
-                    );
-                }
-                bytes
+    // print the request content-type
+    match req.headers().get(header::CONTENT_TYPE) {
+        Some(content_type) => {
+            // match the content_type to multipart/form-data
+            if content_type.as_bytes().starts_with(b"multipart/form-data") {
+                println!("content-type: multipart/form-data");
+            } else {
+                println!("another content-type: {:#?}", content_type);
             }
-        },
+        }
+        None => println!("content-type: None"),
     };
+
+    // Extract the bytes from a multipart/form-data payload
+    // and return them as a `Vec<u8>`.
+    let mut bytes = Vec::new();
+    while let Some(field) = payload.next().await {
+        let mut field =
+            field.map_err(|e| kms_error!("Failed reading multipart/form-data field: {e}"))?;
+        // we want to read the field/part which has a content-type of application/octet-stream
+        if let Some(content_type) = field.content_type() {
+            if *content_type == mime::APPLICATION_OCTET_STREAM {
+                while let Some(chunk) = field.next().await {
+                    let data = chunk.map_err(|e| {
+                        kms_error!("Failed reading the bytes form the multipart/form-data: {e}")
+                    })?;
+                    bytes.extend_from_slice(&data);
+                }
+            }
+        }
+    }
+
     // Parse the PKCS#12
-    let pkcs12 =
-        Pkcs12::from_der(&bytes).map_err(|e| kms_error!("Error parsing PKCS#12: {}", e))?;
+    let pkcs12 = Pkcs12::from_der(&bytes)
+        .map_err(|e| kms_error!("Error reading PKCS#12 from DER: {}", e))?;
     // Verify the PKCS 12 by extracting the certificate, private key and chain
     let p12 = pkcs12
         .parse2("")
         .map_err(|e| kms_error!("Error parsing PKCS#12: {}", e))?;
     let cert = p12.cert.ok_or_else(|| kms_error!("Missing certificate"))?;
     let _pkey = p12.pkey.ok_or_else(|| kms_error!("Missing private key"))?;
-    let _chain = p12.ca.ok_or_else(|| kms_error!("Missing chain"))?;
+    // let _chain = p12.ca.ok_or_else(|| kms_error!("Missing chain"))?;
     let response = SuccessResponse {
-        success: format!("PKCS#12 with CN:{:#?}, received", cert.subject_name()),
+        success: format!(
+            "PKCS#12 of {} bytes with CN:{:#?}, received",
+            bytes.len(),
+            cert.subject_name()
+        ),
     };
     Ok(Json(response))
 }
