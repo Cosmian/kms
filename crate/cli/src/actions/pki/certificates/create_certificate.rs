@@ -47,9 +47,7 @@ impl CreateCertificateAction {
             ..Attributes::default()
         };
 
-        println!("attributes: {:?}", attributes);
         set_tags(&mut attributes, &self.tags)?;
-        println!("attributes: {:?}", attributes);
         let certify_request = Certify {
             unique_identifier: self.public_key_id.clone(),
             attributes: Some(attributes),
