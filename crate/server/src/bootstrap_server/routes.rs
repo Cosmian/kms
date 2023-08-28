@@ -40,6 +40,7 @@ pub struct PathConfig {
     pub path: String,
 }
 
+///
 #[post("/pkcs12")]
 pub async fn receive_pkcs12(
     req: HttpRequest,
@@ -109,7 +110,7 @@ pub async fn receive_pkcs12(
 
     let response = SuccessResponse {
         success: format!(
-            "PKCS#12 of {} bytes with CN:{:#?}, received",
+            "PKCS#12 of {} bytes received with subject name:{:?},",
             bytes.len(),
             subject_name.as_ref()
         ),

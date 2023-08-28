@@ -1,3 +1,5 @@
+use std::pin::Pin;
+
 use cosmian_kms_server::{
     bootstrap_server::start_bootstrap_server,
     config::{ClapConfig, ServerConfig},
@@ -5,11 +7,12 @@ use cosmian_kms_server::{
     result::KResult,
 };
 use dotenvy::dotenv;
+use futures::Future;
+use tracing::debug;
 #[cfg(any(feature = "timeout", feature = "insecure"))]
 use tracing::info;
 #[cfg(feature = "timeout")]
 use tracing::warn;
-use tracing::{debug, error};
 #[cfg(feature = "timeout")]
 mod expiry;
 
@@ -46,22 +49,26 @@ async fn main() -> KResult<()> {
     #[cfg(feature = "insecure")]
     info!("Feature Insecure enabled");
 
+    fn start_correct_server(
+        server_config: ServerConfig,
+    ) -> Pin<Box<dyn Future<Output = KResult<()>>>> {
+        if server_config.bootstrap_server_config.use_bootstrap_server {
+            Box::pin(start_bootstrap_server(server_config))
+        } else {
+            Box::pin(start_kms_server(server_config, None))
+        }
+    }
+
     #[cfg(feature = "timeout")]
     {
         warn!("This is a demo version, the server will stop in 3 months");
         let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(Box::pin(start_kms_server(server_config, None)), demo).await;
+        futures::future::select(start_correct_server(server_config), demo).await;
     }
 
     // Start the KMS
     #[cfg(not(feature = "timeout"))]
-    if server_config.bootstrap_server_config.use_bootstrap_server {
-        start_bootstrap_server(server_config).await
-    } else {
-        start_kms_server(server_config, None).await
-    }
-    .map_err(|e| {
-        error!("FAILED STARTING: {e}");
-        e
-    })
+    start_correct_server(server_config).await?;
+
+    Ok(())
 }

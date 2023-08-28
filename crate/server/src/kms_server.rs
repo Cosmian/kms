@@ -98,7 +98,7 @@ async fn start_plain_http_kms_server(
         tx.send(server.handle())?;
     }
 
-    info!("Starting the HTTP server...");
+    info!("Starting the HTTP KMS server...");
     // Run the server and return the result
     server.await.map_err(Into::into)
 }
@@ -158,6 +158,8 @@ async fn start_https_kms_server(
     if let Some(tx) = &server_handle_transmitter {
         tx.send(server.handle())?;
     }
+
+    info!("Starting the HTTPS KMS server...");
 
     // Run the server and return the result
     server.await.map_err(Into::into)
@@ -240,7 +242,7 @@ async fn start_auto_renew_https(
         });
 
         // Run server until stopped (either by ctrl-c or stopped by the previous thread)
-        info!("Starting the HTTPS server...");
+        info!("Starting the HTTPS KMS server...");
         server.await?;
 
         // We reach that part of the code when the thread renewing the certificates stops.
@@ -325,7 +327,7 @@ async fn start_certbot_https_kms_server(
         });
 
         // Run server until stopped (either by ctrl-c or stopped by the previous thread)
-        info!("Starting the HTTP server...");
+        info!("Starting the HTTP KMS server...");
         server.await?;
 
         // Note: cert_copy is a ref to cert. So `cert.certificates` contains the new certificates

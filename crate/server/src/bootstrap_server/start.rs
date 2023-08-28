@@ -100,21 +100,35 @@ pub async fn start_bootstrap_server(mut config: ServerConfig) -> KResult<()> {
             .map_err(|e| kms_error!("Can't get a message from bootstrap server: {}", e))?;
         match msg {
             BootstrapServerMessage::PKCS12(p12) => {
+                let subject_name = format!(
+                    "{:?}",
+                    p12.cert
+                        .as_ref()
+                        .ok_or_else(|| kms_error!("PKCS12 does not contain a certificate"))?
+                        .subject_name()
+                );
                 // Set the PKCS12 in the config
                 config.server_pkcs_12 = Some(p12);
+                info!("PKCS12 received with subject name: {}", subject_name);
             }
             BootstrapServerMessage::DbParams(db_params) => {
+                let db_params_str = format!("{:?}", db_params);
                 // Set the DbParams in the config
                 config.db_params = Some(db_params);
+                info!("DbParams received: {}", db_params_str);
             }
             BootstrapServerMessage::StartKmsServer(clear_data_base) => {
                 // set the clear database flag
                 config.clear_db_on_start = clear_data_base;
+                info!(
+                    "Start KMS server requested with clear database flag: {}",
+                    clear_data_base
+                );
                 break
             }
         }
     }
-    info!("KMS server start requested. Shutting down the bootstrap server...");
+    info!("Shutting down the bootstrap server...");
 
     // We have a PKCS12 so we can stop the bootstrap server
     bs_actix_handle.stop(true).await;
