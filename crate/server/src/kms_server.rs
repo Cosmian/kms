@@ -395,7 +395,10 @@ pub fn prepare_kms_server(
     // Determine if the application is running inside an enclave.
     let is_running_inside_enclave = is_running_inside_enclave();
     // Determine if the application is using an encrypted SQLite database.
-    let is_using_sqlite_enc = matches!(kms_server.config.db_params, config::DbParams::SqliteEnc(_));
+    let is_using_sqlite_enc = matches!(
+        kms_server.config.db_params,
+        Some(config::DbParams::SqliteEnc(_))
+    );
 
     // Determine the address to bind the server to.
     let address = format!("{}:{}", kms_server.config.hostname, kms_server.config.port);

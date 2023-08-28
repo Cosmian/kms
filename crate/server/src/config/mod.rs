@@ -15,7 +15,8 @@ use std::{
 
 use alcoholic_jwt::JWKS;
 use clap::Parser;
-use cloudproof::reexport::crypto_core::SymmetricKey;
+use cloudproof::reexport::crypto_core::{FixedSizeCBytes, SymmetricKey};
+use cosmian_kms_utils::crypto::password_derivation::{derive_key_from_password, KMS_ARGON2_SALT};
 use libsgx::utils::is_running_inside_enclave;
 use openssl::{pkcs12::ParsedPkcs12_2, x509::X509};
 use tracing::info;
@@ -127,6 +128,27 @@ pub enum DbParams {
     ),
 }
 
+impl DbParams {
+    pub fn redis_findex_db_params(
+        url: &str,
+        master_password: &str,
+        findex_label: &str,
+    ) -> KResult<DbParams> {
+        let master_secret_key =
+            SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::try_from_bytes(
+                derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
+                    master_password.as_bytes(),
+                    KMS_ARGON2_SALT,
+                )?,
+            )?;
+        Ok(DbParams::RedisFindex(
+            url.to_string(),
+            master_secret_key,
+            findex_label.as_bytes().to_vec(),
+        ))
+    }
+}
+
 impl Display for DbParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -182,7 +204,8 @@ pub struct ServerConfig {
     /// but always use the default username instead of the one provided by the authentication method
     pub force_default_username: bool,
 
-    pub db_params: DbParams,
+    /// The DB parameters may be supplied on the command line or via the bootstrap server
+    pub db_params: Option<DbParams>,
 
     /// Whether to clear the database on start
     pub clear_db_on_start: bool,
@@ -223,7 +246,9 @@ impl ServerConfig {
             jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
             jwe_config: conf.jwe.clone(),
             jwt_audience: conf.auth.jwt_audience.clone(),
-            db_params: conf.db.init(&workspace)?,
+            db_params: conf
+                .db
+                .init(&workspace, conf.bootstrap_server.use_bootstrap_server)?,
             clear_db_on_start: conf.db.clear_database,
             hostname: conf.http.hostname.clone(),
             port: conf.http.port,
@@ -319,7 +344,7 @@ impl Clone for ServerConfig {
             jwt_audience: self.jwt_audience.clone(),
             default_username: self.default_username.clone(),
             force_default_username: self.force_default_username,
-            db_params: DbParams::Sqlite(PathBuf::from("/tmp")),
+            db_params: None,
             clear_db_on_start: self.clear_db_on_start,
             hostname: self.hostname.clone(),
             port: self.port,

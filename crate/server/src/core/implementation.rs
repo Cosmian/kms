@@ -51,30 +51,41 @@ use crate::{
 
 impl KMS {
     pub async fn instantiate(mut shared_config: ServerConfig) -> KResult<Self> {
-        let db: Box<dyn Database + Sync + Send> = match &mut shared_config.db_params {
-            DbParams::SqliteEnc(db_path) => Box::new(
-                CachedSqlCipher::instantiate(db_path, shared_config.clear_db_on_start).await?,
-            ),
-            DbParams::Sqlite(db_path) => Box::new(
-                SqlitePool::instantiate(&db_path.join("kms.db"), shared_config.clear_db_on_start)
+        let db: Box<dyn Database + Sync + Send> = if let Some(mut db_params) =
+            shared_config.db_params.as_mut()
+        {
+            match &mut db_params {
+                DbParams::SqliteEnc(db_path) => Box::new(
+                    CachedSqlCipher::instantiate(db_path, shared_config.clear_db_on_start).await?,
+                ),
+                DbParams::Sqlite(db_path) => Box::new(
+                    SqlitePool::instantiate(
+                        &db_path.join("kms.db"),
+                        shared_config.clear_db_on_start,
+                    )
                     .await?,
-            ),
-            DbParams::Postgres(url) => {
-                Box::new(PgPool::instantiate(url, shared_config.clear_db_on_start).await?)
+                ),
+                DbParams::Postgres(url) => {
+                    Box::new(PgPool::instantiate(url, shared_config.clear_db_on_start).await?)
+                }
+                DbParams::Mysql(url) => {
+                    Box::new(MySqlPool::instantiate(url, shared_config.clear_db_on_start).await?)
+                }
+                DbParams::RedisFindex(url, master_key, label) => {
+                    // There is no reason to keep a copy of the key in the shared config
+                    // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
+                    // and zerorize the one in the shared config
+                    let key_bytes = master_key.to_bytes();
+                    let new_master_key =
+                        SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::try_from_bytes(
+                            key_bytes,
+                        )?;
+                    master_key.zeroize();
+                    Box::new(RedisWithFindex::instantiate(url, new_master_key, label).await?)
+                }
             }
-            DbParams::Mysql(url) => {
-                Box::new(MySqlPool::instantiate(url, shared_config.clear_db_on_start).await?)
-            }
-            DbParams::RedisFindex(url, master_key, label) => {
-                // There is no reason to keep a copy of the key in the shared config
-                // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
-                // and zerorize the one in the shared config
-                let key_bytes = master_key.to_bytes();
-                let new_master_key =
-                    SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::try_from_bytes(key_bytes)?;
-                master_key.zeroize();
-                Box::new(RedisWithFindex::instantiate(url, new_master_key, label).await?)
-            }
+        } else {
+            kms_bail!("Fatal: no database configuration provided. Stopping.")
         };
 
         Ok(Self {

@@ -31,7 +31,7 @@ use crate::{
     core::operations,
     database::Database,
     error::KmsError,
-    kms_bail,
+    kms_bail, kms_error,
     middlewares::{ssl_auth::PeerCommonName, JwtAuthClaim},
     result::KResult,
 };
@@ -106,7 +106,9 @@ impl KMS {
     /// Returns an error if the KMS server does not allow this operation or if an error occurs while
     /// generating the new database or key.
     pub async fn add_new_database(&self) -> KResult<String> {
-        if let DbParams::SqliteEnc(_) = self.config.db_params {
+        if let DbParams::SqliteEnc(_) = self.config.db_params.as_ref().ok_or_else(|| {
+            kms_error!("Unexpected fatal error: no database configured on the KMS server")
+        })? {
             // Generate a new group id
             let uid: u128 = loop {
                 let uid = Uuid::new_v4().to_u128_le();
@@ -673,34 +675,38 @@ impl KMS {
         &self,
         req_http: &HttpRequest,
     ) -> KResult<Option<ExtraDatabaseParams>> {
-        Ok(match self.config.db_params {
-            DbParams::SqliteEnc(_) => {
-                let secrets = req_http
-                    .headers()
-                    .get("KmsDatabaseSecret")
-                    .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
-                    .ok_or_else(|| {
-                        KmsError::Unauthorized(
-                            "Missing KmsDatabaseSecret header in the query".to_owned(),
-                        )
+        Ok(
+            match self.config.db_params.as_ref().ok_or_else(|| {
+                kms_error!("Unexpected fatal error: no database configured on the KMS server")
+            })? {
+                DbParams::SqliteEnc(_) => {
+                    let secrets = req_http
+                        .headers()
+                        .get("KmsDatabaseSecret")
+                        .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
+                        .ok_or_else(|| {
+                            KmsError::Unauthorized(
+                                "Missing KmsDatabaseSecret header in the query".to_owned(),
+                            )
+                        })?;
+
+                    let secrets = general_purpose::STANDARD.decode(secrets).map_err(|e| {
+                        KmsError::Unauthorized(format!(
+                            "KmsDatabaseSecret header cannot be decoded: {e}"
+                        ))
                     })?;
 
-                let secrets = general_purpose::STANDARD.decode(secrets).map_err(|e| {
-                    KmsError::Unauthorized(format!(
-                        "KmsDatabaseSecret header cannot be decoded: {e}"
-                    ))
-                })?;
-
-                Some(
-                    serde_json::from_slice::<ExtraDatabaseParams>(&secrets).map_err(|e| {
-                        KmsError::Unauthorized(format!(
-                            "KmsDatabaseSecret header cannot be read: {}",
-                            e
-                        ))
-                    })?,
-                )
-            }
-            _ => None,
-        })
+                    Some(
+                        serde_json::from_slice::<ExtraDatabaseParams>(&secrets).map_err(|e| {
+                            KmsError::Unauthorized(format!(
+                                "KmsDatabaseSecret header cannot be read: {}",
+                                e
+                            ))
+                        })?,
+                    )
+                }
+                _ => None,
+            },
+        )
     }
 }

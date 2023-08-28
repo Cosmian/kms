@@ -185,7 +185,7 @@ pub async fn init_test_server_options(
             JwtAuthConfig::default()
         },
         db: DBConfig {
-            database_type: "sqlite-enc".to_string(),
+            database_type: Some("sqlite-enc".to_string()),
             clear_database: true,
             ..Default::default()
         },

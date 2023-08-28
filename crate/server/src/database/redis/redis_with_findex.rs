@@ -35,6 +35,8 @@ use crate::{
 };
 
 pub const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
+pub const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
+pub const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
 
 /// Find the intersection of all the sets
 fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<Location> {
@@ -60,11 +62,19 @@ impl RedisWithFindex {
     ) -> KResult<RedisWithFindex> {
         // derive a Findex Key
         let mut findex_key_bytes = [0; MASTER_KEY_LENGTH];
-        kdf256!(&mut findex_key_bytes, b"findex", master_key.as_bytes());
+        kdf256!(
+            &mut findex_key_bytes,
+            REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
+            master_key.as_bytes()
+        );
         let findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::try_from_bytes(findex_key_bytes)?;
         // derive a DB Key
         let mut db_key_bytes = [0; DB_KEY_LENGTH];
-        kdf256!(&mut db_key_bytes, b"db", master_key.as_bytes());
+        kdf256!(
+            &mut db_key_bytes,
+            REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
+            master_key.as_bytes()
+        );
         let _db_key = SymmetricKey::<DB_KEY_LENGTH>::try_from_bytes(db_key_bytes)?;
 
         let client = redis::Client::open(redis_url)?;

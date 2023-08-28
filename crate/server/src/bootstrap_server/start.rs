@@ -1,30 +1,31 @@
 use std::{
-    sync::{mpsc, Arc},
+    sync::{mpsc, Arc, RwLock},
     thread::{self},
     time::Duration,
 };
 
-use actix_multipart::Multipart;
 use actix_web::{
     dev::ServerHandle,
-    http::header,
     middleware::Condition,
-    post,
-    web::{Data, Json, JsonConfig, PayloadConfig},
-    App, HttpRequest, HttpServer,
+    web::{Data, JsonConfig, PayloadConfig},
+    App, HttpServer,
 };
-use cosmian_kms_utils::access::SuccessResponse;
-use futures::StreamExt;
 use openssl::{
-    pkcs12::{ParsedPkcs12_2, Pkcs12},
+    pkcs12::ParsedPkcs12_2,
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
 use tracing::{info, trace};
 
-use super::certificate::generate_self_signed_cert;
+use super::{
+    certificate::generate_self_signed_cert,
+    routes::{
+        mysql_config, postgresql_config, receive_pkcs12, redis_findex_config, sqlite_config,
+        sqlite_enc_config, start_kms_server_config,
+    },
+};
 use crate::{
-    config::ServerConfig,
+    config::{DbParams, ServerConfig},
     error::KmsError,
     kms_bail, kms_error,
     kms_server::start_kms_server,
@@ -35,14 +36,23 @@ use crate::{
     result::KResult,
 };
 
-//let is_running_inside_enclave = is_running_inside_enclave();
-
-pub struct BootstrapServer {
-    config: ServerConfig,
-    pkcs12_tx: mpsc::Sender<ParsedPkcs12_2>,
+pub enum BootstrapServerMessage {
+    /// The PKCS12 to use for the server to start in HTTPS
+    PKCS12(ParsedPkcs12_2),
+    /// The DbParams to use for the database
+    DbParams(DbParams),
+    /// Start the KMS server; pass true to clear the database on start
+    StartKmsServer(bool),
 }
 
-pub async fn start_bootstrap_server(mut config: ServerConfig) -> Result<ServerHandle, KmsError> {
+pub struct BootstrapServer {
+    pub config: ServerConfig,
+    pub db_params_supplied: RwLock<bool>,
+    pub pkcs12_supplied: RwLock<bool>,
+    pub bs_msg_tx: mpsc::Sender<BootstrapServerMessage>,
+}
+
+pub async fn start_bootstrap_server(mut config: ServerConfig) -> KResult<()> {
     // check that the config actually requests a bootstrap server
     if !config.bootstrap_server_config.use_bootstrap_server {
         kms_bail!("Start bootstrap server is called but config says to not start one!")
@@ -51,12 +61,14 @@ pub async fn start_bootstrap_server(mut config: ServerConfig) -> Result<ServerHa
     // Create a channel to send the bootstrap server handle to the main thread
     let (bs_handle_tx, bs_handle_rx) = mpsc::channel::<ServerHandle>();
     // Create a channel to send the PKCS12 ro the main thread
-    let (pkcs12_tx, pkcs12_rx) = mpsc::channel::<ParsedPkcs12_2>();
+    let (bs_msg_tx, bs_msg_rx) = mpsc::channel::<BootstrapServerMessage>();
 
     // Create the BootstrapServer instance
     let bootstrap_server = Arc::new(BootstrapServer {
         config: config.clone(),
-        pkcs12_tx,
+        db_params_supplied: RwLock::new(config.db_params.is_some()),
+        pkcs12_supplied: RwLock::new(config.server_pkcs_12.is_some()),
+        bs_msg_tx,
     });
 
     let tokio_handle = tokio::runtime::Handle::current();
@@ -76,12 +88,29 @@ pub async fn start_bootstrap_server(mut config: ServerConfig) -> Result<ServerHa
         .map_err(|e| kms_error!("Can't get bootstrap server handle after 25 seconds: {}", e))?;
     info!("Bootstrap server started !");
 
-    // Now wait for the bootstrap server to send a PKCS12
-    trace!("Waiting for the bootstrap server to send a PKCS12...");
-    let pkcs12 = pkcs12_rx
-        .recv()
-        .map_err(|e| kms_error!("Can't get PKCS12 from bootstrap server: {}", e))?;
-    info!("Received PKCS12 from the bootstrap server. Shutting it down...");
+    // Now wait for the bootstrap server to send messages
+    trace!("Waiting for the bootstrap server to send messages...");
+    loop {
+        let msg = bs_msg_rx
+            .recv()
+            .map_err(|e| kms_error!("Can't get a message from bootstrap server: {}", e))?;
+        match msg {
+            BootstrapServerMessage::PKCS12(p12) => {
+                // Set the PKCS12 in the config
+                config.server_pkcs_12 = Some(p12);
+            }
+            BootstrapServerMessage::DbParams(db_params) => {
+                // Set the DbParams in the config
+                config.db_params = Some(db_params);
+            }
+            BootstrapServerMessage::StartKmsServer(clear_data_base) => {
+                // set the clear database flag
+                config.clear_db_on_start = clear_data_base;
+                break
+            }
+        }
+    }
+    info!("KMS server start requested. Shutting down the bootstrap server...");
 
     // We have a PKCS12 so we can stop the bootstrap server
     bs_actix_handle.stop(true).await;
@@ -92,15 +121,10 @@ pub async fn start_bootstrap_server(mut config: ServerConfig) -> Result<ServerHa
         .map_err(|e| kms_error!("Error starting the bootstrap server: {:?}", e))?
         .map_err(|e| kms_error!("Error starting the bootstrap server: {}", e))?;
 
-    // Set the PKCS12 in the config
-    config.server_pkcs_12 = Some(pkcs12);
+    info!("Starting KMS server...");
 
-    info!("Bootstrap server shut down. Starting KMS server...");
-
-    // Start the KMS server with the PKCS12
-    start_kms_server(config, None).await?;
-
-    Ok(bs_actix_handle)
+    // Start the KMS server with the updated configuration
+    start_kms_server(config, None).await
 }
 
 async fn start_https_bootstrap_server(
@@ -199,6 +223,12 @@ fn prepare_bootstrap_server(
             .app_data(PayloadConfig::new(1_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(1_000_000)) // Set the maximum size of the JSON request payload.
             .service(receive_pkcs12)
+            .service(redis_findex_config)
+            .service(postgresql_config)
+            .service(mysql_config)
+            .service(sqlite_config)
+            .service(sqlite_enc_config)
+            .service(start_kms_server_config)
     })
     .client_request_timeout(std::time::Duration::from_secs(10));
 
@@ -212,76 +242,4 @@ fn prepare_bootstrap_server(
         // Start an HTTPS server with PKCS#12 but not client cert auth
         server.bind_openssl(address, builder)?.run()
     })
-}
-
-#[post("/pkcs12")]
-pub async fn receive_pkcs12(
-    req: HttpRequest,
-    mut payload: Multipart,
-    bootstrap_server: Data<Arc<BootstrapServer>>,
-) -> KResult<Json<SuccessResponse>> {
-    // print the request content-type
-    match req.headers().get(header::CONTENT_TYPE) {
-        Some(content_type) => {
-            // match the content_type to multipart/form-data
-            if content_type.as_bytes().starts_with(b"multipart/form-data") {
-                println!("content-type: multipart/form-data");
-            } else {
-                println!("another content-type: {:#?}", content_type);
-            }
-        }
-        None => println!("content-type: None"),
-    };
-
-    // Extract the bytes from a multipart/form-data payload
-    // and return them as a `Vec<u8>`.
-    let mut bytes = Vec::new();
-    while let Some(field) = payload.next().await {
-        let mut field =
-            field.map_err(|e| kms_error!("Failed reading multipart/form-data field: {e}"))?;
-        // we want to read the field/part which has a content-type of application/octet-stream
-        if let Some(content_type) = field.content_type() {
-            if *content_type == mime::APPLICATION_OCTET_STREAM {
-                while let Some(chunk) = field.next().await {
-                    let data = chunk.map_err(|e| {
-                        kms_error!("Failed reading the bytes form the multipart/form-data: {e}")
-                    })?;
-                    bytes.extend_from_slice(&data);
-                }
-            }
-        }
-    }
-
-    // Parse the PKCS#12
-    let pkcs12 = Pkcs12::from_der(&bytes)
-        .map_err(|e| kms_error!("Error reading PKCS#12 from DER: {}", e))?;
-    // Verify the PKCS 12 by extracting the certificate, private key and chain
-    let p12 = pkcs12
-        .parse2("")
-        .map_err(|e| kms_error!("Error parsing PKCS#12: {}", e))?;
-    let cert = p12
-        .cert
-        .as_ref()
-        .ok_or_else(|| kms_error!("Missing certificate"))?;
-    let subject_name = cert.subject_name().to_owned()?;
-    let _pkey = p12
-        .pkey
-        .as_ref()
-        .ok_or_else(|| kms_error!("Missing private key"))?;
-    // let _chain = p12.ca.ok_or_else(|| kms_error!("Missing chain"))?;
-
-    // Send the parsed PKCS12 to the main thread on the tx channel
-    bootstrap_server
-        .pkcs12_tx
-        .send(p12)
-        .map_err(|e| kms_error!("failed sending the PKCS12 to the main thread: {e}"))?;
-
-    let response = SuccessResponse {
-        success: format!(
-            "PKCS#12 of {} bytes with CN:{:#?}, received",
-            bytes.len(),
-            subject_name.as_ref()
-        ),
-    };
-    Ok(Json(response))
 }
