@@ -48,6 +48,14 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      - name: Upload WHL for cloudproof_python tests
+        uses: actions/upload-artifact@v3
+        with:
+          name: python-x86_64-unknown-linux-gnu
+          path: target/wheels/*manylinux*.whl
+          retention-days: 1
+          if-no-files-found: error
+
   pyo3-mac:
     runs-on: macos-12
     steps:

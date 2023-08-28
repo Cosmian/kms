@@ -90,7 +90,7 @@ jobs:
       target: wasm32-unknown-unknown
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       findex-cloud-version: 0.1.0
-      copy_fresh_build: false
+      copy_fresh_build: true
 
   cloudproof_java:
     needs:
