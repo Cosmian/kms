@@ -13,6 +13,7 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
+        shared::locate,
         utils::{extract_uids::extract_uid, init_test_server, ONCE},
         PROG_NAME,
     },
@@ -206,6 +207,7 @@ pub async fn test_certify() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.into_path();
     let ctx = ONCE.get_or_init(init_test_server).await;
+    // let ca = "CA";
     let ca = "CA/SubCA1";
     // let ca = "CA/SubCA1/SubCA2/SubCA3";
     let tags = &["certificate"];
@@ -214,6 +216,28 @@ pub async fn test_certify() -> Result<(), CliError> {
     {
         let subject = "My server";
         let certificate_id = certify(&ctx.owner_cli_conf_path, ca, subject, tags)?;
+
+        // Count the number of KMIP objects created
+        let ids = locate(&ctx.owner_cli_conf_path, Some(tags), None, None, None)?;
+        // Expected 9 kmip objects for this tag:
+        // - 1 public key, 1 private key and 1 certificate for the root CA
+        // - 1 public key, 1 private key and 1 certificate for the sub CA
+        // - 1 public key, 1 private key and 1 certificate for the leaf certificate
+        assert_eq!(ids.len(), 9);
+
+        // create another certificate (CA root already created)
+        debug!("\n\n\ntest_certify: create another certificate");
+        {
+            let subject = "My server Number 2";
+            let _certificate_id = certify(&ctx.owner_cli_conf_path, ca, subject, tags)?;
+        }
+
+        let ids = locate(&ctx.owner_cli_conf_path, Some(tags), None, None, None)?;
+        // Expected 12 kmip objects for this tag (3 more):
+        // - already 9 kmip objects created above
+        // - 1 public key, 1 private key and 1 certificate for the leaf certificate
+        assert_eq!(ids.len(), 12);
+
         // Export
         let export_filename = tmp_path.join("output.export").to_str().unwrap().to_owned();
         export(
@@ -236,15 +260,6 @@ pub async fn test_certify() -> Result<(), CliError> {
             "cert revocation test",
         )?;
         destroy(&ctx.owner_cli_conf_path, "pki", &certificate_id).unwrap();
-    }
-
-    // locate(&ctx.owner_cli_conf_path, Some(tags), None, None, None)?;
-
-    // create another certificate (CA root already created)
-    debug!("\n\n\ntest_certify: create another certificate");
-    {
-        let subject = "My server Number 2";
-        let _certificate_id = certify(&ctx.owner_cli_conf_path, ca, subject, &["certificate"])?;
     }
 
     Ok(())

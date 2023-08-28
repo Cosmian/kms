@@ -25,7 +25,6 @@ use crate::{
         query_from_attributes, state_from_string, DBObject, Database, SqlitePlaceholder,
         SQLITE_QUERIES,
     },
-    error::KmsError,
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
@@ -101,7 +100,7 @@ impl Database for SqlitePool {
         let uid = match create_(uid, user, object, tags, &mut tx).await {
             Ok(uid) => uid,
             Err(e) => {
-                tx.rollback().await.context("transaction failed")?;
+                tx.rollback().await?;
                 kms_bail!("creation of object failed: {e}");
             }
         };
@@ -279,6 +278,7 @@ impl Database for SqlitePool {
         user_must_be_owner: bool,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
+        debug!("sqlite: find: researched_attributes={researched_attributes:?}");
         find_(
             researched_attributes,
             state,
@@ -311,8 +311,7 @@ pub(crate) async fn create_(
         object_type: object.object_type(),
         object: object.clone(),
     })
-    .context("failed serializing the object to JSON")
-    .reason(ErrorReason::Internal_Server_Error)?;
+    .context("failed serializing the object to JSON")?;
 
     // If the uid is not provided, generate a new one
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
@@ -447,8 +446,7 @@ pub(crate) async fn update_object_(
         object_type: object.object_type(),
         object: object.clone(),
     })
-    .context("failed serializing the object to JSON")
-    .reason(ErrorReason::Internal_Server_Error)?;
+    .context("failed serializing the object to JSON")?;
 
     sqlx::query(
         SQLITE_QUERIES
@@ -552,8 +550,7 @@ pub(crate) async fn upsert_(
         object_type: object.object_type(),
         object: object.clone(),
     })
-    .context("failed serializing the object to JSON")
-    .reason(ErrorReason::Internal_Server_Error)?;
+    .context("failed serializing the object to JSON")?;
 
     sqlx::query(
         SQLITE_QUERIES
@@ -711,9 +708,8 @@ where
     perms.push(operation_type);
 
     // Serialize permissions
-    let json = serde_json::to_value(&perms)
-        .context("failed serializing the permissions to JSON")
-        .reason(ErrorReason::Internal_Server_Error)?;
+    let json =
+        serde_json::to_value(&perms).context("failed serializing the permissions to JSON")?;
 
     // Upsert the DB
     sqlx::query(
@@ -758,9 +754,8 @@ where
     }
 
     // Serialize permissions
-    let json = serde_json::to_value(&perms)
-        .context("failed serializing the permissions to JSON")
-        .reason(ErrorReason::Internal_Server_Error)?;
+    let json =
+        serde_json::to_value(&perms).context("failed serializing the permissions to JSON")?;
 
     // Update the DB
     sqlx::query(
@@ -809,6 +804,7 @@ where
         user,
         user_must_be_owner,
     )?;
+
     let query = sqlx::query(&query);
     let rows = query.fetch_all(executor).await?;
 
@@ -822,10 +818,13 @@ fn to_qualified_uids(
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
         let raw = row.get::<Vec<u8>, _>(2);
-        let attrs: Attributes = serde_json::from_slice(&raw)
-            .context("failed deserializing attributes")
-            .map_err(|e| KmsError::DatabaseError(e.to_string()))?;
-
+        let attrs = if !raw.is_empty() {
+            let attrs: Attributes =
+                serde_json::from_slice(&raw).context("failed deserializing attributes")?;
+            attrs
+        } else {
+            Attributes::default()
+        };
         uids.push((
             row.get::<String, _>(0),
             state_from_string(&row.get::<String, _>(1))?,

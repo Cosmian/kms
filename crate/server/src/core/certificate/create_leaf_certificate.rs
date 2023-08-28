@@ -93,13 +93,10 @@ async fn create_leaf_certificate(
 
     trace!("--> CA: {}, Subject: {subject}", last_ca_signing_key.ca);
 
-    // By default, we recreate the public key when creating a new certificate
+    // By default, we recreate the crypto keypair when creating a new certificate
     let create_response = kms
         .create_key_pair(
-            ec_create_key_pair_request(
-                [&format!("CA={}", last_ca_signing_key.ca)],
-                RecommendedCurve::CURVEED25519,
-            )?,
+            ec_create_key_pair_request(&tags, RecommendedCurve::CURVEED25519)?,
             owner,
             params,
         )

@@ -332,6 +332,7 @@ pub(crate) async fn create_ca_chain(
             .await?;
         }
     }
+
     debug!("Return from create_ca_chain: {:?}", last_ca_signing_key);
     Ok(last_ca_signing_key)
 }
