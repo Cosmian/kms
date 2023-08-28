@@ -58,6 +58,10 @@ pub async fn start_bootstrap_server(mut config: ServerConfig) -> KResult<()> {
         kms_bail!("Start bootstrap server is called but config says to not start one!")
     }
 
+    let bs_config = config.clone();
+    // Log the server configuration
+    info!("Bootstrap server configuration: {:#?}", bs_config);
+
     // Create a channel to send the bootstrap server handle to the main thread
     let (bs_handle_tx, bs_handle_rx) = mpsc::channel::<ServerHandle>();
     // Create a channel to send the PKCS12 ro the main thread
@@ -65,7 +69,7 @@ pub async fn start_bootstrap_server(mut config: ServerConfig) -> KResult<()> {
 
     // Create the BootstrapServer instance
     let bootstrap_server = Arc::new(BootstrapServer {
-        config: config.clone(),
+        config: bs_config,
         db_params_supplied: RwLock::new(config.db_params.is_some()),
         pkcs12_supplied: RwLock::new(config.server_pkcs_12.is_some()),
         bs_msg_tx,

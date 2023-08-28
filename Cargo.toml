@@ -60,5 +60,6 @@ tracing = "0.1"
 tracing-log = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-tree = "0.2"
+url = "2.2"
 uuid = { version = "1.3", features = ["v4"] }
 zeroize = { version = "1.6", features = ["zeroize_derive"] }

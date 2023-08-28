@@ -1,9 +1,10 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
+use url::Url;
 
 use super::{workspace::WorkspaceConfig, DbParams};
-use crate::{kms_bail, kms_error, result::KResult};
+use crate::{database::redis::RedisWithFindex, kms_bail, kms_error, result::KResult};
 
 /// Configuration for the database
 #[derive(Args, Clone)]
@@ -159,16 +160,15 @@ impl DBConfig {
                         "redis-master-password",
                         "KMS_REDIS_MASTER_PASSWORD",
                     )?;
+                    // Generate the symmetric key from the master password
+                    let master_key =
+                        RedisWithFindex::master_key_from_password(&redis_master_password)?;
                     let redis_findex_label = ensure_value(
                         self.redis_findex_label.as_deref(),
                         "redis-findex-label",
                         "KMS_REDIS_FINDEX_LABEL",
                     )?;
-                    DbParams::redis_findex_db_params(
-                        &url,
-                        &redis_master_password,
-                        &redis_findex_label,
-                    )?
+                    DbParams::RedisFindex(url, master_key, redis_findex_label.into_bytes())
                 }
                 unknown => kms_bail!("Unknown database type: {unknown}"),
             })
@@ -183,8 +183,8 @@ impl DBConfig {
     }
 }
 
-fn ensure_url(database_url: Option<&str>, alternate_env_variable: &str) -> KResult<String> {
-    if let Some(url) = database_url {
+fn ensure_url(database_url: Option<&str>, alternate_env_variable: &str) -> KResult<Url> {
+    let url = if let Some(url) = database_url {
         Ok(url.to_string())
     } else {
         std::env::var(alternate_env_variable).map_err(|_e| {
@@ -193,7 +193,9 @@ fn ensure_url(database_url: Option<&str>, alternate_env_variable: &str) -> KResu
                  KMS_DATABASE_URL or the {alternate_env_variable} environment variables",
             )
         })
-    }
+    }?;
+    let url = Url::parse(&url)?;
+    Ok(url)
 }
 
 fn ensure_value(

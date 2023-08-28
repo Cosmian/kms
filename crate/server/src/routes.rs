@@ -60,7 +60,8 @@ impl actix_web::error::ResponseError for KmsError {
             | KmsError::UnsupportedPlaceholder
             | KmsError::InconsistentOperation(..)
             | KmsError::InvalidRequest(_)
-            | KmsError::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            | KmsError::ItemNotFound(_)
+            | &KmsError::UrlError(_) => StatusCode::UNPROCESSABLE_ENTITY,
         }
     }
 }

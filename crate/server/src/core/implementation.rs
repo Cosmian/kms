@@ -65,12 +65,12 @@ impl KMS {
                     )
                     .await?,
                 ),
-                DbParams::Postgres(url) => {
-                    Box::new(PgPool::instantiate(url, shared_config.clear_db_on_start).await?)
-                }
-                DbParams::Mysql(url) => {
-                    Box::new(MySqlPool::instantiate(url, shared_config.clear_db_on_start).await?)
-                }
+                DbParams::Postgres(url) => Box::new(
+                    PgPool::instantiate(url.as_str(), shared_config.clear_db_on_start).await?,
+                ),
+                DbParams::Mysql(url) => Box::new(
+                    MySqlPool::instantiate(url.as_str(), shared_config.clear_db_on_start).await?,
+                ),
                 DbParams::RedisFindex(url, master_key, label) => {
                     // There is no reason to keep a copy of the key in the shared config
                     // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
@@ -81,7 +81,9 @@ impl KMS {
                             key_bytes,
                         )?;
                     master_key.zeroize();
-                    Box::new(RedisWithFindex::instantiate(url, new_master_key, label).await?)
+                    Box::new(
+                        RedisWithFindex::instantiate(url.as_str(), new_master_key, label).await?,
+                    )
                 }
             }
         } else {

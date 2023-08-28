@@ -5,11 +5,11 @@ use cosmian_kms_server::{
     result::KResult,
 };
 use dotenvy::dotenv;
-use tracing::error;
 #[cfg(any(feature = "timeout", feature = "insecure"))]
 use tracing::info;
 #[cfg(feature = "timeout")]
 use tracing::warn;
+use tracing::{debug, error};
 #[cfg(feature = "timeout")]
 mod expiry;
 
@@ -36,6 +36,9 @@ async fn main() -> KResult<()> {
 
     // Instantiate a config object using the env variables and the args of the binary
     let clap_config = ClapConfig::parse();
+    debug!("Command line config: {:#?}", clap_config);
+
+    // Parse the Server Config from the command line arguments
     let server_config = ServerConfig::try_from(&clap_config).await?;
 
     #[cfg(feature = "timeout")]

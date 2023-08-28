@@ -15,11 +15,10 @@ use std::{
 
 use alcoholic_jwt::JWKS;
 use clap::Parser;
-use cloudproof::reexport::crypto_core::{FixedSizeCBytes, SymmetricKey};
-use cosmian_kms_utils::crypto::password_derivation::{derive_key_from_password, KMS_ARGON2_SALT};
+use cloudproof::reexport::crypto_core::SymmetricKey;
 use libsgx::utils::is_running_inside_enclave;
 use openssl::{pkcs12::ParsedPkcs12_2, x509::X509};
-use tracing::info;
+use url::Url;
 
 use self::bootstrap_server_config::BootstrapServerConfig;
 use crate::{
@@ -114,39 +113,18 @@ pub enum DbParams {
     /// contains the dir of the sqlcipher db file (not the db file itself)
     SqliteEnc(PathBuf),
     /// contains the Postgres connection URL
-    Postgres(String),
+    Postgres(Url),
     /// contains the MySql connection URL
-    Mysql(String),
+    Mysql(Url),
     /// contains
     /// - the Redis connection URL
     /// - the master key used to encrypt the DB and the Index
     /// - a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
     RedisFindex(
-        String,
+        Url,
         SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         Vec<u8>,
     ),
-}
-
-impl DbParams {
-    pub fn redis_findex_db_params(
-        url: &str,
-        master_password: &str,
-        findex_label: &str,
-    ) -> KResult<DbParams> {
-        let master_secret_key =
-            SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::try_from_bytes(
-                derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
-                    master_password.as_bytes(),
-                    KMS_ARGON2_SALT,
-                )?,
-            )?;
-        Ok(DbParams::RedisFindex(
-            url.to_string(),
-            master_secret_key,
-            findex_label.as_bytes().to_vec(),
-        ))
-    }
 }
 
 impl Display for DbParams {
@@ -154,18 +132,32 @@ impl Display for DbParams {
         match self {
             DbParams::Sqlite(path) => write!(f, "sqlite: {}", path.display()),
             DbParams::SqliteEnc(path) => write!(f, "sqlcipher: {}", path.display()),
-            DbParams::Postgres(url) => write!(f, "postgres: {}", url),
-            DbParams::Mysql(url) => write!(f, "mysql: {}", url),
+            DbParams::Postgres(url) => write!(f, "postgres: {}", redact_url(url)),
+            DbParams::Mysql(url) => write!(f, "mysql: {}", redact_url(url)),
             DbParams::RedisFindex(url, _, label) => {
                 write!(
                     f,
-                    "redis-findex: {}, key: [****], label: 0x{}",
-                    url,
+                    "redis-findex: {}, master key: [****], Findex label: 0x{}",
+                    redact_url(url),
                     hex::encode(label)
                 )
             }
         }
     }
+}
+
+/// Redact the username and password from the URL for logging purposes
+fn redact_url(original: &Url) -> Url {
+    let mut url = original.clone();
+
+    if url.username() != "" {
+        url.set_username("****").unwrap();
+    }
+    if url.password().is_some() {
+        url.set_password(Some("****")).unwrap();
+    }
+
+    url
 }
 
 impl std::fmt::Debug for DbParams {
@@ -233,8 +225,6 @@ pub struct ServerConfig {
 
 impl ServerConfig {
     pub async fn try_from(conf: &ClapConfig) -> KResult<Self> {
-        info!("initializing the server with user configuration: {conf:#?}");
-
         // Initialize the workspace
         let workspace = conf.workspace.init()?;
 
@@ -267,9 +257,6 @@ impl ServerConfig {
             verify_cert,
             bootstrap_server_config: conf.bootstrap_server.clone(),
         };
-
-        info!("generated server conf: {server_conf:#?}");
-
         Ok(server_conf)
     }
 }
@@ -293,8 +280,21 @@ impl fmt::Debug for ServerConfig {
             &mut x
         };
         let x = x
-            .field("kms_url", &format!("{}:{}", &self.hostname, &self.port))
-            .field("db_params", &self.db_params);
+            .field(
+                "kms_url",
+                &format!(
+                    "http{}://{}:{}",
+                    if self.server_pkcs_12.is_some() {
+                        "s"
+                    } else {
+                        ""
+                    },
+                    &self.hostname,
+                    &self.port
+                ),
+            )
+            .field("db_params", &self.db_params)
+            .field("clear_db_on_start", &self.clear_db_on_start);
         let x = if let Some(jwt_issuer_uri) = &self.jwt_issuer_uri {
             x.field("jwt_issuer_uri", &jwt_issuer_uri)
                 .field("jwks", &self.jwks)

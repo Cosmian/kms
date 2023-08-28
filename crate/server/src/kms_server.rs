@@ -55,6 +55,8 @@ pub async fn start_kms_server(
     server_config: ServerConfig,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
+    // Log the server configuration
+    info!("KMS Server configuration: {:#?}", server_config);
     if server_config.certbot.is_some() {
         // Start an HTTPS server with certbot
         start_certbot_https_kms_server(server_config, server_handle_transmitter).await

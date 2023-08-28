@@ -12,10 +12,12 @@ use futures::StreamExt;
 use openssl::pkcs12::Pkcs12;
 use serde::Deserialize;
 use tracing::warn;
+use url::Url;
 
 use crate::{
     bootstrap_server::start::{BootstrapServer, BootstrapServerMessage},
     config::DbParams,
+    database::redis::RedisWithFindex,
     error::KmsError,
     kms_error,
     result::KResult,
@@ -160,11 +162,10 @@ pub async fn redis_findex_config(
     bootstrap_server: Data<Arc<BootstrapServer>>,
 ) -> KResult<Json<SuccessResponse>> {
     let config = config.into_inner();
-    let db_params = DbParams::redis_findex_db_params(
-        &config.url,
-        &config.master_password,
-        &config.findex_label,
-    )?;
+    let url = Url::parse(&config.url)?;
+    let master_key = RedisWithFindex::master_key_from_password(&config.master_password)?;
+    let label = config.findex_label.into_bytes();
+    let db_params = DbParams::RedisFindex(url, master_key, label);
 
     process_db_params(bootstrap_server, db_params)
 }
@@ -177,7 +178,8 @@ pub async fn postgresql_config(
     bootstrap_server: Data<Arc<BootstrapServer>>,
 ) -> KResult<Json<SuccessResponse>> {
     let config = config.into_inner();
-    let db_params = DbParams::Postgres(config.url);
+    let url = Url::parse(&config.url)?;
+    let db_params = DbParams::Postgres(url);
 
     process_db_params(bootstrap_server, db_params)
 }
@@ -190,7 +192,8 @@ pub async fn mysql_config(
     bootstrap_server: Data<Arc<BootstrapServer>>,
 ) -> KResult<Json<SuccessResponse>> {
     let config = config.into_inner();
-    let db_params = DbParams::Mysql(config.url);
+    let url = Url::parse(&config.url)?;
+    let db_params = DbParams::Mysql(url);
 
     process_db_params(bootstrap_server, db_params)
 }
@@ -256,7 +259,8 @@ pub async fn start_kms_server_config(
         .read()
         .expect("pkcs12 supplied lock poisoned")
     {
-        let warning = "No PKCS12 file has been supplied. The KMS will start in plain HTTP mode.";
+        let warning =
+            "No PKCS12 file has been supplied, therefore the KMS will start in plain HTTP mode.";
         warnings += warning;
         warn!(warning)
     }
