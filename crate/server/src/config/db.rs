@@ -92,7 +92,7 @@ impl Display for DBConfig {
                         .map_or("[INVALID LABEL]", |url| url.as_str()),
                 )
             ),
-            unknown => write!(f, "Unknown database type: {}", unknown),
+            unknown => write!(f, "Unknown database type: {unknown}"),
         }?;
         write!(f, ", clear_database?: {}", self.clear_database)
     }

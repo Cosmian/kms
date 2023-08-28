@@ -20,8 +20,8 @@ use cosmian_kms_utils::{
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
         curve_25519::{
-            salsa_sealed_box::{EciesDecryption, EciesEncryption},
             operation::{create_ed25519_key_pair, create_x25519_key_pair},
+            salsa_sealed_box::{EciesDecryption, EciesEncryption},
         },
         symmetric::{create_symmetric_key, AesGcmSystem},
     },

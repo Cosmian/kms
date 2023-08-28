@@ -66,7 +66,7 @@ impl ExportCertificateAction {
         };
 
         // export the object
-        let object = export_object(client_connector, &id, false, &None, self.allow_revoked).await?;
+        let object = export_object(client_connector, &id, false, None, self.allow_revoked).await?;
 
         let certificate_bytes = match &object {
             Object::Certificate {

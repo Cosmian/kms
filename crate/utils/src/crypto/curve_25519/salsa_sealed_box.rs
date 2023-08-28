@@ -1,5 +1,5 @@
 //! ECIES encryption and decryption
-//! This module implements the NaCL Salsa Sealed Box encryption scheme, also found in libsodium.
+//! This module implements the `NaCL` Salsa Sealed Box encryption scheme, also found in libsodium.
 //! It is an hybrid encryption scheme using X25519 for the KEM and Salsa 20 Poly1305 for the DEM.
 //! This scheme does not support additional authenticated data.
 

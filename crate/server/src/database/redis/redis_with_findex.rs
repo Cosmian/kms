@@ -372,7 +372,7 @@ impl Database for RedisWithFindex {
             .objects_get(
                 &permissions
                     .keys()
-                    .map(|uid| uid.to_owned())
+                    .map(std::clone::Clone::clone)
                     .collect::<HashSet<String>>(),
             )
             .await?;

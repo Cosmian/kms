@@ -39,11 +39,12 @@ pub struct CreateCertificateAction {
 impl CreateCertificateAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         let mut attributes = Attributes {
+            object_type: Some(ObjectType::Certificate),
             vendor_attributes: Some(vec![
                 subject_as_vendor_attribute(&self.subject)?,
                 ca_as_vendor_attribute(&self.ca)?,
             ]),
-            ..Attributes::new(ObjectType::Certificate)
+            ..Attributes::default()
         };
 
         println!("attributes: {:?}", attributes);

@@ -115,8 +115,8 @@ impl Display for DbParams {
         match self {
             DbParams::Sqlite(path) => write!(f, "sqlite: {}", path.display()),
             DbParams::SqliteEnc(path) => write!(f, "sqlcipher: {}", path.display()),
-            DbParams::Postgres(url) => write!(f, "postgres: {}", url),
-            DbParams::Mysql(url) => write!(f, "mysql: {}", url),
+            DbParams::Postgres(url) => write!(f, "postgres: {url}"),
+            DbParams::Mysql(url) => write!(f, "mysql: {url}"),
             DbParams::RedisFindex(url, _, label) => {
                 write!(
                     f,

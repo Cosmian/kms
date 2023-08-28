@@ -41,11 +41,10 @@ cosmian_crypto_core = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
 cosmian_logger = { path = "../logger" }
-der = { version = "0.7.6", features = ["alloc", "derive", "flagset", "oid"] }
+der = { version = "0.7.8", features = ["alloc", "derive", "flagset", "oid"] }
 dirs = "5.0"
 dotenvy = "0.15"
 env_logger = { workspace = true }
-eyre = { workspace = true }
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
@@ -61,6 +60,7 @@ serde_json = { workspace = true }
 sqlx = { version = "0.7.0-alpha.3", default-features = false, features = ["json", "runtime-tokio-native-tls", "mysql", "postgres", "sqlite"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
+tiny-keccak = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 zeroize = { workspace = true }

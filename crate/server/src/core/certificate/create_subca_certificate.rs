@@ -43,14 +43,15 @@ async fn locate_ca_signing_key(
         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
         key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
         vendor_attributes,
-        ..Attributes::new(ObjectType::PrivateKey)
+        object_type: Some(ObjectType::PrivateKey),
+        ..Attributes::default()
     };
     set_tags(&mut search_attributes, [KMS_CA, &format!("CA={ca}")])?;
     debug!("Search attributes: CA: {}", ca);
 
     let locate_request = Locate {
         attributes: search_attributes,
-        ..Locate::new(ObjectType::PrivateKey)
+        ..Locate::default()
     };
     let locate_response = kms.locate(locate_request, owner, params).await?;
     Ok(locate_response.unique_identifiers)

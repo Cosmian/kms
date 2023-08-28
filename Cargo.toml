@@ -23,6 +23,8 @@ base64-url = "2.0"
 bitflags = "2.3"
 clap = { version = "4.1", default-features = false, features = ["help", "usage", "error-context", "derive", "cargo"] }
 cloudproof = { version = "2.2.1", features = ["findex-redis"] }
+cosmian_crypto_core = { git = "https://github.com/Cosmian/crypto_core", rev = "65b0aeb84f708b2a1bcdf5ba8cca9bd8d82b9dbd" }
+# cosmian_crypto_core = { path = "/home/manu/Cosmian/github/crypto_core" }
 env_logger = "0.10"
 hex = "0.4"
 http = "0.2"
@@ -31,6 +33,7 @@ leb128 = "0.2"
 native-tls = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }
 openssl = { version = "0.10", features = ["vendored"] }
+redis = { version = "0.23", features = ["aio", "ahash", "script", "connection-manager", "tokio-comp"] }
 reqwest = { version = "0.11", features = ["json", "native-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.96"
@@ -38,6 +41,7 @@ strum = "0.25"
 strum_macros = "0.25"
 thiserror = "1.0"
 time = "0.3"
+tiny-keccak = "2.0"
 tracing = "0.1"
 tracing-log = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
