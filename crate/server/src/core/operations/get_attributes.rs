@@ -47,7 +47,10 @@ pub async fn get_attributes(
         match requested {
             AttributeReference::Vendor(req_vdr_attr) => {
                 if let Some(vdr_attrs) = attributes.vendor_attributes.as_ref() {
-                    let mut list = res.vendor_attributes.as_ref().unwrap_or(&vec![]).clone();
+                    let mut list = res
+                        .vendor_attributes
+                        .as_ref()
+                        .map_or(Vec::new(), |va| va.clone());
                     vdr_attrs
                         .iter()
                         .filter(|attr| {

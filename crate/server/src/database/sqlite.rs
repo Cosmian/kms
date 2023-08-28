@@ -85,8 +85,8 @@ impl SqlitePool {
 
 #[async_trait]
 impl Database for SqlitePool {
-    fn filename(&self, _group_id: u128) -> PathBuf {
-        PathBuf::from("")
+    fn filename(&self, _group_id: u128) -> Option<PathBuf> {
+        None
     }
 
     async fn create(

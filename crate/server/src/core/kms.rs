@@ -110,11 +110,12 @@ impl KMS {
             // Generate a new group id
             let uid: u128 = loop {
                 let uid = Uuid::new_v4().to_u128_le();
-                let database = self.db.filename(uid);
-                if !database.exists() {
-                    // Create an empty file (to book the group id)
-                    fs::File::create(database)?;
-                    break uid
+                if let Some(database) = self.db.filename(uid) {
+                    if !database.exists() {
+                        // Create an empty file (to book the group id)
+                        fs::File::create(database)?;
+                        break uid
+                    }
                 }
             };
 
