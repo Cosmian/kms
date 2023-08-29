@@ -61,7 +61,7 @@ async fn locate_ca_signing_key(
 async fn _create_ca(
     ca: &str,
     ca_signing_key: Option<CASigningKey>,
-    subca: &str,
+    subca: Option<&str>,
     profile: &Profile,
     tags: &HashSet<String>,
     kms: &KMS,
@@ -77,7 +77,13 @@ async fn _create_ca(
             tags.insert(format!("CA={ca}"));
         }
         _ => {
-            debug!("Creating SubCA certificate: {subca}",);
+            let Some(subca) = subca else {
+                return Err(KmsError::ConversionError(format!(
+                    "Internal error: cannot create non-root CA without sub CA: {ca}",
+                )))
+            };
+
+            debug!("Creating SubCA certificate: {subca}");
             tags.insert(format!("CA={subca}"));
             tags.insert(format!("CA_parent={ca}"));
         }
@@ -105,11 +111,19 @@ async fn _create_ca(
             ca,
             create_response.public_key_unique_identifier,
         ),
-        _ => (
-            ca_signing_key.expect("expected CA signing key here"),
-            subca,
-            create_response.public_key_unique_identifier,
-        ),
+        _ => {
+            let Some(subca) = subca else {
+                return Err(KmsError::ConversionError(format!(
+                    "Internal error: cannot create non-root CA without sub CA: {ca}",
+                )))
+            };
+
+            (
+                ca_signing_key.expect("expected CA signing key here"),
+                subca,
+                create_response.public_key_unique_identifier,
+            )
+        }
     };
 
     let public_key = build_public_key(&signing_key.2, kms, owner, params).await?;
@@ -118,7 +132,7 @@ async fn _create_ca(
     debug!("Build key pair instance");
     let signer = signing_key.0.build_key_pair(kms, owner, params).await?;
 
-    debug!("new certificate: profile: {:?}", &profile);
+    debug!("new certificate: profile: {profile:?}");
     let certificate = cosmian_crypto_core::build_certificate(
         &signer,
         &public_key,
@@ -132,7 +146,9 @@ async fn _create_ca(
         .map_err(|e| KmsError::InvalidRequest(format!("Generate PEM failed: {e}")))?;
     debug!("new certificate: pem: {pem}");
 
-    // Save new certificate in database. Keep also the public key link. This link uses tags instead of a proper KMIP structure since KMIP Certificate structure does not support attribute.
+    // Save new certificate in database. Keep also the public key link.
+    // This link uses tags instead of a proper KMIP structure since
+    // KMIP Certificate structure does not support attribute.
     let object = Object::Certificate {
         certificate_type: CertificateType::X509,
         certificate_value: pem.as_bytes().to_vec(),
@@ -156,13 +172,12 @@ async fn _create_ca(
 
 async fn create_root_ca(
     ca: &str,
-    profile: &Profile,
     tags: &HashSet<String>,
     kms: &KMS,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<CASigningKey> {
-    _create_ca(ca, None, "", profile, tags, kms, owner, params).await
+    _create_ca(ca, None, None, &Profile::Root, tags, kms, owner, params).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -179,7 +194,7 @@ async fn create_subca(
     _create_ca(
         ca,
         Some(ca_signing_key),
-        subca,
+        Some(subca),
         profile,
         tags,
         kms,
@@ -202,13 +217,11 @@ async fn locate_or_create_ca_signing_key(
     let signing_keys_uids = locate_ca_signing_key(ca, kms, owner, params).await?;
 
     let Some(signing_keys_uids) = signing_keys_uids else {
-        return create_root_ca(ca, profile, tags, kms, owner, params).await
+        return create_root_ca(ca, tags, kms, owner, params).await
     };
 
     match signing_keys_uids.len() {
-        0 if matches!(profile, Profile::Root) => {
-            create_root_ca(ca, profile, tags, kms, owner, params).await
-        }
+        0 if matches!(profile, Profile::Root) => create_root_ca(ca, tags, kms, owner, params).await,
         0 => Err(KmsError::ConversionError(format!(
             "Internal error: Profile root expected here for this CA: {ca}",
         ))),
