@@ -175,7 +175,7 @@ impl fmt::Debug for ServerParams {
     }
 }
 
-/// Creates a partial clone of the ServerConfig
+/// Creates a partial clone of the ServerParams
 /// the DbParams and PKCS#12 information is not copied
 /// since it may contain sensitive material
 impl Clone for ServerParams {

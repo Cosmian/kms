@@ -42,7 +42,7 @@ async fn main() -> KResult<()> {
     debug!("Command line config: {:#?}", clap_config);
 
     // Parse the Server Config from the command line arguments
-    let server_config = ServerParams::try_from(&clap_config).await?;
+    let server_params = ServerParams::try_from(&clap_config).await?;
 
     #[cfg(feature = "timeout")]
     info!("Feature Timeout enabled");
@@ -50,12 +50,12 @@ async fn main() -> KResult<()> {
     info!("Feature Insecure enabled");
 
     fn start_correct_server(
-        server_config: ServerParams,
+        server_params: ServerParams,
     ) -> Pin<Box<dyn Future<Output = KResult<()>>>> {
-        if server_config.bootstrap_server_config.use_bootstrap_server {
-            Box::pin(start_bootstrap_server(server_config))
+        if server_params.bootstrap_server_config.use_bootstrap_server {
+            Box::pin(start_bootstrap_server(server_params))
         } else {
-            Box::pin(start_kms_server(server_config, None))
+            Box::pin(start_kms_server(server_params, None))
         }
     }
 
@@ -63,12 +63,12 @@ async fn main() -> KResult<()> {
     {
         warn!("This is a demo version, the server will stop in 3 months");
         let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(start_correct_server(server_config), demo).await;
+        futures::future::select(start_correct_server(server_params), demo).await;
     }
 
     // Start the KMS
     #[cfg(not(feature = "timeout"))]
-    start_correct_server(server_config).await?;
+    start_correct_server(server_params).await?;
 
     Ok(())
 }

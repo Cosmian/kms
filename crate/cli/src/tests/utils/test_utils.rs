@@ -63,13 +63,13 @@ impl TestsContext {
 
 /// Start a server with the given config in a separate thread
 async fn start_server(
-    server_config: ServerParams,
+    server_params: ServerParams,
 ) -> Result<(ServerHandle, JoinHandle<Result<(), CliError>>), CliError> {
     let (tx, rx) = mpsc::channel::<ServerHandle>();
     let tokio_handle = tokio::runtime::Handle::current();
     let thread_handle = thread::spawn(move || {
         tokio_handle
-            .block_on(start_kms_server(server_config, Some(tx)))
+            .block_on(start_kms_server(server_params, Some(tx)))
             .map_err(|e| CliError::ServerError(e.to_string()))
     });
     trace!("Waiting for server to start...");
@@ -215,7 +215,7 @@ pub async fn init_test_server_options(
         },
         ..Default::default()
     };
-    let server_config = ServerParams::try_from(&clap_config)
+    let server_params = ServerParams::try_from(&clap_config)
         .await
         .map_err(|e| format!("failed initializing the server config: {e}"))
         .unwrap();
@@ -260,7 +260,7 @@ pub async fn init_test_server_options(
         "Starting test server at URL: {} with server config {:?}",
         owner_cli_conf.kms_server_url, &clap_config
     );
-    let (server_handle, thread_handle) = start_server(server_config)
+    let (server_handle, thread_handle) = start_server(server_params)
         .await
         .expect("Can't start server");
 

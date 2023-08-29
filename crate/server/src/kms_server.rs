@@ -41,31 +41,31 @@ use crate::{
 /// 2. HTTPS with PKCS#12,
 /// 3. HTTPS with certbot.
 ///
-/// The method used depends on the server settings specified in the `ServerConfig` instance provided.
+/// The method used depends on the server settings specified in the `ServerParams` instance provided.
 ///
 /// # Arguments
 ///
-/// * `server_config` - An instance of `ServerConfig` that contains the settings for the server.
+/// * `server_params` - An instance of `ServerParams` that contains the settings for the server.
 /// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
 ///
 /// # Errors
 ///
 /// This function will return an error if any of the server starting methods fails.
 pub async fn start_kms_server(
-    server_config: ServerParams,
+    server_params: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // Log the server configuration
-    info!("KMS Server configuration: {:#?}", server_config);
-    if server_config.certbot.is_some() {
+    info!("KMS Server configuration: {:#?}", server_params);
+    if server_params.certbot.is_some() {
         // Start an HTTPS server with certbot
-        start_certbot_https_kms_server(server_config, server_handle_transmitter).await
-    } else if server_config.server_pkcs_12.is_some() {
+        start_certbot_https_kms_server(server_params, server_handle_transmitter).await
+    } else if server_params.server_pkcs_12.is_some() {
         // Start an HTTPS server with PKCS#12
-        start_https_kms_server(server_config, server_handle_transmitter).await
+        start_https_kms_server(server_params, server_handle_transmitter).await
     } else {
         // Start a plain HTTP server
-        start_plain_http_kms_server(server_config, server_handle_transmitter).await
+        start_plain_http_kms_server(server_params, server_handle_transmitter).await
     }
 }
 
@@ -75,7 +75,7 @@ pub async fn start_kms_server(
 ///
 /// # Arguments
 ///
-/// * `server_config` - An instance of `ServerConfig` that contains the settings for the server.
+/// * `server_params` - An instance of `ServerParams` that contains the settings for the server.
 /// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
 ///
 /// # Errors
@@ -84,11 +84,11 @@ pub async fn start_kms_server(
 /// - The KMS server cannot be instantiated or prepared
 /// - The server fails to run
 async fn start_plain_http_kms_server(
-    server_config: ServerParams,
+    server_params: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // Instantiate and prepare the KMS server
-    let kms_server = Arc::new(KMSServer::instantiate(server_config).await?);
+    let kms_server = Arc::new(KMSServer::instantiate(server_params).await?);
 
     // Prepare the server
     let server = prepare_kms_server(kms_server, None)?;
@@ -107,7 +107,7 @@ async fn start_plain_http_kms_server(
 ///
 /// # Arguments
 ///
-/// * `server_config` - An instance of `ServerConfig` that contains the settings for the server.
+/// * `server_params` - An instance of `ServerParams` that contains the settings for the server.
 /// * `server_handle_transmitter` - An optional sender channel of type `mpsc::Sender<ServerHandle>` that can be used to manage server state.
 ///
 /// # Errors
@@ -120,10 +120,10 @@ async fn start_plain_http_kms_server(
 /// - The KMS server cannot be instantiated or prepared
 /// - The server fails to run
 async fn start_https_kms_server(
-    server_config: ServerParams,
+    server_params: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
-    let p12 = server_config
+    let p12 = server_params
         .server_pkcs_12
         .as_ref()
         .ok_or_else(|| kms_error!("http/s: a PKCS#12 file must be provided"))?;
@@ -142,7 +142,7 @@ async fn start_https_kms_server(
         }
     }
 
-    if let Some(verify_cert) = &server_config.verify_cert {
+    if let Some(verify_cert) = &server_params.verify_cert {
         // This line sets the mode to verify peer (client) certificates
         builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         let mut store_builder = X509StoreBuilder::new()?;
@@ -151,7 +151,7 @@ async fn start_https_kms_server(
     }
 
     // Instantiate and prepare the KMS server
-    let kms_server = Arc::new(KMSServer::instantiate(server_config).await?);
+    let kms_server = Arc::new(KMSServer::instantiate(server_params).await?);
     let server = prepare_kms_server(kms_server, Some(builder))?;
 
     // send the server handle to the caller
@@ -167,11 +167,11 @@ async fn start_https_kms_server(
 
 /// Start and https server with the ability to renew its certificates
 async fn start_auto_renew_https(
-    server_config: ServerParams,
+    server_params: ServerParams,
     certbot: &Arc<Mutex<Certbot>>,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
-    let kms_server = Arc::new(KMSServer::instantiate(server_config).await?);
+    let kms_server = Arc::new(KMSServer::instantiate(server_params).await?);
 
     // The loop is designed to restart the server in case it stops.
     // It stops when we renew the certificates
@@ -262,11 +262,11 @@ async fn start_auto_renew_https(
 }
 
 async fn start_certbot_https_kms_server(
-    server_config: ServerParams,
+    server_params: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // Before starting any servers, check the status of our SSL certificates
-    let certbot = server_config.certbot.clone().ok_or_else(|| {
+    let certbot = server_params.certbot.clone().ok_or_else(|| {
         KmsError::ServerError("trying to start a TLS server but certbot is not used !".to_string())
     })?;
 
@@ -344,7 +344,7 @@ async fn start_certbot_https_kms_server(
     if has_valid_cert {
         // Use it and start SSL Server
         info!("Certificate is valid");
-        start_auto_renew_https(server_config, &certbot, server_handle_transmitter).await?
+        start_auto_renew_https(server_params, &certbot, server_handle_transmitter).await?
     } else {
         error!("Abort program, failed to get a valid certificate");
         kms_bail!("Abort program, failed to get a valid certificate")
