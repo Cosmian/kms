@@ -11,7 +11,7 @@ use crate::error::{result::CliResultHelper, CliError};
 /// Export an Object from the KMS
 ///
 /// # Arguments
-///  * `client_connector` - The KMS client connector
+///  * `kms_rest_client` - The KMS client connector
 ///  * `object_id` - The KMS object id
 ///  * `unwrap` - Unwrap the object if it is wrapped
 ///  * `wrapping_key_id` - The wrapping key id to wrap the key
@@ -27,7 +27,7 @@ use crate::error::{result::CliResultHelper, CliError};
 /// * If the object cannot be exported
 /// * If the object cannot be written to a file
 pub async fn export_object(
-    client_connector: &KmsRestClient,
+    kms_rest_client: &KmsRestClient,
     object_id: &str,
     unwrap: bool,
     wrapping_key_id: Option<&str>,
@@ -51,14 +51,14 @@ pub async fn export_object(
     };
     let (object, object_type) = if allow_revoked {
         //use the KMIP export function to get revoked objects
-        let export_response = client_connector
+        let export_response = kms_rest_client
             .export(Export::new(object_id, unwrap, key_wrapping_data))
             .await
             .with_context(|| "export")?;
         (export_response.object, export_response.object_type)
     } else {
         // Query the KMS with your kmip data and get the key pair ids
-        let get_response = client_connector
+        let get_response = kms_rest_client
             .get(Get::new(object_id, unwrap, key_wrapping_data))
             .await
             .with_context(|| "export")?;

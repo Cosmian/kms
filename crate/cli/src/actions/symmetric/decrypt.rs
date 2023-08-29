@@ -44,7 +44,7 @@ pub struct DecryptAction {
 }
 
 impl DecryptAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Read the file to decrypt
         let mut f = File::open(&self.input_file).context("Can't read the file to decrypt")?;
         let mut data = Vec::new();
@@ -76,7 +76,7 @@ impl DecryptAction {
         );
 
         // Query the KMS with your kmip data and get the key pair ids
-        let decrypt_response = client_connector
+        let decrypt_response = kms_rest_client
             .decrypt(decrypt_request)
             .await
             .context("Can't execute the query on the kms server")?;

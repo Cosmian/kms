@@ -73,7 +73,7 @@ pub struct ExportKeyAction {
 
 impl ExportKeyAction {
     /// Export a key from the KMS
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         let id = if let Some(key_id) = &self.key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -84,7 +84,7 @@ impl ExportKeyAction {
 
         // export the object
         let object = export_object(
-            client_connector,
+            kms_rest_client,
             &id,
             self.unwrap,
             self.wrap_key_id.as_deref(),

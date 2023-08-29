@@ -9,8 +9,8 @@ use crate::error::{result::CliResultHelper, CliError};
 pub struct ServerVersionAction;
 
 impl ServerVersionAction {
-    pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
-        let version = client_connector
+    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+        let version = kms_rest_client
             .version()
             .await
             .with_context(|| "Can't execute the version query on the kms server")?;

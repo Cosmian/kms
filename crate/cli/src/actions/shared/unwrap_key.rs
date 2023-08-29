@@ -80,7 +80,7 @@ pub struct UnwrapKeyAction {
 
 impl UnwrapKeyAction {
     /// Export a key from the KMS
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // read the key file
         let mut object = read_key_from_file(&self.key_file_in)?;
 
@@ -101,7 +101,7 @@ impl UnwrapKeyAction {
             .to_vec();
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.unwrap_key_id {
-            export_object(client_connector, key_id, false, None, false).await?
+            export_object(kms_rest_client, key_id, false, None, false).await?
         } else if let Some(key_file) = &self.unwrap_key_file {
             read_key_from_file(key_file)?
         } else {

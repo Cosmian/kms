@@ -1,4 +1,5 @@
 pub mod access;
+pub mod bootstrap;
 pub mod cover_crypt;
 pub mod elliptic_curves;
 pub mod new_database;

@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::error::{result::CliResultHelper, CliError};
 
 pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
-    client_connector: &KmsRestClient,
+    kms_rest_client: &KmsRestClient,
     object_id: Option<String>,
     object: Object,
     unwrap: bool,
@@ -45,7 +45,7 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
         object,
     };
     // send the import request
-    let response = client_connector
+    let response = kms_rest_client
         .import(import)
         .await
         .with_context(|| "cannot connect to the kms server")?;

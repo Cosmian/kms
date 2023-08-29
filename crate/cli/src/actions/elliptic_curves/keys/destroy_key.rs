@@ -26,7 +26,7 @@ pub struct DestroyKeyAction {
 }
 
 impl DestroyKeyAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         let id = if let Some(key_id) = &self.key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -35,6 +35,6 @@ impl DestroyKeyAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
-        destroy(client_connector, &id).await
+        destroy(kms_rest_client, &id).await
     }
 }

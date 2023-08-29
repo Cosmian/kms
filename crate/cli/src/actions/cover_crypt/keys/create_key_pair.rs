@@ -62,7 +62,7 @@ pub struct CreateMasterKeyPairAction {
 }
 
 impl CreateMasterKeyPairAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Parse the json policy file
         let policy = if let Some(specs_file) = &self.policy_specifications_file {
             policy_from_specifications_file(specs_file)?
@@ -76,7 +76,7 @@ impl CreateMasterKeyPairAction {
         let create_key_pair = build_create_master_keypair_request(&policy, &self.tags)?;
 
         // Query the KMS with your kmip data and get the key pair ids
-        let create_key_pair_response = client_connector
+        let create_key_pair_response = kms_rest_client
             .create_key_pair(create_key_pair)
             .await
             .with_context(|| "failed creating a Covercrypt Master Key Pair")?;

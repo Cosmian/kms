@@ -60,7 +60,7 @@ pub struct CreateUserKeyAction {
 }
 
 impl CreateUserKeyAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Verify boolean expression in self.access_policy
         AccessPolicy::from_boolean_expression(&self.access_policy)
             .with_context(|| "bad access policy syntax")?;
@@ -73,7 +73,7 @@ impl CreateUserKeyAction {
         )?;
 
         // Query the KMS with your kmip data
-        let create_response = client_connector
+        let create_response = kms_rest_client
             .create(create_user_key)
             .await
             .with_context(|| "user decryption key creation failed")?;

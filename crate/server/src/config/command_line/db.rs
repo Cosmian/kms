@@ -30,20 +30,29 @@ pub struct DBConfig {
     pub database_type: Option<String>,
 
     /// The url of the database for postgresql, mysql or findex-redis
-    #[clap(long, env = "KMS_DATABASE_URL")]
+    #[clap(
+        long, 
+        env = "KMS_DATABASE_URL",
+        required_if_eq_any([("database_type", "postgresql"), ("database_type", "mysql"), ("database_type", "redis-findex")])
+    )]
     pub database_url: Option<String>,
 
     /// The directory path of the sqlite or sqlite-enc
-    #[clap(long, env = "KMS_SQLITE_PATH", default_value = "./sqlite-data")]
+    #[clap(
+        long, 
+        env = "KMS_SQLITE_PATH", 
+        default_value = "./sqlite-data",
+        required_if_eq_any([("database_type", "sqlite"), ("database_type", "sqlite-enc")])
+    )]
     pub sqlite_path: PathBuf,
 
     /// redis-findex: a master password used to encrypt the Redis data and indexes
-    #[clap(long, env = "KMS_REDIS_MASTER_PASSWORD")]
+    #[clap(long, env = "KMS_REDIS_MASTER_PASSWORD", required_if_eq("database_type", "redis-findex"))]
     pub redis_master_password: Option<String>,
 
     /// redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts
     /// without changing the key
-    #[clap(long, env = "KMS_REDIS_FINDEX_LABEL")]
+    #[clap(long, env = "KMS_REDIS_FINDEX_LABEL", required_if_eq("database_type", "redis-findex"))]
     pub redis_findex_label: Option<String>,
 
     /// Clear the database on start.

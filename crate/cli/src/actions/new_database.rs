@@ -19,9 +19,9 @@ use crate::error::{result::CliResultHelper, CliError};
 pub struct NewDatabaseAction;
 
 impl NewDatabaseAction {
-    pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Query the KMS to get a new database
-        let token = client_connector
+        let token = kms_rest_client
             .new_database()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;

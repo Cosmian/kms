@@ -3,7 +3,7 @@ use std::process;
 use clap::{Parser, Subcommand};
 use cosmian_kms_cli::{
     actions::{
-        access::AccessAction, cover_crypt::CovercryptCommands,
+        access::AccessAction, bootstrap::BootstrapServerAction, cover_crypt::CovercryptCommands,
         elliptic_curves::EllipticCurveCommands, new_database::NewDatabaseAction,
         shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
     },
@@ -31,6 +31,7 @@ enum CliCommands {
     Locate(LocateObjectsAction),
     NewDatabase(NewDatabaseAction),
     ServerVersion(ServerVersionAction),
+    BootstrapStart(BootstrapServerAction),
 }
 
 #[tokio::main]
@@ -43,16 +44,17 @@ async fn main() {
 
 async fn main_() -> Result<(), CliError> {
     let opts = Cli::parse();
-    let conf = CliConf::load()?;
+    let kms_rest_client = CliConf::load()?;
 
     match opts.command {
-        CliCommands::Locate(action) => action.run(&conf).await?,
-        CliCommands::Cc(action) => action.process(&conf).await?,
-        CliCommands::Ec(action) => action.process(&conf).await?,
-        CliCommands::Sym(action) => action.process(&conf).await?,
-        CliCommands::AccessRights(action) => action.process(&conf).await?,
-        CliCommands::NewDatabase(action) => action.process(&conf).await?,
-        CliCommands::ServerVersion(action) => action.process(&conf).await?,
+        CliCommands::Locate(action) => action.process(&kms_rest_client).await?,
+        CliCommands::Cc(action) => action.process(&kms_rest_client).await?,
+        CliCommands::Ec(action) => action.process(&kms_rest_client).await?,
+        CliCommands::Sym(action) => action.process(&kms_rest_client).await?,
+        CliCommands::AccessRights(action) => action.process(&kms_rest_client).await?,
+        CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
+        CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
+        CliCommands::BootstrapStart(action) => action.process(&kms_rest_client).await?,
     };
 
     Ok(())
