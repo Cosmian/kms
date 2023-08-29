@@ -41,5 +41,5 @@ jobs:
           python3 crate/pyo3/python/scripts/test_kms.py
           # Check that the lib version is the same as the server
           cargo install cargo-get
-          diff <(cargo get --root crate/pyo3 version) <(cargo get --root crate/server version) || (echo "Update the version in crate/pyo3/Cargo.toml"; exit
+          diff <(cargo get --entry crate/pyo3 package.version) <(cargo get --entry crate/server package.version) || (echo "Update the version in crate/pyo3/Cargo.toml"; exit
             1)
