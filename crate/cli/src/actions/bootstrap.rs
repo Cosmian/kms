@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use clap::{Args, Parser};
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::BootstrapRestClient;
 
-use crate::error::{result::CliResultHelper, CliError};
+use crate::error::CliError;
 
 /// Provide configuration and start the KMS server via the bootstrap server.
 ///
@@ -23,13 +23,14 @@ pub struct BootstrapServerAction {
 }
 
 impl BootstrapServerAction {
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
-        let version = kms_rest_client
-            .version()
-            .await
-            .with_context(|| "Can't execute the bootstrap command on the server")?;
-
-        println!("{}", version);
+    pub async fn process(
+        &self,
+        bootstrap_rest_client: &BootstrapRestClient,
+    ) -> Result<(), CliError> {
+        if let Some(pkcs12_file) = &self.pkcs12.https_p12_file {
+            let response = bootstrap_rest_client.upload_pkcs12(pkcs12_file).await?;
+            println!("{}", response.success);
+        }
 
         Ok(())
     }

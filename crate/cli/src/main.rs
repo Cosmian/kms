@@ -44,7 +44,7 @@ async fn main() {
 
 async fn main_() -> Result<(), CliError> {
     let opts = Cli::parse();
-    let kms_rest_client = CliConf::load()?;
+    let (kms_rest_client, bootstrap_rest_client) = CliConf::load()?;
 
     match opts.command {
         CliCommands::Locate(action) => action.process(&kms_rest_client).await?,
@@ -54,7 +54,7 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::AccessRights(action) => action.process(&kms_rest_client).await?,
         CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
         CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
-        CliCommands::BootstrapStart(action) => action.process(&kms_rest_client).await?,
+        CliCommands::BootstrapStart(action) => action.process(&bootstrap_rest_client).await?,
     };
 
     Ok(())
