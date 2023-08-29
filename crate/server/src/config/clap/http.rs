@@ -10,15 +10,15 @@ use crate::{kms_bail, result::KResult};
 
 #[derive(Args, Clone)]
 pub struct HTTPConfig {
-    /// The server http port
+    /// The KMS server port
     #[clap(long, env = "KMS_PORT", default_value = "9998")]
     pub port: u16,
 
-    /// The server http hostname
+    /// The KMS server (and bootstrap server) hostname
     #[clap(long, env = "KMS_HOSTNAME", default_value = "0.0.0.0")]
     pub hostname: String,
 
-    /// The server optional PKCS#12 Certificate file. If provided, this will start the server in HTTPS mode.
+    /// The KMS server optional PKCS#12 Certificate file. If provided, this will start the server in HTTPS mode.
     #[clap(long, env = "KMS_HTTPS_P12_FILE")]
     pub https_p12_file: Option<PathBuf>,
 

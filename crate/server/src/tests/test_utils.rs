@@ -13,7 +13,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    config::{db::DBConfig, http::HTTPConfig, ClapConfig, ServerConfig},
+    config::{ClapConfig, DBConfig, HTTPConfig, ServerParams},
     result::KResult,
     routes, KMSServer,
 };
@@ -47,7 +47,7 @@ pub async fn test_app()
 -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let clap_config = https_clap_config();
 
-    let server_config = ServerConfig::try_from(&clap_config).await.unwrap();
+    let server_config = ServerParams::try_from(&clap_config).await.unwrap();
 
     let kms_server = Arc::new(
         KMSServer::instantiate(server_config)

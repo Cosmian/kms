@@ -33,7 +33,7 @@ use zeroize::Zeroize;
 
 use super::{cover_crypt::create_user_decryption_key, KMS};
 use crate::{
-    config::{DbParams, ServerConfig},
+    config::{DbParams, ServerParams},
     core::operations::unwrap_key,
     database::{
         cached_sqlcipher::CachedSqlCipher,
@@ -50,7 +50,7 @@ use crate::{
 };
 
 impl KMS {
-    pub async fn instantiate(mut shared_config: ServerConfig) -> KResult<Self> {
+    pub async fn instantiate(mut shared_config: ServerParams) -> KResult<Self> {
         let db: Box<dyn Database + Sync + Send> = if let Some(mut db_params) =
             shared_config.db_params.as_mut()
         {

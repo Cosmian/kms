@@ -22,7 +22,7 @@ use openssl::{
 use tracing::{debug, error, info};
 
 use crate::{
-    config::{self, ServerConfig},
+    config::{self, ServerParams},
     core::{certbot::Certbot, KMS},
     error::KmsError,
     kms_bail, kms_error,
@@ -52,7 +52,7 @@ use crate::{
 ///
 /// This function will return an error if any of the server starting methods fails.
 pub async fn start_kms_server(
-    server_config: ServerConfig,
+    server_config: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // Log the server configuration
@@ -84,7 +84,7 @@ pub async fn start_kms_server(
 /// - The KMS server cannot be instantiated or prepared
 /// - The server fails to run
 async fn start_plain_http_kms_server(
-    server_config: ServerConfig,
+    server_config: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // Instantiate and prepare the KMS server
@@ -120,7 +120,7 @@ async fn start_plain_http_kms_server(
 /// - The KMS server cannot be instantiated or prepared
 /// - The server fails to run
 async fn start_https_kms_server(
-    server_config: ServerConfig,
+    server_config: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     let p12 = server_config
@@ -167,7 +167,7 @@ async fn start_https_kms_server(
 
 /// Start and https server with the ability to renew its certificates
 async fn start_auto_renew_https(
-    server_config: ServerConfig,
+    server_config: ServerParams,
     certbot: &Arc<Mutex<Certbot>>,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
@@ -262,7 +262,7 @@ async fn start_auto_renew_https(
 }
 
 async fn start_certbot_https_kms_server(
-    server_config: ServerConfig,
+    server_config: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // Before starting any servers, check the status of our SSL certificates

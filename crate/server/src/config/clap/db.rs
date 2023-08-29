@@ -3,8 +3,11 @@ use std::{fmt::Display, path::PathBuf};
 use clap::Args;
 use url::Url;
 
-use super::{workspace::WorkspaceConfig, DbParams};
-use crate::{database::redis::RedisWithFindex, kms_bail, kms_error, result::KResult};
+use super::workspace::WorkspaceConfig;
+use crate::{
+    config::params::DbParams, database::redis::RedisWithFindex, kms_bail, kms_error,
+    result::KResult,
+};
 
 /// Configuration for the database
 #[derive(Args, Clone)]

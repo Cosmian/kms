@@ -11,13 +11,7 @@ use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kms_server::{
-    config::{
-        db::DBConfig,
-        http::HTTPConfig,
-        jwe::{JWEConfig, Jwk},
-        jwt_auth_config::JwtAuthConfig,
-        ClapConfig, ServerConfig,
-    },
+    config::{ClapConfig, DBConfig, HTTPConfig, JWEConfig, Jwk, JwtAuthConfig, ServerParams},
     kms_server::start_kms_server,
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;
@@ -69,7 +63,7 @@ impl TestsContext {
 
 /// Start a server with the given config in a separate thread
 async fn start_server(
-    server_config: ServerConfig,
+    server_config: ServerParams,
 ) -> Result<(ServerHandle, JoinHandle<Result<(), CliError>>), CliError> {
     let (tx, rx) = mpsc::channel::<ServerHandle>();
     let tokio_handle = tokio::runtime::Handle::current();
@@ -221,7 +215,7 @@ pub async fn init_test_server_options(
         },
         ..Default::default()
     };
-    let server_config = ServerConfig::try_from(&clap_config)
+    let server_config = ServerParams::try_from(&clap_config)
         .await
         .map_err(|e| format!("failed initializing the server config: {e}"))
         .unwrap();

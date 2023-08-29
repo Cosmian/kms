@@ -2,7 +2,7 @@ use std::pin::Pin;
 
 use cosmian_kms_server::{
     bootstrap_server::start_bootstrap_server,
-    config::{ClapConfig, ServerConfig},
+    config::{ClapConfig, ServerParams},
     kms_server::start_kms_server,
     result::KResult,
 };
@@ -42,7 +42,7 @@ async fn main() -> KResult<()> {
     debug!("Command line config: {:#?}", clap_config);
 
     // Parse the Server Config from the command line arguments
-    let server_config = ServerConfig::try_from(&clap_config).await?;
+    let server_config = ServerParams::try_from(&clap_config).await?;
 
     #[cfg(feature = "timeout")]
     info!("Feature Timeout enabled");
@@ -50,7 +50,7 @@ async fn main() -> KResult<()> {
     info!("Feature Insecure enabled");
 
     fn start_correct_server(
-        server_config: ServerConfig,
+        server_config: ServerParams,
     ) -> Pin<Box<dyn Future<Output = KResult<()>>>> {
         if server_config.bootstrap_server_config.use_bootstrap_server {
             Box::pin(start_bootstrap_server(server_config))

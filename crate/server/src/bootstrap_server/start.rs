@@ -25,7 +25,7 @@ use super::{
     },
 };
 use crate::{
-    config::{DbParams, ServerConfig},
+    config::{DbParams, ServerParams},
     error::KmsError,
     kms_bail, kms_error,
     kms_server::start_kms_server,
@@ -46,13 +46,13 @@ pub enum BootstrapServerMessage {
 }
 
 pub struct BootstrapServer {
-    pub config: ServerConfig,
+    pub config: ServerParams,
     pub db_params_supplied: RwLock<bool>,
     pub pkcs12_supplied: RwLock<bool>,
     pub bs_msg_tx: mpsc::Sender<BootstrapServerMessage>,
 }
 
-pub async fn start_bootstrap_server(mut config: ServerConfig) -> KResult<()> {
+pub async fn start_bootstrap_server(mut config: ServerParams) -> KResult<()> {
     // check that the config actually requests a bootstrap server
     if !config.bootstrap_server_config.use_bootstrap_server {
         kms_bail!("Start bootstrap server is called but config says to not start one!")
