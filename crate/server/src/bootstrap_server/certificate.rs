@@ -51,12 +51,13 @@ pub(crate) fn generate_self_signed_cert(
     builder.set_not_before(Asn1Time::days_from_now(0)?.as_ref())?;
     builder.set_not_after(Asn1Time::days_from_now(1)?.as_ref())?;
 
-    // // Set the key usage extension to allow the certificate to be used for TLS.
-    // builder.append_extension(
-    //     openssl::x509::extension::KeyUsage::new()
-    //         .key_agreement()
-    //         .build()?,
-    // )?;
+    // Set the key usage extension to allow the certificate to be used for TLS.
+    builder.append_extension(
+        openssl::x509::extension::KeyUsage::new()
+            .key_encipherment()
+            .digital_signature()
+            .build()?,
+    )?;
 
     builder.sign(&private_key, openssl::hash::MessageDigest::sha256())?;
     // now build the certificate
