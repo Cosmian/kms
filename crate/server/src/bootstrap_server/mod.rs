@@ -1,5 +1,5 @@
 mod certificate;
 mod routes;
-mod start;
+mod server;
 
-pub use start::start_bootstrap_server;
+pub use server::start_bootstrap_server;

@@ -15,7 +15,7 @@ use tracing::warn;
 use url::Url;
 
 use crate::{
-    bootstrap_server::start::{BootstrapServer, BootstrapServerMessage},
+    bootstrap_server::server::{BootstrapServer, BootstrapServerMessage},
     config::DbParams,
     database::redis::RedisWithFindex,
     error::KmsError,
@@ -38,6 +38,11 @@ pub struct UrlConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct PathConfig {
     pub path: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PasswordConfig {
+    pub password: String,
 }
 
 ///
@@ -82,38 +87,34 @@ pub async fn receive_pkcs12(
     // Parse the PKCS#12
     let pkcs12 = Pkcs12::from_der(&bytes)
         .map_err(|e| kms_error!("Error reading PKCS#12 from DER: {}", e))?;
-    // Verify the PKCS 12 by extracting the certificate, private key and chain
-    let p12 = pkcs12
-        .parse2("")
-        .map_err(|e| kms_error!("Error parsing PKCS#12: {}", e))?;
-    let cert = p12
-        .cert
-        .as_ref()
-        .ok_or_else(|| kms_error!("Missing certificate"))?;
-    let subject_name = cert.subject_name().to_owned()?;
-    let _pkey = p12
-        .pkey
-        .as_ref()
-        .ok_or_else(|| kms_error!("Missing private key"))?;
 
-    // Send the parsed PKCS12 to the main thread on the tx channel
-    bootstrap_server
-        .bs_msg_tx
-        .send(BootstrapServerMessage::PKCS12(p12))
-        .map_err(|e| kms_error!("failed sending the PKCS12 to the main thread: {e}"))?;
-
-    //flag the db params as supplied
     *bootstrap_server
-        .pkcs12_supplied
+        .pkcs12_received
         .write()
-        .expect("PKCS12 supplied lock poisoned") = true;
+        .expect("PKCS12 received lock poisoned") = Some(pkcs12);
 
     let response = SuccessResponse {
-        success: format!(
-            "PKCS#12 of {} bytes received with subject name:{:?},",
-            bytes.len(),
-            subject_name.as_ref()
-        ),
+        success: format!("PKCS#12 of {} bytes received", bytes.len(),),
+    };
+    Ok(Json(response))
+}
+
+/// Supply a PKCS12 password if it is a non-empty string
+#[post("/pkcs12_password")]
+pub async fn pkcs12_password(
+    _req: HttpRequest,
+    config: Json<PasswordConfig>,
+    bootstrap_server: Data<Arc<BootstrapServer>>,
+) -> KResult<Json<SuccessResponse>> {
+    let config = config.into_inner();
+
+    *bootstrap_server
+        .pkcs12_password_received
+        .write()
+        .expect("PKCS12 password received lock poisoned") = Some(config.password.to_owned());
+
+    let response = SuccessResponse {
+        success: format!("PKCS#12 password received"),
     };
     Ok(Json(response))
 }
@@ -240,6 +241,8 @@ pub async fn start_kms_server_config(
     let config = config.into_inner();
     let clear_database = config.clear_database.unwrap_or(false);
 
+    maybe_parse_and_send_pkcs12(bootstrap_server.get_ref().clone())?;
+
     // check if DB params have been supplied
     if !*bootstrap_server
         .db_params_supplied
@@ -247,7 +250,7 @@ pub async fn start_kms_server_config(
         .expect("db params supplied lock poisoned")
     {
         return Err(KmsError::InvalidRequest(
-            "The KMS will not start: please provide Database parameters to the bootstrap server \
+            "The KMS will not start: please provide database parameters to the bootstrap server \
              first."
                 .to_string(),
         ))
@@ -262,6 +265,7 @@ pub async fn start_kms_server_config(
     {
         let warning =
             "No PKCS12 file has been supplied, therefore the KMS will start in plain HTTP mode.";
+        warnings += " ";
         warnings += warning;
         warn!(warning)
     }
@@ -269,6 +273,7 @@ pub async fn start_kms_server_config(
     // issue a warning if the database will be cleared
     if clear_database {
         let warning = "The KMS database will be erased.";
+        warnings += " ";
         warnings += warning;
         warn!(warning)
     }
@@ -284,9 +289,57 @@ pub async fn start_kms_server_config(
     let warnings = if warnings.is_empty() {
         "".to_string()
     } else {
-        format!(" with warnings: {}", warnings)
+        format!(" with warnings:{}", warnings)
     };
     Ok(Json(SuccessResponse {
-        success: "Starting KMS server configuration".to_string() + warnings.as_str(),
+        success: "Starting the KMS server".to_string() + warnings.as_str(),
     }))
+}
+
+fn maybe_parse_and_send_pkcs12(bootstrap_server: Arc<BootstrapServer>) -> KResult<()> {
+    if let Some(pkcs12) = bootstrap_server
+        .pkcs12_received
+        .read()
+        .expect("pkcs12 received lock poisoned")
+        .as_ref()
+    {
+        // determine the password to use
+        let password = bootstrap_server
+            .pkcs12_password_received
+            .read()
+            .expect("pkcs12 received lock poisoned")
+            .as_ref()
+            .map(|s| s.to_owned())
+            .unwrap_or_default();
+
+        // Verify the PKCS 12 by extracting the certificate, private key and chain
+        let p12 = pkcs12.parse2(&password).map_err(|e| {
+            kms_error!(
+                "Error parsing PKCS#12: {}. Did you supply the correct password?",
+                e
+            )
+        })?;
+        let _cert = p12
+            .cert
+            .as_ref()
+            .ok_or_else(|| kms_error!("Missing certificate"))?;
+        let _pkey = p12
+            .pkey
+            .as_ref()
+            .ok_or_else(|| kms_error!("Missing private key"))?;
+
+        // Send the parsed PKCS12 to the main thread on the tx channel
+        bootstrap_server
+            .bs_msg_tx
+            .send(BootstrapServerMessage::Pkcs12(p12))
+            .map_err(|e| kms_error!("failed sending the PKCS12 to the main thread: {e}"))?;
+
+        //flag the db params as supplied
+        *bootstrap_server
+            .pkcs12_supplied
+            .write()
+            .expect("PKCS12 supplied lock poisoned") = true;
+    }
+
+    Ok(())
 }

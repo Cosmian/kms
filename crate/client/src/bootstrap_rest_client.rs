@@ -25,15 +25,28 @@ pub struct BootstrapRestClient {
 }
 
 impl BootstrapRestClient {
-    /// This operation requests the server to revoke an access on an object to a user
-    /// The user could be unknown from the database.
-    /// The object uid must be known from the database.
-    /// If the user already has no access, nothing is done. No error is returned.
+    /// Upload a PKCS12 file containing the KMS server's SSL certificate and private key.
+    /// The KMS server will be started in HTTPS mode.
+    ///
+    /// Call the `pkcs12_password()` method to supply the PKCS12 password
+    /// if it is a non-empty string,
     pub async fn upload_pkcs12(
         &self,
         pkcs12_file: &PathBuf,
     ) -> Result<SuccessResponse, RestClientError> {
         self.upload("/pkcs12", pkcs12_file).await
+    }
+
+    pub async fn start_kms_server(
+        &self,
+        clear_database: bool,
+    ) -> Result<SuccessResponse, RestClientError> {
+        #[derive(Serialize)]
+        pub struct StartKmsServer {
+            pub clear_database: bool,
+        }
+        self.post("/start", Some(&StartKmsServer { clear_database }))
+            .await
     }
 }
 

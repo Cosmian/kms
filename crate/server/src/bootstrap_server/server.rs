@@ -11,7 +11,7 @@ use actix_web::{
     App, HttpServer,
 };
 use openssl::{
-    pkcs12::ParsedPkcs12_2,
+    pkcs12::{ParsedPkcs12_2, Pkcs12},
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
@@ -38,7 +38,7 @@ use crate::{
 
 pub enum BootstrapServerMessage {
     /// The PKCS12 to use for the server to start in HTTPS
-    PKCS12(ParsedPkcs12_2),
+    Pkcs12(ParsedPkcs12_2),
     /// The DbParams to use for the database
     DbParams(DbParams),
     /// Start the KMS server; pass true to clear the database on start
@@ -49,6 +49,8 @@ pub struct BootstrapServer {
     pub config: ServerParams,
     pub db_params_supplied: RwLock<bool>,
     pub pkcs12_supplied: RwLock<bool>,
+    pub pkcs12_received: RwLock<Option<Pkcs12>>,
+    pub pkcs12_password_received: RwLock<Option<String>>,
     pub bs_msg_tx: mpsc::Sender<BootstrapServerMessage>,
 }
 
@@ -73,6 +75,8 @@ pub async fn start_bootstrap_server(mut config: ServerParams) -> KResult<()> {
         db_params_supplied: RwLock::new(config.db_params.is_some()),
         pkcs12_supplied: RwLock::new(config.server_pkcs_12.is_some()),
         bs_msg_tx,
+        pkcs12_received: RwLock::new(None),
+        pkcs12_password_received: RwLock::new(None),
     });
 
     let tokio_handle = tokio::runtime::Handle::current();
@@ -99,7 +103,7 @@ pub async fn start_bootstrap_server(mut config: ServerParams) -> KResult<()> {
             .recv()
             .map_err(|e| kms_error!("Can't get a message from bootstrap server: {}", e))?;
         match msg {
-            BootstrapServerMessage::PKCS12(p12) => {
+            BootstrapServerMessage::Pkcs12(p12) => {
                 let subject_name = format!(
                     "{:?}",
                     p12.cert
@@ -109,7 +113,10 @@ pub async fn start_bootstrap_server(mut config: ServerParams) -> KResult<()> {
                 );
                 // Set the PKCS12 in the config
                 config.server_pkcs_12 = Some(p12);
-                info!("PKCS12 received with subject name: {}", subject_name);
+                info!(
+                    "PKCS12 received and successfully opened with subject name: {}",
+                    subject_name
+                );
             }
             BootstrapServerMessage::DbParams(db_params) => {
                 let db_params_str = format!("{:?}", db_params);

@@ -27,10 +27,16 @@ impl BootstrapServerAction {
         &self,
         bootstrap_rest_client: &BootstrapRestClient,
     ) -> Result<(), CliError> {
+        println!("Server response:");
         if let Some(pkcs12_file) = &self.pkcs12.https_p12_file {
             let response = bootstrap_rest_client.upload_pkcs12(pkcs12_file).await?;
-            println!("{}", response.success);
+            println!("  -> {}", response.success);
         }
+
+        let response = bootstrap_rest_client
+            .start_kms_server(self.db.clear_database)
+            .await?;
+        println!("  -> {}", response.success);
 
         Ok(())
     }
