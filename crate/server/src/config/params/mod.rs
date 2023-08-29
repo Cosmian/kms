@@ -6,6 +6,6 @@ pub use db_params::DbParams;
 pub use enclave_params::EnclaveParams;
 pub use server_params::ServerParams;
 
-use super::clap::BootstrapServerConfig;
+use super::command_line::BootstrapServerConfig;
 
 pub type BootstrapServerParams = BootstrapServerConfig;

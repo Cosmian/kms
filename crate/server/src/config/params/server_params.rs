@@ -10,7 +10,7 @@ use openssl::{pkcs12::ParsedPkcs12_2, x509::X509};
 use super::{BootstrapServerParams, DbParams, EnclaveParams};
 use crate::{
     config::{
-        clap::{HttpsCertbotConfig, JWEConfig},
+        command_line::{HttpsCertbotConfig, JWEConfig},
         ClapConfig,
     },
     core::certbot::Certbot,
