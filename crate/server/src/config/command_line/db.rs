@@ -12,15 +12,16 @@ use crate::{
 /// Configuration for the database
 #[derive(Args, Clone)]
 pub struct DBConfig {
-    /// The type of database used as backend
+    /// The database type of the KMS server
     /// - postgresql: PostgreSQL. The database url must be provided
     /// - mysql: MySql or MariaDB. The database url must be provided
     /// - sqlite: SQLite. The data will be stored at the sqlite_path directory
     /// - sqlite-enc: SQLite encrypted at rest. the data will be stored at the sqlite_path directory.
     ///   A key must be supplied on every call
-    /// - redis-findex: and encrypted redis database with an encrypted index using Findex.
-    ///   The database url must be provided, as well as the redis-master-password and the redis-findex-label
-    /// _
+    /// - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
+    ///   The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
+    ///
+    /// The database configuration can be securely provided via the bootstrap server. Check the documentation.
     #[clap(
         long,
         env("KMS_DATABASE_TYPE"),

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::{Args, Parser};
 use cosmian_kms_client::BootstrapRestClient;
 
-use crate::error::CliError;
+use crate::{cli_bail, error::CliError};
 
 /// Provide configuration and start the KMS server via the bootstrap server.
 ///
@@ -40,6 +40,66 @@ impl BootstrapServerAction {
             println!("  -> {}", response.success);
         }
 
+        // set the database configuration
+        if let Some(database_type) = &self.db.database_type {
+            let response = match database_type.as_str() {
+                "redis-findex" => {
+                    let database_url = self.db.database_url.as_ref().ok_or_else(|| {
+                        CliError::Default("Missing the database url for redis-findex".to_string())
+                    })?;
+                    let redis_master_password =
+                        self.db.redis_master_password.as_ref().ok_or_else(|| {
+                            CliError::Default(
+                                "Missing the Redis master password for redis-findex".to_string(),
+                            )
+                        })?;
+                    let redis_findex_label =
+                        self.db.redis_findex_label.as_ref().ok_or_else(|| {
+                            CliError::Default(
+                                "Missing the Findex label for redis-findex".to_string(),
+                            )
+                        })?;
+                    bootstrap_rest_client
+                        .set_redis_findex_config(
+                            database_url,
+                            redis_master_password,
+                            redis_findex_label,
+                        )
+                        .await?
+                }
+                "postgresql" => {
+                    if let Some(database_url) = &self.db.database_url {
+                        bootstrap_rest_client
+                            .set_postgresql_config(database_url)
+                            .await?
+                    } else {
+                        cli_bail!("Missing the database url for postgresql")
+                    }
+                }
+                "mysql" => {
+                    if let Some(database_url) = &self.db.database_url {
+                        bootstrap_rest_client.set_mysql_config(database_url).await?
+                    } else {
+                        cli_bail!("Missing the database url for mysql")
+                    }
+                }
+                "sqlite" => {
+                    bootstrap_rest_client
+                        .set_sqlite_config(&self.db.sqlite_path)
+                        .await?
+                }
+                "sqlite-enc" => {
+                    bootstrap_rest_client
+                        .set_sqlite_enc_config(&self.db.sqlite_path)
+                        .await?
+                }
+                _ => {
+                    cli_bail!("Invalid database type");
+                }
+            };
+            println!("  -> {}", response.success);
+        }
+
         let response = bootstrap_rest_client
             .start_kms_server(self.db.clear_database)
             .await?;
@@ -52,14 +112,14 @@ impl BootstrapServerAction {
 /// Configuration for the database
 #[derive(Args, Clone)]
 pub struct DatabaseConfig {
-    /// The type of database used as backend
+    /// The database type of the KMS server:
     /// - postgresql: PostgreSQL. The database url must be provided
     /// - mysql: MySql or MariaDB. The database url must be provided
     /// - sqlite: SQLite. The data will be stored at the sqlite_path directory
     /// - sqlite-enc: SQLite encrypted at rest. the data will be stored at the sqlite_path directory.
     ///   A key must be supplied on every call
-    /// - redis-findex: and encrypted redis database with an encrypted index using Findex.
-    ///   The database url must be provided, as well as the redis-master-password and the redis-findex-label
+    /// - redis-findex: and redis database with encrypted data and encrypted indexes thanks to Findex.
+    ///   The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
     /// _
     #[clap(
         long,
@@ -100,11 +160,11 @@ pub struct DatabaseConfig {
 
 #[derive(Args, Clone)]
 pub struct Pkcs12Config {
-    /// The KMS server optional PKCS#12 Certificate file. If provided, this will start the server in HTTPS mode.
+    /// The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode.
     #[clap(long)]
     pub https_p12_file: Option<PathBuf>,
 
-    /// The password to open the PKCS#12 Certificate file if not an empty string
+    /// The password to open the PKCS#12 Certificates and Key file if not an empty string
     #[clap(long, default_value = "")]
     pub https_p12_password: String,
 }

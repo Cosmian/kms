@@ -54,6 +54,107 @@ impl BootstrapRestClient {
         .await
     }
 
+    pub async fn set_redis_findex_config(
+        &self,
+        database_url: &str,
+        master_password: &str,
+        findex_label: &str,
+    ) -> Result<SuccessResponse, RestClientError> {
+        #[derive(Serialize)]
+        pub struct RedisFindexConfig {
+            pub url: String,
+            pub master_password: String,
+            pub findex_label: String,
+        }
+        self.post(
+            "/redis-findex",
+            Some(&RedisFindexConfig {
+                url: database_url.to_string(),
+                master_password: master_password.to_string(),
+                findex_label: findex_label.to_string(),
+            }),
+        )
+        .await
+    }
+
+    pub async fn set_postgresql_config(
+        &self,
+        database_url: &str,
+    ) -> Result<SuccessResponse, RestClientError> {
+        #[derive(Serialize)]
+        pub struct UrlConfig {
+            pub url: String,
+        }
+        self.post(
+            "/postgresql",
+            Some(&UrlConfig {
+                url: database_url.to_string(),
+            }),
+        )
+        .await
+    }
+
+    pub async fn set_mysql_config(
+        &self,
+        database_url: &str,
+    ) -> Result<SuccessResponse, RestClientError> {
+        #[derive(Serialize)]
+        pub struct UrlConfig {
+            pub url: String,
+        }
+        self.post(
+            "/mysql",
+            Some(&UrlConfig {
+                url: database_url.to_string(),
+            }),
+        )
+        .await
+    }
+
+    pub async fn set_sqlite_config(
+        &self,
+        path: &PathBuf,
+    ) -> Result<SuccessResponse, RestClientError> {
+        #[derive(Serialize)]
+        pub struct PathConfig {
+            pub path: String,
+        }
+        self.post(
+            "/sqlite",
+            Some(&PathConfig {
+                path: path
+                    .to_str()
+                    .ok_or_else(|| {
+                        RestClientError::Default(format!("Invalid sqlite path: {:?}", path))
+                    })?
+                    .to_string(),
+            }),
+        )
+        .await
+    }
+
+    pub async fn set_sqlite_enc_config(
+        &self,
+        path: &PathBuf,
+    ) -> Result<SuccessResponse, RestClientError> {
+        #[derive(Serialize)]
+        pub struct PathConfig {
+            pub path: String,
+        }
+        self.post(
+            "/sqlite-enc",
+            Some(&PathConfig {
+                path: path
+                    .to_str()
+                    .ok_or_else(|| {
+                        RestClientError::Default(format!("Invalid sqlite-enc path: {:?}", path))
+                    })?
+                    .to_string(),
+            }),
+        )
+        .await
+    }
+
     pub async fn start_kms_server(
         &self,
         clear_database: bool,

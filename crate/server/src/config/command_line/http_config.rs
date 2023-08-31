@@ -18,11 +18,15 @@ pub struct HTTPConfig {
     #[clap(long, env = "KMS_HOSTNAME", default_value = "0.0.0.0")]
     pub hostname: String,
 
-    /// The KMS server optional PKCS#12 Certificate file. If provided, this will start the server in HTTPS mode.
+    /// The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode.
+    ///
+    /// The PKCS#12 can be securely provided via the bootstrap server. Check the documentation.
     #[clap(long, env = "KMS_HTTPS_P12_FILE")]
     pub https_p12_file: Option<PathBuf>,
 
-    /// The password to open the PKCS#12 Certificate file
+    /// The password to open the PKCS#12 Certificates and Key file
+    ///
+    /// The PKCS#12 password can be securely provided via the bootstrap server. Check the documentation.
     #[clap(long, env = "KMS_HTTPS_P12_PASSWORD", default_value = "")]
     pub https_p12_password: String,
 
