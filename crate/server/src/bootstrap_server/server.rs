@@ -20,8 +20,8 @@ use tracing::{info, trace};
 use super::{
     certificate::generate_self_signed_cert,
     routes::{
-        mysql_config, postgresql_config, receive_pkcs12, redis_findex_config, sqlite_config,
-        sqlite_enc_config, start_kms_server_config,
+        mysql_config, pkcs12_password, postgresql_config, receive_pkcs12, redis_findex_config,
+        sqlite_config, sqlite_enc_config, start_kms_server_config,
     },
 };
 use crate::{
@@ -248,6 +248,7 @@ fn prepare_bootstrap_server(
             .app_data(PayloadConfig::new(1_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(1_000_000)) // Set the maximum size of the JSON request payload.
             .service(receive_pkcs12)
+            .service(pkcs12_password)
             .service(redis_findex_config)
             .service(postgresql_config)
             .service(mysql_config)

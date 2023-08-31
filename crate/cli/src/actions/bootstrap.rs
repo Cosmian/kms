@@ -28,6 +28,13 @@ impl BootstrapServerAction {
         bootstrap_rest_client: &BootstrapRestClient,
     ) -> Result<(), CliError> {
         println!("Server response:");
+
+        // set the password if provided, if not set the empty string
+        bootstrap_rest_client
+            .set_pkcs12_password(&self.pkcs12.https_p12_password)
+            .await?;
+
+        // upload the PKCS12 file if provided
         if let Some(pkcs12_file) = &self.pkcs12.https_p12_file {
             let response = bootstrap_rest_client.upload_pkcs12(pkcs12_file).await?;
             println!("  -> {}", response.success);

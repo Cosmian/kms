@@ -37,6 +37,23 @@ impl BootstrapRestClient {
         self.upload("/pkcs12", pkcs12_file).await
     }
 
+    pub async fn set_pkcs12_password(
+        &self,
+        pkcs12_password: &str,
+    ) -> Result<SuccessResponse, RestClientError> {
+        #[derive(Serialize)]
+        pub struct PasswordConfig {
+            pub password: String,
+        }
+        self.post(
+            "/pkcs12_password",
+            Some(&PasswordConfig {
+                password: pkcs12_password.to_string(),
+            }),
+        )
+        .await
+    }
+
     pub async fn start_kms_server(
         &self,
         clear_database: bool,
