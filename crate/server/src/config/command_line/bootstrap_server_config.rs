@@ -22,7 +22,7 @@ pub struct BootstrapServerConfig {
     /// The bootstrap server may be started on a specific port,
     /// The hostname will be that configured in --hostname
     #[clap(long, env("KMS_BOOTSTRAP_SERVER_PORT"), default_value("9998"))]
-    pub bootstrap_server_port: usize,
+    pub bootstrap_server_port: u16,
 }
 
 impl Default for BootstrapServerConfig {

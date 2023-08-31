@@ -1,13 +1,9 @@
-use std::pin::Pin;
-
 use cosmian_kms_server::{
-    bootstrap_server::start_bootstrap_server,
     config::{ClapConfig, ServerParams},
-    kms_server::start_kms_server,
     result::KResult,
+    start_server,
 };
 use dotenvy::dotenv;
-use futures::Future;
 use tracing::debug;
 #[cfg(any(feature = "timeout", feature = "insecure"))]
 use tracing::info;
@@ -18,12 +14,19 @@ mod expiry;
 
 use clap::Parser;
 
+/// The main entry point of the program.
+///
+/// This function sets up the necessary environment variables and logging options,
+/// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
+///
+/// After that, it starts the correct server based on
+/// whether the bootstrap server should be used or not (using `start_bootstrap_server()` or `start_kms_server()`, respectively).
 #[tokio::main]
 async fn main() -> KResult<()> {
+    // Set up environment variables and logging options
     if option_env!("RUST_BACKTRACE").is_none() {
         std::env::set_var("RUST_BACKTRACE", "1");
     }
-
     if option_env!("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
@@ -49,26 +52,16 @@ async fn main() -> KResult<()> {
     #[cfg(feature = "insecure")]
     info!("Feature Insecure enabled");
 
-    fn start_correct_server(
-        server_params: ServerParams,
-    ) -> Pin<Box<dyn Future<Output = KResult<()>>>> {
-        if server_params.bootstrap_server_config.use_bootstrap_server {
-            Box::pin(start_bootstrap_server(server_params))
-        } else {
-            Box::pin(start_kms_server(server_params, None))
-        }
-    }
-
     #[cfg(feature = "timeout")]
     {
         warn!("This is a demo version, the server will stop in 3 months");
         let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(start_correct_server(server_params), demo).await;
+        futures::future::select(start_server(server_params, None), demo).await;
     }
 
     // Start the KMS
     #[cfg(not(feature = "timeout"))]
-    start_correct_server(server_params).await?;
+    start_server(server_params, None).await?;
 
     Ok(())
 }

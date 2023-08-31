@@ -63,7 +63,7 @@ pub struct ServerParams {
     pub verify_cert: Option<X509>,
 
     /// Use a bootstrap server (inside an enclave for instance)
-    pub bootstrap_server_config: BootstrapServerParams,
+    pub bootstrap_server_params: BootstrapServerParams,
 }
 
 impl ServerParams {
@@ -98,7 +98,7 @@ impl ServerParams {
             force_default_username: conf.force_default_username,
             server_pkcs_12,
             verify_cert,
-            bootstrap_server_config: conf.bootstrap_server.clone(),
+            bootstrap_server_params: conf.bootstrap_server.clone(),
         };
         Ok(server_conf)
     }
@@ -107,17 +107,17 @@ impl ServerParams {
 impl fmt::Debug for ServerParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
-        let x = if self.bootstrap_server_config.use_bootstrap_server {
+        let x = if self.bootstrap_server_params.use_bootstrap_server {
             x.field(
                 "bootstrap server url",
                 &format!(
                     "https://{}:{}",
-                    &self.hostname, &self.bootstrap_server_config.bootstrap_server_port
+                    &self.hostname, &self.bootstrap_server_params.bootstrap_server_port
                 ),
             )
             .field(
                 "bootstrap server CN",
-                &self.bootstrap_server_config.bootstrap_server_common_name,
+                &self.bootstrap_server_params.bootstrap_server_common_name,
             )
         } else {
             &mut x
@@ -195,7 +195,7 @@ impl Clone for ServerParams {
             certbot: self.certbot.clone(),
             enclave_params: self.enclave_params.clone(),
             verify_cert: self.verify_cert.clone(),
-            bootstrap_server_config: self.bootstrap_server_config.clone(),
+            bootstrap_server_params: self.bootstrap_server_params.clone(),
         }
     }
 }

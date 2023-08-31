@@ -11,7 +11,11 @@ use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kms_server::{
-    config::{ClapConfig, DBConfig, HTTPConfig, JWEConfig, Jwk, JwtAuthConfig, ServerParams},
+    bootstrap_server::{start_https_bootstrap_server, BootstrapServerMessage},
+    config::{
+        BootstrapServerConfig, ClapConfig, DBConfig, HTTPConfig, JWEConfig, Jwk, JwtAuthConfig,
+        ServerParams,
+    },
     kms_server::start_kms_server,
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;
@@ -61,8 +65,8 @@ impl TestsContext {
     }
 }
 
-/// Start a server with the given config in a separate thread
-async fn start_server(
+/// Start a test KMS server with the given config in a separate thread
+fn start_test_kms_server(
     server_params: ServerParams,
 ) -> Result<(ServerHandle, JoinHandle<Result<(), CliError>>), CliError> {
     let (tx, rx) = mpsc::channel::<ServerHandle>();
@@ -72,10 +76,30 @@ async fn start_server(
             .block_on(start_kms_server(server_params, Some(tx)))
             .map_err(|e| CliError::ServerError(e.to_string()))
     });
-    trace!("Waiting for server to start...");
+    trace!("Waiting for test KMS server to start...");
     let server_handle = rx
         .recv_timeout(Duration::from_secs(25))
-        .expect("Can't get server handle after 25 seconds");
+        .expect("Can't get test KMS server handle after 25 seconds");
+    trace!("... got handle ...");
+    Ok((server_handle, thread_handle))
+}
+
+/// Start a test bootstrap server with the given config in a separate thread
+fn start_test_bootstrap_server(
+    server_params: ServerParams,
+    bs_msg_tx: mpsc::Sender<BootstrapServerMessage>,
+) -> Result<(ServerHandle, JoinHandle<Result<(), CliError>>), CliError> {
+    let (tx, rx) = mpsc::channel::<ServerHandle>();
+    let tokio_handle = tokio::runtime::Handle::current();
+    let thread_handle = thread::spawn(move || {
+        tokio_handle
+            .block_on(start_https_bootstrap_server(server_params, tx, bs_msg_tx))
+            .map_err(|e| CliError::ServerError(e.to_string()))
+    });
+    trace!("Waiting for test boostrap server to start...");
+    let server_handle = rx
+        .recv_timeout(Duration::from_secs(25))
+        .expect("Can't get test bootstrap server handle after 25 seconds");
     trace!("... got handle ...");
     Ok((server_handle, thread_handle))
 }
@@ -144,7 +168,7 @@ pub fn create_new_database(cli_conf_path: &str) -> Result<String, CliError> {
 
 /// Start a test server with the default options: JWT authentication and encrypted database, no TLS
 pub async fn init_test_server() -> TestsContext {
-    init_test_server_options(9990, false, true, true, false).await
+    init_test_server_options(9990, false, true, true, false, false).await
 }
 
 /// Start a server in a thread with the given options
@@ -154,6 +178,7 @@ pub async fn init_test_server_options(
     use_https: bool,
     use_client_cert: bool,
     use_jwe_encryption: bool,
+    use_bootstrap_server: bool,
 ) -> TestsContext {
     let _ = env_logger::builder().is_test(true).try_init();
 
@@ -213,6 +238,11 @@ pub async fn init_test_server_options(
         jwe: JWEConfig {
             jwk_private_key: jwk_private_key.clone(),
         },
+        bootstrap_server: BootstrapServerConfig {
+            use_bootstrap_server,
+            bootstrap_server_port: port,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let server_params = ServerParams::try_from(&clap_config)
@@ -248,7 +278,16 @@ pub async fn init_test_server_options(
             Some(jwe_private_key_json.to_string())
         } else {
             None
-        }, // We use the private key since the private key is the public key with additional information.
+        },
+        bootstrap_server_url: if use_bootstrap_server {
+            Some(format!(
+                "https://0.0.0.0:{}",
+                server_params.bootstrap_server_params.bootstrap_server_port
+            ))
+        } else {
+            None
+        },
+        // We use the private key since the private key is the public key with additional information.
         ..Default::default()
     };
     // write the conf to a file
@@ -256,38 +295,68 @@ pub async fn init_test_server_options(
         .expect("Can't write owner CLI conf path");
 
     // Start the server on a independent thread
-    println!(
-        "Starting test server at URL: {} with server config {:?}",
-        owner_cli_conf.kms_server_url, &clap_config
-    );
-    let (server_handle, thread_handle) = start_server(server_params)
-        .await
-        .expect("Can't start server");
 
-    // wait for the server to be up
-    wait_for_server_to_start(&owner_cli_conf_path)
-        .await
-        .expect("server timeout");
+    if server_params.bootstrap_server_params.use_bootstrap_server {
+        println!(
+            "Starting boostrap server at URL: {} with server config {:?}",
+            owner_cli_conf
+                .bootstrap_server_url
+                .as_ref()
+                .expect("The boostrap server URL should be configured"),
+            &clap_config
+        );
 
-    // Configure a database and create the kms json file
-    let database_secret =
-        create_new_database(&owner_cli_conf_path).expect("failed configuring a database");
+        // Create a channel to send messages from the bootstrap server to the main thread
+        // Since we are in test mode, we don't need to receive messages
+        let (bs_msg_tx, _bs_msg_rx) = mpsc::channel::<BootstrapServerMessage>();
+        let (server_handle, thread_handle) = start_test_bootstrap_server(server_params, bs_msg_tx)
+            .expect("Can't start boostrap server");
 
-    // Rewrite the conf with the correct database secret
-    owner_cli_conf.kms_database_secret = Some(database_secret);
-    write_json_object_to_file(&owner_cli_conf, &owner_cli_conf_path)
-        .expect("Can't write owner CLI conf path");
+        // generate a user conf
+        let user_cli_conf_path =
+            generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
 
-    // generate a user conf
-    let user_cli_conf_path =
-        generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
+        TestsContext {
+            owner_cli_conf_path,
+            user_cli_conf_path,
+            owner_cli_conf,
+            server_handle,
+            thread_handle,
+        }
+    } else {
+        println!(
+            "Starting KMS test server at URL: {} with server config {:?}",
+            owner_cli_conf.kms_server_url, &clap_config
+        );
 
-    TestsContext {
-        owner_cli_conf_path,
-        user_cli_conf_path,
-        owner_cli_conf,
-        server_handle,
-        thread_handle,
+        let (server_handle, thread_handle) =
+            start_test_kms_server(server_params).expect("Can't start KMS server");
+
+        // wait for the server to be up
+        wait_for_server_to_start(&owner_cli_conf_path)
+            .await
+            .expect("server timeout");
+
+        // Configure a database and create the kms json file
+        let database_secret =
+            create_new_database(&owner_cli_conf_path).expect("failed configuring a database");
+
+        // Rewrite the conf with the correct database secret
+        owner_cli_conf.kms_database_secret = Some(database_secret);
+        write_json_object_to_file(&owner_cli_conf, &owner_cli_conf_path)
+            .expect("Can't write owner CLI conf path");
+
+        // generate a user conf
+        let user_cli_conf_path =
+            generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
+
+        TestsContext {
+            owner_cli_conf_path,
+            user_cli_conf_path,
+            owner_cli_conf,
+            server_handle,
+            thread_handle,
+        }
     }
 }
 

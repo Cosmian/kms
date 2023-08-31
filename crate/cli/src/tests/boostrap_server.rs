@@ -4,12 +4,12 @@ use crate::{
 };
 
 #[tokio::test]
-pub async fn test_create_symmetric_key_with_jwe() -> Result<(), CliError> {
+pub async fn test_bootstrap_server() -> Result<(), CliError> {
     // init the test server
     // since we are going to rewrite the conf, use a different port
-    let ctx = init_test_server_options(19997, true, false, false, true, false).await;
+    let ctx = init_test_server_options(29997, false, false, false, false, true).await;
 
-    create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &["test_jwe"])?;
+    //create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &["test_jwe"])?;
 
     Ok(())
 }

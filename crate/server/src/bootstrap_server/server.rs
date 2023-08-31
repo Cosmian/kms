@@ -46,7 +46,7 @@ pub enum BootstrapServerMessage {
 }
 
 pub struct BootstrapServer {
-    pub config: ServerParams,
+    pub server_params: ServerParams,
     pub db_params_supplied: RwLock<bool>,
     pub pkcs12_supplied: RwLock<bool>,
     pub pkcs12_received: RwLock<Option<Pkcs12>>,
@@ -54,35 +54,29 @@ pub struct BootstrapServer {
     pub bs_msg_tx: mpsc::Sender<BootstrapServerMessage>,
 }
 
-pub async fn start_bootstrap_server(mut config: ServerParams) -> KResult<()> {
+pub async fn start_kms_server_using_bootstrap_server(
+    mut server_params: ServerParams,
+    kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,
+) -> KResult<()> {
     // check that the config actually requests a bootstrap server
-    if !config.bootstrap_server_config.use_bootstrap_server {
+    if !server_params.bootstrap_server_params.use_bootstrap_server {
         kms_bail!("Start bootstrap server is called but config says to not start one!")
     }
 
-    let bs_config = config.clone();
-    // Log the server configuration
-    info!("Bootstrap server configuration: {:#?}", bs_config);
-
     // Create a channel to send the bootstrap server handle to the main thread
     let (bs_handle_tx, bs_handle_rx) = mpsc::channel::<ServerHandle>();
-    // Create a channel to send the PKCS12 ro the main thread
+    // Create a channel to send messages from the bootstrap server to the main thread
     let (bs_msg_tx, bs_msg_rx) = mpsc::channel::<BootstrapServerMessage>();
 
-    // Create the BootstrapServer instance
-    let bootstrap_server = Arc::new(BootstrapServer {
-        config: bs_config,
-        db_params_supplied: RwLock::new(config.db_params.is_some()),
-        pkcs12_supplied: RwLock::new(config.server_pkcs_12.is_some()),
-        bs_msg_tx,
-        pkcs12_received: RwLock::new(None),
-        pkcs12_password_received: RwLock::new(None),
-    });
-
+    let bs_server_params = server_params.clone();
     let tokio_handle = tokio::runtime::Handle::current();
     let bs_thread_handle = thread::spawn(move || {
         tokio_handle
-            .block_on(start_https_bootstrap_server(bootstrap_server, bs_handle_tx))
+            .block_on(start_https_bootstrap_server(
+                bs_server_params,
+                bs_handle_tx,
+                bs_msg_tx,
+            ))
             .map_err(|e| {
                 info!("Error starting the bootstrap server: {}", e);
                 KmsError::ServerError(e.to_string())
@@ -112,7 +106,7 @@ pub async fn start_bootstrap_server(mut config: ServerParams) -> KResult<()> {
                         .subject_name()
                 );
                 // Set the PKCS12 in the config
-                config.server_pkcs_12 = Some(p12);
+                server_params.server_pkcs_12 = Some(p12);
                 info!(
                     "PKCS12 received and successfully opened with subject name: {}",
                     subject_name
@@ -121,12 +115,12 @@ pub async fn start_bootstrap_server(mut config: ServerParams) -> KResult<()> {
             BootstrapServerMessage::DbParams(db_params) => {
                 let db_params_str = format!("{:?}", db_params);
                 // Set the DbParams in the config
-                config.db_params = Some(db_params);
+                server_params.db_params = Some(db_params);
                 info!("DbParams received: {}", db_params_str);
             }
             BootstrapServerMessage::StartKmsServer(clear_data_base) => {
                 // set the clear database flag
-                config.clear_db_on_start = clear_data_base;
+                server_params.clear_db_on_start = clear_data_base;
                 info!(
                     "Start KMS server requested with clear database flag: {}",
                     clear_data_base
@@ -149,16 +143,30 @@ pub async fn start_bootstrap_server(mut config: ServerParams) -> KResult<()> {
     info!("Starting KMS server...");
 
     // Start the KMS server with the updated configuration
-    start_kms_server(config, None).await
+    start_kms_server(server_params, kms_server_handle_tx).await
 }
 
-async fn start_https_bootstrap_server(
-    bootstrap_server: Arc<BootstrapServer>,
+pub async fn start_https_bootstrap_server(
+    server_params: ServerParams,
     server_handle_transmitter: mpsc::Sender<ServerHandle>,
+    bs_msg_tx: mpsc::Sender<BootstrapServerMessage>,
 ) -> KResult<()> {
+    // Log the server configuration
+    info!("Bootstrap server configuration: {:#?}", server_params);
+
+    // Create the BootstrapServer instance
+    let bootstrap_server = Arc::new(BootstrapServer {
+        server_params: server_params.clone(),
+        db_params_supplied: RwLock::new(server_params.db_params.is_some()),
+        pkcs12_supplied: RwLock::new(server_params.server_pkcs_12.is_some()),
+        bs_msg_tx,
+        pkcs12_received: RwLock::new(None),
+        pkcs12_password_received: RwLock::new(None),
+    });
+
     let common_name = &bootstrap_server
-        .config
-        .bootstrap_server_config
+        .server_params
+        .bootstrap_server_params
         .bootstrap_server_common_name;
 
     // Generate a self-signed certificate
@@ -178,7 +186,7 @@ async fn start_https_bootstrap_server(
         }
     }
 
-    if let Some(verify_cert) = &bootstrap_server.config.verify_cert {
+    if let Some(verify_cert) = &bootstrap_server.server_params.verify_cert {
         // This line sets the mode to verify peer (client) certificates
         builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         let mut store_builder = X509StoreBuilder::new()?;
@@ -202,35 +210,35 @@ fn prepare_bootstrap_server(
 ) -> KResult<actix_web::dev::Server> {
     // Determine if JWT Auth should be used for authentication.
     let (use_jwt_auth, jwt_config) =
-        if let Some(jwt_issuer_uri) = &bootstrap_server.config.jwt_issuer_uri {
+        if let Some(jwt_issuer_uri) = &bootstrap_server.server_params.jwt_issuer_uri {
             (
                 true,
                 Some(JwtConfig {
                     jwt_issuer_uri: jwt_issuer_uri.clone(),
                     jwks: bootstrap_server
-                        .config
+                        .server_params
                         .jwks
                         .as_ref()
                         .ok_or_else(|| {
                             kms_error!("The JWKS must be provided when using JWT authentication")
                         })?
                         .clone(),
-                    jwt_audience: bootstrap_server.config.jwt_audience.clone(),
+                    jwt_audience: bootstrap_server.server_params.jwt_audience.clone(),
                 }),
             )
         } else {
             (false, None)
         };
     // Determine if Client Cert Auth should be used for authentication.
-    let use_cert_auth = bootstrap_server.config.verify_cert.is_some();
+    let use_cert_auth = bootstrap_server.server_params.verify_cert.is_some();
 
     // Determine the address to bind the server to.
     let address = format!(
         "{}:{}",
-        bootstrap_server.config.hostname,
+        bootstrap_server.server_params.hostname,
         bootstrap_server
-            .config
-            .bootstrap_server_config
+            .server_params
+            .bootstrap_server_params
             .bootstrap_server_port
     );
 

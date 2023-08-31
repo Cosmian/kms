@@ -53,19 +53,19 @@ use crate::{
 /// This function will return an error if any of the server starting methods fails.
 pub async fn start_kms_server(
     server_params: ServerParams,
-    server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
+    kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // Log the server configuration
     info!("KMS Server configuration: {:#?}", server_params);
     if server_params.certbot.is_some() {
         // Start an HTTPS server with certbot
-        start_certbot_https_kms_server(server_params, server_handle_transmitter).await
+        start_certbot_https_kms_server(server_params, kms_server_handle_tx).await
     } else if server_params.server_pkcs_12.is_some() {
         // Start an HTTPS server with PKCS#12
-        start_https_kms_server(server_params, server_handle_transmitter).await
+        start_https_kms_server(server_params, kms_server_handle_tx).await
     } else {
         // Start a plain HTTP server
-        start_plain_http_kms_server(server_params, server_handle_transmitter).await
+        start_plain_http_kms_server(server_params, kms_server_handle_tx).await
     }
 }
 
