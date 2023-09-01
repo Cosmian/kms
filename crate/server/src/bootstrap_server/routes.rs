@@ -100,7 +100,7 @@ pub async fn pkcs12_password(
         .expect("PKCS12 password received lock poisoned") = Some(config.password.to_owned());
 
     let response = SuccessResponse {
-        success: format!("PKCS#12 password received"),
+        success: "PKCS#12 password received".to_string(),
     };
     Ok(Json(response))
 }
