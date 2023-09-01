@@ -12,25 +12,22 @@ use super::{
 #[clap(version, about, long_about = None)]
 pub struct ClapConfig {
     #[clap(flatten)]
-    pub auth: JwtAuthConfig,
-
-    #[clap(flatten)]
     pub db: DBConfig,
-
-    #[clap(flatten)]
-    pub enclave: EnclaveConfig,
-
-    #[clap(flatten)]
-    pub certbot_https: HttpsCertbotConfig,
 
     #[clap(flatten)]
     pub http: HTTPConfig,
 
     #[clap(flatten)]
-    pub jwe: JWEConfig,
+    pub auth: JwtAuthConfig,
+
+    #[clap(flatten)]
+    pub bootstrap_server: BootstrapServerConfig,
 
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
+
+    #[clap(flatten)]
+    pub certbot_https: HttpsCertbotConfig,
 
     /// The default username to use when no authentication method is provided
     #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = "admin")]
@@ -42,7 +39,10 @@ pub struct ClapConfig {
     pub force_default_username: bool,
 
     #[clap(flatten)]
-    pub bootstrap_server: BootstrapServerConfig,
+    pub jwe: JWEConfig,
+
+    #[clap(flatten)]
+    pub enclave: EnclaveConfig,
 }
 
 impl fmt::Debug for ClapConfig {

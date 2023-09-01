@@ -1,4 +1,4 @@
-The Cosmian Key Management System (KMS) is a command line interface (CLI) used to manage cryptographic objects inside the KMS.
+The `ckms` binary is a command line interface (CLI) used to manage cryptographic objects inside the KMS.
 
 !!! info "Download ckms"
     Please download the latest version of the CLI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.6.0/)
@@ -16,9 +16,10 @@ The configuration file is created automatically when the CLI is used for the fir
 The configuration file should be edited manually to reflect the actual configuration of the KMS.
 
 - `kms_server_url` is MANDATORY and is the URL of the KMS server
-- `kms_access_token` is OPTIONAL and is the access token used to authenticate to the KMS server.
-- `ssl_client_pkcs12_path`: is OPTIONAL and is the path to the PKCS12 file containing the client certificate and private key to use when authenticating to a KMS using a certificate.
-- `ssl_client_pkcs12_password`: is OPTIONAL and is the password to open the PKCS12 file when authenticating to the KMS server using a certificate.
+- `bootstrap_server_url` is OPTIONAL and is the URL of the bootstrap server when the KMS server is started in bootstrapping mode. If the URL is not specified, the `kms_server_url` is used, replacing `http` with `https` if need be.
+- `kms_access_token` is OPTIONAL and is the access token used to authenticate to the KMS (and bootstrap) server.
+- `ssl_client_pkcs12_path`: is OPTIONAL and is the path to the PKCS12 file containing the client certificate and private key to use when authenticating to a KMS server (or bootstrap server) using a certificate.
+- `ssl_client_pkcs12_password`: is OPTIONAL and is the password to open the PKCS12 file when authenticating to the KMS server (or bootstrap server) using a certificate.
 - `kms_database_secret` is OPTIONAL and is the base 64 encoded secret to use when connecting to a KMS using an encrypted database
 - `accept_invalid_certs` is OPTIONAL and should be set to "true" to allow the CLI to connect to a KMS using an "invalid" certificate, such as a self-signed SSL certificate. Useful to run tests with a self-signed certificate.
 
