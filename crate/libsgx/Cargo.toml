@@ -1,6 +1,6 @@
 [package]
 name = "libsgx"
-version = "4.5.0"
+version = "4.6.0"
 edition = "2021"
 license-file = "../../LICENSE.md"
 

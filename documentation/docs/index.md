@@ -1,4 +1,6 @@
-The Cosmian Key Management System (KMS) is a high-performance server application written in [**Rust**](https://www.rust-lang.org/) that provides a KMIP REST API to store and manage keys and secrets used with Cosmian cryptographic stacks.
+The Cosmian Key Management System (KMS) is a high-performance, [open-source](#open-source), server application written in [**Rust**](https://www.rust-lang.org/) that provides a [KMIP](#kmip-21-api) REST API to store and manage keys and secrets used in many standard (AES, ECIES,...) cryptographic stacks as well as Cosmian cryptographic stacks ([Covercrypt](https://github.com/Cosmian/cover_crypt), [Findex](https://github.com/Cosmian/findex)).
+
+The Cosmian KMS is designed to operate in [zero-trust](#zero-trust) environments, such as the public cloud, using confidential VMs and a fully application-level encrypted database.
 
 #### Open source
 
@@ -22,13 +24,13 @@ Check the enabling [TLS documentation](./tls.md) as well as the [authentication 
 
 The KMS server is available as a Docker image on the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
-Non-dockerized raw binaries are also available on the [Cosmian public packages repository](https://package.cosmian.com/kms/4.5.0/)
+Non-dockerized raw binaries are also available on the [Cosmian public packages repository](https://package.cosmian.com/kms/4.6.0/)
 
 !!! info "Quick start"
     To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.5.0
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0
     ```
 
     Check the Cosmian KMS server version
@@ -80,7 +82,7 @@ The libraries are available in many languages, including Javascript, Java, Dart,
 Like the `ckms` CLI, the KMS server has a built-in help system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.5.0 --help
+docker run --rm ghcr.io/cosmian/kms:4.6.0 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the options help.

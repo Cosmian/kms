@@ -47,7 +47,7 @@ extra_javascript:
   - https://unpkg.com/mermaid@8.7.0/dist/mermaid.min.js
   - javascripts/extra.js
 nav:
-  - Getting started: index.md
+  - The Cosmian KMS and getting started: index.md
   - Enabling TLS: tls.md
   - Deploying in single server mode: single_server_mode.md
   - Deploying in replicated mode: replicated_mode.md
