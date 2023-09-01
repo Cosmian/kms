@@ -13,8 +13,8 @@ use crate::{
         shared::export,
         symmetric::create_key::create_symmetric_key,
         utils::{
-            create_new_database, generate_invalid_conf, init_test_server, init_test_server_options,
-            ONCE,
+            create_new_database, generate_invalid_conf, start_default_test_kms_server,
+            start_test_server_with_options, ONCE,
         },
         PROG_NAME,
     },
@@ -22,7 +22,7 @@ use crate::{
 
 #[tokio::test]
 pub async fn test_new_database() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
@@ -36,7 +36,7 @@ pub async fn test_new_database() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_secrets_bad() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     let bad_conf_path = generate_invalid_conf(&ctx.owner_cli_conf);
 
@@ -58,7 +58,7 @@ pub async fn test_secrets_bad() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_conf_does_not_exist() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    ONCE.get_or_init(start_default_test_kms_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/configs/kms_bad_group_id.bad");
@@ -76,7 +76,7 @@ pub async fn test_conf_does_not_exist() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_secrets_key_bad() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
@@ -111,7 +111,7 @@ async fn test_multiple_databases() -> Result<(), CliError> {
     let tmp_path = tmp_dir.path();
     // init the test server
     // since we are going to rewrite the conf, use a different port
-    let ctx = init_test_server_options(9997, true, false, false, false, false).await;
+    let ctx = start_test_server_with_options(9997, true, false, false, false, false).await;
 
     // create a symmetric key in the default encrypted database
     let key_1 = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;

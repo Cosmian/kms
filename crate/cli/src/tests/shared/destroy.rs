@@ -16,7 +16,7 @@ use crate::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::{export::export, revoke::revoke},
         symmetric::create_key::create_symmetric_key,
-        utils::{init_test_server, ONCE},
+        utils::{start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -85,7 +85,7 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
 #[tokio::test]
 async fn test_destroy_symmetric_key() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // syn
     let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
@@ -104,7 +104,7 @@ async fn test_destroy_symmetric_key() -> Result<(), CliError> {
 #[tokio::test]
 async fn test_destroy_ec_key() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // destroy via private key
     {
@@ -163,7 +163,7 @@ async fn test_destroy_ec_key() -> Result<(), CliError> {
 #[tokio::test]
 async fn test_destroy_cover_crypt() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // check revocation of all keys when the private key is destroyed
     {

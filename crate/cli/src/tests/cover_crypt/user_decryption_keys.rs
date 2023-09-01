@@ -8,7 +8,7 @@ use crate::{
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
-        utils::{extract_uids::extract_user_key, init_test_server, ONCE},
+        utils::{extract_uids::extract_user_key, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -49,7 +49,7 @@ pub fn create_user_decryption_key(
 
 #[tokio::test]
 pub async fn test_user_decryption_key() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new master key pair
     let (master_private_key_id, _) = create_cc_master_key_pair(
@@ -73,7 +73,7 @@ pub async fn test_user_decryption_key() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_user_decryption_key_error() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new master key pair
     let (master_private_key_id, _) = create_cc_master_key_pair(

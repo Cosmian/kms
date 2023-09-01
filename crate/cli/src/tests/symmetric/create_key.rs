@@ -12,7 +12,7 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        utils::{extract_uids::extract_uid, init_test_server, ONCE},
+        utils::{extract_uids::extract_uid, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -63,7 +63,7 @@ pub fn create_symmetric_key(
 
 #[tokio::test]
 pub async fn test_create_symmetric_key() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     let mut rng = CsRng::from_entropy();
     let mut key = vec![0u8; 32];
 

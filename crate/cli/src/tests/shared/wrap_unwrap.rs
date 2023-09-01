@@ -21,7 +21,7 @@ use crate::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::export::export,
         symmetric::create_key::create_symmetric_key,
-        utils::{init_test_server, TestsContext, ONCE},
+        utils::{start_default_test_kms_server, TestsContext, ONCE},
         PROG_NAME,
     },
 };
@@ -118,7 +118,7 @@ pub fn unwrap(
 
 #[tokio::test]
 pub async fn test_password_wrap_import() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // CC
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(

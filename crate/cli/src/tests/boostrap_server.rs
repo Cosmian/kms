@@ -3,7 +3,9 @@ use std::process::Command;
 use assert_cmd::prelude::*;
 
 use super::PROG_NAME;
-use crate::{config::KMS_CLI_CONF_ENV, error::CliError, tests::utils::init_test_server_options};
+use crate::{
+    config::KMS_CLI_CONF_ENV, error::CliError, tests::utils::start_test_server_with_options,
+};
 
 pub(crate) const SUB_COMMAND: &str = "bootstrap-start";
 
@@ -11,7 +13,7 @@ pub(crate) const SUB_COMMAND: &str = "bootstrap-start";
 pub async fn test_bootstrap_server() -> Result<(), CliError> {
     // init the test server
     // since we are going to rewrite the conf, use a different port
-    let ctx = init_test_server_options(29997, false, false, false, false, true).await;
+    let ctx = start_test_server_with_options(29997, false, false, false, false, true).await;
 
     let mut args: Vec<&str> = vec![];
     // No database parameters are supplied, start should fail
@@ -21,7 +23,7 @@ pub async fn test_bootstrap_server() -> Result<(), CliError> {
     args.extend_from_slice(&["--sqlite-path", "./sqlite-data"]);
     assert!(run_bootstrap_start(&ctx.owner_cli_conf_path, &args).is_err());
 
-    // The database type is supplied, start should succeed
+    // The database type is supplied, start should succeed (in HTTP mode)
     args.extend_from_slice(&["--database-type", "sqlite"]);
     assert!(run_bootstrap_start(&ctx.owner_cli_conf_path, &args).is_ok());
 
@@ -32,7 +34,7 @@ pub async fn test_bootstrap_server() -> Result<(), CliError> {
     ];
     assert!(run_bootstrap_start(&ctx.owner_cli_conf_path, &args).is_err());
 
-    // The PKCS12 password is not supplied start, should fail
+    // The PKCS12 password is supplied start should succeed (in HTTPS mode)
     args.extend_from_slice(&["--https-p12-password", "password"]);
     assert!(run_bootstrap_start(&ctx.owner_cli_conf_path, &args).is_ok());
 

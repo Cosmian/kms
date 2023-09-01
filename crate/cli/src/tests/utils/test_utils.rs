@@ -48,8 +48,10 @@ pub fn get_auth0_jwt_config() -> JwtAuthConfig {
     }
 }
 
-/// We use that to avoid to try to start N servers (one per test)
-/// Otherwise we got: "Address already in use (os error 98)"
+/// In order to run most tests in parallel,
+/// we use that to avoid to try to start N KMS servers (one per test)
+/// with a default configuration.
+/// Otherwise we get: "Address already in use (os error 98)"
 /// for N-1 tests.
 pub static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 
@@ -66,6 +68,99 @@ impl TestsContext {
         self.server_handle.stop(false).await;
         self.thread_handle.join().unwrap().unwrap();
         println!("Server stopped\n");
+    }
+}
+
+/// Start a test KMS server in a thread with the default options:
+/// JWT authentication and encrypted database, no TLS
+pub async fn start_default_test_kms_server() -> TestsContext {
+    start_test_server_with_options(9990, false, true, true, false, false).await
+}
+
+/// Start a server (KMS or bootstrap) in a thread with the given options
+pub async fn start_test_server_with_options(
+    port: u16,
+    use_jwt_token: bool,
+    use_https: bool,
+    use_client_cert: bool,
+    use_jwe_encryption: bool,
+    use_bootstrap_server: bool,
+) -> TestsContext {
+    let _ = env_logger::builder().is_test(true).try_init();
+
+    let server_params = genererate_server_params(
+        port,
+        use_jwt_token,
+        use_https,
+        use_client_cert,
+        use_jwe_encryption,
+        use_bootstrap_server,
+    )
+    .await
+    .unwrap();
+
+    // Create a (object owner) conf
+    let (owner_cli_conf_path, mut owner_cli_conf) = generate_owner_conf(&server_params).unwrap();
+
+    // Start the server (bootstrap or KMS) in a thread and wait for it to be up
+    if server_params.bootstrap_server_params.use_bootstrap_server {
+        println!(
+            "Starting boostrap server at URL: {} with server params {:?}",
+            owner_cli_conf
+                .bootstrap_server_url
+                .as_ref()
+                .expect("The boostrap server URL should be configured"),
+            &server_params
+        );
+
+        let (server_handle, thread_handle) =
+            start_test_bootstrap_server(server_params).expect("Can't start boostrap server");
+
+        // generate a user conf
+        let user_cli_conf_path =
+            generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
+
+        TestsContext {
+            owner_cli_conf_path,
+            user_cli_conf_path,
+            owner_cli_conf,
+            server_handle,
+            thread_handle,
+        }
+    } else {
+        println!(
+            "Starting KMS test server at URL: {} with server params {:?}",
+            owner_cli_conf.kms_server_url, &server_params
+        );
+
+        let (server_handle, thread_handle) =
+            start_test_kms_server(server_params).expect("Can't start KMS server");
+
+        // wait for the server to be up
+        wait_for_server_to_start(&owner_cli_conf_path)
+            .await
+            .expect("server timeout");
+
+        // Configure a database and create the kms json file
+        let database_secret =
+            create_new_database(&owner_cli_conf_path).expect("failed configuring a database");
+
+        // Rewrite the conf with the correct database secret
+        owner_cli_conf.kms_database_secret = Some(database_secret);
+        write_json_object_to_file(&owner_cli_conf, &owner_cli_conf_path)
+            .expect("Can't write owner CLI conf path");
+
+        // generate a user conf
+        let user_cli_conf_path =
+            generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
+
+        TestsContext {
+            owner_cli_conf_path,
+            user_cli_conf_path,
+            owner_cli_conf,
+            server_handle,
+            thread_handle,
+        }
     }
 }
 
@@ -172,100 +267,7 @@ pub fn create_new_database(cli_conf_path: &str) -> Result<String, CliError> {
     Ok(database_secret.to_owned())
 }
 
-/// Start a test server with the default options: JWT authentication and encrypted database, no TLS
-pub async fn init_test_server() -> TestsContext {
-    init_test_server_options(9990, false, true, true, false, false).await
-}
-
-/// Start a server in a thread with the given options
-pub async fn init_test_server_options(
-    port: u16,
-    use_jwt_token: bool,
-    use_https: bool,
-    use_client_cert: bool,
-    use_jwe_encryption: bool,
-    use_bootstrap_server: bool,
-) -> TestsContext {
-    let _ = env_logger::builder().is_test(true).try_init();
-
-    let server_params = genererate_server_params(
-        port,
-        use_jwt_token,
-        use_https,
-        use_client_cert,
-        use_jwe_encryption,
-        use_bootstrap_server,
-    )
-    .await
-    .unwrap();
-
-    // Create a conf
-    let (owner_cli_conf_path, mut owner_cli_conf) = generate_owner_conf(&server_params).unwrap();
-
-    // Start the server on a independent thread
-
-    if server_params.bootstrap_server_params.use_bootstrap_server {
-        println!(
-            "Starting boostrap server at URL: {} with server params {:?}",
-            owner_cli_conf
-                .bootstrap_server_url
-                .as_ref()
-                .expect("The boostrap server URL should be configured"),
-            &server_params
-        );
-
-        let (server_handle, thread_handle) =
-            start_test_bootstrap_server(server_params).expect("Can't start boostrap server");
-
-        // generate a user conf
-        let user_cli_conf_path =
-            generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
-
-        TestsContext {
-            owner_cli_conf_path,
-            user_cli_conf_path,
-            owner_cli_conf,
-            server_handle,
-            thread_handle,
-        }
-    } else {
-        println!(
-            "Starting KMS test server at URL: {} with server params {:?}",
-            owner_cli_conf.kms_server_url, &server_params
-        );
-
-        let (server_handle, thread_handle) =
-            start_test_kms_server(server_params).expect("Can't start KMS server");
-
-        // wait for the server to be up
-        wait_for_server_to_start(&owner_cli_conf_path)
-            .await
-            .expect("server timeout");
-
-        // Configure a database and create the kms json file
-        let database_secret =
-            create_new_database(&owner_cli_conf_path).expect("failed configuring a database");
-
-        // Rewrite the conf with the correct database secret
-        owner_cli_conf.kms_database_secret = Some(database_secret);
-        write_json_object_to_file(&owner_cli_conf, &owner_cli_conf_path)
-            .expect("Can't write owner CLI conf path");
-
-        // generate a user conf
-        let user_cli_conf_path =
-            generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
-
-        TestsContext {
-            owner_cli_conf_path,
-            user_cli_conf_path,
-            owner_cli_conf,
-            server_handle,
-            thread_handle,
-        }
-    }
-}
-
-pub(crate) async fn genererate_server_params(
+async fn genererate_server_params(
     port: u16,
     use_jwt_token: bool,
     use_https: bool,
@@ -337,9 +339,7 @@ pub(crate) async fn genererate_server_params(
         .map_err(|e| CliError::Default(format!("failed initializing the server config: {e}")))
 }
 
-pub(crate) fn generate_owner_conf(
-    server_params: &ServerParams,
-) -> Result<(String, CliConf), CliError> {
+fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, CliConf), CliError> {
     // Create a conf
     let owner_cli_conf_path = format!("/tmp/owner_kms_{}.json", server_params.port);
 
@@ -391,7 +391,7 @@ pub(crate) fn generate_owner_conf(
 }
 
 /// Generate a user configuration for user.client@acme.com and return the file path
-pub(crate) fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<String, CliError> {
+fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<String, CliError> {
     let mut user_conf = owner_cli_conf.clone();
     user_conf.ssl_client_pkcs12_path =
         Some("test_data/certificates/user.client.acme.com.p12".to_string());

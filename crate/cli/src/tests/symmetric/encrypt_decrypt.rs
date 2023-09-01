@@ -10,7 +10,7 @@ use crate::{
     error::CliError,
     tests::{
         symmetric::create_key::create_symmetric_key,
-        utils::{init_test_server, ONCE},
+        utils::{start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -75,7 +75,7 @@ pub fn decrypt(
 
 #[tokio::test]
 async fn test_encrypt_decrypt_with_ids() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     run_encrypt_decrypt_test(&ctx.owner_cli_conf_path, &key_id)
 }
@@ -139,7 +139,7 @@ async fn test_encrypt_decrypt_with_tags() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
 
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     let _key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &["tag_sym"])?;
 
     let input_file = PathBuf::from("test_data/plain.txt");
