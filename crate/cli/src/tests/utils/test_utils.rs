@@ -35,6 +35,10 @@ use crate::{
 // Test auth0 Config
 const AUTH0_JWT_ISSUER_URI: &str = "https://kms-cosmian.eu.auth0.com/";
 const AUTH0_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjVVU1FrSVlULW9QMWZrcjQtNnRrciJ9.eyJuaWNrbmFtZSI6InRlY2giLCJuYW1lIjoidGVjaEBjb3NtaWFuLmNvbSIsInBpY3R1cmUiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci81MmZiMzFjOGNjYWQzNDU4MTIzZDRmYWQxNDA4NTRjZj9zPTQ4MCZyPXBnJmQ9aHR0cHMlM0ElMkYlMkZjZG4uYXV0aDAuY29tJTJGYXZhdGFycyUyRnRlLnBuZyIsInVwZGF0ZWRfYXQiOiIyMDIzLTA1LTMwVDA5OjMxOjExLjM4NloiLCJlbWFpbCI6InRlY2hAY29zbWlhbi5jb20iLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImlzcyI6Imh0dHBzOi8va21zLWNvc21pYW4uZXUuYXV0aDAuY29tLyIsImF1ZCI6IkszaXhldXhuVDVrM0Roa0tocWhiMXpYbjlFNjJGRXdJIiwiaWF0IjoxNjg1NDM5MDc0LCJleHAiOjE2ODU0NzUwNzQsInN1YiI6ImF1dGgwfDYzZDNkM2VhOTNmZjE2NDJjNzdkZjkyOCIsInNpZCI6ImJnVUNuTTNBRjVxMlpaVHFxMTZwclBCMi11Z0NNaUNPIiwibm9uY2UiOiJVRUZWTlZWeVluWTVUbHBwWjJScGNqSmtVMEZ4TmxkUFEwc3dTVGMwWHpaV2RVVmtkVnBEVGxSMldnPT0ifQ.HmU9fFwZ-JjJVlSy_PTei3ys0upeWQbWWiESmKBtRSClGnAXJNCpwuP4Jw7fgKn-8IBf-PYmP1_54u2Rw3RcJFVl7EblVoGMghYxVq5hViGpd00st3VwZmyCwOUz2CE5RBnBAoES4C8xA3zWg6oau0xjFQbC3jNU20eyFYMDewXA8UXCHQrEiQ56ylqSbyqlBbQIWbmOO4m5w2WDkx0bVyyJ893JfIJr_NANEQMJITYo8Mp_iHCyKp7llsfgCt07xN8ZqnsrMsJ15zC1n50bHGrTQisxURS1dpuFXF1hfrxhzogxYMX8CEISjsFgROjPY84GRMmvpYZfyaJbDDql3A";
+const JWE_PRIVATE_KEY_JSON: &str =
+    "{\"kty\": \"OKP\",\"d\": \"MPEVJwdRqGM_qhJOUb5hR0Xr9EvwMLZGnkf-eDj5fU8\",\"use\": \
+     \"enc\",\"crv\": \"X25519\",\"kid\": \"DX3GC+Fx3etxfRJValQNbqaB0gs=\",\"x\": \
+     \"gdF-1TtAjsFqNWr9nwhGUlFG38qrDUqYgcILgtYrpTY\",\"alg\": \"ECDH-ES\"}";
 
 pub fn get_auth0_jwt_config() -> JwtAuthConfig {
     JwtAuthConfig {
@@ -87,11 +91,13 @@ fn start_test_kms_server(
 /// Start a test bootstrap server with the given config in a separate thread
 fn start_test_bootstrap_server(
     server_params: ServerParams,
-    bs_msg_tx: mpsc::Sender<BootstrapServerMessage>,
 ) -> Result<(ServerHandle, JoinHandle<Result<(), CliError>>), CliError> {
     let (tx, rx) = mpsc::channel::<ServerHandle>();
     let tokio_handle = tokio::runtime::Handle::current();
     let thread_handle = thread::spawn(move || {
+        // we instantiate the message channel in the thread so that it is kept alive
+        // but we ignore the messages sent by the bootstrap server
+        let (bs_msg_tx, _bs_msg_rx) = mpsc::channel::<BootstrapServerMessage>();
         tokio_handle
             .block_on(start_https_bootstrap_server(server_params, tx, bs_msg_tx))
             .map_err(|e| CliError::ServerError(e.to_string()))
@@ -182,16 +188,93 @@ pub async fn init_test_server_options(
 ) -> TestsContext {
     let _ = env_logger::builder().is_test(true).try_init();
 
+    let server_params = genererate_server_params(
+        port,
+        use_jwt_token,
+        use_https,
+        use_client_cert,
+        use_jwe_encryption,
+        use_bootstrap_server,
+    )
+    .await
+    .unwrap();
+
     // Create a conf
-    let owner_cli_conf_path = format!("/tmp/owner_kms_{port}.json");
+    let (owner_cli_conf_path, mut owner_cli_conf) = generate_owner_conf(&server_params).unwrap();
 
-    let jwe_private_key_json =
-        "{\"kty\": \"OKP\",\"d\": \"MPEVJwdRqGM_qhJOUb5hR0Xr9EvwMLZGnkf-eDj5fU8\",\"use\": \
-         \"enc\",\"crv\": \"X25519\",\"kid\": \"DX3GC+Fx3etxfRJValQNbqaB0gs=\",\"x\": \
-         \"gdF-1TtAjsFqNWr9nwhGUlFG38qrDUqYgcILgtYrpTY\",\"alg\": \"ECDH-ES\"}";
+    // Start the server on a independent thread
 
+    if server_params.bootstrap_server_params.use_bootstrap_server {
+        println!(
+            "Starting boostrap server at URL: {} with server params {:?}",
+            owner_cli_conf
+                .bootstrap_server_url
+                .as_ref()
+                .expect("The boostrap server URL should be configured"),
+            &server_params
+        );
+
+        let (server_handle, thread_handle) =
+            start_test_bootstrap_server(server_params).expect("Can't start boostrap server");
+
+        // generate a user conf
+        let user_cli_conf_path =
+            generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
+
+        TestsContext {
+            owner_cli_conf_path,
+            user_cli_conf_path,
+            owner_cli_conf,
+            server_handle,
+            thread_handle,
+        }
+    } else {
+        println!(
+            "Starting KMS test server at URL: {} with server params {:?}",
+            owner_cli_conf.kms_server_url, &server_params
+        );
+
+        let (server_handle, thread_handle) =
+            start_test_kms_server(server_params).expect("Can't start KMS server");
+
+        // wait for the server to be up
+        wait_for_server_to_start(&owner_cli_conf_path)
+            .await
+            .expect("server timeout");
+
+        // Configure a database and create the kms json file
+        let database_secret =
+            create_new_database(&owner_cli_conf_path).expect("failed configuring a database");
+
+        // Rewrite the conf with the correct database secret
+        owner_cli_conf.kms_database_secret = Some(database_secret);
+        write_json_object_to_file(&owner_cli_conf, &owner_cli_conf_path)
+            .expect("Can't write owner CLI conf path");
+
+        // generate a user conf
+        let user_cli_conf_path =
+            generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
+
+        TestsContext {
+            owner_cli_conf_path,
+            user_cli_conf_path,
+            owner_cli_conf,
+            server_handle,
+            thread_handle,
+        }
+    }
+}
+
+pub(crate) async fn genererate_server_params(
+    port: u16,
+    use_jwt_token: bool,
+    use_https: bool,
+    use_client_cert: bool,
+    use_jwe_encryption: bool,
+    use_bootstrap_server: bool,
+) -> Result<ServerParams, CliError> {
     let jwk_private_key: Option<Jwk> = if use_jwe_encryption {
-        Some(jwe_private_key_json.parse().expect("Wrong JWK private key"))
+        Some(JWE_PRIVATE_KEY_JSON.parse().expect("Wrong JWK private key"))
     } else {
         None
     };
@@ -204,7 +287,11 @@ pub async fn init_test_server_options(
             JwtAuthConfig::default()
         },
         db: DBConfig {
-            database_type: Some("sqlite-enc".to_string()),
+            database_type: if use_bootstrap_server {
+                None
+            } else {
+                Some("sqlite-enc".to_string())
+            },
             clear_database: true,
             ..Default::default()
         },
@@ -245,41 +332,47 @@ pub async fn init_test_server_options(
         },
         ..Default::default()
     };
-    let server_params = ServerParams::try_from(&clap_config)
+    ServerParams::try_from(&clap_config)
         .await
-        .map_err(|e| format!("failed initializing the server config: {e}"))
-        .unwrap();
+        .map_err(|e| CliError::Default(format!("failed initializing the server config: {e}")))
+}
+
+pub(crate) fn generate_owner_conf(
+    server_params: &ServerParams,
+) -> Result<(String, CliConf), CliError> {
+    // Create a conf
+    let owner_cli_conf_path = format!("/tmp/owner_kms_{}.json", server_params.port);
 
     // Generate a CLI Conf.
     // We will update it later by appending the database secret
-    let mut owner_cli_conf = CliConf {
-        kms_server_url: if use_https {
-            format!("https://0.0.0.0:{port}")
+    let owner_cli_conf = CliConf {
+        kms_server_url: if server_params.server_pkcs_12.is_some() {
+            format!("https://0.0.0.0:{}", server_params.port)
         } else {
-            format!("http://0.0.0.0:{port}")
+            format!("http://0.0.0.0:{}", server_params.port)
         },
         accept_invalid_certs: true,
-        kms_access_token: if use_jwt_token {
+        kms_access_token: if server_params.jwt_issuer_uri.is_some() {
             Some(AUTH0_TOKEN.to_string())
         } else {
             None
         },
-        ssl_client_pkcs12_path: if use_client_cert {
+        ssl_client_pkcs12_path: if server_params.verify_cert.is_some() {
             Some("test_data/certificates/owner.client.acme.com.p12".to_string())
         } else {
             None
         },
-        ssl_client_pkcs12_password: if use_client_cert {
+        ssl_client_pkcs12_password: if server_params.verify_cert.is_some() {
             Some("password".to_string())
         } else {
             None
         },
-        jwe_public_key: if use_jwe_encryption {
-            Some(jwe_private_key_json.to_string())
+        jwe_public_key: if server_params.jwe_config.jwk_private_key.is_some() {
+            Some(JWE_PRIVATE_KEY_JSON.to_string())
         } else {
             None
         },
-        bootstrap_server_url: if use_bootstrap_server {
+        bootstrap_server_url: if server_params.bootstrap_server_params.use_bootstrap_server {
             Some(format!(
                 "https://0.0.0.0:{}",
                 server_params.bootstrap_server_params.bootstrap_server_port
@@ -294,70 +387,7 @@ pub async fn init_test_server_options(
     write_json_object_to_file(&owner_cli_conf, &owner_cli_conf_path)
         .expect("Can't write owner CLI conf path");
 
-    // Start the server on a independent thread
-
-    if server_params.bootstrap_server_params.use_bootstrap_server {
-        println!(
-            "Starting boostrap server at URL: {} with server config {:?}",
-            owner_cli_conf
-                .bootstrap_server_url
-                .as_ref()
-                .expect("The boostrap server URL should be configured"),
-            &clap_config
-        );
-
-        // Create a channel to send messages from the bootstrap server to the main thread
-        // Since we are in test mode, we don't need to receive messages
-        let (bs_msg_tx, _bs_msg_rx) = mpsc::channel::<BootstrapServerMessage>();
-        let (server_handle, thread_handle) = start_test_bootstrap_server(server_params, bs_msg_tx)
-            .expect("Can't start boostrap server");
-
-        // generate a user conf
-        let user_cli_conf_path =
-            generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
-
-        TestsContext {
-            owner_cli_conf_path,
-            user_cli_conf_path,
-            owner_cli_conf,
-            server_handle,
-            thread_handle,
-        }
-    } else {
-        println!(
-            "Starting KMS test server at URL: {} with server config {:?}",
-            owner_cli_conf.kms_server_url, &clap_config
-        );
-
-        let (server_handle, thread_handle) =
-            start_test_kms_server(server_params).expect("Can't start KMS server");
-
-        // wait for the server to be up
-        wait_for_server_to_start(&owner_cli_conf_path)
-            .await
-            .expect("server timeout");
-
-        // Configure a database and create the kms json file
-        let database_secret =
-            create_new_database(&owner_cli_conf_path).expect("failed configuring a database");
-
-        // Rewrite the conf with the correct database secret
-        owner_cli_conf.kms_database_secret = Some(database_secret);
-        write_json_object_to_file(&owner_cli_conf, &owner_cli_conf_path)
-            .expect("Can't write owner CLI conf path");
-
-        // generate a user conf
-        let user_cli_conf_path =
-            generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
-
-        TestsContext {
-            owner_cli_conf_path,
-            user_cli_conf_path,
-            owner_cli_conf,
-            server_handle,
-            thread_handle,
-        }
-    }
+    Ok((owner_cli_conf_path, owner_cli_conf))
 }
 
 /// Generate a user configuration for user.client@acme.com and return the file path
@@ -365,6 +395,7 @@ pub(crate) fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<
     let mut user_conf = owner_cli_conf.clone();
     user_conf.ssl_client_pkcs12_path =
         Some("test_data/certificates/user.client.acme.com.p12".to_string());
+    user_conf.ssl_client_pkcs12_password = Some("password".to_string());
 
     // write the user conf
     let user_conf_path = format!("/tmp/user_kms_{port}.json");

@@ -2,7 +2,6 @@ use std::{path::PathBuf, sync::Arc};
 
 use actix_multipart::Multipart;
 use actix_web::{
-    http::header,
     post,
     web::{Data, Json},
     HttpRequest,
@@ -48,23 +47,10 @@ pub struct PasswordConfig {
 ///
 #[post("/pkcs12")]
 pub async fn receive_pkcs12(
-    req: HttpRequest,
+    _req: HttpRequest,
     mut payload: Multipart,
     bootstrap_server: Data<Arc<BootstrapServer>>,
 ) -> KResult<Json<SuccessResponse>> {
-    // print the request content-type
-    match req.headers().get(header::CONTENT_TYPE) {
-        Some(content_type) => {
-            // match the content_type to multipart/form-data
-            if content_type.as_bytes().starts_with(b"multipart/form-data") {
-                println!("content-type: multipart/form-data");
-            } else {
-                println!("another content-type: {:#?}", content_type);
-            }
-        }
-        None => println!("content-type: None"),
-    };
-
     // Extract the bytes from a multipart/form-data payload
     // and return them as a `Vec<u8>`.
     let mut bytes = Vec::new();
