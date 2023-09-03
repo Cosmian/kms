@@ -86,7 +86,7 @@ pub async fn receive_pkcs12(
 }
 
 /// Supply a PKCS12 password if it is a non-empty string
-#[post("/pkcs12_password")]
+#[post("/pkcs12-password")]
 pub async fn pkcs12_password(
     _req: HttpRequest,
     config: Json<PasswordConfig>,

@@ -22,9 +22,9 @@ toc-title: Table Of Contents
 toc-depth: 3
 titlepage-logo: ./pandoc/cosmian.png
 logo-width: 200pt
-lang: en-GB
+lang: en-US
 footer-left: Confidential
-footer-center: © Copyright 2018-2022 Cosmian. All rights reserved
+footer-center: © Copyright 2018-2023 Cosmian. All rights reserved
 header-left: ./pandoc/favicon.png
 header-includes:
   - \setcounter{page}{0} # So that the titlepage is the zeroth page

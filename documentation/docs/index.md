@@ -32,7 +32,7 @@ Check the [KMIP 2.1](./kmip_2_1/index.md) page for details.
 
 State-of-the-art authentication facilitates integration with existing IT infrastructure and allows single sign-on scenarios.
 
-Server access is secured using native TLS combined with Open ID-compliant JWT access tokens or TLS client certificates.
+Server access is secured using native TLS combined with [Open ID-compliant](https://openid.net/) JWT access tokens or TLS client certificates.
 
 Check the enabling [TLS documentation](./tls.md) as well as the [authentication documentation](./authentication.md) for details.
 
@@ -46,9 +46,9 @@ For additional security, the server supports concurrent client-secret encrypted 
 
 #### Designed for the Cloud and Zero-Trust environments
 
-Thanks to its "bootstrap" design, the use of confidential VMs, and a fully application-level encrypted database, the Cosmian KMS is designed to operate in zero-trust environments, such as the public cloud.
+Thanks to its "bootstrap" design, the use of confidential VMs, and a fully application-level encrypted database on top of Redis, the Cosmian KMS is able to securely operate in zero-trust environments, such as the public cloud.
 
-See the dedicated page for [deploying the KMS in a zero-trust environment](./zero_trust.md).
+See the dedicated page for [running the KMS in a zero-trust environment](./zero_trust.md).
 
 
 #### Support for object tagging
@@ -75,7 +75,7 @@ The KMS has an easy-to-use command line interface client built for many operatin
  Check the [ckms documentation](./cli/cli.md) for details.
 
 
-#### Easy to deploy: docker and pre-built raw binaries
+#### Easy to deploy: Docker image and pre-built binaries
 
 The KMS server is available as a Docker image on the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 

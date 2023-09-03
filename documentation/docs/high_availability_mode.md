@@ -2,7 +2,7 @@ This mode offers high availability through redundancy and load-balancing.
 
 The KMS servers are stateless, so they can simply be scaled horizontally by connecting them to the same database and fronting them with a load balancer.
 
-![high-availability](../drawings/high-availability.drawio.svg)
+![high-availability](./drawings/high-availability.drawio.svg)
 
 ### Configuring the load balancer
 
@@ -25,19 +25,19 @@ Redis-with-Findex is most useful when:
  - KMS servers are run inside a confidential VM or an enclave. In this case, the secret used to encrypt the Redis data and indexes is protected by the VM or enclave and cannot be recovered at runtime by inspecting the KMS servers' memory.
  - KMS servers run in a secure area but the Redis backend is managed by a third party.
 
-Redis-with-Findex should be selected to deploy the Cosmian KMS in the cloud or any other zero-trust environment.
+Redis-with-Findex should be selected to [run the Cosmian KMS in the cloud or any other zero-trust environment](./zero_trust.md).
 
 ### Configuring the database
 
 The database parameters may be configured either:
 
 - using options on the command line that is used to start the KMS server
-- via the bootstrap server when the KMS server is started in this mode. Database parameters may contain sensitive information, such as passwords: providing them on a TLS connection to the bootstrap server is more secure than specifying them on the command line.
+- via a TLS connection when the KMS server is started in [bootstrap](./bootstrap.md) mode. Database parameters may contain sensitive information, such as passwords: providing them on a TLS connection is more secure than specifying them in plain text on the command line.
 
-Configuring the database via the bootstrap server should be selected to deploy the Cosmian KMS in the cloud or any other zero-trust environment.
+Configuring the database via the [bootstrap](./bootstrap.md) TLS Connection should be selected to [run the Cosmian KMS in the cloud or any other zero-trust environment](./zero_trust.md).
 
 ##### Configuring the database via the bootstrap server
-Configuring the database via the bootstrap server is described in the [bootstrap server documentation](bootstrap_server.md).
+Configuring the database via the bootstrap TLS connection is described in the [bootstrap server documentation](bootstrap.md).
 
 ##### Configuring the database via the command line
 

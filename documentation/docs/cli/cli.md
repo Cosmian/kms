@@ -3,7 +3,7 @@ The `ckms` binary is a command line interface (CLI) used to manage cryptographic
 !!! info "Download ckms"
     Please download the latest version of the CLI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.6.0/)
 
-The CLI expects a configuration file to be located at `~/.cosmian/kms.json` where `~` is your home folder.
+The CLI expects a configuration file to be located at `~/.cosmian/kms.json` where `~` in your home folder.
 
 The configuration file is created automatically when the CLI is used for the first time with the following values
 

@@ -46,7 +46,7 @@ impl BootstrapRestClient {
             pub password: String,
         }
         self.post(
-            "/pkcs12_password",
+            "/pkcs12-password",
             Some(&PasswordConfig {
                 password: pkcs12_password.to_string(),
             }),
