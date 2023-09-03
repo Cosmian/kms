@@ -2,7 +2,7 @@ The single server mode uses an embedded SQLite database stored on a filesystem a
 
 Although it does not provide high availability through redundancy, this configuration is suitable for production and serving millions of cryptographic objects.  The server will concurrently serve requests on as many threads as available cores to the docker container.
 
-This configuration also supports client-secret encrypted databases, a secure way to store cryptographic objects since database keys are provisioned on every request, and no database key is stored server side. To offer a fully secure solution suitable for deployment in a zero-trust environment such as the cloud, TLS must be enabled on the server, and the memory of the KMS server must also be protected during operation by running the server inside an enclave. Ask Cosmian for details.
+This configuration also supports user encrypted databases, a secure way to store cryptographic objects since database keys are provisioned on every request, and no database key is stored server side. To offer a fully secure solution suitable for deployment in a zero-trust environment such as the cloud, TLS must be enabled on the server, and the memory of the KMS server must also be protected during operation by running the server inside an enclave. Ask Cosmian for details.
 
 ### Quick start
 
@@ -24,9 +24,9 @@ docker run --rm -p 9998:9998 \
   --name kms ghcr.io/cosmian/kms:4.6.0
 ```
 
-### Using client-secret encrypted databases
+### Using user encrypted databases
 
-To start the KMS server with client-secret encrypted SQLite databases, pass the `--database-type=sqlite-enc` on start, e.g.
+To start the KMS server with user encrypted SQLite databases, pass the `--database-type=sqlite-enc` on start, e.g.
 
 ```sh
 docker run --rm -p 9998:9998 \

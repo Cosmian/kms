@@ -41,7 +41,7 @@ Check the enabling [TLS documentation](./tls.md) as well as the [authentication 
 
 The Cosmian KMS may be deployed either in [single-server mode](./single_server_mode.md) or for [high availability](./high_availability_mode.md) using simple horizontal scaling of the servers.
 
-For additional security, the server supports concurrent client-secret encrypted databases in single-server mode and an application-level encrypted database on top of Redis in a high-availability scenario.
+For additional security, the server supports concurrent user encrypted databases in single-server mode and an application-level encrypted database on top of Redis in a high-availability scenario.
 
 
 #### Designed for the Cloud and Zero-Trust environments
@@ -56,7 +56,7 @@ See the dedicated page for [running the KMS in a zero-trust environment](./zero_
 The KMS server supports user tagging of objects to facilitate their management.
 Specify as many user tags as needed when creating and importing objects.
 
-In addition, the user server will automatically add a system tag based on the object type:
+In addition, the KMS server will automatically add a system tag based on the object type:
 
 - `_sk`: for a private key
 - `_pk`: for a public key

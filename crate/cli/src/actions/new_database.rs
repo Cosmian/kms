@@ -3,7 +3,7 @@ use cosmian_kms_client::KmsRestClient;
 
 use crate::error::{result::CliResultHelper, CliError};
 
-/// Initialize a new client-secret encrypted database and return the secret (`SQLCipher` only).
+/// Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 ///
 /// This secret is only displayed once and is not stored anywhere on the server.
 /// The secret must be set in the `kms_database_secret` property
@@ -27,8 +27,8 @@ impl NewDatabaseAction {
             .with_context(|| "Can't execute the query on the kms server")?;
 
         println!(
-            "A new encrypted database is configured. Use the following token (by adding it to the \
-             'kms_database_secret' entry of your KMS_CLI_CONF):\n\n{token}\n\n"
+            "A new user encrypted database is configured. Use the following token (by adding it \
+             to the 'kms_database_secret' entry of your KMS_CLI_CONF):\n\n{token}\n\n"
         );
 
         println!(

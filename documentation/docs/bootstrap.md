@@ -49,7 +49,7 @@ ckms bootstrap-start \
 
 To contact the bootstrap server, `ckms` uses the `bootstrap_server_url` value configured in the `~/.cosmian/kms.json` configuration file. If the URL is not specified, the `kms_server_url` is used, replacing `http` with `https` if need be.
 
-Check the [`ckms` bootstrap start documentation](./cli/bootstrap_start.md) for details.
+Check the [`ckms` documentation](./cli/main_commands.md#bootstrap-start) for details.
 
 #### Configuring using HTTPS POSTs
 

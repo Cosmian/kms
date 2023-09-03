@@ -116,10 +116,10 @@ pub struct DatabaseConfig {
     /// - postgresql: PostgreSQL. The database url must be provided
     /// - mysql: MySql or MariaDB. The database url must be provided
     /// - sqlite: SQLite. The data will be stored at the sqlite_path directory
-    /// - sqlite-enc: SQLite encrypted at rest. the data will be stored at the sqlite_path directory.
+    /// - sqlite-enc: SQLite encrypted at rest. The data will be stored at the sqlite_path directory.
     ///   A key must be supplied on every call
     /// - redis-findex: and redis database with encrypted data and encrypted indexes thanks to Findex.
-    ///   The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
+    ///   The Redis database url must be provided, as well as the redis-master-password and the redis-findex-label
     /// _
     #[clap(
         long,

@@ -6,11 +6,18 @@ The goal of the OASIS KMIP is to define a single, comprehensive protocol for com
 
 KMIP is a massive specification, and support is limited to the requirements of Cosmian advanced cryptography. Although the KMS server functionalities evolve quickly to support the growing demand of customers, the Cosmian KMS server, like most KMS servers, is in no way claiming to be a complete solution for all cryptographic objects and operations.
 
-### Tagging support extension
+### Objects tagging extension
 
-The Cosmian KMS server supports the tagging of objects. Tags are arbitrary strings that can be attached to objects. Tags can be used to group objects together, and to search for objects.
+The Cosmian KMS server supports the tagging of objects. Tags are arbitrary strings that can be attached to objects. Tags can be used to group objects together, and to find objects for most operations, such as export, import, encrypt, decrypt, etc.
 
-However, there is no provision in the KMIP 2.1 specification for tagging. The Cosmian KMS server implements tagging using the following KMIP 2.1 extensions:
+In addition, the KMS server will automatically add a system tag to objects based on the object type:
+
+- `_sk`: for a private key
+- `_pk`: for a public key
+- `_kk`: for a symmetric key
+- `_uk`: for a Covercrypt user decryption key
+
+Since there is no provision in the KMIP 2.1 specification for tagging. The Cosmian KMS server implements tagging using the following KMIP 2.1 extensions:
 
 1. When `Attributes` are passed as part of the KMIP operation, such as in the `Create`, `Create Key Pair`, `Locate`, and `Import` operations, the tags are passed as `VendorAttributes` with the vendor identification `Cosmian` and attribute name `tag`. The value is the serialization of the tags as a JSON array of strings.
 
