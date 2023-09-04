@@ -7,7 +7,7 @@ To enable TLS, one can provide certificates - on the command line or via the boo
 
 ### Providing certificates
 
-The certificate (key and full chain) must be available in a PKCS#12 format.
+The key and full certificate chain must be available in a [PKCS#12](https://en.wikipedia.org/wiki/PKCS_12) format.
 
 There are 2 ways to provide the PKCS#12 file to the server:
 
@@ -45,7 +45,7 @@ docker run --rm -p 443:9998 \
     -out server.mydomain.com.p12
     ```
 
-### Using the certificates bot
+### Using the certificates' bot
 
 The Cosmian KMS server has support for a certificates bot that can automatically obtain and renew its certificates from Let's Encrypt using the `acme` protocol.
 
