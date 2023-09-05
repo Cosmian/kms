@@ -1,6 +1,8 @@
 
 The Cosmian KMS is designed to run in the cloud or any zero-trust environment.
 
+![zero-trust design](./drawings/zero_trust.drawio.svg)
+
 #### Zero-trust design
 
 The design relies on 3 features:
