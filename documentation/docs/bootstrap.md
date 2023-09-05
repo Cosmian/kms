@@ -3,7 +3,7 @@ It is possible to bootstrap the KMS server start, to avoid specifying sensitive 
 
 When bootstrapped, the KMS server will first expose a TLS connection allowing configuration of the database and provision of the PKCS#12 configuring the KMS server HTTPS port. Once done, the KMS server will start with the supplied configuration.
 
-When [running in a zero-trust environment](./zero-trust.md) inside a confidential VM, the bootstrap server provides the ability to configure the KMS without ever exposing sensitive configuration information in plain text to the environment administrators.
+When [running in a zero-trust environment](./zero_trust.md) inside a confidential VM, the bootstrap server provides the ability to configure the KMS without ever exposing sensitive configuration information in plain text to the environment administrators.
 
 
 ![bootstrap server usage graph](./drawings/boostrap_server.drawio.svg)
@@ -29,7 +29,7 @@ Two options can be used to further configure the bootstrap server TLS connection
 
 - Database: A database must be configured for the KMS server to start. If parameters have been passed on the command line, they will be overridden by those passed to the bootstrap server.
 
-- HTTPS port: The HTTPS port of the KMS server can be configured using a PKCS#12 file containing the certificate and private key to use for the HTTPS port. If parameters have been passed on the command line, they will be overridden by those passed to the bootstrap server. Specifying a PKCS#12 file is not mandatory. If none is specified, the KMS server will start in plain HTTP mode. When [running in a zero-trust environment](./zero-trust.md), a PKCS#12 file should always be provided to start the KMS in HTTPS mode, _inside_ the confidential VM.
+- HTTPS port: The HTTPS port of the KMS server can be configured using a PKCS#12 file containing the certificate and private key to use for the HTTPS port. If parameters have been passed on the command line, they will be overridden by those passed to the bootstrap server. Specifying a PKCS#12 file is not mandatory. If none is specified, the KMS server will start in plain HTTP mode. When [running in a zero-trust environment](./zero_trust.md), a PKCS#12 file should always be provided to start the KMS in HTTPS mode, _inside_ the confidential VM.
 
 #### Configuring using the `ckms` CLI
 
