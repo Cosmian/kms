@@ -28,7 +28,7 @@ pub async fn test_new_database() -> Result<(), CliError> {
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
     cmd.arg("new-database");
     cmd.assert().success().stdout(predicate::str::contains(
-        "A new encrypted database is configured",
+        "A new user encrypted database is configured",
     ));
 
     Ok(())
