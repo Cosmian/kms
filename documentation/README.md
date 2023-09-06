@@ -2,7 +2,7 @@
 
 The main documentation for the KMS is in [docs/index.md](./docs/index.md)
 
-The documentation is deployed automatically on `docs.cosmian.com` when you add a new tag to this repo. However, you need to adapt manually [the public documentation nav bar](http://gitlab.cosmian.com/core/public_documentation/-/blob/master/mkdocs.yml) to make it visible.
+The documentation is deployed automatically on `docs.cosmian.com` when a new commit is made on the `main` branch of the repository [public documentation](https://github.com/Cosmian/public_documentation) that will fetch the last tag of this KMS repository.
 
 ## TODO
 
