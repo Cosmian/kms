@@ -137,7 +137,7 @@ pub async fn start_kms_server_using_bootstrap_server(
     // Wait for the bootstrap server to thread to finish
     bs_thread_handle
         .join()
-        .map_err(|e| kms_error!("Error starting the bootstrap server: {:?}", e))?
+        .map_err(|e| kms_error!("Error starting the bootstrap server (waiting for threads to stop): {:?}", e))?
         .map_err(|e| kms_error!("Error starting the bootstrap server: {}", e))?;
 
     info!("Starting KMS server...");
