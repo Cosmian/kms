@@ -305,12 +305,10 @@ fn maybe_parse_and_send_pkcs12(bootstrap_server: Arc<BootstrapServer>) -> KResul
                 e
             )
         })?;
-        p12
-            .cert
+        p12.cert
             .as_ref()
             .ok_or_else(|| kms_error!("Missing certificate"))?;
-        p12
-            .pkey
+        p12.pkey
             .as_ref()
             .ok_or_else(|| kms_error!("Missing private key"))?;
 
