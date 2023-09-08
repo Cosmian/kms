@@ -17,23 +17,21 @@ sys.insecure__allow_eventfd = true
 # - "The futex facility returned an unexpected error code."
 sys.stack.size = "1G"
 
+sys.enable_extra_runtime_domain_names_conf = true
+
 loader.env.LD_LIBRARY_PATH = "/lib:/lib64:{{ arch_libdir }}:/usr/{{ arch_libdir }}"
-loader.env.KMS_DELEGATED_AUTHORITY_DOMAIN = "kms-cosmian.eu.auth0.com"
-loader.env.KMS_CERTBOT_EMAIL = "tech@cosmian.com"
-loader.env.KMS_CERTBOT_HOSTNAME = "{{ kms_domain }}"
 loader.env.KMS_ENCLAVE_MANIFEST_FILENAME = "kms.manifest.sgx"
-loader.env.KMS_ENCLAVE_PUBLIC_KEY = "{{ sgx_signer_public_key }}"
-loader.env.KMS_CERTBOT_SSL_PATH = "private_data"
-loader.env.KMS_ENCLAVE_DIR_PATH = "public_data"
-loader.env.KMS_SQLITE_PATH = "shared_data"
-loader.env.KMS_DATABASE_TYPE="sqlite-enc"
+loader.env.KMS_ENCLAVE_PUBLIC_KEY_FILENAME = "{{ sgx_signer_public_key }}"
+loader.env.KMS_ENCLAVE_DIR_PATH = "/public_data"
+loader.env.KMS_ROOT_DATA_PATH = "/private_data"
 loader.env.RUST_BACKTRACE="0"
-# loader.env.RUST_LOG="debug"
+loader.env.RUST_BACKTRACE="0"
+loader.env.KMS_USE_BOOTSTRAP_SERVER = "true"
 
 sgx.nonpie_binary = true
-sgx.remote_attestation = true
+sgx.remote_attestation = 'dcap'
 sgx.enclave_size = "16G"
-sgx.thread_num = 256
+sgx.max_threads = 256
 sgx.debug = false
 
 sgx.isvprodid = 1
@@ -48,9 +46,7 @@ fs.mounts = [
 	{ type = "chroot", uri = "file:{{ entrypoint_abs }}", path = "{{ entrypoint }}" },
 	{ type = "tmpfs", path = "/tmp" },
 	{ type = "encrypted", uri = "file:private_data", path = "/private_data",  key_name = "_sgx_mrenclave" },
-	{ type = "encrypted", uri = "file:shared_data", path = "/shared_data",  key_name = "_sgx_mrsigner" },
 ]
-
 
 # Public path
 sgx.allowed_files = [

@@ -1,11 +1,6 @@
 #!/bin/bash
 
-# We need to force the hosts and resolve which were modified by docker when starting
-# Doing that, we are sure that the hashes (and the `MR_ENCLAVE`) will be the same on every dockers instance for a given docker 
-cp etc/hosts /etc/hosts
-cp etc/resolv.conf /etc/resolv.conf
-
-SGX_SIGNER_KEY="/opt/cosmian-internal/cosmian-signer-key.pem"
+SGX_SIGNER_KEY="/opt/cosmian-internal/cosmian-signer-key.pem" 
 
 if [ $# -eq 0 ]; then
     if ! [ -e "/dev/sgx_enclave" ]; then
@@ -14,7 +9,7 @@ if [ $# -eq 0 ]; then
         exit 1
     fi
     make SGX=1 SGX_SIGNER_KEY=$SGX_SIGNER_KEY && gramine-sgx ./kms
-elif [ $# -eq 1 && $1 = "--emulation" ]; then
+elif [ $# -eq 1 ] && [ "$1" = "--emulation" ]; then
     mkdir /opt/cosmian-internal
     # Generate a dummy key. `MR_ENCLAVE` does not depend on it.
     openssl genrsa -3 -out $SGX_SIGNER_KEY 3072
