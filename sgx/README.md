@@ -1,20 +1,16 @@
 # KMS inside an enclave
 
-Need `gramine 1.2`.
+Need `gramine 1.5`.
 
 ## Pre-requisites
 
 Compile and strip your kms binary. Example:
 
 ```sh
-cargo build --release --no-default-features --features staging --bin cosmian_kms_server
+cargo build --release --no-default-features --bin cosmian_kms_server
 ```
 
-Prepare the `private_data` (mr enclave data), `public_data` (plain text data), `shared_data` (mr signer data) and `scripts` directory on the SGX server:
-
-```sh
-./install.sh
-```
+Create the `private_data` (mr enclave data), `public_data` (plain text data) and `scripts` directory on the SGX server.
 
 Feel free to update `ENV` variables inside the `kms.manifest.template`.
 
@@ -36,7 +32,7 @@ sudo chmod 644 /opt/cosmian-internal/cosmian-signer-key.pem
 ## Seal the SGX manifest
 
 ```sh
-KMS_DOMAIN="sgxtest.cosmian.com" make clean && make SGX=1 DEBUG=0
+make clean && make SGX=1 DEBUG=0
 ```
 
 You need to do that every time your KMS binary changed.
@@ -65,16 +61,11 @@ Make sure you have compiled it with the same feature than the server. For exampl
 cargo build --release  --no-default-features --features insecure  --bin ckms
 ```
 
-Then, on a fresh database:
+Then:
 
 ```
-KMS_CLI_CONF=kms-test.json ckms configure
-```
-
-Or in an already configured database:
-
-```
-KMS_CLI_CONF=kms-test.json ckms abe init 
+KMS_CLI_CONF=kms-test.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite 
+KMS_CLI_CONF=kms-test.json ckms sym keys create  
 ```
 
 Enjoy ;)
@@ -86,24 +77,17 @@ Enjoy ;)
 On a **non-sgx** machine, from the root of the project:
 
 ```sh
-sudo docker build -f enclave/Dockerfile.sgx \
-    --build-arg FEATURES="--features=staging" \
-    --build-arg KMS_DOMAIN="testsgx.cosmian.com" -t enclave-kms .
+sudo docker build -f sgx/Dockerfile.sgx -t enclave-kms .
 ```
 
 ### Run
 
-On a **sgx** machine:
+On an **sgx** machine:
+
 ```sh
-# MR enclave directory
-mkdir -p private_data/
 # Plain text directory
 mkdir -p public_data/
-# MR signer directory
-mkdir -p shared_data/
-
-# To do if the kms binary have changed
-rm -rf private_data/*
+mkdir -p private_data/
 
 # Start the docker
 sudo docker run \
@@ -111,9 +95,8 @@ sudo docker run \
     --device /dev/sgx_provision \
     -v /var/run/aesmd:/var/run/aesmd/ \
     -v /opt/cosmian-internal:/opt/cosmian-internal \
-    -v public_data:/root/public_data \
-    -v private_data:/root/private_data \
-    -v shared_data:/root/shared_data \
+    -v $PWD/public_data:/root/public_data \
+    -v $PWD/private_data:/root/private_data \
     -p80:80 \
     -p443:443 \
     -it enclave-kms
@@ -144,4 +127,4 @@ Attributes:
 
 The `public_data` directory contains the compiled manifest with all trusted files hashes.
 
-__Note__: the `MR_SIGNER` should be ignore. It is logical wrong because we don't use cosmian public key to generate the enclave in that case.
+__Note__: the `MR_SIGNER` should be ignored. It is obviously wrong because we don't use cosmian public key to generate the enclave in that case.
