@@ -1,6 +1,7 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
+use cloudproof::reexport::findex::Label;
 use url::Url;
 
 use super::workspace::WorkspaceConfig;
@@ -139,10 +140,11 @@ impl Default for DBConfig {
 }
 
 impl DBConfig {
-    /// Initialize the DB parameters based on the configuration
+    /// Initialize the DB parameters based on the command-line parameters
     ///
     /// # Parameters
-    /// - `workspace`: The workspace configuration, used to determine the public and shared paths
+    /// - `workspace`: The workspace configuration used to determine the public and shared paths
+    /// - `use_bootstrap_server`: Whether the bootstrap server should be used to configure the database
     ///
     /// # Returns
     /// - The DB parameters
@@ -189,7 +191,11 @@ impl DBConfig {
                         "redis-findex-label",
                         "KMS_REDIS_FINDEX_LABEL",
                     )?;
-                    DbParams::RedisFindex(url, master_key, redis_findex_label.into_bytes())
+                    DbParams::RedisFindex(
+                        url,
+                        master_key,
+                        Label::from(redis_findex_label.into_bytes()),
+                    )
                 }
                 unknown => kms_bail!("Unknown database type: {unknown}"),
             })

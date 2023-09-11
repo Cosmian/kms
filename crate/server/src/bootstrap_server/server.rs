@@ -185,9 +185,9 @@ pub async fn start_https_bootstrap_server(
     if let Some(cert) = &p12.cert {
         builder.set_certificate(cert)?;
     }
-    if let Some(chain) = &p12.ca {
+    if let Some(chain) = p12.ca {
         for x in chain {
-            builder.add_extra_chain_cert(x.to_owned())?;
+            builder.add_extra_chain_cert(x)?;
         }
     }
 

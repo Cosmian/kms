@@ -6,6 +6,7 @@ use actix_web::{
     web::{Data, Json},
     HttpRequest,
 };
+use cloudproof::reexport::findex::Label;
 use cosmian_kms_utils::access::SuccessResponse;
 use futures::StreamExt;
 use openssl::pkcs12::Pkcs12;
@@ -111,13 +112,8 @@ fn process_db_params(
     bootstrap_server: Data<Arc<BootstrapServer>>,
     db_params: DbParams,
 ) -> KResult<Json<SuccessResponse>> {
-    let config_name = match db_params {
-        DbParams::Sqlite(_) => "Sqlite",
-        DbParams::SqliteEnc(_) => "Sqlite Enc.",
-        DbParams::Postgres(_) => "PostgreSQL",
-        DbParams::Mysql(_) => "MySql/MariaDB",
-        DbParams::RedisFindex(_, _, _) => "Redis-Findex",
-    };
+    // use the db name as the config name
+    let config_name = db_params.db_name().to_owned();
 
     // Send the Redis-Findex configuration to the main thread on the tx channel
     bootstrap_server
@@ -152,7 +148,7 @@ pub async fn redis_findex_config(
     let config = config.into_inner();
     let url = Url::parse(&config.url)?;
     let master_key = RedisWithFindex::master_key_from_password(&config.master_password)?;
-    let label = config.findex_label.into_bytes();
+    let label = Label::from(config.findex_label.into_bytes());
     let db_params = DbParams::RedisFindex(url, master_key, label);
 
     process_db_params(bootstrap_server, db_params)

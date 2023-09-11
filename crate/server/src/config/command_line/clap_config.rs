@@ -4,7 +4,7 @@ use clap::Parser;
 use libsgx::utils::is_running_inside_enclave;
 
 use super::{
-    BootstrapServerConfig, DBConfig, EnclaveConfig, HTTPConfig, HttpsCertbotConfig, JWEConfig,
+    BootstrapServerConfig, DBConfig, EnclaveConfig, HttpConfig, HttpsCertbotConfig, JWEConfig,
     JwtAuthConfig, WorkspaceConfig,
 };
 
@@ -15,7 +15,7 @@ pub struct ClapConfig {
     pub db: DBConfig,
 
     #[clap(flatten)]
-    pub http: HTTPConfig,
+    pub http: HttpConfig,
 
     #[clap(flatten)]
     pub auth: JwtAuthConfig,

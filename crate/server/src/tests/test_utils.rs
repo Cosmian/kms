@@ -13,7 +13,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    config::{ClapConfig, DBConfig, HTTPConfig, ServerParams},
+    config::{ClapConfig, DBConfig, HttpConfig, ServerParams},
     result::KResult,
     routes, KMSServer,
 };
@@ -27,7 +27,7 @@ pub fn https_clap_config() -> ClapConfig {
     }
 
     ClapConfig {
-        http: HTTPConfig {
+        http: HttpConfig {
             https_p12_file: Some(PathBuf::from("src/tests/kmserver.acme.com.p12")),
             https_p12_password: "password".to_string(),
             ..Default::default()

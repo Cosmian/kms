@@ -9,7 +9,7 @@ use openssl::{
 use crate::{kms_bail, result::KResult};
 
 #[derive(Args, Clone)]
-pub struct HTTPConfig {
+pub struct HttpConfig {
     /// The KMS server port
     #[clap(long, env = "KMS_PORT", default_value = "9998")]
     pub port: u16,
@@ -37,7 +37,7 @@ pub struct HTTPConfig {
     pub authority_cert_file: Option<PathBuf>,
 }
 
-impl Display for HTTPConfig {
+impl Display for HttpConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.https_p12_file.is_some() {
             write!(f, "https://{}:{}, ", self.hostname, self.port)?;
@@ -58,13 +58,13 @@ impl Display for HTTPConfig {
     }
 }
 
-impl std::fmt::Debug for HTTPConfig {
+impl std::fmt::Debug for HttpConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", &self))
     }
 }
 
-impl Default for HTTPConfig {
+impl Default for HttpConfig {
     fn default() -> Self {
         Self {
             port: 9998,
@@ -76,7 +76,7 @@ impl Default for HTTPConfig {
     }
 }
 
-impl HTTPConfig {
+impl HttpConfig {
     pub fn init(&self) -> KResult<(Option<ParsedPkcs12_2>, Option<X509>)> {
         // If the server is running in TLS mode, we need to load the PKCS#12 certificate
         let p12 = if let Some(p12_file) = &self.https_p12_file {

@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
 };
 
-use cloudproof::reexport::crypto_core::SymmetricKey;
+use cloudproof::reexport::{crypto_core::SymmetricKey, findex::Label};
 use url::Url;
 
 use crate::database::redis::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
@@ -24,8 +24,21 @@ pub enum DbParams {
     RedisFindex(
         Url,
         SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
-        Vec<u8>,
+        Label,
     ),
+}
+
+impl DbParams {
+    /// Return the name of the database type
+    pub fn db_name(&self) -> &str {
+        match &self {
+            DbParams::Sqlite(_) => "Sqlite",
+            DbParams::SqliteEnc(_) => "Sqlite Enc.",
+            DbParams::Postgres(_) => "PostgreSQL",
+            DbParams::Mysql(_) => "MySql/MariaDB",
+            DbParams::RedisFindex(_, _, _) => "Redis-Findex",
+        }
+    }
 }
 
 impl Display for DbParams {

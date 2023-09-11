@@ -13,7 +13,7 @@ pub use certbot_https::HttpsCertbotConfig;
 pub use clap_config::ClapConfig;
 pub use db::DBConfig;
 pub use enclave::EnclaveConfig;
-pub use http_config::HTTPConfig;
+pub use http_config::HttpConfig;
 pub use jwe::{JWEConfig, Jwk};
 pub use jwt_auth_config::JwtAuthConfig;
 pub use workspace::WorkspaceConfig;

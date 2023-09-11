@@ -75,10 +75,9 @@ impl KMS {
                     // There is no reason to keep a copy of the key in the shared config
                     // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
                     // and zerorize the one in the shared config
-                    let key_bytes = master_key.to_bytes();
                     let new_master_key =
                         SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::try_from_bytes(
-                            key_bytes,
+                            master_key.to_bytes(),
                         )?;
                     master_key.zeroize();
                     Box::new(

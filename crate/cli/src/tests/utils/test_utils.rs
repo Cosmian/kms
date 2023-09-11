@@ -13,7 +13,7 @@ use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricK
 use cosmian_kms_server::{
     bootstrap_server::{start_https_bootstrap_server, BootstrapServerMessage},
     config::{
-        BootstrapServerConfig, ClapConfig, DBConfig, HTTPConfig, JWEConfig, Jwk, JwtAuthConfig,
+        BootstrapServerConfig, ClapConfig, DBConfig, HttpConfig, JWEConfig, Jwk, JwtAuthConfig,
         ServerParams,
     },
     kms_server::start_kms_server,
@@ -299,7 +299,7 @@ async fn genererate_server_params(
         },
         http: if use_https {
             if use_client_cert {
-                HTTPConfig {
+                HttpConfig {
                     port,
                     https_p12_file: Some(PathBuf::from(
                         "test_data/certificates/kmserver.acme.com.p12",
@@ -309,7 +309,7 @@ async fn genererate_server_params(
                     ..Default::default()
                 }
             } else {
-                HTTPConfig {
+                HttpConfig {
                     port,
                     https_p12_file: Some(PathBuf::from(
                         "test_data/certificates/kmserver.acme.com.p12",
@@ -319,7 +319,7 @@ async fn genererate_server_params(
                 }
             }
         } else {
-            HTTPConfig {
+            HttpConfig {
                 port,
                 ..Default::default()
             }
