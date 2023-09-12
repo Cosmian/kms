@@ -9,7 +9,7 @@ use cloudproof::reexport::{
     crypto_core::{kdf256, FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey},
     findex::{
         implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
-        Location,
+        Label, Location,
     },
 };
 use cosmian_kmip::kmip::{
@@ -51,8 +51,7 @@ pub struct RedisWithFindex {
     permissions_db: PermissionsDB,
     findex: Arc<FindexRedis>,
     findex_key: SymmetricKey<MASTER_KEY_LENGTH>,
-    label: Vec<u8>,
-    _db_key: SymmetricKey<DB_KEY_LENGTH>,
+    label: Label,
 }
 
 impl RedisWithFindex {
@@ -62,25 +61,24 @@ impl RedisWithFindex {
         label: &[u8],
     ) -> KResult<RedisWithFindex> {
         // derive a Findex Key
-        let mut findex_key_bytes = [0; MASTER_KEY_LENGTH];
+        // let mut findex_key_bytes = [0; MASTER_KEY_LENGTH];
+        let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
         kdf256!(
-            &mut findex_key_bytes,
+            &mut findex_key,
             REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
             master_key.as_bytes()
         );
-        let findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::try_from_bytes(findex_key_bytes)?;
         // derive a DB Key
-        let mut db_key_bytes = [0; DB_KEY_LENGTH];
+        let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
-            &mut db_key_bytes,
+            &mut db_key,
             REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
             master_key.as_bytes()
         );
-        let _db_key = SymmetricKey::<DB_KEY_LENGTH>::try_from_bytes(db_key_bytes)?;
 
         let client = redis::Client::open(redis_url)?;
         let mgr = ConnectionManager::new(client).await?;
-        let objects_db = Arc::new(ObjectsDB::new(mgr.clone()).await?);
+        let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), db_key).await?);
         let findex =
             Arc::new(FindexRedis::connect_with_manager(mgr.clone(), objects_db.clone()).await?);
         let permissions_db = PermissionsDB::new(findex.clone(), label).await?;
@@ -89,8 +87,7 @@ impl RedisWithFindex {
             permissions_db,
             findex,
             findex_key,
-            _db_key,
-            label: label.to_vec(),
+            label: Label::from(label),
         })
     }
 

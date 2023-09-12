@@ -48,15 +48,16 @@ pub async fn test_objects_db() -> KResult<()> {
     log_init("test_objects_db=trace");
     trace!("test_objects_db");
 
+    let mut rng = CsRng::from_entropy();
     let client = redis::Client::open(get_redis_url())?;
     let mgr = ConnectionManager::new(client).await?;
 
-    let o_db = ObjectsDB::new(mgr.clone()).await?;
+    let db_key = SymmetricKey::new(&mut rng);
+    let o_db = ObjectsDB::new(mgr.clone(), db_key).await?;
 
     // single upsert - get - delete
     let uid = "test_objects_db";
 
-    let mut rng = CsRng::from_entropy();
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
     let object = create_symmetric_key(&symmetric_key, CryptographicAlgorithm::AES);

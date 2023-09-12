@@ -18,12 +18,12 @@ When the Cosmian KMS servers are configured to export an HTTPS port (as is the c
 
 The KMS server has support for PostgreSQL, Maria DB, and MySQL, as well as Redis, using the Redis-with-Findex configuration.
 
-Redis with Findex offers the ability to use Redis as a database with application-level encryption: all data is encrypted by the KMS servers before being sent to Redis. [Findex](https://github.com/Cosmian/findex/) is a Cosmian cryptographic algorithm used to build encrypted indexes on encrypted data. This allows the KMS to perform fast encrypted queries on encrypted data. Findex encrypted indexes are also stored in Redis.
+Redis with Findex offers the ability to use Redis as a database with application-level encryption: all data is encrypted (using AES 256 GCM) by the KMS servers before being sent to Redis. [Findex](https://github.com/Cosmian/findex/) is a Cosmian cryptographic algorithm used to build encrypted indexes on encrypted data, also stored in Redis. This allows the KMS to perform fast encrypted queries on encrypted data. Redis with Findex offers post-quantum resistance on encrypted data and encrypted indexes.
 
 Redis-with-Findex is most useful when:
 
  - KMS servers are run inside a confidential VM or an enclave. In this case, the secret used to encrypt the Redis data and indexes is protected by the VM or enclave and cannot be recovered at runtime by inspecting the KMS servers' memory.
- - KMS servers run in a secure area but the Redis backend is managed by a third party.
+ - KMS servers are run by a trusted party but the Redis backend is managed by an untrusted third party.
 
 Redis-with-Findex should be selected to [run the Cosmian KMS in the cloud or any other zero-trust environment](./zero_trust.md).
 

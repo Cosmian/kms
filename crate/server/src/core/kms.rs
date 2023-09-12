@@ -669,9 +669,9 @@ impl KMS {
         Ok(user)
     }
 
-    /// Get the database secrets from the request
+    /// Get the SqliteEnc database secrets from the request
     /// The secrets are encoded in the `KmsDatabaseSecret` header
-    pub fn get_database_secrets(
+    pub fn get_sqlite_enc_secrets(
         &self,
         req_http: &HttpRequest,
     ) -> KResult<Option<ExtraDatabaseParams>> {
