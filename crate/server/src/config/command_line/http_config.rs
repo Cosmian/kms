@@ -1,12 +1,6 @@
-use std::{fmt::Display, fs::File, io::Read, path::PathBuf};
+use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
-use openssl::{
-    pkcs12::{ParsedPkcs12_2, Pkcs12},
-    x509::X509,
-};
-
-use crate::{kms_bail, result::KResult};
 
 #[derive(Args, Clone)]
 pub struct HttpConfig {
@@ -73,45 +67,5 @@ impl Default for HttpConfig {
             https_p12_password: String::new(),
             authority_cert_file: None,
         }
-    }
-}
-
-impl HttpConfig {
-    fn init(&self) -> KResult<(Option<ParsedPkcs12_2>, Option<X509>)> {
-        // If the server is running in TLS mode, we need to load the PKCS#12 certificate
-        let p12 = if let Some(p12_file) = &self.https_p12_file {
-            // Open and read the file into a byte vector
-            let mut file = File::open(p12_file)?;
-            let mut der_bytes = Vec::new();
-            file.read_to_end(&mut der_bytes)?;
-
-            // Parse the byte vector as a PKCS#12 object
-            let sealed_p12 = Pkcs12::from_der(der_bytes.as_slice())?;
-            let p12 = sealed_p12.parse2(&self.https_p12_password)?;
-            Some(p12)
-        } else {
-            None
-        };
-
-        // If the server is authenticating users using a certificate, we need to load the authority certificate
-        let x509 = if let Some(authority_cert_file) = &self.authority_cert_file {
-            if p12.is_none() {
-                kms_bail!(
-                    "The authority certificate file can only be used when the server is running \
-                     in TLS mode"
-                )
-            }
-            // Open and read the file into a byte vector
-            let mut file = File::open(authority_cert_file)?;
-            let mut pem_bytes = Vec::new();
-            file.read_to_end(&mut pem_bytes)?;
-
-            // Parse the byte vector as a X509 object
-            Some(X509::from_pem(pem_bytes.as_slice())?)
-        } else {
-            None
-        };
-
-        Ok((p12, x509))
     }
 }

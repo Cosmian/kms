@@ -72,7 +72,7 @@ impl ServerParams {
         let workspace = conf.workspace.init()?;
 
         // The HTTP/HTTPS parameters
-        let http_params = HttpParams::try_from(&conf, &workspace)?;
+        let http_params = HttpParams::try_from(conf, &workspace)?;
 
         // Should we verify the client TLS certificates?
         let verify_cert = if let Some(authority_cert_file) = &conf.http.authority_cert_file {
@@ -99,7 +99,7 @@ impl ServerParams {
             clear_db_on_start: conf.db.clear_database,
             hostname: conf.http.hostname.clone(),
             port: conf.http.port,
-            http_params: HttpParams::try_from(&conf, &workspace)?,
+            http_params: HttpParams::try_from(conf, &workspace)?,
             enclave_params: conf.enclave.init(&workspace)?,
             default_username: conf.default_username.clone(),
             force_default_username: conf.force_default_username,

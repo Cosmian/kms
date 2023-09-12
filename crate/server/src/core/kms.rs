@@ -54,26 +54,26 @@ impl KMS {
     ///  - the server is not running TLS
     ///  - the server server certificate cannot be read
     pub fn get_server_x509_certificate(&self) -> KResult<Option<String>> {
-        if let Some(certbot) = &self.params.certbot {
-            let cert = certbot.lock().expect("can't lock certificate mutex");
-            let (_, certificate) = cert.get_raw_cert()?;
-            return Ok(Some(certificate.to_string()))
+        match &self.params.http_params {
+            crate::config::HttpParams::Certbot(certbot) => {
+                let cert = certbot.lock().expect("can't lock certificate mutex");
+                let (_, certificate) = cert.get_raw_cert()?;
+                Ok(Some(certificate.to_string()))
+            }
+            crate::config::HttpParams::Https(p12) => {
+                let pem = String::from_utf8(
+                    p12.cert
+                        .as_ref()
+                        .ok_or_else(|| {
+                            KmsError::ItemNotFound("no pkcs12 certificate found".to_owned())
+                        })?
+                        .to_text()?,
+                )
+                .map_err(|e| KmsError::ConversionError(e.to_string()))?;
+                Ok(Some(pem))
+            }
+            crate::config::HttpParams::Http => Ok(None),
         }
-
-        if let Some(p12) = &self.params.server_pkcs_12 {
-            let pem = String::from_utf8(
-                p12.cert
-                    .as_ref()
-                    .ok_or_else(|| {
-                        KmsError::ItemNotFound("no pkcs12 certificate found".to_owned())
-                    })?
-                    .to_text()?,
-            )
-            .map_err(|e| KmsError::ConversionError(e.to_string()))?;
-            return Ok(Some(pem))
-        }
-
-        Ok(None)
     }
 
     /// Get the enclave public key

@@ -25,7 +25,7 @@ use super::{
     },
 };
 use crate::{
-    config::{DbParams, ServerParams},
+    config::{DbParams, HttpParams, ServerParams},
     error::KmsError,
     kms_bail, kms_error,
     kms_server::start_kms_server,
@@ -106,7 +106,7 @@ pub async fn start_kms_server_using_bootstrap_server(
                         .subject_name()
                 );
                 // Set the PKCS12 in the config
-                server_params.server_pkcs_12 = Some(p12);
+                server_params.http_params = HttpParams::Https(p12);
                 info!(
                     "PKCS12 received and successfully opened with subject name: {}",
                     subject_name
@@ -159,11 +159,17 @@ pub async fn start_https_bootstrap_server(
     // Log the server configuration
     info!("Bootstrap server configuration: {:#?}", server_params);
 
+    // Was a PKCS#12 supplied on the command line ?
+    let pkcs12_supplied = matches!(
+        &server_params.http_params,
+        crate::config::HttpParams::Https(_)
+    );
+
     // Create the BootstrapServer instance
     let bootstrap_server = Arc::new(BootstrapServer {
         server_params: server_params.clone(),
         db_params_supplied: RwLock::new(server_params.db_params.is_some()),
-        pkcs12_supplied: RwLock::new(server_params.server_pkcs_12.is_some()),
+        pkcs12_supplied: RwLock::new(pkcs12_supplied),
         bs_msg_tx,
         pkcs12_received: RwLock::new(None),
         pkcs12_password_received: RwLock::new(None),

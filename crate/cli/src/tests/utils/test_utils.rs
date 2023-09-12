@@ -13,8 +13,8 @@ use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricK
 use cosmian_kms_server::{
     bootstrap_server::{start_https_bootstrap_server, BootstrapServerMessage},
     config::{
-        BootstrapServerConfig, ClapConfig, DBConfig, HttpConfig, JWEConfig, Jwk, JwtAuthConfig,
-        ServerParams,
+        BootstrapServerConfig, ClapConfig, DBConfig, HttpConfig, HttpParams, JWEConfig, Jwk,
+        JwtAuthConfig, ServerParams,
     },
     kms_server::start_kms_server,
 };
@@ -346,7 +346,7 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, CliConf)
     // Generate a CLI Conf.
     // We will update it later by appending the database secret
     let owner_cli_conf = CliConf {
-        kms_server_url: if server_params.server_pkcs_12.is_some() {
+        kms_server_url: if matches!(server_params.http_params, HttpParams::Https(_)) {
             format!("https://0.0.0.0:{}", server_params.port)
         } else {
             format!("http://0.0.0.0:{}", server_params.port)
