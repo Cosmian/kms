@@ -18,7 +18,7 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType},
-    crypto::password_derivation::{derive_key_from_password, KMS_ARGON2_SALT},
+    crypto::password_derivation::derive_key_from_password,
     tagging::get_tags,
 };
 use redis::aio::ConnectionManager;
@@ -94,13 +94,9 @@ impl RedisWithFindex {
     pub fn master_key_from_password(
         master_password: &str,
     ) -> KResult<SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>> {
-        let master_secret_key =
-            SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::try_from_bytes(
-                derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
-                    master_password.as_bytes(),
-                    KMS_ARGON2_SALT,
-                )?,
-            )?;
+        let master_secret_key = derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
+            master_password.as_bytes(),
+        )?;
         Ok(master_secret_key)
     }
 }
