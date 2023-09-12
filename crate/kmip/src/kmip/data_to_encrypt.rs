@@ -93,7 +93,7 @@ impl DataToEncrypt {
                 .map_err(|e| {
                     KmipError::KmipError(
                         ErrorReason::Invalid_Message,
-                        format!("failed deserializing the encryption policy string: {e}",),
+                        format!("failed deserializing the encryption policy string: {e}"),
                     )
                 })?;
             Some(encryption_policy_string)

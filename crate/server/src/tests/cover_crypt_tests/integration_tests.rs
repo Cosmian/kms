@@ -6,7 +6,7 @@ use cosmian_kmip::kmip::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
         EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
-    kmip_types::RevocationReason,
+    kmip_types::{CryptographicAlgorithm, RevocationReason},
 };
 use cosmian_kms_utils::{
     crypto::{
@@ -62,12 +62,14 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let data = b"Confidential MKG Data";
     let encryption_policy = "Level::Confidential && Department::MKG";
     let header_metadata = vec![1, 2, 3];
+
     let request = build_encryption_request(
         public_key_unique_identifier,
         Some(encryption_policy.to_string()),
         data.to_vec(),
         Some(header_metadata.clone()),
         Some(authentication_data.clone()),
+        Some(CryptographicAlgorithm::CoverCrypt),
     )?;
 
     let encrypt_response: EncryptResponse = test_utils::post(&app, request).await?;
@@ -89,10 +91,12 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let request = build_decryption_request(
         user_decryption_key_identifier,
         None,
-        encrypted_data.clone(),
+        encrypted_data,
         None,
         Some(authentication_data.clone()),
+        None,
     );
+
     let decrypt_response: DecryptResponse = test_utils::post(&app, request).await?;
 
     let decrypted_data: DecryptedData = decrypt_response
@@ -111,14 +115,18 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let authentication_data = b"cc the uid".to_vec();
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";
+
     let request = build_encryption_request(
         public_key_unique_identifier,
         Some(encryption_policy.to_string()),
         data.to_vec(),
         None,
         Some(authentication_data.clone()),
+        None,
     )?;
+
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
+
     let encrypted_data = encrypt_response
         .data
         .expect("There should be encrypted data");
@@ -152,6 +160,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         encrypted_data.clone(),
         None,
         Some(authentication_data.clone()),
+        None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
 
@@ -162,17 +171,19 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(data, &decrypted_data.plaintext);
-    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
+    assert_eq!(&data, &decrypted_data.plaintext);
+    assert!(decrypted_data.metadata.is_empty());
 
     // test user2 can decrypt
     let request = build_decryption_request(
         user_decryption_key_identifier_2,
         None,
-        encrypted_data.clone(),
+        encrypted_data,
         None,
         Some(authentication_data.clone()),
+        None,
     );
+
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
 
     let decrypted_data: DecryptedData = decrypt_response
@@ -182,8 +193,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(data, &decrypted_data.plaintext);
-    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
+    assert_eq!(&data, &decrypted_data.plaintext);
+    assert!(decrypted_data.metadata.is_empty());
 
     // Revoke key of user 1
     let _revoke_response: RevokeResponse = test_utils::post(
@@ -216,12 +227,14 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let authentication_data = b"cc the uid".to_vec();
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";
+
     let request = build_encryption_request(
         public_key_unique_identifier,
         Some(encryption_policy.to_string()),
         data.to_vec(),
         None,
         Some(authentication_data.clone()),
+        Some(CryptographicAlgorithm::CoverCrypt),
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
     let encrypted_data = encrypt_response
@@ -235,6 +248,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         encrypted_data.clone(),
         None,
         Some(authentication_data.clone()),
+        None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
     assert!(post_ttlv_decrypt.is_err());
@@ -246,6 +260,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         encrypted_data,
         None,
         Some(authentication_data.clone()),
+        None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
     let decrypted_data: DecryptedData = decrypt_response
@@ -255,8 +270,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(data, &decrypted_data.plaintext);
-    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
+    assert_eq!(&data, &decrypted_data.plaintext);
+    assert!(decrypted_data.metadata.is_empty());
 
     //
     // Destroy user decryption key

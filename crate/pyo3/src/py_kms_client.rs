@@ -493,6 +493,7 @@ impl KmsClient {
             data,
             header_metadata,
             authentication_data,
+            None,
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
 
@@ -537,7 +538,7 @@ impl KmsClient {
         };
 
         let request =
-            build_decryption_request(&id, None, encrypted_data, None, authentication_data);
+            build_decryption_request(&id, None, encrypted_data, None, authentication_data, None);
 
         let client = self.0.clone();
         pyo3_asyncio::tokio::future_into_py(py, async move {

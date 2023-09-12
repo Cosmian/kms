@@ -69,8 +69,9 @@ impl EncryptAction {
             plaintext,
             None,
             self.authentication_data
-                .clone()
+                .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
+            None,
         )?;
 
         // Query the KMS with your kmip data and get the key pair ids

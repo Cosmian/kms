@@ -264,6 +264,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 confidential_mkg_data.to_vec(),
                 None,
                 Some(confidential_authentication_data.clone()),
+                None,
             )?,
             owner,
             None,
@@ -281,6 +282,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 confidential_mkg_data.to_vec(),
                 None,
                 Some(confidential_authentication_data.clone()),
+                None,
             )?,
             nonexistent_owner,
             None,
@@ -300,6 +302,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_data.to_vec(),
                 None,
                 Some(secret_authentication_data.clone()),
+                None,
             )?,
             owner,
             None,
@@ -317,6 +320,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_data.to_vec(),
                 None,
                 Some(secret_authentication_data.clone()),
+                None,
             )?,
             nonexistent_owner,
             None,
@@ -348,6 +352,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 confidential_mkg_encrypted_data.clone(),
                 None,
                 Some(confidential_authentication_data.clone()),
+                None,
             ),
             owner,
             None,
@@ -362,7 +367,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .unwrap();
 
     assert_eq!(confidential_mkg_data, &decrypted_data.plaintext[..]);
-    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
+    assert!(decrypted_data.metadata.is_empty());
 
     // check it doesn't work with invalid tenant
     let dr = kms
@@ -373,6 +378,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 confidential_mkg_encrypted_data,
                 None,
                 Some(confidential_authentication_data),
+                None,
             ),
             nonexistent_owner,
             None,
@@ -389,6 +395,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_encrypted_data.clone(),
                 None,
                 Some(secret_authentication_data.clone()),
+                None,
             ),
             owner,
             None,
@@ -403,7 +410,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         .unwrap();
 
     assert_eq!(secret_fin_data, &decrypted_data.plaintext[..]);
-    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
+    assert!(decrypted_data.metadata.is_empty());
 
     // check it doesn't work with invalid tenant
     let dr = kms
@@ -414,6 +421,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
                 secret_fin_encrypted_data,
                 None,
                 Some(secret_authentication_data),
+                None,
             ),
             nonexistent_owner,
             None,
@@ -575,6 +583,7 @@ async fn test_import_decrypt() -> KResult<()> {
                 confidential_mkg_data.to_vec(),
                 None,
                 Some(confidential_authentication_data.clone()),
+                None,
             )?,
             owner,
             None,
@@ -632,6 +641,7 @@ async fn test_import_decrypt() -> KResult<()> {
                 confidential_mkg_encrypted_data.clone(),
                 None,
                 Some(confidential_authentication_data.clone()),
+                None,
             ),
             owner,
             None,
@@ -667,6 +677,7 @@ async fn test_import_decrypt() -> KResult<()> {
                 confidential_mkg_encrypted_data.clone(),
                 None,
                 Some(confidential_authentication_data.clone()),
+                None,
             ),
             owner,
             None,
@@ -681,7 +692,7 @@ async fn test_import_decrypt() -> KResult<()> {
         .unwrap();
 
     assert_eq!(confidential_mkg_data, &decrypted_data.plaintext[..]);
-    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
+    assert!(decrypted_data.metadata.is_empty());
 
     Ok(())
 }

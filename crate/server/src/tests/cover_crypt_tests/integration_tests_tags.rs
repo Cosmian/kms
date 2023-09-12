@@ -61,12 +61,14 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let data = b"Confidential MKG Data";
     let encryption_policy = "Level::Confidential && Department::MKG";
     let header_metadata = vec![1, 2, 3];
+
     let request = build_encryption_request(
         &mkp_json_tag,
         Some(encryption_policy.to_string()),
         data.to_vec(),
         Some(header_metadata.clone()),
         Some(authentication_data.clone()),
+        None,
     )?;
 
     let encrypt_response: EncryptResponse = test_utils::post(&app, request).await?;
@@ -87,9 +89,10 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let request = build_decryption_request(
         &udk_json_tag,
         None,
-        encrypted_data.clone(),
+        encrypted_data,
         None,
         Some(authentication_data.clone()),
+        None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, request).await?;
 
@@ -109,12 +112,14 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let authentication_data = b"cc the uid".to_vec();
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";
+
     let request = build_encryption_request(
         &mkp_json_tag,
         Some(encryption_policy.to_string()),
         data.to_vec(),
         None,
         Some(authentication_data.clone()),
+        None,
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
     let encrypted_data = encrypt_response
@@ -146,6 +151,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         encrypted_data.clone(),
         None,
         Some(authentication_data.clone()),
+        None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
 
@@ -156,16 +162,17 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(data, &decrypted_data.plaintext);
-    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
+    assert_eq!(&data, &decrypted_data.plaintext);
+    assert!(decrypted_data.metadata.is_empty());
 
     // test user2 can decrypt
     let request = build_decryption_request(
         &udk2_json_tag,
         None,
-        encrypted_data.clone(),
+        encrypted_data,
         None,
         Some(authentication_data.clone()),
+        None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
 
@@ -176,8 +183,8 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(data, &decrypted_data.plaintext);
-    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
+    assert_eq!(&data, &decrypted_data.plaintext);
+    assert!(decrypted_data.metadata.is_empty());
 
     // Revoke key of user 1
     let _revoke_response: RevokeResponse = test_utils::post(
@@ -215,6 +222,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         data.to_vec(),
         None,
         Some(authentication_data.clone()),
+        None,
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
     let encrypted_data = encrypt_response
@@ -228,6 +236,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         encrypted_data.clone(),
         None,
         Some(authentication_data.clone()),
+        None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
     assert!(post_ttlv_decrypt.is_err());
@@ -239,6 +248,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         encrypted_data,
         None,
         Some(authentication_data.clone()),
+        None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
     let decrypted_data: DecryptedData = decrypt_response
@@ -248,8 +258,8 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(data, &decrypted_data.plaintext);
-    assert_eq!(Vec::<u8>::new(), decrypted_data.metadata);
+    assert_eq!(&data, &decrypted_data.plaintext);
+    assert!(decrypted_data.metadata.is_empty());
 
     //
     // Destroy user decryption key

@@ -21,14 +21,14 @@ pub async fn encrypt(
     // there must be an identifier
     let uid_or_tags = request
         .unique_identifier
-        .clone()
+        .as_deref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
     trace!("encrypt: uid_or_tags: {uid_or_tags}");
 
     // retrieve from tags or use passed identifier
     let mut owm_s = kms
         .db
-        .retrieve(&uid_or_tags, user, ObjectOperationType::Encrypt, params)
+        .retrieve(uid_or_tags, user, ObjectOperationType::Encrypt, params)
         .await?
         .into_iter()
         .filter(|owm| {
@@ -44,7 +44,7 @@ pub async fn encrypt(
     // there can only be one key
     let owm = owm_s
         .pop()
-        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.clone()))?;
+        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.to_string()))?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(

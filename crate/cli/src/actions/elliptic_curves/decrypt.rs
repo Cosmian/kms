@@ -65,6 +65,7 @@ impl DecryptAction {
             self.authentication_data
                 .clone()
                 .map(|s| s.as_bytes().to_vec()),
+            None,
         );
 
         // Query the KMS with your kmip data and get the key pair ids
