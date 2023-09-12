@@ -22,9 +22,8 @@ use openssl::{
 use tracing::{debug, error, info};
 
 use crate::{
-    config::{self, ServerParams},
+    config::{self, HttpParams, ServerParams},
     core::{certbot::Certbot, KMS},
-    error::KmsError,
     kms_bail, kms_error,
     middlewares::{
         ssl_auth::{extract_peer_certificate, SslAuth},
@@ -57,15 +56,16 @@ pub async fn start_kms_server(
 ) -> KResult<()> {
     // Log the server configuration
     info!("KMS Server configuration: {:#?}", server_params);
-    if server_params.certbot.is_some() {
-        // Start an HTTPS server with certbot
-        start_certbot_https_kms_server(server_params, kms_server_handle_tx).await
-    } else if server_params.server_pkcs_12.is_some() {
-        // Start an HTTPS server with PKCS#12
-        start_https_kms_server(server_params, kms_server_handle_tx).await
-    } else {
-        // Start a plain HTTP server
-        start_plain_http_kms_server(server_params, kms_server_handle_tx).await
+    match &server_params.http_params {
+        config::HttpParams::Certbot(_) => {
+            start_certbot_https_kms_server(server_params, kms_server_handle_tx).await
+        }
+        config::HttpParams::Https(_) => {
+            start_https_kms_server(server_params, kms_server_handle_tx).await
+        }
+        config::HttpParams::Http => {
+            start_plain_http_kms_server(server_params, kms_server_handle_tx).await
+        }
     }
 }
 
@@ -123,10 +123,10 @@ async fn start_https_kms_server(
     server_params: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
-    let p12 = server_params
-        .server_pkcs_12
-        .as_ref()
-        .ok_or_else(|| kms_error!("http/s: a PKCS#12 file must be provided"))?;
+    let p12 = match &server_params.http_params {
+        config::HttpParams::Https(p12) => p12,
+        _ => kms_bail!("http/s: a PKCS#12 file must be provided"),
+    };
 
     // Create and configure an SSL acceptor with the certificate and key
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
@@ -266,9 +266,10 @@ async fn start_certbot_https_kms_server(
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
     // Before starting any servers, check the status of our SSL certificates
-    let certbot = server_params.certbot.clone().ok_or_else(|| {
-        KmsError::ServerError("trying to start a TLS server but certbot is not used !".to_string())
-    })?;
+    let certbot = match &server_params.http_params {
+        HttpParams::Certbot(certbot) => certbot.clone(),
+        _ => kms_bail!("trying to start a TLS server but certbot is not used !"),
+    };
 
     debug!("Initializing certbot");
     // Recover the previous certificate if exist
@@ -374,38 +375,38 @@ pub fn prepare_kms_server(
     builder: Option<SslAcceptorBuilder>,
 ) -> KResult<actix_web::dev::Server> {
     // Determine if JWT Auth should be used for authentication.
-    let (use_jwt_auth, jwt_config) = if let Some(jwt_issuer_uri) = &kms_server.config.jwt_issuer_uri
+    let (use_jwt_auth, jwt_config) = if let Some(jwt_issuer_uri) = &kms_server.params.jwt_issuer_uri
     {
         (
             true,
             Some(JwtConfig {
                 jwt_issuer_uri: jwt_issuer_uri.clone(),
                 jwks: kms_server
-                    .config
+                    .params
                     .jwks
                     .as_ref()
                     .ok_or_else(|| {
                         kms_error!("The JWKS must be provided when using JWT authentication")
                     })?
                     .clone(),
-                jwt_audience: kms_server.config.jwt_audience.clone(),
+                jwt_audience: kms_server.params.jwt_audience.clone(),
             }),
         )
     } else {
         (false, None)
     };
     // Determine if Client Cert Auth should be used for authentication.
-    let use_cert_auth = kms_server.config.verify_cert.is_some();
+    let use_cert_auth = kms_server.params.verify_cert.is_some();
     // Determine if the application is running inside an enclave.
     let is_running_inside_enclave = is_running_inside_enclave();
     // Determine if the application is using an encrypted SQLite database.
     let is_using_sqlite_enc = matches!(
-        kms_server.config.db_params,
+        kms_server.params.db_params,
         Some(config::DbParams::SqliteEnc(_))
     );
 
     // Determine the address to bind the server to.
-    let address = format!("{}:{}", kms_server.config.hostname, kms_server.config.port);
+    let address = format!("{}:{}", kms_server.params.hostname, kms_server.params.port);
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {

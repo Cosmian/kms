@@ -90,7 +90,7 @@ impl KMS {
         };
 
         Ok(Self {
-            config: shared_config,
+            params: shared_config,
             db,
             rng: Arc::new(Mutex::new(CsRng::from_entropy())),
         })

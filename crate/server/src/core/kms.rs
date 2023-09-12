@@ -39,7 +39,7 @@ use crate::{
 /// A Simple Key Management System that partially implements KMIP 2.1:
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
 pub struct KMS {
-    pub(crate) config: ServerParams,
+    pub(crate) params: ServerParams,
     pub(crate) rng: Arc<Mutex<CsRng>>,
     pub(crate) db: Box<dyn Database + Sync + Send>,
 }
@@ -54,13 +54,13 @@ impl KMS {
     ///  - the server is not running TLS
     ///  - the server server certificate cannot be read
     pub fn get_server_x509_certificate(&self) -> KResult<Option<String>> {
-        if let Some(certbot) = &self.config.certbot {
+        if let Some(certbot) = &self.params.certbot {
             let cert = certbot.lock().expect("can't lock certificate mutex");
             let (_, certificate) = cert.get_raw_cert()?;
             return Ok(Some(certificate.to_string()))
         }
 
-        if let Some(p12) = &self.config.server_pkcs_12 {
+        if let Some(p12) = &self.params.server_pkcs_12 {
             let pem = String::from_utf8(
                 p12.cert
                     .as_ref()
@@ -82,7 +82,7 @@ impl KMS {
     /// Returns a `KResult` with a `Error` if the enclave public key file cannot be read
     pub fn get_enclave_public_key(&self) -> KResult<String> {
         Ok(fs::read_to_string(
-            &self.config.enclave_params.public_key_path,
+            &self.params.enclave_params.public_key_path,
         )?)
     }
 
@@ -91,7 +91,7 @@ impl KMS {
     /// This service is not available if the server is not running inside an enclave
     pub fn get_manifest(&self) -> KResult<String> {
         Ok(fs::read_to_string(
-            &self.config.enclave_params.manifest_path,
+            &self.params.enclave_params.manifest_path,
         )?)
     }
 
@@ -106,7 +106,7 @@ impl KMS {
     /// Returns an error if the KMS server does not allow this operation or if an error occurs while
     /// generating the new database or key.
     pub async fn add_new_database(&self) -> KResult<String> {
-        if let DbParams::SqliteEnc(_) = self.config.db_params.as_ref().ok_or_else(|| {
+        if let DbParams::SqliteEnc(_) = self.params.db_params.as_ref().ok_or_else(|| {
             kms_error!("Unexpected fatal error: no database configured on the KMS server")
         })? {
             // Generate a new group id
@@ -644,9 +644,9 @@ impl KMS {
     /// If the header is not present, the user is extracted from the client certificate
     /// If the client certificate is not present, the user is extracted from the configuration file
     pub fn get_user(&self, req_http: HttpRequest) -> KResult<String> {
-        let default_username = self.config.default_username.clone();
+        let default_username = self.params.default_username.clone();
 
-        if self.config.force_default_username {
+        if self.params.force_default_username {
             debug!(
                 "Authenticated using forced default user: {}",
                 default_username
@@ -676,7 +676,7 @@ impl KMS {
         req_http: &HttpRequest,
     ) -> KResult<Option<ExtraDatabaseParams>> {
         Ok(
-            match self.config.db_params.as_ref().ok_or_else(|| {
+            match self.params.db_params.as_ref().ok_or_else(|| {
                 kms_error!("Unexpected fatal error: no database configured on the KMS server")
             })? {
                 DbParams::SqliteEnc(_) => {

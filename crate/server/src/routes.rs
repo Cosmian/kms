@@ -77,7 +77,7 @@ pub async fn kmip(
         Ok(ttlv) => ttlv,
         Err(_) => {
             let key = kms
-                .config
+                .params
                 .jwe_config
                 .jwk_private_key
                 .as_ref()
