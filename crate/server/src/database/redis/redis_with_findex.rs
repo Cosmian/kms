@@ -9,7 +9,7 @@ use cloudproof::reexport::{
     crypto_core::{kdf256, FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey},
     findex::{
         implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
-        Location,
+        Label, Location,
     },
 };
 use cosmian_kmip::kmip::{
@@ -18,6 +18,7 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType},
+    crypto::password_derivation::derive_key_from_password,
     tagging::get_tags,
 };
 use redis::aio::ConnectionManager;
@@ -35,6 +36,8 @@ use crate::{
 };
 
 pub const REDIS_WITH_FINDEX_MASTER_KEY_LENGTH: usize = 32;
+pub const REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT: &[u8; 6] = b"findex";
+pub const REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT: &[u8; 2] = b"db";
 
 /// Find the intersection of all the sets
 fn intersect_all<I: IntoIterator<Item = HashSet<Location>>>(sets: I) -> HashSet<Location> {
@@ -48,8 +51,7 @@ pub struct RedisWithFindex {
     permissions_db: PermissionsDB,
     findex: Arc<FindexRedis>,
     findex_key: SymmetricKey<MASTER_KEY_LENGTH>,
-    label: Vec<u8>,
-    _db_key: SymmetricKey<DB_KEY_LENGTH>,
+    label: Label,
 }
 
 impl RedisWithFindex {
@@ -59,17 +61,24 @@ impl RedisWithFindex {
         label: &[u8],
     ) -> KResult<RedisWithFindex> {
         // derive a Findex Key
-        let mut findex_key_bytes = [0; MASTER_KEY_LENGTH];
-        kdf256!(&mut findex_key_bytes, b"findex", master_key.as_bytes());
-        let findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::try_from_bytes(findex_key_bytes)?;
+        // let mut findex_key_bytes = [0; MASTER_KEY_LENGTH];
+        let mut findex_key = SymmetricKey::<MASTER_KEY_LENGTH>::default();
+        kdf256!(
+            &mut findex_key,
+            REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
+            master_key.as_bytes()
+        );
         // derive a DB Key
-        let mut db_key_bytes = [0; DB_KEY_LENGTH];
-        kdf256!(&mut db_key_bytes, b"db", master_key.as_bytes());
-        let _db_key = SymmetricKey::<DB_KEY_LENGTH>::try_from_bytes(db_key_bytes)?;
+        let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
+        kdf256!(
+            &mut db_key,
+            REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
+            master_key.as_bytes()
+        );
 
         let client = redis::Client::open(redis_url)?;
         let mgr = ConnectionManager::new(client).await?;
-        let objects_db = Arc::new(ObjectsDB::new(mgr.clone()).await?);
+        let objects_db = Arc::new(ObjectsDB::new(mgr.clone(), db_key).await?);
         let findex =
             Arc::new(FindexRedis::connect_with_manager(mgr.clone(), objects_db.clone()).await?);
         let permissions_db = PermissionsDB::new(findex.clone(), label).await?;
@@ -78,9 +87,17 @@ impl RedisWithFindex {
             permissions_db,
             findex,
             findex_key,
-            _db_key,
-            label: label.to_vec(),
+            label: Label::from(label),
         })
+    }
+
+    pub fn master_key_from_password(
+        master_password: &str,
+    ) -> KResult<SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>> {
+        let master_secret_key = derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
+            master_password.as_bytes(),
+        )?;
+        Ok(master_secret_key)
     }
 }
 

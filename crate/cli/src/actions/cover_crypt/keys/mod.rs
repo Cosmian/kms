@@ -29,16 +29,16 @@ pub enum KeysCommands {
 }
 
 impl KeysCommands {
-    pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         match self {
-            Self::CreateMasterKeyPair(action) => action.run(client_connector).await?,
-            Self::CreateUserKey(action) => action.run(client_connector).await?,
-            Self::Export(action) => action.run(client_connector).await?,
-            Self::Import(action) => action.run(client_connector).await?,
-            Self::Wrap(action) => action.run(client_connector).await?,
-            Self::Unwrap(action) => action.run(client_connector).await?,
-            Self::Revoke(action) => action.run(client_connector).await?,
-            Self::Destroy(action) => action.run(client_connector).await?,
+            Self::CreateMasterKeyPair(action) => action.run(kms_rest_client).await?,
+            Self::CreateUserKey(action) => action.run(kms_rest_client).await?,
+            Self::Export(action) => action.run(kms_rest_client).await?,
+            Self::Import(action) => action.run(kms_rest_client).await?,
+            Self::Wrap(action) => action.run(kms_rest_client).await?,
+            Self::Unwrap(action) => action.run(kms_rest_client).await?,
+            Self::Revoke(action) => action.run(kms_rest_client).await?,
+            Self::Destroy(action) => action.run(kms_rest_client).await?,
         };
 
         Ok(())

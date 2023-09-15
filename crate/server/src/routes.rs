@@ -60,7 +60,8 @@ impl actix_web::error::ResponseError for KmsError {
             | KmsError::UnsupportedPlaceholder
             | KmsError::InconsistentOperation(..)
             | KmsError::InvalidRequest(_)
-            | KmsError::ItemNotFound(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            | KmsError::ItemNotFound(_)
+            | &KmsError::UrlError(_) => StatusCode::UNPROCESSABLE_ENTITY,
         }
     }
 }
@@ -76,7 +77,7 @@ pub async fn kmip(
         Ok(ttlv) => ttlv,
         Err(_) => {
             let key = kms
-                .config
+                .params
                 .jwe_config
                 .jwk_private_key
                 .as_ref()
@@ -99,7 +100,7 @@ pub async fn kmip(
         }
     };
 
-    let database_params = kms.get_database_secrets(&req_http)?;
+    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(req_http)?;
     info!("POST /kmip. Request: {:?} {}", ttlv.tag.as_str(), user);
 
@@ -182,7 +183,7 @@ pub async fn list_owned_objects(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<ObjectOwnedResponse>>> {
-    let database_params = kms.get_database_secrets(&req)?;
+    let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(req)?;
     info!("GET /access/owned {user}");
 
@@ -200,7 +201,7 @@ pub async fn list_access_rights_obtained(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<AccessRightsObtainedResponse>>> {
-    let database_params = kms.get_database_secrets(&req)?;
+    let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(req)?;
     info!("GET /access/granted {user}");
 
@@ -219,7 +220,7 @@ pub async fn list_accesses(
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<UserAccessResponse>>> {
     let object_id = object_id.to_owned().0;
-    let database_params = kms.get_database_secrets(&req)?;
+    let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(req)?;
     info!("GET /accesses/{object_id} {user}");
 
@@ -238,7 +239,7 @@ pub async fn grant_access(
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<SuccessResponse>> {
     let access = access.into_inner();
-    let database_params = kms.get_database_secrets(&req)?;
+    let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(req)?;
     info!("POST /access/grant {access:?} {user}");
 
@@ -262,7 +263,7 @@ pub async fn revoke_access(
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<SuccessResponse>> {
     let access = access.into_inner();
-    let database_params = kms.get_database_secrets(&req)?;
+    let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(req)?;
     info!("POST /access/revoke {access:?} {user}");
 

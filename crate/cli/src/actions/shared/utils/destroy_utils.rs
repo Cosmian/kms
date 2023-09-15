@@ -6,14 +6,14 @@ use crate::{
     error::{result::CliResultHelper, CliError},
 };
 
-pub async fn destroy(client_connector: &KmsRestClient, key_id: &str) -> Result<(), CliError> {
+pub async fn destroy(kms_rest_client: &KmsRestClient, key_id: &str) -> Result<(), CliError> {
     // Create the kmip query
     let destroy_query = Destroy {
         unique_identifier: Some(key_id.to_string()),
     };
 
     // Query the KMS with your kmip data
-    let destroy_response = client_connector
+    let destroy_response = kms_rest_client
         .destroy(destroy_query)
         .await
         .with_context(|| format!("destroying the key {} failed", &key_id))?;

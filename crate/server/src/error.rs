@@ -76,6 +76,9 @@ pub enum KmsError {
 
     #[error("Findex Error: {0}")]
     Findex(String),
+
+    #[error("Invalid URL: {0}")]
+    UrlError(String),
 }
 
 impl From<TtlvError> for KmsError {
@@ -189,6 +192,12 @@ impl From<redis::RedisError> for KmsError {
 impl From<KmsError> for redis::RedisError {
     fn from(val: KmsError) -> Self {
         redis::RedisError::from((ErrorKind::ClientError, "KMS Error", val.to_string()))
+    }
+}
+
+impl From<url::ParseError> for KmsError {
+    fn from(e: url::ParseError) -> Self {
+        Self::UrlError(e.to_string())
     }
 }
 

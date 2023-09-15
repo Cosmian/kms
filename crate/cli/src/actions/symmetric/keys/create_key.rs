@@ -45,7 +45,7 @@ pub struct CreateKeyAction {
 }
 
 impl CreateKeyAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         let mut key_bytes = None;
         let number_of_bits = if let Some(key_b64) = &self.wrap_key_b64 {
             let bytes = general_purpose::STANDARD
@@ -80,12 +80,12 @@ impl CreateKeyAction {
         let unique_identifier = match key_bytes {
             Some(key_bytes) => {
                 let object = create_symmetric_key(key_bytes.as_slice(), algorithm);
-                import_object(client_connector, None, object, false, false, &self.tags).await?
+                import_object(kms_rest_client, None, object, false, false, &self.tags).await?
             }
             None => {
                 let create_key_request =
                     symmetric_key_create_request(number_of_bits, algorithm, &self.tags)?;
-                client_connector
+                kms_rest_client
                     .create(create_key_request)
                     .await
                     .with_context(|| "failed creating the key")?

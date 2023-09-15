@@ -15,14 +15,15 @@ CLI used to manage the Cosmian KMS.
 Usage: ckms <COMMAND>
 
 Commands:
-  cc              Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
-  ec              Manage elliptic curve keys. Encrypt and decrypt data using ECIES
-  sym             Manage symmetric keys and salts. Encrypt and decrypt data
-  access-rights   Manage the users' access rights to the cryptographic objects
-  locate          Locate cryptographic objects inside the KMS
-  new-database    Initialize a new client-secret encrypted database and return the secret (SQLCipher only).
-  server-version  Print the version of the server
-  help            Print this message or the help of the given subcommand(s)
+  cc               Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
+  ec               Manage elliptic curve keys. Encrypt and decrypt data using ECIES
+  sym              Manage symmetric keys and salts. Encrypt and decrypt data
+  access-rights    Manage the users' access rights to the cryptographic objects
+  locate           Locate cryptographic objects inside the KMS
+  new-database     Initialize a new user encrypted database and return the secret (`SQLCipher` only).
+  server-version   Print the version of the server
+  bootstrap-start  Provide configuration and start the KMS server via the bootstrap server.
+  help             Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help
@@ -156,7 +157,7 @@ ckms locate [OPTIONS]
 
 ### new-database
 
-Initialize a new client-secret encrypted database and return the secret (SQLCipher only).
+Initialize a new user encrypted database and return the secret (SQLCipher only).
 
 This secret is only displayed once and is not stored anywhere on the server.
 To use the encrypted database, the secret must be set in the `kms_database_secret`
@@ -174,8 +175,59 @@ of the last created database and will not overwrite it.
 ckms new-database
 ```
 
+### bootstrap-start
+
+Configure and start a KMS server configured in [bootstrap mode](../bootstrap.md).
+
+To contact the bootstrap server, `ckms` uses the `bootstrap_server_url` value configured in the `~/.cosmian/kms.json` configuration file. If the URL is not specified, the `kms_server_url` is used, replacing `http` with `https` if need be.
+
+A database must be configured for for the KMS server to launch. If no PKCS#12 file is provided, the KMS server will start in HTTP mode.
+
+**Usage:**
+
+```sh
+ckms bootstrap-start [OPTIONS] 
+```
+
 **Options:**
 
 ```sh
--h, --help                 Print help
+--database-type <DATABASE_TYPE>
+    The database type of the KMS server:
+    - postgresql: PostgreSQL. The database url must be provided
+    - mysql: MySql or MariaDB. The database url must be provided
+    - sqlite: SQLite. The data will be stored at the sqlite_path directory
+    - sqlite-enc: SQLite encrypted at rest. The data will be stored at the sqlite_path directory.
+    A key must be supplied on every call
+    - redis-findex: and redis database with encrypted data and encrypted indexes thanks to Findex.
+    The Redis database url must be provided, as well as the redis-master-password and the redis-findex-label
+    _
+    
+    [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
+
+--database-url <DATABASE_URL>
+    The url of the database for postgresql, mysql or findex-redis
+
+--sqlite-path <SQLITE_PATH>
+    The directory path of the sqlite or sqlite-enc
+    
+    [default: ./sqlite-data]
+
+--redis-master-password <REDIS_MASTER_PASSWORD>
+    redis-findex: a master password used to encrypt the Redis data and indexes
+
+--redis-findex-label <REDIS_FINDEX_LABEL>
+    redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
+
+--clear-database
+    Clear the database on start.
+    WARNING: This will delete ALL the data in the database
+
+--https-p12-file <HTTPS_P12_FILE>
+    The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode
+
+--https-p12-password <HTTPS_P12_PASSWORD>
+    The password to open the PKCS#12 Certificates and Key file if not an empty string
+    
+    [default: ]
 ```

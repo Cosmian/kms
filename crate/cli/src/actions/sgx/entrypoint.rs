@@ -30,7 +30,7 @@ pub struct SgxAction {
 }
 
 impl SgxAction {
-    pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Create the export directory if it does not exist
         if !Path::new(&self.export_path).exists() {
             fs::create_dir_all(&self.export_path)?;
@@ -41,7 +41,7 @@ impl SgxAction {
         let nonce = hex::encode(nonce);
 
         // Get the quote from the enclave
-        let quote = client_connector
+        let quote = kms_rest_client
             .get_quote(&nonce)
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
@@ -64,7 +64,7 @@ impl SgxAction {
         );
 
         // Get the certificate
-        let certificate = client_connector
+        let certificate = kms_rest_client
             .get_certificate()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
@@ -77,7 +77,7 @@ impl SgxAction {
         }
 
         // Get the Public key
-        let public_key = client_connector
+        let public_key = kms_rest_client
             .get_enclave_public_key()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
@@ -88,7 +88,7 @@ impl SgxAction {
         println!("The enclave certificate has been saved at {cert_path:?}");
 
         // Get the manifest
-        let manifest = client_connector
+        let manifest = kms_rest_client
             .get_manifest()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;

@@ -1,4 +1,4 @@
-FROM ubuntu:20.04 as minimal-sgx
+FROM ubuntu:22.04 as minimal-sgx
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
@@ -8,6 +8,8 @@ ENV LC_ALL C.UTF-8
 
 WORKDIR /root
 
+RUN echo 'APT::Install-Suggests "0";' >> /etc/apt/apt.conf.d/00-docker
+RUN echo 'APT::Install-Recommends "0";' >> /etc/apt/apt.conf.d/00-docker
 RUN apt-get update && apt-get install --no-install-recommends -qq -y \
     build-essential \
     protobuf-compiler \
@@ -23,31 +25,39 @@ RUN apt-get update && apt-get install --no-install-recommends -qq -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN echo "deb [arch=amd64 signed-by=/usr/share/keyrings/gramine-keyring.gpg] https://packages.gramineproject.io/ stable main" >> /etc/apt/sources.list.d/gramine.list \
-    && curl -fsSLo /usr/share/keyrings/gramine-keyring.gpg https://packages.gramineproject.io/gramine-keyring.gpg 
+# Gramine APT repository
+RUN curl -fsSLo /usr/share/keyrings/gramine-keyring.gpg https://packages.gramineproject.io/gramine-keyring.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/gramine-keyring.gpg] https://packages.gramineproject.io/ jammy main" \
+    | tee /etc/apt/sources.list.d/gramine.list
 
-RUN echo "deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu focal main" >> /etc/apt/sources.list.d/intel-sgx.list \
-    && curl -fsSL https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | apt-key add -
+# Intel SGX APT repository
+RUN curl -fsSLo /usr/share/keyrings/intel-sgx-deb.asc https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-sgx-deb.asc] https://download.01.org/intel-sgx/sgx_repo/ubuntu jammy main" \
+    | tee /etc/apt/sources.list.d/intel-sgx.list
 
-RUN apt-get update && apt-get install --no-install-recommends -qq -y \
-    gramine \
+# Install Intel SGX dependencies and Gramine
+RUN apt-get update && apt-get install -y \
     libsgx-launch \
     libsgx-urts \
     libsgx-quote-ex \
     libsgx-epid \
     libsgx-dcap-ql \
+    libsgx-dcap-quote-verify \
+    linux-base-sgx \
     libsgx-dcap-default-qpl \
     sgx-aesm-service \
     libsgx-aesm-quote-ex-plugin \
-    && rm -rf /var/lib/apt/lists/*
+    gramine && \
+    rm -rf /var/lib/apt/lists/*
 
 # SGX SDK is installed in /opt/intel directory.
 WORKDIR /opt/intel
 
-ARG SGX_SDK_INSTALLER=sgx_linux_x64_sdk_2.16.100.4.bin
+ARG SGX_SDK_VERSION=2.21
+ARG SGX_SDK_INSTALLER=sgx_linux_x64_sdk_2.21.100.1.bin
 
 # Install SGX SDK
-RUN curl -fsSLo $SGX_SDK_INSTALLER https://download.01.org/intel-sgx/sgx-linux/2.16/distro/ubuntu20.04-server/$SGX_SDK_INSTALLER \
+RUN curl -fsSLo $SGX_SDK_INSTALLER https://download.01.org/intel-sgx/sgx-linux/$SGX_SDK_VERSION/distro/ubuntu22.04-server/$SGX_SDK_INSTALLER \
     && chmod +x  $SGX_SDK_INSTALLER \
     && echo "yes" | ./$SGX_SDK_INSTALLER \
     && rm $SGX_SDK_INSTALLER
@@ -55,7 +65,7 @@ RUN curl -fsSLo $SGX_SDK_INSTALLER https://download.01.org/intel-sgx/sgx-linux/2
 #
 # Minimal Rust image
 #
-FROM ubuntu:20.04 as minimal-rust
+FROM ubuntu:22.04 as minimal-rust
 
 USER root
 ENV DEBIAN_FRONTEND=noninteractive
@@ -99,14 +109,11 @@ ENV LC_ALL C.UTF-8
 
 WORKDIR /root
 
-RUN mkdir -p scripts etc
+RUN mkdir -p scripts 
 # private_data, public_data and shared_data are supposed to be given as parameters of the docker run
 
-ARG KMS_DOMAIN
-ENV KMS_DOMAIN=${KMS_DOMAIN}
-
 COPY --from=minimal-rust /root/target/release/cosmian_kms_server scripts/server
+
 COPY enclave/build_and_run.sh enclave/Makefile enclave/kms.manifest.template /root/
-COPY enclave/etc /root/etc
 
 ENTRYPOINT ["./build_and_run.sh"]

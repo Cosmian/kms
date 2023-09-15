@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+
+## [4.6.0] - 2023-08-21
+### Features
+
+- bootstrap: the KMS server now supports bootstrap mode to facilitate the secure input of secret components, including the database encryption secret and the HTTPS certificate key, directly into the encrypted machine memory, through a secure connection
+
+
 ## [4.5.0] - 2023-08-21
 
 ### Bug Fixes

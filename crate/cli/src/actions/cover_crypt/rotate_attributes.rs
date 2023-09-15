@@ -38,7 +38,7 @@ pub struct RotateAttributesAction {
 }
 
 impl RotateAttributesAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Parse the attributes
         let ats = self
             .attributes
@@ -58,7 +58,7 @@ impl RotateAttributesAction {
         let rotate_query = build_rekey_keypair_request(&id, ats)?;
 
         // Query the KMS with your kmip data
-        let rotate_response = client_connector
+        let rotate_response = kms_rest_client
             .rekey_keypair(rotate_query)
             .await
             .with_context(|| "failed rotating the master keys")?;

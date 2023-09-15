@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use clap::Args;
 use libsgx::utils::is_running_inside_enclave;
 
-use super::{workspace::WorkspaceConfig, EnclaveParams};
-use crate::{kms_bail, result::KResult};
+use super::WorkspaceConfig;
+use crate::{config::params::EnclaveParams, kms_bail, result::KResult};
 
 #[derive(Debug, Args)]
 pub struct EnclaveConfig {

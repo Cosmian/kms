@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::{BootstrapRestClient, KmsRestClient};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{result::CliResultHelper, CliError};
@@ -62,6 +62,8 @@ pub struct CliConf {
     pub(crate) accept_invalid_certs: bool,
     pub(crate) kms_server_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) bootstrap_server_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) kms_access_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) ssl_client_pkcs12_path: Option<String>,
@@ -78,6 +80,7 @@ impl Default for CliConf {
         Self {
             accept_invalid_certs: false,
             kms_server_url: "http://0.0.0.0:9998".to_string(),
+            bootstrap_server_url: None,
             kms_access_token: None,
             kms_database_secret: None,
             ssl_client_pkcs12_path: None,
@@ -95,6 +98,7 @@ impl Default for CliConf {
 /// {
 ///     "accept_invalid_certs": false,
 ///     "kms_server_url": "http://127.0.0.1:9998",
+///     "bootstrap_server_url": "https://127.0.0.1:9998",
 ///     "kms_access_token": "AA...AAA",
 ///     "kms_database_secret": "BB...BBB",
 ///     "ssl_client_pkcs12_path": "/path/to/client.p12",
@@ -109,7 +113,7 @@ impl Default for CliConf {
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
 
 impl CliConf {
-    pub fn load() -> Result<KmsRestClient, CliError> {
+    pub fn load() -> Result<(KmsRestClient, BootstrapRestClient), CliError> {
         // Obtain the configuration file path from the environment variable or default to a pre-determined path
         let conf_path = if let Ok(conf_path) = env::var(KMS_CLI_CONF_ENV).map(PathBuf::from) {
             // Error if the specified file does not exist
@@ -161,8 +165,8 @@ impl CliConf {
             default_conf
         };
 
-        // Initialize a KMS client with the given configuration
-        let kms_connector = KmsRestClient::instantiate(
+        // Instantiate a KMS server REST client with the given configuration
+        let kms_rest_client = KmsRestClient::instantiate(
             &conf.kms_server_url,
             conf.kms_access_token.as_deref(),
             conf.ssl_client_pkcs12_path.as_deref(),
@@ -173,12 +177,28 @@ impl CliConf {
         )
         .with_context(|| {
             format!(
-                "Unable to establish connection to KMS server {}",
+                "Unable to instantiate a KMS server REST client {}",
                 &conf.kms_server_url
             )
         })?;
 
-        Ok(kms_connector)
+        // Instantiate a Bootstrap server REST client with the given configuration
+        let bootstrap_rest_client = BootstrapRestClient::instantiate(
+            conf.bootstrap_server_url
+                .as_ref()
+                .unwrap_or(&conf.kms_server_url.replace("http://", "https://")),
+            conf.kms_access_token.as_deref(),
+            conf.ssl_client_pkcs12_path.as_deref(),
+            conf.ssl_client_pkcs12_password.as_deref(),
+        )
+        .with_context(|| {
+            format!(
+                "Unable to instantiate a Bootstrap server REST client {}",
+                &conf.kms_server_url
+            )
+        })?;
+
+        Ok((kms_rest_client, bootstrap_rest_client))
     }
 }
 

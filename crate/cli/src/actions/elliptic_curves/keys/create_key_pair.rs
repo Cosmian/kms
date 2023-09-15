@@ -22,11 +22,11 @@ pub struct CreateKeyPairAction {
 }
 
 impl CreateKeyPairAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         let create_key_pair_request = create_key_pair_request(&self.tags)?;
 
         // Query the KMS with your kmip data and get the key pair ids
-        let create_key_pair_response = client_connector
+        let create_key_pair_response = kms_rest_client
             .create_key_pair(create_key_pair_request)
             .await
             .with_context(|| "failed creating a Elliptic Curve key pair")?;

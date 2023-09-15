@@ -4,7 +4,7 @@ use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
-use cosmian_kms_client::error::KmsClientError;
+use cosmian_kms_client::RestClientError;
 use cosmian_kms_utils::error::KmipUtilsError;
 use thiserror::Error;
 pub mod result;
@@ -144,8 +144,8 @@ impl From<base64::DecodeError> for CliError {
     }
 }
 
-impl From<KmsClientError> for CliError {
-    fn from(e: KmsClientError) -> Self {
+impl From<RestClientError> for CliError {
+    fn from(e: RestClientError) -> Self {
         Self::KmsClientError(e.to_string())
     }
 }

@@ -60,7 +60,7 @@ pub struct LocateObjectsAction {
 
 impl LocateObjectsAction {
     /// Export a key from the KMS
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         let mut attributes = Attributes::default();
 
         if let Some(crypto_algo) = self.cryptographic_algorithm {
@@ -87,7 +87,7 @@ impl LocateObjectsAction {
             attributes,
         };
 
-        let response = client_connector.locate(locate).await?;
+        let response = kms_rest_client.locate(locate).await?;
         if let Some(identifiers) = response.unique_identifiers {
             for identifier in identifiers {
                 println!("{}", identifier);

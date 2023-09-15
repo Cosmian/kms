@@ -6,7 +6,7 @@ use std::{
 use clap::Args;
 use tracing::info;
 
-use super::workspace::WorkspaceConfig;
+use super::WorkspaceConfig;
 use crate::{core::certbot::Certbot, kms_error, result::KResult};
 
 #[derive(Debug, Args)]

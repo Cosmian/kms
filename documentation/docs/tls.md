@@ -1,10 +1,26 @@
-The server can serve requests using either plaintext HTTP or HTTP/S.
+The server can serve requests using either plaintext HTTP or HTTPS. 
 
-To enable TLS, one can install certificates or use the certificates bot `certbot` to fetch and renew the certificates automatically.
+When running in a zero-trust environment, the KMS server should be started using HTTPS. 
+Check the [running in a zero-trust environment](./zero_trust.md) section for more information.
 
-### Installing certificates
+To enable TLS, one can provide certificates - on the command line or via the bootstrap server - or use the certificates bot `certbot` to fetch and renew the certificates automatically.
 
-The certificate (key and full chain) must be available in a PKCS#12 format.
+### Providing certificates
+
+The key and full certificate chain must be available in a [PKCS#12](https://en.wikipedia.org/wiki/PKCS_12) format.
+
+There are 2 ways to provide the PKCS#12 file to the server:
+
+- using the KMS server start command line  `--https-p12-file` and `--https-p12-password` options
+- via the bootstrap server on a TLS connection when the KMS server is started in this mode. This is more secure than the command line.
+
+A PKCS#12 file should be provided to the KMS server via the bootstrap server in a [zero-trust environment](./zero_trust.md).
+
+##### Configuring HTTPS via the bootstrap server
+Configuring HTTPS via the bootstrap TLS connection is described in [Bootstrapping the KMS server start](bootstrap.md).
+
+##### Configuring HTTPS via the command line
+
 Specify the certificate name and mount the file to docker.
 
 Say the certificate is called `server.mydomain.com.p12`, is protected by the password `myPass`, and is in a directory called `/certificate` on the host disk.
@@ -12,7 +28,7 @@ Say the certificate is called `server.mydomain.com.p12`, is protected by the pas
 ```sh
 docker run --rm -p 443:9998 \
   -v /certificate/server.mydomain.com.p12:/root/cosmian-kms/server.mydomain.com.p12 \
-  --name kms ghcr.io/cosmian/kms:4.5.0 \
+  --name kms ghcr.io/cosmian/kms:4.6.0 \
   --database-type=mysql \
   --database-url=mysql://mysql_server:3306/kms \
   --https-p12-file=server.mydomain.com.p12 \
@@ -29,7 +45,7 @@ docker run --rm -p 443:9998 \
     -out server.mydomain.com.p12
     ```
 
-### Using the certificates bot
+### Using the certificates' bot
 
 The Cosmian KMS server has support for a certificates bot that can automatically obtain and renew its certificates from Let's Encrypt using the `acme` protocol.
 
@@ -48,7 +64,7 @@ Example:
 docker run --rm -p 443:9998 \
   -v cosmian-kms:/root/cosmian-kms/sqlite-data \
   -v cosmian-kms-certs:/root/cosmian-kms/certbot-ssl \
-  --name kms ghcr.io/cosmian/kms:4.5.0 \
+  --name kms ghcr.io/cosmian/kms:4.6.0 \
   --database-type=sqlite-enc \
   --use-certbot \
   --certbot-server-name server.mydomain.com \

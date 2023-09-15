@@ -14,7 +14,7 @@ use crate::{
         },
         elliptic_curve::create_key_pair::create_ec_key_pair,
         symmetric::create_key::create_symmetric_key,
-        utils::{init_test_server, ONCE},
+        utils::{start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -65,7 +65,7 @@ pub async fn test_export_cover_crypt() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
@@ -123,7 +123,7 @@ pub async fn test_export_ec() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new key pair
     let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
@@ -158,7 +158,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a symmetric key
     let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
@@ -183,7 +183,7 @@ pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a symmetric key
     let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
@@ -208,7 +208,7 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // key does not exist
     export(
@@ -255,7 +255,7 @@ pub async fn test_export_bytes_cover_crypt() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
@@ -304,7 +304,7 @@ pub async fn test_export_bytes_ec() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new key pair
     let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
@@ -348,7 +348,7 @@ pub async fn test_export_bytes_sym() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a symmetric key
     let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;

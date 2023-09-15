@@ -8,14 +8,14 @@ use crate::{
     error::CliError,
     tests::{
         cover_crypt::SUB_COMMAND,
-        utils::{init_test_server, ONCE},
+        utils::{start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
 
 #[tokio::test]
 async fn test_view_policy() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
@@ -50,7 +50,7 @@ async fn test_view_policy() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_create_policy() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
     cmd.arg(SUB_COMMAND).args(vec![
