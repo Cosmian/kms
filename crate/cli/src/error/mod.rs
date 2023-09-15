@@ -1,6 +1,5 @@
 use std::{array::TryFromSliceError, str::Utf8Error};
 
-
 use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},

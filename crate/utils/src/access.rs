@@ -123,7 +123,7 @@ impl FromStr for ObjectOperationType {
     }
 }
 
-#[derive(Deserialize, Serialize, Debug)]// Debug is required by ok_json()
+#[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
 pub struct UserAccessResponse {
     pub user_id: String,
     pub operations: Vec<ObjectOperationType>,
@@ -140,7 +140,7 @@ impl From<(String, Vec<ObjectOperationType>)> for UserAccessResponse {
 
 pub type IsWrapped = bool;
 
-#[derive(Deserialize, Serialize, Debug)]// Debug is required by ok_json()
+#[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
 pub struct ObjectOwnedResponse {
     pub object_id: UniqueIdentifier,
     pub state: StateEnumeration,
@@ -176,7 +176,7 @@ impl From<(String, StateEnumeration, Attributes, IsWrapped)> for ObjectOwnedResp
     }
 }
 
-#[derive(Deserialize, Serialize, Debug)]// Debug is required by ok_json()
+#[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
 pub struct AccessRightsObtainedResponse {
     pub object_id: UniqueIdentifier,
     pub owner_id: String,
@@ -228,7 +228,7 @@ impl
 }
 
 // Response for success
-#[derive(Deserialize, Serialize, Debug)]// Debug is required by ok_json()
+#[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
 pub struct SuccessResponse {
     pub success: String,
 }

@@ -1,4 +1,3 @@
-
 ## Getting a cert with certbot
 
 ### Install

@@ -229,7 +229,7 @@ async fn start_auto_renew_https(
                 .expect("can't lock certificate mutex")
                 .request_cert();
             match request_cert {
-                Ok(_) => restart_me.store(true, Ordering::Relaxed),
+                Ok(()) => restart_me.store(true, Ordering::Relaxed),
                 Err(error) => {
                     error!("Error when renewing the certificate {error}");
                     restart_me.store(false, Ordering::Relaxed);
@@ -238,7 +238,7 @@ async fn start_auto_renew_https(
 
             info!("Stopping the HTTPS server...");
             // Stop the HTTPS server. We don't need it anymore
-            srv.stop(true).await
+            srv.stop(true).await;
         });
 
         // Run server until stopped (either by ctrl-c or stopped by the previous thread)
@@ -316,7 +316,7 @@ async fn start_certbot_https_kms_server(
                 .expect("can't lock certificate mutex")
                 .request_cert();
             match request_cert {
-                Ok(_) => succeed_me.store(true, Ordering::Relaxed),
+                Ok(()) => succeed_me.store(true, Ordering::Relaxed),
                 Err(error) => {
                     error!("Error when generating the certificate: {error}");
                     succeed_me.store(false, Ordering::Relaxed);
@@ -324,7 +324,7 @@ async fn start_certbot_https_kms_server(
             }
 
             // Stop the HTTP server. We don't need it anymore
-            srv.stop(true).await
+            srv.stop(true).await;
         });
 
         // Run server until stopped (either by ctrl-c or stopped by the previous thread)
@@ -345,7 +345,7 @@ async fn start_certbot_https_kms_server(
     if has_valid_cert {
         // Use it and start SSL Server
         info!("Certificate is valid");
-        start_auto_renew_https(server_params, &certbot, server_handle_transmitter).await?
+        start_auto_renew_https(server_params, &certbot, server_handle_transmitter).await?;
     } else {
         error!("Abort program, failed to get a valid certificate");
         kms_bail!("Abort program, failed to get a valid certificate")

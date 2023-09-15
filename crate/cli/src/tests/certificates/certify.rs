@@ -16,7 +16,7 @@ use crate::{
     tests::{
         certificates::openssl::check_certificate,
         shared::locate,
-        utils::{extract_uids::extract_uid,  ONCE, start_default_test_kms_server},
+        utils::{extract_uids::extract_uid, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };

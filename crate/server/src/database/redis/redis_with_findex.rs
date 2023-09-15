@@ -9,7 +9,7 @@ use cloudproof::reexport::findex::{
     implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
     Label, Location,
 };
-use cosmian_crypto_core::{FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey,kdf256};
+use cosmian_crypto_core::{kdf256, FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},

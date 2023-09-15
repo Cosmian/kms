@@ -25,7 +25,7 @@ use result::KResult;
 #[cfg(test)]
 mod tests;
 
-pub fn start_server(
+#[must_use] pub fn start_server(
     server_params: ServerParams,
     kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,
 ) -> Pin<Box<dyn Future<Output = KResult<()>>>> {

@@ -10,9 +10,8 @@ Since the KMS servers are stateless, any load-balancing strategy may be selected
 
 When the Cosmian KMS servers are configured to export an HTTPS port (as is the case when running inside a confidential VM):
 
- - all the Cosmian KMS servers should expose the same server certificate on their HTTPS port
- - and the load balancer should be configured as an SSL load balancer (HAProxy is a good example of a high-performance SSL load balancer)
-
+- all the Cosmian KMS servers should expose the same server certificate on their HTTPS port
+- and the load balancer should be configured as an SSL load balancer (HAProxy is a good example of a high-performance SSL load balancer)
 
 ### Selecting the database
 
@@ -22,8 +21,8 @@ Redis with Findex offers the ability to use Redis as a database with application
 
 Redis-with-Findex is most useful when:
 
- - KMS servers are run inside a confidential VM or an enclave. In this case, the secret used to encrypt the Redis data and indexes is protected by the VM or enclave and cannot be recovered at runtime by inspecting the KMS servers' memory.
- - KMS servers are run by a trusted party but the Redis backend is managed by an untrusted third party.
+- KMS servers are run inside a confidential VM or an enclave. In this case, the secret used to encrypt the Redis data and indexes is protected by the VM or enclave and cannot be recovered at runtime by inspecting the KMS servers' memory.
+- KMS servers are run by a trusted party but the Redis backend is managed by an untrusted third party.
 
 Redis-with-Findex should be selected to [run the Cosmian KMS in the cloud or any other zero-trust environment](./zero_trust.md).
 
@@ -36,10 +35,11 @@ The database parameters may be configured either:
 
 Configuring the database via the [bootstrap](./bootstrap.md) TLS Connection should be selected to [run the Cosmian KMS in the cloud or any other zero-trust environment](./zero_trust.md).
 
-##### Configuring the database via the bootstrap server
+#### Configuring the database via the bootstrap server
+
 Configuring the database via the bootstrap TLS connection is described in the [bootstrap server documentation](bootstrap.md).
 
-##### Configuring the database via the command line
+#### Configuring the database via the command line
 
 For
 
@@ -61,9 +61,8 @@ docker run --rm -p 9998:9998 \
 
 For Redis with Findex, the `--redis-master-password` and `--redis-findex-label` options must also be specified:
 
- - the `redis-master-password` is the password from which keys will be derived (using Argon 2) to encrypt the Redis data and indexes.
- - the `redis-findex-label` is a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the password/key.
-
+- the `redis-master-password` is the password from which keys will be derived (using Argon 2) to encrypt the Redis data and indexes.
+- the `redis-findex-label` is a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the password/key.
 
 Example:
 
@@ -79,8 +78,6 @@ docker run --rm -p 9998:9998 \
 The `redis-master-password` is the password from which a key will be derived (using Argon 2) to encrypt the Redis data and indexes.
 
 The `redis-findex-label` is a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the password/key.
-
-
 
 !!!info "Setting up a PostgreSQL database"
     Before running the server, a dedicated database with a dedicated user should be created on the PostgreSQL instance. These sample instructions create a database called `kms` owned by a user `kms_user` with password `kms_password`:
@@ -114,4 +111,3 @@ docker run --rm -p 9998:9998 \
   --database-url=mysql://mysql_server:3306/kms \
   --mysql-user-cert-file=cert.p12
 ```
-

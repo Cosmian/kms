@@ -1,4 +1,3 @@
-
 The `ckms` client expects command with parameters and optional options.
 
 ```sh
@@ -117,7 +116,7 @@ Locate cryptographic objects inside the KMS
 **Usage:**
 
 ```sh
-ckms locate [OPTIONS] 
+ckms locate [OPTIONS]
 ```
 
 **Options:**
@@ -129,10 +128,10 @@ ckms locate [OPTIONS]
 
 -a, --algorithm <CRYPTOGRAPHIC_ALGORITHM>
         Cryptographic algorithm (case insensitive)
-        
+
         The list of algorithms is the one specified by KMIP 2.1 in addition to "Covercrypt".
         Possible values include "Covercrypt", "ECDH", "ChaCha20Poly1305", "AES", "Ed25519"
-        
+
         Running the locate sub-command with a wrong value will list all the possible values.
         e.g. `ckms locate --algorithm WRONG`
 
@@ -141,17 +140,17 @@ ckms locate [OPTIONS]
 
 -f, --key-format-type <KEY_FORMAT_TYPE>
         Key format type (case insensitive)
-        
+
         The list is the one specified by KMIP 2.1
         in addition to the two Covercrypt formats: "CoverCryptSecretKey" and "CoverCryptPublicKey"
         Possible values also include: "TransparentECPrivateKey", "TransparentECPublicKey" and "TransparentSymmetricKey"
-        
+
         Running the locate sub-command with a wrong value will list all the possible values.
         e.g. `ckms locate --key-format-type WRONG`
 
 -h, --help
         Print help (see a summary with '-h')
-        
+
 -h, --help                 Print help
 ```
 
@@ -186,7 +185,7 @@ A database must be configured for for the KMS server to launch. If no PKCS#12 fi
 **Usage:**
 
 ```sh
-ckms bootstrap-start [OPTIONS] 
+ckms bootstrap-start [OPTIONS]
 ```
 
 **Options:**
@@ -202,7 +201,7 @@ ckms bootstrap-start [OPTIONS]
     - redis-findex: and redis database with encrypted data and encrypted indexes thanks to Findex.
     The Redis database url must be provided, as well as the redis-master-password and the redis-findex-label
     _
-    
+
     [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
 
 --database-url <DATABASE_URL>
@@ -210,7 +209,7 @@ ckms bootstrap-start [OPTIONS]
 
 --sqlite-path <SQLITE_PATH>
     The directory path of the sqlite or sqlite-enc
-    
+
     [default: ./sqlite-data]
 
 --redis-master-password <REDIS_MASTER_PASSWORD>
@@ -228,6 +227,6 @@ ckms bootstrap-start [OPTIONS]
 
 --https-p12-password <HTTPS_P12_PASSWORD>
     The password to open the PKCS#12 Certificates and Key file if not an empty string
-    
+
     [default: ]
 ```

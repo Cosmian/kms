@@ -66,7 +66,7 @@ ckms ec keys export [OPTIONS] <KEY_FILE>
 
 ```sh
 -k, --key-id <KEY_ID>
-        The key unique identifier stored in the KMS. 
+        The key unique identifier stored in the KMS.
         If not specified, tags should be specified
 
 -t, --tag <TAG>
@@ -132,8 +132,8 @@ ckms ec keys import [OPTIONS] <KEY_FILE> [KEY_ID]
         Replace an existing key under the same id
 
 -t, --tag <TAG>
-        The tag to associate with the key. 
-        To specify multiple tags, use the option multiple times        
+        The tag to associate with the key.
+        To specify multiple tags, use the option multiple times
 
 -h, --help
         Print help (see a summary with '-h')
@@ -268,7 +268,7 @@ ckms ec keys revoke [OPTIONS] <REVOCATION_REASON>
         If not specified, tags should be specified
 
 -t, --tag <TAG>
-        Tag to use to retrieve the key when no key id is specified. 
+        Tag to use to retrieve the key when no key id is specified.
         To specify multiple tags, use the option multiple times
 
 -h, --help
@@ -299,9 +299,9 @@ ckms ec keys destroy [OPTIONS]
         If not specified, tags should be specified
 
 -t, --tag <TAG>
-        Tag to use to retrieve the key when no key id is specified. 
+        Tag to use to retrieve the key when no key id is specified.
         To specify multiple tags, use the option multiple times
-        
+
 -h, --help
         Print help (see a summary with '-h')
 ```

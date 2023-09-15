@@ -1,4 +1,3 @@
-
 The KMIP 2.1 specification pre-defines a set of 9 cryptographic objects. Cosmian support its cryptographic library needs though the use of 3 of these objects
 
 | Object              | Cosmian KMS                           |

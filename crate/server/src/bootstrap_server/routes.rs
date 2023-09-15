@@ -98,7 +98,7 @@ pub async fn pkcs12_password(
     *bootstrap_server
         .pkcs12_password_received
         .write()
-        .expect("PKCS12 password received lock poisoned") = Some(config.password.to_owned());
+        .expect("PKCS12 password received lock poisoned") = Some(config.password.clone());
 
     let response = SuccessResponse {
         success: "PKCS#12 password received".to_string(),
@@ -106,7 +106,7 @@ pub async fn pkcs12_password(
     Ok(Json(response))
 }
 
-/// Send the DbParams to the main thread on the tx channel,
+/// Send the `DbParams` to the main thread on the tx channel,
 /// flag the db params as supplied, and return a success response
 fn process_db_params(
     bootstrap_server: Data<Arc<BootstrapServer>>,
@@ -134,7 +134,7 @@ fn process_db_params(
         .expect("db params supplied lock poisoned") = true;
 
     Ok(Json(SuccessResponse {
-        success: format!("Successfully received {} configuration", config_name),
+        success: format!("Successfully received {config_name} configuration"),
     }))
 }
 
@@ -249,7 +249,7 @@ pub async fn start_kms_server_config(
             "No PKCS12 file has been supplied, therefore the KMS will start in plain HTTP mode.";
         warnings += " ";
         warnings += warning;
-        warn!(warning)
+        warn!(warning);
     }
 
     // issue a warning if the database will be cleared
@@ -257,7 +257,7 @@ pub async fn start_kms_server_config(
         let warning = "The KMS database will be erased.";
         warnings += " ";
         warnings += warning;
-        warn!(warning)
+        warn!(warning);
     }
 
     // Send the Start KMS server configuration to the main thread on the tx channel
@@ -269,7 +269,7 @@ pub async fn start_kms_server_config(
         })?;
 
     let warnings = if warnings.is_empty() {
-        "".to_string()
+        String::new()
     } else {
         format!(" with warnings:{}", warnings)
     };
@@ -291,7 +291,7 @@ fn maybe_parse_and_send_pkcs12(bootstrap_server: Arc<BootstrapServer>) -> KResul
             .read()
             .expect("pkcs12 received lock poisoned")
             .as_ref()
-            .map(|s| s.to_owned())
+            .map(std::clone::Clone::clone)
             .unwrap_or_default();
 
         // Verify the PKCS 12 by extracting the certificate, private key and chain

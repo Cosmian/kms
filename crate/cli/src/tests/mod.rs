@@ -1,6 +1,6 @@
 mod access;
 mod auth_tests;
-mod boostrap_server;
+mod bootstrap_server;
 mod certificates;
 mod cover_crypt;
 mod elliptic_curve;

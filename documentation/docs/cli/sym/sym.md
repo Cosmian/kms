@@ -58,11 +58,11 @@ ckms sym encrypt [OPTIONS] <FILE>
 
 ```sh
 -k, --key-id <KEY_ID>
-        The public key unique identifier. 
+        The public key unique identifier.
         If not specified, tags should be specified
 
 -t, --tag <TAG>
-        Tag to use to retrieve the key when no key id is specified. 
+        Tag to use to retrieve the key when no key id is specified.
         To specify multiple tags, use the option multiple times
 
 -o, --output-file <OUTPUT_FILE>
@@ -104,11 +104,11 @@ ckms sym decrypt [OPTIONS] <FILE>
 
 ```sh
 -k, --key-id <KEY_ID>
-        The public key unique identifier. 
+        The public key unique identifier.
         If not specified, tags should be specified
 
 -t, --tag <TAG>
-        Tag to use to retrieve the key when no key id is specified. 
+        Tag to use to retrieve the key when no key id is specified.
         To specify multiple tags, use the option multiple times
 
 -o, --output-file <OUTPUT_FILE>

@@ -105,16 +105,16 @@ pub async fn start_test_server_with_options(
     // Start the server (bootstrap or KMS) in a thread and wait for it to be up
     if server_params.bootstrap_server_params.use_bootstrap_server {
         println!(
-            "Starting boostrap server at URL: {} with server params {:?}",
+            "Starting bootstrap server at URL: {} with server params {:?}",
             owner_cli_conf
                 .bootstrap_server_url
                 .as_ref()
-                .expect("The boostrap server URL should be configured"),
+                .expect("The bootstrap server URL should be configured"),
             &server_params
         );
 
         let (server_handle, thread_handle) =
-            start_test_bootstrap_server(server_params).expect("Can't start boostrap server");
+            start_test_bootstrap_server(server_params).expect("Can't start bootstrap server");
 
         // generate a user conf
         let user_cli_conf_path =
@@ -197,7 +197,7 @@ fn start_test_bootstrap_server(
             .block_on(start_https_bootstrap_server(server_params, tx, bs_msg_tx))
             .map_err(|e| CliError::ServerError(e.to_string()))
     });
-    trace!("Waiting for test boostrap server to start...");
+    trace!("Waiting for test bootstrap server to start...");
     let server_handle = rx
         .recv_timeout(Duration::from_secs(25))
         .expect("Can't get test bootstrap server handle after 25 seconds");

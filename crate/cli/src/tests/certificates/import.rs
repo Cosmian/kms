@@ -2,13 +2,12 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 
-
 use crate::{
     actions::certificates::CertificateInputFormat,
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        utils::{extract_uids::extract_imported_key_id,  ONCE, start_default_test_kms_server},
+        utils::{extract_uids::extract_imported_key_id, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };

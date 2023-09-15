@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
 };
 
-use cloudproof::reexport::{ findex::Label};
+use cloudproof::reexport::findex::Label;
 use cosmian_crypto_core::SymmetricKey;
 use url::Url;
 
@@ -31,7 +31,7 @@ pub enum DbParams {
 
 impl DbParams {
     /// Return the name of the database type
-    pub fn db_name(&self) -> &str {
+    #[must_use] pub fn db_name(&self) -> &str {
         match &self {
             DbParams::Sqlite(_) => "Sqlite",
             DbParams::SqliteEnc(_) => "Sqlite Enc.",

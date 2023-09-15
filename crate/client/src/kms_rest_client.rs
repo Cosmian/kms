@@ -7,10 +7,11 @@ use std::{
 // re-export the kmip module as kmip
 use cosmian_kmip::kmip::{
     kmip_operations::{
-        Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
-        Destroy, DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get,
-        GetAttributes, GetAttributesResponse, GetResponse, Import, ImportResponse, Locate,
-        LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke, RevokeResponse, Certify, CertifyResponse,
+        Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
+        Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
+        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
+        ImportResponse, Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke,
+        RevokeResponse,
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };

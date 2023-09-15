@@ -1,12 +1,10 @@
-
 It is possible to bootstrap the KMS server start, to avoid specifying sensitive information in plain text on the command line.
 
 When bootstrapped, the KMS server will first expose a TLS connection allowing configuration of the database and provision of the PKCS#12 configuring the KMS server HTTPS port. Once done, the KMS server will start with the supplied configuration.
 
 When [running in a zero-trust environment](./zero_trust.md) inside a confidential VM, the bootstrap server provides the ability to configure the KMS without ever exposing sensitive configuration information in plain text to the environment administrators.
 
-
-![bootstrap server usage graph](./drawings/boostrap_server.drawio.svg)
+![bootstrap server usage graph](./drawings/bootstrap_server.drawio.svg)
 
 #### Starting in bootstrap mode
 
@@ -17,19 +15,18 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 \
   --use-bootstrap-server
 ```
 
-This will start an initial *bootstrap server* exposing a TLS connection on port 9998. The TLS connection is configured with a self-signed certificate. 
+This will start an initial *bootstrap server* exposing a TLS connection on port 9998. The TLS connection is configured with a self-signed certificate.
 Two options can be used to further configure the bootstrap server TLS connection:
 
 - `--bootstrap-server-common-name <BOOTSTRAP_SERVER_COMMON_NAME>` to specify the common name of the bootstrap server self-signed certificate. The default value is `cosmian.kms`.
 
 -- `--bootstrap-server-port <BOOTSTRAP_SERVER_PORT>` to specify the bootstrap server TLS port. The default value is `9998`. When changed, the docker port mapping must be updated accordingly.
 
-
 #### Available configurations
 
 - Database: A database must be configured for the KMS server to start. If parameters have been passed on the command line, they will be overridden by those passed to the bootstrap server.
 
-- HTTPS port: The HTTPS port of the KMS server can be configured using a PKCS#12 file containing the certificate and private key to use for the HTTPS port. If parameters have been passed on the command line, they will be overridden by those passed to the bootstrap server. Specifying a PKCS#12 file is not mandatory. If none is specified, the KMS server will start in plain HTTP mode. When [running in a zero-trust environment](./zero_trust.md), a PKCS#12 file should always be provided to start the KMS in HTTPS mode, _inside_ the confidential VM.
+- HTTPS port: The HTTPS port of the KMS server can be configured using a PKCS#12 file containing the certificate and private key to use for the HTTPS port. If parameters have been passed on the command line, they will be overridden by those passed to the bootstrap server. Specifying a PKCS#12 file is not mandatory. If none is specified, the KMS server will start in plain HTTP mode. When [running in a zero-trust environment](./zero_trust.md), a PKCS#12 file should always be provided to start the KMS in HTTPS mode, *inside* the confidential VM.
 
 #### Configuring using the `ckms` CLI
 
@@ -61,12 +58,12 @@ The configuration can be passed to the bootstrap server using successive HTTPS P
 
 ##### DB: Redis (with Findex)
 
-To use Redis with Findex as the database, a JSON POST of 
+To use Redis with Findex as the database, a JSON POST of
 
-  - the database URL 
-  - the Redis master password
-  - the Findex label
-  
+- the database URL
+- the Redis master password
+- the Findex label
+
 to the `/redis-findex` endpoint must be performed:
 
 ```sh

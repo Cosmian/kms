@@ -1,7 +1,6 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-
 use predicates::prelude::*;
 use tempfile::TempDir;
 use tracing::debug;
@@ -14,7 +13,7 @@ use crate::{
     tests::{
         certificates::{certify::certify, import::import},
         shared::locate,
-        utils::{ONCE, start_default_test_kms_server},
+        utils::{start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };

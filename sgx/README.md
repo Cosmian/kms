@@ -53,19 +53,19 @@ sudo docker run -d --rm --network=host --name postgre -e POSTGRES_DB=kms -e POST
 
 ## Testing
 
-You can query the KMS with the CLI. 
+You can query the KMS with the CLI.
 
 Make sure you have compiled it with the same feature than the server. For example with the `staging` feature:
 
-```
+```sh
 cargo build --release  --no-default-features --features insecure  --bin ckms
 ```
 
 Then:
 
-```
-KMS_CLI_CONF=kms-test.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite 
-KMS_CLI_CONF=kms-test.json ckms sym keys create  
+```sh
+KMS_CLI_CONF=kms-test.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
+KMS_CLI_CONF=kms-test.json ckms sym keys create
 ```
 
 Enjoy ;)
@@ -104,9 +104,9 @@ sudo docker run \
 
 ### Emulate
 
-The KMS docker is openly published so that KMS users can check the integrity of the running code against the open-source code on [*Cosmian* Github](https://github.com/Cosmian). 
+The KMS docker is openly published so that KMS users can check the integrity of the running code against the open-source code on [*Cosmian* Github](https://github.com/Cosmian).
 
-To do so, the user needs to compute the `MR_ENCLAVE` and needs to compare it to the one returned by the running KMS. 
+To do so, the user needs to compute the `MR_ENCLAVE` and needs to compare it to the one returned by the running KMS.
 Using `--emulation` param, the KMS docker can locally compute `MR_ENCLAVE`. Just start it as follow from any kind of machine:
 
 ```sh
@@ -117,7 +117,7 @@ sudo docker run \
 
 The `MR_ENCLAVE` can be read from the output of the docker itself.
 
-```
+```sh
 Measurement:
     c8e0ac76ee1b9416e53890677cbbce8a5f1d8bf2f1c7ab208c1e0efa56e8cea2
 
@@ -127,4 +127,4 @@ Attributes:
 
 The `public_data` directory contains the compiled manifest with all trusted files hashes.
 
-__Note__: the `MR_SIGNER` should be ignored. It is obviously wrong because we don't use cosmian public key to generate the enclave in that case.
+**Note**: the `MR_SIGNER` should be ignored. It is obviously wrong because we don't use cosmian public key to generate the enclave in that case.
