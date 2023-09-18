@@ -29,7 +29,7 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     let object_type = object.object_type();
     trace!("object_type: {object_type:?}");
 
-    let (wrap_type, mut attributes) = match object_type {
+    let (key_wrap_type, mut attributes) = match object_type {
         ObjectType::Certificate => {
             // add the tags to the attributes
             let attributes = Attributes::default();
@@ -60,7 +60,7 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
         unique_identifier,
         object_type,
         replace_existing: Some(replace_existing),
-        key_wrap_type: wrap_type,
+        key_wrap_type,
         attributes,
         object,
     };

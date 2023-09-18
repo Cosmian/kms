@@ -132,8 +132,13 @@ async fn test_certificate_encrypt_decrypt() -> Result<(), CliError> {
     Ok(())
 }
 
-#[tokio::test]
-async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), CliError> {
+async fn test_certificate_import_encrypt(
+    ca_path: &str,
+    subca_path: &str,
+    cert_path: &str,
+    key_path: &str,
+    tags: &[&str],
+) -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -143,7 +148,7 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), Cli
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
-    let tags = &["external_certificate"];
+    // let tags = &["smallstep_certificate"];
 
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
@@ -151,7 +156,7 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), Cli
     let _root_certificate_id = import(
         &ctx.owner_cli_conf_path,
         "certificates",
-        "test_data/certificates/kms/root.pem",
+        &format!("test_data/certificates/{ca_path}"),
         CertificateInputFormat::PEM,
         None,
         Some(tags),
@@ -161,7 +166,7 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), Cli
     let _subca_certificate_id = import(
         &ctx.owner_cli_conf_path,
         "certificates",
-        "test_data/certificates/kms/subca.pem",
+        &format!("test_data/certificates/{subca_path}"),
         CertificateInputFormat::PEM,
         None,
         Some(tags),
@@ -171,13 +176,14 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), Cli
     let certificate_id = import(
         &ctx.owner_cli_conf_path,
         "certificates",
-        "test_data/certificates/kms/cert.pem",
+        &format!("test_data/certificates/{cert_path}"),
         CertificateInputFormat::PEM,
         None,
         Some(tags),
         false,
     )?;
 
+    debug!("\n\nEncrypt Certificate");
     encrypt(
         &ctx.owner_cli_conf_path,
         input_file.to_str().unwrap(),
@@ -186,16 +192,18 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), Cli
         None,
     )?;
 
+    debug!("\n\nImport Key");
     let private_key_id = import(
         &ctx.owner_cli_conf_path,
         "certificates",
-        "test_data/certificates/kms/cert.key",
+        &format!("test_data/certificates/{key_path}"),
         CertificateInputFormat::PEM,
         None,
         Some(tags),
         false,
     )?;
 
+    debug!("\n\nDecrypt");
     // the user key should be able to decrypt the file
     decrypt(
         &ctx.owner_cli_conf_path,
@@ -211,6 +219,30 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), Cli
     assert_eq!(original_content, recovered_content);
 
     Ok(())
+}
+
+#[tokio::test]
+async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), CliError> {
+    test_certificate_import_encrypt(
+        "kms/root.pem",
+        "kms/subca.pem",
+        "kms/cert.pem",
+        "kms/cert.key",
+        &["external_certificate"],
+    )
+    .await
+}
+
+#[tokio::test]
+async fn test_certificate_import_ca_smallstep() -> Result<(), CliError> {
+    test_certificate_import_encrypt(
+        "smallstep/root_ca.crt",
+        "smallstep/intermediate_ca.crt",
+        "smallstep/foo.crt",
+        "smallstep/foo.clear_key",
+        &["smallstep_certificate"],
+    )
+    .await
 }
 
 async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
