@@ -63,29 +63,33 @@ pub(crate) async fn create_certificate(
         create_ca_chain(&ca_subject_common_names, &tags, kms, owner, params).await?;
 
     // Finally create the leaf certificate
-    debug!("Last subCA (or CA): {}", last_ca_signing_key.ca);
+    debug!(
+        "Last subCA (or CA): {}",
+        last_ca_signing_key.ca_subject_common_name
+    );
     create_leaf_certificate(&last_ca_signing_key, &subject, &tags, kms, owner, params).await
 }
 
 async fn create_leaf_certificate(
     last_ca_signing_key: &CASigningKey,
-    subject: &str,
+    subject_common_name: &str,
     tags: &HashSet<String>,
     kms: &KMS,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<CertifyResponse> {
     debug!(
-        "Creating Leaf certificate CN = {subject} and issuer {}",
-        last_ca_signing_key.ca
+        "Creating Leaf certificate CN = {subject_common_name} and issuer {}",
+        last_ca_signing_key.ca_subject_common_name
     );
 
     // Set certificate as a leaf certificate
-    let profile = build_certificate_profile(&last_ca_signing_key.ca, true, true)?;
+    let profile =
+        build_certificate_profile(&last_ca_signing_key.ca_subject_common_name, true, true)?;
 
     Ok(
         create_key_pair_and_certificate::<X25519PublicKey, X25519_PUBLIC_KEY_LENGTH>(
-            subject,
+            subject_common_name,
             Some(last_ca_signing_key),
             profile,
             tags,

@@ -8,6 +8,19 @@ use x509_parser::{
 
 use crate::{error::KmsError, result::KResult};
 
+/// The function `get_crl_authority_key_identifier` retrieves the key identifier
+/// from the Authority Key Identifier extension of an X.509 certificate revocation
+/// list (CRL).
+///
+/// Arguments:
+///
+/// * `x509_crl`: The `x509_crl` parameter is of type
+/// `CertificateRevocationList<'_>`. It represents an X.509 certificate revocation
+/// list.
+///
+/// Returns:
+///
+/// The key identifier in hex encoding
 pub(crate) fn get_crl_authority_key_identifier(
     x509_crl: &CertificateRevocationList<'_>,
 ) -> KResult<String> {
@@ -28,6 +41,19 @@ pub(crate) fn get_crl_authority_key_identifier(
     Ok(hex::encode(ki.0))
 }
 
+/// The function `get_common_name` retrieves the first common name from an X509
+/// certificate's name field.
+///
+/// Arguments:
+///
+/// * `name`: The `name` parameter is of type `X509Name<'_>`. It represents an X.509
+/// certificate name, which is a collection of attributes that identify the subject
+/// of the certificate. In this function, the `name` parameter is used to extract
+/// the common name attribute from the certificate.
+///
+/// Returns:
+///
+/// The Common Name.
 pub(crate) fn get_common_name(name: &X509Name<'_>) -> KResult<String> {
     // Warning: implementation choice done here:
     // - no Common Name on a X509 certificate is forbidden
@@ -43,6 +69,16 @@ pub(crate) fn get_common_name(name: &X509Name<'_>) -> KResult<String> {
     Ok(common_name.to_string())
 }
 
+/// The function `get_certificate_subject_key_identifier` returns the subject key
+/// identifier of an X.509 certificate, encoded as a hexadecimal string.
+///
+/// Arguments:
+///
+/// * `x509`: An `X509Certificate` object, which represents an X.509 certificate.
+///
+/// Returns:
+///
+/// The Subject Key Identifier (if exists) of the X.509 certificate
 pub(crate) fn get_certificate_subject_key_identifier(
     x509: &X509Certificate<'_>,
 ) -> KResult<Option<String>> {
