@@ -77,21 +77,20 @@ jobs:
           yum -y groupinstall "Development Tools"
           yum -y install openssl openssl-devel
 
-      - name: Build
+      - name: Build with Auth0 feature
         run: |
-          cargo check --all-targets --all-features
           cargo build --release --bin ckms
           cargo build --release --bin cosmian_kms_server
         env:
           # Speeds up Ristretto 25519 multiplication x 2
           RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
 
-      - name: Tests
+      - name: Tests in debug
         run: |
           rm -rf /tmp/sqlite-data /tmp/tmp.json
           export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
           cargo build --no-default-features --features insecure
-          cargo test --workspace --features insecure --no-default-features -- --nocapture
+          cargo test  --no-default-features --features insecure -- --nocapture
           cargo test --bins -- --nocapture
         env:
           POSTGRES_USER: kms
