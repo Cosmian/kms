@@ -2,26 +2,14 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
-    kmip_types::{
-        Attributes, CertificateType, CryptographicAlgorithm, CryptographicDomainParameters,
-        CryptographicUsageMask, KeyFormatType, RecommendedCurve,
-    },
+    kmip_types::CertificateType,
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::curve_25519::operation::Q_LENGTH_BITS;
-use openssl::{
-    ec::EcKey,
-    nid::Nid,
-    pkey::{Id, PKey},
-};
 use tracing::{debug, trace};
-use x509_parser::prelude::parse_x509_pem;
 
 use crate::{
     actions::shared::utils::{import_object, read_bytes_from_file, read_key_from_file},
-    cli_bail,
     error::CliError,
 };
 
@@ -73,9 +61,9 @@ pub struct ImportCertificateAction {
 }
 
 impl ImportCertificateAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         debug!("CLI: entering import certificate");
-        let unique_identifier = match self.input_format {
+        let object = match self.input_format {
             CertificateInputFormat::TTLV => {
                 trace!("CLI: import certificate as TTLV JSON file");
                 // read the certificate file
@@ -87,86 +75,29 @@ impl ImportCertificateAction {
                         "Object type MUST be equal to Certificate".to_string(),
                     ))
                 }
-
-                // import the certificate
-                import_object(
-                    client_connector,
-                    self.certificate_id.clone(),
-                    object,
-                    false,
-                    self.replace_existing,
-                    &self.tags,
-                )
-                .await?
+                object
             }
             CertificateInputFormat::PEM => {
                 debug!("CLI: import certificate as PEM file");
                 let pem_value = read_bytes_from_file(&self.certificate_file)?;
 
-                let (_, pem) = parse_x509_pem(&pem_value)?;
-
-                let object = if pem.label == "CERTIFICATE" {
-                    debug!("CLI: parsing certificate: {}", pem.label);
-                    Object::Certificate {
-                        certificate_type: CertificateType::X509,
-                        certificate_value: pem_value,
-                    }
-                } else if pem.label.contains("PRIVATE KEY") {
-                    debug!("CLI: parsing private key: {}", pem.label);
-                    let pkey = PKey::private_key_from_pem(&pem_value)?;
-                    match pkey.id() {
-                        Id::EC => {
-                            debug!("CLI: parsing private key with PKey: {:?}", pkey);
-                            let private_key = EcKey::private_key_from_der(&pem.contents)?;
-                            debug!("CLI: convert private key to EcKey");
-                            let recommended_curve = match private_key.group().curve_name() {
-                                Some(nid) => match nid {
-                                    Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
-                                    Nid::SECP224R1 => RecommendedCurve::P224,
-                                    Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,
-                                    Nid::SECP384R1 => RecommendedCurve::P384,
-                                    _ => {
-                                        cli_bail!(
-                                            "Elliptic curve not supported: {}",
-                                            nid.long_name()?
-                                        );
-                                    }
-                                },
-                                None => cli_bail!("No curve name for this EC curve"),
-                            };
-                            let private_key_bytes = private_key.private_key().to_vec();
-                            debug!("CLI: private_key_bytes len: {}", private_key_bytes.len());
-                            get_private_key_object(private_key_bytes, recommended_curve)
-                        }
-                        Id::ED25519 => {
-                            let private_key_bytes = pkey.raw_private_key()?;
-                            get_private_key_object(
-                                private_key_bytes,
-                                RecommendedCurve::CURVEED25519,
-                            )
-                        }
-                        Id::X25519 => {
-                            let private_key_bytes = pkey.raw_private_key()?;
-                            get_private_key_object(private_key_bytes, RecommendedCurve::CURVE25519)
-                        }
-                        _ => cli_bail!("Private key id not supported: {:?}", pkey.id()),
-                    }
-                } else {
-                    cli_bail!("Unsupported PEM format: found {}", pem.label);
-                };
-
-                // import the certificate
-                import_object(
-                    client_connector,
-                    self.certificate_id.clone(),
-                    object,
-                    false,
-                    self.replace_existing,
-                    &self.tags,
-                )
-                .await?
+                Object::Certificate {
+                    certificate_type: CertificateType::X509,
+                    certificate_value: pem_value,
+                }
             }
         };
+
+        // import the certificate
+        let unique_identifier = import_object(
+            kms_rest_client,
+            self.certificate_id.clone(),
+            object,
+            false,
+            self.replace_existing,
+            &self.tags,
+        )
+        .await?;
 
         // print the response
         println!(
@@ -181,44 +112,5 @@ impl ImportCertificateAction {
         }
 
         Ok(())
-    }
-}
-
-fn get_private_key_object(
-    private_key_bytes: Vec<u8>,
-    recommended_curve: RecommendedCurve,
-) -> Object {
-    Object::PrivateKey {
-        key_block: KeyBlock {
-            key_format_type: KeyFormatType::TransparentECPrivateKey,
-            key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(private_key_bytes),
-                attributes: Some(Attributes {
-                    activation_date: None,
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-                    cryptographic_length: Some(Q_LENGTH_BITS),
-                    cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-                        q_length: Some(Q_LENGTH_BITS),
-                        recommended_curve: Some(recommended_curve),
-                    }),
-                    cryptographic_parameters: None,
-                    cryptographic_usage_mask: Some(
-                        CryptographicUsageMask::Encrypt
-                            | CryptographicUsageMask::Decrypt
-                            | CryptographicUsageMask::WrapKey
-                            | CryptographicUsageMask::UnwrapKey
-                            | CryptographicUsageMask::KeyAgreement,
-                    ),
-                    key_format_type: Some(KeyFormatType::ECPrivateKey),
-                    link: None,
-                    object_type: Some(ObjectType::PrivateKey),
-                    vendor_attributes: None,
-                }),
-            },
-            cryptographic_algorithm: CryptographicAlgorithm::ECDH,
-            cryptographic_length: Q_LENGTH_BITS,
-            key_compression_type: None,
-            key_wrapping_data: None,
-        },
     }
 }
