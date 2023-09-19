@@ -135,3 +135,4 @@ repos:
       - id: clippy-autofix-others
       - id: clippy-all-targets-all-features
       - id: clippy-all-targets-all-features-release
+      - id: cargo-format # in last du to clippy fixes

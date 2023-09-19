@@ -132,32 +132,25 @@ impl CliConf {
             // Configuration file exists, read and deserialize it
             let file = File::open(&conf_path)
                 .with_context(|| format!("Unable to read configuration file {conf_path:?}"))?;
-            serde_json::from_reader(BufReader::new(file)).with_context(|| {
-                format!("Error while parsing configuration file {conf_path:?}")
-            })?
+            serde_json::from_reader(BufReader::new(file))
+                .with_context(|| format!("Error while parsing configuration file {conf_path:?}"))?
         } else {
             // Configuration file doesn't exist, create it with default values and serialize it
             let parent = conf_path
                 .parent()
                 .with_context(|| format!("Unable to get parent directory of {conf_path:?}"))?;
             fs::create_dir_all(parent).with_context(|| {
-                format!(
-                    "Unable to create directory for configuration file {parent:?}"
-                )
+                format!("Unable to create directory for configuration file {parent:?}")
             })?;
             let default_conf = Self::default();
             fs::write(
                 &conf_path,
                 serde_json::to_string(&default_conf).with_context(|| {
-                    format!(
-                        "Unable to serialize default configuration {default_conf:?}"
-                    )
+                    format!("Unable to serialize default configuration {default_conf:?}")
                 })?,
             )
             .with_context(|| {
-                format!(
-                    "Unable to write default configuration to file {conf_path:?}"
-                )
+                format!("Unable to write default configuration to file {conf_path:?}")
             })?;
             default_conf
         };

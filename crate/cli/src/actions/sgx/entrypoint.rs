@@ -58,9 +58,7 @@ impl SgxAction {
         // Save the structured quote
         let quote_struct_path = self.export_path.join("quote.struct");
         fs::write(&quote_struct_path, format!("{:#?}", &typed_quote))?;
-        println!(
-            "The quote (structured) has been saved at {quote_struct_path:?}"
-        );
+        println!("The quote (structured) has been saved at {quote_struct_path:?}");
 
         // Get the certificate
         let certificate = kms_rest_client
@@ -105,9 +103,7 @@ impl SgxAction {
         // Save the remote attestation
         let remote_attestation_path = self.export_path.join("remote_attestation");
         fs::write(&remote_attestation_path, format!("{remote_attestation:#?}"))?;
-        println!(
-            "The remote attestation has been saved at {remote_attestation_path:?}"
-        );
+        println!("The remote attestation has been saved at {remote_attestation_path:?}");
 
         println!("\nYou can check all these files manually.");
 

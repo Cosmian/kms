@@ -273,9 +273,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
     let private_key_id = import(
         &ctx.owner_cli_conf_path,
         "certificates",
-        &format!(
-            "test_data/certificates/openssl/{curve_name}-private-key.pem"
-        ),
+        &format!("test_data/certificates/openssl/{curve_name}-private-key.pem"),
         CertificateInputFormat::PEM,
         None,
         Some(tags),
