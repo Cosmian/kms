@@ -138,7 +138,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
             ..Attributes::default()
         },
         object: pk.clone(),
-        key_wrapping_data: None,
+        key_wrapping_specification: None,
     };
     let new_uid = kms.import(request, owner, None).await?.unique_identifier;
     // update
@@ -153,7 +153,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
             ..Attributes::default()
         },
         object: pk,
-        key_wrapping_data: None,
+        key_wrapping_specification: None,
     };
     let update_response = kms.import(request, owner, None).await?;
     assert_eq!(new_uid, update_response.unique_identifier);
@@ -207,7 +207,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
             ..Attributes::default()
         },
         object: symmetric_key,
-        key_wrapping_data: None,
+        key_wrapping_specification: None,
     };
 
     trace!("request: {:?}", request);

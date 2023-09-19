@@ -7,7 +7,7 @@ use serde::{
 use strum_macros::Display;
 
 use super::{
-    kmip_data_structures::KeyWrappingData,
+    kmip_data_structures::KeyWrappingSpecification,
     kmip_objects::{Object, ObjectType},
     kmip_types::{
         AttributeReference, Attributes, CertificateRequestType, CryptographicParameters,
@@ -125,7 +125,7 @@ pub struct Import {
     pub object: Object,
     /// Specifies keys and other information for wrapping the returned object.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_wrapping_data: Option<KeyWrappingData>,
+    pub key_wrapping_specification: Option<KeyWrappingSpecification>,
 }
 
 /// Deserialization needs to be handwritten because the
@@ -146,7 +146,7 @@ impl<'de> Deserialize<'de> for Import {
             KeyWrapType,
             Attributes,
             Object,
-            KeyWrappingData,
+            KeyWrappingSpecification,
         }
 
         struct ImportVisitor;
@@ -168,7 +168,7 @@ impl<'de> Deserialize<'de> for Import {
                 let mut key_wrap_type: Option<KeyWrapType> = None;
                 let mut attributes: Option<Attributes> = None;
                 let mut object: Option<Object> = None;
-                let key_wrapping_data: Option<KeyWrappingData> = None;
+                let key_wrapping_specification: Option<KeyWrappingSpecification> = None;
 
                 while let Some(key) = map.next_key()? {
                     match key {
@@ -208,9 +208,9 @@ impl<'de> Deserialize<'de> for Import {
                             }
                             object = Some(map.next_value()?);
                         }
-                        Field::KeyWrappingData => {
-                            if key_wrapping_data.is_some() {
-                                return Err(de::Error::duplicate_field("key_wrapping_data"))
+                        Field::KeyWrappingSpecification => {
+                            if key_wrapping_specification.is_some() {
+                                return Err(de::Error::duplicate_field("key_wrapping_specification"))
                             }
                             object = Some(map.next_value()?);
                         }
@@ -232,7 +232,7 @@ impl<'de> Deserialize<'de> for Import {
                     key_wrap_type,
                     attributes,
                     object,
-                    key_wrapping_data,
+                    key_wrapping_specification,
                 })
             }
         }
@@ -422,7 +422,7 @@ pub struct Export {
     pub key_compression_type: Option<KeyCompressionType>,
     /// Specifies keys and other information for wrapping the returned object.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_wrapping_data: Option<KeyWrappingData>,
+    pub key_wrapping_specification: Option<KeyWrappingSpecification>,
 }
 
 impl Export {
@@ -440,11 +440,15 @@ impl Export {
     /// let export_request = Export::new("1234", false, None);
     /// ```
     #[must_use]
-    pub fn new(uid: &str, unwrap: bool, key_wrapping_data: Option<KeyWrappingData>) -> Self {
+    pub fn new(
+        uid: &str,
+        unwrap: bool,
+        key_wrapping_specification: Option<KeyWrappingSpecification>,
+    ) -> Self {
         let key_wrap_type = if unwrap {
             // ignore key_wrapping_data if unwrap is true
             Some(KeyWrapType::NotWrapped)
-        } else if key_wrapping_data.is_none() {
+        } else if key_wrapping_specification.is_none() {
             Some(KeyWrapType::AsRegistered)
         } else {
             None
@@ -455,7 +459,7 @@ impl Export {
             key_format_type: None,
             key_wrap_type,
             key_compression_type: None,
-            key_wrapping_data,
+            key_wrapping_specification,
         }
     }
 }
@@ -536,7 +540,7 @@ pub struct Get {
     pub key_compression_type: Option<KeyCompressionType>,
     /// Specifies keys and other information for wrapping the returned object.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_wrapping_data: Option<KeyWrappingData>,
+    pub key_wrapping_specification: Option<KeyWrappingSpecification>,
 }
 
 impl Get {
@@ -554,11 +558,15 @@ impl Get {
     /// let get_request = Get::new("1234", false, None);
     /// ```
     #[must_use]
-    pub fn new(uid: &str, unwrap: bool, key_wrapping_data: Option<KeyWrappingData>) -> Self {
+    pub fn new(
+        uid: &str,
+        unwrap: bool,
+        key_wrapping_specification: Option<KeyWrappingSpecification>,
+    ) -> Self {
         let key_wrap_type = if unwrap {
             // ignore key_wrapping_data if unwrap is true
             Some(KeyWrapType::NotWrapped)
-        } else if key_wrapping_data.is_none() {
+        } else if key_wrapping_specification.is_none() {
             Some(KeyWrapType::AsRegistered)
         } else {
             None
@@ -569,7 +577,7 @@ impl Get {
             key_format_type: None,
             key_wrap_type,
             key_compression_type: None,
-            key_wrapping_data,
+            key_wrapping_specification,
         }
     }
 }

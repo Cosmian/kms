@@ -232,13 +232,13 @@ pub async fn import(
         false
     };
 
-    if let Some(kwd) = &request.key_wrapping_data {
+    if let Some(kws) = &request.key_wrapping_specification {
         // wrap
         let key_block = object.key_block_mut()?;
         wrap_key(
             &request.unique_identifier,
             key_block,
-            kwd,
+            kws,
             kms,
             owner,
             params,

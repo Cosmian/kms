@@ -273,6 +273,47 @@ impl Default for KeyWrappingData {
     }
 }
 
+/// This is a separate structure that is defined for operations that provide the option to return wrapped keys. The Key Wrapping Specification SHALL be included inside the operation request if clients request the server to return a wrapped key. If Cryptographic Parameters are specified in the Encryption Key Information and/or the MAC/Signature Key Information of the Key Wrapping Specification, then the server SHALL verify that they match one of the instances of the Cryptographic Parameters attribute of the corresponding key.. If the corresponding key does not have any Cryptographic Parameters attribute, or if no match is found, then an error is returned.
+///
+/// This structure contains:
+///
+/// ·         A Wrapping Method that indicates the method used to wrap the Key Value.
+///
+/// ·         Encryption Key Information with the Unique Identifier value of the encryption key and associated cryptographic parameters.
+///
+/// ·         MAC/Signature Key Information with the Unique Identifier value of the MAC/signature key and associated cryptographic parameters.
+///
+/// ·         Zero or more Attribute Names to indicate the attributes to be wrapped with the key material.
+///
+/// ·         An Encoding Option, specifying the encoding of the Key Value before wrapping. If No Encoding is specified, then the Key Value SHALL NOT contain any attributes
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct KeyWrappingSpecification {
+    pub wrapping_method: WrappingMethod,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encryption_key_information: Option<EncryptionKeyInformation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mac_or_signature_key_information: Option<MacSignatureKeyInformation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attribute_name: Option<Vec<String>>,
+    /// Specifies the encoding of the Key Value Byte String. If not present, the
+    /// wrapped Key Value structure SHALL be TTLV encoded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encoding_option: Option<EncodingOption>,
+}
+
+impl Default for KeyWrappingSpecification {
+    fn default() -> Self {
+        Self {
+            wrapping_method: WrappingMethod::Encrypt,
+            encryption_key_information: None,
+            mac_or_signature_key_information: None,
+            attribute_name: None,
+            encoding_option: Some(EncodingOption::NoEncoding),
+        }
+    }
+}
+
 // KeyMaterial has variants that do not appear in the TTLV
 // Typically, for a Transparent Symmetric key it will look like
 // this
