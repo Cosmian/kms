@@ -3,10 +3,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_crypto_core::{
-    reexport::rand_core::{RngCore, SeedableRng},
-    Aes256Gcm, CsRng, FixedSizeCBytes, SymmetricKey,
+use cloudproof::reexport::{
+    cover_crypt::Covercrypt,
+    crypto_core::{
+        reexport::rand_core::{RngCore, SeedableRng},
+        Aes256Gcm, CsRng, FixedSizeCBytes, SymmetricKey,
+    },
 };
 use cosmian_kmip::kmip::{
     kmip_objects::Object,

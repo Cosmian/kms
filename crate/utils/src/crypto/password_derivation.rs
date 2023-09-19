@@ -1,6 +1,6 @@
 // This file exists to standardize key-derivation across all KMS crates
 use argon2::Argon2;
-use cosmian_crypto_core::{FixedSizeCBytes, SymmetricKey};
+use cloudproof::reexport::crypto_core::{FixedSizeCBytes, SymmetricKey};
 
 use crate::error::KmipUtilsError;
 

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use cosmian_crypto_core::{
+use cloudproof::reexport::crypto_core::{
     reexport::rand_core::SeedableRng, CsRng, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;

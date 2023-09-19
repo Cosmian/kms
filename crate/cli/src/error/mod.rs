@@ -82,20 +82,20 @@ impl From<TtlvError> for CliError {
     }
 }
 
-impl From<cosmian_crypto_core::reexport::pkcs8::der::Error> for CliError {
-    fn from(e: cosmian_crypto_core::reexport::pkcs8::der::Error) -> Self {
+impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::der::Error> for CliError {
+    fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::der::Error) -> Self {
         Self::Conversion(e.to_string())
     }
 }
 
-impl From<cosmian_crypto_core::CryptoCoreError> for CliError {
-    fn from(e: cosmian_crypto_core::CryptoCoreError) -> Self {
+impl From<cloudproof::reexport::crypto_core::CryptoCoreError> for CliError {
+    fn from(e: cloudproof::reexport::crypto_core::CryptoCoreError) -> Self {
         Self::Cryptographic(e.to_string())
     }
 }
 
-impl From<cosmian_crypto_core::reexport::pkcs8::Error> for CliError {
-    fn from(e: cosmian_crypto_core::reexport::pkcs8::Error) -> Self {
+impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::Error> for CliError {
+    fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::Error) -> Self {
         Self::Conversion(e.to_string())
     }
 }

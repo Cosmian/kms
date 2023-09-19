@@ -56,6 +56,7 @@ In addition, the KMS server will automatically add a system tag based on the obj
 - `_pk`: for a public key
 - `_kk`: for a symmetric key
 - `_uk`: for a Covercrypt user decryption key
+- `_cert`: for a X509 certificate
 
 Use the tags to export objects, locate them, or request data encryption and decryption.
 

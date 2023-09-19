@@ -5,11 +5,13 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::findex::{
-    implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
-    Label, Location,
+use cloudproof::reexport::{
+    crypto_core::{kdf256, FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey},
+    findex::{
+        implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
+        Label, Location,
+    },
 };
-use cosmian_crypto_core::{kdf256, FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
@@ -99,7 +101,7 @@ impl RedisWithFindex {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Database for RedisWithFindex {
     fn filename(&self, _group_id: u128) -> Option<PathBuf> {
         None

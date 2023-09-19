@@ -8,7 +8,7 @@ use base64::{
     engine::general_purpose::{self, STANDARD as b64},
     Engine as _,
 };
-use cosmian_crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
+use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_operations::{
         Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,

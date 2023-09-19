@@ -10,7 +10,7 @@ use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationT
 use super::object_with_metadata::ObjectWithMetadata;
 use crate::result::KResult;
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait Database {
     /// Return the filename of the database or `None` if not supported
     fn filename(&self, group_id: u128) -> Option<PathBuf>;

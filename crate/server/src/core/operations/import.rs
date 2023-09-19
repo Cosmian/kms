@@ -17,6 +17,7 @@ use super::wrapping::unwrap_key;
 use crate::{
     core::{
         certificate::parsing::{get_certificate_subject_key_identifier, get_common_name},
+        operations::wrapping::wrap_key,
         KMS,
     },
     error::KmsError,
@@ -78,7 +79,6 @@ pub async fn import(
 
     let mut object = request.object;
     let object_type = object.object_type();
-
     match object_type {
         ObjectType::SymmetricKey | ObjectType::PublicKey | ObjectType::PrivateKey => {
             let object_key_block = object.key_block_mut()?;
@@ -122,18 +122,35 @@ pub async fn import(
             warn!("Import is not yet supported for objects of type : {x}");
         }
     }
+
     // check if the object will be replaced if it already exists
     let replace_existing = if let Some(v) = request.replace_existing {
         v
     } else {
         false
     };
+
+    if let Some(kwd) = &request.key_wrapping_data {
+        // wrap
+        let key_block = object.key_block_mut()?;
+        wrap_key(
+            &request.unique_identifier,
+            key_block,
+            kwd,
+            kms,
+            owner,
+            params,
+        )
+        .await?;
+    }
+
     // insert or update the object
     let uid = if replace_existing {
         debug!(
             "Upserting object of type: {}, with uid: {}",
             request.object_type, request.unique_identifier
         );
+
         kms.db
             .upsert(
                 &request.unique_identifier,
@@ -152,6 +169,7 @@ pub async fn import(
         } else {
             Some(request.unique_identifier)
         };
+
         kms.db.create(id, owner, &object, &tags, params).await?
     };
     Ok(ImportResponse {

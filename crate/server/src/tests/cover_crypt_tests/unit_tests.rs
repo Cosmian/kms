@@ -134,6 +134,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
             ..Attributes::default()
         },
         object: pk.clone(),
+        key_wrapping_data: None,
     };
     assert!(kms.import(request, owner, None).await.is_err());
 
@@ -148,6 +149,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
             ..Attributes::default()
         },
         object: pk.clone(),
+        key_wrapping_data: None,
     };
     let _update_response = kms.import(request, owner, None).await?;
 
@@ -619,6 +621,7 @@ async fn test_import_decrypt() -> KResult<()> {
             ..Attributes::default()
         },
         object: gr_sk.object.clone(),
+        key_wrapping_data: None,
     };
     kms.import(request, owner, None)
         .await
@@ -653,6 +656,7 @@ async fn test_import_decrypt() -> KResult<()> {
         // These attributes are matching the object's one
         attributes: gr_sk.object.attributes()?.clone(),
         object: gr_sk.object.clone(),
+        key_wrapping_data: None,
     };
     kms.import(request, owner, None)
         .await

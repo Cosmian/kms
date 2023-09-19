@@ -1,13 +1,15 @@
 use std::{collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;
-use cloudproof::reexport::findex::{
-    implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
-    Location,
-};
-use cosmian_crypto_core::{
-    reexport::rand_core::{RngCore, SeedableRng},
-    CsRng, RandomFixedSizeCBytes, SymmetricKey,
+use cloudproof::reexport::{
+    crypto_core::{
+        reexport::rand_core::{RngCore, SeedableRng},
+        CsRng, RandomFixedSizeCBytes, SymmetricKey,
+    },
+    findex::{
+        implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
+        Location,
+    },
 };
 use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration};
 use cosmian_kms_utils::{access::ObjectOperationType, crypto::symmetric::create_symmetric_key};

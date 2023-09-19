@@ -1,6 +1,6 @@
 use std::{collections::HashSet, str::FromStr};
 
-use cosmian_crypto_core::{
+use cloudproof::reexport::crypto_core::{
     reexport::x509_cert::{builder::Profile, name::Name},
     Ed25519PublicKey, ED25519_PUBLIC_KEY_LENGTH,
 };

@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use cosmian_crypto_core::{build_certificate_profile, X25519PublicKey, X25519_PUBLIC_KEY_LENGTH};
+use cloudproof::reexport::crypto_core::{
+    build_certificate_profile, X25519PublicKey, X25519_PUBLIC_KEY_LENGTH,
+};
 use cosmian_kmip::kmip::kmip_operations::{Certify, CertifyResponse};
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,

@@ -9,7 +9,7 @@ use std::{
 use actix_server::ServerHandle;
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
-use cosmian_crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
+use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kms_server::{
     bootstrap_server::{start_https_bootstrap_server, BootstrapServerMessage},
     config::{

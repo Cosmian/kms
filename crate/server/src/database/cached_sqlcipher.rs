@@ -6,7 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cosmian_crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
+use cloudproof::reexport::crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_objects,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
@@ -128,7 +128,7 @@ impl CachedSqlCipher {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Database for CachedSqlCipher {
     fn filename(&self, group_id: u128) -> Option<PathBuf> {
         Some(self.path.join(format!("{group_id}.sqlite")))

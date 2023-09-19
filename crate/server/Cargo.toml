@@ -38,7 +38,6 @@ async-trait = { workspace = true }
 base64 = { workspace = true }
 clap = { workspace = true }
 cloudproof = { workspace = true }
-cosmian_crypto_core = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
 dirs = "5.0"

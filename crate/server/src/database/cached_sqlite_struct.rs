@@ -8,7 +8,7 @@ use std::{
     time::SystemTime,
 };
 
-use cosmian_crypto_core::{reexport::tiny_keccak, SymmetricKey};
+use cloudproof::reexport::crypto_core::{reexport::tiny_keccak, SymmetricKey};
 use sqlx::{Pool, Sqlite};
 use tracing::info;
 
@@ -483,7 +483,7 @@ impl FreeableSqliteCache {
 mod tests {
     use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
-    use cosmian_crypto_core::{
+    use cloudproof::reexport::crypto_core::{
         reexport::rand_core::SeedableRng, CsRng, RandomFixedSizeCBytes, SymmetricKey,
     };
     use sqlx::{

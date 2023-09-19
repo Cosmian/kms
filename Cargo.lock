@@ -84,7 +84,7 @@ dependencies = [
  "actix-tls",
  "actix-utils",
  "ahash 0.7.6",
- "base64 0.21.2",
+ "base64 0.21.4",
  "bitflags 1.3.2",
  "brotli",
  "bytes",
@@ -616,9 +616,9 @@ checksum = "0ea22880d78093b0cbe17c89f64a7d457941e65759157ec6cb31a31d652b05e5"
 
 [[package]]
 name = "base64"
-version = "0.21.2"
+version = "0.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "604178f6c5c21f02dc555784810edfb88d34ac2c73b2eae109655649ee73ce3d"
+checksum = "9ba43ea6f343b788c8764558649e08df62f86c6ef251fdaeb1ffd010a9ae50a2"
 
 [[package]]
 name = "base64-url"
@@ -626,7 +626,7 @@ version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c5b0a88aa36e9f095ee2e2b13fb8c5e4313e022783aedacc123328c0084916d"
 dependencies = [
- "base64 0.21.2",
+ "base64 0.21.4",
 ]
 
 [[package]]
@@ -850,9 +850,9 @@ checksum = "cd7cc57abe963c6d3b9d8be5b06ba7c8957a930305ca90304f24ef040aa6f961"
 
 [[package]]
 name = "cloudproof"
-version = "2.2.2"
+version = "2.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c23c54c74f11460ab2b36e945bee2c5607effe5494ba7d343c93a3b16a6e6d1"
+checksum = "cf37ccbedf3da9f69ec71d3c643e5e2c774d14015dbadb361f5043754c756e56"
 dependencies = [
  "cloudproof_aesgcm",
  "cloudproof_anonymization",
@@ -868,7 +868,7 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ffe72f26177c0848c5ce1aaccc4bc151aa9ab587376b743fdc558151a851454"
 dependencies = [
- "cosmian_crypto_core 9.1.0",
+ "cosmian_crypto_core",
 ]
 
 [[package]]
@@ -878,9 +878,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88244cacfa03bd4206df9b5c2058a3c46503e6e0e1414bac32f5dcaec59bb504"
 dependencies = [
  "argon2",
- "base64 0.21.2",
+ "base64 0.21.4",
  "chrono",
- "cosmian_crypto_core 9.1.0",
+ "cosmian_crypto_core",
  "hex",
  "rand",
  "rand_distr",
@@ -891,12 +891,12 @@ dependencies = [
 
 [[package]]
 name = "cloudproof_cover_crypt"
-version = "12.0.2"
+version = "12.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fdd5de74d70e887802fd771b45d0463acf38a0c7115520b4da2ae516f99188f"
+checksum = "656f2f93f4a6e2d421bff10fbad745f5329c63cec24b3937e0d7c7bf9a87302d"
 dependencies = [
  "cosmian_cover_crypt",
- "cosmian_crypto_core 9.1.0",
+ "cosmian_crypto_core",
  "serde_json",
 ]
 
@@ -906,17 +906,17 @@ version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b24cc4c23c22ceba6e13e70bfd1f3086d158252d4e603136e076e3487d26722"
 dependencies = [
- "cosmian_crypto_core 9.1.0",
+ "cosmian_crypto_core",
 ]
 
 [[package]]
 name = "cloudproof_findex"
-version = "5.0.3"
+version = "5.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38e0b5be0514a16b65344b7a805a215262ca86630dafab50c1a7c0511a88642a"
+checksum = "a25dad7ff37557df4cb27a20d80727d75dfa2ddcbed14f02761e8bfb1f595741"
 dependencies = [
  "async-trait",
- "cosmian_crypto_core 9.1.0",
+ "cosmian_crypto_core",
  "cosmian_findex",
  "redis",
  "serde",
@@ -1016,11 +1016,11 @@ checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
 
 [[package]]
 name = "cosmian_cover_crypt"
-version = "12.0.2"
+version = "12.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0352e2fa64455fcfa334c49b129300becbc7e8d70846f2ef820910817c238c76"
+checksum = "7f85070e5197dc924174ab174eaa1ce8058cd153dda296c83d6dc54fae19b02a"
 dependencies = [
- "cosmian_crypto_core 9.1.0",
+ "cosmian_crypto_core",
  "pqc_kyber",
  "serde",
  "serde_json",
@@ -1030,34 +1030,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_crypto_core"
-version = "9.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98fce54e591ba1ccdee48c511574f4846e22c6faa619d877c1876dbbb21682ed"
-dependencies = [
- "aead",
- "aes-gcm",
- "blake2",
- "chacha20",
- "chacha20poly1305",
- "crypto_box",
- "curve25519-dalek",
- "ed25519-dalek",
- "getrandom",
- "leb128",
- "pkcs8",
- "rand_chacha",
- "rand_core",
- "signature",
- "tiny-keccak",
- "uuid",
- "x509-cert",
- "zeroize",
-]
-
-[[package]]
-name = "cosmian_crypto_core"
 version = "9.2.0"
-source = "git+https://github.com/Cosmian/crypto_core?rev=16d0e9f0b46292b202970772e89a30813dbc5007#16d0e9f0b46292b202970772e89a30813dbc5007"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69d86c6966987f9fef6889d1e8aa9f59c08dfd2f63e84ae4f19b7fea80e37fa4"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -1087,12 +1062,14 @@ dependencies = [
 
 [[package]]
 name = "cosmian_findex"
-version = "5.0.1"
+version = "5.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8e4979432f4edb41133967b990d7087f93d2077d00135134eaec7682cd2a600"
+checksum = "5cb51a6ded995165d6343c3b74d6f25191a02cbd6a2148a1403c0583a04e9e94"
 dependencies = [
- "base64 0.21.2",
- "cosmian_crypto_core 9.1.0",
+ "async-trait",
+ "base64 0.21.4",
+ "cosmian_crypto_core",
+ "never",
  "rand",
  "tiny-keccak",
  "zeroize",
@@ -1139,12 +1116,11 @@ dependencies = [
  "actix-rt",
  "actix-server",
  "assert_cmd",
- "base64 0.21.2",
+ "base64 0.21.4",
  "base64-url",
  "clap",
  "cloudproof",
  "colored",
- "cosmian_crypto_core 9.2.0",
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_server",
@@ -1216,10 +1192,9 @@ dependencies = [
  "alcoholic_jwt",
  "async-recursion",
  "async-trait",
- "base64 0.21.2",
+ "base64 0.21.4",
  "clap",
  "cloudproof",
- "cosmian_crypto_core 9.2.0",
  "cosmian_kmip",
  "cosmian_kms_utils",
  "cosmian_logger",
@@ -1256,7 +1231,6 @@ version = "4.6.0"
 dependencies = [
  "argon2",
  "cloudproof",
- "cosmian_crypto_core 9.2.0",
  "cosmian_kmip",
  "num-bigint",
  "openssl",
@@ -2316,7 +2290,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33a96c4f2128a6f44ecf7c36df2b03dddf5a07b060a4d5ebc0a81e9821f7c60e"
 dependencies = [
  "anyhow",
- "base64 0.21.2",
+ "base64 0.21.4",
  "flate2",
  "once_cell",
  "openssl",
@@ -2342,7 +2316,7 @@ version = "8.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6971da4d9c3aa03c3d8f3ff0f4155b534aad021292003895a469716b2a230378"
 dependencies = [
- "base64 0.21.2",
+ "base64 0.21.4",
  "pem",
  "ring",
  "serde",
@@ -2387,7 +2361,7 @@ checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 name = "libsgx"
 version = "4.6.0"
 dependencies = [
- "base64 0.21.2",
+ "base64 0.21.4",
  "base64-url",
  "hex",
  "jsonwebtoken",
@@ -2562,6 +2536,12 @@ dependencies = [
  "security-framework-sys",
  "tempfile",
 ]
+
+[[package]]
+name = "never"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c96aba5aa877601bb3f6dd6a63a969e1f82e60646e81e71b14496995e9853c91"
 
 [[package]]
 name = "nom"
@@ -3285,7 +3265,7 @@ version = "0.11.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "21eed90ec8570952d53b772ecf8f206aa1ec9a3d76b2521c56c42973f2d91ee9"
 dependencies = [
- "base64 0.21.2",
+ "base64 0.21.4",
  "bytes",
  "encoding_rs",
  "futures-core",
@@ -3552,9 +3532,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.105"
+version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "693151e1ac27563d6dbcec9dee9fbd5da8539b20fa14ad3752b2e6d363ace360"
+checksum = "6b420ce6e3d8bd882e9b243c6eed35dbc9a6110c9769e74b584e0d68d1f20c65"
 dependencies = [
  "indexmap 2.0.0",
  "itoa",
@@ -3823,7 +3803,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ca69bf415b93b60b80dc8fda3cb4ef52b2336614d8da2de5456cc942a110482"
 dependencies = [
  "atoi",
- "base64 0.21.2",
+ "base64 0.21.4",
  "bitflags 2.3.2",
  "byteorder",
  "bytes",
@@ -3865,7 +3845,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a0db2df1b8731c3651e204629dd55e52adbae0462fa1bdcbed56a2302c18181e"
 dependencies = [
  "atoi",
- "base64 0.21.2",
+ "base64 0.21.4",
  "bitflags 2.3.2",
  "byteorder",
  "crc",

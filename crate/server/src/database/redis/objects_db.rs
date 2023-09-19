@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
-use cloudproof::reexport::findex::{
-    implementations::redis::{FindexRedisError, RemovedLocationsFinder},
-    Keyword, Location,
+use cloudproof::reexport::{
+    crypto_core::{kdf256, Aes256Gcm, Dem, Instantiable, Nonce, SymmetricKey},
+    findex::{
+        implementations::redis::{FindexRedisError, RemovedLocationsFinder},
+        Keyword, Location,
+    },
 };
-use cosmian_crypto_core::{kdf256, Aes256Gcm, Dem, Instantiable, Nonce, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_types::{Attributes, StateEnumeration},

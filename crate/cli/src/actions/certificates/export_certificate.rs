@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_crypto_core::{
+use cloudproof::reexport::crypto_core::{
     reexport::pkcs8::{der::pem::PemLabel, EncodePrivateKey, LineEnding, PrivateKeyInfo},
     X25519Keypair, X25519PrivateKey, X25519PublicKey, CURVE_25519_SECRET_LENGTH,
     X25519_PUBLIC_KEY_LENGTH,

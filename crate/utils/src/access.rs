@@ -1,4 +1,4 @@
-use cosmian_crypto_core::{FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey};
+use cloudproof::reexport::crypto_core::{FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::kmip_types::{Attributes, StateEnumeration, UniqueIdentifier};
 use serde::{Deserialize, Serialize};
 

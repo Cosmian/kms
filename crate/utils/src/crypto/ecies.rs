@@ -6,7 +6,7 @@
 //!
 use std::sync::{Arc, Mutex};
 
-use cosmian_crypto_core::{
+use cloudproof::reexport::crypto_core::{
     reexport::rand_core::SeedableRng, CsRng, Ecies, EciesP192Aes128, EciesP224Aes128,
     EciesP256Aes128, EciesP384Aes128, EciesSalsaSealBox, Ed25519PrivateKey, Ed25519PublicKey,
     P192PrivateKey, P192PublicKey, P224PrivateKey, P224PublicKey, P256PrivateKey, P256PublicKey,

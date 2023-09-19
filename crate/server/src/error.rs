@@ -121,12 +121,6 @@ impl From<CryptoCoreError> for KmsError {
         Self::CryptographicError(e.to_string())
     }
 }
-impl From<cosmian_crypto_core::CryptoCoreError> for KmsError {
-    //TODELETE!
-    fn from(e: cosmian_crypto_core::CryptoCoreError) -> Self {
-        Self::CryptographicError(e.to_string())
-    }
-}
 
 impl From<FindexRedisError> for KmsError {
     fn from(e: FindexRedisError) -> Self {

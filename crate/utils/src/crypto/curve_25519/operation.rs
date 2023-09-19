@@ -1,4 +1,4 @@
-use cosmian_crypto_core::{
+use cloudproof::reexport::crypto_core::{
     reexport::rand_core::CryptoRngCore, Ed25519PrivateKey, Ed25519PublicKey, X25519PrivateKey,
     X25519PublicKey, CURVE_25519_SECRET_LENGTH,
 };

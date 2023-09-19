@@ -1,4 +1,4 @@
-use cosmian_crypto_core::{
+use cloudproof::reexport::crypto_core::{
     key_unwrap, key_wrap, reexport::rand_core::CryptoRngCore, Ecies, EciesSalsaSealBox,
     X25519PrivateKey, X25519PublicKey, CURVE_25519_SECRET_LENGTH, X25519_PUBLIC_KEY_LENGTH,
 };

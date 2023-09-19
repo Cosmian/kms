@@ -53,7 +53,7 @@ pub(crate) async fn revoke_operation(
 }
 
 /// Recursively revoke keys
-#[async_recursion]
+#[async_recursion(?Send)]
 pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
     uid_or_tags: &str,
     revocation_reason: RevocationReason,

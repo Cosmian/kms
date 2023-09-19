@@ -1,4 +1,4 @@
-use cosmian_crypto_core::{
+use cloudproof::reexport::crypto_core::{
     Ed25519Keypair, Ed25519PrivateKey, Ed25519PublicKey, CURVE_25519_SECRET_LENGTH,
     ED25519_PUBLIC_KEY_LENGTH,
 };

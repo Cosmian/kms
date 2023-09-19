@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use cosmian_crypto_core::{
+use cloudproof::reexport::crypto_core::{
     build_certificate,
     reexport::{pkcs8::EncodePublicKey, x509_cert::builder::Profile},
     FixedSizeCBytes,

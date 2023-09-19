@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cosmian_crypto_core::X25519_PUBLIC_KEY_LENGTH;
+use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType},
@@ -138,6 +138,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
             ..Attributes::default()
         },
         object: pk.clone(),
+        key_wrapping_data: None,
     };
     let new_uid = kms.import(request, owner, None).await?.unique_identifier;
     // update
@@ -152,6 +153,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
             ..Attributes::default()
         },
         object: pk,
+        key_wrapping_data: None,
     };
     let update_response = kms.import(request, owner, None).await?;
     assert_eq!(new_uid, update_response.unique_identifier);
@@ -205,6 +207,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
             ..Attributes::default()
         },
         object: symmetric_key,
+        key_wrapping_data: None,
     };
 
     trace!("request: {:?}", request);

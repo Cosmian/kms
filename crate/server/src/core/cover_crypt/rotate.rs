@@ -192,6 +192,7 @@ async fn rekey_master_keys(
         key_wrap_type: None,
         attributes: updated_private_key.attributes()?.clone(),
         object: updated_private_key,
+        key_wrapping_data: None,
     };
     let _import_response = kmip_server.import(import_request, owner, params).await?;
 
@@ -204,6 +205,7 @@ async fn rekey_master_keys(
         key_wrap_type: None,
         attributes: updated_public_key.attributes()?.clone(),
         object: updated_public_key,
+        key_wrapping_data: None,
     };
     let _import_response = kmip_server.import(import_request, owner, params).await?;
 
@@ -259,6 +261,7 @@ async fn refresh_all_user_decryption_keys(
                 .map_err(|e| KmsError::KmipError(ErrorReason::Attribute_Not_Found, e.to_string()))?
                 .clone(),
             object: updated_user_decryption_key,
+            key_wrapping_data: None,
         };
         let _import_response = kmip_server.import(import_request, owner, params).await?;
     }

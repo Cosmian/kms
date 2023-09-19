@@ -24,10 +24,12 @@ All notable changes to this project will be documented in this file.
       - the system tag `_cert_spki=<Subject Public Key Info>` on `Certificate` object where SPKI refers to [RFC 5280](https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.2.7). The SPKI value identifies uniquely the underlying certificate
       - the system tag `_ca=<Subject Common Name>` on CA `Certificate` object
     - import X509 certificate as PEM and also public key and private key
+    - encrypt with X509 certificate and decrypt with PKCS8 private key
   - in `ckms`, add:
     - create/destroy certificate
     - export/import certificate
     - revoke certificate
+- Add the import option `KeyWrappingData` in order to wrap the object during import
 
 ## [4.5.0] - 2023-08-21
 
@@ -38,7 +40,7 @@ All notable changes to this project will be documented in this file.
 ### Features
 
 - tagging: the KMS server now supports user tagging of objects to facilitate their management.
-Specify as many user tags as needed when creating and importing objects.
+  Specify as many user tags as needed when creating and importing objects.
 
 In addition, the user server will automatically add a system tag based on the object type:
 
