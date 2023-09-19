@@ -73,13 +73,13 @@ impl TryFrom<&Location> for Triple {
         let value = String::from_utf8((value).to_vec())?;
         let mut parts = value.split("::");
         let uid = parts.next().ok_or_else(|| {
-            KmsError::ConversionError(format!("invalid permissions triple: {:?}", parts))
+            KmsError::ConversionError(format!("invalid permissions triple: {parts:?}"))
         })?;
         let user_id = parts.next().ok_or_else(|| {
-            KmsError::ConversionError(format!("invalid permissions triple: {:?}", parts))
+            KmsError::ConversionError(format!("invalid permissions triple: {parts:?}"))
         })?;
         let permission = parts.next().ok_or_else(|| {
-            KmsError::ConversionError(format!("invalid permissions triple: {:?}", parts))
+            KmsError::ConversionError(format!("invalid permissions triple: {parts:?}"))
         })?;
         Ok(Self {
             obj_uid: uid.to_string(),
@@ -233,8 +233,8 @@ impl PermissionsDB {
         additions.insert(
             IndexedValue::from(keyword),
             HashSet::from([
-                Keyword::from(format!("p::{}", obj_uid).as_bytes()),
-                Keyword::from(format!("p::{}", user_id).as_bytes()),
+                Keyword::from(format!("p::{obj_uid}").as_bytes()),
+                Keyword::from(format!("p::{user_id}").as_bytes()),
             ]),
         );
         self.findex
@@ -290,8 +290,8 @@ impl PermissionsDB {
             additions.insert(
                 IndexedValue::from(keyword),
                 HashSet::from([
-                    Keyword::from(format!("p::{}", obj_uid).as_bytes()),
-                    Keyword::from(format!("p::{}", user_id).as_bytes()),
+                    Keyword::from(format!("p::{obj_uid}").as_bytes()),
+                    Keyword::from(format!("p::{user_id}").as_bytes()),
                 ]),
             );
             self.findex

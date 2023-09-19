@@ -99,8 +99,7 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
     fn serialize_u32(self, v: u32) -> Result<Self::Ok> {
         self.serialize_i32(v.try_into().map_err(|_e| {
             TtlvError::custom(format!(
-                "Unexpected value: {}, expected a 32 bit integer",
-                v
+                "Unexpected value: {v}, expected a 32 bit integer"
             ))
         })?)
     }
@@ -110,8 +109,7 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
     fn serialize_u64(self, v: u64) -> Result<Self::Ok> {
         self.serialize_i64(v.try_into().map_err(|_e| {
             TtlvError::custom(format!(
-                "Unexpected value: {}, expected a 32 bit integer",
-                v
+                "Unexpected value: {v}, expected a 32 bit integer"
             ))
         })?)
     }

@@ -732,8 +732,7 @@ impl KMS {
                     Some(
                         serde_json::from_slice::<ExtraDatabaseParams>(&secrets).map_err(|e| {
                             KmsError::Unauthorized(format!(
-                                "KmsDatabaseSecret header cannot be read: {}",
-                                e
+                                "KmsDatabaseSecret header cannot be read: {e}"
                             ))
                         })?,
                     )

@@ -20,7 +20,7 @@ Two options can be used to further configure the bootstrap server TLS connection
 
 - `--bootstrap-server-common-name <BOOTSTRAP_SERVER_COMMON_NAME>` to specify the common name of the bootstrap server self-signed certificate. The default value is `cosmian.kms`.
 
--- `--bootstrap-server-port <BOOTSTRAP_SERVER_PORT>` to specify the bootstrap server TLS port. The default value is `9998`. When changed, the docker port mapping must be updated accordingly.
+- `--bootstrap-server-port <BOOTSTRAP_SERVER_PORT>` to specify the bootstrap server TLS port. The default value is `9998`. When changed, the docker port mapping must be updated accordingly.
 
 #### Available configurations
 

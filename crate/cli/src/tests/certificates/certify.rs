@@ -32,8 +32,8 @@ pub fn certify(
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     let mut args = vec!["create"];
 
-    args.extend(vec!["--ca", ca]);
-    args.extend(vec!["--subject", subject]);
+    args.extend(vec!["--ca_subject_common_names", ca]);
+    args.extend(vec!["--subject_common_name", subject]);
 
     debug!("certify: tags: {:?}", tags);
 
@@ -239,7 +239,7 @@ pub async fn test_certify() -> Result<(), CliError> {
         )?;
         let certificate_bytes = get_file_as_byte_vec(&export_filename);
         let certificate_str = std::str::from_utf8(&certificate_bytes).unwrap();
-        println!("Certificate PEM: {}", certificate_str);
+        println!("Certificate PEM: {certificate_str}");
 
         // Export certificate as RAW KMIP TTLV
         let export_filename = tmp_path.join("ttlv.json").to_str().unwrap().to_owned();
@@ -266,7 +266,7 @@ pub async fn test_certify() -> Result<(), CliError> {
         )?;
         let certificate_bytes = get_file_as_byte_vec(&export_filename);
         let certificate_str = std::str::from_utf8(&certificate_bytes).unwrap();
-        println!("CA ROOT PEM: {}", certificate_str);
+        println!("CA ROOT PEM: {certificate_str}");
 
         // Export sub CA certificate as PEM only
         let export_filename = tmp_path.join("subca.pem").to_str().unwrap().to_owned();
@@ -281,7 +281,7 @@ pub async fn test_certify() -> Result<(), CliError> {
         )?;
         let certificate_bytes = get_file_as_byte_vec(&export_filename);
         let certificate_str = std::str::from_utf8(&certificate_bytes).unwrap();
-        println!("CA SubCA PEM: {}", certificate_str);
+        println!("CA SubCA PEM: {certificate_str}");
 
         // Revoke it
         revoke(

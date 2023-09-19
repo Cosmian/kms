@@ -315,8 +315,8 @@ where
 
     let mut cert_tags = tags.clone();
     if is_ca {
-        cert_tags.insert(format!("_ca_parent={}", issuer));
-        cert_tags.insert(format!("_ca={}", subject_common_name));
+        cert_tags.insert(format!("_ca_parent={issuer}"));
+        cert_tags.insert(format!("_ca={subject_common_name}"));
     }
     let key_pair_tags = cert_tags.clone();
     cert_tags.insert("_cert".to_string());

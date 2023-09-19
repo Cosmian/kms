@@ -22,6 +22,7 @@ pub use export_certificate::CertificateExportFormat;
 pub use import_certificate::CertificateInputFormat;
 pub use locate::{locate_and_get_key_bytes, locate_key};
 
+/// Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
 #[derive(Subcommand)]
 pub enum CertificatesCommands {
     Create(CreateCertificateAction),

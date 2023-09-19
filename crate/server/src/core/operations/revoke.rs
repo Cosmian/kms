@@ -174,8 +174,7 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
                 .await?;
             }
             x => kms_bail!(KmsError::NotSupported(format!(
-                "revoke operation is not supported for object type {:?}",
-                x
+                "revoke operation is not supported for object type {x:?}"
             ))),
         };
     }

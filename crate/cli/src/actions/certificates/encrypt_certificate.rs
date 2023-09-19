@@ -10,7 +10,7 @@ use crate::{
     error::{result::CliResultHelper, CliError},
 };
 
-/// Encrypt a file using the certificate public key
+/// Encrypt a file using the certificate public key.
 ///
 /// Note: this is not a streaming call: the file is entirely loaded in memory before being sent for encryption.
 #[derive(Parser, Debug)]

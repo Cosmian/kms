@@ -129,8 +129,7 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
                 destroy_key_core(&owm.id, &mut owm.object, owm.state, kms, params).await?;
             }
             x => kms_bail!(KmsError::NotSupported(format!(
-                "destroy operation is not supported for object type {:?}",
-                x
+                "destroy operation is not supported for object type {x:?}"
             ))),
         };
     }

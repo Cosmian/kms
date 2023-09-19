@@ -271,7 +271,7 @@ pub async fn start_kms_server_config(
     let warnings = if warnings.is_empty() {
         String::new()
     } else {
-        format!(" with warnings:{}", warnings)
+        format!(" with warnings:{warnings}")
     };
     Ok(Json(SuccessResponse {
         success: "Starting the KMS server".to_string() + warnings.as_str(),

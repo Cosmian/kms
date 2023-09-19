@@ -92,200 +92,206 @@ The options are enabled on the docker command line or using the environment vari
 ##### Options help
 
 ```sh
---database-type <DATABASE_TYPE>
-    The database type of the KMS server
-    - postgresql: PostgreSQL. The database url must be provided
-    - mysql: MySql or MariaDB. The database url must be provided
-    - sqlite: SQLite. The data will be stored at the sqlite_path directory
-    - sqlite-enc: SQLite encrypted at rest. the data will be stored at the sqlite_path directory.
-    A key must be supplied on every call
-    - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
-    The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
+Cosmian Key Management Service
 
-    The database configuration can be securely provided via the bootstrap server. Check the documentation.
+Usage: cosmian_kms_server [OPTIONS]
 
-    [env: KMS_DATABASE_TYPE=]
-    [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
+Options:
+      --database-type <DATABASE_TYPE>
+          The database type of the KMS server
+          - postgresql: PostgreSQL. The database url must be provided
+          - mysql: MySql or MariaDB. The database url must be provided
+          - sqlite: SQLite. The data will be stored at the sqlite_path directory
+          - sqlite-enc: SQLite encrypted at rest. the data will be stored at the sqlite_path directory.
+            A key must be supplied on every call
+          - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
+            The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
 
---database-url <DATABASE_URL>
-    The url of the database for postgresql, mysql or findex-redis
+          The database configuration can be securely provided via the bootstrap server. Check the documentation.
 
-    [env: KMS_DATABASE_URL=]
+          [env: KMS_DATABASE_TYPE=]
+          [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
 
---sqlite-path <SQLITE_PATH>
-    The directory path of the sqlite or sqlite-enc
+      --database-url <DATABASE_URL>
+          The url of the database for postgresql, mysql or findex-redis
 
-    [env: KMS_SQLITE_PATH=]
-    [default: ./sqlite-data]
+          [env: KMS_DATABASE_URL=]
 
---redis-master-password <REDIS_MASTER_PASSWORD>
-    redis-findex: a master password used to encrypt the Redis data and indexes
+      --sqlite-path <SQLITE_PATH>
+          The directory path of the sqlite or sqlite-enc
 
-    [env: KMS_REDIS_MASTER_PASSWORD=]
+          [env: KMS_SQLITE_PATH=]
+          [default: ./sqlite-data]
 
---redis-findex-label <REDIS_FINDEX_LABEL>
-    redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
+      --redis-master-password <REDIS_MASTER_PASSWORD>
+          redis-findex: a master password used to encrypt the Redis data and indexes
 
-    [env: KMS_REDIS_FINDEX_LABEL=]
+          [env: KMS_REDIS_MASTER_PASSWORD=]
 
---clear-database
-    Clear the database on start.
-    WARNING: This will delete ALL the data in the database
+      --redis-findex-label <REDIS_FINDEX_LABEL>
+          redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
 
-    [env: KMS_CLEAR_DATABASE=]
+          [env: KMS_REDIS_FINDEX_LABEL=]
 
---port <PORT>
-    The KMS server port
+      --clear-database
+          Clear the database on start.
+          WARNING: This will delete ALL the data in the database
 
-    [env: KMS_PORT=]
-    [default: 9998]
+          [env: KMS_CLEAR_DATABASE=]
 
---hostname <HOSTNAME>
-    The KMS server (and bootstrap server) hostname
+      --port <PORT>
+          The KMS server port
 
-    [env: KMS_HOSTNAME=]
-    [default: 0.0.0.0]
+          [env: KMS_PORT=]
+          [default: 9998]
 
---https-p12-file <HTTPS_P12_FILE>
-    The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode.
+      --hostname <HOSTNAME>
+          The KMS server (and bootstrap server) hostname
 
-    The PKCS#12 can be securely provided via the bootstrap server. Check the documentation.
+          [env: KMS_HOSTNAME=]
+          [default: 0.0.0.0]
 
-    [env: KMS_HTTPS_P12_FILE=]
+      --https-p12-file <HTTPS_P12_FILE>
+          The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode.
 
---https-p12-password <HTTPS_P12_PASSWORD>
-    The password to open the PKCS#12 Certificates and Key file
+          The PKCS#12 can be securely provided via the bootstrap server. Check the documentation.
 
-    The PKCS#12 password can be securely provided via the bootstrap server. Check the documentation.
+          [env: KMS_HTTPS_P12_FILE=]
 
-    [env: KMS_HTTPS_P12_PASSWORD=]
-    [default: ]
+      --https-p12-password <HTTPS_P12_PASSWORD>
+          The password to open the PKCS#12 Certificates and Key file
 
---authority-cert-file <AUTHORITY_CERT_FILE>
-    The server optional authority X509 certificate in PEM format used to validate the client certificate presented for authentication. If provided, this will require clients to present a certificate signed by this authority for authentication. The server must run in TLS mode for this to be used
+          The PKCS#12 password can be securely provided via the bootstrap server. Check the documentation.
 
-    [env: KMS_AUTHORITY_CERT_FILE=]
+          [env: KMS_HTTPS_P12_PASSWORD=]
+          [default: ]
 
---jwt-issuer-uri <JWT_ISSUER_URI>
-    The issuer URI of the JWT token
+      --authority-cert-file <AUTHORITY_CERT_FILE>
+          The server optional authority X509 certificate in PEM format used to validate the client certificate presented for authentication. If provided, this will require clients to present a certificate signed by this authority for authentication. The server must run in TLS mode for this to be used
 
-    For Auth0, this is the delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
+          [env: KMS_AUTHORITY_CERT_FILE=]
 
-    For Google, this would be `https://accounts.google.com`
+      --jwt-issuer-uri <JWT_ISSUER_URI>
+          The issuer URI of the JWT token
 
-    [env: KMS_JWT_ISSUER_URI=]
+          For Auth0, this is the delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
 
---jwks-uri <JWKS_URI>
-    The JWKS (Json Web Key Set) URI of the JWT token
+          For Google, this would be `https://accounts.google.com`
 
-    For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
+          [env: KMS_JWT_ISSUER_URI=]
 
-    For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
+      --jwks-uri <JWKS_URI>
+          The JWKS (Json Web Key Set) URI of the JWT token
 
-    Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` is not set
+          For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
 
-    [env: KMS_JWKS_URI=]
+          For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
 
---jwt-audience <JWT_AUDIENCE>
-    The audience of the JWT token
+          Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` is not set
 
-    Optional: the server will validate the JWT `aud` claim against this value if set
+          [env: KMS_JWKS_URI=]
 
-    [env: KMS_JST_AUDIENCE=]
+      --jwt-audience <JWT_AUDIENCE>
+          The audience of the JWT token
 
---use-bootstrap-server
-    Whether configuration should be finalized using a bootstrap server
+          Optional: the server will validate the JWT `aud` claim against this value if set
 
-    [env: KMS_USE_BOOTSTRAP_SERVER=]
+          [env: KMS_JST_AUDIENCE=]
 
---bootstrap-server-common-name <BOOTSTRAP_SERVER_COMMON_NAME>
-    The name that will be the CN in the bootstrap server self-signed certificate
+      --use-bootstrap-server
+          Whether configuration should be finalized using a bootstrap server
 
-    [env: KMS_BOOTSTRAP_SERVER_COMMON_NAME=]
-    [default: cosmian.kms]
+          [env: KMS_USE_BOOTSTRAP_SERVER=]
 
---bootstrap-server-port <BOOTSTRAP_SERVER_PORT>
-    The bootstrap server may be started on a specific port, The hostname will be that configured in --hostname
+      --bootstrap-server-common-name <BOOTSTRAP_SERVER_COMMON_NAME>
+          The name that will be the CN in the bootstrap server self-signed certificate
 
-    [env: KMS_BOOTSTRAP_SERVER_PORT=]
-    [default: 9998]
+          [env: KMS_BOOTSTRAP_SERVER_COMMON_NAME=]
+          [default: cosmian.kms]
 
---root-data-path <ROOT_DATA_PATH>
-    The root folder where the KMS will store its data A relative path is taken relative to the user HOME directory
+      --bootstrap-server-port <BOOTSTRAP_SERVER_PORT>
+          The bootstrap server may be started on a specific port, The hostname will be that configured in --hostname
 
-    [env: KMS_ROOT_DATA_PATH=]
-    [default: ./cosmian-kms]
+          [env: KMS_BOOTSTRAP_SERVER_PORT=]
+          [default: 9998]
 
---tmp-path <TMP_PATH>
-    The folder to store temporary data (non-persistent data readable by no-one but the current instance during the current execution)
+      --root-data-path <ROOT_DATA_PATH>
+          The root folder where the KMS will store its data A relative path is taken relative to the user HOME directory
 
-    [env: KMS_TMP_PATH=]
-    [default: /tmp]
+          [env: KMS_ROOT_DATA_PATH=]
+          [default: ./cosmian-kms]
 
---use-certbot
-    Enable TLS and use Let's Encrypt certbot to get a certificate
+      --tmp-path <TMP_PATH>
+          The folder to store temporary data (non-persistent data readable by no-one but the current instance during the current execution)
 
-    [env: KMS_USE_CERTBOT=]
+          [env: KMS_TMP_PATH=]
+          [default: /tmp]
 
---certbot-hostname <CERTBOT_HOSTNAME>
-    The hostname of the KMS HTTPS server that will be used as the Common Name in the Let's Encrypt certificate
+      --use-certbot
+          Enable TLS and use Let's Encrypt certbot to get a certificate
 
-    [env: KMS_CERTBOT_HOSTNAME=]
-    [default: ]
+          [env: KMS_USE_CERTBOT=]
 
---certbot-email <CERTBOT_EMAIL>
-    The email used during the Let's Encrypt certbot certification process
+      --certbot-hostname <CERTBOT_HOSTNAME>
+          The hostname of the KMS HTTPS server that will be used as the Common Name in the Let's Encrypt certificate
 
-    [env: KMS_CERTBOT_EMAIL=]
-    [default: ]
+          [env: KMS_CERTBOT_HOSTNAME=]
+          [default: ]
 
---certbot-ssl-path <CERTBOT_SSL_PATH>
-    The folder where the KMS will store the SSL material created by certbot
+      --certbot-email <CERTBOT_EMAIL>
+          The email used during the Let's Encrypt certbot certification process
 
-    A relative path is taken relative to the root_data_path
+          [env: KMS_CERTBOT_EMAIL=]
+          [default: ]
 
-    [env: KMS_CERTBOT_SSL_PATH=]
-    [default: ./certbot-ssl]
+      --certbot-ssl-path <CERTBOT_SSL_PATH>
+          The folder where the KMS will store the SSL material created by certbot
 
---default-username <DEFAULT_USERNAME>
-    The default username to use when no authentication method is provided
+          A relative path is taken relative to the root_data_path
 
-    [env: KMS_DEFAULT_USERNAME=]
-    [default: admin]
+          [env: KMS_CERTBOT_SSL_PATH=]
+          [default: ./certbot-ssl]
 
---force-default-username
-    When an authentication method is provided, perform the authentication but always use the default username instead of the one provided by the authentication method
+      --default-username <DEFAULT_USERNAME>
+          The default username to use when no authentication method is provided
 
-    [env: KMS_FORCE_DEFAULT_USERNAME=]
+          [env: KMS_DEFAULT_USERNAME=]
+          [default: admin]
 
---jwk-private-key <JWK_PRIVATE_KEY>
-    Enable the use of encryption by providing a JWK private key as JSON
+      --force-default-username
+          When an authentication method is provided, perform the authentication but always use the default username instead of the one provided by the authentication method
 
-    [env: JWK_PRIVATE_KEY=]
+          [env: KMS_FORCE_DEFAULT_USERNAME=]
 
---enclave-dir-path <ENCLAVE_DIR_PATH>
-    The directory where the manifest and public key files are located This path should not be encrypted by the enclave and should be directly readable from it
+      --jwk-private-key <JWK_PRIVATE_KEY>
+          Enable the use of encryption by providing a JWK private key as JSON
 
-    A relative path is taken relative to the root_data_path
+          [env: JWK_PRIVATE_KEY=]
 
-    [env: KMS_ENCLAVE_DIR_PATH=]
-    [default: ./enclave]
+      --enclave-dir-path <ENCLAVE_DIR_PATH>
+          The directory where the manifest and public key files are located This path should not be encrypted by the enclave and should be directly readable from it
 
---manifest-filename <MANIFEST_FILENAME>
-    The filename of the sgx manifest
+          A relative path is taken relative to the root_data_path
 
-    [env: KMS_ENCLAVE_MANIFEST_FILENAME=]
-    [default: kms.manifest.sgx]
+          [env: KMS_ENCLAVE_DIR_PATH=]
+          [default: ./enclave]
 
---public-key-filename <PUBLIC_KEY_FILENAME>
-    The filename of the public key
+      --manifest-filename <MANIFEST_FILENAME>
+          The filename of the sgx manifest
 
-    [env: KMS_ENCLAVE_PUBLIC_KEY_FILENAME=]
-    [default: mr-signer-key.pub]
+          [env: KMS_ENCLAVE_MANIFEST_FILENAME=]
+          [default: kms.manifest.sgx]
 
--h, --help
-    Print help (see a summary with '-h')
+      --public-key-filename <PUBLIC_KEY_FILENAME>
+          The filename of the public key
 
--V, --version
-    Print version
+          [env: KMS_ENCLAVE_PUBLIC_KEY_FILENAME=]
+          [default: mr-signer-key.pub]
+
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
 ```

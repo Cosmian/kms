@@ -113,8 +113,7 @@ pub async fn import(
                     certificate_value, ..
                 } => Ok(certificate_value),
                 _ => Err(KmsError::Certificate(format!(
-                    "Invalid object type {:?} when importing a certificate",
-                    object_type
+                    "Invalid object type {object_type:?} when importing a certificate"
                 ))),
             }?;
             parse_certificate_and_create_tags(&mut tags, certificate_pem_bytes)?;

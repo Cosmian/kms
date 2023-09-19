@@ -175,8 +175,7 @@ pub fn update_master_keys(
         KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
             format!(
-                "Failed deserializing the CoverCrypt Master Private Key: {}",
-                e
+                "Failed deserializing the CoverCrypt Master Private Key: {e}"
             ),
         )
     })?;
@@ -189,8 +188,7 @@ pub fn update_master_keys(
         KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
             format!(
-                "Failed deserializing the CoverCrypt Master Public Key: {}",
-                e
+                "Failed deserializing the CoverCrypt Master Public Key: {e}"
             ),
         )
     })?;
@@ -202,8 +200,7 @@ pub fn update_master_keys(
             KmipError::KmipError(
                 ErrorReason::Cryptographic_Failure,
                 format!(
-                    "Failed updating the CoverCrypt Master Keys with the new Policy: {}",
-                    e
+                    "Failed updating the CoverCrypt Master Keys with the new Policy: {e}"
                 ),
             )
         })?;
@@ -213,8 +210,7 @@ pub fn update_master_keys(
         KmipError::KmipError(
             ErrorReason::Cryptographic_Failure,
             format!(
-                "Failed serializing the CoverCrypt Master Private Key: {}",
-                e
+                "Failed serializing the CoverCrypt Master Private Key: {e}"
             ),
         )
     })?;

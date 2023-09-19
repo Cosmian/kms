@@ -176,7 +176,7 @@ impl ImportCertificateAction {
         if !self.tags.is_empty() {
             println!("Tags:");
             for tag in &self.tags {
-                println!("    - {}", tag);
+                println!("    - {tag}");
             }
         }
 

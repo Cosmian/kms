@@ -10,7 +10,7 @@ use crate::{
     error::{result::CliResultHelper, CliError},
 };
 
-/// Decrypt a file using the private key of a certificate
+/// Decrypt a file using the private key of a certificate.
 ///
 /// Note: this is not a streaming call: the file is entirely loaded in memory before being sent for decryption.
 #[derive(Parser, Debug)]

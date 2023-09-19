@@ -62,6 +62,8 @@ nav:
           - Commands: cli/covercrypt/covercrypt.md
           - Keys management: cli/covercrypt/keys.md
           - Policy management: cli/covercrypt/policy.md
+      - Certificates:
+          - Commands: cli/certificates/certificates.md
       - Elliptic curves:
           - Commands: cli/ec/ec.md
           - Keys management: cli/ec/keys.md

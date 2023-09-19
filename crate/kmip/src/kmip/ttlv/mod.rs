@@ -68,8 +68,7 @@ impl<'de> Deserialize<'de> for TTLVEnumeration {
             {
                 Ok(TTLVEnumeration::Integer(v.try_into().map_err(|_e| {
                     de::Error::custom(format!(
-                        "Unexpected value: {}, expected a 32 bit integer",
-                        v
+                        "Unexpected value: {v}, expected a 32 bit integer"
                     ))
                 })?))
             }
@@ -80,8 +79,7 @@ impl<'de> Deserialize<'de> for TTLVEnumeration {
             {
                 Ok(TTLVEnumeration::Integer(v.try_into().map_err(|_e| {
                     de::Error::custom(format!(
-                        "Unexpected value: {}, expected a 32 bit integer",
-                        v
+                        "Unexpected value: {v}, expected a 32 bit integer"
                     ))
                 })?))
             }
@@ -246,8 +244,7 @@ impl<'de> Deserialize<'de> for IntegerOrMask {
             {
                 Ok(IntegerOrMask::Integer(v.try_into().map_err(|_e| {
                     de::Error::custom(format!(
-                        "Unexpected value: {}, expected a 32 bit integer",
-                        v
+                        "Unexpected value: {v}, expected a 32 bit integer"
                     ))
                 })?))
             }
@@ -258,8 +255,7 @@ impl<'de> Deserialize<'de> for IntegerOrMask {
             {
                 Ok(IntegerOrMask::Integer(v.try_into().map_err(|_e| {
                     de::Error::custom(format!(
-                        "Unexpected value: {}, expected a 32 bit integer",
-                        v
+                        "Unexpected value: {v}, expected a 32 bit integer"
                     ))
                 })?))
             }
@@ -375,8 +371,7 @@ impl<'de> Deserialize<'de> for TTLV {
                                     }
                                     let bytes = hex::decode(&hex[2..]).map_err(|_e| {
                                         de::Error::custom(format!(
-                                            "Invalid value for Mask: {}",
-                                            hex
+                                            "Invalid value for Mask: {hex}"
                                         ))
                                     })?;
                                     let v = BigUint::from_bytes_be(bytes.as_slice());
@@ -408,8 +403,7 @@ impl<'de> Deserialize<'de> for TTLV {
                                     let date =
                                         OffsetDateTime::parse(&d, &Rfc3339).map_err(|_e| {
                                             de::Error::custom(format!(
-                                                "Invalid value for an RFC3339 date: {}",
-                                                d
+                                                "Invalid value for an RFC3339 date: {d}"
                                             ))
                                         })?;
                                     TTLValue::DateTime(date)

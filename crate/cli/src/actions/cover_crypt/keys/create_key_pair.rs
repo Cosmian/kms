@@ -91,7 +91,7 @@ impl CreateMasterKeyPairAction {
         if !self.tags.is_empty() {
             println!("\n  Tags:");
             for tag in &self.tags {
-                println!("    - {}", tag);
+                println!("    - {tag}");
             }
         }
 

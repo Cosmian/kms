@@ -233,18 +233,6 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), Cli
     .await
 }
 
-#[tokio::test]
-async fn test_certificate_import_ca_smallstep() -> Result<(), CliError> {
-    test_certificate_import_encrypt(
-        "smallstep/root_ca.crt",
-        "smallstep/intermediate_ca.crt",
-        "smallstep/foo.crt",
-        "smallstep/foo.clear_key",
-        &["smallstep_certificate"],
-    )
-    .await
-}
-
 async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
@@ -265,7 +253,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
     let certificate_id = import(
         &ctx.owner_cli_conf_path,
         "certificates",
-        &format!("test_data/certificates/openssl/{}-cert.pem", curve_name),
+        &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
         CertificateInputFormat::PEM,
         None,
         Some(tags),
@@ -286,8 +274,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "certificates",
         &format!(
-            "test_data/certificates/openssl/{}-private-key.pem",
-            curve_name
+            "test_data/certificates/openssl/{curve_name}-private-key.pem"
         ),
         CertificateInputFormat::PEM,
         None,

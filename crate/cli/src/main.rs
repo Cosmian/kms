@@ -22,19 +22,19 @@ struct Cli {
 #[derive(Subcommand)]
 enum CliCommands {
     #[command(subcommand)]
+    AccessRights(AccessAction),
+    BootstrapStart(BootstrapServerAction),
+    #[command(subcommand)]
     Cc(CovercryptCommands),
-    #[command(subcommand)]
-    Ec(EllipticCurveCommands),
-    #[command(subcommand)]
-    Sym(SymmetricCommands),
     #[command(subcommand)]
     Certificates(CertificatesCommands),
     #[command(subcommand)]
-    AccessRights(AccessAction),
+    Ec(EllipticCurveCommands),
     Locate(LocateObjectsAction),
     NewDatabase(NewDatabaseAction),
     ServerVersion(ServerVersionAction),
-    BootstrapStart(BootstrapServerAction),
+    #[command(subcommand)]
+    Sym(SymmetricCommands),
 }
 
 #[tokio::main]

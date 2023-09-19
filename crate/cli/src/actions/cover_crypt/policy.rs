@@ -361,7 +361,7 @@ impl ViewAction {
             let specs = PolicySpecifications::try_from(&policy)?;
             serde_json::to_string_pretty(&specs)?
         };
-        println!("{}", json);
+        println!("{json}");
         Ok(())
     }
 }

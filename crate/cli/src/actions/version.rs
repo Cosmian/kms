@@ -15,7 +15,7 @@ impl ServerVersionAction {
             .await
             .with_context(|| "Can't execute the version query on the kms server")?;
 
-        println!("{}", version);
+        println!("{version}");
 
         Ok(())
     }
