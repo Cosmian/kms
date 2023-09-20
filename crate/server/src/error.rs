@@ -84,6 +84,9 @@ pub enum KmsError {
 
     #[error("Invalid URL: {0}")]
     UrlError(String),
+
+    #[error("Ratls Error: {0}")]
+    RatlsError(String),
 }
 
 impl From<TtlvError> for KmsError {

@@ -5,11 +5,32 @@ use openssl::{
     nid::Nid,
     pkcs12::Pkcs12,
     pkey::{PKey, Public},
-    x509::X509Builder,
+    x509::{X509Builder, X509},
 };
+use ratls::generate_ratls_cert;
 
-use crate::result::KResult;
+use crate::{error, result::KResult};
 
+pub(crate) fn generate_ratls_pkcs12(common_name: &str, pkcs12_password: &str) -> KResult<Pkcs12> {
+    // TODO: design a way to make all certificate issuer args customizable
+    let issuer = format!("CN={common_name},O=Cosmian Tech,C=FR,L=Paris,ST=Ile-de-France");
+    let (private_key, cert) = generate_ratls_cert(&issuer, &issuer, vec![], 365, None, true)
+        .map_err(|e| error::KmsError::RatlsError(e.to_string()))?;
+
+    let cert = X509::from_pem(cert.as_bytes())?;
+    let private_key = PKey::private_key_from_pem(private_key.as_bytes())?;
+
+    // Wrap it in a PKCS12 container
+    let pkcs12 = Pkcs12::builder()
+        .name(common_name)
+        .pkey(&private_key)
+        .cert(&cert)
+        .build2(pkcs12_password)?;
+
+    Ok(pkcs12)
+}
+
+#[allow(dead_code)]
 pub(crate) fn generate_self_signed_cert(
     common_name: &str,
     pkcs12_password: &str,

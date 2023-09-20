@@ -481,6 +481,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "619743e34b5ba4e9703bba34deac3427c72507c7159f5fd030aea8cac0cfe341"
 
 [[package]]
+<<<<<<< HEAD
+=======
+name = "asn1"
+version = "0.15.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae3ecbce89a22627b5e8e6e11d69715617138290289e385cde773b1fe50befdb"
+dependencies = [
+ "asn1_derive",
+]
+
+[[package]]
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
 name = "asn1-rs"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -520,6 +532,20 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
+=======
+name = "asn1_derive"
+version = "0.15.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "861af988fac460ac69a09f41e6217a8fb9178797b76fcc9478444be6a59be19c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.15",
+]
+
+[[package]]
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
 name = "assert_cmd"
 version = "2.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -582,6 +608,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
+<<<<<<< HEAD
 name = "backtrace"
 version = "0.3.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -597,6 +624,8 @@ dependencies = [
 ]
 
 [[package]]
+=======
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -634,6 +663,21 @@ name = "base64ct"
 version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b645a089122eccb6111b4f81cbc1a49f5900ac4666bb93ac027feaecf15607bf"
+
+[[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "bitfield"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46afbd2983a5d5a7bd740ccb198caf5b82f45c40c09c0eed36052d91cb92e719"
 
 [[package]]
 name = "bitflags"
@@ -795,6 +839,7 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
+ "time 0.1.45",
  "wasm-bindgen",
  "winapi",
 ]
@@ -939,6 +984,12 @@ dependencies = [
  "num-integer",
  "num-traits",
 ]
+
+[[package]]
+name = "codicon"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12170080f3533d6f09a19f81596f836854d0fa4867dc32c8172b8474b4e9de61"
 
 [[package]]
 name = "colored"
@@ -1209,6 +1260,7 @@ dependencies = [
  "libsgx",
  "mime",
  "openssl",
+ "ratls",
  "rawsql",
  "redis",
  "reqwest",
@@ -1475,6 +1527,7 @@ checksum = "5fe87ce4529967e0ba1dcf8450bab64d97dfd5010a6256187ffe2e43e6f0e049"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.29",
 ]
 
@@ -1487,6 +1540,9 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.29",
+=======
+ "syn 2.0.15",
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
 ]
 
 [[package]]
@@ -1549,7 +1605,11 @@ checksum = "487585f4d0c6655fe74905e2504d8ad6908e4db67f744eb140876906c2f3175d"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.29",
+=======
+ "syn 2.0.15",
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
 ]
 
 [[package]]
@@ -1574,6 +1634,10 @@ dependencies = [
  "digest",
  "elliptic-curve",
  "rfc6979",
+<<<<<<< HEAD
+=======
+ "sha2",
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
  "signature",
  "spki",
 ]
@@ -1622,7 +1686,10 @@ dependencies = [
  "ff",
  "generic-array",
  "group",
+<<<<<<< HEAD
  "hkdf",
+=======
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
  "pem-rfc7468",
  "pkcs8",
  "rand_core",
@@ -1720,6 +1787,19 @@ dependencies = [
 [[package]]
 name = "ff"
 version = "0.13.0"
+<<<<<<< HEAD
+=======
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ded41244b729663b1e574f1b4fb731469f69f79c17667b5d776b16cda0479449"
+dependencies = [
+ "rand_core",
+ "subtle",
+]
+
+[[package]]
+name = "fiat-crypto"
+version = "0.1.20"
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ded41244b729663b1e574f1b4fb731469f69f79c17667b5d776b16cda0479449"
 dependencies = [
@@ -1738,6 +1818,12 @@ name = "flagset"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cda653ca797810c02f7ca4b804b40b8b95ae046eb989d356bce17919a8c25499"
+
+[[package]]
+name = "flagset"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d52a7e408202050813e6f1d9addadcaafef3dca7530c7ddfb005d4081cce6779"
 
 [[package]]
 name = "flate2"
@@ -1935,12 +2021,15 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "gimli"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6fb8d784f27acf97159b40fc4db5ecd8aa23b9ad5ef69cdd136d3bc80665f0c0"
 
 [[package]]
+=======
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2242,6 +2331,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "iocuddle"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8972d5be69940353d5347a1344cb375d9b457d6809b428b05bb1ca2fb9ce007"
+
+[[package]]
 name = "ipnet"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2322,6 +2417,26 @@ dependencies = [
  "serde",
  "serde_json",
  "simple_asn1",
+]
+
+[[package]]
+name = "kvm-bindings"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efe70e65a5b092161d17f5005b66e5eefe7a94a70c332e755036fc4af78c4e79"
+dependencies = [
+ "vmm-sys-util",
+]
+
+[[package]]
+name = "kvm-ioctls"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bdde2b46ee7b6587ef79f751019c4726c4f2d3e4628df5d69f3f9c5cb6c6bd4"
+dependencies = [
+ "kvm-bindings",
+ "libc",
+ "vmm-sys-util",
 ]
 
 [[package]]
@@ -2650,6 +2765,7 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "object"
 version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2659,6 +2775,8 @@ dependencies = [
 ]
 
 [[package]]
+=======
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
 name = "oid-registry"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2746,6 +2864,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
+<<<<<<< HEAD
 name = "p192"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2770,6 +2889,8 @@ dependencies = [
 ]
 
 [[package]]
+=======
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
 name = "p256"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2782,6 +2903,7 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "p384"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2794,6 +2916,8 @@ dependencies = [
 ]
 
 [[package]]
+=======
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
 name = "parking_lot"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3026,6 +3150,18 @@ dependencies = [
 [[package]]
 name = "primeorder"
 version = "0.13.2"
+<<<<<<< HEAD
+=======
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c2fcef82c0ec6eefcc179b978446c399b3cdf73c392c35604e399eee6df1ee3"
+dependencies = [
+ "elliptic-curve",
+]
+
+[[package]]
+name = "proc-macro-error"
+version = "1.0.4"
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c2fcef82c0ec6eefcc179b978446c399b3cdf73c392c35604e399eee6df1ee3"
 dependencies = [
@@ -3171,6 +3307,29 @@ checksum = "32cb0b9bc82b0a0876c2dd994a7e7a2683d3e7390ca40e6886785ef0c7e3ee31"
 dependencies = [
  "num-traits",
  "rand",
+]
+
+[[package]]
+name = "ratls"
+version = "0.1.0"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#87472f85e94db86fdeaba731bef05099024d6e14"
+dependencies = [
+ "asn1-rs",
+ "bincode",
+ "const-oid",
+ "der",
+ "ecdsa",
+ "p256",
+ "rand",
+ "rand_chacha",
+ "rustls 0.21.7",
+ "sev_quote",
+ "sgx_quote",
+ "sha2",
+ "spki",
+ "thiserror",
+ "x509-cert",
+ "x509-parser",
 ]
 
 [[package]]
@@ -3411,6 +3570,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustls"
+version = "0.21.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd8d6c9f025a446bc4d18ad9632e69aec8f287aa84499ee335599fabd20c3fd8"
+dependencies = [
+ "log",
+ "ring",
+ "rustls-webpki",
+ "sct",
+]
+
+[[package]]
+name = "rustls-webpki"
+version = "0.101.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45a27e3b59326c16e23d30aeb7a36a24cc0d29e71d68ff611cdfb4a01d013bed"
+dependencies = [
+ "ring",
+ "untrusted",
+]
+
+[[package]]
 name = "rustversion"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3447,6 +3628,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
+<<<<<<< HEAD
 name = "scrypt"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3455,6 +3637,25 @@ dependencies = [
  "pbkdf2",
  "salsa20",
  "sha2",
+=======
+name = "scroll"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04c565b551bafbef4157586fa379538366e4385d42082f255bfd96e4fe8519da"
+dependencies = [
+ "scroll_derive",
+]
+
+[[package]]
+name = "scroll_derive"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1db149f81d46d2deba7cd3c50772474707729550221e69588478ebf9ada425ae"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.15",
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
 ]
 
 [[package]]
@@ -3520,6 +3721,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-big-array"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11fc7cc2c76d73e0f27ee52abbd64eec84d46f370c88371120433196934e4b7f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "serde_bytes"
+version = "0.11.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3c5113243e4a3a1c96587342d067f3e6b0f50790b6cf40d2868eb647a3eef0e"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.188"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3561,6 +3780,84 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "sev"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fd749a01c88a51ac718b59fe571177b31e478dfe059267977042477a0531224"
+dependencies = [
+ "bincode",
+ "bitfield",
+ "bitflags 1.3.2",
+ "codicon",
+ "dirs",
+ "hex",
+ "iocuddle",
+ "kvm-ioctls",
+ "openssl",
+ "serde",
+ "serde-big-array",
+ "serde_bytes",
+ "static_assertions",
+ "uuid",
+]
+
+[[package]]
+name = "sev_quote"
+version = "0.1.0"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#87472f85e94db86fdeaba731bef05099024d6e14"
+dependencies = [
+ "asn1",
+ "asn1-rs",
+ "bincode",
+ "hex",
+ "hkdf",
+ "log",
+ "rand_chacha",
+ "reqwest",
+ "serde",
+ "sev",
+ "sha2",
+ "thiserror",
+ "uuid",
+ "x509-parser",
+]
+
+[[package]]
+name = "sgx_pck_extension"
+version = "0.1.0"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#87472f85e94db86fdeaba731bef05099024d6e14"
+dependencies = [
+ "asn1",
+ "asn1-rs",
+ "thiserror",
+ "x509-parser",
+]
+
+[[package]]
+name = "sgx_quote"
+version = "0.2.0"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#87472f85e94db86fdeaba731bef05099024d6e14"
+dependencies = [
+ "chrono",
+ "elliptic-curve",
+ "hex",
+ "hkdf",
+ "log",
+ "p256",
+ "rand_chacha",
+ "reqwest",
+ "rsa",
+ "scroll",
+ "serde",
+ "serde_json",
+ "sgx_pck_extension",
+ "sha2",
+ "thiserror",
+ "urlencoding",
+ "x509-parser",
 ]
 
 [[package]]
@@ -4370,7 +4667,7 @@ dependencies = [
  "flate2",
  "log",
  "once_cell",
- "rustls",
+ "rustls 0.20.8",
  "url",
  "webpki",
  "webpki-roots",
@@ -4388,12 +4685,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "urlencoding"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
+
+[[package]]
 name = "uuid"
 version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79daa5ed5740825c40b389c5e50312b9c86df53fccd33f281df655642b43869d"
 dependencies = [
  "getrandom",
+ "serde",
 ]
 
 [[package]]
@@ -4413,6 +4717,16 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
+
+[[package]]
+name = "vmm-sys-util"
+version = "0.11.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48b7b084231214f7427041e4220d77dfe726897a6d41fddee450696e66ff2a29"
+dependencies = [
+ "bitflags 1.3.2",
+ "libc",
+]
 
 [[package]]
 name = "wait-timeout"
@@ -4757,11 +5071,18 @@ dependencies = [
 
 [[package]]
 name = "x509-cert"
+<<<<<<< HEAD
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25eefca1d99701da3a57feb07e5079fc62abba059fc139e98c13bbb250f3ef29"
 dependencies = [
  "arbitrary",
+=======
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "077a1672d8ecfa5c1fe69fa7c5d043962e4e32866d4375495536261c0b4781f5"
+dependencies = [
+>>>>>>> 2039950 (:sparkles: add ratls cert in bootstrap server)
  "const-oid",
  "der",
  "sha1",
