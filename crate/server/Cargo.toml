@@ -24,6 +24,7 @@ prod = []
 # We use our own acme-lib. We have removed timeout set to ureq
 # For a reason we ignore right now, it fails inside the enclave if we set timeout
 acme-lib = { git = "https://github.com/Cosmian/acme-lib" }
+ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
 actix-cors = "0.6"
 actix-files = "0.6"
 actix-identity = "0.4"

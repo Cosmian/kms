@@ -17,14 +17,12 @@ use openssl::{
 };
 use tracing::{info, trace};
 
-use super::{
-    certificate::generate_self_signed_cert,
-    routes::{
-        mysql_config, pkcs12_password, postgresql_config, receive_pkcs12, redis_findex_config,
-        sqlite_config, sqlite_enc_config, start_kms_server_config,
-    },
+use super::routes::{
+    mysql_config, pkcs12_password, postgresql_config, receive_pkcs12, redis_findex_config,
+    sqlite_config, sqlite_enc_config, start_kms_server_config,
 };
 use crate::{
+    bootstrap_server::certificate::generate_ratls_pkcs12,
     config::{DbParams, ServerParams},
     error::KmsError,
     kms_bail, kms_error,
@@ -175,7 +173,7 @@ pub async fn start_https_bootstrap_server(
         .bootstrap_server_common_name;
 
     // Generate a self-signed certificate
-    let pkcs12 = generate_self_signed_cert(common_name, "")?;
+    let pkcs12 = generate_ratls_pkcs12(common_name, "")?;
     let p12 = pkcs12.parse2("")?;
     // Create and configure an SSL acceptor with the certificate and key
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
