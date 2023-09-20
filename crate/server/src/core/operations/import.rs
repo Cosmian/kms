@@ -6,7 +6,8 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Import, ImportResponse},
     kmip_types::{
         Attributes, CertificateType, CryptographicAlgorithm, CryptographicDomainParameters,
-        CryptographicUsageMask, KeyFormatType, KeyWrapType, RecommendedCurve, StateEnumeration,
+        CryptographicUsageMask, KeyFormatType, KeyWrapType, Link, LinkType, LinkedObjectIdentifier,
+        RecommendedCurve, StateEnumeration,
     },
 };
 use cosmian_kms_utils::{
@@ -15,18 +16,21 @@ use cosmian_kms_utils::{
     tagging::{check_user_tags, get_tags},
 };
 use openssl::{
-    ec::EcKey,
+    ec::{EcKey, PointConversionForm},
     nid::Nid,
-    pkey::{Id, PKey},
+    pkey::{Id, PKey, Private},
+    sha::Sha1,
 };
-use tracing::debug;
+use tracing::{debug, warn};
 use x509_parser::{parse_x509_certificate, prelude::parse_x509_pem};
 
 use super::wrapping::unwrap_key;
 use crate::{
     core::{
-        certificate::parsing::{get_certificate_subject_key_identifier, get_common_name},
-        operations::wrapping::wrap_key,
+        certificate::{
+            locate::locate_certificate_by_spki,
+            parsing::{get_certificate_subject_key_identifier, get_common_name},
+        },
         KMS,
     },
     error::KmsError,
@@ -69,6 +73,7 @@ fn parse_certificate_and_create_tags(
 fn get_private_key_object(
     private_key_bytes: Vec<u8>,
     recommended_curve: RecommendedCurve,
+    links: Option<Vec<Link>>,
 ) -> Object {
     Object::PrivateKey {
         key_block: KeyBlock {
@@ -92,7 +97,7 @@ fn get_private_key_object(
                             | CryptographicUsageMask::KeyAgreement,
                     ),
                     key_format_type: Some(KeyFormatType::ECPrivateKey),
-                    link: None,
+                    link: links,
                     object_type: Some(ObjectType::PrivateKey),
                     vendor_attributes: None,
                 }),
@@ -105,24 +110,77 @@ fn get_private_key_object(
     }
 }
 
-fn import_pem(tags: &mut HashSet<String>, pem_value: &[u8]) -> KResult<Object> {
+fn create_spki_tag(tags: &mut HashSet<String>, private_key: &EcKey<Private>) -> KResult<String> {
+    debug!("create_spki_tag: entering");
+    let mut ctx = openssl::bn::BigNumContext::new().unwrap();
+    let group = private_key.group();
+    let public_key_bytes =
+        private_key
+            .public_key()
+            .to_bytes(group, PointConversionForm::UNCOMPRESSED, &mut ctx)?;
+
+    // Compute SPKI as described in https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.2: implementing first method
+    debug!(
+        "create_spki_tag: public_key_bytes:{}",
+        hex::encode(&public_key_bytes)
+    );
+    let mut sha1 = Sha1::default();
+    sha1.update(&public_key_bytes);
+    let spki = hex::encode(sha1.finish());
+    let spki_tag = format!("_cert_spki={spki}");
+
+    debug!("create_spki_tag: add spki system tag: {spki_tag}");
+    tags.insert(spki_tag);
+    Ok(spki)
+}
+
+async fn import_pem(
+    tags: &mut HashSet<String>,
+    pem_value: &[u8],
+    kms: &KMS,
+    owner: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<Object> {
     let (_, pem) = parse_x509_pem(pem_value)?;
 
     let object = if pem.label == "CERTIFICATE" {
-        debug!("CLI: parsing certificate: {}", pem.label);
+        debug!("import_pem: parsing certificate: {}", pem.label);
         parse_certificate_and_create_tags(tags, pem_value)?;
         Object::Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: pem_value.to_vec(),
         }
     } else if pem.label.contains("PRIVATE KEY") {
-        debug!("CLI: parsing private key: {}", pem.label);
+        debug!("import_pem: parsing private key: {}", pem.label);
         let pkey = PKey::private_key_from_pem(pem_value)?;
         match pkey.id() {
             Id::EC => {
-                debug!("CLI: parsing private key with PKey: {:?}", pkey);
+                debug!("import_pem: parsing private key with PKey: {:?}", pkey);
                 let private_key = EcKey::private_key_from_der(&pem.contents)?;
-                debug!("CLI: convert private key to EcKey");
+                debug!("import_pem: convert private key to EcKey");
+
+                // Create tag from public key sha1 digest
+                let spki = create_spki_tag(tags, &private_key)?;
+                let links = match locate_certificate_by_spki(&spki, kms, owner, params).await {
+                    Ok(certificate_id) => {
+                        debug!("import_pem: add Link with certificate_id: {certificate_id:?}");
+                        let link = Link {
+                            link_type: LinkType::CertificateLink,
+                            linked_object_identifier: LinkedObjectIdentifier::TextString(
+                                certificate_id,
+                            ),
+                        };
+                        Some(vec![link])
+                    }
+                    Err(e) => {
+                        warn!(
+                            "No certificate found matching the private key SPKI: {spki:?}. Error: \
+                             {e:?}"
+                        );
+                        // continue
+                        None
+                    }
+                };
                 let recommended_curve = match private_key.group().curve_name() {
                     Some(nid) => match nid {
                         Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
@@ -136,16 +194,19 @@ fn import_pem(tags: &mut HashSet<String>, pem_value: &[u8]) -> KResult<Object> {
                     None => kms_bail!("No curve name for this EC curve"),
                 };
                 let private_key_bytes = private_key.private_key().to_vec();
-                debug!("CLI: private_key_bytes len: {}", private_key_bytes.len());
-                get_private_key_object(private_key_bytes, recommended_curve)
+                debug!(
+                    "import_pem: private_key_bytes len: {}",
+                    private_key_bytes.len()
+                );
+                get_private_key_object(private_key_bytes, recommended_curve, links)
             }
             Id::ED25519 => {
                 let private_key_bytes = pkey.raw_private_key()?;
-                get_private_key_object(private_key_bytes, RecommendedCurve::CURVEED25519)
+                get_private_key_object(private_key_bytes, RecommendedCurve::CURVEED25519, None)
             }
             Id::X25519 => {
                 let private_key_bytes = pkey.raw_private_key()?;
-                get_private_key_object(private_key_bytes, RecommendedCurve::CURVE25519)
+                get_private_key_object(private_key_bytes, RecommendedCurve::CURVE25519, None)
             }
             _ => kms_bail!("Private key id not supported: {:?}", pkey.id()),
         }
@@ -177,7 +238,7 @@ pub async fn import(
     check_user_tags(&tags)?;
 
     let object_type = request.object.object_type();
-    let mut object = match object_type {
+    let object = match object_type {
         ObjectType::SymmetricKey | ObjectType::PublicKey | ObjectType::PrivateKey => {
             let mut object = request.object;
             let object_key_block = object.key_block_mut()?;
@@ -216,7 +277,7 @@ pub async fn import(
                     "Invalid object type {object_type:?} when importing a certificate"
                 ))),
             }?;
-            import_pem(&mut tags, certificate_pem_bytes)?
+            import_pem(&mut tags, certificate_pem_bytes, kms, owner, params).await?
         }
         x => {
             return Err(KmsError::InvalidRequest(format!(
@@ -231,20 +292,6 @@ pub async fn import(
     } else {
         false
     };
-
-    if let Some(kws) = &request.key_wrapping_specification {
-        // wrap
-        let key_block = object.key_block_mut()?;
-        wrap_key(
-            &request.unique_identifier,
-            key_block,
-            kws,
-            kms,
-            owner,
-            params,
-        )
-        .await?;
-    }
 
     // insert or update the object
     let uid = if replace_existing {

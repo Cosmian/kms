@@ -20,7 +20,7 @@ All notable changes to this project will be documented in this file.
     - implement `Certify` KMIP operation
     - in addition, the KMS server will automatically add:
       - the system tag `_cert` on `Certificate` object
-      - the system tag `_cert=<certificate_uid>` where `certificate_uid` is used as the link between public/private key objects and the related certificate object
+      - the system tag `_cert_uid=<certificate_uid>` where `certificate_uid` is used as the link between public/private key objects and the related certificate object
       - the system tag `_cert_spki=<Subject Public Key Info>` on `Certificate` object where SPKI refers to [RFC 5280](https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.2.7). The SPKI value identifies uniquely the underlying certificate
       - the system tag `_ca=<Subject Common Name>` on CA `Certificate` object
     - import X509 certificate as PEM and also public key and private key
@@ -29,7 +29,7 @@ All notable changes to this project will be documented in this file.
     - create/destroy certificate
     - export/import certificate
     - revoke certificate
-- Add the import option `KeyWrappingData` in order to wrap the object during import
+- Add the export wrapping with X509 certificate encryption
 
 ## [4.5.0] - 2023-08-21
 

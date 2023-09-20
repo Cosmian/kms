@@ -11,7 +11,10 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        certificates::{certify::certify, import::import},
+        certificates::{
+            certify::{certify, export},
+            import::import,
+        },
         shared::locate,
         utils::{start_default_test_kms_server, ONCE},
         PROG_NAME,
@@ -277,6 +280,23 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         CertificateInputFormat::PEM,
         None,
         Some(tags),
+        false,
+    )?;
+
+    debug!("\n\nExport Private key wrapping with X509 certificate");
+    let private_key_wrapped = tmp_path
+        .join("private_key.wrapped")
+        .to_str()
+        .unwrap()
+        .to_owned();
+    export(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        None,
+        &private_key_id,
+        &private_key_wrapped,
+        crate::actions::certificates::CertificateExportFormat::WRAPPED,
+        Some(certificate_id),
         false,
     )?;
 

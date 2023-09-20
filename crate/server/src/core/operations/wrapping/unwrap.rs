@@ -33,7 +33,7 @@ pub async fn unwrap_key(
             Some(eki) => &eki.unique_identifier,
             None => kms_bail!("unable to unwrap key: unwrapping key uid is missing"),
         },
-        None => kms_bail!("unable to unwrap key: key wrapping data is missing"),
+        None => kms_bail!("unwrap_key: unable to unwrap key: key wrapping data is missing"),
     };
 
     // fetch the unwrapping key

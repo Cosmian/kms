@@ -73,11 +73,6 @@ repos:
     hooks:
       - id: shellcheck
 
-  - repo: https://github.com/doublify/pre-commit-rust
-    rev: v1.0
-    hooks:
-      - id: cargo-check
-
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0
     hooks:
@@ -123,6 +118,7 @@ repos:
       - id: cargo-format
       # - id: cargo-upgrade
       # - id: cargo-update
+      # - id: cargo-machete
       - id: cargo-build-kms
       - id: docker-compose-up
       - id: cargo-test

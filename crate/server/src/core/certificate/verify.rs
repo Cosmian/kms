@@ -12,8 +12,10 @@ use x509_parser::{
 use crate::{
     core::{
         certificate::{
-            locate_by_common_name_and_get_certificate_bytes,
-            locate_by_spki_and_get_certificate_bytes,
+            locate::{
+                locate_certificate_by_common_name_and_get_bytes,
+                locate_certificate_by_spki_and_get_bytes,
+            },
             parsing::{get_common_name, get_crl_authority_key_identifier},
         },
         KMS,
@@ -73,7 +75,7 @@ pub(crate) async fn verify_certificate(
     let issuer_common_name = get_common_name(x509_cert.issuer())?;
     // From the issuer name, recover the KMIP certificate object
     let ca_certificate_bytes =
-        locate_by_common_name_and_get_certificate_bytes(&issuer_common_name, kms, owner, params)
+        locate_certificate_by_common_name_and_get_bytes(&issuer_common_name, kms, owner, params)
             .await?;
     debug!("Issuer CRT recovered from KMS");
 
@@ -176,7 +178,7 @@ pub(crate) async fn check_serial_number_in_crl(
                             // Get issuer common name
                             let issuer_common_name = get_common_name(x509_crl.issuer())?;
                             let issuer_spki = get_crl_authority_key_identifier(&x509_crl)?;
-                            let issuer_cert_bytes = locate_by_spki_and_get_certificate_bytes(
+                            let issuer_cert_bytes = locate_certificate_by_spki_and_get_bytes(
                                 &issuer_common_name,
                                 &issuer_spki,
                                 kms,

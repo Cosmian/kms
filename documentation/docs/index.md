@@ -58,6 +58,11 @@ In addition, the KMS server will automatically add a system tag based on the obj
 - `_uk`: for a Covercrypt user decryption key
 - `_cert`: for a X509 certificate
 
+In addition for the X509 certificate, the following tags are also added:
+
+- `_cert_uid=<certificate_uid>` added on private key and public key to establish the link with the certificate
+- `_cert_spki=<hash>` added on X509 certificates where the Subject Public Key Identifier is the hash of the public key
+
 Use the tags to export objects, locate them, or request data encryption and decryption.
 
 #### Command line interface client

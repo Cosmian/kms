@@ -21,8 +21,9 @@ use crate::{
     error::CliError,
 };
 
-#[derive(clap::ValueEnum, Debug, Clone)]
+#[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum CertificateExportFormat {
+    WRAPPED,
     TTLV,
     PEM,
     PKCS12,
@@ -67,6 +68,15 @@ pub struct ExportCertificateAction {
     #[clap(long = "pkcs12_password", short = 'p')]
     pkcs12_password: Option<String>,
 
+    /// The id of key/certificate to use to wrap this key before export
+    #[clap(
+        long = "wrap-key-id",
+        short = 'w',
+        required = false,
+        group = "wrapping"
+    )]
+    wrap_key_id: Option<String>,
+
     /// Allow exporting revoked and destroyed certificates.
     /// The user must be the owner of the certificate.
     /// Destroyed certificates have their certificate material removed.
@@ -92,7 +102,7 @@ impl ExportCertificateAction {
             client_connector,
             &certificate_uid,
             false,
-            None,
+            self.wrap_key_id.as_deref(),
             self.allow_revoked,
         )
         .await?;
@@ -100,7 +110,8 @@ impl ExportCertificateAction {
         let certificate_bytes = match &object {
             Object::Certificate {
                 certificate_value, ..
-            } => certificate_value,
+            } => certificate_value.clone(),
+            Object::PrivateKey { key_block } => key_block.key_bytes()?,
             _ => {
                 cli_bail!(
                     "The object {} is not a certificate but a {}",
@@ -118,7 +129,7 @@ impl ExportCertificateAction {
             }
             CertificateExportFormat::PEM => {
                 // save it to a file
-                write_bytes_to_file(certificate_bytes, &self.certificate_file)?;
+                write_bytes_to_file(&certificate_bytes, &self.certificate_file)?;
             }
             CertificateExportFormat::PKCS12 => {
                 let password = self.pkcs12_password.clone().ok_or(CliError::Cryptographic(
@@ -126,12 +137,16 @@ impl ExportCertificateAction {
                 ))?;
                 let pkcs12_bytes = create_pkcs12(
                     client_connector,
-                    certificate_bytes,
+                    &certificate_bytes,
                     &certificate_uid,
                     &password,
                 )
                 .await?;
                 write_bytes_to_file(&pkcs12_bytes, &self.certificate_file)?;
+            }
+            CertificateExportFormat::WRAPPED => {
+                // save it to a file
+                write_bytes_to_file(&certificate_bytes, &self.certificate_file)?;
             }
         };
 

@@ -77,8 +77,10 @@ pub fn export(
     certificate_id: &str,
     certificate_file: &str,
     output_format: CertificateExportFormat,
+    wrap_key_id: Option<String>,
     allow_revoked: bool,
 ) -> Result<(), CliError> {
+    let id = wrap_key_id.unwrap_or_default();
     let mut args = vec!["export"];
     match tags_args {
         Some(tags) => {
@@ -108,6 +110,12 @@ pub fn export(
         CertificateExportFormat::TTLV => {
             args.push("--format");
             args.push("ttlv");
+        }
+        CertificateExportFormat::WRAPPED => {
+            args.push("--format");
+            args.push("wrapped");
+            args.push("--wrap-key-id");
+            args.push(&id);
         }
     };
     if allow_revoked {
@@ -220,6 +228,7 @@ pub async fn test_certify() -> Result<(), CliError> {
             &certificate_id,
             &export_filename,
             CertificateExportFormat::PKCS12,
+            None,
             false,
         )?;
         // Read the bytes of the file and check them with openssl
@@ -235,6 +244,7 @@ pub async fn test_certify() -> Result<(), CliError> {
             &certificate_id,
             &export_filename,
             CertificateExportFormat::PEM,
+            None,
             false,
         )?;
         let certificate_bytes = get_file_as_byte_vec(&export_filename);
@@ -250,6 +260,7 @@ pub async fn test_certify() -> Result<(), CliError> {
             &certificate_id,
             &export_filename,
             CertificateExportFormat::TTLV,
+            None,
             false,
         )?;
 
@@ -262,6 +273,7 @@ pub async fn test_certify() -> Result<(), CliError> {
             &certificate_id,
             &export_filename,
             CertificateExportFormat::PEM,
+            None,
             false,
         )?;
         let certificate_bytes = get_file_as_byte_vec(&export_filename);
@@ -277,6 +289,7 @@ pub async fn test_certify() -> Result<(), CliError> {
             &certificate_id,
             &export_filename,
             CertificateExportFormat::PEM,
+            None,
             false,
         )?;
         let certificate_bytes = get_file_as_byte_vec(&export_filename);

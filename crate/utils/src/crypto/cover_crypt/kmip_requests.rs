@@ -109,7 +109,6 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
         } else {
             None
         },
-        key_wrapping_specification: None,
         attributes: attributes.clone(),
         object: Object::PrivateKey {
             key_block: KeyBlock {
@@ -183,7 +182,6 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
         } else {
             None
         },
-        key_wrapping_specification: None,
         attributes: attributes.clone(),
         object: Object::PrivateKey {
             key_block: KeyBlock {
@@ -239,7 +237,6 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: ObjectType::PublicKey,
         replace_existing: Some(replace_existing),
         key_wrap_type: None,
-        key_wrapping_specification: None,
         attributes: attributes.clone(),
         object: Object::PublicKey {
             key_block: KeyBlock {

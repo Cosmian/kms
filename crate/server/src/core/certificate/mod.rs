@@ -8,7 +8,7 @@ use cloudproof::reexport::crypto_core::{
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{CertifyResponse, CreateKeyPairResponse, Get},
-    kmip_types::{CertificateType, RecommendedCurve},
+    kmip_types::{CertificateType, Link, LinkType, LinkedObjectIdentifier, RecommendedCurve},
 };
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams, crypto::curve_25519::kmip_requests::ec_create_key_pair_request,
@@ -17,19 +17,14 @@ use tracing::{debug, trace};
 
 use self::ca_signing_key::CASigningKey;
 use super::KMS;
-use crate::{
-    core::certificate::create_ca_certificate::{
-        locate_ca_certificate, locate_ca_certificate_by_spki,
-    },
-    error::KmsError,
-    result::KResult,
-};
+use crate::{error::KmsError, result::KResult};
 
 pub const DEFAULT_EXPIRATION_TIME: u64 = 6;
 
 pub(crate) mod ca_signing_key;
 pub(crate) mod create_ca_certificate;
 pub(crate) mod create_leaf_certificate;
+pub(crate) mod locate;
 pub(crate) mod parsing;
 pub(crate) mod verify;
 
@@ -64,48 +59,6 @@ where
         KmsError::ConversionError(format!("X25519/Ed25519 Public key from bytes failed: {e}"))
     })?;
     Ok(public_key)
-}
-
-async fn locate_by_common_name_and_get_certificate_bytes(
-    ca: &str,
-    kms: &KMS,
-    owner: &str,
-    params: Option<&ExtraDatabaseParams>,
-) -> KResult<Vec<u8>> {
-    // From the issuer name, recover the KMIP certificate object
-    let certificate_id = locate_ca_certificate(ca, kms, owner, params).await?;
-    debug!("Certificate identifier: {}", certificate_id);
-    let get_response = kms.get(Get::from(certificate_id), owner, params).await?;
-    match get_response.object {
-        Object::Certificate {
-            certificate_value, ..
-        } => Ok(certificate_value),
-        _ => Err(KmsError::Certificate(
-            "Invalid object type: Expected Certificate".to_string(),
-        )),
-    }
-}
-
-async fn locate_by_spki_and_get_certificate_bytes(
-    ca_subject_name: &str,
-    spki: &str,
-    kms: &KMS,
-    owner: &str,
-    params: Option<&ExtraDatabaseParams>,
-) -> KResult<Vec<u8>> {
-    // From the issuer name, recover the KMIP certificate object
-    let certificate_id =
-        locate_ca_certificate_by_spki(ca_subject_name, spki, kms, owner, params).await?;
-    debug!("Certificate identifier: {}", certificate_id);
-    let get_response = kms.get(Get::from(certificate_id), owner, params).await?;
-    match get_response.object {
-        Object::Certificate {
-            certificate_value, ..
-        } => Ok(certificate_value),
-        _ => Err(KmsError::Certificate(
-            "Invalid object type: Expected Certificate".to_string(),
-        )),
-    }
 }
 
 /// The function `link_key_pair_to_certificate` links an existing private/public key
@@ -149,7 +102,7 @@ async fn link_key_pair_to_certificate(
         "Link existing private/public key with certificate uuid: {certificate_uid} using tags: \
          {tags:?}"
     );
-    let private_key_block = kms
+    let mut private_key_block = kms
         .get(
             Get::from(&create_key_pair_response.private_key_unique_identifier),
             owner,
@@ -159,6 +112,27 @@ async fn link_key_pair_to_certificate(
         .object
         .key_block()?
         .clone();
+
+    // Establish the link with the X509 certificate
+    let link = Link {
+        link_type: LinkType::CertificateLink,
+        linked_object_identifier: LinkedObjectIdentifier::TextString(certificate_uid.to_string()),
+    };
+    let attributes = private_key_block.attributes_mut()?;
+    let links = match attributes.link.clone() {
+        Some(mut links) => {
+            if !links.contains(&link) {
+                debug!(
+                    "link_key_pair_to_certificate: private key current links: {links:?} and \
+                     certificate_uid: {certificate_uid:?}"
+                );
+                links.push(link.clone());
+            }
+            links
+        }
+        None => vec![link.clone()],
+    };
+    attributes.link = Some(links);
 
     // Update private key object
     let private_key_object = Object::PrivateKey {
@@ -173,7 +147,7 @@ async fn link_key_pair_to_certificate(
         )
         .await?;
 
-    let public_key_block = kms
+    let mut public_key_block = kms
         .get(
             Get::from(&create_key_pair_response.public_key_unique_identifier),
             owner,
@@ -183,6 +157,23 @@ async fn link_key_pair_to_certificate(
         .object
         .key_block()?
         .clone();
+
+    // Establish the link with the X509 certificate
+    let attributes = public_key_block.attributes_mut()?;
+    let links = match attributes.link.clone() {
+        Some(mut links) => {
+            if !links.contains(&link) {
+                debug!(
+                    "link_key_pair_to_certificate: public key current links: {links:?} and \
+                     certificate_uid: {certificate_uid:?}"
+                );
+                links.push(link);
+            }
+            links
+        }
+        None => vec![link],
+    };
+    attributes.link = Some(links);
 
     // Update public key object
     let public_key_object = Object::PublicKey {

@@ -63,7 +63,6 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
         key_wrap_type,
         attributes,
         object,
-        key_wrapping_specification: None,
     };
 
     // send the import request

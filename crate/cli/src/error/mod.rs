@@ -76,6 +76,12 @@ impl From<KmipUtilsError> for CliError {
     }
 }
 
+impl From<&KmipError> for CliError {
+    fn from(e: &KmipError) -> Self {
+        Self::KmipError(ErrorReason::Invalid_Attribute, e.to_string())
+    }
+}
+
 impl From<TtlvError> for CliError {
     fn from(e: TtlvError) -> Self {
         Self::KmipError(ErrorReason::Codec_Error, e.to_string())

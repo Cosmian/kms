@@ -90,7 +90,7 @@ pub fn build_import_object_request(
     attributes: Attributes,
     unique_identifier: &str,
     replace_existing: Option<bool>,
-    key_wrapping_specification: Option<KeyWrappingSpecification>,
+    _key_wrapping_specification: Option<KeyWrappingSpecification>,
 ) -> Import {
     let key_wrap_type = if object.key_wrapping_data().is_some() {
         Some(KeyWrapType::AsRegistered)
@@ -106,6 +106,5 @@ pub fn build_import_object_request(
         key_wrap_type,
         attributes,
         object,
-        key_wrapping_specification,
     }
 }

@@ -55,6 +55,7 @@ pub(crate) async fn get(
         None => {
             if let Some(kws) = &request.key_wrapping_specification {
                 // wrap
+                debug!("get: Wrapping object with {kws:?}");
                 let key_block = owm.object.key_block_mut()?;
                 wrap_key(&owm.id, key_block, kws, kms, user, params).await?;
             }

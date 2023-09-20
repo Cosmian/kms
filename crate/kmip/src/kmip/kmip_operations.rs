@@ -123,9 +123,6 @@ pub struct Import {
     pub attributes: Attributes,
     /// The object being imported. The object and attributes MAY be wrapped.
     pub object: Object,
-    /// Specifies keys and other information for wrapping the returned object.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_wrapping_specification: Option<KeyWrappingSpecification>,
 }
 
 /// Deserialization needs to be handwritten because the
@@ -146,7 +143,6 @@ impl<'de> Deserialize<'de> for Import {
             KeyWrapType,
             Attributes,
             Object,
-            KeyWrappingSpecification,
         }
 
         struct ImportVisitor;
@@ -168,7 +164,6 @@ impl<'de> Deserialize<'de> for Import {
                 let mut key_wrap_type: Option<KeyWrapType> = None;
                 let mut attributes: Option<Attributes> = None;
                 let mut object: Option<Object> = None;
-                let key_wrapping_specification: Option<KeyWrappingSpecification> = None;
 
                 while let Some(key) = map.next_key()? {
                     match key {
@@ -208,12 +203,6 @@ impl<'de> Deserialize<'de> for Import {
                             }
                             object = Some(map.next_value()?);
                         }
-                        Field::KeyWrappingSpecification => {
-                            if key_wrapping_specification.is_some() {
-                                return Err(de::Error::duplicate_field("key_wrapping_specification"))
-                            }
-                            object = Some(map.next_value()?);
-                        }
                     }
                 }
                 let unique_identifier = unique_identifier
@@ -232,7 +221,6 @@ impl<'de> Deserialize<'de> for Import {
                     key_wrap_type,
                     attributes,
                     object,
-                    key_wrapping_specification,
                 })
             }
         }

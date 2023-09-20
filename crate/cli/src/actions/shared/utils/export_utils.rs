@@ -33,7 +33,7 @@ pub async fn export_object(
     wrapping_key_id: Option<&str>,
     allow_revoked: bool,
 ) -> Result<Object, CliError> {
-    // If an unwrapping key is specified, generate the key (un)wrapping data
+    // If an unwrapping key is specified, generate the key (un)wrapping specification
     let key_wrapping_specification: Option<KeyWrappingSpecification> = if unwrap {
         None
     } else {
