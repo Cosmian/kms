@@ -7,12 +7,15 @@ use std::{
 // re-export the kmip module as kmip
 use cosmian_kms_utils::access::SuccessResponse;
 use http::{HeaderMap, HeaderValue, StatusCode};
+use openssl::x509::X509;
+use ratls::{get_server_certificate, verify_ratls};
 use reqwest::{
     multipart::{Form, Part},
-    Body, Client, ClientBuilder, Identity, Response,
+    Body, Certificate, Client, ClientBuilder, Identity, Response,
 };
 use serde::{Deserialize, Serialize};
 use tokio_util::codec::{BytesCodec, FramedRead};
+use url::Url;
 
 use crate::error::RestClientError;
 
@@ -209,9 +212,33 @@ impl BootstrapRestClient {
             None => builder,
         };
 
+        // Get and verify the ratls certitificate in order to use it as the only valid root CA
+        let bootstrap_server_url = Url::parse(bootstrap_server_url)?;
+        let ratls_cert = get_server_certificate(
+            bootstrap_server_url
+                .host_str()
+                .ok_or(RestClientError::Default(
+                    "Missing 'hostname' in boostrap server url".to_string(),
+                ))?,
+            bootstrap_server_url.port().unwrap_or(443) as u32,
+        )
+        .map_err(|e| RestClientError::RatlsError(e.to_string()))?;
+
+        let ratls_cert = X509::from_der(&ratls_cert)
+            .map_err(|e| RestClientError::RatlsError(e.to_string()))?
+            .to_pem()
+            .map_err(|e| RestClientError::RatlsError(e.to_string()))?;
+
+        // TODO: use measurements here (from where? conf?)
+        verify_ratls(&ratls_cert, None, None, None)
+            .map_err(|e| RestClientError::RatlsError(e.to_string()))?;
+
+        let ratls_cert = Certificate::from_pem(&ratls_cert)?;
+
         // Build the client
         Ok(Self {
             client: builder
+                .add_root_certificate(ratls_cert)
                 .connect_timeout(Duration::from_secs(5))
                 .tcp_keepalive(Duration::from_secs(30))
                 .default_headers(headers)

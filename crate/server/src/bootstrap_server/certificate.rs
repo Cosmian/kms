@@ -14,7 +14,7 @@ use crate::{error, result::KResult};
 pub(crate) fn generate_ratls_pkcs12(common_name: &str, pkcs12_password: &str) -> KResult<Pkcs12> {
     // TODO: design a way to make all certificate issuer args customizable
     let issuer = format!("CN={common_name},O=Cosmian Tech,C=FR,L=Paris,ST=Ile-de-France");
-    let (private_key, cert) = generate_ratls_cert(&issuer, &issuer, vec![], 365, None, true)
+    let (private_key, cert) = generate_ratls_cert(&issuer, &issuer, vec![], 365, None, false) // TODO: true
         .map_err(|e| error::KmsError::RatlsError(e.to_string()))?;
 
     let cert = X509::from_pem(cert.as_bytes())?;

@@ -51,7 +51,7 @@ lazy_static = "1.4"
 libsgx = { path = "../libsgx" }
 mime = "0.3"
 openssl = { workspace = true }
-ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
+ratls = { workspace = true }
 rawsql = "0.1"
 redis = { workspace = true }
 reqwest = { workspace = true }
