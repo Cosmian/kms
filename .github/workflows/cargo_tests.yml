@@ -19,7 +19,7 @@ jobs:
           echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
           sudo chown -R $USER:$USER $GITHUB_WORKSPACE
 
-  kms-centos7:
+  kms-tests:
     needs: cleanup
     services:
       # Label used to access the service container
@@ -77,23 +77,12 @@ jobs:
           yum -y groupinstall "Development Tools"
           yum -y install openssl openssl-devel
 
-      - name: Build
-        run: |
-          cargo check --all-targets --no-default-features
-          cargo check --all-targets --no-default-features --features insecure
-          cargo check --all-targets --no-default-features --features timeout
-          cargo build --all-targets --all-features
-          cargo build --release --bin ckms
-          cargo build --release --bin cosmian_kms_server
-        env:
-          # Speeds up Ristretto 25519 multiplication x 2
-          RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
-
-      - name: Tests
+      - name: Tests in debug
         run: |
           rm -rf /tmp/sqlite-data /tmp/tmp.json
           export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
-          cargo test --workspace --features insecure --no-default-features -- --nocapture
+          cargo build --no-default-features --features insecure
+          cargo test  --no-default-features --features insecure -- --nocapture
           cargo test --bins -- --nocapture
         env:
           POSTGRES_USER: kms
@@ -113,11 +102,33 @@ jobs:
 
           REDIS_HOST: redis
 
-      - name: Run doc tests
-        uses: actions-rs/cargo@v1
+  kms-centos7:
+    needs: cleanup
+    runs-on: ubuntu-22.04
+    # runs-on: [self-hosted, not-sgx] # currently not needed.
+    container:
+      image: iyxd/centos7-rust
+
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
         with:
-          command: test
-          args: --release --workspace --doc --all-features
+          toolchain: ${{ inputs.toolchain }}
+          override: true
+          components: rustfmt, clippy
+
+      - name: Centos 7 prerequisites
+        run: |
+          yum -y groupinstall "Development Tools"
+          yum -y install openssl openssl-devel
+
+      - name: Build with Auth0 feature
+        run: |
+          cargo build --release --bin ckms
+          cargo build --release --bin cosmian_kms_server
+        env:
+          # Speeds up Ristretto 25519 multiplication x 2
+          RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
 
       - name: Upload KMS for Centos7
         uses: actions/upload-artifact@v3

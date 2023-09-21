@@ -3,9 +3,10 @@ use std::process;
 use clap::{Parser, Subcommand};
 use cosmian_kms_cli::{
     actions::{
-        access::AccessAction, bootstrap::BootstrapServerAction, cover_crypt::CovercryptCommands,
-        elliptic_curves::EllipticCurveCommands, new_database::NewDatabaseAction,
-        shared::LocateObjectsAction, symmetric::SymmetricCommands, version::ServerVersionAction,
+        access::AccessAction, bootstrap::BootstrapServerAction, certificates::CertificatesCommands,
+        cover_crypt::CovercryptCommands, elliptic_curves::EllipticCurveCommands,
+        new_database::NewDatabaseAction, shared::LocateObjectsAction, symmetric::SymmetricCommands,
+        version::ServerVersionAction,
     },
     config::CliConf,
     error::CliError,
@@ -21,17 +22,19 @@ struct Cli {
 #[derive(Subcommand)]
 enum CliCommands {
     #[command(subcommand)]
+    AccessRights(AccessAction),
+    BootstrapStart(BootstrapServerAction),
+    #[command(subcommand)]
     Cc(CovercryptCommands),
     #[command(subcommand)]
+    Certificates(CertificatesCommands),
+    #[command(subcommand)]
     Ec(EllipticCurveCommands),
-    #[command(subcommand)]
-    Sym(SymmetricCommands),
-    #[command(subcommand)]
-    AccessRights(AccessAction),
     Locate(LocateObjectsAction),
     NewDatabase(NewDatabaseAction),
     ServerVersion(ServerVersionAction),
-    BootstrapStart(BootstrapServerAction),
+    #[command(subcommand)]
+    Sym(SymmetricCommands),
 }
 
 #[tokio::main]
@@ -52,6 +55,7 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Ec(action) => action.process(&kms_rest_client).await?,
         CliCommands::Sym(action) => action.process(&kms_rest_client).await?,
         CliCommands::AccessRights(action) => action.process(&kms_rest_client).await?,
+        CliCommands::Certificates(action) => action.process(&kms_rest_client).await?,
         CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
         CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
         CliCommands::BootstrapStart(action) => action.process(&bootstrap_rest_client).await?,

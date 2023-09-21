@@ -17,14 +17,13 @@ use cosmian_kms_utils::crypto::{
 };
 
 use crate::{
-    log_utils,
     result::{KResult, KResultHelper},
     tests::test_utils,
 };
 
 #[actix_web::test]
 async fn integration_tests_with_tags() -> KResult<()> {
-    log_utils::log_init("cosmian_kms_server=info");
+    // log_init("cosmian_kms_server=info");
 
     let app = test_utils::test_app().await;
 

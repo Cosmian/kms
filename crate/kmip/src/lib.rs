@@ -6,4 +6,3 @@
 
 pub mod error;
 pub mod kmip;
-pub mod log_utils;

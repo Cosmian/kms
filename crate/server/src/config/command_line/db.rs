@@ -42,7 +42,7 @@ pub struct DBConfig {
     /// The directory path of the sqlite or sqlite-enc
     #[clap(
         long,
-        env = "KMS_SQLITE_PATH", 
+        env = "KMS_SQLITE_PATH",
         default_value = "./sqlite-data",
         required_if_eq_any([("database_type", "sqlite"), ("database_type", "sqlite-enc")])
     )]
@@ -111,7 +111,7 @@ impl Display for DBConfig {
                             .map_or("[INVALID LABEL]", |url| url.as_str()),
                     )
                 ),
-                unknown => write!(f, "Unknown database type: {}", unknown),
+                unknown => write!(f, "Unknown database type: {unknown}"),
             }?;
         } else {
             write!(f, "No database configuration provided")?;

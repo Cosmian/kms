@@ -44,7 +44,7 @@ impl JwtAuthConfig {
             Some(jwt_issuer_uri) => {
                 let jwt_issuer_uri = jwt_issuer_uri.trim_end_matches('/');
                 let jwks_uri = match &self.jwks_uri {
-                    None => format!("{}/.well-known/jwks.json", jwt_issuer_uri),
+                    None => format!("{jwt_issuer_uri}/.well-known/jwks.json"),
                     Some(jwks_uri) => jwks_uri.to_string(),
                 };
                 reqwest::get(jwks_uri)

@@ -101,7 +101,7 @@ impl RedisWithFindex {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Database for RedisWithFindex {
     fn filename(&self, _group_id: u128) -> Option<PathBuf> {
         None
@@ -387,7 +387,7 @@ impl Database for RedisWithFindex {
             .objects_get(
                 &permissions
                     .keys()
-                    .map(|uid| uid.to_owned())
+                    .map(std::clone::Clone::clone)
                     .collect::<HashSet<String>>(),
             )
             .await?;

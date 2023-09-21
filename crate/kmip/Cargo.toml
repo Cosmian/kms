@@ -17,6 +17,6 @@ strum_macros = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
-tracing-log = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-tree = { workspace = true }
+
+[dev-dependencies]
+cosmian_logger = { path = "../logger" }

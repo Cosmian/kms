@@ -11,7 +11,7 @@ use cosmian_kmip::kmip::{
     kmip_types::{KeyFormatType, LinkType, StateEnumeration},
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
-use tracing::debug;
+use tracing::{debug, trace};
 
 use crate::{
     core::{cover_crypt::destroy_user_decryption_keys, KMS},
@@ -41,7 +41,7 @@ pub async fn destroy_operation(
 }
 
 /// Recursively destroy keys
-#[async_recursion]
+#[async_recursion(?Send)]
 pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
     uid_or_tags: &str,
     kms: &KMS,
@@ -61,6 +61,7 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
             owm.state != StateEnumeration::Destroyed
                 && (object_type == ObjectType::PrivateKey
                     || object_type == ObjectType::SymmetricKey
+                    || object_type == ObjectType::Certificate
                     || object_type == ObjectType::PublicKey)
         })
         .collect::<Vec<ObjectWithMetadata>>();
@@ -74,7 +75,7 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
         // perform the chain of destroy operations depending on the type of object
         let object_type = owm.object.object_type();
         match object_type {
-            SymmetricKey => {
+            SymmetricKey | ObjectType::Certificate => {
                 // destroy the key
                 destroy_key_core(&owm.id, &mut owm.object, owm.state, kms, params).await?;
             }
@@ -84,7 +85,7 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
                 // for Covercrypt, if that is a master secret key, destroy the user decryption keys
                 if owm.object.key_block()?.key_format_type == KeyFormatType::CoverCryptSecretKey {
                     destroy_user_decryption_keys(&owm.id, kms, user, params, ids_to_skip.clone())
-                        .await?
+                        .await?;
                 }
                 // destroy any linked public key
                 if let Some(public_key_id) =
@@ -128,8 +129,7 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
                 destroy_key_core(&owm.id, &mut owm.object, owm.state, kms, params).await?;
             }
             x => kms_bail!(KmsError::NotSupported(format!(
-                "destroy operation is not supported for object type {:?}",
-                x
+                "destroy operation is not supported for object type {x:?}"
             ))),
         };
     }
@@ -160,11 +160,15 @@ async fn destroy_key_core(
     };
 
     // the KMIP specs mandates that e KeyMaterial be destroyed
-    let key_block = object.key_block_mut()?;
-    key_block.key_value = KeyValue {
-        key_material: KeyMaterial::ByteString(vec![]),
-        attributes: key_block.key_value.attributes.clone(),
-    };
+    if let Object::Certificate { .. } = object {
+        trace!("Certificate destroying");
+    } else {
+        let key_block = object.key_block_mut()?;
+        key_block.key_value = KeyValue {
+            key_material: KeyMaterial::ByteString(vec![]),
+            attributes: key_block.key_value.attributes.clone(),
+        };
+    }
 
     kms.db
         .update_object(unique_identifier, object, None, params)

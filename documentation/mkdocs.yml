@@ -62,12 +62,14 @@ nav:
           - Commands: cli/covercrypt/covercrypt.md
           - Keys management: cli/covercrypt/keys.md
           - Policy management: cli/covercrypt/policy.md
+      - Certificates:
+          - Commands: cli/certificates/certificates.md
       - Elliptic curves:
-        - Commands: cli/ec/ec.md
-        - Keys management: cli/ec/keys.md
+          - Commands: cli/ec/ec.md
+          - Keys management: cli/ec/keys.md
       - Symmetric encryption:
-        - Commands: cli/sym/sym.md
-        - Keys management: cli/sym/keys.md
+          - Commands: cli/sym/sym.md
+          - Keys management: cli/sym/keys.md
       - Access rights: cli/access_rights.md
       - Enclaved KMS: cli/enclaves.md
   - KMIP 2.1 support:

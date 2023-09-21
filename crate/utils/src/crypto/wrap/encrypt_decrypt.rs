@@ -1,94 +1,101 @@
-use cloudproof::reexport::crypto_core::{
-    key_unwrap, key_wrap, reexport::rand_core::CryptoRngCore, Ecies, EciesSalsaSealBox,
-    FixedSizeCBytes, X25519PrivateKey, X25519PublicKey,
-};
+use cloudproof::reexport::crypto_core::{key_unwrap, key_wrap, reexport::rand_core::CryptoRngCore};
 use cosmian_kmip::kmip::{
-    kmip_data_structures::KeyMaterial,
     kmip_objects::Object,
-    kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+    kmip_operations::{Decrypt, DecryptedData, Encrypt},
+    kmip_types::KeyFormatType,
 };
+use tracing::debug;
 
 use crate::{
+    crypto::ecies::{EciesDecryption, EciesEncryption},
     error::{result::CryptoResultHelper, KmipUtilsError},
-    kmip_utils_bail,
+    kmip_utils_bail, DecryptionSystem, EncryptionSystem,
 };
-
-//TODO These should be re-exported from crypto_core in a future release
-// Sizes in bytes
-pub const X25519_PUBLIC_KEY_LENGTH: usize = 32;
-pub const CURVE_25519_PRIVATE_KEY_LENGTH: usize = 32;
 
 /// Encrypt bytes using the wrapping key
 pub fn encrypt_bytes<R>(
-    rng: &mut R,
+    _rng: &mut R,
     wrapping_key: &Object,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError>
 where
     R: CryptoRngCore,
 {
-    let wrapping_key_block = wrapping_key
-        .key_block()
-        .context("unable to wrap: wrapping key is not a key")?;
-    // wrap the wrapping key if necessary
-    if wrapping_key_block.key_wrapping_data.is_some() {
-        kmip_utils_bail!("unable to wrap keys: wrapping key is wrapped and that is not supported")
-    }
-    let ciphertext = match wrapping_key_block.key_format_type {
-        KeyFormatType::TransparentSymmetricKey => {
-            // wrap using rfc_5649
-            let wrap_secret = wrapping_key_block.key_bytes()?;
-            key_wrap(plaintext, &wrap_secret)
+    debug!(
+        "encrypt_bytes: with object: {:?}",
+        wrapping_key.object_type()
+    );
+    match wrapping_key {
+        Object::Certificate {
+            certificate_value, ..
+        } => {
+            // TODO(ECSE): cert should be verify before anything
+            //verify_certificate(certificate_value, kms, owner, params).await?;
+            debug!("encrypt_bytes: Encryption with certificate: certificate OK");
+            let ecies = EciesEncryption::instantiate_with_certificate("id", certificate_value)?;
+            let request = Encrypt {
+                data: Some(plaintext.to_vec()),
+                ..Encrypt::default()
+            };
+            let encrypt_response = ecies.encrypt(&request)?;
+            let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
+                "Encrypt response does not contain ciphertext".to_string(),
+            ))?;
+            debug!(
+                "encrypt_bytes: succeeded: ciphertext length: {}",
+                ciphertext.len()
+            );
+            Ok(ciphertext)
         }
-        KeyFormatType::TransparentECPublicKey => {
-            // wrap using ECIES
-            match wrapping_key_block.cryptographic_algorithm {
-                CryptographicAlgorithm::ECDH => match &wrapping_key_block.key_value.key_material {
-                    KeyMaterial::TransparentECPublicKey {
-                        recommended_curve,
-                        q_string,
-                    } => match recommended_curve {
-                        RecommendedCurve::CURVE25519 => {
-                            let public_key_bytes: [u8; X25519_PUBLIC_KEY_LENGTH] =
-                                q_string.as_slice().try_into().map_err(|_| {
-                                    KmipUtilsError::ConversionError(
-                                        "invalid X25519 public key length".to_string(),
-                                    )
-                                })?;
-                            let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
-                            let ciphertext =
-                                EciesSalsaSealBox::encrypt(rng, &public_key, plaintext, None)?;
-                            Ok(ciphertext)
-                        }
-                        x => {
-                            kmip_utils_bail!(
-                                "Unable to wrap key: wrapping key: recommended curve not \
-                                 supported for wrapping: {x:?}"
-                            )
-                        }
-                    },
-                    x => {
-                        kmip_utils_bail!(
-                            "Unable to wrap key: wrapping key: key material not supported for \
-                             wrapping: {x:?}"
-                        )
-                    }
-                },
+        Object::PGPKey { key_block, .. }
+        | Object::SecretData { key_block, .. }
+        | Object::SplitKey { key_block, .. }
+        | Object::PrivateKey { key_block }
+        | Object::PublicKey { key_block }
+        | Object::SymmetricKey { key_block } => {
+            // wrap the wrapping key if necessary
+            if key_block.key_wrapping_data.is_some() {
+                kmip_utils_bail!(
+                    "unable to wrap keys: wrapping key is wrapped and that is not supported"
+                )
+            }
+            let ciphertext = match key_block.key_format_type {
+                KeyFormatType::TransparentSymmetricKey => {
+                    // wrap using rfc_5649
+                    let wrap_secret = key_block.key_bytes()?;
+                    key_wrap(plaintext, &wrap_secret)
+                }
+                KeyFormatType::TransparentECPublicKey => {
+                    // wrap using ECIES
+                    let ecies = EciesEncryption::instantiate("public_key_uid", wrapping_key)?;
+                    let request = Encrypt {
+                        data: Some(plaintext.to_vec()),
+                        ..Encrypt::default()
+                    };
+                    let encrypt_response = ecies.encrypt(&request)?;
+                    let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
+                        "Encrypt response does not contain ciphertext".to_string(),
+                    ))?;
+                    debug!(
+                        "encrypt_bytes: succeeded: ciphertext length: {}",
+                        ciphertext.len()
+                    );
+                    Ok(ciphertext)
+                }
                 x => {
                     kmip_utils_bail!(
-                        "Unable to wrap key: wrapping key: cryptographic algorithm not supported \
-                         for wrapping: {x:?}"
+                        "Unable to wrap key: wrapping key: format not supported for wrapping: \
+                         {x:?}"
                     )
                 }
-            }
+            }?;
+            Ok(ciphertext)
         }
-        x => {
-            kmip_utils_bail!(
-                "Unable to wrap key: wrapping key: format not supported for wrapping: {x:?}"
-            )
-        }
-    }?;
-    Ok(ciphertext)
+        _ => Err(KmipUtilsError::NotSupported(format!(
+            "Wrapping key type not supported: {:?}",
+            wrapping_key.object_type()
+        ))),
+    }
 }
 
 /// Decrypt bytes using the unwrapping key
@@ -96,6 +103,12 @@ pub fn decrypt_bytes(
     unwrapping_key: &Object,
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
+    debug!(
+        "decrypt_bytes: with object: {:?} on ciphertext length: {}",
+        unwrapping_key,
+        ciphertext.len()
+    );
+
     let unwrapping_key_block = unwrapping_key
         .key_block()
         .context("Unable to unwrap: unwrapping key is not a key")?;
@@ -112,49 +125,21 @@ pub fn decrypt_bytes(
             key_unwrap(ciphertext, &unwrap_secret)
         }
         KeyFormatType::TransparentECPrivateKey => {
-            match unwrapping_key_block.cryptographic_algorithm {
-                CryptographicAlgorithm::ECDH => {
-                    match &unwrapping_key_block.key_value.key_material {
-                        KeyMaterial::TransparentECPrivateKey {
-                            recommended_curve,
-                            d,
-                        } => match recommended_curve {
-                            RecommendedCurve::CURVE25519 => {
-                                let private_key_bytes: [u8; CURVE_25519_PRIVATE_KEY_LENGTH] =
-                                    d.to_bytes_be().try_into().map_err(|_| {
-                                        KmipUtilsError::ConversionError(
-                                            "invalid Curve 25519 private key length".to_string(),
-                                        )
-                                    })?;
-                                let private_key =
-                                    X25519PrivateKey::try_from_bytes(private_key_bytes)?;
-
-                                let plaintext =
-                                    EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?;
-                                Ok(plaintext)
-                            }
-                            x => {
-                                kmip_utils_bail!(
-                                    "Unable to unwrap key: unwrapping key: recommended curve not \
-                                     supported for unwrapping: {x:?}"
-                                )
-                            }
-                        },
-                        x => {
-                            kmip_utils_bail!(
-                                "Unable to unwrap key: unwrapping key: key material not supported \
-                                 for unwrapping: {x:?}"
-                            )
-                        }
-                    }
-                }
-                x => {
-                    kmip_utils_bail!(
-                        "Unable to unwrap key: unwrapping key: cryptographic algorithm not \
-                         supported for unwrapping: {x:?}"
-                    )
-                }
-            }
+            let ecies = EciesDecryption::instantiate("private_key_uid", unwrapping_key)?;
+            let request = Decrypt {
+                data: Some(ciphertext.to_vec()),
+                ..Decrypt::default()
+            };
+            let decrypt_response = ecies.decrypt(&request)?;
+            let plaintext = decrypt_response.data.ok_or(KmipUtilsError::Default(
+                "Decrypt response does not contain plaintext".to_string(),
+            ))?;
+            debug!(
+                "decrypt_bytes: succeeded: plaintext length: {}",
+                plaintext.len()
+            );
+            let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
+            Ok(decrypted_data.plaintext)
         }
 
         x => {
@@ -176,7 +161,7 @@ mod tests {
     use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 
     use crate::crypto::{
-        curve_25519::operation::create_ec_key_pair, symmetric::create_symmetric_key,
+        curve_25519::operation::create_x25519_key_pair, symmetric::create_symmetric_key,
     };
 
     #[test]
@@ -195,7 +180,7 @@ mod tests {
     #[test]
     fn test_encrypt_decrypt_rfc_ecies() {
         let mut rng = CsRng::from_entropy();
-        let wrap_key_pair = create_ec_key_pair(&mut rng, "sk_uid", "pk_uid").unwrap();
+        let wrap_key_pair = create_x25519_key_pair(&mut rng, "sk_uid", "pk_uid").unwrap();
 
         let plaintext = b"plaintext";
         let ciphertext =

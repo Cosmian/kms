@@ -45,6 +45,7 @@ impl HttpParams {
         }
     }
 
+    #[must_use]
     pub fn is_running_https(&self) -> bool {
         match self {
             Self::Certbot(_) | Self::Https(_) => true,

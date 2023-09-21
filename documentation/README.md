@@ -54,6 +54,7 @@ Run
 Warning: You need a LaTeX install, if some content is written in LaTeX
 
 ### Installing Latex
+
 WARNING: This is a BIG install
 
 ```sh

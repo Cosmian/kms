@@ -74,7 +74,7 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
     let object = read_key_from_file(&tmp_path.join("output.export"))?;
     match &object.key_block()?.key_value.key_material {
         cosmian_kmip::kmip::kmip_data_structures::KeyMaterial::ByteString(v) => {
-            assert!(v.is_empty())
+            assert!(v.is_empty());
         }
         _ => cli_bail!("Invalid key material"),
     }

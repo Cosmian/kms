@@ -8,7 +8,6 @@ pub mod core;
 pub mod database;
 pub mod error;
 pub mod kms_server;
-pub mod log_utils;
 pub mod middlewares;
 pub mod result;
 pub mod routes;
@@ -26,6 +25,7 @@ use result::KResult;
 #[cfg(test)]
 mod tests;
 
+#[must_use]
 pub fn start_server(
     server_params: ServerParams,
     kms_server_handle_tx: Option<mpsc::Sender<ServerHandle>>,

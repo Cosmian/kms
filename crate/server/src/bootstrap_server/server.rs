@@ -113,7 +113,7 @@ pub async fn start_kms_server_using_bootstrap_server(
                 );
             }
             BootstrapServerMessage::DbParams(db_params) => {
-                let db_params_str = format!("{:?}", db_params);
+                let db_params_str = format!("{db_params:?}");
                 // Set the DbParams in the config
                 server_params.db_params = Some(db_params);
                 info!("DbParams received: {}", db_params_str);

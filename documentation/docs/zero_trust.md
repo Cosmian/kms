@@ -66,7 +66,7 @@ In addition to the standard fields of a web server certificate, the bootstrap ce
 
 HTTPS connections with these types of certificates are called *RA-TLS* connections, where *RA* stands for *Remote Attestation*.
 
-Before sending any configuration data to the bootstrap server, the system administrator attests the connection by verifying the *quote* of the bootstrap certificate. This can easily be done [using the `ckms` client CLI](./ckms.md#ckms-bootstrap-start).
+Before sending any configuration data to the bootstrap server, the system administrator attests the connection by verifying the *quote* of the bootstrap certificate. This can easily be done [using the `ckms` client CLI](./cli/main_commands.md#bootstrap-start).
 
 The workflow is then divided into 2 phases:
 
@@ -87,13 +87,13 @@ After attesting the RA-TLS connection, the system administrator sends the API TL
 
 The bootstrap server will then start the main KMS server (3), which will open an HTTPS port using the API TLS certificate; this port exposes the API endpoints to the users.
 
-Iff the API TLS certificate does **not** contain a *quote*, the bootstrap server will request the main KMS server to open a second HTTPS port initialized with the bootstrap certificate above (which contains a *quote* ).
+If the API TLS certificate does **not** contain a *quote*, the bootstrap server will request the main KMS server to open a second HTTPS port initialized with the bootstrap certificate above (which contains a *quote*).
 
 The main KMS server is now started, and the bootstrap will shut down.
 
 ## Attesting the correctness of the installation (4)
 
-The users, like the system administrator, can attest to the correctness of the installation by using the `ckms` CLI `verify` subcommand. Please check the `[ckms` documentation](./cli/cli.md) for more details on performing this operation.
+The users, like the system administrator, can attest to the correctness of the installation by using the `ckms` CLI `verify` subcommand. Please check the [`ckms` documentation](./cli/cli.md) for more details on performing this operation.
 
 ### If the server API endpoints are behind an RA-TLS certificate
 

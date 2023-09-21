@@ -98,10 +98,7 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
     //#[instrument(skip(self))]
     fn serialize_u32(self, v: u32) -> Result<Self::Ok> {
         self.serialize_i32(v.try_into().map_err(|_e| {
-            TtlvError::custom(format!(
-                "Unexpected value: {}, expected a 32 bit integer",
-                v
-            ))
+            TtlvError::custom(format!("Unexpected value: {v}, expected a 32 bit integer"))
         })?)
     }
 
@@ -109,10 +106,7 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
     //#[instrument(skip(self))]
     fn serialize_u64(self, v: u64) -> Result<Self::Ok> {
         self.serialize_i64(v.try_into().map_err(|_e| {
-            TtlvError::custom(format!(
-                "Unexpected value: {}, expected a 32 bit integer",
-                v
-            ))
+            TtlvError::custom(format!("Unexpected value: {v}, expected a 32 bit integer"))
         })?)
     }
 
@@ -633,7 +627,7 @@ impl<'a> ser::SerializeStruct for &'a mut TTLVSerializer {
         match value.detect() {
             Detected::Other => {
                 trace!("... detected other for {}", &self.current.tag);
-                value.serialize(&mut **self)?
+                value.serialize(&mut **self)?;
             }
             Detected::ByteString(byte_string) => {
                 trace!("... detected ByteString for {}", &self.current.tag);

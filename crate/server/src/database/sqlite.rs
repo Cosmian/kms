@@ -25,7 +25,6 @@ use crate::{
         query_from_attributes, state_from_string, DBObject, Database, SqlitePlaceholder,
         SQLITE_QUERIES,
     },
-    error::KmsError,
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
@@ -83,7 +82,7 @@ impl SqlitePool {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Database for SqlitePool {
     fn filename(&self, _group_id: u128) -> Option<PathBuf> {
         None
@@ -279,6 +278,7 @@ impl Database for SqlitePool {
         user_must_be_owner: bool,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
+        debug!("sqlite: find: researched_attributes={researched_attributes:?}");
         find_(
             researched_attributes,
             state,
@@ -355,6 +355,7 @@ pub(crate) async fn retrieve_<'e, E>(
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
+    trace!("Sqlite: retrieve");
     let rows: Vec<SqliteRow> = if !uid_or_tags.starts_with('[') {
         sqlx::query(
             SQLITE_QUERIES
@@ -659,7 +660,7 @@ where
             row.get::<String, _>(1),
             state_from_string(&row.get::<String, _>(2))?,
             serde_json::from_slice(&row.get::<Vec<u8>, _>(3))?,
-            false, // TODO: unharcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
+            false, // TODO: de-hardcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
         ));
     }
     debug!("Listed {} rows", ids.len());
@@ -822,10 +823,13 @@ fn to_qualified_uids(
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
         let raw = row.get::<Vec<u8>, _>(2);
-        let attrs: Attributes = serde_json::from_slice(&raw)
-            .context("failed deserializing attributes")
-            .map_err(|e| KmsError::DatabaseError(e.to_string()))?;
-
+        let attrs = if !raw.is_empty() {
+            let attrs: Attributes =
+                serde_json::from_slice(&raw).context("failed deserializing attributes")?;
+            attrs
+        } else {
+            Attributes::default()
+        };
         uids.push((
             row.get::<String, _>(0),
             state_from_string(&row.get::<String, _>(1))?,

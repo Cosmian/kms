@@ -93,10 +93,7 @@ impl CreateKeyAction {
             }
         };
 
-        println!(
-            "The symmetric key was created with id: {}.",
-            unique_identifier
-        );
+        println!("The symmetric key was created with id: {unique_identifier}.");
         Ok(())
     }
 }

@@ -2,6 +2,7 @@ use cosmian_kmip::{
     error::KmipError,
     kmip::{
         data_to_encrypt::DataToEncrypt,
+        kmip_data_structures::KeyWrappingSpecification,
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Decrypt, Encrypt, Import, Revoke},
         kmip_types::{Attributes, KeyWrapType, RevocationReason},
@@ -89,6 +90,7 @@ pub fn build_import_object_request(
     attributes: Attributes,
     unique_identifier: &str,
     replace_existing: Option<bool>,
+    _key_wrapping_specification: Option<KeyWrappingSpecification>,
 ) -> Import {
     let key_wrap_type = if object.key_wrapping_data().is_some() {
         Some(KeyWrapType::AsRegistered)

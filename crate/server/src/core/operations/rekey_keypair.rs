@@ -88,8 +88,7 @@ pub async fn rekey_keypair(
             .await
         }
         Some(other) => kms_bail!(KmsError::NotSupported(format!(
-            "The rekey of a key pair for algorithm: {:?} is not yet supported",
-            other
+            "The rekey of a key pair for algorithm: {other:?} is not yet supported"
         ))),
         None => kms_bail!(KmsError::InvalidRequest(
             "The cryptographic algorithm must be specified in the private key attributes for key \

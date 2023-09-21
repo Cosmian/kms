@@ -1,6 +1,6 @@
-The server can serve requests using either plaintext HTTP or HTTPS. 
+The server can serve requests using either plaintext HTTP or HTTPS.
 
-When running in a zero-trust environment, the KMS server should be started using HTTPS. 
+When running in a zero-trust environment, the KMS server should be started using HTTPS.
 Check the [running in a zero-trust environment](./zero_trust.md) section for more information.
 
 To enable TLS, one can provide certificates - on the command line or via the bootstrap server - or use the certificates bot `certbot` to fetch and renew the certificates automatically.
@@ -16,10 +16,11 @@ There are 2 ways to provide the PKCS#12 file to the server:
 
 A PKCS#12 file should be provided to the KMS server via the bootstrap server in a [zero-trust environment](./zero_trust.md).
 
-##### Configuring HTTPS via the bootstrap server
+#### Configuring HTTPS via the bootstrap server
+
 Configuring HTTPS via the bootstrap TLS connection is described in [Bootstrapping the KMS server start](bootstrap.md).
 
-##### Configuring HTTPS via the command line
+#### Configuring HTTPS via the command line
 
 Specify the certificate name and mount the file to docker.
 

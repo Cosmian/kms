@@ -30,6 +30,7 @@ pub enum DbParams {
 
 impl DbParams {
     /// Return the name of the database type
+    #[must_use]
     pub fn db_name(&self) -> &str {
         match &self {
             DbParams::Sqlite(_) => "Sqlite",

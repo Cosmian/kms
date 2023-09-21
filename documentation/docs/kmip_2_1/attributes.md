@@ -1,4 +1,3 @@
-
 In [chapter 4](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html#_Toc32239322), the KMIP 2.1 specifications specifies a list of 63 Attributes, mostly made of enumerations and data structures, often nested in each other. Despite this impressive list, and as expected in such a large specification, KMIP allows for extensions to support new cryptographic schemes such as the ones enabled by Cosmian.
 
 Extensions in KMIP consist mostly in augmenting enumerations with new values and attributing a specific prefix values, usually `0x8880` to the new variants.

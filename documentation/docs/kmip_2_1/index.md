@@ -16,6 +16,7 @@ In addition, the KMS server will automatically add a system tag to objects based
 - `_pk`: for a public key
 - `_kk`: for a symmetric key
 - `_uk`: for a Covercrypt user decryption key
+- `_cert`: for a X509 certificate
 
 Since there is no provision in the KMIP 2.1 specification for tagging. The Cosmian KMS server implements tagging using the following KMIP 2.1 extensions:
 

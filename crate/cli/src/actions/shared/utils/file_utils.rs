@@ -38,17 +38,22 @@ where
 }
 
 pub(crate) fn determine_key_object_type(object: &Object) -> Result<ObjectType, CliError> {
-    let key_block = object.key_block().context("invalid key block")?;
-    Ok(match key_block.key_format_type {
-        KeyFormatType::CoverCryptSecretKey => ObjectType::PrivateKey,
-        KeyFormatType::CoverCryptPublicKey => ObjectType::PublicKey,
-        KeyFormatType::TransparentSymmetricKey => ObjectType::SymmetricKey,
-        KeyFormatType::TransparentECPrivateKey => ObjectType::PrivateKey,
-        KeyFormatType::TransparentECPublicKey => ObjectType::PublicKey,
-        KeyFormatType::TransparentDHPrivateKey => ObjectType::PrivateKey,
-        KeyFormatType::TransparentDHPublicKey => ObjectType::PublicKey,
-        x => cli_bail!("not a supported key format: {}", x),
-    })
+    match object.object_type() {
+        ObjectType::Certificate => Ok(ObjectType::Certificate),
+        _ => {
+            let key_block = object.key_block().context("invalid key block")?;
+            Ok(match key_block.key_format_type {
+                KeyFormatType::CoverCryptSecretKey => ObjectType::PrivateKey,
+                KeyFormatType::CoverCryptPublicKey => ObjectType::PublicKey,
+                KeyFormatType::TransparentSymmetricKey => ObjectType::SymmetricKey,
+                KeyFormatType::TransparentECPrivateKey => ObjectType::PrivateKey,
+                KeyFormatType::TransparentECPublicKey => ObjectType::PublicKey,
+                KeyFormatType::TransparentDHPrivateKey => ObjectType::PrivateKey,
+                KeyFormatType::TransparentDHPublicKey => ObjectType::PublicKey,
+                x => cli_bail!("not a supported key format: {}", x),
+            })
+        }
+    }
 }
 
 // Read an object from a KMIP jSON TTLV file

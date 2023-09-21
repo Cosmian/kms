@@ -106,7 +106,7 @@ pub async fn rekey_keypair_cover_crypt(
             owner,
             params,
         )
-        .await?
+        .await?;
     }
 
     Ok(ReKeyKeyPairResponse {
@@ -132,7 +132,7 @@ fn rotate_policy(
                 ErrorReason::Unsupported_Cryptographic_Parameters,
                 e.to_string(),
             )
-        })?
+        })?;
     }
     trace!("The new policy is : {policy:#?}");
     Ok(policy)

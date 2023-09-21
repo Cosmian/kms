@@ -90,7 +90,7 @@ impl LocateObjectsAction {
         let response = kms_rest_client.locate(locate).await?;
         if let Some(identifiers) = response.unique_identifiers {
             for identifier in identifiers {
-                println!("{}", identifier);
+                println!("{identifier}");
             }
         }
 

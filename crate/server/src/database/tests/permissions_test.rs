@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
 
-use crate::{database::Database, log_utils::log_init, result::KResult};
+use crate::{database::Database, result::KResult};
 
 pub async fn permissions<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),

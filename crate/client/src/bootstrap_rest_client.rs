@@ -125,7 +125,7 @@ impl BootstrapRestClient {
                 path: path
                     .to_str()
                     .ok_or_else(|| {
-                        RestClientError::Default(format!("Invalid sqlite path: {:?}", path))
+                        RestClientError::Default(format!("Invalid sqlite path: {path:?}"))
                     })?
                     .to_string(),
             }),
@@ -147,7 +147,7 @@ impl BootstrapRestClient {
                 path: path
                     .to_str()
                     .ok_or_else(|| {
-                        RestClientError::Default(format!("Invalid sqlite-enc path: {:?}", path))
+                        RestClientError::Default(format!("Invalid sqlite-enc path: {path:?}"))
                     })?
                     .to_string(),
             }),

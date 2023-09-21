@@ -8,6 +8,7 @@ use cosmian_kms_utils::{
         attributes::access_policy_from_attributes, locate::compare_cover_crypt_attributes,
     },
 };
+use tracing::trace;
 
 use crate::{core::KMS, result::KResult};
 
@@ -18,15 +19,18 @@ pub async fn locate(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<LocateResponse> {
+    trace!("Locate request: {:?}", request);
     // Find all the objects that match the attributes
     let uids_attrs = kms
         .db
         .find(Some(&request.attributes), state, user, false, params)
         .await?;
+    trace!("Found {} objects: {:?}", uids_attrs.len(), uids_attrs);
     // Filter the uids that match the access policy
     let mut uids = Vec::new();
     if !uids_attrs.is_empty() {
         for (uid, _, attributes, _) in uids_attrs {
+            trace!("UID: {:?}, Attributes: {:?}", uid, attributes);
             // If there is no access policy, do not match and add, otherwise compare the access policies
             if access_policy_from_attributes(&request.attributes).is_err()
                 || compare_cover_crypt_attributes(&attributes, &request.attributes)?
@@ -36,6 +40,7 @@ pub async fn locate(
         }
     }
 
+    trace!("UIDs: {:?}", uids);
     let response = LocateResponse {
         located_items: Some(uids.len() as i32),
         unique_identifiers: if uids.is_empty() { None } else { Some(uids) },
