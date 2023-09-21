@@ -247,6 +247,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
+    // let tmp_path = std::path::Path::new("./");
 
     let input_file = PathBuf::from("test_data/plain.txt");
     let output_file = tmp_path.join("plain.enc");
@@ -292,7 +293,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
 
     debug!("\n\nExport Private key wrapping with X509 certificate");
     let private_key_wrapped = tmp_path
-        .join("private_key.wrapped")
+        .join("wrapped_private_key_exported.json")
         .to_str()
         .unwrap()
         .to_owned();
@@ -317,6 +318,35 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         None,
         true,
         true,
+    )?;
+
+    debug!("\n\nImport a wrapped Private key but let is save it `as registered` into server");
+    let wrapped_private_key_uid = import(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        &private_key_wrapped,
+        CertificateInputFormat::TTLV,
+        None,
+        None,
+        false,
+        false,
+    )?;
+
+    debug!("\n\nExport the wrapped Private key without unwrapping");
+    let private_key_wrapped_as_is = tmp_path
+        .join("wrapped_private_key.json")
+        .to_str()
+        .unwrap()
+        .to_owned();
+    export(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        None,
+        &wrapped_private_key_uid,
+        &private_key_wrapped_as_is,
+        CertificateExportFormat::TTLV,
+        None,
+        false,
     )?;
 
     debug!("\n\nDecrypt using Private key");

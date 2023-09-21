@@ -266,7 +266,7 @@ pub async fn test_certify() -> Result<(), CliError> {
         export(
             &ctx.owner_cli_conf_path,
             SUB_COMMAND,
-            Some(&["_cert", "_ca=RootCA"]),
+            Some(&["_cert", "_cert_ca=RootCA"]),
             &certificate_id,
             &export_filename,
             CertificateExportFormat::PEM,
@@ -282,7 +282,7 @@ pub async fn test_certify() -> Result<(), CliError> {
         export(
             &ctx.owner_cli_conf_path,
             SUB_COMMAND,
-            Some(&["_cert", "_ca=SubCA"]),
+            Some(&["_cert", "_cert_ca=SubCA"]),
             &certificate_id,
             &export_filename,
             CertificateExportFormat::PEM,

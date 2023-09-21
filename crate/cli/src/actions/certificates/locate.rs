@@ -51,7 +51,10 @@ pub(crate) async fn locate_ca_cert(
 ) -> Result<Vec<u8>, CliError> {
     let mut my_search_attributes = search_attributes.clone();
 
-    set_tags(&mut my_search_attributes, [&format!("_ca={issuer_name}")])?;
+    set_tags(
+        &mut my_search_attributes,
+        [&format!("_cert_ca={issuer_name}")],
+    )?;
 
     debug!("my_search_attributes: {:?}", my_search_attributes);
     let locate_request = Locate {

@@ -61,7 +61,7 @@ pub(crate) async fn locate_ca_private_key(
 ) -> KResult<String> {
     locate_by_tags(
         ObjectType::PrivateKey,
-        &[&format!("_ca={ca_subject_common_name}")],
+        &[&format!("_cert_ca={ca_subject_common_name}")],
         kms,
         owner,
         params,
@@ -119,7 +119,7 @@ pub(crate) async fn locate_ca_certificate(
 ) -> KResult<String> {
     locate_by_tags(
         ObjectType::Certificate,
-        &[&format!("_ca={ca_subject_common_name}")],
+        &[&format!("_cert_ca={ca_subject_common_name}")],
         kms,
         owner,
         params,
@@ -127,29 +127,6 @@ pub(crate) async fn locate_ca_certificate(
     .await
 }
 
-/// The function `locate_ca_certificate_by_spki` is used to locate a CA certificate
-/// by its subject common name and SPKI (Subject Public Key Info). In particular, it avoids retrieving more than 1 CA certificate when multiple CA certificates cohabit.
-///
-/// Arguments:
-///
-/// * `ca_subject_common_name`: The `ca_subject_common_name` parameter is a string
-/// that represents the common name of the CA (Certificate Authority) certificate.
-/// * `ca_spki`: The `ca_spki` parameter is the Subject Public Key Info (SPKI) of
-/// the CA certificate. It is a string representation of the public key used by the
-/// CA to sign certificates.
-/// * `kms`: The `kms` parameter is of type `KMS` and is used for key management
-/// operations. It is likely a dependency that provides functionality related to
-/// encryption, decryption, and key generation.
-/// * `owner`: The `owner` parameter is a string that represents the owner of the CA
-/// certificate. It is used to identify the specific owner or entity that the
-/// certificate belongs to.
-/// * `params`: The `params` parameter is an optional reference to an
-/// `ExtraDatabaseParams` struct. It contains additional parameters that can be used
-/// for locating the CA certificate.
-///
-/// Returns:
-///
-/// a result of type `KResult<String>`.
 pub(crate) async fn locate_ca_certificate_by_spki(
     ca_subject_common_name: &str,
     ca_spki: &str,
@@ -160,7 +137,7 @@ pub(crate) async fn locate_ca_certificate_by_spki(
     locate_by_tags(
         ObjectType::Certificate,
         &[
-            &format!("_ca={ca_subject_common_name}"),
+            &format!("_cert_ca={ca_subject_common_name}"),
             &format!("_cert_spki={ca_spki}"),
         ],
         kms,

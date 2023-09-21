@@ -63,7 +63,7 @@ fn parse_certificate_and_create_tags(
     }
     if x509.is_ca() {
         let subject_common_name = get_common_name(&x509.subject)?;
-        let ca_tag = format!("_ca={subject_common_name}");
+        let ca_tag = format!("_cert_ca={subject_common_name}");
         debug!("Add CA system tag: {}", &ca_tag);
         tags.insert(ca_tag);
     }
@@ -240,7 +240,7 @@ pub async fn import(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ImportResponse> {
-    debug!("Entering import KMIP operation");
+    debug!("Entering import KMIP operation: {:?}", request);
     // Unique identifiers starting with `[` are reserved for queries on tags
     // see tagging
     // For instance, a request for uniquer identifier `[tag1]` will

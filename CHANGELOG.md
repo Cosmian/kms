@@ -22,8 +22,10 @@ All notable changes to this project will be documented in this file.
       - the system tag `_cert` on `Certificate` object
       - the system tag `_cert_uid=<certificate_uid>` where `certificate_uid` is used as the link between public/private key objects and the related certificate object
       - the system tag `_cert_spki=<Subject Public Key Info>` on `Certificate` object where SPKI refers to [RFC 5280](https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.2.7). The SPKI value identifies uniquely the underlying certificate
-      - the system tag `_ca=<Subject Common Name>` on CA `Certificate` object
-    - import X509 certificate as PEM and also public key and private key
+      - the system tag `_cert_ca=<Subject Common Name>` on CA `Certificate` object
+    - import X509 certificate as PEM and also import private key as PEM
+    - export generic KMIP key `wrapped` by X509 certificate
+    - import a wrapped key with unwrapping on the fly
     - encrypt with X509 certificate and decrypt with PKCS8 private key
   - in `ckms`, add:
     - create/destroy certificate
