@@ -23,7 +23,6 @@ use crate::{
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum CertificateExportFormat {
-    WRAPPED,
     TTLV,
     PEM,
     PKCS12,
@@ -143,10 +142,6 @@ impl ExportCertificateAction {
                 )
                 .await?;
                 write_bytes_to_file(&pkcs12_bytes, &self.certificate_file)?;
-            }
-            CertificateExportFormat::WRAPPED => {
-                // save it to a file
-                write_bytes_to_file(&certificate_bytes, &self.certificate_file)?;
             }
         };
 

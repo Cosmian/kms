@@ -12,6 +12,7 @@ use crate::{
     },
 };
 
+#[allow(clippy::too_many_arguments)]
 pub fn import(
     cli_conf_path: &str,
     sub_command: &str,
@@ -19,6 +20,7 @@ pub fn import(
     format: CertificateInputFormat,
     key_id: Option<String>,
     tags: Option<&[&str]>,
+    unwrap: bool,
     replace_existing: bool,
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -26,6 +28,9 @@ pub fn import(
     let mut args: Vec<String> = vec!["import".to_owned(), key_file.to_owned()];
     if let Some(key_id) = key_id {
         args.push(key_id);
+    }
+    if unwrap {
+        args.push("-u".to_owned());
     }
     if replace_existing {
         args.push("-r".to_owned());
@@ -72,6 +77,7 @@ pub async fn test_certificate_import() -> Result<(), CliError> {
         None,
         None,
         false,
+        false,
     )?;
 
     // import as PEM
@@ -82,6 +88,7 @@ pub async fn test_certificate_import() -> Result<(), CliError> {
         CertificateInputFormat::PEM,
         None,
         Some(&["import_cert"]),
+        false,
         false,
     )?;
 

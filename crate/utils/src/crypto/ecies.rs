@@ -172,8 +172,6 @@ impl EncryptionSystem for EciesEncryption {
                 let ed_public_key = Ed25519PublicKey::try_from_bytes(public_key_bytes)?;
                 debug!("encrypt: convert ED25519 public key to X25519 public key");
                 let public_key = X25519PublicKey::from_ed25519_public_key(&ed_public_key);
-                debug!("EciesSalsaSealBox::encrypt");
-
                 EciesSalsaSealBox::encrypt(&mut *rng, &public_key, &plaintext, None)?
             }
             Id::X25519 => {
@@ -181,8 +179,6 @@ impl EncryptionSystem for EciesEncryption {
                 let public_key_bytes: [u8; X25519_PUBLIC_KEY_LENGTH] =
                     self.public_key_bytes.clone().try_into()?;
                 let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
-                debug!("EciesSalsaSealBox::encrypt");
-
                 EciesSalsaSealBox::encrypt(&mut *rng, &public_key, &plaintext, None)?
             }
             _ => {
@@ -192,7 +188,7 @@ impl EncryptionSystem for EciesEncryption {
         };
 
         debug!(
-            "Encrypted data with public key {} of len (CT/Enc): {}/{}",
+            "Encrypted data with public key {} of len (plaintext/ciphertext): {}/{}",
             &self.public_key_uid,
             plaintext.len(),
             ciphertext.len(),
@@ -295,6 +291,7 @@ impl DecryptionSystem for EciesDecryption {
                 EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?
             }
             RecommendedCurve::CURVE25519 => {
+                debug!("decrypt: match CURVE25519");
                 let private_key_bytes: [u8; CURVE_25519_SECRET_LENGTH] =
                     self.private_key_bytes.clone().try_into().map_err(|_| {
                         KmipUtilsError::ConversionError(
@@ -313,7 +310,7 @@ impl DecryptionSystem for EciesDecryption {
         };
 
         debug!(
-            "Decrypted data with user key {} of len (CT/Enc): {}/{}",
+            "Decrypted data with user key {} of len (plaintext/ciphertext): {}/{}",
             &self.private_key_uid,
             plaintext.len(),
             ciphertext.len(),

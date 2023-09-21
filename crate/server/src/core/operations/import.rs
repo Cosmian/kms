@@ -22,7 +22,7 @@ use openssl::{
     sha::Sha1,
 };
 use tracing::{debug, warn};
-use x509_parser::{parse_x509_certificate, prelude::parse_x509_pem};
+use x509_parser::{num_bigint::BigUint, parse_x509_certificate, prelude::parse_x509_pem};
 
 use super::wrapping::unwrap_key;
 use crate::{
@@ -79,7 +79,10 @@ fn get_private_key_object(
         key_block: KeyBlock {
             key_format_type: KeyFormatType::TransparentECPrivateKey,
             key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(private_key_bytes),
+                key_material: KeyMaterial::TransparentECPrivateKey {
+                    recommended_curve,
+                    d: BigUint::from_bytes_be(&private_key_bytes),
+                },
                 attributes: Some(Attributes {
                     activation_date: None,
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
@@ -110,7 +113,7 @@ fn get_private_key_object(
     }
 }
 
-fn create_spki_tag(tags: &mut HashSet<String>, private_key: &EcKey<Private>) -> KResult<String> {
+fn create_ec_spki_tag(tags: &mut HashSet<String>, private_key: &EcKey<Private>) -> KResult<String> {
     debug!("create_spki_tag: entering");
     let mut ctx = openssl::bn::BigNumContext::new().unwrap();
     let group = private_key.group();
@@ -119,19 +122,46 @@ fn create_spki_tag(tags: &mut HashSet<String>, private_key: &EcKey<Private>) -> 
             .public_key()
             .to_bytes(group, PointConversionForm::UNCOMPRESSED, &mut ctx)?;
 
-    // Compute SPKI as described in https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.2: implementing first method
+    create_spki_tag(tags, &public_key_bytes)
+}
+
+fn create_spki_tag(tags: &mut HashSet<String>, public_key_bytes: &[u8]) -> KResult<String> {
+    // Compute SPKI as described in <https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.2>: implementing first method
     debug!(
         "create_spki_tag: public_key_bytes:{}",
-        hex::encode(&public_key_bytes)
+        hex::encode(public_key_bytes)
     );
     let mut sha1 = Sha1::default();
-    sha1.update(&public_key_bytes);
+    sha1.update(public_key_bytes);
     let spki = hex::encode(sha1.finish());
     let spki_tag = format!("_cert_spki={spki}");
 
     debug!("create_spki_tag: add spki system tag: {spki_tag}");
     tags.insert(spki_tag);
     Ok(spki)
+}
+
+async fn create_certificate_link(
+    spki: &str,
+    kms: &KMS,
+    owner: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> Option<Vec<Link>> {
+    match locate_certificate_by_spki(spki, kms, owner, params).await {
+        Ok(certificate_id) => {
+            debug!("import_pem: add Link with certificate_id: {certificate_id:?}");
+            let link = Link {
+                link_type: LinkType::CertificateLink,
+                linked_object_identifier: LinkedObjectIdentifier::TextString(certificate_id),
+            };
+            Some(vec![link])
+        }
+        Err(e) => {
+            warn!("No certificate found matching the private key SPKI: {spki:?}. Error: {e:?}");
+            // continue
+            None
+        }
+    }
 }
 
 async fn import_pem(
@@ -160,27 +190,9 @@ async fn import_pem(
                 debug!("import_pem: convert private key to EcKey");
 
                 // Create tag from public key sha1 digest
-                let spki = create_spki_tag(tags, &private_key)?;
-                let links = match locate_certificate_by_spki(&spki, kms, owner, params).await {
-                    Ok(certificate_id) => {
-                        debug!("import_pem: add Link with certificate_id: {certificate_id:?}");
-                        let link = Link {
-                            link_type: LinkType::CertificateLink,
-                            linked_object_identifier: LinkedObjectIdentifier::TextString(
-                                certificate_id,
-                            ),
-                        };
-                        Some(vec![link])
-                    }
-                    Err(e) => {
-                        warn!(
-                            "No certificate found matching the private key SPKI: {spki:?}. Error: \
-                             {e:?}"
-                        );
-                        // continue
-                        None
-                    }
-                };
+                let spki = create_ec_spki_tag(tags, &private_key)?;
+                let links = create_certificate_link(&spki, kms, owner, params).await;
+
                 let recommended_curve = match private_key.group().curve_name() {
                     Some(nid) => match nid {
                         Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
@@ -201,12 +213,16 @@ async fn import_pem(
                 get_private_key_object(private_key_bytes, recommended_curve, links)
             }
             Id::ED25519 => {
+                let spki = create_spki_tag(tags, &pkey.raw_public_key()?)?;
+                let links = create_certificate_link(&spki, kms, owner, params).await;
                 let private_key_bytes = pkey.raw_private_key()?;
-                get_private_key_object(private_key_bytes, RecommendedCurve::CURVEED25519, None)
+                get_private_key_object(private_key_bytes, RecommendedCurve::CURVEED25519, links)
             }
             Id::X25519 => {
+                let spki = create_spki_tag(tags, &pkey.raw_public_key()?)?;
+                let links = create_certificate_link(&spki, kms, owner, params).await;
                 let private_key_bytes = pkey.raw_private_key()?;
-                get_private_key_object(private_key_bytes, RecommendedCurve::CURVE25519, None)
+                get_private_key_object(private_key_bytes, RecommendedCurve::CURVE25519, links)
             }
             _ => kms_bail!("Private key id not supported: {:?}", pkey.id()),
         }

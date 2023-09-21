@@ -69,6 +69,23 @@ pub(crate) async fn locate_ca_private_key(
     .await
 }
 
+pub(crate) async fn locate_by_spki(
+    unique_identifier: &str,
+    object_type: ObjectType,
+    kms: &KMS,
+    owner: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<String> {
+    locate_by_tags(
+        object_type,
+        &[&format!("_cert_spki={unique_identifier}")],
+        kms,
+        owner,
+        params,
+    )
+    .await
+}
+
 pub(crate) async fn locate_ca_certificate(
     ca_subject_common_name: &str,
     kms: &KMS,

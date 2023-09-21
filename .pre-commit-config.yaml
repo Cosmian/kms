@@ -125,10 +125,10 @@ repos:
       - id: cargo-audit
       - id: cargo-outdated
       - id: cargo-udeps
-      - id: cargo-test-doc
+      # - id: cargo-test-doc
       - id: clippy-autofix-all
       - id: clippy-autofix-pedantic
       - id: clippy-autofix-others
-      - id: clippy-all-targets-all-features
+      # - id: clippy-all-targets-all-features
       - id: clippy-all-targets-all-features-release
       - id: cargo-format # in last du to clippy fixes

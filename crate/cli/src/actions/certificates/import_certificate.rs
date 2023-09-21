@@ -1,10 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::kmip::{
-    kmip_objects::{Object, ObjectType},
-    kmip_types::CertificateType,
-};
+use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::CertificateType};
 use cosmian_kms_client::KmsRestClient;
 use tracing::{debug, trace};
 
@@ -45,6 +42,15 @@ pub struct ImportCertificateAction {
     #[clap(long = "format", short = 'f')]
     input_format: CertificateInputFormat,
 
+    /// Unwrap the object if it is wrapped before storing it
+    #[clap(
+        long = "unwrap",
+        short = 'u',
+        required = false,
+        default_value = "false"
+    )]
+    unwrap: bool,
+
     /// Replace an existing certificate under the same id
     #[clap(
         required = false,
@@ -70,11 +76,6 @@ impl ImportCertificateAction {
                 let object = read_key_from_file(&self.certificate_file)?;
                 trace!("CLI: read key from file OK");
 
-                if object.object_type() != ObjectType::Certificate {
-                    return Err(CliError::InvalidRequest(
-                        "Object type MUST be equal to Certificate".to_string(),
-                    ))
-                }
                 object
             }
             CertificateInputFormat::PEM => {
@@ -93,7 +94,7 @@ impl ImportCertificateAction {
             kms_rest_client,
             self.certificate_id.clone(),
             object,
-            false,
+            self.unwrap,
             self.replace_existing,
             &self.tags,
         )

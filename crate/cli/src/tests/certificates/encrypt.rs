@@ -7,7 +7,10 @@ use tracing::debug;
 
 use super::SUB_COMMAND;
 use crate::{
-    actions::{certificates::CertificateInputFormat, shared::utils::read_bytes_from_file},
+    actions::{
+        certificates::{CertificateExportFormat, CertificateInputFormat},
+        shared::utils::read_bytes_from_file,
+    },
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
@@ -151,8 +154,6 @@ async fn test_certificate_import_encrypt(
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
-    // let tags = &["smallstep_certificate"];
-
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
@@ -164,6 +165,7 @@ async fn test_certificate_import_encrypt(
         None,
         Some(tags),
         false,
+        false,
     )?;
 
     let _subca_certificate_id = import(
@@ -174,6 +176,7 @@ async fn test_certificate_import_encrypt(
         None,
         Some(tags),
         false,
+        false,
     )?;
 
     let certificate_id = import(
@@ -183,6 +186,7 @@ async fn test_certificate_import_encrypt(
         CertificateInputFormat::PEM,
         None,
         Some(tags),
+        false,
         false,
     )?;
 
@@ -203,6 +207,7 @@ async fn test_certificate_import_encrypt(
         CertificateInputFormat::PEM,
         None,
         Some(tags),
+        false,
         false,
     )?;
 
@@ -261,6 +266,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         None,
         Some(tags),
         false,
+        false,
     )?;
 
     debug!("\n\nEncrypt with certificate");
@@ -281,6 +287,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         None,
         Some(tags),
         false,
+        false,
     )?;
 
     debug!("\n\nExport Private key wrapping with X509 certificate");
@@ -295,9 +302,21 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         None,
         &private_key_id,
         &private_key_wrapped,
-        crate::actions::certificates::CertificateExportFormat::WRAPPED,
+        CertificateExportFormat::TTLV,
         Some(certificate_id),
         false,
+    )?;
+
+    debug!("\n\nImport a wrapped Private key but unwrap it into server");
+    import(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        &private_key_wrapped,
+        CertificateInputFormat::TTLV,
+        None,
+        None,
+        true,
+        true,
     )?;
 
     debug!("\n\nDecrypt using Private key");

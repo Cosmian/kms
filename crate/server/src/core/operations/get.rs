@@ -43,6 +43,7 @@ pub(crate) async fn get(
         Some(kw) => {
             match kw {
                 KeyWrapType::NotWrapped => {
+                    debug!("get: unwrapping object with {kw:?}");
                     let object_type = owm.object.object_type();
                     let key_block = owm.object.key_block_mut()?;
                     unwrap_key(object_type, key_block, kms, user, params).await?;
@@ -55,7 +56,7 @@ pub(crate) async fn get(
         None => {
             if let Some(kws) = &request.key_wrapping_specification {
                 // wrap
-                debug!("get: Wrapping object with {kws:?}");
+                println!("get: wrapping object with {kws:?}");
                 let key_block = owm.object.key_block_mut()?;
                 wrap_key(&owm.id, key_block, kws, kms, user, params).await?;
             }

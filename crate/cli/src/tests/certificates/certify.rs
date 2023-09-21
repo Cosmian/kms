@@ -80,7 +80,6 @@ pub fn export(
     wrap_key_id: Option<String>,
     allow_revoked: bool,
 ) -> Result<(), CliError> {
-    let id = wrap_key_id.unwrap_or_default();
     let mut args = vec!["export"];
     match tags_args {
         Some(tags) => {
@@ -111,13 +110,11 @@ pub fn export(
             args.push("--format");
             args.push("ttlv");
         }
-        CertificateExportFormat::WRAPPED => {
-            args.push("--format");
-            args.push("wrapped");
-            args.push("--wrap-key-id");
-            args.push(&id);
-        }
     };
+    if let Some(wki) = &wrap_key_id {
+        args.push("--wrap-key-id");
+        args.push(wki);
+    }
     if allow_revoked {
         args.push("--allow-revoked");
     }
