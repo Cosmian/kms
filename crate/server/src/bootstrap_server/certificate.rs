@@ -11,10 +11,13 @@ use ratls::generate_ratls_cert;
 
 use crate::{error, result::KResult};
 
-pub(crate) fn generate_ratls_pkcs12(common_name: &str, pkcs12_password: &str) -> KResult<Pkcs12> {
+pub(crate) fn generate_ratls_pkcs12(
+    subject: &str,
+    expiration_days: u64,
+    pkcs12_password: &str,
+) -> KResult<Pkcs12> {
     // TODO: design a way to make all certificate issuer args customizable
-    let subject = format!("CN={common_name},O=Cosmian Tech,C=FR,L=Paris,ST=Ile-de-France");
-    let (private_key, cert) = generate_ratls_cert(&subject, vec![], 365, None, false) // TODO: true
+    let (private_key, cert) = generate_ratls_cert(subject, vec![], expiration_days, None, true)
         .map_err(|e| error::KmsError::RatlsError(e.to_string()))?;
 
     std::fs::write("/tmp/cert.pem", &cert)?;
@@ -25,7 +28,7 @@ pub(crate) fn generate_ratls_pkcs12(common_name: &str, pkcs12_password: &str) ->
 
     // Wrap it in a PKCS12 container
     let pkcs12 = Pkcs12::builder()
-        .name(common_name)
+        .name(subject)
         .pkey(&private_key)
         .cert(&cert)
         .build2(pkcs12_password)?;

@@ -173,14 +173,23 @@ pub async fn start_https_bootstrap_server(
         pkcs12_password_received: RwLock::new(None),
     });
 
-    let common_name = &bootstrap_server
-        .server_params
-        .bootstrap_server_params
-        .bootstrap_server_common_name;
+    // Define an empty password for the RATLS PCKS12 mail.
+    // TODO: should we use a PKCS12 here? If so, why an empty password? @bgrieder
+    let password = "";
 
-    // Generate a self-signed certificate
-    let pkcs12 = generate_ratls_pkcs12(common_name, "")?;
-    let p12 = pkcs12.parse2("")?;
+    // Generate a RATLS certificate
+    let pkcs12 = generate_ratls_pkcs12(
+        &bootstrap_server
+            .server_params
+            .bootstrap_server_params
+            .bootstrap_server_subject,
+        bootstrap_server
+            .server_params
+            .bootstrap_server_params
+            .bootstrap_server_expiration_days,
+        password,
+    )?;
+    let p12 = pkcs12.parse2(password)?;
     // Create and configure an SSL acceptor with the certificate and key
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
     if let Some(pkey) = &p12.pkey {

@@ -54,8 +54,12 @@ impl fmt::Debug for ClapConfig {
                 &self.bootstrap_server.bootstrap_server_port,
             )
             .field(
-                "bootstrap server CN",
-                &self.bootstrap_server.bootstrap_server_common_name,
+                "bootstrap server subject",
+                &self.bootstrap_server.bootstrap_server_subject,
+            )
+            .field(
+                "bootstrap server days before expiration",
+                &self.bootstrap_server.bootstrap_server_expiration_days,
             )
         } else {
             &mut x
