@@ -43,7 +43,7 @@ async fn locate_by_tags(
                 Ok(uid)
             }
             _ => Err(KmsError::InvalidRequest(format!(
-                "locate_by_tags: More than one CA {object_type:?} found for tags '{tags:?}'"
+                "locate_by_tags: More than one object {object_type:?} found for tags '{tags:?}'"
             ))),
         },
 
@@ -70,20 +70,45 @@ pub(crate) async fn locate_ca_private_key(
 }
 
 pub(crate) async fn locate_by_spki(
-    unique_identifier: &str,
+    spki: &str,
     object_type: ObjectType,
     kms: &KMS,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<String> {
-    locate_by_tags(
-        object_type,
-        &[&format!("_cert_spki={unique_identifier}")],
-        kms,
-        owner,
-        params,
-    )
-    .await
+    let tags = &[&format!("_cert_spki={spki}")];
+    debug!("locate_by_spki: tags: {tags:?}");
+    // Search key matching this vendor attributes
+    let mut search_attributes = Attributes {
+        object_type: Some(object_type),
+        ..Attributes::default()
+    };
+    set_tags(&mut search_attributes, tags)?;
+
+    let locate_request = Locate {
+        attributes: search_attributes,
+        ..Locate::default()
+    };
+    let locate_response = kms.locate(locate_request, owner, params).await?;
+    match locate_response.unique_identifiers {
+        Some(uids) => match uids.len() {
+            0 => Err(KmsError::ItemNotFound(format!(
+                "locate_by_spki: {object_type:?} with tags '{tags:?}' not found"
+            ))),
+            _ => {
+                let uid = uids[0].clone();
+                debug!(
+                    "locate_by_spki: Found {object_type:?} matching tags '{tags:?}' with unique \
+                     identifier: {uid}",
+                );
+                Ok(uid)
+            }
+        },
+
+        None => Err(KmsError::ItemNotFound(format!(
+            "locate_by_spki: {object_type:?} with tags '{tags:?}' not found (None)"
+        ))),
+    }
 }
 
 pub(crate) async fn locate_ca_certificate(
