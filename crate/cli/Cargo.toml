@@ -26,6 +26,7 @@ hex = { workspace = true }
 libsgx = { path = "../libsgx" }
 openssl = { workspace = true }
 rand = "0.8"
+ratls = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }

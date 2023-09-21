@@ -8,13 +8,15 @@ use std::{
 use cosmian_kms_utils::access::SuccessResponse;
 use http::{HeaderMap, HeaderValue, StatusCode};
 use openssl::x509::X509;
-use ratls::{get_server_certificate, verify_ratls};
+use ratls::{
+    verify::{get_server_certificate, verify_ratls},
+    TeeMeasurement,
+};
 use reqwest::{
     multipart::{Form, Part},
     Body, Certificate, Client, ClientBuilder, Identity, Response,
 };
 use serde::{Deserialize, Serialize};
-use tokio::task::spawn_blocking;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
@@ -180,6 +182,7 @@ impl BootstrapRestClient {
         bearer_token: Option<&str>,
         ssl_client_pkcs12_path: Option<&str>,
         ssl_client_pkcs12_password: Option<&str>,
+        measurement: Option<TeeMeasurement>,
     ) -> Result<Self, RestClientError> {
         let server_url = match bootstrap_server_url.strip_suffix('/') {
             Some(s) => s.to_string(),
@@ -213,38 +216,38 @@ impl BootstrapRestClient {
             None => builder,
         };
 
-        // Get and verify the ratls certitificate in order to use it as the only valid root CA
+        // Get and verify the ratls certificate in order to use it as the only valid root CA
         let bootstrap_server_url = Url::parse(bootstrap_server_url)?;
 
         let ratls_cert = get_server_certificate(
             bootstrap_server_url
                 .host_str()
                 .ok_or(RestClientError::Default(
-                    "Missing 'hostname' in boostrap server url".to_string(),
+                    "Missing 'hostname' in bootstrap server url".to_string(),
                 ))?,
             bootstrap_server_url.port().unwrap_or(443) as u32,
         )
-        .map_err(|e| RestClientError::RatlsError(e.to_string()))?;
+        .map_err(|e| RestClientError::RatlsError(format!("Can't get RATLS certificat: {e}")))?;
 
         let ratls_cert = X509::from_der(&ratls_cert)
-            .map_err(|e| RestClientError::RatlsError(e.to_string()))?
+            .map_err(|e| {
+                RestClientError::RatlsError(format!("Can't convert certificate to DER: {e}"))
+            })?
             .to_pem()
-            .map_err(|e| RestClientError::RatlsError(e.to_string()))?;
+            .map_err(|e| {
+                RestClientError::RatlsError(format!("Can't convert certificate to PEM: {e}"))
+            })?;
 
-        // TODO: use measurements here (from where? conf?)
-        let ratls_cert_copy = ratls_cert.clone();
-        spawn_blocking(move || {
-            verify_ratls(&ratls_cert_copy, None, None, None)
-                .map_err(|e| RestClientError::RatlsError(e.to_string()))
-                .expect("RATLS verification failed");
-        });
+        verify_ratls(&ratls_cert, measurement)
+            .map_err(|e| RestClientError::RatlsError(e.to_string()))?;
 
         let ratls_cert = Certificate::from_pem(&ratls_cert)?;
 
         // Build the client
         Ok(Self {
             client: builder
-                .add_root_certificate(ratls_cert)
+                .tls_built_in_root_certs(false) // Disallow all root certs from the system
+                .add_root_certificate(ratls_cert) // Allow our ratls cert
                 .connect_timeout(Duration::from_secs(5))
                 .tcp_keepalive(Duration::from_secs(30))
                 .default_headers(headers)

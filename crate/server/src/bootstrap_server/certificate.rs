@@ -7,7 +7,8 @@ use openssl::{
     pkey::{PKey, Public},
     x509::{X509Builder, X509},
 };
-use ratls::generate_ratls_cert;
+use ratls::generate::generate_ratls_cert;
+use tempdir::TempDir;
 
 use crate::{error, result::KResult};
 
@@ -16,11 +17,12 @@ pub(crate) fn generate_ratls_pkcs12(
     expiration_days: u64,
     pkcs12_password: &str,
 ) -> KResult<Pkcs12> {
-    // TODO: design a way to make all certificate issuer args customizable
     let (private_key, cert) = generate_ratls_cert(subject, vec![], expiration_days, None, true)
         .map_err(|e| error::KmsError::RatlsError(e.to_string()))?;
 
-    std::fs::write("/tmp/cert.pem", &cert)?;
+    // TODO: @bgrieder: should we want to save this certificate here?
+    let tmp_dir = TempDir::new("kms")?;
+    std::fs::write(tmp_dir.path().join("cert.ratls.pem"), &cert)?;
 
     let cert = X509::from_pem(cert.as_bytes())?;
 
@@ -85,7 +87,9 @@ pub(crate) fn generate_self_signed_cert(
 
     let pem = cert.to_pem()?;
     // write the pem to a cert.pem file in /tmp
-    std::fs::write("/tmp/cert.pem", pem)?;
+    // TODO: @bgrieder: should we want to save this certificate here?
+    let tmp_dir = TempDir::new("kms")?;
+    std::fs::write(tmp_dir.path().join("cert.selfsigned.pem"), pem)?;
 
     // wrap it in a PKCS12 container
     let pkcs12 = Pkcs12::builder()
