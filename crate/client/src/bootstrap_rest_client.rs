@@ -14,6 +14,7 @@ use reqwest::{
     Body, Certificate, Client, ClientBuilder, Identity, Response,
 };
 use serde::{Deserialize, Serialize};
+use tokio::task::spawn_blocking;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
@@ -214,6 +215,7 @@ impl BootstrapRestClient {
 
         // Get and verify the ratls certitificate in order to use it as the only valid root CA
         let bootstrap_server_url = Url::parse(bootstrap_server_url)?;
+
         let ratls_cert = get_server_certificate(
             bootstrap_server_url
                 .host_str()
@@ -230,8 +232,12 @@ impl BootstrapRestClient {
             .map_err(|e| RestClientError::RatlsError(e.to_string()))?;
 
         // TODO: use measurements here (from where? conf?)
-        verify_ratls(&ratls_cert, None, None, None)
-            .map_err(|e| RestClientError::RatlsError(e.to_string()))?;
+        let ratls_cert_copy = ratls_cert.clone();
+        spawn_blocking(move || {
+            verify_ratls(&ratls_cert_copy, None, None, None)
+                .map_err(|e| RestClientError::RatlsError(e.to_string()))
+                .expect("RATLS verification failed");
+        });
 
         let ratls_cert = Certificate::from_pem(&ratls_cert)?;
 

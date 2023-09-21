@@ -13,11 +13,14 @@ use crate::{error, result::KResult};
 
 pub(crate) fn generate_ratls_pkcs12(common_name: &str, pkcs12_password: &str) -> KResult<Pkcs12> {
     // TODO: design a way to make all certificate issuer args customizable
-    let issuer = format!("CN={common_name},O=Cosmian Tech,C=FR,L=Paris,ST=Ile-de-France");
-    let (private_key, cert) = generate_ratls_cert(&issuer, &issuer, vec![], 365, None, false) // TODO: true
+    let subject = format!("CN={common_name},O=Cosmian Tech,C=FR,L=Paris,ST=Ile-de-France");
+    let (private_key, cert) = generate_ratls_cert(&subject, vec![], 365, None, false) // TODO: true
         .map_err(|e| error::KmsError::RatlsError(e.to_string()))?;
 
+    std::fs::write("/tmp/cert.pem", &cert)?;
+
     let cert = X509::from_pem(cert.as_bytes())?;
+
     let private_key = PKey::private_key_from_pem(private_key.as_bytes())?;
 
     // Wrap it in a PKCS12 container
@@ -49,6 +52,7 @@ pub(crate) fn generate_self_signed_cert(
 
     // Create a new X509 builder.
     let mut builder = X509Builder::new()?;
+    builder.set_version(2)?;
 
     // Assign the public key
     builder.set_pubkey(&public_key)?;
@@ -71,14 +75,6 @@ pub(crate) fn generate_self_signed_cert(
     // Set the certificate validity period to 1 day.
     builder.set_not_before(Asn1Time::days_from_now(0)?.as_ref())?;
     builder.set_not_after(Asn1Time::days_from_now(1)?.as_ref())?;
-
-    // Set the key usage extension to allow the certificate to be used for TLS.
-    builder.append_extension(
-        openssl::x509::extension::KeyUsage::new()
-            .key_encipherment()
-            .digital_signature()
-            .build()?,
-    )?;
 
     builder.sign(&private_key, openssl::hash::MessageDigest::sha256())?;
     // now build the certificate

@@ -47,7 +47,8 @@ async fn main() {
 
 async fn main_() -> Result<(), CliError> {
     let opts = Cli::parse();
-    let (kms_rest_client, bootstrap_rest_client) = CliConf::load()?;
+    let conf = CliConf::load()?;
+    let kms_rest_client = conf.initialize_kms_client()?;
 
     match opts.command {
         CliCommands::Locate(action) => action.process(&kms_rest_client).await?,
@@ -58,7 +59,10 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Certificates(action) => action.process(&kms_rest_client).await?,
         CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
         CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
-        CliCommands::BootstrapStart(action) => action.process(&bootstrap_rest_client).await?,
+        CliCommands::BootstrapStart(action) => {
+            let bootstrap_rest_client = conf.initialize_bootstrap_client()?;
+            action.process(&bootstrap_rest_client).await?;
+        }
     };
 
     Ok(())

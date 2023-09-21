@@ -54,7 +54,8 @@ leb128 = "0.2"
 native-tls = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }
 openssl = { version = "0.10", features = ["vendored"] }
-ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
+# ratls = { path = "/home/seb/dev/microservice_encryption/tee-tools/ratls" }
+ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "fix_encoding_sk" }
 redis = { version = "0.23", features = [
   "aio",
   "ahash",

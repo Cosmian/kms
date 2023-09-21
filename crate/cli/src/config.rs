@@ -113,7 +113,7 @@ impl Default for CliConf {
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
 
 impl CliConf {
-    pub fn load() -> Result<(KmsRestClient, BootstrapRestClient), CliError> {
+    pub fn load() -> Result<Self, CliError> {
         // Obtain the configuration file path from the environment variable or default to a pre-determined path
         let conf_path = if let Ok(conf_path) = env::var(KMS_CLI_CONF_ENV).map(PathBuf::from) {
             // Error if the specified file does not exist
@@ -155,40 +155,48 @@ impl CliConf {
             default_conf
         };
 
+        Ok(conf)
+    }
+
+    pub fn initialize_kms_client(&self) -> Result<KmsRestClient, CliError> {
         // Instantiate a KMS server REST client with the given configuration
         let kms_rest_client = KmsRestClient::instantiate(
-            &conf.kms_server_url,
-            conf.kms_access_token.as_deref(),
-            conf.ssl_client_pkcs12_path.as_deref(),
-            conf.ssl_client_pkcs12_password.as_deref(),
-            conf.kms_database_secret.as_deref(),
-            conf.accept_invalid_certs,
-            conf.jwe_public_key.as_deref(),
+            &self.kms_server_url,
+            self.kms_access_token.as_deref(),
+            self.ssl_client_pkcs12_path.as_deref(),
+            self.ssl_client_pkcs12_password.as_deref(),
+            self.kms_database_secret.as_deref(),
+            self.accept_invalid_certs,
+            self.jwe_public_key.as_deref(),
         )
         .with_context(|| {
             format!(
                 "Unable to instantiate a KMS server REST client {}",
-                &conf.kms_server_url
+                &self.kms_server_url
             )
         })?;
 
+        Ok(kms_rest_client)
+    }
+
+    pub fn initialize_bootstrap_client(&self) -> Result<BootstrapRestClient, CliError> {
         // Instantiate a Bootstrap server REST client with the given configuration
         let bootstrap_rest_client = BootstrapRestClient::instantiate(
-            conf.bootstrap_server_url
+            self.bootstrap_server_url
                 .as_ref()
-                .unwrap_or(&conf.kms_server_url.replace("http://", "https://")),
-            conf.kms_access_token.as_deref(),
-            conf.ssl_client_pkcs12_path.as_deref(),
-            conf.ssl_client_pkcs12_password.as_deref(),
+                .unwrap_or(&self.kms_server_url.replace("http://", "https://")),
+            self.kms_access_token.as_deref(),
+            self.ssl_client_pkcs12_path.as_deref(),
+            self.ssl_client_pkcs12_password.as_deref(),
         )
         .with_context(|| {
             format!(
                 "Unable to instantiate a Bootstrap server REST client {}",
-                &conf.kms_server_url
+                &self.kms_server_url
             )
         })?;
 
-        Ok((kms_rest_client, bootstrap_rest_client))
+        Ok(bootstrap_rest_client)
     }
 }
 
