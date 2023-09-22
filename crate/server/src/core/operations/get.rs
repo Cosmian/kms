@@ -87,7 +87,7 @@ pub(crate) async fn get_active_object(
         .db
         .retrieve(uid_or_tags, user, ObjectOperationType::Get, params)
         .await?
-        .into_iter()
+        .into_values()
         .filter(|owm| owm.state == StateEnumeration::Active)
         .collect::<Vec<ObjectWithMetadata>>();
 

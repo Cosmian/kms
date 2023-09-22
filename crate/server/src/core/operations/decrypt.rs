@@ -34,7 +34,7 @@ pub async fn decrypt(
         .db
         .retrieve(uid_or_tags, user, ObjectOperationType::Decrypt, params)
         .await?
-        .into_iter()
+        .into_values()
         .filter(|owm| {
             let object_type = owm.object.object_type();
             if owm.state != StateEnumeration::Active {

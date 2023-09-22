@@ -555,10 +555,10 @@ impl KMS {
         operations::revoke_operation(self, request, user, params).await
     }
 
-    /// Insert an access authorization for a user (identified by `access.userid`)
+    /// Grant an access to a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    pub async fn insert_access(
+    pub async fn grant_access(
         &self,
         access: &Access,
         owner: &str,
@@ -642,7 +642,13 @@ impl KMS {
         }
 
         let list = self.db.list_accesses(object_id, params).await?;
-        let ids = list.into_iter().map(UserAccessResponse::from).collect();
+        let ids = list
+            .into_iter()
+            .map(|(user_id, operations)| UserAccessResponse {
+                user_id,
+                operations,
+            })
+            .collect();
 
         Ok(ids)
     }

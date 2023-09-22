@@ -69,7 +69,7 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
         .db
         .retrieve(uid_or_tags, user, ObjectOperationType::Revoke, params)
         .await?
-        .into_iter()
+        .into_values()
         .filter(|owm| {
             let object_type = owm.object.object_type();
             (owm.state == StateEnumeration::Active || owm.state == StateEnumeration::PreActive)

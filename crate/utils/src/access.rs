@@ -97,7 +97,7 @@ impl<'de> Deserialize<'de> for ExtraDatabaseParams {
     }
 }
 
-use std::{fmt, str::FromStr};
+use std::{collections::HashSet, fmt, str::FromStr};
 
 // any error type implementing Display is acceptable.
 type ParseError = &'static str;
@@ -126,17 +126,17 @@ impl FromStr for ObjectOperationType {
 #[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
 pub struct UserAccessResponse {
     pub user_id: String,
-    pub operations: Vec<ObjectOperationType>,
+    pub operations: HashSet<ObjectOperationType>,
 }
 
-impl From<(String, Vec<ObjectOperationType>)> for UserAccessResponse {
-    fn from(e: (String, Vec<ObjectOperationType>)) -> Self {
-        Self {
-            user_id: e.0,
-            operations: e.1,
-        }
-    }
-}
+// impl From<(String, HashSet<ObjectOperationType>)> for UserAccessResponse {
+//     fn from(e: (String, HashSet<ObjectOperationType>)) -> Self {
+//         Self {
+//             user_id: e.0,
+//             operations: e.1,
+//         }
+//     }
+// }
 
 pub type IsWrapped = bool;
 

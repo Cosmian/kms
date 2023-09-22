@@ -1,4 +1,7 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
@@ -54,7 +57,7 @@ pub trait Database {
         user: &str,
         query_access_grant: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectWithMetadata>>;
+    ) -> KResult<HashMap<String, ObjectWithMetadata>>;
 
     /// Retrieve the ags of the object with the given `uid`
     async fn retrieve_tags(
@@ -127,7 +130,7 @@ pub trait Database {
         &self,
         uid: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>>;
+    ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>>;
 
     /// Grant the access right to `user` to perform the `operation_type`
     /// on the object identified by its `uid`

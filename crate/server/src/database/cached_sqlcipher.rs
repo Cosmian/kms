@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -198,7 +198,7 @@ impl Database for CachedSqlCipher {
         user: &str,
         operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectWithMetadata>> {
+    ) -> KResult<HashMap<String, ObjectWithMetadata>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = retrieve_(uid, user, operation_type, &*pool).await;
@@ -349,7 +349,7 @@ impl Database for CachedSqlCipher {
         &self,
         uid: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>> {
+    ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = list_accesses_(uid, &*pool).await;

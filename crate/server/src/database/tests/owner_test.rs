@@ -12,7 +12,11 @@ use cosmian_kms_utils::{
 use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
 
-use crate::{database::Database, kms_bail, result::KResult};
+use crate::{
+    database::{object_with_metadata::ObjectWithMetadata, Database},
+    kms_bail,
+    result::KResult,
+};
 
 pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>)) -> KResult<()> {
     log_init("debug");
@@ -45,7 +49,10 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
 
     let objs_ = db
         .retrieve(&uid, owner, ObjectOperationType::Get, db_params)
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
+
     match objs_.len() {
         0 => kms_bail!("There should be an object"),
         1 => {
@@ -82,7 +89,10 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
     // Retrieve object with authorized `user_id_1` with `Get` operation type - OK
     let objs_ = db
         .retrieve(&uid, user_id_1, ObjectOperationType::Get, db_params)
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
+
     match objs_.len() {
         0 => kms_bail!("There should be an object"),
         1 => {
@@ -135,7 +145,10 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
     // Retrieve object with authorized `userid` with `Get` operation type - OK
     let objs_ = db
         .retrieve(&uid, user_id_2, ObjectOperationType::Get, db_params)
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
+
     match objs_.len() {
         0 => kms_bail!("There should be an object"),
         1 => {
@@ -148,7 +161,10 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
     // Be sure we can still retrieve object with authorized `userid` with `Get` operation type - OK
     let objs_ = db
         .retrieve(&uid, user_id_1, ObjectOperationType::Get, db_params)
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
+
     match objs_.len() {
         0 => kms_bail!("There should be an object"),
         1 => {

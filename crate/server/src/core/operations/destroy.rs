@@ -55,7 +55,7 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
         .db
         .retrieve(uid_or_tags, user, ObjectOperationType::Destroy, params)
         .await?
-        .into_iter()
+        .into_values()
         .filter(|owm| {
             let object_type = owm.object.object_type();
             owm.state != StateEnumeration::Destroyed

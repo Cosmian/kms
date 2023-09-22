@@ -43,7 +43,7 @@ pub async fn rekey_keypair(
         .db
         .retrieve(&uid_or_tags, user, ObjectOperationType::Rekey, params)
         .await?
-        .into_iter()
+        .into_values()
         .filter(|owm| {
             // only active objects
             if owm.state != StateEnumeration::Active {

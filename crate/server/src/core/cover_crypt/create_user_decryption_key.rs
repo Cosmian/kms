@@ -62,7 +62,7 @@ async fn create_user_decryption_key_(
         .db
         .retrieve(&msk_uid_or_tag, user, ObjectOperationType::Get, params)
         .await?
-        .into_iter()
+        .into_values()
         .filter(|owm| {
             if owm.state != StateEnumeration::Active {
                 return false

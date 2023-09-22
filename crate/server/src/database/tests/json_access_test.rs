@@ -17,7 +17,11 @@ use cosmian_kms_utils::{
 use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
 
-use crate::{database::Database, kms_bail, result::KResult};
+use crate::{
+    database::{object_with_metadata::ObjectWithMetadata, Database},
+    kms_bail,
+    result::KResult,
+};
 
 pub async fn json_access<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
@@ -51,7 +55,9 @@ pub async fn json_access<DB: Database>(
     // Retrieve object with valid owner with `Get` operation type - OK
     let objs_ = db
         .retrieve(&uid, owner, ObjectOperationType::Get, db_params)
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
 
     assert!(!objs_.is_empty());
     match objs_.len() {

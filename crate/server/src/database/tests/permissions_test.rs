@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
@@ -52,11 +50,7 @@ pub async fn permissions<DB: Database>(
     assert!(perms.contains(&ObjectOperationType::Encrypt));
     assert!(perms.contains(&ObjectOperationType::Get));
 
-    let accesses = db
-        .list_accesses(&uid, db_params)
-        .await?
-        .into_iter()
-        .collect::<HashMap<String, Vec<ObjectOperationType>>>();
+    let accesses = db.list_accesses(&uid, db_params).await?;
 
     assert_eq!(accesses.len(), 2);
     assert!(accesses.contains_key(user_id_1));

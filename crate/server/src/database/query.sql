@@ -37,7 +37,7 @@ INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4);
 SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions 
         FROM objects 
         LEFT JOIN read_access 
-        ON objects.id = read_access.id AND read_access.userid=$2
+        ON objects.id = read_access.id AND ( read_access.userid=$2 OR read_access.userid='*' )
         WHERE objects.id=$1;
 
 
@@ -111,4 +111,5 @@ INNER JOIN (
 ) AS matched_tags
 ON objects.id = matched_tags.id
 LEFT JOIN read_access
-ON objects.id = read_access.id AND read_access.userid=@USER;
+ON objects.id = read_access.id AND ( read_access.userid=@USER OR read_access.userid='*' )
+WHERE objects.state='active';

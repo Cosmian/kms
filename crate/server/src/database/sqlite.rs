@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -135,7 +135,7 @@ impl Database for SqlitePool {
         user: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectWithMetadata>> {
+    ) -> KResult<HashMap<String, ObjectWithMetadata>> {
         retrieve_(uid_or_tags, user, operation_type, &self.pool).await
     }
 
@@ -237,7 +237,7 @@ impl Database for SqlitePool {
         &self,
         uid: &str,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>> {
+    ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>> {
         list_accesses_(uid, &self.pool).await
     }
 
@@ -351,7 +351,7 @@ pub(crate) async fn retrieve_<'e, E>(
     user: &str,
     operation_type: ObjectOperationType,
     executor: E,
-) -> KResult<Vec<ObjectWithMetadata>>
+) -> KResult<HashMap<String, ObjectWithMetadata>>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
@@ -403,7 +403,7 @@ where
     };
 
     // process the rows and find the tags
-    let mut res = vec![];
+    let mut res: HashMap<String, ObjectWithMetadata> = HashMap::new();
     for row in rows {
         let object_with_metadata = ObjectWithMetadata::try_from(&row)?;
 
@@ -414,9 +414,22 @@ where
             continue
         }
 
-        res.push(object_with_metadata);
+        // check if the object is already in the result
+        // this can happen as permissions may have been granted
+        // to both this user and the wildcard user
+        match res.get_mut(&object_with_metadata.id) {
+            Some(existing_object) => {
+                // update the permissions
+                existing_object
+                    .permissions
+                    .extend_from_slice(&object_with_metadata.permissions);
+            }
+            None => {
+                // insert the object
+                res.insert(object_with_metadata.id.clone(), object_with_metadata);
+            }
+        };
     }
-
     Ok(res)
 }
 
@@ -598,12 +611,11 @@ pub(crate) async fn upsert_(
 pub(crate) async fn list_accesses_<'e, E>(
     uid: &str,
     executor: E,
-) -> KResult<Vec<(String, Vec<ObjectOperationType>)>>
+) -> KResult<HashMap<String, HashSet<ObjectOperationType>>>
 where
     E: Executor<'e, Database = Sqlite>,
 {
-    debug!("Uid = {}", uid);
-
+    trace!("Uid = {}", uid);
     let list = sqlx::query(
         SQLITE_QUERIES
             .get("select-rows-read_access-with-object-id")
@@ -612,12 +624,14 @@ where
     .bind(uid)
     .fetch_all(executor)
     .await?;
-    let mut ids: Vec<(String, Vec<ObjectOperationType>)> = Vec::with_capacity(list.len());
+    let mut ids: HashMap<String, HashSet<ObjectOperationType>> = HashMap::with_capacity(list.len());
     for row in list {
-        ids.push((
+        ids.insert(
+            // userid
             row.get::<String, _>(0),
+            // permissions
             serde_json::from_value(row.get::<Value, _>(1))?,
-        ));
+        );
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)
