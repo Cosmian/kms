@@ -63,8 +63,7 @@ impl KmsClient {
         )
         .map_err(|_| {
             PyException::new_err(format!(
-                "Can't build the query to connect to the kms server {}",
-                server_url
+                "Can't build the query to connect to the kms server {server_url}"
             ))
         })?;
         Ok(Self(kms_connector))

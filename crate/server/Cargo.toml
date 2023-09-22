@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_server"
-version = "4.5.0"
+version = "4.6.0"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 license-file = "../../LICENSE.md"
@@ -27,6 +27,7 @@ acme-lib = { git = "https://github.com/Cosmian/acme-lib" }
 actix-cors = "0.6"
 actix-files = "0.6"
 actix-identity = "0.4"
+actix-multipart = "0.6"
 actix-rt = { version = "2.8", optional = true }
 actix-service = "2.0"
 actix-tls = "3.0.3"
@@ -35,7 +36,7 @@ alcoholic_jwt = "4091"
 async-recursion = "1.0"
 async-trait = { workspace = true }
 base64 = { workspace = true }
-clap = { workspace = true, features = ["env", "std"] }
+clap = { workspace = true }
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
@@ -48,26 +49,37 @@ http = { workspace = true }
 josekit = { workspace = true }
 lazy_static = "1.4"
 libsgx = { path = "../libsgx" }
+mime = "0.3"
 openssl = { workspace = true }
 rawsql = "0.1"
 redis = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sqlx = { version = "0.7.0-alpha.3", default-features = false, features = ["json", "runtime-tokio-native-tls", "mysql", "postgres", "sqlite"] }
+sqlx = { version = "0.7.1", default-features = false, features = ["json", "runtime-tokio-native-tls", "mysql", "postgres", "sqlite"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
-tiny-keccak = { workspace = true }
+# this version of tokio should be the same as the one used in actix-web
+# run `cargo tree -i tokio` to check
+tokio = { workspace = true }
 tracing = { workspace = true }
-tracing-log = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-tree = { workspace = true }
+url = { workspace = true }
 uuid = { workspace = true }
+x509-parser = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = "3.3"
 actix-rt = "2.8"
+cosmian_logger = { path = "../logger" }
 
 [build-dependencies]
 time = { workspace = true, features = ["local-offset", "formatting"] }
+
+[[bin]]
+name = "cosmian_kms_server"
+path = "src/main.rs"
+
+[lib]
+name = "cosmian_kms_server"
+path = "src/lib.rs"

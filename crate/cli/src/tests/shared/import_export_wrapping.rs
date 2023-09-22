@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
     kmip_types::{CryptographicAlgorithm, WrappingMethod},
 };
 use cosmian_kms_utils::crypto::{
-    curve_25519::operation::create_ec_key_pair, symmetric::create_symmetric_key,
+    curve_25519::operation::create_x25519_key_pair, symmetric::create_symmetric_key,
     wrap::decrypt_bytes,
 };
 use tempfile::TempDir;
@@ -20,7 +20,7 @@ use crate::{
         elliptic_curve,
         shared::{export::export, import::import},
         symmetric,
-        utils::{init_test_server, ONCE},
+        utils::{start_default_test_kms_server, ONCE},
     },
 };
 
@@ -30,7 +30,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     // Generate a symmetric wrapping key
     let wrap_key_path = tmp_path.join("wrap.key");
     let mut rng = CsRng::from_entropy();
@@ -96,12 +96,13 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     // Generate a symmetric wrapping key
     let mut rng = CsRng::from_entropy();
     let wrap_private_key_uid = "wrap_private_key_uid";
     let wrap_public_key_uid = "wrap_public_key_uid";
-    let wrap_key_pair = create_ec_key_pair(&mut rng, wrap_private_key_uid, wrap_public_key_uid)?;
+    let wrap_key_pair =
+        create_x25519_key_pair(&mut rng, wrap_private_key_uid, wrap_public_key_uid)?;
     // Write the private key to a file
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
     write_kmip_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;

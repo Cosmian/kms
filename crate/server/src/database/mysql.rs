@@ -74,10 +74,10 @@ impl MySqlPool {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Database for MySqlPool {
-    fn filename(&self, _group_id: u128) -> PathBuf {
-        PathBuf::from("")
+    fn filename(&self, _group_id: u128) -> Option<PathBuf> {
+        None
     }
 
     async fn create(

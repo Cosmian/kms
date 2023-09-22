@@ -1,3 +1,4 @@
+mod certify;
 mod create;
 mod create_key_pair;
 mod decrypt;
@@ -12,6 +13,7 @@ mod rekey_keypair;
 mod revoke;
 mod wrapping;
 
+pub(crate) use certify::certify;
 pub(crate) use create::create;
 pub(crate) use create_key_pair::create_key_pair;
 pub(crate) use decrypt::decrypt;

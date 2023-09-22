@@ -8,7 +8,7 @@ use crate::{
     error::CliError,
     tests::{
         cover_crypt::SUB_COMMAND,
-        utils::{generate_invalid_conf, init_test_server, ONCE},
+        utils::{generate_invalid_conf, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -16,7 +16,7 @@ use crate::{
 #[tokio::test]
 pub async fn test_bad_conf() -> Result<(), CliError> {
     // log_init("cosmian=info");
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     let invalid_conf_path = generate_invalid_conf(&ctx.owner_cli_conf);
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -61,7 +61,7 @@ pub async fn test_bad_conf() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_secrets_group_id_bad() -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    ONCE.get_or_init(start_default_test_kms_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/kms_bad_group_id.bad");

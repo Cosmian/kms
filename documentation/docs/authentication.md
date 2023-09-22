@@ -17,7 +17,7 @@ In authenticated mode, the server requires authentication for all requests. The 
 - a TLS client certificate and the server extracts the username from the certificate's subject common name (CN)
 - or a JWT access token and the server extracts the username from the token's subject (sub) claim
 
- However, If the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment variable) is set, the server still performs the authentication but maps all requests to the default username.
+However, If the `--force-default-username` option (or the `KMS_FORCE_DEFAULT_USERNAME` environment variable) is set, the server still performs the authentication but maps all requests to the default username.
 
 ## Using TLS client certificates
 
@@ -26,7 +26,7 @@ The server must be started using TLS, and the certificate used to verify the cli
 !!! info "Example client TLS authentication."
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.5.0 \
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 \
         --https-p12-file kms.server.p12  --https-p12-password password \
         --authority-cert-file verifier.cert.pem
     ```
@@ -35,7 +35,7 @@ The server extracts the username from the client certificate's subject common na
 
 ## Using JWT access tokens
 
-The server supports  [JWT access tokens](https://jwt.io/) which are compatible with [Open ID Connect](https://openid.net/connect/).
+The server supports [JWT access tokens](https://jwt.io/) which are compatible with [Open ID Connect](https://openid.net/connect/).
 
 The server validates the JWT tokens signatures using the token issuer [JSON Web Key Set (JWKS)](https://datatracker.ietf.org/doc/html/rfc7517.) that is pulled on server start.
 
@@ -62,10 +62,10 @@ On the `ckms` command line interface, the token is configured in the client conf
 The KMS server JWT authentication is configured using three command line options (or corresponding environment variables):
 
 !!! info "Example of JWT Configuration"
-    Below is an example of a JWT configuration for the KMS server using Google as the authorization server.
+Below is an example of a JWT configuration for the KMS server using Google as the authorization server.
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.5.0 \
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 \
         --jwt-issuer-uri=https://accounts.google.com \
         --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
         --jwt-audience=cosmian_kms
@@ -73,7 +73,7 @@ The KMS server JWT authentication is configured using three command line options
 
 #### JWT issuer URI
 
- The issuer URI of the JWT token is called to validate the token signature.
+The issuer URI of the JWT token is called to validate the token signature.
 
 - server option: `--jwt-issuer-uri <JWT_ISSUER_URI>`
 - env. variable: `KMS_JWT_ISSUER_URI=<JWT_ISSUER_URI>`

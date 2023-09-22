@@ -11,7 +11,7 @@ use crate::{
     error::CliError,
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        utils::{init_test_server, ONCE},
+        utils::{start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -73,7 +73,7 @@ pub fn decrypt(
 
 #[tokio::test]
 async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -114,7 +114,7 @@ async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

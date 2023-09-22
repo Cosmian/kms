@@ -6,8 +6,7 @@ use cloudproof::reexport::crypto_core::CsRng;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::{
-    password_derivation::{derive_key_from_password, KMS_ARGON2_SALT},
-    symmetric::create_symmetric_key,
+    password_derivation::derive_key_from_password, symmetric::create_symmetric_key,
     wrap::wrap_key_block,
 };
 use rand::SeedableRng;
@@ -61,7 +60,7 @@ pub struct WrapKeyAction {
 }
 
 impl WrapKeyAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // read the key file
         let mut object = read_key_from_file(&self.key_file_in)?;
 
@@ -80,14 +79,12 @@ impl WrapKeyAction {
                 .with_context(|| "failed decoding the wrap key")?;
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(password) = &self.wrap_password {
-            let key_bytes = derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(
-                password.as_bytes(),
-                KMS_ARGON2_SALT,
-            )?
-            .to_vec();
+            let key_bytes =
+                derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes())?
+                    .to_vec();
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.wrap_key_id {
-            export_object(client_connector, key_id, false, None, false).await?
+            export_object(kms_rest_client, key_id, false, None, false).await?
         } else if let Some(key_file) = &self.wrap_key_file {
             read_key_from_file(key_file)?
         } else {

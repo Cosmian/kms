@@ -19,22 +19,20 @@ use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
-        curve_25519::{
-            operation::create_ec_key_pair,
-            salsa_sealed_box::{EciesDecryption, EciesEncryption},
-        },
+        curve_25519::operation::{create_ed25519_key_pair, create_x25519_key_pair},
+        ecies::{EciesDecryption, EciesEncryption},
         symmetric::{create_symmetric_key, AesGcmSystem},
     },
     tagging::{check_user_tags, get_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
-use tracing::trace;
+use tracing::{debug, trace};
 use zeroize::Zeroize;
 
 use super::{cover_crypt::create_user_decryption_key, KMS};
 use crate::{
-    config::{DbParams, ServerConfig},
-    core::operations::unwrap_key,
+    config::{DbParams, ServerParams},
+    core::{certificate::verify::verify_certificate, operations::unwrap_key},
     database::{
         cached_sqlcipher::CachedSqlCipher,
         mysql::MySqlPool,
@@ -50,35 +48,47 @@ use crate::{
 };
 
 impl KMS {
-    pub async fn instantiate(mut shared_config: ServerConfig) -> KResult<Self> {
-        let db: Box<dyn Database + Sync + Send> = match &mut shared_config.db_params {
-            DbParams::SqliteEnc(db_path) => Box::new(
-                CachedSqlCipher::instantiate(db_path, shared_config.clear_db_on_start).await?,
-            ),
-            DbParams::Sqlite(db_path) => Box::new(
-                SqlitePool::instantiate(&db_path.join("kms.db"), shared_config.clear_db_on_start)
+    pub async fn instantiate(mut shared_config: ServerParams) -> KResult<Self> {
+        let db: Box<dyn Database + Sync + Send> = if let Some(mut db_params) =
+            shared_config.db_params.as_mut()
+        {
+            match &mut db_params {
+                DbParams::SqliteEnc(db_path) => Box::new(
+                    CachedSqlCipher::instantiate(db_path, shared_config.clear_db_on_start).await?,
+                ),
+                DbParams::Sqlite(db_path) => Box::new(
+                    SqlitePool::instantiate(
+                        &db_path.join("kms.db"),
+                        shared_config.clear_db_on_start,
+                    )
                     .await?,
-            ),
-            DbParams::Postgres(url) => {
-                Box::new(PgPool::instantiate(url, shared_config.clear_db_on_start).await?)
+                ),
+                DbParams::Postgres(url) => Box::new(
+                    PgPool::instantiate(url.as_str(), shared_config.clear_db_on_start).await?,
+                ),
+                DbParams::Mysql(url) => Box::new(
+                    MySqlPool::instantiate(url.as_str(), shared_config.clear_db_on_start).await?,
+                ),
+                DbParams::RedisFindex(url, master_key, label) => {
+                    // There is no reason to keep a copy of the key in the shared config
+                    // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
+                    // and zerorize the one in the shared config
+                    let new_master_key =
+                        SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::try_from_bytes(
+                            master_key.to_bytes(),
+                        )?;
+                    master_key.zeroize();
+                    Box::new(
+                        RedisWithFindex::instantiate(url.as_str(), new_master_key, label).await?,
+                    )
+                }
             }
-            DbParams::Mysql(url) => {
-                Box::new(MySqlPool::instantiate(url, shared_config.clear_db_on_start).await?)
-            }
-            DbParams::RedisFindex(url, master_key, label) => {
-                // There is no reason to keep a copy of the key in the shared config
-                // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
-                // and zerorize the one in the shared config
-                let key_bytes = master_key.to_bytes();
-                let new_master_key =
-                    SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::try_from_bytes(key_bytes)?;
-                master_key.zeroize();
-                Box::new(RedisWithFindex::instantiate(url, new_master_key, label).await?)
-            }
+        } else {
+            kms_bail!("Fatal: no database configuration provided. Stopping.")
         };
 
         Ok(Self {
-            config: shared_config,
+            params: shared_config,
             db,
             rng: Arc::new(Mutex::new(CsRng::from_entropy())),
         })
@@ -104,12 +114,18 @@ impl KMS {
         }
 
         // unwrap if wrapped
-        if owm.object.key_wrapping_data().is_some() {
-            let object_type = owm.object.object_type();
-            let key_block = owm.object.key_block_mut()?;
-            unwrap_key(object_type, key_block, self, &owm.owner, params).await?;
+        match &owm.object {
+            Object::Certificate { .. } => {}
+            _ => {
+                if owm.object.key_wrapping_data().is_some() {
+                    let object_type = owm.object.object_type();
+                    let key_block = owm.object.key_block_mut()?;
+                    unwrap_key(object_type, key_block, self, &owm.owner, params).await?;
+                }
+            }
         }
 
+        trace!("get_encryption_system: unwrap done (if required)");
         match &owm.object {
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => {
@@ -143,6 +159,18 @@ impl KMS {
                 },
                 other => kms_not_supported!("encryption with public keys of format: {other}"),
             },
+            Object::Certificate {
+                certificate_value, ..
+            } => {
+                debug!("Encryption with certificate: verifying certificate");
+                // Check certificate validity
+                verify_certificate(certificate_value, self, &owm.owner, params).await?;
+                debug!("Encryption with certificate: certificate OK");
+                Ok(Box::new(EciesEncryption::instantiate_with_certificate(
+                    &owm.id,
+                    certificate_value,
+                )?) as Box<dyn EncryptionSystem>)
+            }
             other => kms_not_supported!("encryption with keys of type: {}", other.object_type()),
         }
     }
@@ -154,6 +182,7 @@ impl KMS {
         mut owm: ObjectWithMetadata,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn DecryptionSystem>> {
+        debug!("get_decryption_system: entering");
         // unwrap if wrapped
         if owm.object.key_wrapping_data().is_some() {
             let object_type = owm.object.object_type();
@@ -161,6 +190,10 @@ impl KMS {
             unwrap_key(object_type, key_block, self, &owm.owner, params).await?;
         }
 
+        trace!(
+            "get_decryption_system: matching on object: {:?}",
+            owm.object
+        );
         match &owm.object {
             Object::PrivateKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::CoverCryptSecretKey => Ok(Box::new(
@@ -309,8 +342,8 @@ impl KMS {
     ///  - "_pk" for the public key
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     ///
-    /// Only Covercrypt user decryption keys can be created using this function
-    pub(crate) async fn create_key_pair_and_tags(
+    /// Only Covercrypt master keys can be created using this function
+    pub(crate) fn create_key_pair_and_tags(
         &self,
         request: &CreateKeyPair,
         private_key_uid: &str,
@@ -356,7 +389,11 @@ impl KMS {
                     match dp.recommended_curve.unwrap_or_default() {
                         RecommendedCurve::CURVE25519 => {
                             let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                            create_ec_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                            create_x25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                        }
+                        RecommendedCurve::CURVEED25519 => {
+                            let mut rng = self.rng.lock().expect("RNG lock poisoned");
+                            create_ed25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
                         }
                         other => kms_not_supported!(
                             "Generation of Key Pair for curve: {other:?}, is not supported"

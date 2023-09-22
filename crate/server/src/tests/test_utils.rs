@@ -13,7 +13,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    config::{db::DBConfig, http::HTTPConfig, ClapConfig, ServerConfig},
+    config::{ClapConfig, DBConfig, HttpConfig, ServerParams},
     result::KResult,
     routes, KMSServer,
 };
@@ -27,13 +27,13 @@ pub fn https_clap_config() -> ClapConfig {
     }
 
     ClapConfig {
-        http: HTTPConfig {
+        http: HttpConfig {
             https_p12_file: Some(PathBuf::from("src/tests/kmserver.acme.com.p12")),
             https_p12_password: "password".to_string(),
             ..Default::default()
         },
         db: DBConfig {
-            database_type: "sqlite".to_string(),
+            database_type: Some("sqlite".to_string()),
             database_url: None,
             sqlite_path,
             clear_database: true,
@@ -47,10 +47,10 @@ pub async fn test_app()
 -> impl Service<Request, Response = ServiceResponse<impl MessageBody>, Error = actix_web::Error> {
     let clap_config = https_clap_config();
 
-    let server_config = ServerConfig::try_from(&clap_config).await.unwrap();
+    let server_params = ServerParams::try_from(&clap_config).await.unwrap();
 
     let kms_server = Arc::new(
-        KMSServer::instantiate(server_config)
+        KMSServer::instantiate(server_params)
             .await
             .expect("cannot instantiate KMS server"),
     );

@@ -1,9 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
-use cloudproof::reexport::findex::{
-    implementations::redis::{FindexRedisError, RemovedLocationsFinder},
-    Keyword, Location,
+use cloudproof::reexport::{
+    crypto_core::{kdf256, Aes256Gcm, Dem, Instantiable, Nonce, SymmetricKey},
+    findex::{
+        implementations::redis::{FindexRedisError, RemovedLocationsFinder},
+        Keyword, Location,
+    },
 };
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
@@ -89,15 +92,40 @@ pub const DB_KEY_LENGTH: usize = 32;
 
 pub(crate) struct ObjectsDB {
     mgr: ConnectionManager,
+    dem: Aes256Gcm,
 }
 
 impl ObjectsDB {
-    pub async fn new(mgr: ConnectionManager) -> KResult<Self> {
-        Ok(Self { mgr })
+    pub async fn new(mgr: ConnectionManager, db_key: SymmetricKey<DB_KEY_LENGTH>) -> KResult<Self> {
+        Ok(Self {
+            mgr,
+            dem: Aes256Gcm::new(&db_key),
+        })
     }
 
     fn object_key(uid: &str) -> String {
         format!("do::{uid}")
+    }
+
+    fn encrypt_object(&self, uid: &str, redis_db_object: &RedisDbObject) -> KResult<Vec<u8>> {
+        let mut nonce_bytes = [0; Aes256Gcm::NONCE_LENGTH];
+        kdf256!(&mut nonce_bytes, uid.as_bytes());
+        let ciphertext = self.dem.encrypt(
+            &Nonce::from(nonce_bytes),
+            &serde_json::to_vec(redis_db_object)?,
+            None,
+        )?;
+        Ok(ciphertext)
+    }
+
+    fn decrypt_object(&self, uid: &str, ciphertext: &[u8]) -> KResult<RedisDbObject> {
+        let mut nonce_bytes = [0; Aes256Gcm::NONCE_LENGTH];
+        kdf256!(&mut nonce_bytes, uid.as_bytes());
+        let plaintext = self
+            .dem
+            .decrypt(&Nonce::from(nonce_bytes), ciphertext, None)?;
+        let redis_db_object: RedisDbObject = serde_json::from_slice(&plaintext)?;
+        Ok(redis_db_object)
     }
 
     pub async fn object_upsert(&self, uid: &str, redis_db_object: &RedisDbObject) -> KResult<()> {
@@ -105,15 +133,15 @@ impl ObjectsDB {
             .clone()
             .set(
                 ObjectsDB::object_key(uid),
-                serde_json::to_vec(redis_db_object)?,
+                self.encrypt_object(uid, redis_db_object)?,
             )
             .await?;
         Ok(())
     }
 
     pub async fn object_get(&self, uid: &str) -> KResult<RedisDbObject> {
-        let bytes: Vec<u8> = self.mgr.clone().get(ObjectsDB::object_key(uid)).await?;
-        let mut dbo: RedisDbObject = serde_json::from_slice(&bytes)?;
+        let ciphertext: Vec<u8> = self.mgr.clone().get(ObjectsDB::object_key(uid)).await?;
+        let mut dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
         dbo.object = Object::post_fix(dbo.object_type, dbo.object);
         Ok(dbo)
     }
@@ -125,10 +153,10 @@ impl ObjectsDB {
 
     pub async fn objects_upsert(&self, objects: &HashMap<String, RedisDbObject>) -> KResult<()> {
         let mut pipeline = pipe();
-        for (uid, redis_db_object) in objects.iter() {
+        for (uid, redis_db_object) in objects {
             pipeline.set(
                 ObjectsDB::object_key(uid),
-                serde_json::to_vec(redis_db_object)?,
+                self.encrypt_object(uid, redis_db_object)?,
             );
         }
         pipeline.query_async(&mut self.mgr.clone()).await?;
@@ -140,16 +168,16 @@ impl ObjectsDB {
         uids: &HashSet<String>,
     ) -> KResult<HashMap<String, RedisDbObject>> {
         let mut pipeline = pipe();
-        for uid in uids.iter() {
+        for uid in uids {
             pipeline.get(ObjectsDB::object_key(uid));
         }
         let bytes: Vec<Vec<u8>> = pipeline.query_async(&mut self.mgr.clone()).await?;
         let mut results = HashMap::new();
-        for (uid, bytes) in uids.iter().zip(bytes) {
-            if bytes.is_empty() {
+        for (uid, ciphertext) in uids.iter().zip(bytes) {
+            if ciphertext.is_empty() {
                 continue
             }
-            let mut dbo: RedisDbObject = serde_json::from_slice(&bytes)?;
+            let mut dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
             dbo.object = Object::post_fix(dbo.object_type, dbo.object);
             results.insert(uid.to_string(), dbo);
         }

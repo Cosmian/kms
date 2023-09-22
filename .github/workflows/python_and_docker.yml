@@ -12,7 +12,7 @@ jobs:
   pyo3:
     uses: ./.github/workflows/python_build.yml
     with:
-      toolchain: nightly-2023-03-20
+      toolchain: nightly-2023-08-17
 
   build-and-push-image:
     runs-on: ubuntu-22.04
@@ -113,7 +113,7 @@ jobs:
       - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@develop
     with:
-      branch: v4.0.2
+      branch: develop
       target: x86_64-unknown-linux-gnu
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
-      copy_fresh_build: false
+      copy_fresh_build: true

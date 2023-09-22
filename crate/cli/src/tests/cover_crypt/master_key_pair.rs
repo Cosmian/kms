@@ -9,7 +9,7 @@ use crate::{
     tests::{
         utils::{
             extract_uids::{extract_private_key, extract_public_key},
-            init_test_server, ONCE,
+            start_default_test_kms_server, ONCE,
         },
         PROG_NAME,
     },
@@ -55,7 +55,7 @@ pub fn create_cc_master_key_pair(
 #[tokio::test]
 pub async fn test_create_master_key_pair() -> Result<(), CliError> {
     // from specs
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     create_cc_master_key_pair(
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
@@ -74,7 +74,7 @@ pub async fn test_create_master_key_pair() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_create_master_key_pair_error() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     let err = create_cc_master_key_pair(
         &ctx.owner_cli_conf_path,

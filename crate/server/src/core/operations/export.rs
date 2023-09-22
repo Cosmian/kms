@@ -4,7 +4,7 @@ use cosmian_kmip::kmip::{
     kmip_types::{KeyWrapType, StateEnumeration},
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
-use tracing::trace;
+use tracing::{debug, trace};
 
 use crate::{
     core::{
@@ -64,9 +64,13 @@ pub async fn export(
                 Some(kw) => {
                     match kw {
                         KeyWrapType::NotWrapped => {
+                            debug!(
+                                "export: unwrapping before exporting on object: {:?}",
+                                owm.object.object_type()
+                            );
                             let object_type = owm.object.object_type();
                             let key_block = owm.object.key_block_mut()?;
-                            unwrap_key(object_type, key_block, kms, user, params).await?
+                            unwrap_key(object_type, key_block, kms, user, params).await?;
                         }
                         KeyWrapType::AsRegistered => {
                             // do nothing
@@ -74,10 +78,14 @@ pub async fn export(
                     }
                 }
                 None => {
-                    if let Some(kwd) = &request.key_wrapping_data {
+                    if let Some(kws) = &request.key_wrapping_specification {
                         // wrap
+                        debug!(
+                            "export: wrapping before exporting on object: {:?}",
+                            owm.object.object_type()
+                        );
                         let key_block = owm.object.key_block_mut()?;
-                        wrap_key(&owm.id, key_block, kwd, kms, user, params).await?;
+                        wrap_key(&owm.id, key_block, kws, kms, user, params).await?;
                     }
                 }
             }

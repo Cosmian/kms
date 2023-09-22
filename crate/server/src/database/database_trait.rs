@@ -10,10 +10,10 @@ use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationT
 use super::object_with_metadata::ObjectWithMetadata;
 use crate::result::KResult;
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait Database {
-    /// Return the filename of the database if supported
-    fn filename(&self, group_id: u128) -> PathBuf;
+    /// Return the filename of the database or `None` if not supported
+    fn filename(&self, group_id: u128) -> Option<PathBuf>;
 
     /// Insert the given Object in the database.
     ///
@@ -82,7 +82,7 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
-    /// upsert (update or create if not exists)
+    /// Upsert (update or create if does not exist)
     async fn upsert(
         &self,
         uid: &str,

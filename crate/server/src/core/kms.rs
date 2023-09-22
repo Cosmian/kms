@@ -11,10 +11,11 @@ use base64::{
 use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_operations::{
-        Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse, Decrypt, DecryptResponse,
-        Destroy, DestroyResponse, Encrypt, EncryptResponse, Export, ExportResponse, Get,
-        GetAttributes, GetAttributesResponse, GetResponse, Import, ImportResponse, Locate,
-        LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
+        Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
+        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
+        ImportResponse, Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke,
+        RevokeResponse,
     },
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
@@ -27,19 +28,19 @@ use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
-    config::{DbParams, ServerConfig},
+    config::{DbParams, ServerParams},
     core::operations,
     database::Database,
     error::KmsError,
-    kms_bail,
-    middlewares::{jwt_auth::JwtAuthClaim, ssl_auth::PeerCommonName},
+    kms_bail, kms_error,
+    middlewares::{ssl_auth::PeerCommonName, JwtAuthClaim},
     result::KResult,
 };
 
 /// A Simple Key Management System that partially implements KMIP 2.1:
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
 pub struct KMS {
-    pub(crate) config: ServerConfig,
+    pub(crate) params: ServerParams,
     pub(crate) rng: Arc<Mutex<CsRng>>,
     pub(crate) db: Box<dyn Database + Sync + Send>,
 }
@@ -54,26 +55,26 @@ impl KMS {
     ///  - the server is not running TLS
     ///  - the server server certificate cannot be read
     pub fn get_server_x509_certificate(&self) -> KResult<Option<String>> {
-        if let Some(certbot) = &self.config.certbot {
-            let cert = certbot.lock().expect("can't lock certificate mutex");
-            let (_, certificate) = cert.get_raw_cert()?;
-            return Ok(Some(certificate.to_string()))
+        match &self.params.http_params {
+            crate::config::HttpParams::Certbot(certbot) => {
+                let cert = certbot.lock().expect("can't lock certificate mutex");
+                let (_, certificate) = cert.get_raw_cert()?;
+                Ok(Some(certificate.to_string()))
+            }
+            crate::config::HttpParams::Https(p12) => {
+                let pem = String::from_utf8(
+                    p12.cert
+                        .as_ref()
+                        .ok_or_else(|| {
+                            KmsError::ItemNotFound("no pkcs12 certificate found".to_owned())
+                        })?
+                        .to_text()?,
+                )
+                .map_err(|e| KmsError::ConversionError(e.to_string()))?;
+                Ok(Some(pem))
+            }
+            crate::config::HttpParams::Http => Ok(None),
         }
-
-        if let Some(p12) = &self.config.server_pkcs_12 {
-            let pem = String::from_utf8(
-                p12.cert
-                    .as_ref()
-                    .ok_or_else(|| {
-                        KmsError::ItemNotFound("no pkcs12 certificate found".to_owned())
-                    })?
-                    .to_text()?,
-            )
-            .map_err(|e| KmsError::ConversionError(e.to_string()))?;
-            return Ok(Some(pem))
-        }
-
-        Ok(None)
     }
 
     /// Get the enclave public key
@@ -82,7 +83,7 @@ impl KMS {
     /// Returns a `KResult` with a `Error` if the enclave public key file cannot be read
     pub fn get_enclave_public_key(&self) -> KResult<String> {
         Ok(fs::read_to_string(
-            &self.config.enclave_params.public_key_path,
+            &self.params.enclave_params.public_key_path,
         )?)
     }
 
@@ -91,7 +92,7 @@ impl KMS {
     /// This service is not available if the server is not running inside an enclave
     pub fn get_manifest(&self) -> KResult<String> {
         Ok(fs::read_to_string(
-            &self.config.enclave_params.manifest_path,
+            &self.params.enclave_params.manifest_path,
         )?)
     }
 
@@ -106,15 +107,18 @@ impl KMS {
     /// Returns an error if the KMS server does not allow this operation or if an error occurs while
     /// generating the new database or key.
     pub async fn add_new_database(&self) -> KResult<String> {
-        if let DbParams::SqliteEnc(_) = self.config.db_params {
+        if let DbParams::SqliteEnc(_) = self.params.db_params.as_ref().ok_or_else(|| {
+            kms_error!("Unexpected fatal error: no database configured on the KMS server")
+        })? {
             // Generate a new group id
             let uid: u128 = loop {
                 let uid = Uuid::new_v4().to_u128_le();
-                let database = self.db.filename(uid);
-                if !database.exists() {
-                    // Create an empty file (to book the group id)
-                    fs::File::create(database)?;
-                    break uid
+                if let Some(database) = self.db.filename(uid) {
+                    if !database.exists() {
+                        // Create an empty file (to book the group id)
+                        fs::File::create(database)?;
+                        break uid
+                    }
                 }
             };
 
@@ -178,6 +182,38 @@ impl KMS {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<ImportResponse> {
         operations::import(self, request, user, params).await
+    }
+
+    /// This request is used to generate a Certificate object for a public key.
+    /// This request supports the certification of a new public key, as well as
+    /// the certification of a public key that has already been certified (i.e.,
+    /// certificate update). Only a single certificate SHALL be requested at a
+    /// time. The Certificate Request object MAY be omitted, in which case
+    /// the public key for which a Certificate object is generated SHALL be
+    /// specified by its Unique Identifier only. If the Certificate Request Type
+    /// and the Certificate Request objects are omitted from the request, then
+    /// the Certificate Type SHALL be specified using the Attributes object.
+    /// The Certificate Request is passed as a Byte String, which allows
+    /// multiple certificate request types for X.509 certificates (e.g.,
+    /// PKCS#10, PEM, etc.) to be submitted to the server. The generated
+    /// Certificate object whose Unique Identifier is returned MAY be obtained
+    /// by the client via a Get operation in the same batch, using the ID
+    /// Placeholder mechanism. For the public key, the server SHALL create a
+    /// Link attribute of Link Type Certificate pointing to the generated
+    /// certificate. For the generated certificate, the server SHALL create a
+    /// Link attribute of Link Type Public Key pointing to the Public Key.
+    /// The server SHALL copy the Unique Identifier of the generated certificate
+    /// returned by this operation into the ID Placeholder variable.
+    /// If the information in the Certificate Request conflicts with the
+    /// attributes specified in the Attributes, then the information in the
+    /// Certificate Request takes precedence.
+    pub async fn certify(
+        &self,
+        request: Certify,
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<CertifyResponse> {
+        operations::certify(self, request, user, params).await
     }
 
     /// This operation requests the server to generate a new symmetric key or
@@ -540,7 +576,7 @@ impl KMS {
             )))
         }
 
-        // check if owner is trying to grant themself
+        // check if owner is trying to grant them self
         if owner == access.user_id {
             kms_bail!(KmsError::Unauthorized(
                 "You can't grant yourself, you have already all rights on your own objects"
@@ -641,9 +677,9 @@ impl KMS {
     /// If the header is not present, the user is extracted from the client certificate
     /// If the client certificate is not present, the user is extracted from the configuration file
     pub fn get_user(&self, req_http: HttpRequest) -> KResult<String> {
-        let default_username = self.config.default_username.clone();
+        let default_username = self.params.default_username.clone();
 
-        if self.config.force_default_username {
+        if self.params.force_default_username {
             debug!(
                 "Authenticated using forced default user: {}",
                 default_username
@@ -666,40 +702,43 @@ impl KMS {
         Ok(user)
     }
 
-    /// Get the database secrets from the request
+    /// Get the `SqliteEnc` database secrets from the request
     /// The secrets are encoded in the `KmsDatabaseSecret` header
-    pub fn get_database_secrets(
+    pub fn get_sqlite_enc_secrets(
         &self,
         req_http: &HttpRequest,
     ) -> KResult<Option<ExtraDatabaseParams>> {
-        Ok(match self.config.db_params {
-            DbParams::SqliteEnc(_) => {
-                let secrets = req_http
-                    .headers()
-                    .get("KmsDatabaseSecret")
-                    .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
-                    .ok_or_else(|| {
-                        KmsError::Unauthorized(
-                            "Missing KmsDatabaseSecret header in the query".to_owned(),
-                        )
+        Ok(
+            match self.params.db_params.as_ref().ok_or_else(|| {
+                kms_error!("Unexpected fatal error: no database configured on the KMS server")
+            })? {
+                DbParams::SqliteEnc(_) => {
+                    let secrets = req_http
+                        .headers()
+                        .get("KmsDatabaseSecret")
+                        .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
+                        .ok_or_else(|| {
+                            KmsError::Unauthorized(
+                                "Missing KmsDatabaseSecret header in the query".to_owned(),
+                            )
+                        })?;
+
+                    let secrets = general_purpose::STANDARD.decode(secrets).map_err(|e| {
+                        KmsError::Unauthorized(format!(
+                            "KmsDatabaseSecret header cannot be decoded: {e}"
+                        ))
                     })?;
 
-                let secrets = general_purpose::STANDARD.decode(secrets).map_err(|e| {
-                    KmsError::Unauthorized(format!(
-                        "KmsDatabaseSecret header cannot be decoded: {e}"
-                    ))
-                })?;
-
-                Some(
-                    serde_json::from_slice::<ExtraDatabaseParams>(&secrets).map_err(|e| {
-                        KmsError::Unauthorized(format!(
-                            "KmsDatabaseSecret header cannot be read: {}",
-                            e
-                        ))
-                    })?,
-                )
-            }
-            _ => None,
-        })
+                    Some(
+                        serde_json::from_slice::<ExtraDatabaseParams>(&secrets).map_err(|e| {
+                            KmsError::Unauthorized(format!(
+                                "KmsDatabaseSecret header cannot be read: {e}"
+                            ))
+                        })?,
+                    )
+                }
+                _ => None,
+            },
+        )
     }
 }

@@ -139,11 +139,11 @@ pub enum PolicyCommands {
 }
 
 impl PolicyCommands {
-    pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         match self {
-            Self::View(action) => action.run(client_connector).await?,
-            Self::Specs(action) => action.run(client_connector).await?,
-            Self::Binary(action) => action.run(client_connector).await?,
+            Self::View(action) => action.run(kms_rest_client).await?,
+            Self::Specs(action) => action.run(kms_rest_client).await?,
+            Self::Binary(action) => action.run(kms_rest_client).await?,
             Self::Create(action) => action.run().await?,
         };
 
@@ -225,11 +225,11 @@ async fn recover_policy(
     key_id: Option<&str>,
     key_file: Option<&PathBuf>,
     unwrap: bool,
-    client_connector: &KmsRestClient,
+    kms_rest_client: &KmsRestClient,
 ) -> Result<Policy, CliError> {
     // Recover the KMIP Object
     let object: Object = if let Some(key_id) = key_id {
-        export_object(client_connector, key_id, unwrap, None, false).await?
+        export_object(kms_rest_client, key_id, unwrap, None, false).await?
     } else if let Some(f) = key_file {
         let ttlv: TTLV = read_from_json_file(f)?;
         from_ttlv(&ttlv)?
@@ -266,13 +266,13 @@ pub struct SpecsAction {
     policy_specs_file: PathBuf,
 }
 impl SpecsAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Recover the policy
         let policy = recover_policy(
             self.key_id.as_deref(),
             self.key_file.as_ref(),
             true,
-            client_connector,
+            kms_rest_client,
         )
         .await?;
         let specs = PolicySpecifications::try_from(&policy)?;
@@ -306,13 +306,13 @@ pub struct BinaryAction {
     policy_binary_file: PathBuf,
 }
 impl BinaryAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Recover the policy
         let policy = recover_policy(
             self.key_id.as_deref(),
             self.key_file.as_ref(),
             true,
-            client_connector,
+            kms_rest_client,
         )
         .await?;
         // save the policy to the binary file
@@ -345,13 +345,13 @@ pub struct ViewAction {
     detailed: bool,
 }
 impl ViewAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Recover the policy
         let policy = recover_policy(
             self.key_id.as_deref(),
             self.key_file.as_ref(),
             true,
-            client_connector,
+            kms_rest_client,
         )
         .await?;
         // get a pretty json and print it
@@ -361,7 +361,7 @@ impl ViewAction {
             let specs = PolicySpecifications::try_from(&policy)?;
             serde_json::to_string_pretty(&specs)?
         };
-        println!("{}", json);
+        println!("{json}");
         Ok(())
     }
 }

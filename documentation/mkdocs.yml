@@ -47,25 +47,29 @@ extra_javascript:
   - https://unpkg.com/mermaid@8.7.0/dist/mermaid.min.js
   - javascripts/extra.js
 nav:
-  - Getting started: index.md
+  - Getting started with the Cosmian KMS: index.md
   - Enabling TLS: tls.md
   - Deploying in single server mode: single_server_mode.md
-  - Deploying in replicated mode: replicated_mode.md
+  - Deploying for high-availability: high_availability_mode.md
+  - Secure bootstrap of the KMS server start: bootstrap.md
+  - Running in the cloud or any zero-trust environment: zero_trust.md
   - Authenticating to the server: authentication.md
   - Authorizing using access rights: authorization.md
-  - Using the ckms command line interface:
+  - The ckms command line interface:
       - Installing and configuring: cli/cli.md
       - Using the CLI: cli/main_commands.md
       - Covercrypt:
           - Commands: cli/covercrypt/covercrypt.md
           - Keys management: cli/covercrypt/keys.md
           - Policy management: cli/covercrypt/policy.md
+      - Certificates:
+          - Commands: cli/certificates/certificates.md
       - Elliptic curves:
-        - Commands: cli/ec/ec.md
-        - Keys management: cli/ec/keys.md
+          - Commands: cli/ec/ec.md
+          - Keys management: cli/ec/keys.md
       - Symmetric encryption:
-        - Commands: cli/sym/sym.md
-        - Keys management: cli/sym/keys.md
+          - Commands: cli/sym/sym.md
+          - Keys management: cli/sym/keys.md
       - Access rights: cli/access_rights.md
       - Enclaved KMS: cli/enclaves.md
   - KMIP 2.1 support:

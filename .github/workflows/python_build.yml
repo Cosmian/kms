@@ -32,7 +32,7 @@ jobs:
           popd
           rm -rf openssl-1.1.1s*
           # install maturin and readelf
-          pip install maturin[patchelf]==0.14.9
+          pip install maturin==1.2.3
 
       - name: Python maturin build
         run: |
@@ -44,6 +44,14 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: kms_python_linux
+          path: target/wheels/*manylinux*.whl
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Upload WHL for cloudproof_python tests
+        uses: actions/upload-artifact@v3
+        with:
+          name: python-x86_64-unknown-linux-gnu
           path: target/wheels/*manylinux*.whl
           retention-days: 1
           if-no-files-found: error
@@ -96,7 +104,7 @@ jobs:
       - name: Prerequisites
         run: |
           set -x
-          pip install maturin[patchelf]==0.14.9
+          pip install maturin==1.2.3
           sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64 pkg-config
 
           # build openssl

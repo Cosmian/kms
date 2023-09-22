@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kmip"
-version = "4.5.0"
+version = "4.6.0"
 edition = "2021"
 license-file = "../../LICENSE.md"
 
@@ -17,6 +17,6 @@ strum_macros = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
-tracing-log = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-tree = { workspace = true }
+
+[dev-dependencies]
+cosmian_logger = { path = "../logger" }

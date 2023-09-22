@@ -8,7 +8,7 @@ use http::header::InvalidHeaderValue;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum KmsClientError {
+pub enum RestClientError {
     #[error("TTLV Error: {0}")]
     TtlvError(String),
 
@@ -40,31 +40,31 @@ pub enum KmsClientError {
     Default(String),
 }
 
-impl From<TtlvError> for KmsClientError {
+impl From<TtlvError> for RestClientError {
     fn from(e: TtlvError) -> Self {
         Self::TtlvError(e.to_string())
     }
 }
 
-impl From<InvalidHeaderValue> for KmsClientError {
+impl From<InvalidHeaderValue> for RestClientError {
     fn from(e: InvalidHeaderValue) -> Self {
         Self::Default(e.to_string())
     }
 }
 
-impl From<reqwest::Error> for KmsClientError {
+impl From<reqwest::Error> for RestClientError {
     fn from(e: reqwest::Error) -> Self {
         Self::Default(e.to_string())
     }
 }
 
-impl From<io::Error> for KmsClientError {
+impl From<io::Error> for RestClientError {
     fn from(e: io::Error) -> Self {
         Self::Default(e.to_string())
     }
 }
 
-impl From<KmipError> for KmsClientError {
+impl From<KmipError> for RestClientError {
     fn from(e: KmipError) -> Self {
         match e {
             KmipError::InvalidKmipValue(r, s) => Self::InvalidKmipValue(r, s),

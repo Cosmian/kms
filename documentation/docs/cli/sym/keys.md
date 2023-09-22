@@ -37,9 +37,9 @@ ckms sym keys create [OPTIONS]
 
         [default: aes]
         [possible values: aes, chacha20, sha3, shake]
-        
+
 -t, --tag <TAG>
-        The tag to associate with the key. 
+        The tag to associate with the key.
         To specify multiple tags, use the option multiple times
 
 -h, --help
@@ -84,11 +84,11 @@ ckms sym keys export [OPTIONS] <KEY_FILE>
 
 ```sh
 -k, --key-id <KEY_ID>
-        The public key unique identifier. 
+        The public key unique identifier.
         If not specified, tags should be specified
 
 -t, --tag <TAG>
-        Tag to use to retrieve the key when no key id is specified. 
+        Tag to use to retrieve the key when no key id is specified.
         To specify multiple tags, use the option multiple times
 
 -b, --bytes
@@ -150,8 +150,8 @@ ckms sym keys import [OPTIONS] <KEY_FILE> [KEY_ID]
         Replace an existing key under the same id
 
 -t, --tag <TAG>
-        The tag to associate with the key. 
-        To specify multiple tags, use the option multiple times        
+        The tag to associate with the key.
+        To specify multiple tags, use the option multiple times
 
 -h, --help
         Print help (see a summary with '-h')
@@ -280,11 +280,11 @@ ckms sym keys revoke <REVOCATION_REASON>
 
 ```sh
 -k, --key-id <KEY_ID>
-        The public key unique identifier. 
+        The public key unique identifier.
         If not specified, tags should be specified
 
 -t, --tag <TAG>
-        Tag to use to retrieve the key when no key id is specified. 
+        Tag to use to retrieve the key when no key id is specified.
         To specify multiple tags, use the option multiple times
 
 -h, --help
@@ -309,11 +309,11 @@ ckms sym keys destroy [OPTIONS]
 
 ```sh
 -k, --key-id <KEY_ID>
-        The public key unique identifier. 
+        The public key unique identifier.
         If not specified, tags should be specified
 
 -t, --tag <TAG>
-        Tag to use to retrieve the key when no key id is specified. 
+        Tag to use to retrieve the key when no key id is specified.
         To specify multiple tags, use the option multiple times
 
 -h, --help

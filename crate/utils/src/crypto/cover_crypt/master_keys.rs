@@ -174,10 +174,7 @@ pub fn update_master_keys(
     let mut msk = MasterSecretKey::deserialize(&msk_key_bytes).map_err(|e| {
         KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
-            format!(
-                "Failed deserializing the CoverCrypt Master Private Key: {}",
-                e
-            ),
+            format!("Failed deserializing the CoverCrypt Master Private Key: {e}"),
         )
     })?;
 
@@ -188,10 +185,7 @@ pub fn update_master_keys(
     let mut mpk = MasterPublicKey::deserialize(&mpk_key_bytes).map_err(|e| {
         KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
-            format!(
-                "Failed deserializing the CoverCrypt Master Public Key: {}",
-                e
-            ),
+            format!("Failed deserializing the CoverCrypt Master Public Key: {e}"),
         )
     })?;
 
@@ -201,10 +195,7 @@ pub fn update_master_keys(
         .map_err(|e| {
             KmipError::KmipError(
                 ErrorReason::Cryptographic_Failure,
-                format!(
-                    "Failed updating the CoverCrypt Master Keys with the new Policy: {}",
-                    e
-                ),
+                format!("Failed updating the CoverCrypt Master Keys with the new Policy: {e}"),
             )
         })?;
 
@@ -212,10 +203,7 @@ pub fn update_master_keys(
     let updated_master_private_key_bytes = &msk.serialize().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Cryptographic_Failure,
-            format!(
-                "Failed serializing the CoverCrypt Master Private Key: {}",
-                e
-            ),
+            format!("Failed serializing the CoverCrypt Master Private Key: {e}"),
         )
     })?;
     let updated_master_private_key = create_master_private_key_object(

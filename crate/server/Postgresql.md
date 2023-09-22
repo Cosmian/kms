@@ -1,4 +1,3 @@
-
 # Postgresql install and set-up
 
 ## Ubuntu

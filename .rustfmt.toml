@@ -14,6 +14,16 @@ format_macro_matchers = true
 # Default value: false
 format_strings = true
 
+# Break comments to fit on the line
+# Default value: false
+# Possible values: true, false
+# wrap_comments = true
+
+# Convert /* */ comments to // comments where possible
+# Default value: false
+# Possible values: true, false
+# normalize_comments = true
+
 # Reorder impl items. type and const are put first, then macros and methods.
 # Default value: false
 reorder_impl_items = true

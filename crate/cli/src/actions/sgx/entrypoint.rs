@@ -30,7 +30,7 @@ pub struct SgxAction {
 }
 
 impl SgxAction {
-    pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Create the export directory if it does not exist
         if !Path::new(&self.export_path).exists() {
             fs::create_dir_all(&self.export_path)?;
@@ -41,7 +41,7 @@ impl SgxAction {
         let nonce = hex::encode(nonce);
 
         // Get the quote from the enclave
-        let quote = client_connector
+        let quote = kms_rest_client
             .get_quote(&nonce)
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
@@ -58,13 +58,10 @@ impl SgxAction {
         // Save the structured quote
         let quote_struct_path = self.export_path.join("quote.struct");
         fs::write(&quote_struct_path, format!("{:#?}", &typed_quote))?;
-        println!(
-            "The quote (structured) has been saved at {:?}",
-            quote_struct_path
-        );
+        println!("The quote (structured) has been saved at {quote_struct_path:?}");
 
         // Get the certificate
-        let certificate = client_connector
+        let certificate = kms_rest_client
             .get_certificate()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
@@ -77,7 +74,7 @@ impl SgxAction {
         }
 
         // Get the Public key
-        let public_key = client_connector
+        let public_key = kms_rest_client
             .get_enclave_public_key()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
@@ -88,7 +85,7 @@ impl SgxAction {
         println!("The enclave certificate has been saved at {cert_path:?}");
 
         // Get the manifest
-        let manifest = client_connector
+        let manifest = kms_rest_client
             .get_manifest()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
@@ -106,10 +103,7 @@ impl SgxAction {
         // Save the remote attestation
         let remote_attestation_path = self.export_path.join("remote_attestation");
         fs::write(&remote_attestation_path, format!("{remote_attestation:#?}"))?;
-        println!(
-            "The remote attestation has been saved at {:?}",
-            remote_attestation_path
-        );
+        println!("The remote attestation has been saved at {remote_attestation_path:?}");
 
         println!("\nYou can check all these files manually.");
 
@@ -131,7 +125,7 @@ impl SgxAction {
             "... MR signer checking {} ",
             bool_to_color(
                 compute_mr_signer(&public_key)
-                    .map_err(|e| CliError::Default(format!("SSL Error: {:?}", e)))?
+                    .map_err(|e| CliError::Default(format!("SSL Error: {e:?}")))?
                     == typed_quote.report_body.mr_signer
                     && encode(typed_quote.report_body.mr_signer) == remote_attestation.sgx_mrsigner
                     && encode(typed_quote.report_body.mr_signer)

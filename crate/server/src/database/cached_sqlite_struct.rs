@@ -8,7 +8,7 @@ use std::{
     time::SystemTime,
 };
 
-use cloudproof::reexport::crypto_core::SymmetricKey;
+use cloudproof::reexport::crypto_core::{reexport::tiny_keccak, SymmetricKey};
 use sqlx::{Pool, Sqlite};
 use tracing::info;
 

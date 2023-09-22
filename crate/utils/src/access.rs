@@ -20,6 +20,7 @@ pub struct Access {
 #[serde(rename_all = "lowercase")]
 pub enum ObjectOperationType {
     Create,
+    Certify,
     Decrypt,
     Destroy,
     Encrypt,
@@ -41,6 +42,7 @@ impl std::fmt::Display for ObjectOperationType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let str = match self {
             Self::Create => "create",
+            Self::Certify => "certify",
             Self::Decrypt => "decrypt",
             Self::Destroy => "destroy",
             Self::Encrypt => "encrypt",
@@ -106,6 +108,7 @@ impl FromStr for ObjectOperationType {
     fn from_str(op: &str) -> Result<Self, Self::Err> {
         match op {
             "create" => Ok(Self::Create),
+            "certify" => Ok(Self::Certify),
             "decrypt" => Ok(Self::Decrypt),
             "destroy" => Ok(Self::Destroy),
             "encrypt" => Ok(Self::Encrypt),

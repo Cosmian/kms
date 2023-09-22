@@ -8,7 +8,7 @@ use crate::{
 };
 
 pub async fn revoke(
-    client_connector: &KmsRestClient,
+    kms_rest_client: &KmsRestClient,
     key_id: &str,
     revocation_reason: &str,
 ) -> Result<(), CliError> {
@@ -19,7 +19,7 @@ pub async fn revoke(
     )?;
 
     // Query the KMS with your kmip data
-    let revoke_response = client_connector
+    let revoke_response = kms_rest_client
         .revoke(revoke_query)
         .await
         .with_context(|| format!("revocation of key {} failed", &key_id))?;

@@ -6,7 +6,7 @@ use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, DecryptedData, ErrorReason},
 };
-use tracing::debug;
+use tracing::{debug, trace};
 
 use super::user_key::unwrap_user_decryption_key_object;
 use crate::{error::KmipUtilsError, DecryptionSystem};
@@ -25,6 +25,7 @@ impl CovercryptDecryption {
         user_decryption_key_uid: &str,
         user_decryption_key: &Object,
     ) -> Result<Self, KmipUtilsError> {
+        trace!("CovercryptDecryption::instantiate entering");
         let (user_decryption_key_bytes, _access_policy, _attributes) =
             unwrap_user_decryption_key_object(user_decryption_key)?;
 

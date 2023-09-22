@@ -44,7 +44,7 @@ pub struct EncryptAction {
 }
 
 impl EncryptAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Read the file to encrypt
         let mut f =
             File::open(&self.input_file).with_context(|| "Can't read the file to encrypt")?;
@@ -73,7 +73,7 @@ impl EncryptAction {
         )?;
 
         // Query the KMS with your kmip data and get the key pair ids
-        let encrypt_response = client_connector
+        let encrypt_response = kms_rest_client
             .encrypt(encrypt_request)
             .await
             .with_context(|| "Can't execute the query on the kms server")?;

@@ -57,14 +57,14 @@ pub struct ImportKeyAction {
 }
 
 impl ImportKeyAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // read the key file
         let object = read_key_from_file(&self.key_file)?;
         let object_type = object.object_type();
 
         // import the key
         let unique_identifier = import_object(
-            client_connector,
+            kms_rest_client,
             self.key_id.clone(),
             object,
             self.unwrap,
@@ -81,7 +81,7 @@ impl ImportKeyAction {
         if !self.tags.is_empty() {
             println!("Tags:");
             for tag in &self.tags {
-                println!("    - {}", tag);
+                println!("    - {tag}");
             }
         }
 

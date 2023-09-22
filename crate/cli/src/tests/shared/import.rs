@@ -12,7 +12,7 @@ use crate::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::export::export,
         symmetric::create_key::create_symmetric_key,
-        utils::{extract_uids::extract_imported_key_id, init_test_server, ONCE},
+        utils::{extract_uids::extract_imported_key_id, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -53,7 +53,7 @@ pub fn import(
 
 #[tokio::test]
 pub async fn test_import_cover_crypt() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     let uid: String = import(
         &ctx.owner_cli_conf_path,
@@ -94,7 +94,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_generate_export_import() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // Generate
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(

@@ -1,25 +1,32 @@
 use cosmian_kms_server::{
-    config::{ClapConfig, ServerConfig},
+    config::{ClapConfig, ServerParams},
     result::KResult,
-    start_kms_server,
+    start_server,
 };
 use dotenvy::dotenv;
+use tracing::debug;
 #[cfg(any(feature = "timeout", feature = "insecure"))]
 use tracing::info;
 #[cfg(feature = "timeout")]
 use tracing::warn;
-
 #[cfg(feature = "timeout")]
 mod expiry;
 
 use clap::Parser;
 
-#[actix_web::main]
+/// The main entry point of the program.
+///
+/// This function sets up the necessary environment variables and logging options,
+/// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
+///
+/// After that, it starts the correct server based on
+/// whether the bootstrap server should be used or not (using `start_bootstrap_server()` or `start_kms_server()`, respectively).
+#[tokio::main]
 async fn main() -> KResult<()> {
+    // Set up environment variables and logging options
     if option_env!("RUST_BACKTRACE").is_none() {
         std::env::set_var("RUST_BACKTRACE", "1");
     }
-
     if option_env!("RUST_LOG").is_none() {
         std::env::set_var(
             "RUST_LOG",
@@ -35,7 +42,10 @@ async fn main() -> KResult<()> {
 
     // Instantiate a config object using the env variables and the args of the binary
     let clap_config = ClapConfig::parse();
-    let server_config = ServerConfig::try_from(&clap_config).await?;
+    debug!("Command line config: {:#?}", clap_config);
+
+    // Parse the Server Config from the command line arguments
+    let server_params = ServerParams::try_from(&clap_config).await?;
 
     #[cfg(feature = "timeout")]
     info!("Feature Timeout enabled");
@@ -46,12 +56,12 @@ async fn main() -> KResult<()> {
     {
         warn!("This is a demo version, the server will stop in 3 months");
         let demo = actix_rt::spawn(expiry::demo_timeout());
-        futures::future::select(Box::pin(start_kms_server(server_config, None)), demo).await;
+        futures::future::select(start_server(server_params, None), demo).await;
     }
 
     // Start the KMS
     #[cfg(not(feature = "timeout"))]
-    start_kms_server(server_config, None).await?;
+    start_server(server_params, None).await?;
 
     Ok(())
 }

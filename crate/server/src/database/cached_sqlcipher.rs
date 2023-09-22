@@ -16,6 +16,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     ConnectOptions, Pool, Sqlite,
 };
+use tracing::trace;
 
 use super::{
     cached_sqlite_struct::KMSSqliteCache,
@@ -56,7 +57,9 @@ impl CachedSqlCipher {
         group_id: u128,
         key: &SymmetricKey<32>,
     ) -> KResult<Pool<Sqlite>> {
-        let path = self.filename(group_id);
+        let path = self
+            .filename(group_id)
+            .ok_or_else(|| kms_error!("Path for group database does not exist"))?;
         let options = SqliteConnectOptions::new()
             // create the database file if it doesn't exist
             .create_if_missing(true)
@@ -125,10 +128,10 @@ impl CachedSqlCipher {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Database for CachedSqlCipher {
-    fn filename(&self, group_id: u128) -> PathBuf {
-        self.path.join(format!("{group_id}.sqlite"))
+    fn filename(&self, group_id: u128) -> Option<PathBuf> {
+        Some(self.path.join(format!("{group_id}.sqlite")))
     }
 
     async fn create(
@@ -415,6 +418,7 @@ impl Database for CachedSqlCipher {
         user_must_be_owner: bool,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
+        trace!("cached sqlcipher: find: {:?}", researched_attributes);
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = find_(
@@ -425,6 +429,7 @@ impl Database for CachedSqlCipher {
                 &*pool,
             )
             .await;
+            trace!("cached sqlcipher: before post_query: {:?}", ret);
             self.post_query(params.group_id)?;
             return ret
         }

@@ -15,7 +15,7 @@ use crate::{
         },
         shared::{export, import},
         symmetric::create_key::create_symmetric_key,
-        utils::{init_test_server, ONCE},
+        utils::{start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -25,7 +25,7 @@ pub async fn rotate(
     master_private_key_id: &str,
     attributes: &[&str],
 ) -> Result<(), CliError> {
-    ONCE.get_or_init(init_test_server).await;
+    ONCE.get_or_init(start_default_test_kms_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -45,7 +45,7 @@ pub async fn rotate(
 
 #[tokio::test]
 async fn test_rotate() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
@@ -73,7 +73,7 @@ async fn test_rotate() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_rotate_error() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
@@ -155,7 +155,7 @@ async fn test_rotate_error() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(init_test_server).await;
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();

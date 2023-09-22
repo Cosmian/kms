@@ -15,13 +15,13 @@ pub enum AccessAction {
 }
 
 impl AccessAction {
-    pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         match self {
-            Self::Grant(action) => action.run(client_connector).await?,
-            Self::Revoke(action) => action.run(client_connector).await?,
-            Self::List(action) => action.run(client_connector).await?,
-            Self::Owned(action) => action.run(client_connector).await?,
-            Self::Obtained(action) => action.run(client_connector).await?,
+            Self::Grant(action) => action.run(kms_rest_client).await?,
+            Self::Revoke(action) => action.run(kms_rest_client).await?,
+            Self::List(action) => action.run(kms_rest_client).await?,
+            Self::Owned(action) => action.run(kms_rest_client).await?,
+            Self::Obtained(action) => action.run(kms_rest_client).await?,
         };
 
         Ok(())
@@ -48,14 +48,14 @@ pub struct GrantAccess {
 }
 
 impl GrantAccess {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         let access = Access {
             unique_identifier: Some(self.object_uid.clone()),
             user_id: self.user.clone(),
             operation_type: self.operation,
         };
 
-        client_connector
+        kms_rest_client
             .grant_access(access)
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
@@ -88,14 +88,14 @@ pub struct RevokeAccess {
 }
 
 impl RevokeAccess {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         let access = Access {
             unique_identifier: Some(self.object_uid.clone()),
             user_id: self.user.clone(),
             operation_type: self.operation,
         };
 
-        client_connector
+        kms_rest_client
             .revoke_access(access)
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
@@ -118,8 +118,8 @@ pub struct ListAccessesGranted {
 }
 
 impl ListAccessesGranted {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
-        let accesses = client_connector
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+        let accesses = kms_rest_client
             .list_access(&self.object_uid)
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
@@ -143,8 +143,8 @@ impl ListAccessesGranted {
 pub struct ListOwnedObjects;
 
 impl ListOwnedObjects {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
-        let objects = client_connector
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+        let objects = kms_rest_client
             .list_owned_objects()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
@@ -165,8 +165,8 @@ impl ListOwnedObjects {
 pub struct ListAccessRightsObtained;
 
 impl ListAccessRightsObtained {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
-        let objects = client_connector
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+        let objects = kms_rest_client
             .list_access_rights_obtained()
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
