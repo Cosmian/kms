@@ -213,7 +213,7 @@ impl Database for PgPool {
         }
     }
 
-    async fn list_access_rights_obtained(
+    async fn list_user_granted_access_rights(
         &self,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
@@ -229,7 +229,7 @@ impl Database for PgPool {
         list_shared_objects_(user, &self.pool).await
     }
 
-    async fn list_accesses(
+    async fn list_object_accesses_granted(
         &self,
         uid: &str,
         _params: Option<&ExtraDatabaseParams>,
@@ -254,7 +254,7 @@ impl Database for PgPool {
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        delete_access_(uid, userid, operation_type, &self.pool).await
+        remove_access_(uid, userid, operation_type, &self.pool).await
     }
 
     async fn is_object_owned_by(
@@ -284,14 +284,14 @@ impl Database for PgPool {
         .await
     }
 
-    #[cfg(test)]
-    async fn perms(
+    async fn list_user_access_rights_on_object(
         &self,
         uid: &str,
         userid: &str,
+        no_inherited_access: bool,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectOperationType>> {
-        fetch_permissions_(uid, userid, &self.pool).await
+    ) -> KResult<HashSet<ObjectOperationType>> {
+        list_user_access_rights_on_object_(uid, userid, no_inherited_access, &self.pool).await
     }
 }
 
@@ -503,7 +503,7 @@ pub(crate) async fn update_state_<'e, E>(
     executor: E,
 ) -> KResult<()>
 where
-    E: Executor<'e, Database = Postgres>,
+    E: Executor<'e, Database = Postgres> + Copy,
 {
     sqlx::query(
         PGSQL_QUERIES
@@ -607,7 +607,7 @@ pub(crate) async fn list_accesses_<'e, E>(
     executor: E,
 ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>>
 where
-    E: Executor<'e, Database = Postgres>,
+    E: Executor<'e, Database = Postgres> + Copy,
 {
     debug!("Uid = {}", uid);
 
@@ -645,7 +645,7 @@ pub(crate) async fn list_shared_objects_<'e, E>(
     )>,
 >
 where
-    E: Executor<'e, Database = Postgres>,
+    E: Executor<'e, Database = Postgres> + Copy,
 {
     debug!("Owner = {}", user);
     let list = sqlx::query(
@@ -679,17 +679,30 @@ where
     Ok(ids)
 }
 
-pub(crate) async fn fetch_permissions_<'e, E>(
+pub(crate) async fn list_user_access_rights_on_object_<'e, E>(
     uid: &str,
     userid: &str,
+    no_inherited_access: bool,
     executor: E,
-) -> KResult<Vec<ObjectOperationType>>
+) -> KResult<HashSet<ObjectOperationType>>
 where
-    E: Executor<'e, Database = Postgres>,
+    E: Executor<'e, Database = Postgres> + Copy,
+{
+    let mut user_perms = perms(uid, userid, executor).await?;
+    if no_inherited_access || userid == "*" {
+        return Ok(user_perms)
+    }
+    user_perms.extend(perms(uid, "*", executor).await?);
+    Ok(user_perms)
+}
+
+async fn perms<'e, E>(uid: &str, userid: &str, executor: E) -> KResult<HashSet<ObjectOperationType>>
+where
+    E: Executor<'e, Database = Postgres> + Copy,
 {
     let row: Option<PgRow> = sqlx::query(
         PGSQL_QUERIES
-            .get("select-row-read_access")
+            .get("select-user-accesses-for-object")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
@@ -697,14 +710,13 @@ where
     .fetch_optional(executor)
     .await?;
 
-    row.map_or(Ok(vec![]), |row| {
-        let permissions: Vec<ObjectOperationType> = match row.try_get::<Value, _>(0) {
-            Err(_) => vec![],
-            Ok(v) => serde_json::from_value(v)
-                .context("failed deserializing the permissions")
-                .reason(ErrorReason::Internal_Server_Error)?,
-        };
-        Ok(permissions)
+    row.map_or(Ok(HashSet::new()), |row| {
+        let perms_value = row
+            .try_get::<Value, _>(0)
+            .context("failed deserializing the permissions")?;
+        serde_json::from_value(perms_value)
+            .context("failed deserializing the permissions")
+            .reason(ErrorReason::Internal_Server_Error)
     })
 }
 
@@ -718,12 +730,12 @@ where
     E: Executor<'e, Database = Postgres> + Copy,
 {
     // Retrieve existing permissions if any
-    let mut perms = fetch_permissions_(uid, userid, executor).await?;
+    let mut perms = list_user_access_rights_on_object_(uid, userid, false, executor).await?;
     if perms.contains(&operation_type) {
         // permission is already setup
         return Ok(())
     }
-    perms.push(operation_type);
+    perms.insert(operation_type);
 
     // Serialize permissions
     let json = serde_json::to_value(&perms)
@@ -745,7 +757,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn delete_access_<'e, E>(
+pub(crate) async fn remove_access_<'e, E>(
     uid: &str,
     userid: &str,
     operation_type: ObjectOperationType,
@@ -755,7 +767,7 @@ where
     E: Executor<'e, Database = Postgres> + Copy,
 {
     // Retrieve existing permissions if any
-    let mut perms = fetch_permissions_(uid, userid, executor).await?;
+    let mut perms = list_user_access_rights_on_object_(uid, userid, true, executor).await?;
     perms.retain(|p| *p != operation_type);
 
     // No remaining permissions, delete the row

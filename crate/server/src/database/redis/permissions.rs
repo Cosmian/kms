@@ -182,13 +182,25 @@ impl PermissionsDB {
         findex_key: &SymmetricKey<MASTER_KEY_LENGTH>,
         obj_uid: &str,
         user_id: &str,
+        no_inherited_access: bool,
     ) -> KResult<HashSet<ObjectOperationType>> {
-        Ok(self
+        let mut user_perms = self
             .search_one_keyword(findex_key, &Triple::build_key(obj_uid, user_id))
             .await?
             .into_iter()
             .map(|triple| triple.permission)
-            .collect::<HashSet<ObjectOperationType>>())
+            .collect::<HashSet<ObjectOperationType>>();
+        if no_inherited_access {
+            return Ok(user_perms)
+        }
+        let wildcard_user_perms = self
+            .search_one_keyword(findex_key, &Triple::build_key(obj_uid, "*"))
+            .await?
+            .into_iter()
+            .map(|triple| triple.permission)
+            .collect::<HashSet<ObjectOperationType>>();
+        user_perms.extend(wildcard_user_perms);
+        Ok(user_perms)
     }
 
     /// Add a permission to the user on an object

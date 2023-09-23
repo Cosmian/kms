@@ -56,7 +56,7 @@ INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4)
         DO UPDATE SET object=$2, state=$3
         WHERE objects.owner=$4;
 
--- name: select-row-read_access
+-- name: select-user-accesses-for-object
 SELECT permissions
         FROM read_access
         WHERE id=$1 AND userid=$2;
@@ -111,5 +111,4 @@ INNER JOIN (
 ) AS matched_tags
 ON objects.id = matched_tags.id
 LEFT JOIN read_access
-ON objects.id = read_access.id AND ( read_access.userid=@USER OR read_access.userid='*' )
-WHERE objects.state='active';
+ON objects.id = read_access.id AND (read_access.userid=@USER OR read_access.userid='*' );

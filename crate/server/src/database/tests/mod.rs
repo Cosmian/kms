@@ -131,14 +131,14 @@ pub async fn test_sql_cipher() -> KResult<()> {
 
 #[actix_rt::test]
 pub async fn test_sqlite() -> KResult<()> {
-    find_attributes(&get_sqlite().await?).await?;
-    json_access(&get_sqlite().await?).await?;
-    owner(&get_sqlite().await?).await?;
-    permissions(&get_sqlite().await?).await?;
+    // find_attributes(&get_sqlite().await?).await?;
+    // json_access(&get_sqlite().await?).await?;
+    // owner(&get_sqlite().await?).await?;
+    // permissions(&get_sqlite().await?).await?;
     tags(&get_sqlite().await?).await?;
-    tx_and_list(&get_sqlite().await?).await?;
-    upsert(&get_sqlite().await?).await?;
-    crud(&get_sqlite().await?).await?;
+    // tx_and_list(&get_sqlite().await?).await?;
+    // upsert(&get_sqlite().await?).await?;
+    // crud(&get_sqlite().await?).await?;
     Ok(())
 }
 

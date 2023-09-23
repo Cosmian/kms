@@ -391,7 +391,8 @@ pub async fn test_list_access_rights() -> Result<(), CliError> {
 
     // the owner can list access rights granted
     let owner_list = list_access(&ctx.owner_cli_conf_path, &key_id)?;
-    assert!(owner_list.contains("user.client@acme.com: [get]"));
+    print!("owner list {owner_list}");
+    assert!(owner_list.contains("user.client@acme.com: {get}"));
 
     // The user is not the owner and thus should not be able to list accesses on this object
     assert!(list_access(&ctx.user_cli_conf_path, &key_id).is_err());

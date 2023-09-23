@@ -121,7 +121,9 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
     let objects = db.find(None, None, user_id_2, true, db_params).await?;
     assert!(objects.is_empty());
 
-    let objects = db.list_access_rights_obtained(user_id_2, db_params).await?;
+    let objects = db
+        .list_user_granted_access_rights(user_id_2, db_params)
+        .await?;
     assert_eq!(
         objects,
         vec![(

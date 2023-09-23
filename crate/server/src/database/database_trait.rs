@@ -104,13 +104,13 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
-    /// List all the access rights obtained by `user`
+    /// List all the access rights granted to the `user`
     /// on all the objects in the database
     /// (i.e. the objects for which `user` is not the owner)
     /// The result is a list of tuples (uid, owner, state, operations, is_wrapped)
     /// where `operations` is a list of operations that `user` can perform on the object
     /// and `is_wrapped` is a boolean indicating if the object is wrapped
-    async fn list_access_rights_obtained(
+    async fn list_user_granted_access_rights(
         &self,
         user: &str,
         params: Option<&ExtraDatabaseParams>,
@@ -126,7 +126,7 @@ pub trait Database {
 
     /// List all the accessed granted per `user`
     /// This is called by the owner only
-    async fn list_accesses(
+    async fn list_object_accesses_granted(
         &self,
         uid: &str,
         params: Option<&ExtraDatabaseParams>,
@@ -171,11 +171,15 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>;
 
-    #[cfg(test)]
-    async fn perms(
+    /// List all the access rights that have been granted to a user on an object
+    ///
+    /// These access rights may have been directly granted or via the wildcard user
+    /// unless `no_inherited_access` is set to `true`
+    async fn list_user_access_rights_on_object(
         &self,
         uid: &str,
-        userid: &str,
+        user: &str,
+        no_inherited_access: bool,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectOperationType>>;
+    ) -> KResult<HashSet<ObjectOperationType>>;
 }

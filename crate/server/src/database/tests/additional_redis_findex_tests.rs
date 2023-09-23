@@ -115,7 +115,7 @@ pub async fn test_permissions_db() -> KResult<()> {
         .await?;
 
     // verify that the permission is present
-    let permissions = permissions_db.get(&findex_key, "O1", "U1").await?;
+    let permissions = permissions_db.get(&findex_key, "O1", "U1", false).await?;
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains(&ObjectOperationType::Encrypt));
 
@@ -147,7 +147,7 @@ pub async fn test_permissions_db() -> KResult<()> {
         .await?;
 
     // assert the permission is present
-    let permissions = permissions_db.get(&findex_key, "O1", "U1").await?;
+    let permissions = permissions_db.get(&findex_key, "O1", "U1", false).await?;
     assert_eq!(permissions.len(), 2);
     assert!(permissions.contains(&ObjectOperationType::Encrypt));
     assert!(permissions.contains(&ObjectOperationType::Decrypt));
@@ -182,7 +182,7 @@ pub async fn test_permissions_db() -> KResult<()> {
         .add(&findex_key, "O1", "U2", ObjectOperationType::Encrypt)
         .await?;
     // assert the permission is present
-    let permissions = permissions_db.get(&findex_key, "O1", "U2").await?;
+    let permissions = permissions_db.get(&findex_key, "O1", "U2", false).await?;
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains(&ObjectOperationType::Encrypt));
 
@@ -222,7 +222,7 @@ pub async fn test_permissions_db() -> KResult<()> {
         .add(&findex_key, "O2", "U2", ObjectOperationType::Encrypt)
         .await?;
     // assert the permission is present
-    let permissions = permissions_db.get(&findex_key, "O2", "U2").await?;
+    let permissions = permissions_db.get(&findex_key, "O2", "U2", false).await?;
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains(&ObjectOperationType::Encrypt));
 
@@ -263,7 +263,7 @@ pub async fn test_permissions_db() -> KResult<()> {
         .remove(&findex_key, "O1", "U1", ObjectOperationType::Decrypt)
         .await?;
     // assert the permission Encrypt is present and Decrypt is not
-    let permissions = permissions_db.get(&findex_key, "O1", "U1").await?;
+    let permissions = permissions_db.get(&findex_key, "O1", "U1", false).await?;
     assert_eq!(permissions.len(), 1);
     assert!(permissions.contains(&ObjectOperationType::Encrypt));
 
@@ -299,7 +299,7 @@ pub async fn test_permissions_db() -> KResult<()> {
         .remove(&findex_key, "O1", "U1", ObjectOperationType::Encrypt)
         .await?;
     // assert the permission is not present
-    let permissions = permissions_db.get(&findex_key, "O1", "U1").await?;
+    let permissions = permissions_db.get(&findex_key, "O1", "U1", false).await?;
     assert_eq!(permissions.len(), 0);
 
     // find the permissions for user U1
@@ -324,7 +324,7 @@ pub async fn test_permissions_db() -> KResult<()> {
         .remove(&findex_key, "O1", "U2", ObjectOperationType::Encrypt)
         .await?;
     // assert the permission is not present
-    let permissions = permissions_db.get(&findex_key, "O1", "U2").await?;
+    let permissions = permissions_db.get(&findex_key, "O1", "U2", false).await?;
     assert_eq!(permissions.len(), 0);
 
     // find the permissions for user U2
@@ -370,7 +370,7 @@ pub async fn test_corner_case() -> KResult<()> {
         .await?;
 
     // test that it does not exist
-    let permissions = permissions_db.get(&findex_key, "O1", "U1").await?;
+    let permissions = permissions_db.get(&findex_key, "O1", "U1", false).await?;
     assert_eq!(permissions.len(), 0);
 
     // test there are no permissions for user U1

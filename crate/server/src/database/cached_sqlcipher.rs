@@ -22,8 +22,8 @@ use super::{
     cached_sqlite_struct::KMSSqliteCache,
     object_with_metadata::ObjectWithMetadata,
     sqlite::{
-        create_, delete_, delete_access_, find_, insert_access_, is_object_owned_by_,
-        list_accesses_, list_shared_objects_, retrieve_, update_object_, update_state_, upsert_,
+        create_, delete_, find_, insert_access_, is_object_owned_by_, list_accesses_,
+        list_shared_objects_, remove_access_, retrieve_, update_object_, update_state_, upsert_,
     },
 };
 use crate::{
@@ -322,7 +322,7 @@ impl Database for CachedSqlCipher {
         kms_bail!("Missing group_id/key for opening SQLCipher")
     }
 
-    async fn list_access_rights_obtained(
+    async fn list_user_granted_access_rights(
         &self,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
@@ -345,7 +345,7 @@ impl Database for CachedSqlCipher {
         kms_bail!("Missing group_id/key for opening SQLCipher")
     }
 
-    async fn list_accesses(
+    async fn list_object_accesses_granted(
         &self,
         uid: &str,
         params: Option<&ExtraDatabaseParams>,
@@ -386,7 +386,7 @@ impl Database for CachedSqlCipher {
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = delete_access_(uid, userid, operation_type, &*pool).await;
+            let ret = remove_access_(uid, userid, operation_type, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -437,18 +437,19 @@ impl Database for CachedSqlCipher {
         kms_bail!("Missing group_id/key for opening SQLCipher")
     }
 
-    #[cfg(test)]
-    async fn perms(
+    async fn list_user_access_rights_on_object(
         &self,
         uid: &str,
         userid: &str,
+        no_inherited_access: bool,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectOperationType>> {
-        use super::sqlite::fetch_permissions_;
+    ) -> KResult<HashSet<ObjectOperationType>> {
+        use super::sqlite::list_user_access_rights_on_object_;
 
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = fetch_permissions_(uid, userid, &*pool).await;
+            let ret =
+                list_user_access_rights_on_object_(uid, userid, no_inherited_access, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }

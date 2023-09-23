@@ -278,17 +278,11 @@ impl Database for RedisWithFindex {
             }
 
             // fetch the permissions for the user and the wildcard user
-            let mut permissions: HashSet<ObjectOperationType> = self
+            let permissions: HashSet<ObjectOperationType> = self
                 .permissions_db
-                .get(&self.findex_key, &uid, user)
+                .get(&self.findex_key, &uid, user, false)
                 .await
                 .unwrap_or_default();
-            permissions.extend(
-                self.permissions_db
-                    .get(&self.findex_key, &uid, "*")
-                    .await
-                    .unwrap_or_default(),
-            );
             if permissions.contains(&query_access_grant) {
                 objects.insert(
                     uid.clone(),
@@ -377,7 +371,7 @@ impl Database for RedisWithFindex {
         Ok(())
     }
 
-    async fn list_access_rights_obtained(
+    async fn list_user_granted_access_rights(
         &self,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
@@ -422,7 +416,7 @@ impl Database for RedisWithFindex {
 
     /// List all the accessed granted per `user`
     /// This is called by the owner only
-    async fn list_accesses(
+    async fn list_object_accesses_granted(
         &self,
         uid: &str,
         _params: Option<&ExtraDatabaseParams>,
@@ -566,16 +560,16 @@ impl Database for RedisWithFindex {
             .collect())
     }
 
-    #[cfg(test)]
-    async fn perms(
+    async fn list_user_access_rights_on_object(
         &self,
         uid: &str,
-        userid: &str,
+        user: &str,
+        no_inherited_access: bool,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectOperationType>> {
+    ) -> KResult<HashSet<ObjectOperationType>> {
         Ok(self
             .permissions_db
-            .get(&self.findex_key, uid, userid)
+            .get(&self.findex_key, uid, user, no_inherited_access)
             .await
             .unwrap_or_default()
             .into_iter()
