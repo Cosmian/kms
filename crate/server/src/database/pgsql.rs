@@ -137,7 +137,7 @@ impl Database for PgPool {
 
     async fn retrieve_tags(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
         retrieve_tags_(uid, &self.pool).await
@@ -145,7 +145,7 @@ impl Database for PgPool {
 
     async fn update_object(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         object: &kmip_objects::Object,
         tags: Option<&HashSet<String>>,
         _params: Option<&ExtraDatabaseParams>,
@@ -165,7 +165,7 @@ impl Database for PgPool {
 
     async fn update_state(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -174,7 +174,7 @@ impl Database for PgPool {
 
     async fn upsert(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         object: &kmip_objects::Object,
         tags: &HashSet<String>,
@@ -196,7 +196,7 @@ impl Database for PgPool {
 
     async fn delete(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -217,21 +217,14 @@ impl Database for PgPool {
         &self,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<
-        Vec<(
-            UniqueIdentifier,
-            String,
-            StateEnumeration,
-            Vec<ObjectOperationType>,
-            IsWrapped,
-        )>,
-    > {
-        list_shared_objects_(user, &self.pool).await
+    ) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
+    {
+        list_user_granted_access_rights_(user, &self.pool).await
     }
 
     async fn list_object_accesses_granted(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>> {
         list_accesses_(uid, &self.pool).await
@@ -239,7 +232,7 @@ impl Database for PgPool {
 
     async fn grant_access(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         userid: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
@@ -249,7 +242,7 @@ impl Database for PgPool {
 
     async fn remove_access(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         userid: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
@@ -259,7 +252,7 @@ impl Database for PgPool {
 
     async fn is_object_owned_by(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         userid: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
@@ -286,7 +279,7 @@ impl Database for PgPool {
 
     async fn list_user_access_rights_on_object(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         userid: &str,
         no_inherited_access: bool,
         _params: Option<&ExtraDatabaseParams>,
@@ -427,7 +420,7 @@ where
     Ok(res)
 }
 
-async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> KResult<HashSet<String>>
+async fn retrieve_tags_<'e, E>(uid: &UniqueIdentifier, executor: E) -> KResult<HashSet<String>>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
@@ -446,7 +439,7 @@ where
 }
 
 pub(crate) async fn update_object_(
-    uid: &str,
+    uid: &UniqueIdentifier,
     object: &kmip_objects::Object,
     tags: Option<&HashSet<String>>,
     executor: &mut Transaction<'_, Postgres>,
@@ -498,7 +491,7 @@ pub(crate) async fn update_object_(
 }
 
 pub(crate) async fn update_state_<'e, E>(
-    uid: &str,
+    uid: &UniqueIdentifier,
     state: StateEnumeration,
     executor: E,
 ) -> KResult<()>
@@ -519,7 +512,7 @@ where
 }
 
 pub(crate) async fn delete_(
-    uid: &str,
+    uid: &UniqueIdentifier,
     owner: &str,
     executor: &mut Transaction<'_, Postgres>,
 ) -> KResult<()> {
@@ -549,7 +542,7 @@ pub(crate) async fn delete_(
 }
 
 pub(crate) async fn upsert_(
-    uid: &str,
+    uid: &UniqueIdentifier,
     owner: &str,
     object: &kmip_objects::Object,
     tags: &HashSet<String>,
@@ -603,7 +596,7 @@ pub(crate) async fn upsert_(
 }
 
 pub(crate) async fn list_accesses_<'e, E>(
-    uid: &str,
+    uid: &UniqueIdentifier,
     executor: E,
 ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>>
 where
@@ -632,18 +625,10 @@ where
     Ok(ids)
 }
 
-pub(crate) async fn list_shared_objects_<'e, E>(
+pub(crate) async fn list_user_granted_access_rights_<'e, E>(
     user: &str,
     executor: E,
-) -> KResult<
-    Vec<(
-        UniqueIdentifier,
-        String,
-        StateEnumeration,
-        Vec<ObjectOperationType>,
-        IsWrapped,
-    )>,
->
+) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
@@ -656,31 +641,29 @@ where
     .bind(user)
     .fetch_all(executor)
     .await?;
-    let mut ids: Vec<(
+    let mut ids: HashMap<
         UniqueIdentifier,
-        String,
-        StateEnumeration,
-        Vec<ObjectOperationType>,
-        IsWrapped,
-    )> = Vec::with_capacity(list.len());
+        (String, StateEnumeration, HashSet<ObjectOperationType>),
+    > = HashMap::with_capacity(list.len());
     for row in list {
-        ids.push((
+        ids.insert(
             row.get::<String, _>(0),
-            row.get::<String, _>(1),
-            state_from_string(&row.get::<String, _>(2))?,
-            serde_json::from_value(
-                row.try_get::<Value, _>(3)
-                    .context("failed deserializing the operations")?,
-            )?,
-            false, // TODO: de-hardcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
-        ));
+            (
+                row.get::<String, _>(1),
+                state_from_string(&row.get::<String, _>(2))?,
+                serde_json::from_value(
+                    row.try_get::<Value, _>(3)
+                        .context("failed deserializing the operations")?,
+                )?,
+            ),
+        );
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)
 }
 
 pub(crate) async fn list_user_access_rights_on_object_<'e, E>(
-    uid: &str,
+    uid: &UniqueIdentifier,
     userid: &str,
     no_inherited_access: bool,
     executor: E,
@@ -696,7 +679,11 @@ where
     Ok(user_perms)
 }
 
-async fn perms<'e, E>(uid: &str, userid: &str, executor: E) -> KResult<HashSet<ObjectOperationType>>
+async fn perms<'e, E>(
+    uid: &UniqueIdentifier,
+    userid: &str,
+    executor: E,
+) -> KResult<HashSet<ObjectOperationType>>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
@@ -721,7 +708,7 @@ where
 }
 
 pub(crate) async fn insert_access_<'e, E>(
-    uid: &str,
+    uid: &UniqueIdentifier,
     userid: &str,
     operation_type: ObjectOperationType,
     executor: E,
@@ -758,7 +745,7 @@ where
 }
 
 pub(crate) async fn remove_access_<'e, E>(
-    uid: &str,
+    uid: &UniqueIdentifier,
     userid: &str,
     operation_type: ObjectOperationType,
     executor: E,
@@ -804,7 +791,11 @@ where
     Ok(())
 }
 
-pub(crate) async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<bool>
+pub(crate) async fn is_object_owned_by_<'e, E>(
+    uid: &UniqueIdentifier,
+    owner: &str,
+    executor: E,
+) -> KResult<bool>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {

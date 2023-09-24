@@ -8,7 +8,7 @@ use cosmian_kmip::kmip::{
         ObjectType::{self, PrivateKey, PublicKey, SymmetricKey},
     },
     kmip_operations::{Destroy, DestroyResponse},
-    kmip_types::{KeyFormatType, LinkType, StateEnumeration},
+    kmip_types::{KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::{debug, trace};
@@ -139,7 +139,7 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
 
 /// Destroy a key, knowing the object and state
 async fn destroy_key_core(
-    unique_identifier: &str,
+    unique_identifier: &UniqueIdentifier,
     object: &mut Object,
     state: StateEnumeration,
     kms: &KMS,

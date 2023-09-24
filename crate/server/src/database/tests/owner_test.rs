@@ -125,14 +125,12 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
         .list_user_granted_access_rights(user_id_2, db_params)
         .await?;
     assert_eq!(
-        objects,
-        vec![(
-            uid.clone(),
+        objects.get(&uid).unwrap(),
+        &(
             String::from(owner),
             StateEnumeration::Active,
-            vec![ObjectOperationType::Get],
-            false
-        )]
+            vec![ObjectOperationType::Get].into_iter().collect(),
+        )
     );
 
     // Retrieve object with authorized `userid2` with `Create` operation type - ko

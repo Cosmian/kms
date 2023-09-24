@@ -23,7 +23,8 @@ use super::{
     object_with_metadata::ObjectWithMetadata,
     sqlite::{
         create_, delete_, find_, insert_access_, is_object_owned_by_, list_accesses_,
-        list_shared_objects_, remove_access_, retrieve_, update_object_, update_state_, upsert_,
+        list_user_granted_access_rights_, remove_access_, retrieve_, update_object_, update_state_,
+        upsert_,
     },
 };
 use crate::{
@@ -211,7 +212,7 @@ impl Database for CachedSqlCipher {
 
     async fn retrieve_tags(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
         if let Some(params) = params {
@@ -226,7 +227,7 @@ impl Database for CachedSqlCipher {
 
     async fn update_object(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         object: &kmip_objects::Object,
         tags: Option<&HashSet<String>>,
         params: Option<&ExtraDatabaseParams>,
@@ -253,7 +254,7 @@ impl Database for CachedSqlCipher {
 
     async fn update_state(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -269,7 +270,7 @@ impl Database for CachedSqlCipher {
 
     async fn upsert(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         owner: &str,
         object: &kmip_objects::Object,
         tags: &HashSet<String>,
@@ -298,7 +299,7 @@ impl Database for CachedSqlCipher {
 
     async fn delete(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -326,18 +327,11 @@ impl Database for CachedSqlCipher {
         &self,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<
-        Vec<(
-            UniqueIdentifier,
-            String,
-            StateEnumeration,
-            Vec<ObjectOperationType>,
-            IsWrapped,
-        )>,
-    > {
+    ) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
+    {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = list_shared_objects_(owner, &*pool).await;
+            let ret = list_user_granted_access_rights_(owner, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -347,7 +341,7 @@ impl Database for CachedSqlCipher {
 
     async fn list_object_accesses_granted(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>> {
         if let Some(params) = params {
@@ -362,7 +356,7 @@ impl Database for CachedSqlCipher {
 
     async fn grant_access(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         userid: &str,
         operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
@@ -379,7 +373,7 @@ impl Database for CachedSqlCipher {
 
     async fn remove_access(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         userid: &str,
         operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
@@ -396,7 +390,7 @@ impl Database for CachedSqlCipher {
 
     async fn is_object_owned_by(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         userid: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
@@ -439,7 +433,7 @@ impl Database for CachedSqlCipher {
 
     async fn list_user_access_rights_on_object(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         userid: &str,
         no_inherited_access: bool,
         params: Option<&ExtraDatabaseParams>,

@@ -62,7 +62,7 @@ pub trait Database {
     /// Retrieve the ags of the object with the given `uid`
     async fn retrieve_tags(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>>;
 
@@ -71,7 +71,7 @@ pub trait Database {
     /// If tags is `None`, the tags will not be updated.
     async fn update_object(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         object: &Object,
         tags: Option<&HashSet<String>>,
         params: Option<&ExtraDatabaseParams>,
@@ -80,7 +80,7 @@ pub trait Database {
     /// Update the state of an object in the database.
     async fn update_state(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
@@ -88,7 +88,7 @@ pub trait Database {
     /// Upsert (update or create if does not exist)
     async fn upsert(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         object: &Object,
         tags: &HashSet<String>,
@@ -99,7 +99,7 @@ pub trait Database {
     /// Delete an object from the database.
     async fn delete(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
@@ -109,26 +109,17 @@ pub trait Database {
     /// (i.e. the objects for which `user` is not the owner)
     /// The result is a list of tuples (uid, owner, state, operations, is_wrapped)
     /// where `operations` is a list of operations that `user` can perform on the object
-    /// and `is_wrapped` is a boolean indicating if the object is wrapped
     async fn list_user_granted_access_rights(
         &self,
         user: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<
-        Vec<(
-            UniqueIdentifier,
-            String,
-            StateEnumeration,
-            Vec<ObjectOperationType>,
-            IsWrapped,
-        )>,
-    >;
+    ) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>;
 
     /// List all the accessed granted per `user`
     /// This is called by the owner only
     async fn list_object_accesses_granted(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>>;
 
@@ -136,7 +127,7 @@ pub trait Database {
     /// on the object identified by its `uid`
     async fn grant_access(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
@@ -146,7 +137,7 @@ pub trait Database {
     /// on the object identified by its `uid`
     async fn remove_access(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
@@ -155,7 +146,7 @@ pub trait Database {
     /// Test if an object identified by its `uid` is currently owned by `owner`
     async fn is_object_owned_by(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool>;
@@ -177,7 +168,7 @@ pub trait Database {
     /// unless `no_inherited_access` is set to `true`
     async fn list_user_access_rights_on_object(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         no_inherited_access: bool,
         params: Option<&ExtraDatabaseParams>,

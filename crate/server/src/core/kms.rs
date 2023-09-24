@@ -667,7 +667,7 @@ impl KMS {
         Ok(ids)
     }
 
-    /// Get all the objects shared to a given user
+    /// Get all the access rights granted to a given user
     pub async fn list_access_rights_obtained(
         &self,
         user: &str,
