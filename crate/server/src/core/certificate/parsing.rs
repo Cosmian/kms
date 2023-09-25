@@ -58,6 +58,8 @@ pub(crate) fn get_common_name(name: &X509Name<'_>) -> KResult<String> {
     // Warning: implementation choice done here:
     // - no Common Name on a X509 certificate is forbidden
     // - multiple Common Name on a X509 certificate is forbidden...
+
+    debug!("get_common_name: name: {}", name);
     let common_name = name
         .iter_common_name()
         .next()

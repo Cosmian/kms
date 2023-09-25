@@ -40,6 +40,8 @@ pub fn import(
     match format {
         CertificateInputFormat::TTLV => args.push("ttlv".to_owned()),
         CertificateInputFormat::PEM => args.push("pem".to_owned()),
+        CertificateInputFormat::CHAIN => args.push("chain".to_owned()),
+        CertificateInputFormat::CCADB => args.push("ccadb".to_owned()),
     };
     if let Some(tags) = tags {
         for tag in tags {
@@ -64,7 +66,7 @@ pub fn import(
 }
 
 #[tokio::test]
-pub async fn test_certificate_import() -> Result<(), CliError> {
+pub async fn test_certificate_import_different_format() -> Result<(), CliError> {
     // Create a test server
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
@@ -88,6 +90,18 @@ pub async fn test_certificate_import() -> Result<(), CliError> {
         CertificateInputFormat::PEM,
         None,
         Some(&["import_cert"]),
+        false,
+        false,
+    )?;
+
+    // import a chain
+    import(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        "test_data/certificates/mozilla_IncludedRootsPEM.txt",
+        CertificateInputFormat::CHAIN,
+        None,
+        Some(&["import_chain"]),
         false,
         false,
     )?;

@@ -21,7 +21,7 @@ use openssl::{
     pkey::{Id, PKey, Private},
     sha::Sha1,
 };
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 use x509_parser::{num_bigint::BigUint, parse_x509_certificate, prelude::parse_x509_pem};
 
 use super::wrapping::unwrap_key;
@@ -53,19 +53,33 @@ fn parse_certificate_and_create_tags(
             "Cannot import expired certificate. Certificate details: {x509:?}"
         )))
     }
-    debug!("Certificate is not expired: {:?}", x509.validity());
+    debug!(
+        "parse_certificate_and_create_tags: Certificate is not expired: {:?}",
+        x509.validity()
+    );
 
     let cert_spki = get_certificate_subject_key_identifier(&x509)?;
+    debug!(
+        "parse_certificate_and_create_tags: Subject Key Identifier: {:?}",
+        cert_spki
+    );
+
     if let Some(spki) = cert_spki {
         let spki_tag = format!("_cert_spki={spki}");
         debug!("Add spki system tag: {spki_tag}");
         tags.insert(spki_tag);
     }
     if x509.is_ca() {
-        let subject_common_name = get_common_name(&x509.subject)?;
-        let ca_tag = format!("_cert_ca={subject_common_name}");
-        debug!("Add CA system tag: {}", &ca_tag);
-        tags.insert(ca_tag);
+        match get_common_name(&x509.subject) {
+            Ok(subject_common_name) => {
+                let ca_tag = format!("_cert_ca={subject_common_name}");
+                debug!("Add CA system tag: {}", &ca_tag);
+                tags.insert(ca_tag);
+            }
+            Err(_) => {
+                warn!("no common name for certificate: {:?}", x509);
+            }
+        }
     }
     Ok(())
 }
@@ -240,7 +254,7 @@ pub async fn import(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ImportResponse> {
-    debug!("Entering import KMIP operation: {:?}", request);
+    trace!("Entering import KMIP operation: {:?}", request);
     // Unique identifiers starting with `[` are reserved for queries on tags
     // see tagging
     // For instance, a request for uniquer identifier `[tag1]` will
