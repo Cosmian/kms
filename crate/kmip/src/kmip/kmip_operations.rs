@@ -4,7 +4,7 @@ use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize, Serialize,
 };
-use strum_macros::Display;
+use strum::Display;
 
 use super::{
     kmip_data_structures::KeyWrappingSpecification,
