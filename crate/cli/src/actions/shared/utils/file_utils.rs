@@ -177,12 +177,13 @@ pub fn read_bytes_from_files_to_bulk(input_files: &[PathBuf]) -> Result<Vec<u8>,
 
     // number of files to decrypt
     leb128::write::unsigned(&mut data, input_files.len() as u64)
-        .map_err(|_| CliError::Conversion("Cannot write the number of files".to_string()))?;
+        .map_err(|e| CliError::Conversion(format!("Cannot write the number of files: {e}")))?;
 
     for input_file in input_files {
         let mut content = read_bytes_from_file(input_file)?;
-        leb128::write::unsigned(&mut data, content.len() as u64)
-            .map_err(|_| CliError::Conversion("Cannot write the size of the chunk".to_string()))?;
+        leb128::write::unsigned(&mut data, content.len() as u64).map_err(|e| {
+            CliError::Conversion(format!("Cannot write the size of the chunk: {e}"))
+        })?;
         data.append(&mut content);
     }
 
@@ -196,18 +197,17 @@ pub fn write_bulk_decrypted_data(
     output_file: Option<&PathBuf>,
 ) -> Result<(), CliError> {
     // number of decrypted chunks
-    let nb_chunks = leb128::read::unsigned(&mut plaintext).map_err(|_| {
-        CliError::Conversion(
+    let nb_chunks = leb128::read::unsigned(&mut plaintext).map_err(|e| {
+        CliError::Conversion(format!(
             "expected a LEB128 encoded number (number of encrypted chunks) at the beginning of \
-             the encrypted data"
-                .to_string(),
-        )
+             the encrypted data: {e}"
+        ))
     })? as usize;
 
     (0..nb_chunks).try_for_each(|idx| {
         // get chunk of data from slice
         let chunk_size = leb128::read::unsigned(&mut plaintext)
-            .map_err(|_| CliError::Conversion("Cannot read the chunk size".to_string()))?
+            .map_err(|e| CliError::Conversion(format!("Cannot read the chunk size: {e}")))?
             as usize;
 
         #[allow(clippy::needless_borrow)]

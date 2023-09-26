@@ -147,17 +147,16 @@ impl EncryptAction {
         authentication_tag: &[u8],
     ) -> Result<(), CliError> {
         // number of encrypted chunks
-        let nb_chunks = leb128::read::unsigned(&mut data).map_err(|_| {
-            CliError::Conversion(
+        let nb_chunks = leb128::read::unsigned(&mut data).map_err(|e| {
+            CliError::Conversion(format!(
                 "expected a LEB128 encoded number (number of encrypted chunks) at the beginning \
-                 of the encrypted data"
-                    .to_string(),
-            )
+                 of the encrypted data: {e}"
+            ))
         })? as usize;
 
         (0..nb_chunks).try_for_each(|idx| {
             let chunk_size = leb128::read::unsigned(&mut data)
-                .map_err(|_| CliError::Conversion("Cannot read the chunk size".to_string()))?
+                .map_err(|e| CliError::Conversion(format!("Cannot read the chunk size: {e}")))?
                 as usize;
 
             #[allow(clippy::needless_borrow)]
