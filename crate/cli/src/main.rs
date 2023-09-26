@@ -49,10 +49,10 @@ async fn main() {
 async fn main_() -> Result<(), CliError> {
     // Uncomment the following if you need debug logs
     // from the CLI (useful for tests)
-    if option_env!("RUST_LOG").is_none() {
-        std::env::set_var("RUST_LOG", "debug");
-    }
-    env_logger::init();
+    // if option_env!("RUST_LOG").is_none() {
+    //     std::env::set_var("RUST_LOG", "debug");
+    // }
+    // env_logger::init();
 
     let opts = Cli::parse();
     let conf = CliConf::load()?;
