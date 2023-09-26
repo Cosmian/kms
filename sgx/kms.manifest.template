@@ -1,5 +1,3 @@
-# This is a general manifest template for running SQLite.
-
 loader.entrypoint = "file:{{ gramine.libos }}"
 libos.entrypoint = "{{ entrypoint }}/server"
 
@@ -24,7 +22,6 @@ loader.env.KMS_ENCLAVE_MANIFEST_FILENAME = "kms.manifest.sgx"
 loader.env.KMS_ENCLAVE_PUBLIC_KEY_FILENAME = "{{ sgx_signer_public_key }}"
 loader.env.KMS_ENCLAVE_DIR_PATH = "/public_data"
 loader.env.KMS_ROOT_DATA_PATH = "/private_data"
-loader.env.RUST_BACKTRACE="0"
 loader.env.RUST_BACKTRACE="0"
 loader.env.KMS_USE_BOOTSTRAP_SERVER = "true"
 

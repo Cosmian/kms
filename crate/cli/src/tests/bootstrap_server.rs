@@ -10,6 +10,7 @@ use crate::{
 pub(crate) const SUB_COMMAND: &str = "bootstrap-start";
 
 #[tokio::test]
+#[ignore] // Need a tee runner to test this feature
 pub async fn test_bootstrap_server() -> Result<(), CliError> {
     // init the test server
     // since we are going to rewrite the conf, use a different port

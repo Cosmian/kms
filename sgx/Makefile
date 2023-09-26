@@ -12,7 +12,7 @@ endif
 .PHONY: all
 all: kms.manifest
 ifeq ($(SGX),1)
-all: kms.manifest.sgx kms.sig kms.token
+all: kms.manifest.sgx kms.sig
 endif
 
 kms.manifest: kms.manifest.template
@@ -35,12 +35,9 @@ kms.manifest.sgx: kms.manifest
 
 kms.sig: kms.manifest.sgx
 
-kms.token: kms.sig
-	gramine-sgx-get-token --output $@ --sig $^
-
 .PHONY: clean
 clean:
-	$(RM) *.manifest *.manifest.sgx *.token *.sig OUTPUT scripts/testdir/*
+	$(RM) *.manifest *.manifest.sgx *.sig OUTPUT scripts/testdir/*
 
 .PHONY: distclean
 distclean: clean

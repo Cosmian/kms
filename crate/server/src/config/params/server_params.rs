@@ -133,8 +133,14 @@ impl fmt::Debug for ServerParams {
                 ),
             )
             .field(
-                "bootstrap server CN",
-                &self.bootstrap_server_params.bootstrap_server_common_name,
+                "bootstrap server subject",
+                &self.bootstrap_server_params.bootstrap_server_subject,
+            )
+            .field(
+                "bootstrap server days before expiration",
+                &self
+                    .bootstrap_server_params
+                    .bootstrap_server_expiration_days,
             )
         } else {
             &mut x
