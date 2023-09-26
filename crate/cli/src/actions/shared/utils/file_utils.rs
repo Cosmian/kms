@@ -16,7 +16,7 @@ use crate::{
     error::{result::CliResultHelper, CliError},
 };
 
-/// Read a JSON policy specification from a file
+/// Read all bytes from a file
 pub fn read_bytes_from_file(file: &impl AsRef<Path>) -> Result<Vec<u8>, CliError> {
     let mut buffer = Vec::new();
     File::open(file)
@@ -50,7 +50,7 @@ pub(crate) fn determine_key_object_type(object: &Object) -> Result<ObjectType, C
                 KeyFormatType::TransparentECPublicKey => ObjectType::PublicKey,
                 KeyFormatType::TransparentDHPrivateKey => ObjectType::PrivateKey,
                 KeyFormatType::TransparentDHPublicKey => ObjectType::PublicKey,
-                x => cli_bail!("not a supported key format: {}", x),
+                x => cli_bail!("not a supported key format: {x}"),
             })
         }
     }
@@ -80,7 +80,7 @@ pub fn read_key_from_file(object_file: &PathBuf) -> Result<Object, CliError> {
     read_object_from_file(object_file, determine_key_object_type)
 }
 
-/// Read all bytes from a file
+/// Write all bytes to a file
 pub fn write_bytes_to_file(bytes: &[u8], file: &impl AsRef<Path>) -> Result<(), CliError> {
     fs::write(file, bytes).with_context(|| {
         format!(
@@ -135,4 +135,109 @@ fn tag_from_object(object: &Object) -> String {
         Object::PrivateKey { .. } => "PrivateKey",
     }
     .to_string()
+}
+
+/// Write the decrypted data to a file
+pub fn write_single_decrypted_data(
+    plaintext: &[u8],
+    input_file: &Path,
+    output_file: Option<&PathBuf>,
+) -> Result<(), CliError> {
+    let output_file =
+        output_file.map_or_else(|| input_file.with_extension("plain"), |of| of.to_owned());
+
+    write_bytes_to_file(plaintext, &output_file)
+        .with_context(|| "failed to write the decrypted file")?;
+
+    println!("The decrypted file is available at {output_file:?}");
+    Ok(())
+}
+
+/// Write the decrypted data to a file
+pub fn write_single_encrypted_data(
+    encrypted_data: &[u8],
+    input_file: &Path,
+    output_file: Option<&PathBuf>,
+) -> Result<(), CliError> {
+    // Write the encrypted file
+    let output_file =
+        output_file.map_or_else(|| input_file.with_extension("enc"), |of| of.to_owned());
+
+    write_bytes_to_file(encrypted_data, &output_file)
+        .with_context(|| "failed to write the encrypted file")?;
+
+    println!("The encrypted file is available at {output_file:?}");
+    Ok(())
+}
+
+/// Read all bytes from multiple files and serialize them
+/// into a unique vector using LEB128 serialization (bulk mode)
+pub fn read_bytes_from_files_to_bulk(input_files: &[PathBuf]) -> Result<Vec<u8>, CliError> {
+    let mut data = Vec::new();
+
+    // number of files to decrypt
+    leb128::write::unsigned(&mut data, input_files.len() as u64)
+        .map_err(|_| CliError::Conversion("Cannot write the number of files".to_string()))?;
+
+    for input_file in input_files {
+        let mut content = read_bytes_from_file(input_file)?;
+        leb128::write::unsigned(&mut data, content.len() as u64)
+            .map_err(|_| CliError::Conversion("Cannot write the size of the chunk".to_string()))?;
+        data.append(&mut content);
+    }
+
+    Ok(data)
+}
+
+/// Write each decrypted data to its own file.
+pub fn write_bulk_decrypted_data(
+    mut plaintext: &[u8],
+    input_files: &[PathBuf],
+    output_file: Option<&PathBuf>,
+) -> Result<(), CliError> {
+    // number of decrypted chunks
+    let nb_chunks = leb128::read::unsigned(&mut plaintext).map_err(|_| {
+        CliError::Conversion(
+            "expected a LEB128 encoded number (number of encrypted chunks) at the beginning of \
+             the encrypted data"
+                .to_string(),
+        )
+    })? as usize;
+
+    (0..nb_chunks).try_for_each(|idx| {
+        // get chunk of data from slice
+        let chunk_size = leb128::read::unsigned(&mut plaintext)
+            .map_err(|_| CliError::Conversion("Cannot read the chunk size".to_string()))?
+            as usize;
+
+        #[allow(clippy::needless_borrow)]
+        let chunk_data = (&mut plaintext).take(..chunk_size).ok_or_else(|| {
+            CliError::Conversion(
+                "Unable to get a valid slice from decrypted response buffer".to_string(),
+            )
+        })?;
+
+        // Write the decrypted files
+        // Reuse input file names if there are multiple inputs (and ignore `self.output_file`)
+        let output_file = if nb_chunks == 1 {
+            output_file
+                .map(|p| p.to_owned())
+                .unwrap_or_else(|| input_files[idx].with_extension("plain"))
+        } else if let Some(output_file) = &output_file {
+            let file_name = input_files[idx].file_name().ok_or_else(|| {
+                CliError::Conversion(format!(
+                    "cannot get file name from input file {:?}",
+                    input_files[idx],
+                ))
+            })?;
+            output_file.join(PathBuf::from(file_name).with_extension("plain"))
+        } else {
+            input_files[idx].with_extension("plain")
+        };
+
+        write_bytes_to_file(chunk_data, &output_file)?;
+
+        println!("The decrypted file is available at {output_file:?}");
+        Ok(())
+    })
 }

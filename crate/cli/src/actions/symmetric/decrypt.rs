@@ -1,10 +1,15 @@
-use std::{fs::File, io::prelude::*, path::PathBuf};
+use std::path::PathBuf;
 
 use clap::Parser;
+use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_decryption_request;
 
 use crate::{
+    actions::shared::utils::{
+        read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_decrypted_data,
+        write_single_decrypted_data,
+    },
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -20,9 +25,9 @@ use crate::{
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct DecryptAction {
-    /// The file to decrypt
+    /// The files to decrypt
     #[clap(required = true, name = "FILE")]
-    input_file: PathBuf,
+    input_files: Vec<PathBuf>,
 
     /// The private key unique identifier
     /// If not specified, tags should be specified
@@ -45,11 +50,22 @@ pub struct DecryptAction {
 
 impl DecryptAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
-        // Read the file to decrypt
-        let mut f = File::open(&self.input_file).context("Can't read the file to decrypt")?;
-        let mut data = Vec::new();
-        f.read_to_end(&mut data)
-            .context("Fail to read the file to decrypt")?;
+        // Read the file(s) to encrypt
+        let (cryptographic_algorithm, mut data) = if self.input_files.len() > 1 {
+            (
+                CryptographicAlgorithm::CoverCryptBulk,
+                read_bytes_from_files_to_bulk(&self.input_files).with_context(|| {
+                    "Cannot read bytes from encrypted files to LEB-serialize them"
+                })?,
+            )
+        } else {
+            (
+                CryptographicAlgorithm::CoverCrypt,
+                read_bytes_from_file(&self.input_files[0]).with_context(|| {
+                    "Cannot read bytes from encrypted files to LEB-serialize them"
+                })?,
+            )
+        };
 
         // Recover the unique identifier or set of tags
         let id = if let Some(key_id) = &self.key_id {
@@ -57,12 +73,12 @@ impl DecryptAction {
         } else if let Some(tags) = &self.tags {
             serde_json::to_string(&tags)?
         } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
+            cli_bail!("Either `--key-id` or one or more `--tag` must be specified")
         };
 
         // Extract the nonce, the encrypted data and the tag
-        let nonce = data.drain(..12).collect::<Vec<u8>>();
-        let tag = data.drain(data.len() - 16..).collect::<Vec<u8>>();
+        let nonce = data.drain(..12).collect::<Vec<_>>();
+        let tag = data.drain(data.len() - 16..).collect::<Vec<_>>();
 
         // Create the kmip query
         let decrypt_request = build_decryption_request(
@@ -71,9 +87,9 @@ impl DecryptAction {
             data,
             Some(tag),
             self.authentication_data
-                .clone()
+                .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
-            None,
+            Some(cryptographic_algorithm),
         );
 
         // Query the KMS with your kmip data and get the key pair ids
@@ -84,18 +100,11 @@ impl DecryptAction {
 
         let plaintext = decrypt_response.data.context("the plain text is empty")?;
 
-        // Write the decrypted file
-        let output_file = self
-            .output_file
-            .clone()
-            .unwrap_or_else(|| self.input_file.clone().with_extension(".plain"));
-        let mut buffer = File::create(&output_file).context("Fail to write the plaintext file")?;
-        buffer
-            .write_all(&plaintext)
-            .context("failed to write the plaintext  file")?;
-
-        println!("The decrypted file is available at {:?}", &output_file);
-
-        Ok(())
+        // Write the decrypted file(s)
+        if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
+            write_bulk_decrypted_data(&plaintext, &self.input_files, self.output_file.as_ref())
+        } else {
+            write_single_decrypted_data(&plaintext, &self.input_files[0], self.output_file.as_ref())
+        }
     }
 }

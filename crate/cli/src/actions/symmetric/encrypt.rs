@@ -1,10 +1,12 @@
 use std::{fs::File, io::prelude::*, path::PathBuf};
 
 use clap::Parser;
+use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_encryption_request;
 
 use crate::{
+    actions::shared::utils::{read_bytes_from_file, read_bytes_from_files_to_bulk},
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -20,9 +22,9 @@ use crate::{
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct EncryptAction {
-    /// The file to encrypt
+    /// The files to encrypt
     #[clap(required = true, name = "FILE")]
-    input_file: PathBuf,
+    input_files: Vec<PathBuf>,
 
     /// The symmetric key unique identifier.
     /// If not specified, tags should be specified
@@ -46,12 +48,20 @@ pub struct EncryptAction {
 
 impl EncryptAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
-        // Read the file to encrypt
-        let mut f =
-            File::open(&self.input_file).with_context(|| "Can't read the file to encrypt")?;
-        let mut plaintext = Vec::new();
-        f.read_to_end(&mut plaintext)
-            .with_context(|| "Fail to read the file to encrypt")?;
+        // Read the file(s) to encrypt
+        let (cryptographic_algorithm, data) = if self.input_files.len() > 1 {
+            (
+                CryptographicAlgorithm::CoverCryptBulk,
+                read_bytes_from_files_to_bulk(&self.input_files)
+                    .with_context(|| "Cannot read bytes from files to LEB-serialize them")?,
+            )
+        } else {
+            (
+                CryptographicAlgorithm::CoverCrypt,
+                read_bytes_from_file(&self.input_files[0])
+                    .with_context(|| "Cannot read bytes from iles to LEB-serialize them")?,
+            )
+        };
 
         // Recover the unique identifier or set of tags
         let id = if let Some(key_id) = &self.key_id {
@@ -59,19 +69,19 @@ impl EncryptAction {
         } else if let Some(tags) = &self.tags {
             serde_json::to_string(&tags)?
         } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
+            cli_bail!("Either `--key-id` or one or more `--tag` must be specified")
         };
 
         // Create the kmip query
         let encrypt_request = build_encryption_request(
             &id,
             None,
-            plaintext,
+            data,
             None,
             self.authentication_data
                 .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
-            None,
+            Some(cryptographic_algorithm),
         )?;
 
         // Query the KMS with your kmip data and get the key pair ids
@@ -80,40 +90,121 @@ impl EncryptAction {
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
+        let nonce = encrypt_response
+            .iv_counter_nonce
+            .context("the nonce is empty")?;
+        let data = encrypt_response
+            .data
+            .context("The encrypted data are empty")?;
+        let authentication_tag = encrypt_response
+            .authenticated_encryption_tag
+            .context("the authentication tag is empty")?;
+
+        if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
+            self.write_bulk_encrypted_data(&nonce, &data, &authentication_tag)
+        } else {
+            self.write_single_encrypted_data(&nonce, &data, &authentication_tag)
+        }
+    }
+
+    fn write_single_encrypted_data(
+        &self,
+        nonce: &[u8],
+        data: &[u8],
+        authentication_tag: &[u8],
+    ) -> Result<(), CliError> {
         // Write the encrypted file
         let output_file = self
             .output_file
             .clone()
-            .unwrap_or_else(|| self.input_file.with_extension("enc"));
+            .unwrap_or_else(|| self.input_files[0].with_extension("enc"));
         let mut buffer =
             File::create(&output_file).with_context(|| "failed to write the encrypted file")?;
 
-        // extract the nonce and write it
-        let nonce = encrypt_response
-            .iv_counter_nonce
-            .context("the nonce is empty")?;
+        // write the nonce
         buffer
-            .write_all(&nonce)
+            .write_all(nonce)
             .with_context(|| "failed to write the nonce")?;
 
-        // extract the ciphertext and write it
-        let data = encrypt_response
-            .data
-            .context("The encrypted data are empty")?;
+        // write the ciphertext
         buffer
-            .write_all(&data)
+            .write_all(data)
             .context("failed to write the ciphertext")?;
 
-        // extract the authentication tag and write it
-        let authentication_tag = encrypt_response
-            .authenticated_encryption_tag
-            .context("the authentication tag is empty")?;
+        // write the authentication tag
         buffer
-            .write_all(&authentication_tag)
+            .write_all(authentication_tag)
             .context("failed to write the authentication tag")?;
 
-        println!("The encrypted file is available at {:?}", &output_file);
-
+        println!("The encrypted file is available at {output_file:?}");
         Ok(())
+    }
+
+    fn write_bulk_encrypted_data(
+        &self,
+        nonce: &[u8],
+        mut data: &[u8],
+        authentication_tag: &[u8],
+    ) -> Result<(), CliError> {
+        // number of encrypted chunks
+        let nb_chunks = leb128::read::unsigned(&mut data).map_err(|_| {
+            CliError::Conversion(
+                "expected a LEB128 encoded number (number of encrypted chunks) at the beginning \
+                 of the encrypted data"
+                    .to_string(),
+            )
+        })? as usize;
+
+        (0..nb_chunks).try_for_each(|idx| {
+            let chunk_size = leb128::read::unsigned(&mut data)
+                .map_err(|_| CliError::Conversion("Cannot read the chunk size".to_string()))?
+                as usize;
+
+            #[allow(clippy::needless_borrow)]
+            let chunk_data = (&mut data).take(..chunk_size).ok_or_else(|| {
+                CliError::Conversion(
+                    "Unable to get a valid slice from encrypted response buffer".to_string(),
+                )
+            })?;
+
+            // Write the encrypted files
+            // Reuse input file names if there are multiple inputs (and ignore `self.output_file`)
+            let output_file = if nb_chunks == 1 {
+                self.output_file
+                    .clone()
+                    .unwrap_or_else(|| self.input_files[idx].with_extension("enc"))
+            } else if let Some(output_file) = &self.output_file {
+                let file_name = self.input_files[idx].file_name().ok_or_else(|| {
+                    CliError::Conversion(format!(
+                        "cannot get file name from input file {:?}",
+                        self.input_files[idx],
+                    ))
+                })?;
+                output_file.join(PathBuf::from(file_name).with_extension("enc"))
+            } else {
+                self.input_files[idx].with_extension("enc")
+            };
+
+            let mut buffer =
+                File::create(&output_file).with_context(|| "failed to write the encrypted file")?;
+
+            // write the nonce
+            buffer
+                .write_all(nonce)
+                .with_context(|| "failed to write the nonce")?;
+
+            // write the ciphertext
+            buffer
+                .write_all(chunk_data)
+                .context("failed to write the ciphertext")?;
+
+            // write the authentication tag
+            buffer
+                .write_all(authentication_tag)
+                .context("failed to write the authentication tag")?;
+
+            println!("The encrypted file is available at {output_file:?}");
+            Ok(())
+        })
     }
 }

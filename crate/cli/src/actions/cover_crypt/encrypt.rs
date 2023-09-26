@@ -1,4 +1,4 @@
-use std::{fs::File, io::prelude::*, path::PathBuf};
+use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
 use cloudproof::reexport::{
@@ -10,6 +10,9 @@ use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_encryption_request;
 
 use crate::{
+    actions::shared::utils::{
+        read_bytes_from_file, read_bytes_from_files_to_bulk, write_single_encrypted_data,
+    },
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -56,19 +59,14 @@ impl EncryptAction {
             Some(CryptographicAlgorithm::CoverCrypt)
         };
 
+        // Read the file(s) to encrypt
         let mut data = if let Some(CryptographicAlgorithm::CoverCryptBulk) = cryptographic_algorithm
         {
-            self.prepare_data_bulk()?
+            read_bytes_from_files_to_bulk(&self.input_files)
+                .with_context(|| "Cannot read bytes from files to LEB-serialize them")?
         } else {
-            let input_file = self.input_files.first().ok_or_else(|| {
-                CliError::Conversion("Cannot get at least one input file to encrypt".to_string())
-            })?;
-            // Read the file to encrypt
-            let mut f = File::open(input_file).with_context(|| "Can't read the file to encrypt")?;
-            let mut data = Vec::new();
-            f.read_to_end(&mut data)
-                .with_context(|| "Fail to read the file to encrypt")?;
-            data
+            read_bytes_from_file(&self.input_files[0])
+                .with_context(|| "Cannot read bytes from files to LEB-serialize them")?
         };
 
         // Recover the unique identifier or set of tags
@@ -103,31 +101,14 @@ impl EncryptAction {
             .context("The encrypted data are empty")?;
 
         if let Some(CryptographicAlgorithm::CoverCryptBulk) = cryptographic_algorithm {
-            self.write_bulk_encrypted_data(&data)?;
+            self.write_bulk_encrypted_data(&data)
         } else {
-            // Write the encrypted file
-            let output_file = if let Some(output_file) = &self.output_file {
-                output_file.clone()
-            } else {
-                let input_file = self.input_files.first().ok_or_else(|| {
-                    CliError::Conversion(
-                        "Cannot get filename from at least first input file".to_string(),
-                    )
-                })?;
-                input_file.with_extension("enc")
-            };
-            let mut buffer =
-                File::create(&output_file).with_context(|| "failed to write the encrypted file")?;
-            buffer
-                .write_all(&data)
-                .with_context(|| "failed to write the encrypted file")?;
-
-            println!("The encrypted file is available at {output_file:?}");
+            write_single_encrypted_data(&data, &self.input_files[0], self.output_file.as_ref())
         }
-
-        Ok(())
     }
 
+    /// Write each chunk of encrypted data to its own file.
+    ///
     /// Several files need to be encrypted.
     /// A custom protocol is used to serialize these data.
     ///
@@ -149,37 +130,12 @@ impl EncryptAction {
     /// DEC response
     /// | nb_chunks (LEB128) | chunk_size (LEB128) | chunk_data (plaintext)
     ///                        <------------- nb_chunks times ------------>
-    fn prepare_data_bulk(&self) -> Result<Vec<u8>, CliError> {
-        let mut data = Vec::new();
-
-        // number of encrypted files
-        leb128::write::unsigned(&mut data, self.input_files.len() as u64).map_err(|_| {
-            CliError::Conversion("Cannot write the number of files to encrypt".to_string())
-        })?;
-
-        for input_file in &self.input_files {
-            // Read the file to encrypt
-            let mut f = File::open(input_file)
-                .with_context(|| format!("Can't read the file to encrypt ({input_file:?})"))?;
-            let mut content = Vec::new();
-            f.read_to_end(&mut content)
-                .with_context(|| "Fail to read the file to encrypt")?;
-
-            leb128::write::unsigned(&mut data, content.len() as u64).map_err(|_| {
-                CliError::Conversion("Cannot write the size of the chunk to encrypt".to_string())
-            })?;
-            data.append(&mut content);
-        }
-
-        Ok(data)
-    }
-
-    /// Read the bulk serialized data in order to write it on disk.
-    /// Each encrypted chunk is written starting with the encrypted header,
-    /// so each chunk can be decrypted independently.
-    fn write_bulk_encrypted_data(&self, data: &[u8]) -> Result<(), CliError> {
+    ///
+    /// Each file begins with a copy of the encrypted header, this way
+    /// any chunk serialized in a file is usable on its own.
+    fn write_bulk_encrypted_data(&self, encrypted_data: &[u8]) -> Result<(), CliError> {
         // Read encrypted header
-        let mut de = Deserializer::new(data);
+        let mut de = Deserializer::new(encrypted_data);
         let encrypted_header = EncryptedHeader::read(&mut de)
             .map_err(|_| {
                 CliError::Conversion(
@@ -205,7 +161,7 @@ impl EncryptAction {
             )
         })? as usize;
 
-        for idx in 0..nb_chunks {
+        (0..nb_chunks).try_for_each(|idx| {
             let chunk_size = leb128::read::unsigned(&mut data_slice)
                 .map_err(|_| CliError::Conversion("Cannot read the chunk size".to_string()))?
                 as usize;
@@ -224,7 +180,7 @@ impl EncryptAction {
                     .clone()
                     .unwrap_or_else(|| self.input_files[idx].with_extension("enc"))
             } else if let Some(output_file) = &self.output_file {
-                let file_name = self.input_files[idx].file_name().ok_or_else(|| {
+                let file_name = &self.input_files[idx].file_name().ok_or_else(|| {
                     CliError::Conversion(format!(
                         "cannot get file name from input file {:?}",
                         self.input_files[idx],
@@ -246,8 +202,7 @@ impl EncryptAction {
                 .with_context(|| "failed to write the encrypted data to file")?;
 
             println!("The encrypted file is available at {output_file:?}");
-        }
-
-        Ok(())
+            Ok(())
+        })
     }
 }

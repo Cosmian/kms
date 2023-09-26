@@ -53,7 +53,7 @@ impl EncryptAction {
         } else if let Some(tags) = &self.tags {
             serde_json::to_string(&tags)?
         } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
+            cli_bail!("Either `--key-id` or one or more `--tag` must be specified")
         };
 
         // Create the kmip query
@@ -63,7 +63,7 @@ impl EncryptAction {
             data,
             None,
             self.authentication_data
-                .clone()
+                .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
             None,
         )?;
