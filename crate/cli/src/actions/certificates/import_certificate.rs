@@ -21,6 +21,7 @@ pub enum CertificateInputFormat {
     PEM,
     CHAIN,
     CCADB,
+    PKCS12,
 }
 
 /// Import into the KMS database the following elements:
@@ -54,6 +55,10 @@ pub struct ImportCertificateAction {
     #[clap(long = "format", short = 'f')]
     input_format: CertificateInputFormat,
 
+    /// PKCS12 password: only available for PKCS12 format
+    #[clap(long = "pkcs12-password", short = 'p')]
+    pkcs12_password: Option<String>,
+
     /// Unwrap the object if it is wrapped before storing it
     #[clap(
         long = "unwrap",
@@ -85,47 +90,76 @@ impl ImportCertificateAction {
         match self.input_format {
             CertificateInputFormat::TTLV => {
                 trace!("CLI: import certificate as TTLV JSON file");
-                let certificate_file =
-                    &self
-                        .certificate_file
-                        .clone()
-                        .ok_or(CliError::InvalidRequest(
-                            "Certificate file parameter is MANDATORY for TTLV format".to_string(),
-                        ))?;
                 // read the certificate file
-                let object = read_key_from_file(certificate_file)?;
+                let object = read_key_from_file(&self.get_certificate_file()?)?;
                 trace!("CLI: read key from file OK");
 
-                self.import(kms_rest_client, object).await?;
+                self.import(kms_rest_client, object, self.replace_existing)
+                    .await?;
             }
             CertificateInputFormat::PEM => {
                 debug!("CLI: import certificate as PEM file");
-                let certificate_file =
-                    &self
-                        .certificate_file
-                        .clone()
-                        .ok_or(CliError::InvalidRequest(
-                            "Certificate file parameter is MANDATORY for PEM format".to_string(),
-                        ))?;
-                let pem_value = read_bytes_from_file(&certificate_file)?;
+                let pem_value = read_bytes_from_file(&self.get_certificate_file()?)?;
 
                 let object = Object::Certificate {
                     certificate_type: CertificateType::X509,
                     certificate_value: pem_value,
                 };
-                self.import(kms_rest_client, object).await?;
+                self.import(kms_rest_client, object, self.replace_existing)
+                    .await?;
+            }
+            CertificateInputFormat::PKCS12 => {
+                debug!("CLI: import certificate as PKCS12 file");
+                let password = self
+                    .pkcs12_password
+                    .clone()
+                    .ok_or(CliError::InvalidRequest("PKCS12 is required".to_string()))?;
+                let pkcs12_bytes = read_bytes_from_file(&self.get_certificate_file()?)?;
+
+                let pkcs12_parser = openssl::pkcs12::Pkcs12::from_der(&pkcs12_bytes)?;
+                let pkcs12 = pkcs12_parser.parse2(&password)?;
+
+                // Import PKCS12 X509 certificate
+                let object = Object::Certificate {
+                    certificate_type: CertificateType::X509,
+                    certificate_value: pkcs12
+                        .cert
+                        .ok_or(CliError::InvalidRequest(
+                            "X509 certificate not found in PKCS12".to_string(),
+                        ))?
+                        .to_pem()?,
+                };
+                self.import(kms_rest_client, object, self.replace_existing)
+                    .await?;
+                // Import PKCS12 private key
+                let object = Object::Certificate {
+                    certificate_type: CertificateType::X509,
+                    certificate_value: pkcs12
+                        .pkey
+                        .ok_or(CliError::InvalidRequest(
+                            "Private key not found in PKCS12".to_string(),
+                        ))?
+                        .private_key_to_pem_pkcs8()?,
+                };
+                self.import(kms_rest_client, object, self.replace_existing)
+                    .await?;
+
+                // Import PKCS12 chain
+                let chain = pkcs12.ca.ok_or(CliError::InvalidRequest(
+                    "CA Chain not found in PKCS12".to_string(),
+                ))?;
+                for x509 in chain {
+                    let object = Object::Certificate {
+                        certificate_type: CertificateType::X509,
+                        certificate_value: x509.to_pem()?,
+                    };
+                    self.import(kms_rest_client, object, self.replace_existing)
+                        .await?;
+                }
             }
             CertificateInputFormat::CHAIN => {
                 debug!("CLI: import certificate chain as PEM file");
-                let certificate_file =
-                    &self
-                        .certificate_file
-                        .clone()
-                        .ok_or(CliError::InvalidRequest(
-                            "Certificate file parameter is MANDATORY for CHAIN format".to_string(),
-                        ))?;
-
-                let pem_value = read_bytes_from_file(&certificate_file)?;
+                let pem_value = read_bytes_from_file(&self.get_certificate_file()?)?;
 
                 let stack = X509::stack_from_pem(&pem_value)?;
                 for cert in stack {
@@ -133,7 +167,8 @@ impl ImportCertificateAction {
                         certificate_type: CertificateType::X509,
                         certificate_value: cert.to_pem()?,
                     };
-                    self.import(kms_rest_client, object).await?;
+                    self.import(kms_rest_client, object, self.replace_existing)
+                        .await?;
                 }
             }
             CertificateInputFormat::CCADB => {
@@ -159,7 +194,7 @@ impl ImportCertificateAction {
                         certificate_type: CertificateType::X509,
                         certificate_value: cert.to_pem()?,
                     };
-                    self.import(kms_rest_client, object).await?;
+                    self.import(kms_rest_client, object, true).await?;
                 }
             }
         };
@@ -167,10 +202,20 @@ impl ImportCertificateAction {
         Ok(())
     }
 
+    fn get_certificate_file(&self) -> Result<PathBuf, CliError> {
+        self.certificate_file
+            .clone()
+            .ok_or(CliError::InvalidRequest(format!(
+                "Certificate file parameter is MANDATORY for {:?} format",
+                self.input_format
+            )))
+    }
+
     async fn import(
         &self,
         kms_rest_client: &KmsRestClient,
         object: Object,
+        replace_existing: bool,
     ) -> Result<(), CliError> {
         // import the certificate
         let unique_identifier = import_object(
@@ -178,7 +223,7 @@ impl ImportCertificateAction {
             self.certificate_id.clone(),
             object,
             self.unwrap,
-            self.replace_existing,
+            replace_existing,
             &self.tags,
         )
         .await?;

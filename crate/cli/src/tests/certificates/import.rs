@@ -42,6 +42,11 @@ pub fn import(
         CertificateInputFormat::PEM => args.push("pem".to_owned()),
         CertificateInputFormat::CHAIN => args.push("chain".to_owned()),
         CertificateInputFormat::CCADB => args.push("ccadb".to_owned()),
+        CertificateInputFormat::PKCS12 => {
+            args.push("pkcs12".to_owned());
+            args.push("--pkcs12-password".to_owned());
+            args.push("secret".to_string());
+        }
     };
     if let Some(tags) = tags {
         for tag in tags {
@@ -102,6 +107,18 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         CertificateInputFormat::CHAIN,
         None,
         Some(&["import_chain"]),
+        false,
+        false,
+    )?;
+
+    // import a PKCS12
+    import(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        "test_data/certificates/kms/output.p12",
+        CertificateInputFormat::PKCS12,
+        None,
+        Some(&["import_pkcs12"]),
         false,
         false,
     )?;

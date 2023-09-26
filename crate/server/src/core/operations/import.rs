@@ -178,6 +178,32 @@ async fn create_certificate_link(
     }
 }
 
+/// The function `import_pem` takes in a PEM value, parses it, and creates an object
+/// based on the type of PEM (certificate or private key).
+///
+/// Arguments:
+///
+/// * `tags`: A mutable `HashSet` of strings used to store tags associated with the
+/// imported object.
+/// * `pem_value`: The `pem_value` parameter is a byte slice that contains the
+/// PEM-encoded data. PEM stands for Privacy-Enhanced Mail and is a format for
+/// storing and transmitting cryptographic keys, certificates, and other data.
+/// * `kms`: The `kms` parameter is of type `KMS`, which is likely an abbreviation
+/// for Key Management Service. It is used for cryptographic operations such as
+/// creating certificate links and retrieving private key objects. The specific
+/// implementation and functionality of the `KMS` type would depend on the context
+/// and the code
+/// * `owner`: The `owner` parameter in the `import_pem` function is a string that
+/// represents the owner of the imported object. It is used in the
+/// `create_certificate_link` function to associate the imported object with the
+/// owner.
+/// * `params`: The `params` parameter is an optional reference to an
+/// `ExtraDatabaseParams` struct. It is used to provide additional parameters for
+/// creating a certificate link.
+///
+/// Returns:
+///
+/// The function `import_pem` returns a `KResult<Object>`.
 async fn import_pem(
     tags: &mut HashSet<String>,
     pem_value: &[u8],
