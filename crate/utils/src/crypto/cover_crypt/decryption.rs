@@ -1,6 +1,6 @@
 use cloudproof::reexport::{
     cover_crypt::{CleartextHeader, Covercrypt, EncryptedHeader, UserSecretKey},
-    crypto_core::bytes_ser_de::{Deserializer, Serializable},
+    crypto_core::bytes_ser_de::{Deserializer, Serializable, Serializer},
 };
 use cosmian_kmip::{
     error::KmipError,
@@ -80,85 +80,53 @@ impl CovercryptDecryption {
         Ok((header, cleartext))
     }
 
-    /// Decrypt multiple payloads encoded using LEB128
+    /// Decrypt multiple LEB128-serialized payloads
     ///
-    /// A custom protocol is used to serialize these data.
-    ///
-    /// Bulk encryption / decryption scheme
-    ///
-    /// ENC request
-    /// | nb_chunks (LEB128) | chunk_size (LEB128) | chunk_data (plaintext)
-    ///                        <------------- nb_chunks times ------------>
-    ///
-    /// ENC response
-    /// | EH | nb_chunks (LEB128) | chunk_size (LEB128) | chunk_data (encrypted)
-    ///                             <------------- nb_chunks times ------------>
-    ///
-    /// DEC request
-    /// | nb_chunks (LEB128) | size(EH + chunk_data) (LEB128) | EH | chunk_data (encrypted)
-    ///                                                         <----- chunk with EH ----->
-    ///                        <---------------------- nb_chunks times ------------------->
-    ///
-    /// DEC response
-    /// | nb_chunks (LEB128) | chunk_size (LEB128) | chunk_data (plaintext)
-    ///                        <------------- nb_chunks times ------------>
+    /// The input encrypted data is serialized using LEB128 (bulk mode).
+    /// Each chunk of data is decrypted and serialized back to LEB128.
     fn bulk_decrypt(
         &self,
-        mut encrypted_bytes: &[u8],
+        encrypted_bytes: &[u8],
         aead: Option<&[u8]>,
         user_decryption_key: &UserSecretKey,
     ) -> Result<(CleartextHeader, Vec<u8>), KmipUtilsError> {
-        let mut decrypted_data = Vec::new();
+        let mut de = Deserializer::new(encrypted_bytes);
+        let mut ser = Serializer::new();
 
-        // number of encrypted chunks
-        let nb_chunks = leb128::read::unsigned(&mut encrypted_bytes).map_err(|_| {
-            KmipError::KmipError(
-                ErrorReason::Invalid_Message,
-                "expected a LEB128 encoded number (number of encrypted chunks) at the beginning \
-                 of the data to encrypt"
-                    .to_string(),
-            )
-        })? as usize;
-
-        leb128::write::unsigned(&mut decrypted_data, nb_chunks as u64).map_err(|_| {
-            KmipError::KmipError(
-                ErrorReason::Invalid_Message,
-                "Cannot write the number of chunks".to_string(),
-            )
-        })?;
+        // number of chunks of encrypted data to decrypt
+        let nb_chunks = {
+            let len = de.read_leb128_u64()?;
+            ser.write_leb128_u64(len)?;
+            usize::try_from(len).map_err(|_| {
+                KmipError::KmipError(
+                    ErrorReason::Invalid_Message,
+                    format!("size of vector is too big for architecture: {len} bytes"),
+                )
+            })?
+        };
 
         let mut cleartext_header = None;
 
         for _ in 0..nb_chunks {
-            let chunk_size = leb128::read::unsigned(&mut encrypted_bytes).map_err(|_| {
-                KmipError::KmipError(
-                    ErrorReason::Invalid_Message,
-                    "Cannot read the chunk size from bulk data".to_string(),
-                )
-            })? as usize;
+            let chunk_data = de.read_vec_as_ref()?;
 
-            #[allow(clippy::needless_borrow)]
-            let chunk_data = (&mut encrypted_bytes).take(..chunk_size).ok_or_else(|| {
-                KmipUtilsError::Kmip(
-                    ErrorReason::Internal_Server_Error,
-                    "unable to get right chunk slice from bulk data".to_string(),
-                )
-            })?;
-
-            let mut de = Deserializer::new(chunk_data);
-            let encrypted_header = EncryptedHeader::read(&mut de).map_err(|e| {
-                KmipUtilsError::Kmip(
-                    ErrorReason::Invalid_Message,
-                    format!("Bad or corrupted bulk encrypted data: {e}"),
-                )
-            })?;
-            let encrypted_block = de.finalize();
+            let (encrypted_header, encrypted_block) = {
+                let mut de_chunk = Deserializer::new(chunk_data);
+                let encrypted_header = EncryptedHeader::read(&mut de_chunk).map_err(|e| {
+                    KmipUtilsError::Kmip(
+                        ErrorReason::Invalid_Message,
+                        format!("Bad or corrupted bulk encrypted data: {e}"),
+                    )
+                })?;
+                let encrypted_block = de_chunk.finalize();
+                (encrypted_header, encrypted_block)
+            };
 
             let header = encrypted_header
                 .decrypt(&self.cover_crypt, user_decryption_key, aead)
                 .map_err(|e| KmipUtilsError::Kmip(ErrorReason::Invalid_Message, e.to_string()))?;
 
-            let mut cleartext = self
+            let cleartext = self
                 .cover_crypt
                 .decrypt(&header.symmetric_key, &encrypted_block, aead)
                 .map_err(|e| KmipUtilsError::Kmip(ErrorReason::Invalid_Message, e.to_string()))?;
@@ -173,13 +141,7 @@ impl CovercryptDecryption {
                 encrypted_block.len(),
             );
 
-            leb128::write::unsigned(&mut decrypted_data, cleartext.len() as u64).map_err(|_| {
-                KmipError::KmipError(
-                    ErrorReason::Invalid_Message,
-                    "Cannot write the size of encrypted block".to_string(),
-                )
-            })?;
-            decrypted_data.append(&mut cleartext);
+            ser.write_vec(&cleartext)?;
         }
 
         let cleartext_header = cleartext_header.ok_or_else(|| {
@@ -189,7 +151,7 @@ impl CovercryptDecryption {
             )
         })?;
 
-        Ok((cleartext_header, decrypted_data))
+        Ok((cleartext_header, ser.finalize().to_vec()))
     }
 }
 

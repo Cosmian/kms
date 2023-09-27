@@ -80,7 +80,6 @@ zeroize = { workspace = true }
 actix-http = "3.3"
 actix-rt = "2.8"
 cosmian_logger = { path = "../logger" }
-leb128 = { workspace = true }
 
 [build-dependencies]
 time = { workspace = true, features = ["local-offset", "formatting"] }

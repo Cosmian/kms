@@ -4,7 +4,10 @@ use cloudproof::reexport::{
         core::SYM_KEY_LENGTH,
         Covercrypt, EncryptedHeader, MasterPublicKey,
     },
-    crypto_core::{bytes_ser_de::Serializable, SymmetricKey},
+    crypto_core::{
+        bytes_ser_de::{Deserializer, Serializable, Serializer},
+        SymmetricKey,
+    },
 };
 use cosmian_kmip::{
     error::KmipError,
@@ -60,96 +63,39 @@ impl CoverCryptEncryption {
         })
     }
 
-    /// Encrypt multiple payloads using LEB128
+    /// Encrypt multiple LEB128-serialized payloads
     ///
-    /// A custom protocol is used to serialize these data.
-    ///
-    /// Bulk encryption / decryption scheme
-    ///
-    /// ENC request
-    /// | nb_chunks (LEB128) | chunk_size (LEB128) | chunk_data (plaintext)
-    ///                        <------------- nb_chunks times ------------>
-    ///
-    /// ENC response
-    /// | EH | nb_chunks (LEB128) | chunk_size (LEB128) | chunk_data (encrypted)
-    ///                             <------------- nb_chunks times ------------>
-    ///
-    /// DEC request
-    /// | nb_chunks (LEB128) | size(EH + chunk_data) (LEB128) | EH | chunk_data (encrypted)
-    ///                                                         <----- chunk with EH ----->
-    ///                        <---------------------- nb_chunks times ------------------->
-    ///
-    /// DEC response
-    /// | nb_chunks (LEB128) | chunk_size (LEB128) | chunk_data (plaintext)
-    ///                        <------------- nb_chunks times ------------>
+    /// The input plaintext data is serialized using LEB128 (bulk mode).
+    /// Each chunk of data is encrypted and serialized back to LEB128.
     fn bulk_encrypt(
         &self,
-        mut plaintext: &[u8],
+        plaintext: &[u8],
         aead: Option<&[u8]>,
         symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
     ) -> Result<Vec<u8>, KmipUtilsError> {
-        let mut encrypted_data = Vec::new();
+        let mut de = Deserializer::new(plaintext);
+        let mut ser = Serializer::new();
 
         // number of chunks of plaintext data to encrypt
-        let nb_chunks = leb128::read::unsigned(&mut plaintext).map_err(|_| {
-            KmipError::KmipError(
-                ErrorReason::Invalid_Message,
-                "expected a LEB128 encoded number (number of encrypted chunks) at the beginning \
-                 of the data to encrypt"
-                    .to_string(),
-            )
-        })? as usize;
-
-        leb128::write::unsigned(&mut encrypted_data, nb_chunks as u64).map_err(|_| {
-            KmipError::KmipError(
-                ErrorReason::Invalid_Message,
-                "Cannot write the number of chunks".to_string(),
-            )
-        })?;
-
-        for _ in 0..nb_chunks {
-            let chunk_size = leb128::read::unsigned(&mut plaintext).map_err(|_| {
+        let nb_chunks = {
+            let len = de.read_leb128_u64()?;
+            ser.write_leb128_u64(len)?;
+            usize::try_from(len).map_err(|_| {
                 KmipError::KmipError(
                     ErrorReason::Invalid_Message,
-                    "Cannot read the chunk size".to_string(),
+                    format!("size of vector is too big for architecture: {len} bytes"),
                 )
-            })? as usize;
+            })?
+        };
 
-            #[allow(clippy::needless_borrow)]
-            let chunk_data = (&mut plaintext).take(..chunk_size).ok_or_else(|| {
-                KmipUtilsError::Kmip(
-                    ErrorReason::Internal_Server_Error,
-                    "unable to get right chunk slice".to_string(),
-                )
-            })?;
-
-            // Encrypt the data
-            let mut encrypted_block = self
-                .cover_crypt
-                .encrypt(symmetric_key, chunk_data, aead)
-                .map_err(|e| {
-                    KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string())
-                })?;
-
-            debug!(
-                "Encrypted data with public key {} of len (CT/Enc): {}/{}",
-                self.public_key_uid,
-                chunk_data.len(),
-                encrypted_data.len(),
-            );
-
-            leb128::write::unsigned(&mut encrypted_data, encrypted_block.len() as u64).map_err(
-                |_| {
-                    KmipError::KmipError(
-                        ErrorReason::Invalid_Message,
-                        "Cannot write the size of encrypted block".to_string(),
-                    )
-                },
-            )?;
-            encrypted_data.append(&mut encrypted_block);
+        // encrypt every chunk and serialize them
+        for _ in 0..nb_chunks {
+            let chunk_data = de.read_vec_as_ref()?;
+            let encrypted_block = self.encrypt(chunk_data, aead, symmetric_key)?;
+            ser.write_vec(&encrypted_block)?;
         }
 
-        Ok(encrypted_data)
+        Ok(ser.finalize().to_vec())
     }
 
     fn encrypt(
