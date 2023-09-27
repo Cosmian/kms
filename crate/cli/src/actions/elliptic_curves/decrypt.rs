@@ -1,15 +1,12 @@
-use std::path::PathBuf;
+use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kmip::kmip::{kmip_operations::DecryptedData, kmip_types::CryptographicAlgorithm};
+use cosmian_kmip::kmip::kmip_operations::DecryptedData;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_decryption_request;
 
 use crate::{
-    actions::shared::utils::{
-        read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_decrypted_data,
-        write_single_decrypted_data,
-    },
+    actions::shared::utils::read_bytes_from_file,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -19,9 +16,9 @@ use crate::{
 /// Note: this is not a streaming call: the file is entirely loaded in memory before being sent for decryption.
 #[derive(Parser, Debug)]
 pub struct DecryptAction {
-    /// The files to decrypt
+    /// The file to decrypt
     #[clap(required = true, name = "FILE")]
-    input_files: Vec<PathBuf>,
+    input_file: PathBuf,
 
     /// The private key unique identifier
     /// If not specified, tags should be specified
@@ -44,22 +41,9 @@ pub struct DecryptAction {
 
 impl DecryptAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
-        // Read the file(s) to encrypt
-        let (cryptographic_algorithm, data) = if self.input_files.len() > 1 {
-            (
-                CryptographicAlgorithm::CoverCryptBulk,
-                read_bytes_from_files_to_bulk(&self.input_files).with_context(|| {
-                    "Cannot read bytes from encrypted files to LEB-serialize them"
-                })?,
-            )
-        } else {
-            (
-                CryptographicAlgorithm::CoverCrypt,
-                read_bytes_from_file(&self.input_files[0]).with_context(|| {
-                    "Cannot read bytes from encrypted files to LEB-serialize them"
-                })?,
-            )
-        };
+        // Read the file to decrypt
+        let data = read_bytes_from_file(&self.input_file)
+            .with_context(|| "Cannot read bytes from the file to decrypt")?;
 
         // Recover the unique identifier or set of tags
         let id = if let Some(key_id) = &self.key_id {
@@ -79,7 +63,7 @@ impl DecryptAction {
             self.authentication_data
                 .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
-            Some(cryptographic_algorithm),
+            None,
         );
 
         // Query the KMS with your kmip data and get the key pair ids
@@ -90,23 +74,23 @@ impl DecryptAction {
 
         let metadata_and_cleartext: DecryptedData = decrypt_response
             .data
-            .context("The plain data are empty")?
+            .context("The plain data is empty")?
             .as_slice()
             .try_into()?;
 
-        // Write the decrypted files
-        if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
-            write_bulk_decrypted_data(
-                &metadata_and_cleartext.plaintext,
-                &self.input_files,
-                self.output_file.as_ref(),
-            )
-        } else {
-            write_single_decrypted_data(
-                &metadata_and_cleartext.plaintext,
-                &self.input_files[0],
-                self.output_file.as_ref(),
-            )
-        }
+        // Write the decrypted file
+        let output_file = self
+            .output_file
+            .clone()
+            .unwrap_or_else(|| self.input_file.clone().with_extension(".plain"));
+        let mut buffer =
+            File::create(&output_file).with_context(|| "Fail to write the plain file")?;
+        buffer
+            .write_all(&metadata_and_cleartext.plaintext)
+            .with_context(|| "Fail to write the plain file")?;
+
+        println!("The decrypted file is available at {output_file:?}");
+
+        Ok(())
     }
 }

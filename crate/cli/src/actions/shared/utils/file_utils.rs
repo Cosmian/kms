@@ -141,8 +141,7 @@ fn tag_from_object(object: &Object) -> String {
 /// Write the decrypted data to a file
 ///
 /// If no `output_file` is provided, then
-/// it reuses the `input_file` name with
-/// the extension `plain`.
+/// it reuses the `input_file` name with the extension `plain`.
 pub fn write_single_decrypted_data(
     plaintext: &[u8],
     input_file: &Path,
@@ -161,8 +160,7 @@ pub fn write_single_decrypted_data(
 /// Write the encrypted data to a file
 ///
 /// If no `output_file` is provided, then
-/// it reuses the `input_file` name with
-/// the extension `enc`.
+/// it reuses the `input_file` name with the extension `enc`.
 pub fn write_single_encrypted_data(
     encrypted_data: &[u8],
     input_file: &Path,
@@ -225,7 +223,7 @@ pub fn write_bulk_decrypted_data(
         let chunk_data = de.read_vec_as_ref()?;
 
         // Write the decrypted files
-        // Reuse input file names if there are multiple inputs (and ignore `self.output_file`)
+        // Reuse input file names if there are multiple inputs (and ignore `output_file`)
         let output_file = if nb_chunks == 1 {
             output_file
                 .map(|p| p.to_owned())

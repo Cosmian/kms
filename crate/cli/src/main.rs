@@ -47,8 +47,7 @@ async fn main() {
 }
 
 async fn main_() -> Result<(), CliError> {
-    // Uncomment the following if you need debug logs
-    // from the CLI (useful for tests)
+    // Uncomment the following if you need debug logs in the CLI
     // if option_env!("RUST_LOG").is_none() {
     //     std::env::set_var("RUST_LOG", "debug");
     // }
