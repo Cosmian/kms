@@ -8,7 +8,6 @@ license-file = "../../LICENSE.md"
 bitflags = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }
-leb128 = { workspace = true }
 num-bigint = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
