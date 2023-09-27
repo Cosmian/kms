@@ -1,5 +1,3 @@
-#![feature(slice_take)]
-
 pub mod actions;
 pub mod config;
 pub mod error;

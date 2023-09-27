@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_types::KeyFormatType,
@@ -138,6 +139,10 @@ fn tag_from_object(object: &Object) -> String {
 }
 
 /// Write the decrypted data to a file
+///
+/// If no `output_file` is provided, then
+/// it reuses the `input_file` name with
+/// the extension `plain`.
 pub fn write_single_decrypted_data(
     plaintext: &[u8],
     input_file: &Path,
@@ -153,7 +158,11 @@ pub fn write_single_decrypted_data(
     Ok(())
 }
 
-/// Write the decrypted data to a file
+/// Write the encrypted data to a file
+///
+/// If no `output_file` is provided, then
+/// it reuses the `input_file` name with
+/// the extension `enc`.
 pub fn write_single_encrypted_data(
     encrypted_data: &[u8],
     input_file: &Path,
@@ -173,49 +182,47 @@ pub fn write_single_encrypted_data(
 /// Read all bytes from multiple files and serialize them
 /// into a unique vector using LEB128 serialization (bulk mode)
 pub fn read_bytes_from_files_to_bulk(input_files: &[PathBuf]) -> Result<Vec<u8>, CliError> {
-    let mut data = Vec::new();
+    let mut ser = Serializer::new();
 
     // number of files to decrypt
-    leb128::write::unsigned(&mut data, input_files.len() as u64)
-        .map_err(|e| CliError::Conversion(format!("Cannot write the number of files: {e}")))?;
+    let nb_input_files = u64::try_from(input_files.len()).map_err(|_| {
+        CliError::Conversion(format!(
+            "number of input files is too big for architecture: {} bytes",
+            input_files.len()
+        ))
+    })?;
+    ser.write_leb128_u64(nb_input_files)?;
 
-    for input_file in input_files {
-        let mut content = read_bytes_from_file(input_file)?;
-        leb128::write::unsigned(&mut data, content.len() as u64).map_err(|e| {
-            CliError::Conversion(format!("Cannot write the size of the chunk: {e}"))
-        })?;
-        data.append(&mut content);
-    }
+    input_files.iter().try_for_each(|input_file| {
+        let content = read_bytes_from_file(input_file)?;
+        ser.write_vec(&content)?;
+        Ok::<_, CliError>(())
+    })?;
 
-    Ok(data)
+    Ok(ser.finalize().to_vec())
 }
 
 /// Write each decrypted data to its own file.
 pub fn write_bulk_decrypted_data(
-    mut plaintext: &[u8],
+    plaintext: &[u8],
     input_files: &[PathBuf],
     output_file: Option<&PathBuf>,
 ) -> Result<(), CliError> {
+    let mut de = Deserializer::new(plaintext);
+
     // number of decrypted chunks
-    let nb_chunks = leb128::read::unsigned(&mut plaintext).map_err(|e| {
-        CliError::Conversion(format!(
-            "expected a LEB128 encoded number (number of encrypted chunks) at the beginning of \
-             the encrypted data: {e}"
-        ))
-    })? as usize;
+    let nb_chunks = {
+        let len = de.read_leb128_u64()?;
+        usize::try_from(len).map_err(|_| {
+            CliError::Conversion(format!(
+                "size of vector is too big for architecture: {len} bytes",
+            ))
+        })?
+    };
 
     (0..nb_chunks).try_for_each(|idx| {
         // get chunk of data from slice
-        let chunk_size = leb128::read::unsigned(&mut plaintext)
-            .map_err(|e| CliError::Conversion(format!("Cannot read the chunk size: {e}")))?
-            as usize;
-
-        #[allow(clippy::needless_borrow)]
-        let chunk_data = (&mut plaintext).take(..chunk_size).ok_or_else(|| {
-            CliError::Conversion(
-                "Unable to get a valid slice from decrypted response buffer".to_string(),
-            )
-        })?;
+        let chunk_data = de.read_vec_as_ref()?;
 
         // Write the decrypted files
         // Reuse input file names if there are multiple inputs (and ignore `self.output_file`)

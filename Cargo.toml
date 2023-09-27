@@ -44,8 +44,7 @@ clap = { version = "4.4", default-features = false, features = [
   "derive",
   "cargo",
 ] }
-cloudproof = { version = "2.2.3", features = ["findex-redis"] }
-cosmian_crypto_core = "9.2.0"
+cloudproof = { version = "2.2.4", features = ["findex-redis"] }
 env_logger = "0.10"
 hex = "0.4"
 http = "0.2"

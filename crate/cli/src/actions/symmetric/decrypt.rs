@@ -98,13 +98,13 @@ impl DecryptAction {
             .await
             .context("Can't execute the query on the kms server")?;
 
-        let plaintext = decrypt_response.data.context("the plain text is empty")?;
+        data = decrypt_response.data.context("the plain text is empty")?;
 
-        // Write the decrypted file(s)
+        // Write the decrypted files
         if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
-            write_bulk_decrypted_data(&plaintext, &self.input_files, self.output_file.as_ref())
+            write_bulk_decrypted_data(&data, &self.input_files, self.output_file.as_ref())
         } else {
-            write_single_decrypted_data(&plaintext, &self.input_files[0], self.output_file.as_ref())
+            write_single_decrypted_data(&data, &self.input_files[0], self.output_file.as_ref())
         }
     }
 }

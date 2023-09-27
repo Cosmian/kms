@@ -53,20 +53,19 @@ pub struct EncryptAction {
 
 impl EncryptAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
-        let cryptographic_algorithm = if self.input_files.len() > 1 {
-            Some(CryptographicAlgorithm::CoverCryptBulk)
-        } else {
-            Some(CryptographicAlgorithm::CoverCrypt)
-        };
-
         // Read the file(s) to encrypt
-        let mut data = if let Some(CryptographicAlgorithm::CoverCryptBulk) = cryptographic_algorithm
-        {
-            read_bytes_from_files_to_bulk(&self.input_files)
-                .with_context(|| "Cannot read bytes from files to LEB-serialize them")?
+        let (cryptographic_algorithm, mut data) = if self.input_files.len() > 1 {
+            (
+                CryptographicAlgorithm::CoverCryptBulk,
+                read_bytes_from_files_to_bulk(&self.input_files)
+                    .with_context(|| "Cannot read bytes from files to LEB-serialize them")?,
+            )
         } else {
-            read_bytes_from_file(&self.input_files[0])
-                .with_context(|| "Cannot read bytes from files to LEB-serialize them")?
+            (
+                CryptographicAlgorithm::CoverCrypt,
+                read_bytes_from_file(&self.input_files[0])
+                    .with_context(|| "Cannot read bytes from files to LEB-serialize them")?,
+            )
         };
 
         // Recover the unique identifier or set of tags
@@ -87,7 +86,7 @@ impl EncryptAction {
             self.authentication_data
                 .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
-            cryptographic_algorithm,
+            Some(cryptographic_algorithm),
         )?;
 
         // Query the KMS with your kmip data and get the key pair ids
@@ -100,17 +99,21 @@ impl EncryptAction {
             .data
             .context("The encrypted data are empty")?;
 
-        if let Some(CryptographicAlgorithm::CoverCryptBulk) = cryptographic_algorithm {
+        // Write the encrypted files
+        if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
             self.write_bulk_encrypted_data(&data)
         } else {
             write_single_encrypted_data(&data, &self.input_files[0], self.output_file.as_ref())
         }
     }
 
-    /// Write each chunk of encrypted data to its own file.
+    /// Store multiple encrypted data on disk
     ///
-    /// Several files need to be encrypted.
-    /// A custom protocol is used to serialize these data.
+    /// The input data is serialized using LEB128 (bulk mode).
+    /// Each chunk of data will be stored in its own file on disk.
+    ///
+    /// Each file written begins with a copy of the encrypted header, this way
+    /// any chunk serialized in a file is usable on its own.
     ///
     /// Bulk encryption / decryption scheme
     ///
@@ -131,10 +134,8 @@ impl EncryptAction {
     /// | nb_chunks (LEB128) | chunk_size (LEB128) | chunk_data (plaintext)
     ///                        <------------- nb_chunks times ------------>
     ///
-    /// Each file begins with a copy of the encrypted header, this way
-    /// any chunk serialized in a file is usable on its own.
     fn write_bulk_encrypted_data(&self, encrypted_data: &[u8]) -> Result<(), CliError> {
-        // Read encrypted header
+        // read encrypted header
         let mut de = Deserializer::new(encrypted_data);
         let encrypted_header = EncryptedHeader::read(&mut de)
             .map_err(|_| {
@@ -148,32 +149,22 @@ impl EncryptAction {
                     "Unable to serialize encrypted header structure to bytes".to_string(),
                 )
             })?;
-        let encrypted_block = de.finalize();
-
-        let mut data_slice: &[u8] = encrypted_block.as_ref();
 
         // number of encrypted chunks
-        let nb_chunks = leb128::read::unsigned(&mut data_slice).map_err(|e| {
-            CliError::Conversion(format!(
-                "expected a LEB128 encoded number (number of encrypted chunks) at the beginning \
-                 of the encrypted data: {e}"
-            ))
-        })? as usize;
+        let nb_chunks = {
+            let len = de.read_leb128_u64()?;
+            usize::try_from(len).map_err(|_| {
+                CliError::Conversion(format!(
+                    "size of vector is too big for architecture: {len} bytes",
+                ))
+            })?
+        };
 
         (0..nb_chunks).try_for_each(|idx| {
-            let chunk_size = leb128::read::unsigned(&mut data_slice)
-                .map_err(|e| CliError::Conversion(format!("Cannot read the chunk size: {e}")))?
-                as usize;
+            // get chunk of data from slice
+            let chunk_data = de.read_vec_as_ref()?;
 
-            #[allow(clippy::needless_borrow)]
-            let chunk_data = (&mut data_slice).take(..chunk_size).ok_or_else(|| {
-                CliError::Conversion(
-                    "Unable to get a valid slice from encrypted response buffer".to_string(),
-                )
-            })?;
-
-            // Write the encrypted files
-            // Reuse input file names if there are multiple inputs (and ignore `self.output_file`)
+            // reuse input file names if there are multiple inputs (and ignore `self.output_file`)
             let output_file = if nb_chunks == 1 {
                 self.output_file
                     .clone()

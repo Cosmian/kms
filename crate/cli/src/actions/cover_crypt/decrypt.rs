@@ -94,7 +94,7 @@ impl DecryptAction {
             .as_slice()
             .try_into()?;
 
-        // Write the decrypted file(s)
+        // Write the decrypted files
         if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
             write_bulk_decrypted_data(
                 &metadata_and_cleartext.plaintext,

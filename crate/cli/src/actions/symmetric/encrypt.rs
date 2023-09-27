@@ -1,6 +1,7 @@
 use std::{fs::File, io::prelude::*, path::PathBuf};
 
 use clap::Parser;
+use cloudproof::reexport::crypto_core::bytes_ser_de::Deserializer;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_encryption_request;
@@ -59,7 +60,7 @@ impl EncryptAction {
             (
                 CryptographicAlgorithm::CoverCrypt,
                 read_bytes_from_file(&self.input_files[0])
-                    .with_context(|| "Cannot read bytes from iles to LEB-serialize them")?,
+                    .with_context(|| "Cannot read bytes from files to LEB-serialize them")?,
             )
         };
 
@@ -100,26 +101,32 @@ impl EncryptAction {
             .authenticated_encryption_tag
             .context("the authentication tag is empty")?;
 
+        // Write the encrypted files
         if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
             self.write_bulk_encrypted_data(&nonce, &data, &authentication_tag)
         } else {
-            self.write_single_encrypted_data(&nonce, &data, &authentication_tag)
+            let output_file = self
+                .output_file
+                .clone()
+                .unwrap_or_else(|| self.input_files[0].with_extension("enc"));
+
+            self.write_single_encrypted_data(&nonce, &data, &authentication_tag, &output_file)
         }
     }
 
+    /// Write the encrypted data to a file
+    ///
+    /// Nonce, ciphertext and authentication tag
+    /// are written in this very order.
     fn write_single_encrypted_data(
         &self,
         nonce: &[u8],
         data: &[u8],
         authentication_tag: &[u8],
+        output_file: &PathBuf,
     ) -> Result<(), CliError> {
-        // Write the encrypted file
-        let output_file = self
-            .output_file
-            .clone()
-            .unwrap_or_else(|| self.input_files[0].with_extension("enc"));
         let mut buffer =
-            File::create(&output_file).with_context(|| "failed to write the encrypted file")?;
+            File::create(output_file).with_context(|| "failed to write the encrypted file")?;
 
         // write the nonce
         buffer
@@ -140,33 +147,32 @@ impl EncryptAction {
         Ok(())
     }
 
+    /// Store multiple encrypted data on disk
+    ///
+    /// The input data is serialized using LEB128 (bulk mode).
+    /// Each chunk of data is stored in its own file on disk.
     fn write_bulk_encrypted_data(
         &self,
         nonce: &[u8],
-        mut data: &[u8],
+        data: &[u8],
         authentication_tag: &[u8],
     ) -> Result<(), CliError> {
+        let mut de = Deserializer::new(data);
+
         // number of encrypted chunks
-        let nb_chunks = leb128::read::unsigned(&mut data).map_err(|e| {
-            CliError::Conversion(format!(
-                "expected a LEB128 encoded number (number of encrypted chunks) at the beginning \
-                 of the encrypted data: {e}"
-            ))
-        })? as usize;
+        let nb_chunks = {
+            let len = de.read_leb128_u64()?;
+            usize::try_from(len).map_err(|_| {
+                CliError::Conversion(format!(
+                    "size of vector is too big for architecture: {len} bytes",
+                ))
+            })?
+        };
 
         (0..nb_chunks).try_for_each(|idx| {
-            let chunk_size = leb128::read::unsigned(&mut data)
-                .map_err(|e| CliError::Conversion(format!("Cannot read the chunk size: {e}")))?
-                as usize;
+            // get chunk of data from slice
+            let chunk_data = de.read_vec_as_ref()?;
 
-            #[allow(clippy::needless_borrow)]
-            let chunk_data = (&mut data).take(..chunk_size).ok_or_else(|| {
-                CliError::Conversion(
-                    "Unable to get a valid slice from encrypted response buffer".to_string(),
-                )
-            })?;
-
-            // Write the encrypted files
             // Reuse input file names if there are multiple inputs (and ignore `self.output_file`)
             let output_file = if nb_chunks == 1 {
                 self.output_file
@@ -184,25 +190,7 @@ impl EncryptAction {
                 self.input_files[idx].with_extension("enc")
             };
 
-            let mut buffer =
-                File::create(&output_file).with_context(|| "failed to write the encrypted file")?;
-
-            // write the nonce
-            buffer
-                .write_all(nonce)
-                .with_context(|| "failed to write the nonce")?;
-
-            // write the ciphertext
-            buffer
-                .write_all(chunk_data)
-                .context("failed to write the ciphertext")?;
-
-            // write the authentication tag
-            buffer
-                .write_all(authentication_tag)
-                .context("failed to write the authentication tag")?;
-
-            println!("The encrypted file is available at {output_file:?}");
+            self.write_single_encrypted_data(nonce, chunk_data, authentication_tag, &output_file)?;
             Ok(())
         })
     }
