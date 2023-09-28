@@ -2,7 +2,6 @@
 //! since it is declared, all the modules in other Files
 //! will be resolved against the lib. So everything is exported
 
-// #[cfg(target_os = "linux")]
 pub mod bootstrap_server;
 pub mod config;
 pub mod core;
@@ -16,7 +15,6 @@ pub mod routes;
 use std::{pin::Pin, sync::mpsc};
 
 use actix_web::dev::ServerHandle;
-// #[cfg(target_os = "linux")]
 use bootstrap_server::start_kms_server_using_bootstrap_server;
 use config::ServerParams;
 pub use database::KMSServer;
