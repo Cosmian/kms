@@ -142,12 +142,6 @@ impl From<cloudproof::reexport::cover_crypt::Error> for CliError {
     }
 }
 
-impl From<libsgx::error::SgxError> for CliError {
-    fn from(e: libsgx::error::SgxError) -> Self {
-        Self::SGXError(e.to_string())
-    }
-}
-
 impl From<Utf8Error> for CliError {
     fn from(e: Utf8Error) -> Self {
         Self::Default(e.to_string())

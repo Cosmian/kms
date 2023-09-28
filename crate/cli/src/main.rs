@@ -6,7 +6,7 @@ use cosmian_kms_cli::{
         access::AccessAction, bootstrap::BootstrapServerAction, certificates::CertificatesCommands,
         cover_crypt::CovercryptCommands, elliptic_curves::EllipticCurveCommands,
         new_database::NewDatabaseAction, shared::LocateObjectsAction, symmetric::SymmetricCommands,
-        version::ServerVersionAction,
+        tee::entrypoint::TeeAction, version::ServerVersionAction,
     },
     config::CliConf,
     error::CliError,
@@ -36,6 +36,7 @@ enum CliCommands {
     ServerVersion(ServerVersionAction),
     #[command(subcommand)]
     Sym(SymmetricCommands),
+    Verify(TeeAction),
 }
 
 #[tokio::main]
@@ -66,6 +67,7 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Certificates(action) => action.process(&kms_rest_client).await?,
         CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
         CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
+        CliCommands::Verify(action) => action.process(&kms_rest_client, conf.tee_conf).await?,
         CliCommands::BootstrapStart(action) => {
             let bootstrap_rest_client = spawn_blocking(move || conf.initialize_bootstrap_client())
                 .await

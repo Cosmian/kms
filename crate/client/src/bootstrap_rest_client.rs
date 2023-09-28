@@ -8,15 +8,13 @@ use std::{
 use cosmian_kms_utils::access::SuccessResponse;
 use http::{HeaderMap, HeaderValue, StatusCode};
 use openssl::x509::X509;
-use ratls::{
-    verify::{get_server_certificate, verify_ratls},
-    TeeMeasurement,
-};
+use ratls::verify::{get_server_certificate, verify_ratls};
 use reqwest::{
     multipart::{Form, Part},
     Body, Certificate, Client, ClientBuilder, Identity, Response,
 };
 use serde::{Deserialize, Serialize};
+use tee_attestation::TeeMeasurement;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
@@ -182,7 +180,7 @@ impl BootstrapRestClient {
         bearer_token: Option<&str>,
         ssl_client_pkcs12_path: Option<&str>,
         ssl_client_pkcs12_password: Option<&str>,
-        measurement: Option<TeeMeasurement>,
+        measurement: TeeMeasurement,
     ) -> Result<Self, RestClientError> {
         let server_url = match bootstrap_server_url.strip_suffix('/') {
             Some(s) => s.to_string(),

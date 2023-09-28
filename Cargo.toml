@@ -5,7 +5,6 @@ members = [
   "crate/kmip",
   "crate/server",
   "crate/utils",
-  "crate/libsgx",
   "crate/pyo3",
   "crate/logger",
 ]
@@ -52,7 +51,8 @@ josekit = "0.8.3"
 native-tls = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }
 openssl = { version = "0.10", features = ["vendored"] }
-ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
+tee_attestation = { git = "https://github.com/Cosmian/tee-tools", branch = "tee_attestation" }
+ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "tee_attestation" }
 redis = { version = "0.23", features = [
   "aio",
   "ahash",
@@ -60,10 +60,12 @@ redis = { version = "0.23", features = [
   "connection-manager",
   "tokio-comp",
 ] }
+rustls = { version = "0.20", features = ["dangerous_configuration"] }
 reqwest = { version = "0.11", features = [
   "json",
   "multipart",
-  "native-tls",
+  # "native-tls",
+  "rustls-tls",
   "stream",
 ] }
 serde = { version = "1.0", features = ["derive"] }

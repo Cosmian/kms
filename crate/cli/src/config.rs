@@ -7,9 +7,8 @@ use std::{
 
 use cosmian_kms_client::{BootstrapRestClient, KmsRestClient};
 use hex::decode;
-use libsgx::quote::compute_mr_signer;
-use ratls::{guess_tee, TeeMeasurement, TeeType};
 use serde::{Deserialize, Serialize};
+use tee_attestation::{SevMeasurement, SgxMeasurement, TeeMeasurement};
 
 use crate::error::{result::CliResultHelper, CliError};
 
@@ -56,10 +55,10 @@ fn not(b: &bool) -> bool {
     !*b
 }
 
-#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone, Default)]
 pub struct TeeConf {
     pub(crate) mr_enclave: Option<String>,
-    pub(crate) signing_key: Option<String>,
+    pub(crate) public_signer_key: Option<String>,
     pub(crate) sev_measurement: Option<String>,
 }
 
@@ -67,21 +66,9 @@ impl TryInto<TeeMeasurement> for TeeConf {
     type Error = CliError;
 
     fn try_into(self) -> Result<TeeMeasurement, Self::Error> {
-        match (
-            self.mr_enclave,
-            self.signing_key,
-            self.sev_measurement,
-            guess_tee(),
-        ) {
-            (Some(e), Some(s), None, Ok(TeeType::Sgx)) => Ok(TeeMeasurement::Sgx {
-                mr_signer: compute_mr_signer(&fs::read_to_string(s)?)
-                    .map_err(|e| CliError::Default(format!("MR signer computation failed: {e:?}")))?
-                    .as_slice()
-                    .try_into()
-                    .map_err(|e| {
-                        CliError::Default(format!("Bad MR signer bytes-size: error: {e}"))
-                    })?,
-                mr_enclave: decode(e)
+        let mrenclave = if let Some(v) = &self.mr_enclave {
+            Some(
+                decode(v)
                     .map_err(|_| {
                         CliError::Default("Invalid hexadecimal format for mr enclave".to_string())
                     })?
@@ -90,24 +77,51 @@ impl TryInto<TeeMeasurement> for TeeConf {
                     .map_err(|e| {
                         CliError::Default(format!("Bad MR enclave bytes-size: error: {e}"))
                     })?,
-            }),
-            (None, None, Some(m), Ok(TeeType::Sev)) => Ok(TeeMeasurement::Sev(
-                decode(m)
+            )
+        } else {
+            None
+        };
+
+        let sev_measurement = if let Some(v) = &self.sev_measurement {
+            Some(
+                decode(v)
                     .map_err(|_| {
-                        CliError::Default(
-                            "Invalid hexadecimal format for SEV measurement".to_string(),
-                        )
+                        CliError::Default("Invalid hexadecimal format for mr enclave".to_string())
                     })?
                     .as_slice()
                     .try_into()
                     .map_err(|e| {
                         CliError::Default(format!("Bad SEV measurement bytes-size: error: {e}"))
                     })?,
-            )),
-            (_, _, _, _) => Err(CliError::Default(
-                "Unsupported combination for tee parameters and tee envrionment".to_string(),
-            )),
-        }
+            )
+        } else {
+            None
+        };
+
+        let measurement = match (self.public_signer_key, mrenclave, sev_measurement) {
+            (None, None, None) => TeeMeasurement {
+                sgx: None,
+                sev: None,
+            },
+            (Some(s), Some(e), None) => TeeMeasurement {
+                sgx: Some(SgxMeasurement {
+                    public_signer_key_pem: s.to_string(),
+                    mr_enclave: e,
+                }),
+                sev: None,
+            },
+            (None, None, Some(m)) => TeeMeasurement {
+                sgx: None,
+                sev: Some(SevMeasurement(m)),
+            },
+            _ => {
+                return Err(CliError::Default(
+                    "Bad measurements combination".to_string(),
+                ))
+            }
+        };
+
+        Ok(measurement)
     }
 }
 
@@ -121,8 +135,8 @@ pub struct CliConf {
     pub(crate) kms_server_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) bootstrap_server_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) tee_conf: Option<TeeConf>,
+    #[serde(default)]
+    pub tee_conf: TeeConf,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) kms_access_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -141,7 +155,7 @@ impl Default for CliConf {
             accept_invalid_certs: false,
             kms_server_url: "http://0.0.0.0:9998".to_string(),
             bootstrap_server_url: None,
-            tee_conf: None,
+            tee_conf: TeeConf::default(),
             kms_access_token: None,
             kms_database_secret: None,
             ssl_client_pkcs12_path: None,
@@ -242,16 +256,6 @@ impl CliConf {
 
     pub fn initialize_bootstrap_client(&self) -> Result<BootstrapRestClient, CliError> {
         // Instantiate a Bootstrap server REST client with the given configuration
-
-        let measurement = if let Some(tee_conf) = self.tee_conf.clone() {
-            match tee_conf.try_into() {
-                Ok(measurement_conf) => Some(measurement_conf),
-                Err(e) => return Err(e),
-            }
-        } else {
-            None
-        };
-
         let bootstrap_rest_client = BootstrapRestClient::instantiate(
             self.bootstrap_server_url
                 .as_ref()
@@ -259,7 +263,7 @@ impl CliConf {
             self.kms_access_token.as_deref(),
             self.ssl_client_pkcs12_path.as_deref(),
             self.ssl_client_pkcs12_password.as_deref(),
-            measurement,
+            self.tee_conf.clone().try_into()?,
         )
         .with_context(|| {
             format!(

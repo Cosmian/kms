@@ -14,7 +14,6 @@ use actix_web::{
     web::{Data, JsonConfig, PayloadConfig},
     App, HttpServer,
 };
-use libsgx::utils::is_running_inside_enclave;
 use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
@@ -30,7 +29,8 @@ use crate::{
         JwtAuth, JwtConfig,
     },
     result::KResult,
-    routes, KMSServer,
+    routes::{self, tee::is_running_inside_tee},
+    KMSServer,
 };
 
 /// Starts the Key Management System (KMS) server based on the provided configuration.
@@ -398,7 +398,7 @@ pub fn prepare_kms_server(
     // Determine if Client Cert Auth should be used for authentication.
     let use_cert_auth = kms_server.params.verify_cert.is_some();
     // Determine if the application is running inside an enclave.
-    let is_running_inside_enclave = is_running_inside_enclave();
+    let is_running_inside_tee = is_running_inside_tee();
     // Determine if the application is using an encrypted SQLite database.
     let is_using_sqlite_enc = matches!(
         kms_server.params.db_params,
@@ -425,14 +425,13 @@ pub fn prepare_kms_server(
             .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
-            .service(routes::kmip)
-            .service(routes::list_owned_objects)
-            .service(routes::list_access_rights_obtained)
-            .service(routes::list_accesses)
-            .service(routes::grant_access)
-            .service(routes::revoke_access)
-            .service(routes::get_version)
-            .service(routes::get_certificate);
+            .service(routes::kmip::kmip)
+            .service(routes::access::list_owned_objects)
+            .service(routes::access::list_access_rights_obtained)
+            .service(routes::access::list_accesses)
+            .service(routes::access::grant_access)
+            .service(routes::access::revoke_access)
+            .service(routes::get_version);
 
         let app = if is_using_sqlite_enc {
             app.service(routes::add_new_database)
@@ -440,10 +439,9 @@ pub fn prepare_kms_server(
             app
         };
 
-        if is_running_inside_enclave {
-            app.service(routes::get_enclave_quote)
-                .service(routes::get_enclave_manifest)
-                .service(routes::get_enclave_public_key)
+        if is_running_inside_tee {
+            app.service(routes::tee::get_attestation_report)
+                .service(routes::tee::get_enclave_public_key)
         } else {
             app
         }

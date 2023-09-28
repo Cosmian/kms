@@ -19,11 +19,14 @@ use cosmian_kmip::kmip::{
     },
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::access::{
-    Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
-    UserAccessResponse,
+use cosmian_kms_utils::{
+    access::{
+        Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
+        UserAccessResponse,
+    },
+    tee::forge_report_data,
 };
-use libsgx::quote::{get_quote, hash, prepare_report_data};
+use tee_attestation::get_quote;
 use tracing::debug;
 use uuid::Uuid;
 
@@ -54,23 +57,22 @@ impl KMS {
     /// Returns a `KResult` with a `Error` if
     ///  - the server is not running TLS
     ///  - the server server certificate cannot be read
-    pub fn get_server_x509_certificate(&self) -> KResult<Option<String>> {
+    pub fn get_server_x509_certificate(&self) -> KResult<Option<Vec<u8>>> {
         match &self.params.http_params {
             crate::config::HttpParams::Certbot(certbot) => {
                 let cert = certbot.lock().expect("can't lock certificate mutex");
-                let (_, certificate) = cert.get_raw_cert()?;
-                Ok(Some(certificate.to_string()))
+                let (_, certificate) = cert.get_cert()?;
+                Ok(Some(certificate[0].to_pem()?))
             }
             crate::config::HttpParams::Https(p12) => {
-                let pem = String::from_utf8(
-                    p12.cert
-                        .as_ref()
-                        .ok_or_else(|| {
-                            KmsError::ItemNotFound("no pkcs12 certificate found".to_owned())
-                        })?
-                        .to_text()?,
-                )
-                .map_err(|e| KmsError::ConversionError(e.to_string()))?;
+                let pem = p12
+                    .cert
+                    .as_ref()
+                    .ok_or_else(|| {
+                        KmsError::ItemNotFound("no pkcs12 certificate found".to_owned())
+                    })?
+                    .to_pem()?;
+
                 Ok(Some(pem))
             }
             crate::config::HttpParams::Http => Ok(None),
@@ -81,19 +83,14 @@ impl KMS {
     ///
     /// # Errors
     /// Returns a `KResult` with a `Error` if the enclave public key file cannot be read
-    pub fn get_enclave_public_key(&self) -> KResult<String> {
-        Ok(fs::read_to_string(
-            &self.params.enclave_params.public_key_path,
-        )?)
-    }
+    pub fn get_sgx_enclave_public_key(&self) -> KResult<String> {
+        if let Some(sgx_public_signer_key) = &self.params.tee_params.sgx_public_signer_key {
+            return Ok(fs::read_to_string(sgx_public_signer_key)?)
+        }
 
-    /// Return the enclave manifest
-    ///
-    /// This service is not available if the server is not running inside an enclave
-    pub fn get_manifest(&self) -> KResult<String> {
-        Ok(fs::read_to_string(
-            &self.params.enclave_params.manifest_path,
-        )?)
+        Err(KmsError::ItemNotFound(
+            "No SGX signer public key".to_owned(),
+        ))
     }
 
     /// Adds a new encrypted `SQLite` database to the KMS server.
@@ -150,15 +147,17 @@ impl KMS {
     /// Return the enclave quote
     ///
     /// This service is not available if the server is not running inside an enclave
-    pub fn get_quote(&self, nonce: &str) -> KResult<String> {
-        // Hash the user nonce, the cert and the hash of the manifest
-        let data = hash(&prepare_report_data(
-            self.get_server_x509_certificate()?,
-            nonce.to_string(),
-        ));
+    pub fn get_attestation_report(&self, nonce: [u8; 32]) -> KResult<String> {
+        let certificate = self.get_server_x509_certificate()?;
 
-        // get the quote
-        Ok(get_quote(&data)?)
+        if let Some(certificate) = certificate {
+            let report_data = forge_report_data(&nonce, &certificate)?;
+            return Ok(b64.encode(get_quote(&report_data)?))
+        }
+
+        Err(KmsError::NotSupported(
+            "Can't get a report attestation without a configured certificate".to_string(),
+        ))
     }
 
     /// This operation requests the server to Import a Managed Object specified

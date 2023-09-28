@@ -58,9 +58,9 @@ pub async fn test_app()
     test::init_service(
         App::new()
             .app_data(Data::new(kms_server.clone()))
-            .service(routes::kmip)
-            .service(routes::grant_access)
-            .service(routes::revoke_access),
+            .service(routes::kmip::kmip)
+            .service(routes::access::grant_access)
+            .service(routes::access::revoke_access),
     )
     .await
 }

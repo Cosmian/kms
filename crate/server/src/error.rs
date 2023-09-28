@@ -14,7 +14,7 @@ use thiserror::Error;
 use x509_parser::prelude::{PEMError, X509Error};
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
-#[derive(Error, Debug, Eq, PartialEq)]
+#[derive(Error, Debug)]
 pub enum KmsError {
     // When a conversion from/to bytes
     #[error("Conversion Error: {0}")]
@@ -60,9 +60,10 @@ pub enum KmsError {
     #[error("Unexpected server error: {0}")]
     ServerError(String),
 
+    /// TODO: sgx-sev: not my concern here, Have a tee-core lib
     // Any errors related to a bad behavior of the server concerning the SGX environment
-    #[error("Unexpected sgx error: {0}")]
-    SGXError(String),
+    #[error(transparent)]
+    TeeAttestationError(#[from] tee_attestation::error::Error),
 
     // Any actions of the user which is not allowed
     #[error("Access denied: {0}")]
@@ -170,12 +171,6 @@ impl From<serde_json::Error> for KmsError {
 impl From<cloudproof::reexport::cover_crypt::Error> for KmsError {
     fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
         Self::InvalidRequest(e.to_string())
-    }
-}
-
-impl From<libsgx::error::SgxError> for KmsError {
-    fn from(e: libsgx::error::SgxError) -> Self {
-        Self::SGXError(e.to_string())
     }
 }
 

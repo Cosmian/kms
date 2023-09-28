@@ -25,17 +25,17 @@ cosmian_kms_utils = { path = "../utils" }
 # Uncomment the following to activate logger in CLI
 # env_logger = { workspace = true }
 hex = { workspace = true }
-libsgx = { path = "../libsgx" }
 openssl = { workspace = true }
 rand = "0.8"
 ratls = { workspace = true }
-reqwest = { workspace = true }
+tee_attestation = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+url = { workspace = true }
 uuid = { workspace = true }
 x509-parser = { workspace = true }
 
