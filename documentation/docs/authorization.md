@@ -42,7 +42,7 @@ The supported KMIP operations are: `get`, `export`, `encrypt`, `decrypt`, `impor
 
       ```json
       {
-         "uniquer_identifier": "1ae2...25df",  // the object unique identifier
+         "unique_identifier": "1ae2...25df",  // the object unique identifier
          "user_id": "john.doe@acem.com", // the user identifier to allow
          "operation_type": "get" // the KMIP operation to allow
       }
@@ -89,7 +89,7 @@ An owner of an object can revoke an access right to a specific user for a given 
 
       ```json
       {
-         "uniquer_identifier": "1ae2...25df",  // the object unique identifier
+         "unique_identifier": "1ae2...25df",  // the object unique identifier
          "user_id": "john.doe@acem.com", // the user identifier to allow
          "operation_type": "get" // the KMIP operation to allow
       }
@@ -200,7 +200,7 @@ A user can list all the access rights that have been granted to it by object own
       ```
 
 === "REST"
-      `GET` to the `/access/owned` endpoint:
+      `GET` to the `/access/obtained` endpoint:
 
       The response is a JSON array:
 
