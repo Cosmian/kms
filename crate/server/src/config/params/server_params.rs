@@ -147,6 +147,10 @@ impl fmt::Debug for ServerParams {
                     .bootstrap_server_params
                     .bootstrap_server_expiration_days,
             )
+            .field(
+                "bootstrap server ensure RA-TLS",
+                &self.bootstrap_server_params.ensure_ra_tls,
+            )
         } else {
             &mut x
         };
