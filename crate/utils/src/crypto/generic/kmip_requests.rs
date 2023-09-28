@@ -39,7 +39,7 @@ pub fn build_encryption_request(
     header_metadata: Option<Vec<u8>>,
     authentication_data: Option<Vec<u8>>,
     cryptographic_algorithm: Option<CryptographicAlgorithm>,
-) -> Result<Encrypt, std::io::Error> {
+) -> Result<Encrypt, KmipError> {
     let data_to_encrypt = if encryption_policy.is_some() {
         DataToEncrypt {
             encryption_policy,

@@ -1,4 +1,7 @@
-use cloudproof::reexport::cover_crypt::abe_policy::{AccessPolicy, Attribute, Policy};
+use cloudproof::reexport::{
+    cover_crypt::abe_policy::{AccessPolicy, Attribute, Policy},
+    crypto_core::bytes_ser_de::Deserializer,
+};
 use cosmian_kmip::kmip::{kmip_operations::Get, kmip_types::RevocationReason};
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::{
@@ -548,11 +551,14 @@ impl KmsClient {
                 .map_err(|e| PyException::new_err(e.to_string()))?;
 
             match response.data.as_deref() {
-                Some(mut data) => {
-                    let header_size = leb128::read::unsigned(&mut data)
-                        .map_err(|e| PyException::new_err(e.to_string()))?
-                        as usize;
-                    Ok((data[header_size..].to_vec(), data[0..header_size].to_vec()))
+                Some(data) => {
+                    let mut de = Deserializer::new(data);
+                    let metadata = de
+                        .read_vec()
+                        .map_err(|e| PyException::new_err(e.to_string()))?;
+                    let plaintext = de.finalize();
+
+                    Ok((plaintext, metadata))
                 }
                 None => Ok((vec![], vec![])),
             }
