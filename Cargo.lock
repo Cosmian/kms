@@ -1206,7 +1206,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_python"
-version = "4.7.0"
+version = "4.6.0"
 dependencies = [
  "cloudproof",
  "cosmian_kmip",

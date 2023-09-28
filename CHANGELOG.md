@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 ### Bug Fixes
 
 - Improved database data structures using Maps and Sets instead of Vectors where uniqueness is required 
-
+- Enable bootstrap server for non "enclaves" servers
 
 ## [4.6.0] - 2023-09-01
 
