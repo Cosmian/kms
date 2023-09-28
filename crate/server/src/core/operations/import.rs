@@ -243,10 +243,10 @@ pub async fn import(
     debug!("Entering import KMIP operation: {:?}", request);
     // Unique identifiers starting with `[` are reserved for queries on tags
     // see tagging
-    // For instance, a request for uniquer identifier `[tag1]` will
+    // For instance, a request for unique identifier `[tag1]` will
     // attempt to find a valid single object tagged with `tag1`
     if request.unique_identifier.starts_with('[') {
-        kms_bail!("Importing objects with uniquer identifiers starting with `[` is not supported");
+        kms_bail!("Importing objects with unique identifiers starting with `[` is not supported");
     }
 
     // recover user tags
