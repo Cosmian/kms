@@ -206,8 +206,7 @@ impl KMS {
                     )?)
                         as Box<dyn DecryptionSystem>),
                     x => kms_not_supported!(
-                        "EC public keys with cryptographic algorithm {:?} not supported",
-                        x
+                        "EC public keys with cryptographic algorithm {x:?} not supported"
                     ),
                 },
                 other => kms_not_supported!("decryption with keys of format: {other}"),

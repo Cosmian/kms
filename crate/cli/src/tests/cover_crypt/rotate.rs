@@ -181,7 +181,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
 
     encrypt(
         &ctx.owner_cli_conf_path,
-        input_file.to_str().unwrap(),
+        &[input_file.to_str().unwrap()],
         &master_public_key_id,
         "Department::MKG && Security Level::Confidential",
         Some(output_file_before.to_str().unwrap()),
@@ -191,7 +191,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     // the user key should be able to decrypt the file
     decrypt(
         &ctx.owner_cli_conf_path,
-        output_file_before.to_str().unwrap(),
+        &[output_file_before.to_str().unwrap()],
         &user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
         Some("myid"),
@@ -221,7 +221,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     // encrypt again after the rotation
     encrypt(
         &ctx.owner_cli_conf_path,
-        input_file.to_str().unwrap(),
+        &[input_file.to_str().unwrap()],
         &master_public_key_id,
         "Department::MKG && Security Level::Confidential",
         Some(output_file_after.to_str().unwrap()),
@@ -231,7 +231,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     // the user key should be able to decrypt the new file
     decrypt(
         &ctx.owner_cli_conf_path,
-        output_file_after.to_str().unwrap(),
+        &[output_file_after.to_str().unwrap()],
         &user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
         Some("myid"),
@@ -239,7 +239,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     // ... and the old file
     decrypt(
         &ctx.owner_cli_conf_path,
-        output_file_before.to_str().unwrap(),
+        &[output_file_before.to_str().unwrap()],
         &user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
         Some("myid"),
@@ -258,7 +258,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     assert!(
         decrypt(
             &ctx.owner_cli_conf_path,
-            output_file_after.to_str().unwrap(),
+            &[output_file_after.to_str().unwrap()],
             &old_user_decryption_key,
             Some(recovered_file.to_str().unwrap()),
             Some("myid"),
@@ -268,7 +268,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     // ... but should decrypt the old file
     decrypt(
         &ctx.owner_cli_conf_path,
-        output_file_before.to_str().unwrap(),
+        &[output_file_before.to_str().unwrap()],
         &old_user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
         Some("myid"),

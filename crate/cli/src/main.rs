@@ -47,6 +47,12 @@ async fn main() {
 }
 
 async fn main_() -> Result<(), CliError> {
+    // Uncomment the following if you need debug logs in the CLI
+    // if option_env!("RUST_LOG").is_none() {
+    //     std::env::set_var("RUST_LOG", "debug");
+    // }
+    // env_logger::init();
+
     let opts = Cli::parse();
     let conf = CliConf::load()?;
     let kms_rest_client = conf.initialize_kms_client()?;

@@ -154,6 +154,7 @@ pub enum CryptographicAlgorithm {
     // Available slot 0x8880_0002,
     // Available slot 0x8880_0003,
     CoverCrypt = 0x8880_0004,
+    CoverCryptBulk = 0x8880_0005,
 }
 
 /// The Cryptographic Domain Parameters attribute (4.14) is a structure that

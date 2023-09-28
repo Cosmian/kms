@@ -44,13 +44,11 @@ clap = { version = "4.4", default-features = false, features = [
   "derive",
   "cargo",
 ] }
-cloudproof = { version = "2.2.3", features = ["findex-redis"] }
-cosmian_crypto_core = "9.2.0"
+cloudproof = { version = "2.2.4", features = ["findex-redis"] }
 env_logger = "0.10"
 hex = "0.4"
 http = "0.2"
 josekit = "0.8.3"
-leb128 = "0.2"
 native-tls = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }
 openssl = { version = "0.10", features = ["vendored"] }

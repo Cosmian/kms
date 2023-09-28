@@ -1,10 +1,11 @@
-use std::{fs::File, io::prelude::*, path::PathBuf};
+use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_decryption_request;
 
 use crate::{
+    actions::shared::utils::read_bytes_from_file,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -46,10 +47,8 @@ pub struct DecryptAction {
 impl DecryptAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Read the file to decrypt
-        let mut f = File::open(&self.input_file).context("Can't read the file to decrypt")?;
-        let mut data = Vec::new();
-        f.read_to_end(&mut data)
-            .context("Fail to read the file to decrypt")?;
+        let mut data = read_bytes_from_file(&self.input_file)
+            .with_context(|| "Cannot read bytes from the file to decrypt")?;
 
         // Recover the unique identifier or set of tags
         let id = if let Some(key_id) = &self.key_id {
@@ -57,12 +56,12 @@ impl DecryptAction {
         } else if let Some(tags) = &self.tags {
             serde_json::to_string(&tags)?
         } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
+            cli_bail!("Either `--key-id` or one or more `--tag` must be specified")
         };
 
         // Extract the nonce, the encrypted data and the tag
-        let nonce = data.drain(..12).collect::<Vec<u8>>();
-        let tag = data.drain(data.len() - 16..).collect::<Vec<u8>>();
+        let nonce = data.drain(..12).collect::<Vec<_>>();
+        let tag = data.drain(data.len() - 16..).collect::<Vec<_>>();
 
         // Create the kmip query
         let decrypt_request = build_decryption_request(
@@ -71,8 +70,9 @@ impl DecryptAction {
             data,
             Some(tag),
             self.authentication_data
-                .clone()
+                .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
+            None,
         );
 
         // Query the KMS with your kmip data and get the key pair ids
@@ -93,7 +93,7 @@ impl DecryptAction {
             .write_all(&plaintext)
             .context("failed to write the plaintext  file")?;
 
-        println!("The decrypted file is available at {:?}", &output_file);
+        println!("The decrypted file is available at {output_file:?}");
 
         Ok(())
     }

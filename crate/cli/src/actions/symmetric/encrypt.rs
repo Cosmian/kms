@@ -5,6 +5,7 @@ use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_encryption_request;
 
 use crate::{
+    actions::shared::utils::read_bytes_from_file,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -47,11 +48,8 @@ pub struct EncryptAction {
 impl EncryptAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Read the file to encrypt
-        let mut f =
-            File::open(&self.input_file).with_context(|| "Can't read the file to encrypt")?;
-        let mut plaintext = Vec::new();
-        f.read_to_end(&mut plaintext)
-            .with_context(|| "Fail to read the file to encrypt")?;
+        let data = read_bytes_from_file(&self.input_file)
+            .with_context(|| "Cannot read bytes from the file to encrypt")?;
 
         // Recover the unique identifier or set of tags
         let id = if let Some(key_id) = &self.key_id {
@@ -59,18 +57,19 @@ impl EncryptAction {
         } else if let Some(tags) = &self.tags {
             serde_json::to_string(&tags)?
         } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
+            cli_bail!("Either `--key-id` or one or more `--tag` must be specified")
         };
 
         // Create the kmip query
         let encrypt_request = build_encryption_request(
             &id,
             None,
-            plaintext,
+            data,
             None,
             self.authentication_data
-                .clone()
+                .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
+            None,
         )?;
 
         // Query the KMS with your kmip data and get the key pair ids
@@ -98,7 +97,7 @@ impl EncryptAction {
         // extract the ciphertext and write it
         let data = encrypt_response
             .data
-            .context("The encrypted data are empty")?;
+            .context("The encrypted data is empty")?;
         buffer
             .write_all(&data)
             .context("failed to write the ciphertext")?;
@@ -107,11 +106,12 @@ impl EncryptAction {
         let authentication_tag = encrypt_response
             .authenticated_encryption_tag
             .context("the authentication tag is empty")?;
+
         buffer
             .write_all(&authentication_tag)
             .context("failed to write the authentication tag")?;
 
-        println!("The encrypted file is available at {:?}", &output_file);
+        println!("The encrypted file is available at {output_file:?}");
 
         Ok(())
     }

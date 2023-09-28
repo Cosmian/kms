@@ -19,14 +19,19 @@ use crate::{
 /// Encrypts a file using the given public key and access policy.
 pub fn encrypt(
     cli_conf_path: &str,
-    input_file: &str,
+    input_files: &[&str],
     public_key_id: &str,
     output_file: Option<&str>,
     authentication_data: Option<&str>,
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    let mut args = vec!["encrypt", input_file, "--key-id", public_key_id];
+
+    let mut args = vec!["encrypt"];
+    args.append(&mut input_files.to_vec());
+    args.push("--key-id");
+    args.push(public_key_id);
+
     if let Some(output_file) = output_file {
         args.push("-o");
         args.push(output_file);
@@ -89,7 +94,7 @@ async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
 
     encrypt(
         &ctx.owner_cli_conf_path,
-        input_file.to_str().unwrap(),
+        &[input_file.to_str().unwrap()],
         &public_key_id,
         Some(output_file.to_str().unwrap()),
         None,
@@ -131,7 +136,7 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
 
     encrypt(
         &ctx.owner_cli_conf_path,
-        input_file.to_str().unwrap(),
+        &[input_file.to_str().unwrap()],
         "[\"tag_ec\"]",
         Some(output_file.to_str().unwrap()),
         None,

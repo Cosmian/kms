@@ -1,3 +1,5 @@
+#![feature(slice_take)]
+
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},

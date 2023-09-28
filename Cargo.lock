@@ -886,9 +886,9 @@ checksum = "cd7cc57abe963c6d3b9d8be5b06ba7c8957a930305ca90304f24ef040aa6f961"
 
 [[package]]
 name = "cloudproof"
-version = "2.2.3"
+version = "2.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf37ccbedf3da9f69ec71d3c643e5e2c774d14015dbadb361f5043754c756e56"
+checksum = "c62727a41877c041a7d18b6ccc12917e9a2deba55eb4007a2498256ae06a5bfc"
 dependencies = [
  "cloudproof_aesgcm",
  "cloudproof_anonymization",
@@ -1072,9 +1072,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_crypto_core"
-version = "9.2.0"
+version = "9.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69d86c6966987f9fef6889d1e8aa9f59c08dfd2f63e84ae4f19b7fea80e37fa4"
+checksum = "8fb8a8f0ccc325afc1749f4171abd052c36189e0618ec0a82ffd1846176bb25b"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -1140,7 +1140,6 @@ dependencies = [
  "cloudproof",
  "cosmian_logger",
  "hex",
- "leb128",
  "num-bigint",
  "serde",
  "serde_json",
@@ -1214,7 +1213,6 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_utils",
- "leb128",
  "pyo3",
  "pyo3-asyncio",
  "pyo3-build-config",
@@ -3756,7 +3754,7 @@ dependencies = [
 [[package]]
 name = "sev"
 version = "1.2.1"
-source = "git+https://github.com/Cosmian/sev?branch=main#c7960edf755fbbcc5d1e2b2607d6bf5c11807e06"
+source = "git+https://github.com/Cosmian/sev?branch=main#b14a7ca1db2c917df805360b5012a94030214ba5"
 dependencies = [
  "bincode",
  "bitfield",
