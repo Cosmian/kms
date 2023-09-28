@@ -2,9 +2,9 @@
 //! It will attempt to generate a RA-TLS certificate if the target OS is Linux.
 //! If that fails or if the target OS is not Linux, it will generate a standard TLS certificate.
 //!
-//! The choice of making the detection OS-dependent is because RA-TLS is only supported on Linux via the ra_tls crate.
+//! The choice of making the detection OS-dependent is because RA-TLS is only supported on Linux via the ratls crate.
 //! This is debatable as the availability of enclave technology (SGX, TDX, SEV-SNP) is not OS-dependent.
-//! The ra_tls should support generating the self-signed cert on the given technologies (or lack thereof)
+//! The ratls crate should support generating the self-signed cert on the given technologies (or lack thereof)
 //! based on runtime detection of its availability.
 
 #[cfg(target_os = "linux")]
