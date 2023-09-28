@@ -22,7 +22,7 @@ use super::routes::{
     sqlite_config, sqlite_enc_config, start_kms_server_config,
 };
 use crate::{
-    bootstrap_server::certificate::generate_ratls_pkcs12,
+    bootstrap_server::certificate::generate_self_signed_cert,
     config::{DbParams, HttpParams, ServerParams},
     error::KmsError,
     kms_bail, kms_error,
@@ -173,12 +173,8 @@ pub async fn start_https_bootstrap_server(
         pkcs12_password_received: RwLock::new(None),
     });
 
-    // Define an empty password for the RATLS PCKS12 mail.
-    // TODO: should we use a PKCS12 here? If so, why an empty password? @bgrieder
-    let password = "";
-
-    // Generate a RATLS certificate
-    let pkcs12 = generate_ratls_pkcs12(
+    // Generate a, possibly RA-TLS, certificate
+    let (pkey, cert) = generate_self_signed_cert(
         &bootstrap_server
             .server_params
             .bootstrap_server_params
@@ -187,22 +183,11 @@ pub async fn start_https_bootstrap_server(
             .server_params
             .bootstrap_server_params
             .bootstrap_server_expiration_days,
-        password,
     )?;
-    let p12 = pkcs12.parse2(password)?;
     // Create and configure an SSL acceptor with the certificate and key
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-    if let Some(pkey) = &p12.pkey {
-        builder.set_private_key(pkey)?;
-    }
-    if let Some(cert) = &p12.cert {
-        builder.set_certificate(cert)?;
-    }
-    if let Some(chain) = p12.ca {
-        for x in chain {
-            builder.add_extra_chain_cert(x)?;
-        }
-    }
+    builder.set_private_key(&pkey)?;
+    builder.set_certificate(&cert)?;
 
     if let Some(verify_cert) = &bootstrap_server.server_params.verify_cert {
         // This line sets the mode to verify peer (client) certificates
