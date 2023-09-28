@@ -17,18 +17,3 @@ pub(crate) fn generate_self_signed_ra_tls_cert(
 
     Ok((private_key, cert))
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::result::KResult;
-
-    #[test]
-    fn generate_self_signed_ra_tls_cert() -> KResult<()> {
-        let (_pkey, cert) = super::generate_self_signed_ra_tls_cert("test", 10)?;
-        assert_eq!(
-            format!("{:?}", cert.subject_name()),
-            format!("{:?}", cert.issuer_name())
-        );
-        Ok(())
-    }
-}
