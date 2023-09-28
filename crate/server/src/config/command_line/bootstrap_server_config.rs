@@ -31,6 +31,11 @@ pub struct BootstrapServerConfig {
     /// The hostname will be that configured in --hostname
     #[clap(long, env("KMS_BOOTSTRAP_SERVER_PORT"), default_value("9998"))]
     pub bootstrap_server_port: u16,
+
+    /// Ensure RA-TLS is available and used.
+    /// The server will not start if this is not the case.
+    #[clap(long, env("KMS_ENSURE_RA_TLS"), default_value("false"))]
+    pub ensure_ra_tls: bool,
 }
 
 impl Default for BootstrapServerConfig {
@@ -41,6 +46,7 @@ impl Default for BootstrapServerConfig {
                 .to_string(),
             bootstrap_server_port: 9998,
             bootstrap_server_expiration_days: 365,
+            ensure_ra_tls: false,
         }
     }
 }

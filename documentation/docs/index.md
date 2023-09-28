@@ -222,6 +222,11 @@ Options:
           [env: KMS_BOOTSTRAP_SERVER_PORT=]
           [default: 9998]
 
+      --ensure-ra-tls
+          Ensure RA-TLS is available and used. The server will not start if this is not the case
+          
+          [env: KMS_ENSURE_RA_TLS=]
+
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user HOME directory
 

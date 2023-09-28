@@ -183,6 +183,10 @@ pub async fn start_https_bootstrap_server(
             .server_params
             .bootstrap_server_params
             .bootstrap_server_expiration_days,
+        bootstrap_server
+            .server_params
+            .bootstrap_server_params
+            .ensure_ra_tls,
     )?;
     // Create and configure an SSL acceptor with the certificate and key
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
