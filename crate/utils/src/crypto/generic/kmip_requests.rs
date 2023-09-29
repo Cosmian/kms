@@ -1,7 +1,6 @@
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
-        data_to_encrypt::DataToEncrypt,
         kmip_data_structures::KeyWrappingSpecification,
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Decrypt, Encrypt, Import, Revoke},
@@ -11,6 +10,8 @@ use cosmian_kmip::{
         },
     },
 };
+
+use super::data_to_encrypt::DataToEncrypt;
 
 /// Build a `Revoke` request to revoke the key identified by `unique_identifier`
 pub fn build_revoke_key_request(
@@ -47,6 +48,7 @@ pub fn build_encryption_request(
             plaintext,
         }
         .to_bytes()
+        .map_err(|e| KmipError::NotSupported(e.to_string()))?
     } else {
         plaintext
     };
