@@ -141,11 +141,15 @@ ckms certificates [SUBCOMMAND]
 **subcommands:**
 
 ```sh
-create   Create a new certificate
+create   Create a new X509 certificate. If absent, the Certificate Authority certificates will be also created.
 decrypt  Decrypt a file using the private key of a certificate
 encrypt  Encrypt a file using the certificate public key
 export   Export a certificate from the KMS
-import   Import a certificate or a private/public keys the KMS.
+import   Import into the KMS database the following elements:
+            - a certificate (as PEM or TTLV format)
+            - a private key (as PEM or TTLV format)
+            - a certificate chain as a PEM-stack
+            - the Mozilla Common CA Database (CCADB). Automate the Mozilla database fetch.
 revoke   Revoke a certificate
 destroy  Destroy a certificate
 help     Print this message or the help of the given subcommand(s)
