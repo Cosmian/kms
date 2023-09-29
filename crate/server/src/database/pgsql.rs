@@ -1,4 +1,8 @@
-use std::{collections::HashSet, path::PathBuf, str::FromStr};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    str::FromStr,
+};
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
@@ -127,13 +131,13 @@ impl Database for PgPool {
         user: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectWithMetadata>> {
+    ) -> KResult<HashMap<String, ObjectWithMetadata>> {
         retrieve_(uid_or_tags, user, operation_type, &self.pool).await
     }
 
     async fn retrieve_tags(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
         retrieve_tags_(uid, &self.pool).await
@@ -141,7 +145,7 @@ impl Database for PgPool {
 
     async fn update_object(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         object: &kmip_objects::Object,
         tags: Option<&HashSet<String>>,
         _params: Option<&ExtraDatabaseParams>,
@@ -161,7 +165,7 @@ impl Database for PgPool {
 
     async fn update_state(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -170,7 +174,7 @@ impl Database for PgPool {
 
     async fn upsert(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         object: &kmip_objects::Object,
         tags: &HashSet<String>,
@@ -192,7 +196,7 @@ impl Database for PgPool {
 
     async fn delete(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -209,33 +213,26 @@ impl Database for PgPool {
         }
     }
 
-    async fn list_access_rights_obtained(
+    async fn list_user_granted_access_rights(
         &self,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<
-        Vec<(
-            UniqueIdentifier,
-            String,
-            StateEnumeration,
-            Vec<ObjectOperationType>,
-            IsWrapped,
-        )>,
-    > {
-        list_shared_objects_(user, &self.pool).await
+    ) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
+    {
+        list_user_granted_access_rights_(user, &self.pool).await
     }
 
-    async fn list_accesses(
+    async fn list_object_accesses_granted(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>> {
+    ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>> {
         list_accesses_(uid, &self.pool).await
     }
 
     async fn grant_access(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         userid: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
@@ -245,17 +242,17 @@ impl Database for PgPool {
 
     async fn remove_access(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         userid: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        delete_access_(uid, userid, operation_type, &self.pool).await
+        remove_access_(uid, userid, operation_type, &self.pool).await
     }
 
     async fn is_object_owned_by(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         userid: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
@@ -280,14 +277,14 @@ impl Database for PgPool {
         .await
     }
 
-    #[cfg(test)]
-    async fn perms(
+    async fn list_user_access_rights_on_object(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         userid: &str,
+        no_inherited_access: bool,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectOperationType>> {
-        fetch_permissions_(uid, userid, &self.pool).await
+    ) -> KResult<HashSet<ObjectOperationType>> {
+        list_user_access_rights_on_object_(uid, userid, no_inherited_access, &self.pool).await
     }
 }
 
@@ -342,7 +339,7 @@ pub(crate) async fn retrieve_<'e, E>(
     user: &str,
     operation_type: ObjectOperationType,
     executor: E,
-) -> KResult<Vec<ObjectWithMetadata>>
+) -> KResult<HashMap<String, ObjectWithMetadata>>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
@@ -393,7 +390,7 @@ where
     };
 
     // process the rows and find the tags
-    let mut res = vec![];
+    let mut res: HashMap<String, ObjectWithMetadata> = HashMap::new();
     for row in rows {
         let object_with_metadata = ObjectWithMetadata::try_from(&row)?;
 
@@ -404,13 +401,26 @@ where
             continue
         }
 
-        res.push(object_with_metadata);
+        // check if the object is already in the result
+        // this can happen as permissions may have been granted
+        // to both this user and the wildcard user
+        match res.get_mut(&object_with_metadata.id) {
+            Some(existing_object) => {
+                // update the permissions
+                existing_object
+                    .permissions
+                    .extend_from_slice(&object_with_metadata.permissions);
+            }
+            None => {
+                // insert the object
+                res.insert(object_with_metadata.id.clone(), object_with_metadata);
+            }
+        };
     }
-
     Ok(res)
 }
 
-async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> KResult<HashSet<String>>
+async fn retrieve_tags_<'e, E>(uid: &UniqueIdentifier, executor: E) -> KResult<HashSet<String>>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {
@@ -429,7 +439,7 @@ where
 }
 
 pub(crate) async fn update_object_(
-    uid: &str,
+    uid: &UniqueIdentifier,
     object: &kmip_objects::Object,
     tags: Option<&HashSet<String>>,
     executor: &mut Transaction<'_, Postgres>,
@@ -481,12 +491,12 @@ pub(crate) async fn update_object_(
 }
 
 pub(crate) async fn update_state_<'e, E>(
-    uid: &str,
+    uid: &UniqueIdentifier,
     state: StateEnumeration,
     executor: E,
 ) -> KResult<()>
 where
-    E: Executor<'e, Database = Postgres>,
+    E: Executor<'e, Database = Postgres> + Copy,
 {
     sqlx::query(
         PGSQL_QUERIES
@@ -502,7 +512,7 @@ where
 }
 
 pub(crate) async fn delete_(
-    uid: &str,
+    uid: &UniqueIdentifier,
     owner: &str,
     executor: &mut Transaction<'_, Postgres>,
 ) -> KResult<()> {
@@ -532,7 +542,7 @@ pub(crate) async fn delete_(
 }
 
 pub(crate) async fn upsert_(
-    uid: &str,
+    uid: &UniqueIdentifier,
     owner: &str,
     object: &kmip_objects::Object,
     tags: &HashSet<String>,
@@ -586,11 +596,11 @@ pub(crate) async fn upsert_(
 }
 
 pub(crate) async fn list_accesses_<'e, E>(
-    uid: &str,
+    uid: &UniqueIdentifier,
     executor: E,
-) -> KResult<Vec<(String, Vec<ObjectOperationType>)>>
+) -> KResult<HashMap<String, HashSet<ObjectOperationType>>>
 where
-    E: Executor<'e, Database = Postgres>,
+    E: Executor<'e, Database = Postgres> + Copy,
 {
     debug!("Uid = {}", uid);
 
@@ -602,31 +612,25 @@ where
     .bind(uid)
     .fetch_all(executor)
     .await?;
-    let mut ids: Vec<(String, Vec<ObjectOperationType>)> = Vec::with_capacity(list.len());
+    let mut ids: HashMap<String, HashSet<ObjectOperationType>> = HashMap::with_capacity(list.len());
     for row in list {
-        ids.push((
+        ids.insert(
+            // userid
             row.get::<String, _>(0),
+            // permissions
             serde_json::from_value(row.get::<Value, _>(1))?,
-        ));
+        );
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)
 }
 
-pub(crate) async fn list_shared_objects_<'e, E>(
+pub(crate) async fn list_user_granted_access_rights_<'e, E>(
     user: &str,
     executor: E,
-) -> KResult<
-    Vec<(
-        UniqueIdentifier,
-        String,
-        StateEnumeration,
-        Vec<ObjectOperationType>,
-        IsWrapped,
-    )>,
->
+) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
 where
-    E: Executor<'e, Database = Postgres>,
+    E: Executor<'e, Database = Postgres> + Copy,
 {
     debug!("Owner = {}", user);
     let list = sqlx::query(
@@ -637,40 +641,55 @@ where
     .bind(user)
     .fetch_all(executor)
     .await?;
-    let mut ids: Vec<(
+    let mut ids: HashMap<
         UniqueIdentifier,
-        String,
-        StateEnumeration,
-        Vec<ObjectOperationType>,
-        IsWrapped,
-    )> = Vec::with_capacity(list.len());
+        (String, StateEnumeration, HashSet<ObjectOperationType>),
+    > = HashMap::with_capacity(list.len());
     for row in list {
-        ids.push((
+        ids.insert(
             row.get::<String, _>(0),
-            row.get::<String, _>(1),
-            state_from_string(&row.get::<String, _>(2))?,
-            serde_json::from_value(
-                row.try_get::<Value, _>(3)
-                    .context("failed deserializing the operations")?,
-            )?,
-            false, // TODO: de-hardcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
-        ));
+            (
+                row.get::<String, _>(1),
+                state_from_string(&row.get::<String, _>(2))?,
+                serde_json::from_value(
+                    row.try_get::<Value, _>(3)
+                        .context("failed deserializing the operations")?,
+                )?,
+            ),
+        );
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)
 }
 
-pub(crate) async fn fetch_permissions_<'e, E>(
-    uid: &str,
+pub(crate) async fn list_user_access_rights_on_object_<'e, E>(
+    uid: &UniqueIdentifier,
+    userid: &str,
+    no_inherited_access: bool,
+    executor: E,
+) -> KResult<HashSet<ObjectOperationType>>
+where
+    E: Executor<'e, Database = Postgres> + Copy,
+{
+    let mut user_perms = perms(uid, userid, executor).await?;
+    if no_inherited_access || userid == "*" {
+        return Ok(user_perms)
+    }
+    user_perms.extend(perms(uid, "*", executor).await?);
+    Ok(user_perms)
+}
+
+async fn perms<'e, E>(
+    uid: &UniqueIdentifier,
     userid: &str,
     executor: E,
-) -> KResult<Vec<ObjectOperationType>>
+) -> KResult<HashSet<ObjectOperationType>>
 where
-    E: Executor<'e, Database = Postgres>,
+    E: Executor<'e, Database = Postgres> + Copy,
 {
     let row: Option<PgRow> = sqlx::query(
         PGSQL_QUERIES
-            .get("select-row-read_access")
+            .get("select-user-accesses-for-object")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
@@ -678,19 +697,18 @@ where
     .fetch_optional(executor)
     .await?;
 
-    row.map_or(Ok(vec![]), |row| {
-        let permissions: Vec<ObjectOperationType> = match row.try_get::<Value, _>(0) {
-            Err(_) => vec![],
-            Ok(v) => serde_json::from_value(v)
-                .context("failed deserializing the permissions")
-                .reason(ErrorReason::Internal_Server_Error)?,
-        };
-        Ok(permissions)
+    row.map_or(Ok(HashSet::new()), |row| {
+        let perms_value = row
+            .try_get::<Value, _>(0)
+            .context("failed deserializing the permissions")?;
+        serde_json::from_value(perms_value)
+            .context("failed deserializing the permissions")
+            .reason(ErrorReason::Internal_Server_Error)
     })
 }
 
 pub(crate) async fn insert_access_<'e, E>(
-    uid: &str,
+    uid: &UniqueIdentifier,
     userid: &str,
     operation_type: ObjectOperationType,
     executor: E,
@@ -699,12 +717,12 @@ where
     E: Executor<'e, Database = Postgres> + Copy,
 {
     // Retrieve existing permissions if any
-    let mut perms = fetch_permissions_(uid, userid, executor).await?;
+    let mut perms = list_user_access_rights_on_object_(uid, userid, false, executor).await?;
     if perms.contains(&operation_type) {
         // permission is already setup
         return Ok(())
     }
-    perms.push(operation_type);
+    perms.insert(operation_type);
 
     // Serialize permissions
     let json = serde_json::to_value(&perms)
@@ -726,8 +744,8 @@ where
     Ok(())
 }
 
-pub(crate) async fn delete_access_<'e, E>(
-    uid: &str,
+pub(crate) async fn remove_access_<'e, E>(
+    uid: &UniqueIdentifier,
     userid: &str,
     operation_type: ObjectOperationType,
     executor: E,
@@ -736,7 +754,7 @@ where
     E: Executor<'e, Database = Postgres> + Copy,
 {
     // Retrieve existing permissions if any
-    let mut perms = fetch_permissions_(uid, userid, executor).await?;
+    let mut perms = list_user_access_rights_on_object_(uid, userid, true, executor).await?;
     perms.retain(|p| *p != operation_type);
 
     // No remaining permissions, delete the row
@@ -773,7 +791,11 @@ where
     Ok(())
 }
 
-pub(crate) async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<bool>
+pub(crate) async fn is_object_owned_by_<'e, E>(
+    uid: &UniqueIdentifier,
+    owner: &str,
+    executor: E,
+) -> KResult<bool>
 where
     E: Executor<'e, Database = Postgres> + Copy,
 {

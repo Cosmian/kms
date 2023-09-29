@@ -38,7 +38,7 @@ INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?);
 SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions 
         FROM objects 
         LEFT JOIN read_access 
-        ON objects.id = read_access.id AND read_access.userid=?
+        ON objects.id = read_access.id AND ( read_access.userid=? OR read_access.userid='*' ) 
         WHERE objects.id=?;
 
 -- name: update-object-with-object
@@ -56,7 +56,7 @@ INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?)
                 object = IF(objects.owner=?, VALUES(object), object),
                 state = IF(objects.owner=?, VALUES(state), state);
 
--- name: select-row-read_access
+-- name: select-user-accesses-for-object
 SELECT permissions 
         FROM read_access 
         WHERE id=? AND userid=?;
@@ -110,4 +110,4 @@ INNER JOIN (
 ) AS matched_tags
 ON objects.id = matched_tags.id
 LEFT JOIN read_access
-ON objects.id = read_access.id AND read_access.userid=?;
+ON objects.id = read_access.id AND ( read_access.userid=? OR read_access.userid='*' );

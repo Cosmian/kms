@@ -6,6 +6,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Revoke, RevokeResponse},
     kmip_types::{
         KeyFormatType, LinkType, RevocationReason, RevocationReasonEnumeration, StateEnumeration,
+        UniqueIdentifier,
     },
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
@@ -69,7 +70,7 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
         .db
         .retrieve(uid_or_tags, user, ObjectOperationType::Revoke, params)
         .await?
-        .into_iter()
+        .into_values()
         .filter(|owm| {
             let object_type = owm.object.object_type();
             (owm.state == StateEnumeration::Active || owm.state == StateEnumeration::PreActive)
@@ -185,7 +186,7 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
 /// Revoke a key, knowing the object and state
 #[allow(clippy::too_many_arguments)]
 async fn revoke_key_core(
-    unique_identifier: &str,
+    unique_identifier: &UniqueIdentifier,
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<u64>,
     kms: &KMS,

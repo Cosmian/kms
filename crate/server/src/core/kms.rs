@@ -555,10 +555,10 @@ impl KMS {
         operations::revoke_operation(self, request, user, params).await
     }
 
-    /// Insert an access authorization for a user (identified by `access.userid`)
+    /// Grant an access to a user (identified by `access.userid`)
     /// to an object (identified by `access.unique_identifier`)
     /// which is owned by `owner` (identified by `access.owner`)
-    pub async fn insert_access(
+    pub async fn grant_access(
         &self,
         access: &Access,
         owner: &str,
@@ -641,8 +641,17 @@ impl KMS {
             )))
         }
 
-        let list = self.db.list_accesses(object_id, params).await?;
-        let ids = list.into_iter().map(UserAccessResponse::from).collect();
+        let list = self
+            .db
+            .list_object_accesses_granted(object_id, params)
+            .await?;
+        let ids = list
+            .into_iter()
+            .map(|(user_id, operations)| UserAccessResponse {
+                user_id,
+                operations,
+            })
+            .collect();
 
         Ok(ids)
     }
@@ -658,13 +667,16 @@ impl KMS {
         Ok(ids)
     }
 
-    /// Get all the objects shared to a given user
+    /// Get all the access rights granted to a given user
     pub async fn list_access_rights_obtained(
         &self,
         user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<AccessRightsObtainedResponse>> {
-        let list = self.db.list_access_rights_obtained(user, params).await?;
+        let list = self
+            .db
+            .list_user_granted_access_rights(user, params)
+            .await?;
         let ids = list
             .into_iter()
             .map(AccessRightsObtainedResponse::from)

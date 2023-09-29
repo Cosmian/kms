@@ -391,7 +391,8 @@ pub async fn test_list_access_rights() -> Result<(), CliError> {
 
     // the owner can list access rights granted
     let owner_list = list_access(&ctx.owner_cli_conf_path, &key_id)?;
-    assert!(owner_list.contains("user.client@acme.com: [get]"));
+    print!("owner list {owner_list}");
+    assert!(owner_list.contains("user.client@acme.com: {get}"));
 
     // The user is not the owner and thus should not be able to list accesses on this object
     assert!(list_access(&ctx.user_cli_conf_path, &key_id).is_err());
@@ -451,7 +452,7 @@ pub async fn test_access_right_obtained() -> Result<(), CliError> {
     let list = list_accesses_rights_obtained(&ctx.owner_cli_conf_path)?;
     assert!(!list.contains(&key_id));
 
-    // grant encrypt and decrypt access to user
+    // grant get access to user
     grant_access(
         &ctx.owner_cli_conf_path,
         &key_id,
@@ -465,7 +466,156 @@ pub async fn test_access_right_obtained() -> Result<(), CliError> {
     assert!(list.contains(&key_id));
     assert!(list.contains("get"));
 
-    // the owner has not been granted access rights on thjis object (it owns it)
+    // the owner has not been granted access rights on this object (it owns it)
+    let list = list_accesses_rights_obtained(&ctx.owner_cli_conf_path)?;
+    assert!(!list.contains(&key_id));
+
+    // the owner should have the object in the list
+    let owner_list = list_accesses_rights_obtained(&ctx.owner_cli_conf_path)?;
+    assert!(!owner_list.contains(&key_id));
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
+    // the client conf will use the owner cert
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let key_id = gen_key(&ctx.owner_cli_conf_path)?;
+
+    // the owner should have access
+    export(
+        &ctx.owner_cli_conf_path,
+        "sym",
+        &key_id,
+        "/tmp/output.json",
+        false,
+        false,
+        None,
+        false,
+    )?;
+
+    // the owner can encrypt and decrypt
+    run_encrypt_decrypt_test(&ctx.owner_cli_conf_path, &key_id)?;
+
+    // the user should not be able to export
+    assert!(
+        export(
+            &ctx.user_cli_conf_path,
+            "sym",
+            &key_id,
+            "/tmp/output.json",
+            false,
+            false,
+            None,
+            false,
+        )
+        .is_err()
+    );
+    // the user should not be able to encrypt or decrypt
+    assert!(run_encrypt_decrypt_test(&ctx.user_cli_conf_path, &key_id).is_err());
+    // the user should not be able to revoke the key
+    assert!(revoke(&ctx.user_cli_conf_path, "sym", &key_id, "failed revoke").is_err());
+    // the user should not be able to destroy the key
+    assert!(destroy(&ctx.user_cli_conf_path, "sym", &key_id).is_err());
+
+    // switch back to owner
+    // grant encrypt and decrypt access to user
+    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", "encrypt")?;
+    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", "decrypt")?;
+
+    // switch to user
+    // the user should still not be able to export
+    assert!(
+        export(
+            &ctx.user_cli_conf_path,
+            "sym",
+            &key_id,
+            "/tmp/output.json",
+            false,
+            false,
+            None,
+            false,
+        )
+        .is_err()
+    );
+
+    // the user should now be able to encrypt or decrypt
+    run_encrypt_decrypt_test(&ctx.user_cli_conf_path, &key_id)?;
+    // the user should still not be able to revoke the key
+    assert!(revoke(&ctx.user_cli_conf_path, "sym", &key_id, "failed revoke").is_err());
+    // the user should still not be able to destroy the key
+    assert!(destroy(&ctx.user_cli_conf_path, "sym", &key_id).is_err());
+
+    // switch back to owner
+    // grant encrypt and decrypt access to user
+    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", "get")?;
+
+    // switch to user
+    // the user should now be able to export
+    export(
+        &ctx.user_cli_conf_path,
+        "sym",
+        &key_id,
+        "/tmp/output.json",
+        false,
+        false,
+        None,
+        false,
+    )?;
+    // the user should still not be able to revoke the key
+    assert!(revoke(&ctx.user_cli_conf_path, "sym", &key_id, "failed revoke").is_err());
+    // the user should still not be able to destroy the key
+    assert!(destroy(&ctx.user_cli_conf_path, "sym", &key_id).is_err());
+
+    // switch back to owner
+    // grant revoke access to user
+    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", "revoke")?;
+
+    // switch to user
+    // the user should now be able to revoke the key
+    revoke(&ctx.user_cli_conf_path, "sym", &key_id, "user revoke")?;
+
+    // switch back to owner
+    // grant destroy access to user
+    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", "destroy")?;
+
+    // switch to user
+    // destroy the key
+    destroy(&ctx.user_cli_conf_path, "sym", &key_id)?;
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_access_right_obtained_using_wildcard() -> Result<(), CliError> {
+    std::env::set_var("RUST_LOG", "cosmian_kms_server=debug");
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let key_id = gen_key(&ctx.owner_cli_conf_path)?;
+
+    // the owner should not have access rights (it owns it)
+    let list = list_accesses_rights_obtained(&ctx.owner_cli_conf_path)?;
+    assert!(!list.contains(&key_id));
+
+    // grant get access to the wildcard user
+    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", "get")?;
+
+    // grant encrypt access to user
+    grant_access(
+        &ctx.owner_cli_conf_path,
+        &key_id,
+        "user.client@acme.com",
+        "encrypt",
+    )?;
+
+    // the user should have the "get" access granted
+    let list = list_accesses_rights_obtained(&ctx.user_cli_conf_path)?;
+    println!("user list {list}");
+    assert!(list.contains(&key_id));
+    assert!(list.contains("get"));
+    assert!(list.contains("encrypt"));
+
+    // the owner has not been granted access rights on this object (it owns it)
     let list = list_accesses_rights_obtained(&ctx.owner_cli_conf_path)?;
     assert!(!list.contains(&key_id));
 

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.7.0] - 2023-09-24
+
+### Features
+
+- Added the wildcard user `*` to grant access rights to all users on an object
+
+### Bug Fixes
+
+- Improved database data structures using Maps and Sets instead of Vectors where uniqueness is required 
+
+
 ## [4.6.0] - 2023-09-01
 
 ### Bug Fixes

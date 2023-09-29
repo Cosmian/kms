@@ -11,6 +11,7 @@ use crate::{
         operations::{unwrap_key, wrapping::wrap_key},
         KMS,
     },
+    database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
     result::KResult,
 };
@@ -39,7 +40,9 @@ pub async fn export(
     let mut owm_s = kms
         .db
         .retrieve(&uid_or_tags, user, ObjectOperationType::Export, params)
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
 
     // there can only be one object
     let mut owm = owm_s

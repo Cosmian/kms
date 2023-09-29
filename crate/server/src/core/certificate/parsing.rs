@@ -1,3 +1,4 @@
+use tracing::debug;
 use x509_parser::{
     oid_registry::{OID_X509_EXT_AUTHORITY_KEY_IDENTIFIER, OID_X509_EXT_SUBJECT_KEY_IDENTIFIER},
     prelude::{ParsedExtension, X509Certificate},

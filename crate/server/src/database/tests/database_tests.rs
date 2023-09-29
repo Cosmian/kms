@@ -14,7 +14,12 @@ use cosmian_kms_utils::{
 use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
 
-use crate::{database::Database, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    database::{object_with_metadata::ObjectWithMetadata, Database},
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
 pub async fn tx_and_list<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
@@ -140,7 +145,9 @@ pub async fn upsert<DB: Database>(
 
     let objs_ = db
         .retrieve(&uid, owner, ObjectOperationType::Get, db_params)
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
     match objs_.len() {
         1 => {
             assert_eq!(StateEnumeration::Active, objs_[0].state);
@@ -167,7 +174,9 @@ pub async fn upsert<DB: Database>(
 
     let objs_ = db
         .retrieve(&uid, owner, ObjectOperationType::Get, db_params)
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
     match objs_.len() {
         1 => {
             assert_eq!(StateEnumeration::PreActive, objs_[0].state);
@@ -239,7 +248,10 @@ pub async fn crud<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
 
     let objs_ = db
         .retrieve(&uid, owner, ObjectOperationType::Get, db_params)
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
+
     match objs_.len() {
         1 => {
             assert_eq!(StateEnumeration::Active, objs_[0].state);
@@ -259,7 +271,9 @@ pub async fn crud<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
 
     let objs_ = db
         .retrieve(&uid, owner, ObjectOperationType::Get, db_params)
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
 
     match objs_.len() {
         1 => {
@@ -280,7 +294,10 @@ pub async fn crud<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
 
     let objs_ = db
         .retrieve(&uid, owner, ObjectOperationType::Get, db_params)
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
+
     match objs_.len() {
         1 => {
             assert_eq!(StateEnumeration::Deactivated, objs_[0].state);
