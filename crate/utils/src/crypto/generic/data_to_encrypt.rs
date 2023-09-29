@@ -29,7 +29,6 @@ pub struct DataToEncrypt {
 
 impl DataToEncrypt {
     /// Serialize the data to encrypt to bytes
-    #[must_use]
     pub fn to_bytes(&self) -> Result<Vec<u8>, KmipUtilsError> {
         // Compute the size of the buffer
         let mut mem_size = 1 // for encryption policy
@@ -65,31 +64,23 @@ impl DataToEncrypt {
         let mut de = Deserializer::new(bytes);
 
         // Read the encryption policy
-        let encryption_policy = {
-            let ep = de.read_vec()?;
-            // If the size of the encryption policy is 0, it means that there is no encryption policy
-            if ep.is_empty() {
-                None
-            } else {
-                // Decode the encryption policy string
-                let encryption_policy_string = String::from_utf8(ep).map_err(|e| {
+        let encryption_policy = de
+            .read_vec()
+            .map(|ep| (!ep.is_empty()).then_some(ep))?
+            .map(|ep| {
+                String::from_utf8(ep).map_err(|e| {
                     KmipError::KmipError(
                         ErrorReason::Invalid_Message,
                         format!("failed deserializing the encryption policy string: {e}"),
                     )
-                })?;
-                Some(encryption_policy_string)
-            }
-        };
+                })
+            })
+            .transpose()?;
 
         // Read the metadata
-        let metadata = de.read_vec().map(|metadata| {
-            if metadata.is_empty() {
-                None
-            } else {
-                Some(metadata)
-            }
-        })?;
+        let metadata = de
+            .read_vec()
+            .map(|metadata| (!metadata.is_empty()).then_some(metadata))?;
 
         // Remaining is the plaintext to encrypt
         let plaintext = de.finalize();
