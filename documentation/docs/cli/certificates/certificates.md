@@ -173,23 +173,16 @@ ckms certificates export [OPTIONS] --format <OUTPUT_FORMAT> <CERTIFICATE_FILE>
 
 ## Import
 
-Import a certificate or a private/public keys the KMS.
-
-The certificate can be in:
-
-- KMIP JSON TTLV format
-- PEM format
-
-The private/public keys format is PEM format.
-
-When no certificate unique id is specified, a random UUID v4 is generated.
-
-Tags can later be used to retrieve the certificate. Tags are optional.
+Import into the KMS database the following elements:
+- a certificate (as PEM or TTLV format)
+- a private key (as PEM or TTLV format)
+- a certificate chain as a PEM-stack
+- the Mozilla Common CA Database (CCADB). Automate the Mozilla database fetch.
 
 **Usage:**
 
 ```sh
-ckms certificates import [OPTIONS] --format <INPUT_FORMAT> <CERTIFICATE_FILE> [CERTIFICATE_ID]
+ckms certificates import [OPTIONS] --format <INPUT_FORMAT> [CERTIFICATE_FILE] [CERTIFICATE_ID]
 ```
 
 **Arguments:**
@@ -205,19 +198,11 @@ ckms certificates import [OPTIONS] --format <INPUT_FORMAT> <CERTIFICATE_FILE> [C
 **Options:**
 
 ```sh
-  -f, --format <INPUT_FORMAT>
-          Import the certificate in the selected format
-
-          [possible values: ttlv, pem]
-
-  -r, --replace
-          Replace an existing certificate under the same id
-
-  -t, --tag <TAG>
-          The tag to associate with the certificate. To specify multiple tags, use the option multiple times
-
-  -h, --help
-          Print help (see a summary with '-h')
+  -f, --format <INPUT_FORMAT>  Import the certificate in the selected format [possible values: ttlv, pem, chain, ccadb]
+  -u, --unwrap                 Unwrap the object if it is wrapped before storing it
+  -r, --replace                Replace an existing certificate under the same id
+  -t, --tag <TAG>              The tag to associate with the certificate. To specify multiple tags, use the option multiple times
+  -h, --help                   Print help (see more with '--help')
 ```
 
 ## Revoke

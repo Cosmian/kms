@@ -53,19 +53,33 @@ fn parse_certificate_and_create_tags(
             "Cannot import expired certificate. Certificate details: {x509:?}"
         )))
     }
-    debug!("Certificate is not expired: {:?}", x509.validity());
+    debug!(
+        "parse_certificate_and_create_tags: Certificate is not expired: {:?}",
+        x509.validity()
+    );
 
     let cert_spki = get_certificate_subject_key_identifier(&x509)?;
+    debug!(
+        "parse_certificate_and_create_tags: Subject Key Identifier: {:?}",
+        cert_spki
+    );
+
     if let Some(spki) = cert_spki {
         let spki_tag = format!("_cert_spki={spki}");
         debug!("Add spki system tag: {spki_tag}");
         tags.insert(spki_tag);
     }
     if x509.is_ca() {
-        let subject_common_name = get_common_name(&x509.subject)?;
-        let ca_tag = format!("_cert_ca={subject_common_name}");
-        debug!("Add CA system tag: {}", &ca_tag);
-        tags.insert(ca_tag);
+        match get_common_name(&x509.subject) {
+            Ok(subject_common_name) => {
+                let ca_tag = format!("_cert_ca={subject_common_name}");
+                debug!("Add CA system tag: {}", &ca_tag);
+                tags.insert(ca_tag);
+            }
+            Err(_) => {
+                warn!("no common name for certificate: {:?}", x509);
+            }
+        }
     }
     Ok(())
 }
@@ -164,6 +178,32 @@ async fn create_certificate_link(
     }
 }
 
+/// The function `import_pem` takes in a PEM value, parses it, and creates an object
+/// based on the type of PEM (certificate or private key).
+///
+/// Arguments:
+///
+/// * `tags`: A mutable `HashSet` of strings used to store tags associated with the
+/// imported object.
+/// * `pem_value`: The `pem_value` parameter is a byte slice that contains the
+/// PEM-encoded data. PEM stands for Privacy-Enhanced Mail and is a format for
+/// storing and transmitting cryptographic keys, certificates, and other data.
+/// * `kms`: The `kms` parameter is of type `KMS`, which is likely an abbreviation
+/// for Key Management Service. It is used for cryptographic operations such as
+/// creating certificate links and retrieving private key objects. The specific
+/// implementation and functionality of the `KMS` type would depend on the context
+/// and the code
+/// * `owner`: The `owner` parameter in the `import_pem` function is a string that
+/// represents the owner of the imported object. It is used in the
+/// `create_certificate_link` function to associate the imported object with the
+/// owner.
+/// * `params`: The `params` parameter is an optional reference to an
+/// `ExtraDatabaseParams` struct. It is used to provide additional parameters for
+/// creating a certificate link.
+///
+/// Returns:
+///
+/// The imported PEM certificate as a KMIP `Object`
 async fn import_pem(
     tags: &mut HashSet<String>,
     pem_value: &[u8],
