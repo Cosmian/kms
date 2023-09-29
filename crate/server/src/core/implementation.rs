@@ -164,7 +164,7 @@ impl KMS {
             } => {
                 debug!("Encryption with certificate: verifying certificate");
                 // Check certificate validity
-                verify_certificate(certificate_value, self, &owm.owner, params).await?;
+                verify_certificate(certificate_value, None, self, &owm.owner, params).await?;
                 debug!("Encryption with certificate: certificate OK");
                 Ok(Box::new(EciesEncryption::instantiate_with_certificate(
                     &owm.id,

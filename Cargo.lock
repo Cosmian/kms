@@ -1144,7 +1144,6 @@ dependencies = [
  "serde",
  "serde_json",
  "strum",
- "strum_macros",
  "thiserror",
  "time 0.3.17",
  "tracing",
@@ -4192,6 +4191,9 @@ name = "strum"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
+dependencies = [
+ "strum_macros",
+]
 
 [[package]]
 name = "strum_macros"

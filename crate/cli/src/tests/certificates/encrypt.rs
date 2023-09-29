@@ -1,7 +1,6 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use predicates::prelude::*;
 use tempfile::TempDir;
 use tracing::debug;
 
@@ -44,10 +43,13 @@ pub fn encrypt(
         args.push(authentication_data);
     }
     cmd.arg(SUB_COMMAND).args(args);
-    cmd.assert().success().stdout(predicate::str::contains(
-        "The encrypted file is available at",
-    ));
-    Ok(())
+    let output = cmd.output()?;
+    if output.status.success() {
+        return Ok(())
+    }
+    Err(CliError::Default(
+        std::str::from_utf8(&output.stderr)?.to_owned(),
+    ))
 }
 
 /// Decrypt a file using the given private key
@@ -398,3 +400,64 @@ async fn test_certificate_encrypt_using_secp384r1() -> Result<(), CliError> {
 // async fn test_certificate_encrypt_using_rsa() -> Result<(), CliError> {
 //     import_encrypt_decrypt("rsa").await
 // }
+
+async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliError> {
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    // let tmp_path = std::path::Path::new("./");
+
+    let input_file = PathBuf::from("test_data/plain.txt");
+    let output_file = tmp_path.join("plain.enc");
+    let _recovered_file = tmp_path.join("plain.txt");
+
+    let tags = &[curve_name];
+
+    fs::remove_file(&output_file).ok();
+    // assert!(!output_file.exists());
+
+    debug!("\n\nImport Certificate");
+    let _root_certificate_id = import(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
+        CertificateInputFormat::PEM,
+        None,
+        Some(tags),
+        false,
+        false,
+    )?;
+
+    debug!("\n\nImport Certificate");
+    let certificate_id = import(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        &format!("test_data/certificates/openssl/{curve_name}-revoked.crt"),
+        CertificateInputFormat::PEM,
+        None,
+        Some(tags),
+        false,
+        false,
+    )?;
+
+    debug!("\n\nEncrypt with certificate");
+    assert!(
+        encrypt(
+            &ctx.owner_cli_conf_path,
+            input_file.to_str().unwrap(),
+            &certificate_id,
+            Some(output_file.to_str().unwrap()),
+            None,
+        )
+        .is_err()
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_import_revoked_certificate_encrypt_prime256() -> Result<(), CliError> {
+    import_revoked_certificate_encrypt("prime256v1").await
+}

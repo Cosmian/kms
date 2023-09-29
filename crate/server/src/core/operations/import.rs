@@ -21,7 +21,7 @@ use openssl::{
     pkey::{Id, PKey, Private},
     sha::Sha1,
 };
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 use x509_parser::{num_bigint::BigUint, parse_x509_certificate, prelude::parse_x509_pem};
 
 use super::wrapping::unwrap_key;
@@ -240,7 +240,7 @@ pub async fn import(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ImportResponse> {
-    debug!("Entering import KMIP operation: {:?}", request);
+    trace!("Entering import KMIP operation: {:?}", request);
     // Unique identifiers starting with `[` are reserved for queries on tags
     // see tagging
     // For instance, a request for unique identifier `[tag1]` will

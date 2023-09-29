@@ -10,7 +10,7 @@ use serde::{
     de::{self, Visitor},
     Deserialize, Serialize,
 };
-use strum_macros::{Display, EnumIter, EnumString};
+use strum::{Display, EnumIter, EnumString};
 
 use super::kmip_objects::ObjectType;
 
