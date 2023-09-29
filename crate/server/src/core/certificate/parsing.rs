@@ -23,17 +23,15 @@ use crate::{error::KmsError, result::KResult};
 pub(crate) fn get_crl_authority_key_identifier(
     x509_crl: &CertificateRevocationList<'_>,
 ) -> Option<String> {
-    match x509_crl
+    x509_crl
         .extensions()
         .iter()
         .find(|&ext| ext.oid == OID_X509_EXT_AUTHORITY_KEY_IDENTIFIER)
         .and_then(|ext| match ext.parsed_extension() {
             ParsedExtension::AuthorityKeyIdentifier(aki) => Some(aki),
             _ => None,
-        }) {
-        Some(aki) => aki.key_identifier.as_ref().map(|ki| hex::encode(ki.0)),
-        None => None,
-    }
+        })
+        .and_then(|aki| aki.key_identifier.as_ref().map(|ki| hex::encode(ki.0)))
 }
 
 /// The function `get_common_name` retrieves the first common name from an X509

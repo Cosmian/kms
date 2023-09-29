@@ -148,31 +148,23 @@ pub(crate) async fn verify_certificate(
     Ok(())
 }
 
-/// The function `check_serial_number_in_crl` checks if a given X.509 certificate's
-/// serial number is present in the Certificate Revocation List (CRL) of its issuer.
+/// The function `check_serial_number_in_crl` checks if a given serial number is
+/// present in the Certificate Revocation List (CRL) of a certificate.
 ///
 /// Arguments:
 ///
-/// * `x509_cert`: The `x509_cert` parameter is an `X509Certificate` object
-/// representing the certificate to be checked against the Certificate Revocation
-/// List (CRL).
-/// * `x509_ca`: The `x509_ca` parameter is an `X509Certificate` representing the CA
-/// (Certificate Authority) certificate. It is used to obtain the CRL (Certificate
-/// Revocation List) distribution points.
-/// * `kms`: The `kms` parameter is of type `&KMS`, which is a reference to an
-/// instance of the `KMS` struct. It is used to perform operations related to the
-/// Key Management Service.
-/// * `owner`: The `owner` parameter is a string that represents the owner of the
-/// certificate. It is used in the `locate_by_spki_and_get_certificate_bytes`
-/// function to locate the issuer certificate.
-/// * `params`: The `params` parameter is an optional reference to a struct called
-/// `ExtraDatabaseParams`. It is used to provide additional parameters for locating
-/// the issuer certificate.
+/// * `serial_number`: The serial number of the certificate that needs to be checked
+/// in the Certificate Revocation List (CRL).
+/// * `cert`: The x509 certificate carrying the CRL (issuer certificate or leaf certificate)
+/// * `kms`: The `kms` instance
+/// * `owner`: The `owner` parameter
+/// * `params`: The `params` parameter is an optional reference to an
+/// `ExtraDatabaseParams` struct. It is used to provide additional parameters for
+/// the database query.
 ///
 /// Returns:
 ///
-/// The function `check_serial_number_in_crl` returns a `KResult<()>`, which is an
-/// alias for `Result<(), KmsError>`.
+/// Nothing if success
 pub(crate) async fn check_serial_number_in_crl(
     serial_number: &BigUint,
     cert: &X509Certificate<'_>,
