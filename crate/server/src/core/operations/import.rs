@@ -203,7 +203,7 @@ async fn create_certificate_link(
 ///
 /// Returns:
 ///
-/// The function `import_pem` returns a `KResult<Object>`.
+/// The imported PEM certificate as a KMIP `Object`
 async fn import_pem(
     tags: &mut HashSet<String>,
     pem_value: &[u8],

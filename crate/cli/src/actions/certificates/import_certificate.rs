@@ -91,7 +91,7 @@ impl ImportCertificateAction {
             CertificateInputFormat::TTLV => {
                 trace!("CLI: import certificate as TTLV JSON file");
                 // read the certificate file
-                let object = read_key_from_file(&self.get_certificate_file()?)?;
+                let object = read_key_from_file(self.get_certificate_file()?)?;
                 trace!("CLI: read key from file OK");
 
                 self.import(kms_rest_client, object, self.replace_existing)
@@ -112,21 +112,23 @@ impl ImportCertificateAction {
                 debug!("CLI: import certificate as PKCS12 file");
                 let password = self
                     .pkcs12_password
-                    .clone()
+                    .as_deref()
                     .ok_or(CliError::InvalidRequest("PKCS12 is required".to_string()))?;
                 let pkcs12_bytes = read_bytes_from_file(&self.get_certificate_file()?)?;
 
                 let pkcs12_parser = openssl::pkcs12::Pkcs12::from_der(&pkcs12_bytes)?;
-                let pkcs12 = pkcs12_parser.parse2(&password)?;
+                let pkcs12 = pkcs12_parser.parse2(password)?;
 
                 // Import PKCS12 X509 certificate
                 let object = Object::Certificate {
                     certificate_type: CertificateType::X509,
                     certificate_value: pkcs12
                         .cert
-                        .ok_or(CliError::InvalidRequest(
-                            "X509 certificate not found in PKCS12".to_string(),
-                        ))?
+                        .ok_or_else(|| {
+                            CliError::InvalidRequest(
+                                "X509 certificate not found in PKCS12".to_string(),
+                            )
+                        })?
                         .to_pem()?,
                 };
                 self.import(kms_rest_client, object, self.replace_existing)
@@ -136,18 +138,18 @@ impl ImportCertificateAction {
                     certificate_type: CertificateType::X509,
                     certificate_value: pkcs12
                         .pkey
-                        .ok_or(CliError::InvalidRequest(
-                            "Private key not found in PKCS12".to_string(),
-                        ))?
+                        .ok_or_else(|| {
+                            CliError::InvalidRequest("Private key not found in PKCS12".to_string())
+                        })?
                         .private_key_to_pem_pkcs8()?,
                 };
                 self.import(kms_rest_client, object, self.replace_existing)
                     .await?;
 
                 // Import PKCS12 chain
-                let chain = pkcs12.ca.ok_or(CliError::InvalidRequest(
-                    "CA Chain not found in PKCS12".to_string(),
-                ))?;
+                let chain = pkcs12.ca.ok_or_else(|| {
+                    CliError::InvalidRequest("CA Chain not found in PKCS12".to_string())
+                })?;
                 for x509 in chain {
                     let object = Object::Certificate {
                         certificate_type: CertificateType::X509,
@@ -202,9 +204,9 @@ impl ImportCertificateAction {
         Ok(())
     }
 
-    fn get_certificate_file(&self) -> Result<PathBuf, CliError> {
+    fn get_certificate_file(&self) -> Result<&PathBuf, CliError> {
         self.certificate_file
-            .clone()
+            .as_ref()
             .ok_or(CliError::InvalidRequest(format!(
                 "Certificate file parameter is MANDATORY for {:?} format",
                 self.input_format
@@ -229,19 +231,16 @@ impl ImportCertificateAction {
         .await?;
 
         // print the response
-        match &self.certificate_file {
-            Some(cert_file) => {
-                println!(
-                    "The certificate in file {:?} was imported with id: {}",
-                    &cert_file, unique_identifier,
-                );
-            }
-            None => {
-                println!(
-                    "[{:?}] The certificate was imported with id: {}",
-                    self.input_format, unique_identifier,
-                );
-            }
+        if let Some(cert_file) = &self.certificate_file {
+            println!(
+                "The certificate in file {:?} was imported with id: {}",
+                &cert_file, unique_identifier,
+            );
+        } else {
+            println!(
+                "[{:?}] The certificate was imported with id: {}",
+                self.input_format, unique_identifier,
+            );
         }
         if !self.tags.is_empty() {
             println!("Tags:");

@@ -46,5 +46,4 @@ cosmian_kms_server = { path = "../server", features = ["insecure"], default-feat
 env_logger = { workspace = true }
 predicates = "2.1"
 regex = { version = "1.7", default-features = false }
-reqwest = { workspace = true }
 tempfile = "3.2"
