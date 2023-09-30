@@ -145,6 +145,8 @@ pub(crate) async fn verify_certificate(
         .await?;
     }
 
+    debug!("verify_certificate: certificate OK");
+
     Ok(())
 }
 

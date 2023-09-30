@@ -395,11 +395,10 @@ async fn test_certificate_encrypt_using_secp384r1() -> Result<(), CliError> {
     import_encrypt_decrypt("secp384r1").await
 }
 
-// The following test is not supported yet
-// #[tokio::test]
-// async fn test_certificate_encrypt_using_rsa() -> Result<(), CliError> {
-//     import_encrypt_decrypt("rsa").await
-// }
+#[tokio::test]
+async fn test_certificate_encrypt_using_rsa() -> Result<(), CliError> {
+    import_encrypt_decrypt("rsa").await
+}
 
 async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;

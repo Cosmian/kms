@@ -349,7 +349,7 @@ impl Database for RedisWithFindex {
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        self.create(Some(uid.to_owned()), owner, object, tags, params)
+        self.create(Some(uid.clone()), owner, object, tags, params)
             .await?;
         if state != StateEnumeration::Active {
             self.update_state(uid, state, params).await?;

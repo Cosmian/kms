@@ -225,9 +225,9 @@ impl BootstrapRestClient {
                 .ok_or(RestClientError::Default(
                     "Missing 'hostname' in bootstrap server url".to_string(),
                 ))?,
-            bootstrap_server_url.port().unwrap_or(443) as u32,
+            u32::from(bootstrap_server_url.port().unwrap_or(443)),
         )
-        .map_err(|e| RestClientError::RatlsError(format!("Can't get RATLS certificat: {e}")))?;
+        .map_err(|e| RestClientError::RatlsError(format!("Can't get RATLS certificate: {e}")))?;
 
         let ratls_cert = X509::from_der(&ratls_cert)
             .map_err(|e| {

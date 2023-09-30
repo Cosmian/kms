@@ -20,7 +20,7 @@ use cosmian_kms_utils::{
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
         curve_25519::operation::{create_ed25519_key_pair, create_x25519_key_pair},
-        ecies::{EciesDecryption, EciesEncryption},
+        hybrid_encryption_system::{HybridDecryptionSystem, HybridEncryptionSystem},
         symmetric::{create_symmetric_key, AesGcmSystem},
     },
     tagging::{check_user_tags, get_tags},
@@ -147,13 +147,22 @@ impl KMS {
                 )
                     as Box<dyn EncryptionSystem>),
                 KeyFormatType::TransparentECPublicKey => match key_block.cryptographic_algorithm {
-                    CryptographicAlgorithm::ECDH => Ok(Box::new(EciesEncryption::instantiate(
-                        &owm.id,
-                        &owm.object,
-                    )?)
+                    CryptographicAlgorithm::ECDH => Ok(Box::new(
+                        HybridEncryptionSystem::instantiate(&owm.id, &owm.object)?,
+                    )
                         as Box<dyn EncryptionSystem>),
                     x => kms_not_supported!(
-                        "EC public keys with cryptographic algorithm {:?} not supported",
+                        "EC public key with cryptographic algorithm {:?} not supported",
+                        x
+                    ),
+                },
+                KeyFormatType::TransparentRSAPublicKey => match key_block.cryptographic_algorithm {
+                    CryptographicAlgorithm::RSA => Ok(
+                        Box::new(HybridEncryptionSystem::instantiate(&owm.id, &owm.object)?)
+                            as Box<dyn EncryptionSystem>,
+                    ),
+                    x => kms_not_supported!(
+                        "RSA public key with cryptographic algorithm {:?} not supported",
                         x
                     ),
                 },
@@ -163,13 +172,16 @@ impl KMS {
                 certificate_value, ..
             } => {
                 debug!("Encryption with certificate: verifying certificate");
+
                 // Check certificate validity
                 verify_certificate(certificate_value, None, self, &owm.owner, params).await?;
-                debug!("Encryption with certificate: certificate OK");
-                Ok(Box::new(EciesEncryption::instantiate_with_certificate(
-                    &owm.id,
-                    certificate_value,
-                )?) as Box<dyn EncryptionSystem>)
+
+                Ok(
+                    Box::new(HybridEncryptionSystem::instantiate_with_certificate(
+                        &owm.id,
+                        certificate_value,
+                    )?) as Box<dyn EncryptionSystem>,
+                )
             }
             other => kms_not_supported!("encryption with keys of type: {}", other.object_type()),
         }
@@ -200,15 +212,25 @@ impl KMS {
                     CovercryptDecryption::instantiate(cover_crypt, &owm.id, &owm.object)?,
                 )),
                 KeyFormatType::TransparentECPrivateKey => match key_block.cryptographic_algorithm {
-                    CryptographicAlgorithm::ECDH => Ok(Box::new(EciesDecryption::instantiate(
-                        &owm.id,
-                        &owm.object,
-                    )?)
+                    CryptographicAlgorithm::ECDH => Ok(Box::new(
+                        HybridDecryptionSystem::instantiate(&owm.id, &owm.object)?,
+                    )
                         as Box<dyn DecryptionSystem>),
                     x => kms_not_supported!(
                         "EC public keys with cryptographic algorithm {x:?} not supported"
                     ),
                 },
+                KeyFormatType::TransparentRSAPrivateKey => {
+                    match key_block.cryptographic_algorithm {
+                        CryptographicAlgorithm::RSA => Ok(Box::new(
+                            HybridDecryptionSystem::instantiate(&owm.id, &owm.object)?,
+                        )
+                            as Box<dyn DecryptionSystem>),
+                        x => kms_not_supported!(
+                            "RSA public keys with cryptographic algorithm {x:?} not supported"
+                        ),
+                    }
+                }
                 other => kms_not_supported!("decryption with keys of format: {other}"),
             },
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {

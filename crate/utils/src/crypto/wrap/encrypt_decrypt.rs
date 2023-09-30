@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
 use tracing::debug;
 
 use crate::{
-    crypto::ecies::{EciesDecryption, EciesEncryption},
+    crypto::hybrid_encryption_system::{HybridDecryptionSystem, HybridEncryptionSystem},
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail, DecryptionSystem, EncryptionSystem,
 };
@@ -32,12 +32,13 @@ where
             // TODO(ECSE): cert should be verify before anything
             //verify_certificate(certificate_value, kms, owner, params).await?;
             debug!("encrypt_bytes: Encryption with certificate: certificate OK");
-            let ecies = EciesEncryption::instantiate_with_certificate("id", certificate_value)?;
+            let encrypt_system =
+                HybridEncryptionSystem::instantiate_with_certificate("id", certificate_value)?;
             let request = Encrypt {
                 data: Some(plaintext.to_vec()),
                 ..Encrypt::default()
             };
-            let encrypt_response = ecies.encrypt(&request)?;
+            let encrypt_response = encrypt_system.encrypt(&request)?;
             let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
                 "Encrypt response does not contain ciphertext".to_string(),
             ))?;
@@ -65,14 +66,15 @@ where
                     let wrap_secret = key_block.key_bytes()?;
                     key_wrap(plaintext, &wrap_secret)
                 }
-                KeyFormatType::TransparentECPublicKey => {
-                    // wrap using ECIES
-                    let ecies = EciesEncryption::instantiate("public_key_uid", wrapping_key)?;
+                KeyFormatType::TransparentECPublicKey | KeyFormatType::TransparentRSAPublicKey => {
+                    // wrap using ECIES/RSA
+                    let encrypt_system =
+                        HybridEncryptionSystem::instantiate("public_key_uid", wrapping_key)?;
                     let request = Encrypt {
                         data: Some(plaintext.to_vec()),
                         ..Encrypt::default()
                     };
-                    let encrypt_response = ecies.encrypt(&request)?;
+                    let encrypt_response = encrypt_system.encrypt(&request)?;
                     let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
                         "Encrypt response does not contain ciphertext".to_string(),
                     ))?;
@@ -124,13 +126,14 @@ pub fn decrypt_bytes(
             let unwrap_secret = unwrapping_key_block.key_bytes()?;
             key_unwrap(ciphertext, &unwrap_secret)
         }
-        KeyFormatType::TransparentECPrivateKey => {
-            let ecies = EciesDecryption::instantiate("private_key_uid", unwrapping_key)?;
+        KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {
+            let decrypt_system =
+                HybridDecryptionSystem::instantiate("private_key_uid", unwrapping_key)?;
             let request = Decrypt {
                 data: Some(ciphertext.to_vec()),
                 ..Decrypt::default()
             };
-            let decrypt_response = ecies.decrypt(&request)?;
+            let decrypt_response = decrypt_system.decrypt(&request)?;
             let plaintext = decrypt_response.data.ok_or(KmipUtilsError::Default(
                 "Decrypt response does not contain plaintext".to_string(),
             ))?;
@@ -141,7 +144,6 @@ pub fn decrypt_bytes(
             let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
             Ok(decrypted_data.plaintext)
         }
-
         x => {
             kmip_utils_bail!(
                 "Unable to unwrap key: unwrapping key: format not supported for unwrapping: {x:?}"
