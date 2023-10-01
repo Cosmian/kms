@@ -64,7 +64,6 @@ sqlx = { version = "0.7.1", default-features = false, features = [
     "postgres",
     "sqlite",
 ] }
-tempdir = "0.3"
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
 # this version of tokio should be the same as the one used in actix-web

@@ -49,14 +49,11 @@ fn parse_certificate_and_create_tags(
     let (_, x509) = parse_x509_certificate(&pem.contents)?;
 
     if !x509.validity().is_valid() {
-        return Err(KmsError::Certificate(format!(
-            "Cannot import expired certificate. Certificate details: {x509:?}"
-        )))
+        warn!(
+            "The certificate is expired. Certificate details: {:?}",
+            x509.validity()
+        );
     }
-    debug!(
-        "parse_certificate_and_create_tags: Certificate is not expired: {:?}",
-        x509.validity()
-    );
 
     let cert_spki = get_certificate_subject_key_identifier(&x509)?;
     debug!(
