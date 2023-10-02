@@ -29,6 +29,7 @@
     "libsgx",
     "mozilla",
     "mysql",
+    "nginx",
     "openssl",
     "pkcs",
     "pkey",
