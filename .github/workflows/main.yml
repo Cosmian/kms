@@ -22,12 +22,12 @@ jobs:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-udeps.yml@develop
 
   cargo-lint:
-    uses: ./.github/workflows/lint.yml
+    uses: ./.github/workflows/clippy.yml
     with:
       toolchain: nightly-2023-08-17
 
-  cargo-tests:
-    uses: ./.github/workflows/cargo_tests.yml
+  build:
+    uses: ./.github/workflows/build_all.yml
     secrets: inherit
     with:
       toolchain: nightly-2023-08-17
@@ -38,7 +38,7 @@ jobs:
       toolchain: nightly-2023-08-17
 
   python_and_docker:
-    uses: ./.github/workflows/python_and_docker.yml
+    uses: ./.github/workflows/build_docker_image.yml
 
   ##############################################################################
   ### Releases
@@ -50,7 +50,7 @@ jobs:
       - cargo-udeps
       - cargo-lint
       - cargo-doc
-      - cargo-tests
+      - build
       - python_and_docker
       # - sgx_docker # do not depend on this for releases
     runs-on: [self-hosted, not-sgx]

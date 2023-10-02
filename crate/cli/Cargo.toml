@@ -12,6 +12,7 @@ path = "src/main.rs"
 [features]
 # Staging is used to run tests with the remote kms test server. Otherwise, the test runs a local kms server.
 staging = []
+fips = ["cosmian_kms_utils/fips"]
 
 [dependencies]
 actix-web = { workspace = true }
@@ -25,9 +26,7 @@ cosmian_logger = { path = "../logger" }
 der = { workspace = true }
 hex = { workspace = true }
 oauth2 = "4.4"
-## openssl is only used to parse PKCS#12 files because native support is not yet available in Rust yet.
-## It should not be used for anything else and will be removed once native support is available.
-openssl = { version = "0.10", features = ["vendored"] }
+openssl = { workspace = true }
 pem = "3.0"
 rand = "0.8"
 ratls = { workspace = true }

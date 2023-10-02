@@ -13,6 +13,7 @@ env:
   KMS_CERTBOT_EMAIL: tech@cosmian.com
   KMS_CERTBOT_USE_TEE_KEY: abcdef0123456789
   TESTS_CONTAINER_NETWORK: # dynamic variable retrieved during the tests
+  OPENSSL_DIR: /tmp/openssl_fips
 
 jobs:
   build-push-image-and-tests:
@@ -31,6 +32,7 @@ jobs:
             docker.io \
             curl \
             ca-certificates \
+            wget \
             build-essential
 
       - uses: actions/checkout@v3
@@ -102,8 +104,14 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Local OpenSSL FIPS Install
+        run: |
+          bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
+
       - name: Install ckms
         run: cargo install --locked --path crate/cli
+        env:
+          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
 
       - name: Bootstrap
         run: |

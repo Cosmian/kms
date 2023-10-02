@@ -2,13 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [4.10.1] - 2023-12-12
-
-### Documentation
-
-- Fix mkdocs formatting
-
-## [4.10.0] - 2023-12-11
+## [4.x.x] - 2023-11-15
 
 ### Features
 

@@ -74,6 +74,9 @@ sudo ln -s /snap/bin/certbot /usr/bin/certbot
 
 General instructions on installing `certbot` are available at [this URL](https://certbot.eff.org/lets-encrypt/ubuntufocal-nginx).
 
+
+
+
 Get a certificate and configure `nginx`
 
 ```sh

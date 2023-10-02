@@ -2,14 +2,12 @@ use std::path::PathBuf;
 
 use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
-use cloudproof::reexport::crypto_core::CsRng;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::{
     password_derivation::derive_key_from_password, symmetric::create_symmetric_key,
     wrap::wrap_key_block,
 };
-use rand::SeedableRng;
 
 use crate::{
     actions::shared::{
@@ -93,8 +91,7 @@ impl WrapKeyAction {
             cli_bail!("one of the wrapping options must be specified");
         };
 
-        let mut rng = CsRng::from_entropy();
-        wrap_key_block(&mut rng, object.key_block_mut()?, &wrapping_key, None)?;
+        wrap_key_block(object.key_block_mut()?, &wrapping_key, None)?;
 
         // set the output file path to the input file path if not specified
         let output_file = self

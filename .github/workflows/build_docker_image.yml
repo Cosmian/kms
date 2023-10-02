@@ -10,7 +10,7 @@ env:
 
 jobs:
   pyo3:
-    uses: ./.github/workflows/python_build.yml
+    uses: ./.github/workflows/maturin.yml
     with:
       toolchain: nightly-2023-08-17
 

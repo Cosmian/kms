@@ -16,7 +16,10 @@ timeout = []
 # To run in a test environment using a real domain name and enclaves without the rest api limit of let's encrypt
 staging = ["insecure"]
 
-# No features (insecure, timeout or staging) and contain non FIPS approved libraries (e.g. Rust Crypto)
+# Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
+fips = ["cosmian_kms_utils/fips"]
+
+# No features (insecure, timeout or staging) and contain non FIPS approved librairies (e.g. Rust Crypto)
 default = []
 prod = []
 

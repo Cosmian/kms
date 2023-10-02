@@ -127,16 +127,25 @@ pub async fn test_password_wrap_import() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
-        &[],
+        &["test_password_wrap_import"],
     )?;
     password_wrap_import_test(ctx, "cc", &private_key_id)?;
 
+    println!("avant ec");
     // EC
-    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+    let (private_key_id, _public_key_id) =
+        create_ec_key_pair(&ctx.owner_cli_conf_path, &["test_password_wrap_import"])?;
     password_wrap_import_test(ctx, "ec", &private_key_id)?;
+    println!("apres ec");
 
     // syn
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(
+        &ctx.owner_cli_conf_path,
+        None,
+        None,
+        None,
+        &["test_password_wrap_import"],
+    )?;
     password_wrap_import_test(ctx, "sym", &key_id)?;
 
     Ok(())
