@@ -17,14 +17,12 @@ use openssl::{
 };
 use tracing::{info, trace};
 
-use super::{
-    certificate::generate_self_signed_cert,
-    routes::{
-        mysql_config, pkcs12_password, postgresql_config, receive_pkcs12, redis_findex_config,
-        sqlite_config, sqlite_enc_config, start_kms_server_config,
-    },
+use super::routes::{
+    mysql_config, pkcs12_password, postgresql_config, receive_pkcs12, redis_findex_config,
+    sqlite_config, sqlite_enc_config, start_kms_server_config,
 };
 use crate::{
+    bootstrap_server::certificate::generate_self_signed_cert,
     config::{DbParams, HttpParams, ServerParams},
     error::KmsError,
     kms_bail, kms_error,
@@ -175,27 +173,25 @@ pub async fn start_https_bootstrap_server(
         pkcs12_password_received: RwLock::new(None),
     });
 
-    let common_name = &bootstrap_server
-        .server_params
-        .bootstrap_server_params
-        .bootstrap_server_common_name;
-
-    // Generate a self-signed certificate
-    let pkcs12 = generate_self_signed_cert(common_name, "")?;
-    let p12 = pkcs12.parse2("")?;
+    // Generate a, possibly RA-TLS, certificate
+    let (pkey, cert) = generate_self_signed_cert(
+        &bootstrap_server
+            .server_params
+            .bootstrap_server_params
+            .bootstrap_server_subject,
+        bootstrap_server
+            .server_params
+            .bootstrap_server_params
+            .bootstrap_server_expiration_days,
+        bootstrap_server
+            .server_params
+            .bootstrap_server_params
+            .ensure_ra_tls,
+    )?;
     // Create and configure an SSL acceptor with the certificate and key
     let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-    if let Some(pkey) = &p12.pkey {
-        builder.set_private_key(pkey)?;
-    }
-    if let Some(cert) = &p12.cert {
-        builder.set_certificate(cert)?;
-    }
-    if let Some(chain) = p12.ca {
-        for x in chain {
-            builder.add_extra_chain_cert(x)?;
-        }
-    }
+    builder.set_private_key(&pkey)?;
+    builder.set_certificate(&cert)?;
 
     if let Some(verify_cert) = &bootstrap_server.server_params.verify_cert {
         // This line sets the mode to verify peer (client) certificates

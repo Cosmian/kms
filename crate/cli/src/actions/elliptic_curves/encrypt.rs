@@ -1,10 +1,11 @@
-use std::{fs::File, io::prelude::*, path::PathBuf};
+use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_encryption_request;
 
 use crate::{
+    actions::shared::utils::read_bytes_from_file,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -41,11 +42,8 @@ pub struct EncryptAction {
 impl EncryptAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Read the file to encrypt
-        let mut f =
-            File::open(&self.input_file).with_context(|| "Can't read the file to encrypt")?;
-        let mut data = Vec::new();
-        f.read_to_end(&mut data)
-            .with_context(|| "Fail to read the file to encrypt")?;
+        let mut data = read_bytes_from_file(&self.input_file)
+            .with_context(|| "Cannot read bytes from the file to encrypt")?;
 
         // Recover the unique identifier or set of tags
         let id = if let Some(key_id) = &self.key_id {
@@ -53,7 +51,7 @@ impl EncryptAction {
         } else if let Some(tags) = &self.tags {
             serde_json::to_string(&tags)?
         } else {
-            cli_bail!("Either --key-id or one or more --tag must be specified")
+            cli_bail!("Either `--key-id` or one or more `--tag` must be specified")
         };
 
         // Create the kmip query
@@ -63,8 +61,9 @@ impl EncryptAction {
             data,
             None,
             self.authentication_data
-                .clone()
+                .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
+            None,
         )?;
 
         // Query the KMS with your kmip data and get the key pair ids
@@ -75,7 +74,7 @@ impl EncryptAction {
 
         data = encrypt_response
             .data
-            .context("The encrypted data are empty")?;
+            .context("The encrypted data is empty")?;
 
         // Write the encrypted file
         let output_file = self
@@ -88,7 +87,7 @@ impl EncryptAction {
             .write_all(&data)
             .with_context(|| "failed to write the encrypted file")?;
 
-        println!("The encrypted file is available at {:?}", &output_file);
+        println!("The encrypted file is available at {output_file:?}");
 
         Ok(())
     }

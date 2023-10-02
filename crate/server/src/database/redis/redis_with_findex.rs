@@ -232,7 +232,7 @@ impl Database for RedisWithFindex {
         user: &str,
         query_access_grant: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectWithMetadata>> {
+    ) -> KResult<HashMap<String, ObjectWithMetadata>> {
         let uids = if uid_or_tags.starts_with('[') {
             let tags: HashSet<String> = serde_json::from_str(uid_or_tags)
                 .with_context(|| format!("Invalid tags: {uid_or_tags}"))?;
@@ -260,34 +260,40 @@ impl Database for RedisWithFindex {
 
         // now retrieve the object
         let results = self.objects_db.objects_get(&uids).await?;
-        let mut objects: Vec<ObjectWithMetadata> = vec![];
+        let mut objects: HashMap<String, ObjectWithMetadata> = HashMap::new();
         for (uid, redis_db_object) in results {
             // if the user is the owner, return it
             if redis_db_object.owner == user {
-                objects.push(ObjectWithMetadata {
-                    id: uid,
-                    object: redis_db_object.object,
-                    owner: redis_db_object.owner,
-                    state: redis_db_object.state,
-                    permissions: vec![],
-                });
+                objects.insert(
+                    uid.clone(),
+                    ObjectWithMetadata {
+                        id: uid,
+                        object: redis_db_object.object,
+                        owner: redis_db_object.owner,
+                        state: redis_db_object.state,
+                        permissions: vec![],
+                    },
+                );
                 continue
             }
 
-            // fetch the permissions for the user
-            let permissions = self
+            // fetch the permissions for the user and the wildcard user
+            let permissions: HashSet<ObjectOperationType> = self
                 .permissions_db
-                .get(&self.findex_key, &uid, user)
+                .get(&self.findex_key, &uid, user, false)
                 .await
                 .unwrap_or_default();
             if permissions.contains(&query_access_grant) {
-                objects.push(ObjectWithMetadata {
-                    id: uid,
-                    object: redis_db_object.object,
-                    owner: redis_db_object.owner,
-                    state: redis_db_object.state,
-                    permissions: permissions.into_iter().collect(),
-                });
+                objects.insert(
+                    uid.clone(),
+                    ObjectWithMetadata {
+                        id: uid,
+                        object: redis_db_object.object,
+                        owner: redis_db_object.owner,
+                        state: redis_db_object.state,
+                        permissions: permissions.into_iter().collect(),
+                    },
+                );
             }
         }
         Ok(objects)
@@ -296,7 +302,7 @@ impl Database for RedisWithFindex {
     /// Retrieve the ags of the object with the given `uid`
     async fn retrieve_tags(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
         let redis_db_object = self.objects_db.object_get(uid).await?;
@@ -308,7 +314,7 @@ impl Database for RedisWithFindex {
     /// If tags is `None`, the tags will not be updated.
     async fn update_object(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         object: &Object,
         tags: Option<&HashSet<String>>,
         _params: Option<&ExtraDatabaseParams>,
@@ -324,7 +330,7 @@ impl Database for RedisWithFindex {
 
     async fn update_state(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -336,14 +342,14 @@ impl Database for RedisWithFindex {
 
     async fn upsert(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         owner: &str,
         object: &Object,
         tags: &HashSet<String>,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        self.create(Some(uid.to_owned()), owner, object, tags, params)
+        self.create(Some(uid.clone()), owner, object, tags, params)
             .await?;
         if state != StateEnumeration::Active {
             self.update_state(uid, state, params).await?;
@@ -353,7 +359,7 @@ impl Database for RedisWithFindex {
 
     async fn delete(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -365,19 +371,12 @@ impl Database for RedisWithFindex {
         Ok(())
     }
 
-    async fn list_access_rights_obtained(
+    async fn list_user_granted_access_rights(
         &self,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<
-        Vec<(
-            UniqueIdentifier,
-            String,
-            StateEnumeration,
-            Vec<ObjectOperationType>,
-            IsWrapped,
-        )>,
-    > {
+    ) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
+    {
         let permissions = self
             .permissions_db
             .list_user_permissions(&self.findex_key, user)
@@ -397,12 +396,13 @@ impl Database for RedisWithFindex {
             .map(|((uid, permissions), (_, redis_db_object))| {
                 (
                     uid,
-                    redis_db_object.owner,
-                    redis_db_object.state,
-                    permissions
-                        .into_iter()
-                        .collect::<Vec<ObjectOperationType>>(),
-                    false, // TODO: de-hardcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
+                    (
+                        redis_db_object.owner,
+                        redis_db_object.state,
+                        permissions
+                            .into_iter()
+                            .collect::<HashSet<ObjectOperationType>>(),
+                    ),
                 )
             })
             .collect())
@@ -410,26 +410,21 @@ impl Database for RedisWithFindex {
 
     /// List all the accessed granted per `user`
     /// This is called by the owner only
-    async fn list_accesses(
+    async fn list_object_accesses_granted(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>> {
-        let permissions = self
-            .permissions_db
+    ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>> {
+        self.permissions_db
             .list_object_permissions(&self.findex_key, uid)
-            .await?;
-        Ok(permissions
-            .into_iter()
-            .map(|(user, permissions)| (user, permissions.into_iter().collect()))
-            .collect())
+            .await
     }
 
     /// Grant the access right to `user` to perform the `operation_type`
     /// on the object identified by its `uid`
     async fn grant_access(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
@@ -444,7 +439,7 @@ impl Database for RedisWithFindex {
     /// on the object identified by its `uid`
     async fn remove_access(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
@@ -458,7 +453,7 @@ impl Database for RedisWithFindex {
     /// Test if an object identified by its `uid` is currently owned by `owner`
     async fn is_object_owned_by(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         owner: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
@@ -559,16 +554,16 @@ impl Database for RedisWithFindex {
             .collect())
     }
 
-    #[cfg(test)]
-    async fn perms(
+    async fn list_user_access_rights_on_object(
         &self,
-        uid: &str,
-        userid: &str,
+        uid: &UniqueIdentifier,
+        user: &str,
+        no_inherited_access: bool,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectOperationType>> {
+    ) -> KResult<HashSet<ObjectOperationType>> {
         Ok(self
             .permissions_db
-            .get(&self.findex_key, uid, userid)
+            .get(&self.findex_key, uid, user, no_inherited_access)
             .await
             .unwrap_or_default()
             .into_iter()

@@ -114,17 +114,16 @@ repos:
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.16
     hooks:
-      - id: dprint-toml-fix
       - id: cargo-format
       # - id: cargo-upgrade
       # - id: cargo-update
-      # - id: cargo-machete
+      - id: cargo-machete
       - id: cargo-build-kms
       - id: docker-compose-up
       - id: cargo-test
       - id: cargo-audit
       - id: cargo-outdated
-      - id: cargo-udeps
+      # - id: cargo-udeps
       # - id: cargo-test-doc
       - id: clippy-autofix-all
       - id: clippy-autofix-pedantic

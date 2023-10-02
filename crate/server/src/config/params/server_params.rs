@@ -64,6 +64,10 @@ pub struct ServerParams {
 
     /// Use a bootstrap server (inside an enclave for instance)
     pub bootstrap_server_params: BootstrapServerParams,
+
+    /// Ensure RA-TLS is available and used.
+    /// The server will not start if this is not the case.
+    pub ensure_ra_tls: bool,
 }
 
 impl ServerParams {
@@ -105,6 +109,7 @@ impl ServerParams {
             force_default_username: conf.force_default_username,
             verify_cert,
             bootstrap_server_params: conf.bootstrap_server.clone(),
+            ensure_ra_tls: conf.bootstrap_server.ensure_ra_tls,
         };
         Ok(server_conf)
     }
@@ -133,8 +138,18 @@ impl fmt::Debug for ServerParams {
                 ),
             )
             .field(
-                "bootstrap server CN",
-                &self.bootstrap_server_params.bootstrap_server_common_name,
+                "bootstrap server subject",
+                &self.bootstrap_server_params.bootstrap_server_subject,
+            )
+            .field(
+                "bootstrap server days before expiration",
+                &self
+                    .bootstrap_server_params
+                    .bootstrap_server_expiration_days,
+            )
+            .field(
+                "bootstrap server ensure RA-TLS",
+                &self.bootstrap_server_params.ensure_ra_tls,
             )
         } else {
             &mut x
@@ -200,6 +215,7 @@ impl Clone for ServerParams {
             enclave_params: self.enclave_params.clone(),
             verify_cert: self.verify_cert.clone(),
             bootstrap_server_params: self.bootstrap_server_params.clone(),
+            ensure_ra_tls: self.ensure_ra_tls,
         }
     }
 }

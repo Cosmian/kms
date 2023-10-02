@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_utils"
-version = "4.6.0"
+version = "4.7.0"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 license-file = "../../LICENSE.md"
@@ -11,6 +11,7 @@ curve25519 = []
 [dependencies]
 argon2 = "0.5.0"
 cloudproof = { workspace = true }
+cosmian_crypto_core = "9.3.0"       # Must use `crypto_core` from `cloudproof_rust` reexport
 cosmian_kmip = { path = "../kmip" }
 num-bigint = { workspace = true }
 openssl = { workspace = true }

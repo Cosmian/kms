@@ -53,6 +53,7 @@ impl actix_web::error::ResponseError for KmsError {
             | KmsError::Redis(_)
             | KmsError::Findex(_)
             | KmsError::Certificate(_)
+            | KmsError::RatlsError(_)
             | KmsError::ServerError(_) => StatusCode::INTERNAL_SERVER_ERROR,
 
             KmsError::KmipError(..)
@@ -62,7 +63,7 @@ impl actix_web::error::ResponseError for KmsError {
             | KmsError::InconsistentOperation(..)
             | KmsError::InvalidRequest(_)
             | KmsError::ItemNotFound(_)
-            | &KmsError::UrlError(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            | KmsError::UrlError(_) => StatusCode::UNPROCESSABLE_ENTITY,
         }
     }
 }
@@ -249,7 +250,7 @@ pub async fn grant_access(
     let user = kms.get_user(req)?;
     info!("POST /access/grant {access:?} {user}");
 
-    kms.insert_access(&access, &user, database_params.as_ref())
+    kms.grant_access(&access, &user, database_params.as_ref())
         .await?;
     debug!(
         "Access granted on {:?} for {:?} to {}",

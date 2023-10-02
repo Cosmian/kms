@@ -2,7 +2,7 @@ use std::convert::{TryFrom, TryInto};
 
 use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
-use strum_macros::{Display, EnumString};
+use strum::{Display, EnumString};
 
 use super::{kmip_data_structures::KeyWrappingData, kmip_types::Attributes};
 use crate::{

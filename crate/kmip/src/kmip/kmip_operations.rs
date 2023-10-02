@@ -1,10 +1,11 @@
 use std::fmt;
 
+use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
 use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize, Serialize,
 };
-use strum_macros::Display;
+use strum::Display;
 
 use super::{
     kmip_data_structures::KeyWrappingSpecification,
@@ -797,19 +798,11 @@ impl TryInto<Vec<u8>> for DecryptedData {
     type Error = KmipError;
 
     fn try_into(self) -> Result<Vec<u8>, Self::Error> {
-        let mut result = vec![];
-        leb128::write::unsigned(&mut result, self.metadata.len() as u64).map_err(|_| {
-            KmipError::KmipError(
-                ErrorReason::Invalid_Message,
-                format!(
-                    "Cannot put the length of the additional metadata {} into the response.",
-                    self.metadata.len()
-                ),
-            )
-        })?;
-        result.extend_from_slice(&self.metadata);
-        result.extend_from_slice(&self.plaintext);
+        let mut ser = Serializer::new();
+        ser.write_vec(&self.metadata)?;
 
+        let mut result = ser.finalize().to_vec();
+        result.extend_from_slice(&self.plaintext);
         Ok(result)
     }
 }
@@ -817,33 +810,14 @@ impl TryInto<Vec<u8>> for DecryptedData {
 impl TryFrom<&[u8]> for DecryptedData {
     type Error = KmipError;
 
-    fn try_from(mut bytes: &[u8]) -> Result<Self, Self::Error> {
-        let size_of_metadata = leb128::read::unsigned(&mut bytes).map_err(|_| {
-            KmipError::KmipError(
-                ErrorReason::Invalid_Message,
-                "Expect a LEB128 encoded number (size of the metadata) at the beginning of the \
-                 data to encrypt."
-                    .to_owned(),
-            )
-        })? as usize;
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        let mut de = Deserializer::new(bytes);
 
-        let metadata = bytes
-            .take(..size_of_metadata)
-            .ok_or_else(|| {
-                KmipError::KmipError(
-                    ErrorReason::Invalid_Message,
-                    format!(
-                        "After the LEB128 encoded size of access policy in bytes of \
-                         {size_of_metadata}, expecting to be able to read that many bytes but the \
-                         data to encrypt length is {}.",
-                        bytes.len()
-                    ),
-                )
-            })?
-            .to_vec();
+        // Read the metadata
+        let metadata = de.read_vec()?;
 
         // Remaining is the decrypted plaintext
-        let plaintext = bytes.to_vec();
+        let plaintext = de.finalize();
 
         Ok(Self {
             metadata,

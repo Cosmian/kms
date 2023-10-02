@@ -12,7 +12,10 @@ use cosmian_kms_utils::{
 use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
 
-use crate::{database::Database, result::KResult};
+use crate::{
+    database::{object_with_metadata::ObjectWithMetadata, Database},
+    result::KResult,
+};
 
 pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>)) -> KResult<()> {
     log_init("debug");
@@ -44,7 +47,10 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
     //recover the object from DB and check that the vendor attributes contain the tags
     let res = db
         .retrieve(&uid, owner, ObjectOperationType::Get, db_params)
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
+
     assert_eq!(res.len(), 1);
     let owm = res[0].clone();
     assert_eq!(StateEnumeration::Active, owm.state);
@@ -62,7 +68,10 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
             ObjectOperationType::Get,
             db_params,
         )
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
+
     assert_eq!(res.len(), 1);
     let owm = res[0].clone();
     assert_eq!(owm.id, uid);
@@ -81,7 +90,10 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
             ObjectOperationType::Get,
             db_params,
         )
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
+
     assert_eq!(res.len(), 1);
     let owm = res[0].clone();
     assert_eq!(owm.id, uid);
@@ -100,7 +112,10 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
             ObjectOperationType::Get,
             db_params,
         )
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
+
     assert_eq!(res.len(), 1);
     let owm = res[0].clone();
     assert_eq!(owm.id, uid);
@@ -151,7 +166,10 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
             ObjectOperationType::Get,
             db_params,
         )
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
+
     assert_eq!(res.len(), 1);
     let owm = res[0].clone();
     assert_eq!(owm.id, uid);
@@ -170,7 +188,10 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
             ObjectOperationType::Decrypt,
             db_params,
         )
-        .await?;
+        .await?
+        .into_values()
+        .collect::<Vec<ObjectWithMetadata>>();
+
     assert_eq!(res.len(), 1);
     let owm = res[0].clone();
     assert_eq!(owm.id, uid);

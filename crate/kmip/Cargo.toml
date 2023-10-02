@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kmip"
-version = "4.6.0"
+version = "4.7.0"
 edition = "2021"
 license-file = "../../LICENSE.md"
 
@@ -8,12 +8,10 @@ license-file = "../../LICENSE.md"
 bitflags = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }
-leb128 = { workspace = true }
 num-bigint = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }
-strum_macros = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }

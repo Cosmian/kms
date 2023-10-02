@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -90,7 +90,7 @@ impl Database for SqlitePool {
 
     async fn create(
         &self,
-        uid: Option<String>,
+        uid: Option<UniqueIdentifier>,
         user: &str,
         object: &kmip_objects::Object,
         tags: &HashSet<String>,
@@ -135,13 +135,13 @@ impl Database for SqlitePool {
         user: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectWithMetadata>> {
+    ) -> KResult<HashMap<String, ObjectWithMetadata>> {
         retrieve_(uid_or_tags, user, operation_type, &self.pool).await
     }
 
     async fn retrieve_tags(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
         retrieve_tags_(uid, &self.pool).await
@@ -149,7 +149,7 @@ impl Database for SqlitePool {
 
     async fn update_object(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         object: &kmip_objects::Object,
         tags: Option<&HashSet<String>>,
         _params: Option<&ExtraDatabaseParams>,
@@ -169,7 +169,7 @@ impl Database for SqlitePool {
 
     async fn update_state(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -178,7 +178,7 @@ impl Database for SqlitePool {
 
     async fn upsert(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         object: &kmip_objects::Object,
         tags: &HashSet<String>,
@@ -200,7 +200,7 @@ impl Database for SqlitePool {
 
     async fn delete(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -217,57 +217,50 @@ impl Database for SqlitePool {
         }
     }
 
-    async fn list_access_rights_obtained(
+    async fn list_user_granted_access_rights(
         &self,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<
-        Vec<(
-            UniqueIdentifier,
-            String,
-            StateEnumeration,
-            Vec<ObjectOperationType>,
-            IsWrapped,
-        )>,
-    > {
-        list_shared_objects_(user, &self.pool).await
+    ) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
+    {
+        list_user_granted_access_rights_(user, &self.pool).await
     }
 
-    async fn list_accesses(
+    async fn list_object_accesses_granted(
         &self,
-        uid: &str,
+        uid: &UniqueIdentifier,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(String, Vec<ObjectOperationType>)>> {
+    ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>> {
         list_accesses_(uid, &self.pool).await
     }
 
     async fn grant_access(
         &self,
-        uid: &str,
-        userid: &str,
+        uid: &UniqueIdentifier,
+        user: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        insert_access_(uid, userid, operation_type, &self.pool).await
+        insert_access_(uid, user, operation_type, &self.pool).await
     }
 
     async fn remove_access(
         &self,
-        uid: &str,
-        userid: &str,
+        uid: &UniqueIdentifier,
+        user: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        delete_access_(uid, userid, operation_type, &self.pool).await
+        remove_access_(uid, user, operation_type, &self.pool).await
     }
 
     async fn is_object_owned_by(
         &self,
-        uid: &str,
-        userid: &str,
+        uid: &UniqueIdentifier,
+        user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
-        is_object_owned_by_(uid, userid, &self.pool).await
+        is_object_owned_by_(uid, user, &self.pool).await
     }
 
     async fn find(
@@ -289,14 +282,14 @@ impl Database for SqlitePool {
         .await
     }
 
-    #[cfg(test)]
-    async fn perms(
+    async fn list_user_access_rights_on_object(
         &self,
-        uid: &str,
-        userid: &str,
+        uid: &UniqueIdentifier,
+        user: &str,
+        no_inherited_access: bool,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<ObjectOperationType>> {
-        fetch_permissions_(uid, userid, &self.pool).await
+    ) -> KResult<HashSet<ObjectOperationType>> {
+        list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await
     }
 }
 
@@ -351,7 +344,7 @@ pub(crate) async fn retrieve_<'e, E>(
     user: &str,
     operation_type: ObjectOperationType,
     executor: E,
-) -> KResult<Vec<ObjectWithMetadata>>
+) -> KResult<HashMap<String, ObjectWithMetadata>>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
@@ -390,6 +383,8 @@ where
             .replace("@LEN", &format!("${}", tags.len() + 1))
             .replace("@USER", &format!("${}", tags.len() + 2));
 
+        trace!("raw_sql = {raw_sql}");
+
         // Bind the tags params
         let mut query = sqlx::query::<Sqlite>(&raw_sql);
         for tag in &tags {
@@ -403,9 +398,10 @@ where
     };
 
     // process the rows and find the tags
-    let mut res = vec![];
+    let mut res: HashMap<String, ObjectWithMetadata> = HashMap::new();
     for row in rows {
         let object_with_metadata = ObjectWithMetadata::try_from(&row)?;
+        trace!("row = {object_with_metadata:?}");
 
         // check if the user, who is not an owner, has the right permissions
         if (user != object_with_metadata.owner)
@@ -414,13 +410,29 @@ where
             continue
         }
 
-        res.push(object_with_metadata);
+        // check if the object is already in the result
+        // this can happen as permissions may have been granted
+        // to both this user and the wildcard user
+        match res.get_mut(&object_with_metadata.id) {
+            Some(existing_object) => {
+                // update the permissions
+                existing_object
+                    .permissions
+                    .extend_from_slice(&object_with_metadata.permissions);
+            }
+            None => {
+                // insert the object
+                res.insert(object_with_metadata.id.clone(), object_with_metadata);
+            }
+        };
     }
-
     Ok(res)
 }
 
-pub(crate) async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> KResult<HashSet<String>>
+pub(crate) async fn retrieve_tags_<'e, E>(
+    uid: &UniqueIdentifier,
+    executor: E,
+) -> KResult<HashSet<String>>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
@@ -439,7 +451,7 @@ where
 }
 
 pub(crate) async fn update_object_(
-    uid: &str,
+    uid: &UniqueIdentifier,
     object: &kmip_objects::Object,
     tags: Option<&HashSet<String>>,
     executor: &mut Transaction<'_, Sqlite>,
@@ -491,12 +503,12 @@ pub(crate) async fn update_object_(
 }
 
 pub(crate) async fn update_state_<'e, E>(
-    uid: &str,
+    uid: &UniqueIdentifier,
     state: StateEnumeration,
     executor: E,
 ) -> KResult<()>
 where
-    E: Executor<'e, Database = Sqlite>,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
     sqlx::query(
         SQLITE_QUERIES
@@ -512,7 +524,7 @@ where
 }
 
 pub(crate) async fn delete_(
-    uid: &str,
+    uid: &UniqueIdentifier,
     owner: &str,
     executor: &mut Transaction<'_, Sqlite>,
 ) -> KResult<()> {
@@ -542,7 +554,7 @@ pub(crate) async fn delete_(
 }
 
 pub(crate) async fn upsert_(
-    uid: &str,
+    uid: &UniqueIdentifier,
     owner: &str,
     object: &kmip_objects::Object,
     tags: &HashSet<String>,
@@ -596,14 +608,13 @@ pub(crate) async fn upsert_(
 }
 
 pub(crate) async fn list_accesses_<'e, E>(
-    uid: &str,
+    uid: &UniqueIdentifier,
     executor: E,
-) -> KResult<Vec<(String, Vec<ObjectOperationType>)>>
+) -> KResult<HashMap<String, HashSet<ObjectOperationType>>>
 where
-    E: Executor<'e, Database = Sqlite>,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
     debug!("Uid = {}", uid);
-
     let list = sqlx::query(
         SQLITE_QUERIES
             .get("select-rows-read_access-with-object-id")
@@ -612,31 +623,25 @@ where
     .bind(uid)
     .fetch_all(executor)
     .await?;
-    let mut ids: Vec<(String, Vec<ObjectOperationType>)> = Vec::with_capacity(list.len());
+    let mut ids: HashMap<String, HashSet<ObjectOperationType>> = HashMap::with_capacity(list.len());
     for row in list {
-        ids.push((
+        ids.insert(
+            // user
             row.get::<String, _>(0),
+            // permissions
             serde_json::from_value(row.get::<Value, _>(1))?,
-        ));
+        );
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)
 }
 
-pub(crate) async fn list_shared_objects_<'e, E>(
+pub(crate) async fn list_user_granted_access_rights_<'e, E>(
     user: &str,
     executor: E,
-) -> KResult<
-    Vec<(
-        UniqueIdentifier,
-        String,
-        StateEnumeration,
-        Vec<ObjectOperationType>,
-        IsWrapped,
-    )>,
->
+) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
 where
-    E: Executor<'e, Database = Sqlite>,
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
     debug!("Owner = {}", user);
     let list = sqlx::query(
@@ -647,56 +652,70 @@ where
     .bind(user)
     .fetch_all(executor)
     .await?;
-    let mut ids: Vec<(
+    let mut ids: HashMap<
         UniqueIdentifier,
-        String,
-        StateEnumeration,
-        Vec<ObjectOperationType>,
-        IsWrapped,
-    )> = Vec::with_capacity(list.len());
+        (String, StateEnumeration, HashSet<ObjectOperationType>),
+    > = HashMap::with_capacity(list.len());
     for row in list {
-        ids.push((
+        ids.insert(
             row.get::<String, _>(0),
-            row.get::<String, _>(1),
-            state_from_string(&row.get::<String, _>(2))?,
-            serde_json::from_slice(&row.get::<Vec<u8>, _>(3))?,
-            false, // TODO: de-hardcode this value by updating the query. See issue: http://gitlab.cosmian.com/core/kms/-/issues/15
-        ));
+            (
+                row.get::<String, _>(1),
+                state_from_string(&row.get::<String, _>(2))?,
+                serde_json::from_slice(&row.get::<Vec<u8>, _>(3))?,
+            ),
+        );
     }
     debug!("Listed {} rows", ids.len());
     Ok(ids)
 }
 
-pub(crate) async fn fetch_permissions_<'e, E>(
-    uid: &str,
-    userid: &str,
+pub(crate) async fn list_user_access_rights_on_object_<'e, E>(
+    uid: &UniqueIdentifier,
+    user: &str,
+    no_inherited_access: bool,
     executor: E,
-) -> KResult<Vec<ObjectOperationType>>
+) -> KResult<HashSet<ObjectOperationType>>
 where
-    E: Executor<'e, Database = Sqlite>,
+    E: Executor<'e, Database = Sqlite> + Copy,
+{
+    let mut user_perms = perms(uid, user, executor).await?;
+    if no_inherited_access || user == "*" {
+        return Ok(user_perms)
+    }
+    user_perms.extend(perms(uid, "*", executor).await?);
+    Ok(user_perms)
+}
+
+async fn perms<'e, E>(
+    uid: &UniqueIdentifier,
+    user: &str,
+    executor: E,
+) -> KResult<HashSet<ObjectOperationType>>
+where
+    E: Executor<'e, Database = Sqlite> + Copy,
 {
     let row: Option<SqliteRow> = sqlx::query(
         SQLITE_QUERIES
-            .get("select-row-read_access")
+            .get("select-user-accesses-for-object")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
-    .bind(userid)
+    .bind(user)
     .fetch_optional(executor)
     .await?;
 
-    row.map_or(Ok(vec![]), |row| {
+    row.map_or(Ok(HashSet::new()), |row| {
         let perms_raw = row.get::<Vec<u8>, _>(0);
-        let perms: Vec<ObjectOperationType> = serde_json::from_slice(&perms_raw)
+        serde_json::from_slice(&perms_raw)
             .context("failed deserializing the permissions")
-            .reason(ErrorReason::Internal_Server_Error)?;
-        Ok(perms)
+            .reason(ErrorReason::Internal_Server_Error)
     })
 }
 
 pub(crate) async fn insert_access_<'e, E>(
-    uid: &str,
-    userid: &str,
+    uid: &UniqueIdentifier,
+    user: &str,
     operation_type: ObjectOperationType,
     executor: E,
 ) -> KResult<()>
@@ -704,12 +723,12 @@ where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
     // Retrieve existing permissions if any
-    let mut perms = fetch_permissions_(uid, userid, executor).await?;
+    let mut perms = list_user_access_rights_on_object_(uid, user, false, executor).await?;
     if perms.contains(&operation_type) {
         // permission is already setup
         return Ok(())
     }
-    perms.push(operation_type);
+    perms.insert(operation_type);
 
     // Serialize permissions
     let json = serde_json::to_value(&perms)
@@ -723,17 +742,17 @@ where
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
-    .bind(userid)
+    .bind(user)
     .bind(json)
     .execute(executor)
     .await?;
-    trace!("Insert read access right in DB: {uid} / {userid}");
+    trace!("Insert read access right in DB: {uid} / {user}");
     Ok(())
 }
 
-pub(crate) async fn delete_access_<'e, E>(
-    uid: &str,
-    userid: &str,
+pub(crate) async fn remove_access_<'e, E>(
+    uid: &UniqueIdentifier,
+    user: &str,
     operation_type: ObjectOperationType,
     executor: E,
 ) -> KResult<()>
@@ -741,7 +760,7 @@ where
     E: Executor<'e, Database = Sqlite> + Copy,
 {
     // Retrieve existing permissions if any
-    let mut perms = fetch_permissions_(uid, userid, executor).await?;
+    let mut perms = list_user_access_rights_on_object_(uid, user, true, executor).await?;
     perms.retain(|p| *p != operation_type);
 
     // No remaining permissions, delete the row
@@ -752,7 +771,7 @@ where
                 .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         )
         .bind(uid)
-        .bind(userid)
+        .bind(user)
         .execute(executor)
         .await?;
         return Ok(())
@@ -770,15 +789,19 @@ where
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(uid)
-    .bind(userid)
+    .bind(user)
     .bind(json)
     .execute(executor)
     .await?;
-    trace!("Deleted in DB: {uid} / {userid}");
+    trace!("Deleted in DB: {uid} / {user}");
     Ok(())
 }
 
-pub(crate) async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<bool>
+pub(crate) async fn is_object_owned_by_<'e, E>(
+    uid: &UniqueIdentifier,
+    owner: &str,
+    executor: E,
+) -> KResult<bool>
 where
     E: Executor<'e, Database = Sqlite> + Copy,
 {

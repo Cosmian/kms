@@ -11,6 +11,7 @@ use cosmian_kms_cli::{
     config::CliConf,
     error::CliError,
 };
+use tokio::task::spawn_blocking;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -46,8 +47,15 @@ async fn main() {
 }
 
 async fn main_() -> Result<(), CliError> {
+    // Uncomment the following if you need debug logs in the CLI
+    // if option_env!("RUST_LOG").is_none() {
+    //     std::env::set_var("RUST_LOG", "debug");
+    // }
+    // env_logger::init();
+
     let opts = Cli::parse();
-    let (kms_rest_client, bootstrap_rest_client) = CliConf::load()?;
+    let conf = CliConf::load()?;
+    let kms_rest_client = conf.initialize_kms_client()?;
 
     match opts.command {
         CliCommands::Locate(action) => action.process(&kms_rest_client).await?,
@@ -58,7 +66,12 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Certificates(action) => action.process(&kms_rest_client).await?,
         CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
         CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
-        CliCommands::BootstrapStart(action) => action.process(&bootstrap_rest_client).await?,
+        CliCommands::BootstrapStart(action) => {
+            let bootstrap_rest_client = spawn_blocking(move || conf.initialize_bootstrap_client())
+                .await
+                .map_err(|e| CliError::Default(e.to_string()))??;
+            action.process(&bootstrap_rest_client).await?;
+        }
     };
 
     Ok(())

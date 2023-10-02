@@ -21,7 +21,7 @@ use openssl::{
     pkey::{Id, PKey, Private},
     sha::Sha1,
 };
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 use x509_parser::{num_bigint::BigUint, parse_x509_certificate, prelude::parse_x509_pem};
 
 use super::wrapping::unwrap_key;
@@ -49,28 +49,39 @@ fn parse_certificate_and_create_tags(
     let (_, x509) = parse_x509_certificate(&pem.contents)?;
 
     if !x509.validity().is_valid() {
-        return Err(KmsError::Certificate(format!(
-            "Cannot import expired certificate. Certificate details: {x509:?}"
-        )))
+        warn!(
+            "The certificate is expired. Certificate details: {:?}",
+            x509.validity()
+        );
     }
-    debug!("Certificate is not expired: {:?}", x509.validity());
 
     let cert_spki = get_certificate_subject_key_identifier(&x509)?;
+    debug!(
+        "parse_certificate_and_create_tags: Subject Key Identifier: {:?}",
+        cert_spki
+    );
+
     if let Some(spki) = cert_spki {
         let spki_tag = format!("_cert_spki={spki}");
         debug!("Add spki system tag: {spki_tag}");
         tags.insert(spki_tag);
     }
     if x509.is_ca() {
-        let subject_common_name = get_common_name(&x509.subject)?;
-        let ca_tag = format!("_cert_ca={subject_common_name}");
-        debug!("Add CA system tag: {}", &ca_tag);
-        tags.insert(ca_tag);
+        match get_common_name(&x509.subject) {
+            Ok(subject_common_name) => {
+                let ca_tag = format!("_cert_ca={subject_common_name}");
+                debug!("Add CA system tag: {}", &ca_tag);
+                tags.insert(ca_tag);
+            }
+            Err(_) => {
+                warn!("no common name for certificate: {:?}", x509);
+            }
+        }
     }
     Ok(())
 }
 
-fn get_private_key_object(
+fn get_ec_private_key_object(
     private_key_bytes: Vec<u8>,
     recommended_curve: RecommendedCurve,
     links: Option<Vec<Link>>,
@@ -111,6 +122,46 @@ fn get_private_key_object(
             key_wrapping_data: None,
         },
     }
+}
+
+fn get_rsa_private_key_object(
+    private_key: PKey<Private>,
+    links: Option<Vec<Link>>,
+) -> KResult<Object> {
+    let private_key_size = private_key.rsa()?.n().num_bits();
+    debug!("get_rsa_private_key_object: private_key_size in bits: {private_key_size:?}");
+    let object = Object::PrivateKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::TransparentRSAPrivateKey,
+            key_value: KeyValue {
+                key_material: KeyMaterial::ByteString(private_key.private_key_to_pkcs8()?),
+                attributes: Some(Attributes {
+                    activation_date: None,
+                    cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                    cryptographic_length: Some(private_key_size),
+                    cryptographic_domain_parameters: None,
+                    cryptographic_parameters: None,
+                    cryptographic_usage_mask: Some(
+                        CryptographicUsageMask::Encrypt
+                            | CryptographicUsageMask::Decrypt
+                            | CryptographicUsageMask::WrapKey
+                            | CryptographicUsageMask::UnwrapKey
+                            | CryptographicUsageMask::KeyAgreement,
+                    ),
+                    key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
+                    link: links,
+                    object_type: Some(ObjectType::PrivateKey),
+                    vendor_attributes: None,
+                }),
+            },
+            cryptographic_algorithm: CryptographicAlgorithm::RSA,
+            cryptographic_length: private_key_size,
+            key_compression_type: None,
+            key_wrapping_data: None,
+        },
+    };
+
+    Ok(object)
 }
 
 fn create_ec_spki_tag(tags: &mut HashSet<String>, private_key: &EcKey<Private>) -> KResult<String> {
@@ -164,6 +215,32 @@ async fn create_certificate_link(
     }
 }
 
+/// The function `import_pem` takes in a PEM value, parses it, and creates an object
+/// based on the type of PEM (certificate or private key).
+///
+/// Arguments:
+///
+/// * `tags`: A mutable `HashSet` of strings used to store tags associated with the
+/// imported object.
+/// * `pem_value`: The `pem_value` parameter is a byte slice that contains the
+/// PEM-encoded data. PEM stands for Privacy-Enhanced Mail and is a format for
+/// storing and transmitting cryptographic keys, certificates, and other data.
+/// * `kms`: The `kms` parameter is of type `KMS`, which is likely an abbreviation
+/// for Key Management Service. It is used for cryptographic operations such as
+/// creating certificate links and retrieving private key objects. The specific
+/// implementation and functionality of the `KMS` type would depend on the context
+/// and the code
+/// * `owner`: The `owner` parameter in the `import_pem` function is a string that
+/// represents the owner of the imported object. It is used in the
+/// `create_certificate_link` function to associate the imported object with the
+/// owner.
+/// * `params`: The `params` parameter is an optional reference to an
+/// `ExtraDatabaseParams` struct. It is used to provide additional parameters for
+/// creating a certificate link.
+///
+/// Returns:
+///
+/// The imported PEM certificate as a KMIP `Object`
 async fn import_pem(
     tags: &mut HashSet<String>,
     pem_value: &[u8],
@@ -210,19 +287,24 @@ async fn import_pem(
                     "import_pem: private_key_bytes len: {}",
                     private_key_bytes.len()
                 );
-                get_private_key_object(private_key_bytes, recommended_curve, links)
+                get_ec_private_key_object(private_key_bytes, recommended_curve, links)
             }
             Id::ED25519 => {
                 let spki = create_spki_tag(tags, &pkey.raw_public_key()?)?;
                 let links = create_certificate_link(&spki, kms, owner, params).await;
                 let private_key_bytes = pkey.raw_private_key()?;
-                get_private_key_object(private_key_bytes, RecommendedCurve::CURVEED25519, links)
+                get_ec_private_key_object(private_key_bytes, RecommendedCurve::CURVEED25519, links)
             }
             Id::X25519 => {
                 let spki = create_spki_tag(tags, &pkey.raw_public_key()?)?;
                 let links = create_certificate_link(&spki, kms, owner, params).await;
                 let private_key_bytes = pkey.raw_private_key()?;
-                get_private_key_object(private_key_bytes, RecommendedCurve::CURVE25519, links)
+                get_ec_private_key_object(private_key_bytes, RecommendedCurve::CURVE25519, links)
+            }
+            Id::RSA => {
+                let spki = create_spki_tag(tags, &pkey.rsa()?.public_key_to_der_pkcs1()?.clone())?;
+                let links = create_certificate_link(&spki, kms, owner, params).await;
+                get_rsa_private_key_object(pkey, links)?
             }
             _ => kms_bail!("Private key id not supported: {:?}", pkey.id()),
         }
@@ -240,13 +322,13 @@ pub async fn import(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ImportResponse> {
-    debug!("Entering import KMIP operation: {:?}", request);
+    trace!("Entering import KMIP operation: {:?}", request);
     // Unique identifiers starting with `[` are reserved for queries on tags
     // see tagging
-    // For instance, a request for uniquer identifier `[tag1]` will
+    // For instance, a request for unique identifier `[tag1]` will
     // attempt to find a valid single object tagged with `tag1`
     if request.unique_identifier.starts_with('[') {
-        kms_bail!("Importing objects with uniquer identifiers starting with `[` is not supported");
+        kms_bail!("Importing objects with unique identifiers starting with `[` is not supported");
     }
 
     // recover user tags

@@ -2,7 +2,12 @@ The authorization system in the Cosmian Key Management Service (KMS) operates ba
 
 1. **Ownership:** Every cryptographic object has an assigned owner. The ownership is established when an object is created using any of the following KMIP operations: `Create`, `CreateKeyPair`, or `Import`. As an owner, a user holds the privilege to carry out all supported KMIP operations on their objects.
 
-2. **Access rights delegation:** owners can delegate access rights, allowing one or more users to perform certain KMIP operations on an object. When granted such rights, a user can invoke the corresponding KMIP operation on the KMS for that particular object. The owner retains the authority to withdraw these access rights at any given time.
+2. **Access rights delegation:** owners can grant access rights, allowing one or more users to perform certain KMIP operations on an object. When granted such rights, a user can invoke the corresponding KMIP operation on the KMS for that particular object. The owner retains the authority to withdraw these access rights at any given time.
+
+
+!!!important  "The Wildcard User: *"
+    In addition to regular users, a special user called `*` (the wildcard user) can be used to grant access rights on objects to all users. 
+
 
 To manage access rights, the user can call the following endpoints or use the `ckms` [command line interface](./cli/cli.md).
 
@@ -42,7 +47,7 @@ The supported KMIP operations are: `get`, `export`, `encrypt`, `decrypt`, `impor
 
       ```json
       {
-         "uniquer_identifier": "1ae2...25df",  // the object unique identifier
+         "unique_identifier": "1ae2...25df",  // the object unique identifier
          "user_id": "john.doe@acem.com", // the user identifier to allow
          "operation_type": "get" // the KMIP operation to allow
       }
@@ -89,7 +94,7 @@ An owner of an object can revoke an access right to a specific user for a given 
 
       ```json
       {
-         "uniquer_identifier": "1ae2...25df",  // the object unique identifier
+         "unique_identifier": "1ae2...25df",  // the object unique identifier
          "user_id": "john.doe@acem.com", // the user identifier to allow
          "operation_type": "get" // the KMIP operation to allow
       }
@@ -200,7 +205,7 @@ A user can list all the access rights that have been granted to it by object own
       ```
 
 === "REST"
-      `GET` to the `/access/owned` endpoint:
+      `GET` to the `/access/obtained` endpoint:
 
       The response is a JSON array:
 

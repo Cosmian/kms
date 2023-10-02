@@ -1,19 +1,29 @@
 use cloudproof::reexport::{
     cover_crypt::{
         abe_policy::{AccessPolicy, Policy},
+        core::SYM_KEY_LENGTH,
         Covercrypt, EncryptedHeader, MasterPublicKey,
     },
-    crypto_core::bytes_ser_de::Serializable,
+    crypto_core::{
+        bytes_ser_de::{Deserializer, Serializable, Serializer},
+        SymmetricKey,
+    },
 };
-use cosmian_kmip::kmip::{
-    data_to_encrypt::DataToEncrypt,
-    kmip_objects::Object,
-    kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
+use cosmian_kmip::{
+    error::KmipError,
+    kmip::{
+        kmip_objects::Object,
+        kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+    },
 };
 use tracing::{debug, trace};
 
 use crate::{
-    crypto::cover_crypt::attributes::policy_from_attributes, error::KmipUtilsError,
+    crypto::{
+        cover_crypt::attributes::policy_from_attributes, generic::data_to_encrypt::DataToEncrypt,
+    },
+    error::KmipUtilsError,
     EncryptionSystem,
 };
 
@@ -54,27 +64,79 @@ impl CoverCryptEncryption {
             policy,
         })
     }
+
+    /// Encrypt multiple LEB128-serialized payloads
+    ///
+    /// The input plaintext data is serialized using LEB128 (bulk mode).
+    /// Each chunk of data is encrypted and serialized back to LEB128.
+    fn bulk_encrypt(
+        &self,
+        plaintext: &[u8],
+        aead: Option<&[u8]>,
+        symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
+    ) -> Result<Vec<u8>, KmipUtilsError> {
+        let mut de = Deserializer::new(plaintext);
+        let mut ser = Serializer::new();
+
+        // number of chunks of plaintext data to encrypt
+        let nb_chunks = {
+            let len = de.read_leb128_u64()?;
+            ser.write_leb128_u64(len)?;
+            usize::try_from(len).map_err(|_| {
+                KmipError::KmipError(
+                    ErrorReason::Invalid_Message,
+                    format!("size of vector is too big for architecture: {len} bytes"),
+                )
+            })?
+        };
+
+        // encrypt every chunk and serialize them
+        for _ in 0..nb_chunks {
+            let chunk_data = de.read_vec_as_ref()?;
+            let encrypted_block = self.encrypt(chunk_data, aead, symmetric_key)?;
+            ser.write_vec(&encrypted_block)?;
+        }
+
+        Ok(ser.finalize().to_vec())
+    }
+
+    fn encrypt(
+        &self,
+        plaintext: &[u8],
+        aead: Option<&[u8]>,
+        symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
+    ) -> Result<Vec<u8>, KmipUtilsError> {
+        // Encrypt the data
+        let encrypted_block = self
+            .cover_crypt
+            .encrypt(symmetric_key, plaintext, aead)
+            .map_err(|e| {
+                KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string())
+            })?;
+
+        debug!(
+            "Encrypted data with public key {} of len (CT/Enc): {}/{}",
+            self.public_key_uid,
+            plaintext.len(),
+            encrypted_block.len(),
+        );
+
+        Ok(encrypted_block)
+    }
 }
 
 impl EncryptionSystem for CoverCryptEncryption {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError> {
-        let authenticated_encryption_additional_data = &request
-            .authenticated_encryption_additional_data
-            .clone()
-            .unwrap_or_default();
+        let authenticated_encryption_additional_data =
+            request.authenticated_encryption_additional_data.as_deref();
 
-        let data_to_encrypt: DataToEncrypt = DataToEncrypt::try_from_bytes(
-            request
-                .data
-                .as_ref()
-                .ok_or_else(|| {
-                    KmipUtilsError::Kmip(
-                        ErrorReason::Invalid_Message,
-                        "Missing data to encrypt".to_owned(),
-                    )
-                })?
-                .as_slice(),
-        )?;
+        let data_to_encrypt =
+            DataToEncrypt::try_from_bytes(request.data.as_deref().ok_or_else(|| {
+                KmipUtilsError::Kmip(
+                    ErrorReason::Invalid_Message,
+                    "Missing data to encrypt".to_owned(),
+                )
+            })?)?;
 
         let public_key =
             MasterPublicKey::deserialize(self.public_key_bytes.as_slice()).map_err(|e| {
@@ -87,11 +149,14 @@ impl EncryptionSystem for CoverCryptEncryption {
         let encryption_policy_string =
             data_to_encrypt
                 .encryption_policy
-                .ok_or(KmipUtilsError::Kmip(
-                    ErrorReason::Invalid_Attribute_Value,
-                    "encryption policy missing".to_string(),
-                ))?;
-        let encryption_policy = AccessPolicy::from_boolean_expression(&encryption_policy_string)
+                .as_deref()
+                .ok_or_else(|| {
+                    KmipUtilsError::Kmip(
+                        ErrorReason::Invalid_Attribute_Value,
+                        "encryption policy missing".to_string(),
+                    )
+                })?;
+        let encryption_policy = AccessPolicy::from_boolean_expression(encryption_policy_string)
             .map_err(|e| {
                 KmipUtilsError::Kmip(
                     ErrorReason::Invalid_Attribute_Value,
@@ -106,39 +171,42 @@ impl EncryptionSystem for CoverCryptEncryption {
             &public_key,
             &encryption_policy,
             data_to_encrypt.header_metadata.as_deref(),
-            Some(authenticated_encryption_additional_data),
+            authenticated_encryption_additional_data,
         )
         .map_err(|e| KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string()))?;
-
-        // Encrypt the data
-        let mut encrypted_block = self
-            .cover_crypt
-            .encrypt(
-                &symmetric_key,
-                &data_to_encrypt.plaintext,
-                Some(authenticated_encryption_additional_data),
-            )
-            .map_err(|e| {
-                KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string())
-            })?;
 
         let mut ciphertext = encrypted_header.serialize().map_err(|e| {
             KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string())
         })?;
-        ciphertext.append(&mut encrypted_block);
 
-        debug!(
-            "Encrypted data with public key {} of len (CT/Enc): {}/{}",
-            &self.public_key_uid,
-            data_to_encrypt.plaintext.len(),
-            ciphertext.len(),
-        );
+        let mut encrypted_data = if let Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCryptBulk),
+            ..
+        }) = request.cryptographic_parameters
+        {
+            self.bulk_encrypt(
+                &data_to_encrypt.plaintext,
+                authenticated_encryption_additional_data,
+                &symmetric_key,
+            )?
+        } else {
+            self.encrypt(
+                &data_to_encrypt.plaintext,
+                authenticated_encryption_additional_data,
+                &symmetric_key,
+            )?
+        };
+
+        // Concatenate serialized encrypted header with encrypted data
+        ciphertext.append(&mut encrypted_data);
+
         Ok(EncryptResponse {
             unique_identifier: self.public_key_uid.clone(),
             data: Some(ciphertext.to_vec()),
             iv_counter_nonce: None,
             correlation_value: None,
-            authenticated_encryption_tag: Some(authenticated_encryption_additional_data.clone()),
+            authenticated_encryption_tag: authenticated_encryption_additional_data
+                .map(<[u8]>::to_vec),
         })
     }
 }

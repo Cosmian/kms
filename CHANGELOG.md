@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.7.0] - 2023-10-02
+
+### Features
+
+- Added the wildcard user `*` to grant access rights to all users on an object
+- About certificates:
+  - add validation of the complete chain instead of the leaf and parent certificates
+  - add verifications before using a certificate:
+    - check that each certificate is not expired (both chain and leaf certificates)
+    - check that no certificate is revoked (both chain and leaf certificates)
+    - check that each certificate has a valid signature (both chain and leaf certificates)
+    - check that certificate CRL signature is valid
+  - add RSA X509 certificate support
+- KMS CLI `ckms`:
+  - can import the Mozilla Common CA Database (CCADB)
+  - can import a PKCS12 certificate (splitting in 2 KMIP objects: X509 certificate and private key)
+
+### Bug Fixes
+
+- Improved database data structures using Maps and Sets instead of Vectors where uniqueness is required
+- Enable bootstrap server for non "enclaves" servers
+
 ## [4.6.0] - 2023-09-01
 
 ### Bug Fixes

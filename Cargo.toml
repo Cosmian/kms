@@ -35,28 +35,45 @@ async-trait = "0.1"
 base64 = "0.21"
 base64-url = "2.0"
 bitflags = "2.3"
-clap = { version = "4.4", default-features = false, features = ["help", "env", "std", "usage", "error-context", "derive", "cargo"] }
-cloudproof = { version = "2.2.3", features = ["findex-redis"] }
-cosmian_crypto_core = "9.2.0"
+clap = { version = "4.4", default-features = false, features = [
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
+] }
+cloudproof = { version = "2.2.5", features = ["findex-redis"] }
 env_logger = "0.10"
 hex = "0.4"
 http = "0.2"
 josekit = "0.8.3"
-leb128 = "0.2"
 native-tls = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }
 openssl = { version = "0.10", features = ["vendored"] }
-redis = { version = "0.23", features = ["aio", "ahash", "script", "connection-manager", "tokio-comp"] }
-reqwest = { version = "0.11", features = ["json", "multipart", "native-tls", "stream"] }
+ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
+redis = { version = "0.23", features = [
+  "aio",
+  "ahash",
+  "script",
+  "connection-manager",
+  "tokio-comp",
+] }
+reqwest = { version = "0.11", features = [
+  "json",
+  "multipart",
+  "native-tls",
+  "stream",
+] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.96"
-strum = "0.25"
-strum_macros = "0.25"
+strum = { version = "0.25", features = ["std", "derive", "strum_macros"] }
 thiserror = "1.0"
 time = "0.3"
 # It is important to keep this version in sync with that of actix-web
 # use `cargo tree -i tokio` to check there is no other version of tokio
-tokio = { version = "1.25", features = ["full"] }
+tokio = { version = "1.32", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tracing = "0.1"
 tracing-log = "0.1"

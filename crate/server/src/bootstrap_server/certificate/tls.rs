@@ -3,20 +3,16 @@ use openssl::{
     bn::BigNum,
     ec::{EcGroup, EcKey},
     nid::Nid,
-    pkcs12::Pkcs12,
-    pkey::{PKey, Public},
-    x509::X509Builder,
+    pkey::{PKey, Private, Public},
+    x509::{X509Builder, X509},
 };
 
 use crate::result::KResult;
 
-pub(crate) fn generate_self_signed_cert(
+pub(crate) fn generate_self_signed_tls_cert(
     common_name: &str,
-    pkcs12_password: &str,
-) -> KResult<Pkcs12> {
-    //TODO test if running inside an enclave
-    //let is_running_inside_enclave = is_running_inside_enclave();
-
+    expiration_days: u64,
+) -> KResult<(PKey<Private>, X509)> {
     let nid = Nid::X9_62_PRIME256V1; // NIST P-256 curve
     let group = EcGroup::from_curve_name(nid)?;
     let ec_key = EcKey::generate(&group)?;
@@ -28,6 +24,7 @@ pub(crate) fn generate_self_signed_cert(
 
     // Create a new X509 builder.
     let mut builder = X509Builder::new()?;
+    builder.set_version(2)?;
 
     // Assign the public key
     builder.set_pubkey(&public_key)?;
@@ -49,31 +46,13 @@ pub(crate) fn generate_self_signed_cert(
 
     // Set the certificate validity period to 1 day.
     builder.set_not_before(Asn1Time::days_from_now(0)?.as_ref())?;
-    builder.set_not_after(Asn1Time::days_from_now(1)?.as_ref())?;
-
-    // Set the key usage extension to allow the certificate to be used for TLS.
-    builder.append_extension(
-        openssl::x509::extension::KeyUsage::new()
-            .key_encipherment()
-            .digital_signature()
-            .build()?,
-    )?;
+    builder.set_not_after(Asn1Time::days_from_now(expiration_days as u32)?.as_ref())?;
 
     builder.sign(&private_key, openssl::hash::MessageDigest::sha256())?;
     // now build the certificate
     let cert = builder.build();
 
-    let pem = cert.to_pem()?;
-    // write the pem to a cert.pem file in /tmp
-    std::fs::write("/tmp/cert.pem", pem)?;
-
-    // wrap it in a PKCS12 container
-    let pkcs12 = Pkcs12::builder()
-        .name(common_name)
-        .pkey(&private_key)
-        .cert(&cert)
-        .build2(pkcs12_password)?;
-    Ok(pkcs12)
+    Ok((private_key, cert))
 }
 
 #[cfg(test)]
@@ -82,12 +61,7 @@ mod tests {
 
     #[test]
     fn generate_self_signed_cert() -> KResult<()> {
-        let pkcs12 = super::generate_self_signed_cert("test", "pwd")?;
-        let p12 = pkcs12.parse2("pwd")?;
-        assert!(p12.pkey.is_some());
-        assert!(p12.cert.is_some());
-        assert!(p12.ca.is_none());
-        let cert = p12.cert.unwrap();
+        let (_pkey, cert) = super::generate_self_signed_tls_cert("test", 10)?;
         assert_eq!(
             format!("{:?}", cert.subject_name()),
             format!("{:?}", cert.issuer_name())

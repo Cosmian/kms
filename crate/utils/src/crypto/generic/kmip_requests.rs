@@ -1,13 +1,17 @@
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
-        data_to_encrypt::DataToEncrypt,
         kmip_data_structures::KeyWrappingSpecification,
         kmip_objects::{Object, ObjectType},
-        kmip_operations::{Decrypt, Encrypt, Import, Revoke},
-        kmip_types::{Attributes, KeyWrapType, RevocationReason},
+        kmip_operations::{Decrypt, Encrypt, ErrorReason, Import, Revoke},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicParameters, KeyWrapType,
+            RevocationReason,
+        },
     },
 };
+
+use super::data_to_encrypt::DataToEncrypt;
 
 /// Build a `Revoke` request to revoke the key identified by `unique_identifier`
 pub fn build_revoke_key_request(
@@ -26,6 +30,7 @@ pub fn build_revoke_key_request(
 /// For Covercrypt,
 ///     - the `encryption_policy` must be provided
 ///     - a `header_metadata` can be optionally specified
+/// For other encryption mechanisms (Elliptic Curves, ...), data to encrypt contains plaintext only
 /// The `authentication_data` is optional and can be used to authenticate the encryption
 /// for all schemes
 pub fn build_encryption_request(
@@ -34,7 +39,8 @@ pub fn build_encryption_request(
     plaintext: Vec<u8>,
     header_metadata: Option<Vec<u8>>,
     authentication_data: Option<Vec<u8>>,
-) -> Result<Encrypt, std::io::Error> {
+    cryptographic_algorithm: Option<CryptographicAlgorithm>,
+) -> Result<Encrypt, KmipError> {
     let data_to_encrypt = if encryption_policy.is_some() {
         DataToEncrypt {
             encryption_policy,
@@ -42,13 +48,19 @@ pub fn build_encryption_request(
             plaintext,
         }
         .to_bytes()
+        .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string()))?
     } else {
         plaintext
     };
 
+    let cryptographic_parameters = cryptographic_algorithm.map(|ca| CryptographicParameters {
+        cryptographic_algorithm: Some(ca),
+        ..Default::default()
+    });
+
     Ok(Encrypt {
         unique_identifier: Some(key_unique_identifier.to_owned()),
-        cryptographic_parameters: None,
+        cryptographic_parameters,
         data: Some(data_to_encrypt),
         iv_counter_nonce: None,
         correlation_value: None,
@@ -69,10 +81,16 @@ pub fn build_decryption_request(
     ciphertext: Vec<u8>,
     authenticated_tag: Option<Vec<u8>>,
     authentication_data: Option<Vec<u8>>,
+    cryptographic_algorithm: Option<CryptographicAlgorithm>,
 ) -> Decrypt {
+    let cryptographic_parameters = cryptographic_algorithm.map(|ca| CryptographicParameters {
+        cryptographic_algorithm: Some(ca),
+        ..Default::default()
+    });
+
     Decrypt {
         unique_identifier: Some(key_unique_identifier.to_owned()),
-        cryptographic_parameters: None,
+        cryptographic_parameters,
         data: Some(ciphertext),
         iv_counter_nonce: nonce,
         init_indicator: None,

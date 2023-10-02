@@ -1,5 +1,7 @@
-use super::kmip_operations::ErrorReason;
-use crate::error::KmipError;
+use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
+use cosmian_kmip::{error::KmipError, kmip::kmip_operations::ErrorReason};
+
+use crate::error::KmipUtilsError;
 
 /// Structure used to encrypt with Covercrypt or ECIES
 ///
@@ -27,8 +29,7 @@ pub struct DataToEncrypt {
 
 impl DataToEncrypt {
     /// Serialize the data to encrypt to bytes
-    #[must_use]
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Result<Vec<u8>, KmipUtilsError> {
         // Compute the size of the buffer
         let mut mem_size = 1 // for encryption policy
             + 1 // for metadata
@@ -41,95 +42,48 @@ impl DataToEncrypt {
         }
 
         // Write the encryption policy
-        let mut bytes = Vec::with_capacity(mem_size);
+        let mut se = Serializer::with_capacity(mem_size);
         if let Some(encryption_policy) = &self.encryption_policy {
-            let encryption_policy_bytes = encryption_policy.as_bytes();
-            leb128::write::unsigned(&mut bytes, encryption_policy_bytes.len() as u64).unwrap();
-            bytes.extend_from_slice(encryption_policy_bytes);
+            se.write_vec(encryption_policy.as_bytes())?;
         } else {
-            leb128::write::unsigned(&mut bytes, 0).unwrap();
+            se.write_leb128_u64(0)?;
         }
         // Write the metadata
         if let Some(metadata) = &self.header_metadata {
-            leb128::write::unsigned(&mut bytes, metadata.len() as u64).unwrap();
-            bytes.extend_from_slice(metadata);
+            se.write_vec(metadata)?;
         } else {
-            leb128::write::unsigned(&mut bytes, 0).unwrap();
+            se.write_leb128_u64(0)?;
         }
         // Write the plaintext
+        let mut bytes = se.finalize().to_vec();
         bytes.extend_from_slice(&self.plaintext);
-        bytes
+        Ok(bytes)
     }
 
-    pub fn try_from_bytes(mut bytes: &[u8]) -> Result<Self, KmipError> {
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self, KmipError> {
+        let mut de = Deserializer::new(bytes);
+
         // Read the encryption policy
-        let size_of_encryption_policy_in_bytes =
-            leb128::read::unsigned(&mut bytes).map_err(|_| {
-                KmipError::KmipError(
-                    ErrorReason::Invalid_Message,
-                    "expected a LEB128 encoded number (size of the encryption policy string) at \
-                     the beginning of the data to encrypt."
-                        .to_owned(),
-                )
-            })? as usize;
-        // If the size of the encryption policy is 0, it means that there is no encryption policy
-        let encryption_policy = if size_of_encryption_policy_in_bytes == 0 {
-            None
-        } else {
-            let encryption_policy_bytes = bytes
-                .take(..size_of_encryption_policy_in_bytes)
-                .ok_or_else(|| {
+        let encryption_policy = de
+            .read_vec()
+            .map(|ep| (!ep.is_empty()).then_some(ep))?
+            .map(|ep| {
+                String::from_utf8(ep).map_err(|e| {
                     KmipError::KmipError(
                         ErrorReason::Invalid_Message,
-                        format!(
-                            "size of encryption policy in bytes expected: \
-                             {size_of_encryption_policy_in_bytes}, but only {} bytes available.",
-                            bytes.len()
-                        ),
+                        format!("failed deserializing the encryption policy string: {e}"),
                     )
-                })?;
-            // Decode the encryption policy string
-            let encryption_policy_string = String::from_utf8(encryption_policy_bytes.to_owned())
-                .map_err(|e| {
-                    KmipError::KmipError(
-                        ErrorReason::Invalid_Message,
-                        format!("failed deserializing the encryption policy string: {e}",),
-                    )
-                })?;
-            Some(encryption_policy_string)
-        };
+                })
+            })
+            .transpose()?;
 
         // Read the metadata
-        let size_of_metadata = leb128::read::unsigned(&mut bytes).map_err(|_| {
-            KmipError::KmipError(
-                ErrorReason::Invalid_Message,
-                "expected a LEB128 encoded number (size of metadata) after the encryption policy."
-                    .to_owned(),
-            )
-        })? as usize;
-        // If the size of metadata is 0, then there is no metadata
-        let metadata = if size_of_metadata == 0 {
-            None
-        } else {
-            Some(
-                bytes
-                    .take(..size_of_metadata)
-                    .ok_or_else(|| {
-                        KmipError::KmipError(
-                            ErrorReason::Invalid_Message,
-                            format!(
-                                "size of metadata in bytes expected: {size_of_metadata}, but only \
-                                 {} bytes available.",
-                                bytes.len()
-                            ),
-                        )
-                    })?
-                    .to_vec(),
-            )
-        };
+        let metadata = de
+            .read_vec()
+            .map(|metadata| (!metadata.is_empty()).then_some(metadata))?;
 
         // Remaining is the plaintext to encrypt
-        let plaintext = bytes.to_vec();
+        let plaintext = de.finalize();
 
         Ok(Self {
             encryption_policy,
@@ -152,7 +106,7 @@ mod tests {
                 header_metadata: Some(String::from("äbcdef").into_bytes()),
                 plaintext: String::from("this is a plain text à è ").into_bytes(),
             };
-            let bytes = data_to_encrypt.to_bytes();
+            let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
             assert_eq!(data_to_encrypt, data_to_encrypt_full_deserialized);
         }
@@ -163,7 +117,7 @@ mod tests {
                 header_metadata: None,
                 plaintext: String::from("this is a plain text à è ").into_bytes(),
             };
-            let bytes = data_to_encrypt.to_bytes();
+            let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
             assert_eq!(data_to_encrypt, data_to_encrypt_full_deserialized);
         }
@@ -174,7 +128,7 @@ mod tests {
                 header_metadata: Some(String::from("äbcdef").into_bytes()),
                 plaintext: String::from("this is a plain text à è ").into_bytes(),
             };
-            let bytes = data_to_encrypt.to_bytes();
+            let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
             assert_eq!(data_to_encrypt, data_to_encrypt_full_deserialized);
         }
@@ -185,7 +139,7 @@ mod tests {
                 header_metadata: None,
                 plaintext: String::from("this is a plain text à è ").into_bytes(),
             };
-            let bytes = data_to_encrypt.to_bytes();
+            let bytes = data_to_encrypt.to_bytes().unwrap();
             let data_to_encrypt_full_deserialized = DataToEncrypt::try_from_bytes(&bytes).unwrap();
             assert_eq!(data_to_encrypt, data_to_encrypt_full_deserialized);
         }

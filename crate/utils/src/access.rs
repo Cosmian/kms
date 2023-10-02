@@ -97,7 +97,7 @@ impl<'de> Deserialize<'de> for ExtraDatabaseParams {
     }
 }
 
-use std::{fmt, str::FromStr};
+use std::{collections::HashSet, fmt, str::FromStr};
 
 // any error type implementing Display is acceptable.
 type ParseError = &'static str;
@@ -126,16 +126,7 @@ impl FromStr for ObjectOperationType {
 #[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
 pub struct UserAccessResponse {
     pub user_id: String,
-    pub operations: Vec<ObjectOperationType>,
-}
-
-impl From<(String, Vec<ObjectOperationType>)> for UserAccessResponse {
-    fn from(e: (String, Vec<ObjectOperationType>)) -> Self {
-        Self {
-            user_id: e.0,
-            operations: e.1,
-        }
-    }
+    pub operations: HashSet<ObjectOperationType>,
 }
 
 pub type IsWrapped = bool;
@@ -181,48 +172,36 @@ pub struct AccessRightsObtainedResponse {
     pub object_id: UniqueIdentifier,
     pub owner_id: String,
     pub state: StateEnumeration,
-    pub operations: Vec<ObjectOperationType>,
-    pub is_wrapped: IsWrapped,
+    pub operations: HashSet<ObjectOperationType>,
 }
 
 impl fmt::Display for AccessRightsObtainedResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "[{}][{}]{} {} {:?} - comments",
-            self.state,
-            self.owner_id,
-            if self.is_wrapped { "[Wrapped]" } else { "" },
-            self.object_id,
-            self.operations
+            "[{}][{}]{} {:?} - comments",
+            self.state, self.owner_id, self.object_id, self.operations
         )
-    } // TODO (@T.G): replace comments by attributes.KeyFormatType
+    }
 }
 
 impl
     From<(
         UniqueIdentifier,
-        String,
-        StateEnumeration,
-        Vec<ObjectOperationType>,
-        IsWrapped,
+        (String, StateEnumeration, HashSet<ObjectOperationType>),
     )> for AccessRightsObtainedResponse
 {
     fn from(
         e: (
             UniqueIdentifier,
-            String,
-            StateEnumeration,
-            Vec<ObjectOperationType>,
-            IsWrapped,
+            (String, StateEnumeration, HashSet<ObjectOperationType>),
         ),
     ) -> Self {
         Self {
             object_id: e.0,
-            owner_id: e.1,
-            state: e.2,
-            operations: e.3,
-            is_wrapped: e.4,
+            owner_id: e.1.0,
+            state: e.1.1,
+            operations: e.1.2,
         }
     }
 }

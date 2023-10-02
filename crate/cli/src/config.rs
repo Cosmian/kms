@@ -6,6 +6,9 @@ use std::{
 };
 
 use cosmian_kms_client::{BootstrapRestClient, KmsRestClient};
+use hex::decode;
+use libsgx::quote::compute_mr_signer;
+use ratls::{guess_tee, TeeMeasurement, TeeType};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{result::CliResultHelper, CliError};
@@ -54,6 +57,61 @@ fn not(b: &bool) -> bool {
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
+pub struct TeeConf {
+    pub(crate) mr_enclave: Option<String>,
+    pub(crate) signing_key: Option<String>,
+    pub(crate) sev_measurement: Option<String>,
+}
+
+impl TryInto<TeeMeasurement> for TeeConf {
+    type Error = CliError;
+
+    fn try_into(self) -> Result<TeeMeasurement, Self::Error> {
+        match (
+            self.mr_enclave,
+            self.signing_key,
+            self.sev_measurement,
+            guess_tee(),
+        ) {
+            (Some(e), Some(s), None, Ok(TeeType::Sgx)) => Ok(TeeMeasurement::Sgx {
+                mr_signer: compute_mr_signer(&fs::read_to_string(s)?)
+                    .map_err(|e| CliError::Default(format!("MR signer computation failed: {e:?}")))?
+                    .as_slice()
+                    .try_into()
+                    .map_err(|e| {
+                        CliError::Default(format!("Bad MR signer bytes-size: error: {e}"))
+                    })?,
+                mr_enclave: decode(e)
+                    .map_err(|_| {
+                        CliError::Default("Invalid hexadecimal format for mr enclave".to_string())
+                    })?
+                    .as_slice()
+                    .try_into()
+                    .map_err(|e| {
+                        CliError::Default(format!("Bad MR enclave bytes-size: error: {e}"))
+                    })?,
+            }),
+            (None, None, Some(m), Ok(TeeType::Sev)) => Ok(TeeMeasurement::Sev(
+                decode(m)
+                    .map_err(|_| {
+                        CliError::Default(
+                            "Invalid hexadecimal format for SEV measurement".to_string(),
+                        )
+                    })?
+                    .as_slice()
+                    .try_into()
+                    .map_err(|e| {
+                        CliError::Default(format!("Bad SEV measurement bytes-size: error: {e}"))
+                    })?,
+            )),
+            (_, _, _, _) => Err(CliError::Default(
+                "Unsupported combination for tee parameters and tee envrionment".to_string(),
+            )),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
 pub struct CliConf {
     // accept_invalid_certs is useful if the cli needs to connect to an HTTPS KMS server
     // running an invalid or unsecure SSL certificate
@@ -63,6 +121,8 @@ pub struct CliConf {
     pub(crate) kms_server_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) bootstrap_server_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tee_conf: Option<TeeConf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) kms_access_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -81,6 +141,7 @@ impl Default for CliConf {
             accept_invalid_certs: false,
             kms_server_url: "http://0.0.0.0:9998".to_string(),
             bootstrap_server_url: None,
+            tee_conf: None,
             kms_access_token: None,
             kms_database_secret: None,
             ssl_client_pkcs12_path: None,
@@ -113,7 +174,7 @@ impl Default for CliConf {
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
 
 impl CliConf {
-    pub fn load() -> Result<(KmsRestClient, BootstrapRestClient), CliError> {
+    pub fn load() -> Result<Self, CliError> {
         // Obtain the configuration file path from the environment variable or default to a pre-determined path
         let conf_path = if let Ok(conf_path) = env::var(KMS_CLI_CONF_ENV).map(PathBuf::from) {
             // Error if the specified file does not exist
@@ -155,40 +216,59 @@ impl CliConf {
             default_conf
         };
 
+        Ok(conf)
+    }
+
+    pub fn initialize_kms_client(&self) -> Result<KmsRestClient, CliError> {
         // Instantiate a KMS server REST client with the given configuration
         let kms_rest_client = KmsRestClient::instantiate(
-            &conf.kms_server_url,
-            conf.kms_access_token.as_deref(),
-            conf.ssl_client_pkcs12_path.as_deref(),
-            conf.ssl_client_pkcs12_password.as_deref(),
-            conf.kms_database_secret.as_deref(),
-            conf.accept_invalid_certs,
-            conf.jwe_public_key.as_deref(),
+            &self.kms_server_url,
+            self.kms_access_token.as_deref(),
+            self.ssl_client_pkcs12_path.as_deref(),
+            self.ssl_client_pkcs12_password.as_deref(),
+            self.kms_database_secret.as_deref(),
+            self.accept_invalid_certs,
+            self.jwe_public_key.as_deref(),
         )
         .with_context(|| {
             format!(
                 "Unable to instantiate a KMS server REST client {}",
-                &conf.kms_server_url
+                &self.kms_server_url
             )
         })?;
 
+        Ok(kms_rest_client)
+    }
+
+    pub fn initialize_bootstrap_client(&self) -> Result<BootstrapRestClient, CliError> {
         // Instantiate a Bootstrap server REST client with the given configuration
+
+        let measurement = if let Some(tee_conf) = self.tee_conf.clone() {
+            match tee_conf.try_into() {
+                Ok(measurement_conf) => Some(measurement_conf),
+                Err(e) => return Err(e),
+            }
+        } else {
+            None
+        };
+
         let bootstrap_rest_client = BootstrapRestClient::instantiate(
-            conf.bootstrap_server_url
+            self.bootstrap_server_url
                 .as_ref()
-                .unwrap_or(&conf.kms_server_url.replace("http://", "https://")),
-            conf.kms_access_token.as_deref(),
-            conf.ssl_client_pkcs12_path.as_deref(),
-            conf.ssl_client_pkcs12_password.as_deref(),
+                .unwrap_or(&self.kms_server_url.replace("http://", "https://")),
+            self.kms_access_token.as_deref(),
+            self.ssl_client_pkcs12_path.as_deref(),
+            self.ssl_client_pkcs12_password.as_deref(),
+            measurement,
         )
         .with_context(|| {
             format!(
                 "Unable to instantiate a Bootstrap server REST client {}",
-                &conf.kms_server_url
+                &self.kms_server_url
             )
         })?;
 
-        Ok((kms_rest_client, bootstrap_rest_client))
+        Ok(bootstrap_rest_client)
     }
 }
 
