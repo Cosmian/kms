@@ -2,6 +2,8 @@
 
 General configuration instructions for Google client-side encryption is available at [this url](https://support.google.com/a/answer/10743588) in paragraph *(Option 1) To connect to your IdP using a .well-known file*
 
+
+
 ## Using Google as an Identity Provider
 
 To use Google as an Identity Provider, you first need to create a dedicated client ID in the Google Cloud Console.  Detailed instructions are available on the page referenced above in the section entitled *Create-a-client-id-for-google-identity*.
@@ -14,9 +16,12 @@ Once created the Client ID should look like this
 
 The list of URLs for *Authorized origins* and *Authorized redirect* are available in the Google documentation above, in paragraph *Create a client ID for Google identity*.
 
+
 ### Generating the well-known file
 
 The format of the well-known file is specified by [RFC 8259](https://tools.ietf.org/html/rfc8259)
+
+
 
 ```json
 {
@@ -52,8 +57,10 @@ The format of the well-known file is specified by [RFC 8259](https://tools.ietf.
         "meet-ios":{
             "client_id": "313892590415-32ha2bvs0tr1b12s089i33o58hjvqt55.apps.googleusercontent.com"
         }
-    }
+    } 
 }
 ```
 
+
 `client_id` is the OAuth 2.0 client ID of the Google Workspace domain that is created using the Google Cloud Console
+
