@@ -152,8 +152,7 @@ impl KMS {
                     )
                         as Box<dyn EncryptionSystem>),
                     x => kms_not_supported!(
-                        "EC public key with cryptographic algorithm {:?} not supported",
-                        x
+                        "EC public key with cryptographic algorithm {x:?} not supported",
                     ),
                 },
                 KeyFormatType::TransparentRSAPublicKey => match key_block.cryptographic_algorithm {
@@ -162,8 +161,7 @@ impl KMS {
                             as Box<dyn EncryptionSystem>,
                     ),
                     x => kms_not_supported!(
-                        "RSA public key with cryptographic algorithm {:?} not supported",
-                        x
+                        "RSA public key with cryptographic algorithm {x:?} not supported"
                     ),
                 },
                 other => kms_not_supported!("encryption with public keys of format: {other}"),
@@ -212,9 +210,10 @@ impl KMS {
                     CovercryptDecryption::instantiate(cover_crypt, &owm.id, &owm.object)?,
                 )),
                 KeyFormatType::TransparentECPrivateKey => match key_block.cryptographic_algorithm {
-                    CryptographicAlgorithm::ECDH => Ok(Box::new(
-                        HybridDecryptionSystem::instantiate(&owm.id, &owm.object)?,
-                    )
+                    CryptographicAlgorithm::ECDH => Ok(Box::new(HybridDecryptionSystem {
+                        private_key: owm.object.clone(),
+                        private_key_uid: Some(owm.id),
+                    })
                         as Box<dyn DecryptionSystem>),
                     x => kms_not_supported!(
                         "EC public keys with cryptographic algorithm {x:?} not supported"
@@ -222,9 +221,10 @@ impl KMS {
                 },
                 KeyFormatType::TransparentRSAPrivateKey => {
                     match key_block.cryptographic_algorithm {
-                        CryptographicAlgorithm::RSA => Ok(Box::new(
-                            HybridDecryptionSystem::instantiate(&owm.id, &owm.object)?,
-                        )
+                        CryptographicAlgorithm::RSA => Ok(Box::new(HybridDecryptionSystem {
+                            private_key: owm.object.clone(),
+                            private_key_uid: Some(owm.id),
+                        })
                             as Box<dyn DecryptionSystem>),
                         x => kms_not_supported!(
                             "RSA public keys with cryptographic algorithm {x:?} not supported"

@@ -232,29 +232,11 @@ impl EncryptionSystem for HybridEncryptionSystem {
     }
 }
 
-/// Decrypt a single block of data encrypted using a Salsa Sealed Box
+/// Decrypt a single block of data encrypted using a ECIES scheme or RSA hybrid system
 /// Cannot be used as a stream decipher
 pub struct HybridDecryptionSystem {
-    private_key_uid: String,
-    private_key: Object,
-    // recommended_curve: RecommendedCurve,
-}
-
-impl HybridDecryptionSystem {
-    pub fn instantiate(
-        private_key_uid: &str,
-        private_key: &Object,
-    ) -> Result<Self, KmipUtilsError> {
-        debug!(
-            "Instantiated hybrid decryption system for user decryption key id: {private_key_uid}"
-        );
-
-        Ok(Self {
-            private_key_uid: private_key_uid.into(),
-            private_key: private_key.clone(),
-            // recommended_curve,
-        })
-    }
+    pub private_key: Object,
+    pub private_key_uid: Option<String>,
 }
 
 impl HybridDecryptionSystem {
@@ -376,7 +358,7 @@ impl DecryptionSystem for HybridDecryptionSystem {
         }?;
 
         debug!(
-            "Decrypted data with user key {} of len (plaintext/ciphertext): {}/{}",
+            "Decrypted data with user key {:?} of len (plaintext/ciphertext): {}/{}",
             &self.private_key_uid,
             plaintext.len(),
             ciphertext.len(),
@@ -388,7 +370,7 @@ impl DecryptionSystem for HybridDecryptionSystem {
         };
 
         Ok(DecryptResponse {
-            unique_identifier: self.private_key_uid.clone(),
+            unique_identifier: self.private_key_uid.clone().unwrap_or_default(),
             data: Some(decrypted_data.try_into()?),
             correlation_value: None,
         })

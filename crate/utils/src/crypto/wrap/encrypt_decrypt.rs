@@ -127,8 +127,10 @@ pub fn decrypt_bytes(
             key_unwrap(ciphertext, &unwrap_secret)
         }
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {
-            let decrypt_system =
-                HybridDecryptionSystem::instantiate("private_key_uid", unwrapping_key)?;
+            let decrypt_system = HybridDecryptionSystem {
+                private_key: unwrapping_key.clone(),
+                private_key_uid: None,
+            };
             let request = Decrypt {
                 data: Some(ciphertext.to_vec()),
                 ..Decrypt::default()
