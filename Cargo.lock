@@ -886,9 +886,9 @@ checksum = "cd7cc57abe963c6d3b9d8be5b06ba7c8957a930305ca90304f24ef040aa6f961"
 
 [[package]]
 name = "cloudproof"
-version = "2.2.4"
+version = "2.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c62727a41877c041a7d18b6ccc12917e9a2deba55eb4007a2498256ae06a5bfc"
+checksum = "c8c63d1d8c59273a84ebdb9957b74f47a86a25a8ec721aba1cae906e7d014236"
 dependencies = [
  "cloudproof_aesgcm",
  "cloudproof_anonymization",
@@ -1072,9 +1072,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_crypto_core"
-version = "9.2.1"
+version = "9.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fb8a8f0ccc325afc1749f4171abd052c36189e0618ec0a82ffd1846176bb25b"
+checksum = "cc9526b837e13a79de3822c784b6c55c6c6975cc29b68b2c40449947c6159f56"
 dependencies = [
  "aead",
  "aes-gcm",
@@ -1083,6 +1083,7 @@ dependencies = [
  "chacha20poly1305",
  "crypto_box",
  "curve25519-dalek",
+ "digest",
  "ed25519-dalek",
  "elliptic-curve",
  "getrandom",
@@ -1094,7 +1095,10 @@ dependencies = [
  "pkcs8",
  "rand_chacha",
  "rand_core",
+ "rsa",
+ "sha1",
  "sha2",
+ "sha3",
  "signature",
  "tiny-keccak",
  "uuid",
@@ -1275,6 +1279,7 @@ version = "4.7.0"
 dependencies = [
  "argon2",
  "cloudproof",
+ "cosmian_crypto_core",
  "cosmian_kmip",
  "num-bigint",
  "openssl",
@@ -2373,6 +2378,15 @@ dependencies = [
  "serde",
  "serde_json",
  "simple_asn1",
+]
+
+[[package]]
+name = "keccak"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f6d5ed8676d904364de097082f4e7d240b571b67989ced0240f08b7f966f940"
+dependencies = [
+ "cpufeatures",
 ]
 
 [[package]]
@@ -3801,6 +3815,16 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "sha3"
+version = "0.10.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75872d278a8f37ef87fa0ddbda7802605cb18344497949862c0d4dcb291eba60"
+dependencies = [
+ "digest",
+ "keccak",
 ]
 
 [[package]]
