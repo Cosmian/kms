@@ -118,21 +118,21 @@ impl EncryptAction {
     /// Bulk encryption / decryption scheme
     ///
     /// ENC request
-    /// | nb_chunks (LEB128) | chunk_size (LEB128) | chunk_data (plaintext)
-    ///                        <------------- nb_chunks times ------------>
+    /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
+    ///                           <-------------- `nb_chunks` times ------------>
     ///
     /// ENC response
-    /// | EH | nb_chunks (LEB128) | chunk_size (LEB128) | chunk_data (encrypted)
-    ///                             <------------- nb_chunks times ------------>
+    /// | EH | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (encrypted)
+    ///                                <-------------- `nb_chunks` times ------------>
     ///
     /// DEC request
-    /// | nb_chunks (LEB128) | size(EH + chunk_data) (LEB128) | EH | chunk_data (encrypted)
-    ///                                                         <----- chunk with EH ----->
-    ///                        <---------------------- nb_chunks times ------------------->
+    /// | `nb_chunks` (LEB128) | size(EH + `chunk_data`) (LEB128) | EH | `chunk_data` (encrypted)
+    ///                                                             <------ chunk with EH ------>
+    ///                          <------------------------ `nb_chunks` times ------------------->
     ///
     /// DEC response
-    /// | nb_chunks (LEB128) | chunk_size (LEB128) | chunk_data (plaintext)
-    ///                        <------------- nb_chunks times ------------>
+    /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
+    ///                           <------------- `nb_chunks` times ------------->
     ///
     fn write_bulk_encrypted_data(&self, encrypted_data: &[u8]) -> Result<(), CliError> {
         // read encrypted header

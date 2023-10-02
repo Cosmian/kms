@@ -69,6 +69,18 @@ impl From<serde_json::Error> for KmipUtilsError {
     }
 }
 
+impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::spki::Error> for KmipUtilsError {
+    fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::spki::Error) -> Self {
+        Self::ConversionError(e.to_string())
+    }
+}
+
+impl From<cosmian_crypto_core::reexport::pkcs8::Error> for KmipUtilsError {
+    fn from(e: cosmian_crypto_core::reexport::pkcs8::Error) -> Self {
+        Self::ConversionError(e.to_string())
+    }
+}
+
 /// Return early with an error if a condition is not satisfied.
 ///
 /// This macro is equivalent to `if !$cond { return Err(From::from($err)); }`.

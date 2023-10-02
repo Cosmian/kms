@@ -29,6 +29,7 @@ pub struct DataToEncrypt {
 
 impl DataToEncrypt {
     /// Serialize the data to encrypt to bytes
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         // Compute the size of the buffer
         let mut mem_size = 1 // for encryption policy

@@ -51,6 +51,8 @@ pub(crate) fn determine_key_object_type(object: &Object) -> Result<ObjectType, C
                 KeyFormatType::TransparentECPublicKey => ObjectType::PublicKey,
                 KeyFormatType::TransparentDHPrivateKey => ObjectType::PrivateKey,
                 KeyFormatType::TransparentDHPublicKey => ObjectType::PublicKey,
+                KeyFormatType::TransparentRSAPrivateKey => ObjectType::PrivateKey,
+                KeyFormatType::TransparentRSAPublicKey => ObjectType::PublicKey,
                 x => cli_bail!("not a supported key format: {x}"),
             })
         }
@@ -147,8 +149,10 @@ pub fn write_single_decrypted_data(
     input_file: &Path,
     output_file: Option<&PathBuf>,
 ) -> Result<(), CliError> {
-    let output_file =
-        output_file.map_or_else(|| input_file.with_extension("plain"), |of| of.to_owned());
+    let output_file = output_file.map_or_else(
+        || input_file.with_extension("plain"),
+        std::clone::Clone::clone,
+    );
 
     write_bytes_to_file(plaintext, &output_file)
         .with_context(|| "failed to write the decrypted file")?;
@@ -167,8 +171,10 @@ pub fn write_single_encrypted_data(
     output_file: Option<&PathBuf>,
 ) -> Result<(), CliError> {
     // Write the encrypted file
-    let output_file =
-        output_file.map_or_else(|| input_file.with_extension("enc"), |of| of.to_owned());
+    let output_file = output_file.map_or_else(
+        || input_file.with_extension("enc"),
+        std::clone::Clone::clone,
+    );
 
     write_bytes_to_file(encrypted_data, &output_file)
         .with_context(|| "failed to write the encrypted file")?;
@@ -225,9 +231,10 @@ pub fn write_bulk_decrypted_data(
         // Write the decrypted files
         // Reuse input file names if there are multiple inputs (and ignore `output_file`)
         let output_file = if nb_chunks == 1 {
-            output_file
-                .map(|p| p.to_owned())
-                .unwrap_or_else(|| input_files[idx].with_extension("plain"))
+            output_file.map_or_else(
+                || input_files[idx].with_extension("plain"),
+                std::clone::Clone::clone,
+            )
         } else if let Some(output_file) = &output_file {
             let file_name = input_files[idx].file_name().ok_or_else(|| {
                 CliError::Conversion(format!(

@@ -204,7 +204,7 @@ impl EncryptionSystem for CoverCryptEncryption {
             iv_counter_nonce: None,
             correlation_value: None,
             authenticated_encryption_tag: authenticated_encryption_additional_data
-                .map(|aead| aead.to_vec()),
+                .map(<[u8]>::to_vec),
         })
     }
 }
