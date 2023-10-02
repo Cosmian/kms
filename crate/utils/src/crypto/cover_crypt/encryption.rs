@@ -12,7 +12,6 @@ use cloudproof::reexport::{
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
-        data_to_encrypt::DataToEncrypt,
         kmip_objects::Object,
         kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
         kmip_types::{CryptographicAlgorithm, CryptographicParameters},
@@ -21,7 +20,10 @@ use cosmian_kmip::{
 use tracing::{debug, trace};
 
 use crate::{
-    crypto::cover_crypt::attributes::policy_from_attributes, error::KmipUtilsError,
+    crypto::{
+        cover_crypt::attributes::policy_from_attributes, generic::data_to_encrypt::DataToEncrypt,
+    },
+    error::KmipUtilsError,
     EncryptionSystem,
 };
 
