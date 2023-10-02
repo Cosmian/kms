@@ -397,7 +397,9 @@ async fn test_certificate_encrypt_using_secp384r1() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_certificate_encrypt_using_rsa() -> Result<(), CliError> {
-    import_encrypt_decrypt("rsa").await
+    import_encrypt_decrypt("rsa-2048").await?;
+    import_encrypt_decrypt("rsa-3072").await?;
+    import_encrypt_decrypt("rsa-4096").await
 }
 
 async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliError> {
