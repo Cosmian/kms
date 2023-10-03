@@ -21,7 +21,7 @@ use crate::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::export::export,
         symmetric::create_key::create_symmetric_key,
-        utils::{start_default_test_kms_server, TestsContext, ONCE},
+        utils::{recover_cmd_logs, start_default_test_kms_server, TestsContext, ONCE},
         PROG_NAME,
     },
 };
@@ -39,6 +39,7 @@ pub fn wrap(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     let mut args: Vec<String> = vec![
         "keys".to_owned(),
         "wrap".to_owned(),
@@ -62,7 +63,7 @@ pub fn wrap(
         args.push(wrap_key_file.to_str().unwrap().to_owned());
     }
     cmd.arg(sub_command).args(args);
-    let output = cmd.output()?;
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(())
     }
@@ -84,6 +85,7 @@ pub fn unwrap(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     let mut args: Vec<String> = vec![
         "keys".to_owned(),
         "unwrap".to_owned(),
@@ -107,7 +109,7 @@ pub fn unwrap(
         args.push(unwrap_key_file.to_str().unwrap().to_owned());
     }
     cmd.arg(sub_command).args(args);
-    let output = cmd.output()?;
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(())
     }

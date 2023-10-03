@@ -1,6 +1,7 @@
 use std::sync::Once;
 
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+
 static LOG_INIT: Once = Once::new();
 
 /// # Panics
@@ -33,10 +34,8 @@ fn tracing_setup() {
     let (filter, _reload_handle) =
         tracing_subscriber::reload::Layer::new(EnvFilter::from_default_env());
 
-    let subscriber = tracing_subscriber::Registry::default()
+    tracing_subscriber::registry()
         .with(filter)
-        .with(layer);
-    tracing::subscriber::set_global_default(subscriber).unwrap();
-
-    tracing_log::LogTracer::init().unwrap();
+        .with(layer)
+        .init();
 }

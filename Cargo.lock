@@ -1169,6 +1169,7 @@ dependencies = [
  "cosmian_kms_client",
  "cosmian_kms_server",
  "cosmian_kms_utils",
+ "cosmian_logger",
  "env_logger",
  "hex",
  "libsgx",
@@ -1294,7 +1295,6 @@ name = "cosmian_logger"
 version = "4.7.0"
 dependencies = [
  "tracing",
- "tracing-log",
  "tracing-subscriber",
  "tracing-tree",
 ]

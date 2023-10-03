@@ -2,6 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 
+use super::utils::recover_cmd_logs;
 use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
@@ -11,7 +12,9 @@ use crate::{
 fn run_cli_command(owner_cli_conf_path: &str) {
     let mut cmd = Command::cargo_bin(PROG_NAME).expect(" cargo bin failed");
     cmd.env(KMS_CLI_CONF_ENV, owner_cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
+    recover_cmd_logs(&mut cmd);
     cmd.assert().success();
 }
 

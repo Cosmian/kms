@@ -7,7 +7,10 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        utils::{extract_uids::extract_imported_key_id, start_default_test_kms_server, ONCE},
+        utils::{
+            extract_uids::extract_imported_key_id, recover_cmd_logs, start_default_test_kms_server,
+            ONCE,
+        },
         PROG_NAME,
     },
 };
@@ -25,6 +28,7 @@ pub fn import(
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     let mut args: Vec<String> = vec!["import".to_owned(), key_file.to_owned()];
     if let Some(key_id) = key_id {
         args.push(key_id);
@@ -54,10 +58,8 @@ pub fn import(
             args.push((*tag).to_string());
         }
     }
-
     cmd.arg(sub_command).args(args);
-    let output = cmd.output()?;
-    println!("output: {output:?}");
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let import_output = std::str::from_utf8(&output.stdout)?;
         let imported_key_id = extract_imported_key_id(import_output)

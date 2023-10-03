@@ -10,7 +10,7 @@ use crate::{
     error::CliError,
     tests::{
         symmetric::create_key::create_symmetric_key,
-        utils::{start_default_test_kms_server, ONCE},
+        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -25,6 +25,7 @@ pub fn encrypt(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     let mut args = vec!["encrypt", input_file, "--key-id", symmetric_key_id];
     if let Some(output_file) = output_file {
         args.push("-o");
@@ -35,7 +36,7 @@ pub fn encrypt(
         args.push(authentication_data);
     }
     cmd.arg(SUB_COMMAND).args(args);
-    let output = cmd.output()?;
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(())
     }
@@ -54,6 +55,7 @@ pub fn decrypt(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     let mut args = vec!["decrypt", input_file, "--key-id", symmetric_key_id];
     if let Some(output_file) = output_file {
         args.push("-o");
@@ -64,7 +66,7 @@ pub fn decrypt(
         args.push(authentication_data);
     }
     cmd.arg(SUB_COMMAND).args(args);
-    let output = cmd.output()?;
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(())
     }

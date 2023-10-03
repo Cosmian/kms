@@ -1,6 +1,7 @@
 use std::{
+    io::Write,
     path::PathBuf,
-    process::Command,
+    process::{Command, Output, Stdio},
     sync::mpsc,
     thread::{self, JoinHandle},
     time::Duration,
@@ -46,6 +47,18 @@ pub fn get_auth0_jwt_config() -> JwtAuthConfig {
         jwks_uri: None,
         jwt_audience: None,
     }
+}
+
+/// Recover output logs from a command call `cmd` and re-inject it into stdio
+pub(crate) fn recover_cmd_logs(cmd: &mut Command) -> Output {
+    let output = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+    std::io::stdout().write_all(&output.stdout).unwrap();
+    std::io::stderr().write_all(&output.stderr).unwrap();
+    output
 }
 
 /// In order to run most tests in parallel,

@@ -13,8 +13,8 @@ use crate::{
         shared::export,
         symmetric::create_key::create_symmetric_key,
         utils::{
-            create_new_database, generate_invalid_conf, start_default_test_kms_server,
-            start_test_server_with_options, ONCE,
+            create_new_database, generate_invalid_conf, recover_cmd_logs,
+            start_default_test_kms_server, start_test_server_with_options, ONCE,
         },
         PROG_NAME,
     },
@@ -26,7 +26,9 @@ pub async fn test_new_database() -> Result<(), CliError> {
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     cmd.arg("new-database");
+    recover_cmd_logs(&mut cmd);
     cmd.assert().success().stdout(predicate::str::contains(
         "A new user encrypted database is configured",
     ));
@@ -42,6 +44,7 @@ pub async fn test_secrets_bad() -> Result<(), CliError> {
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, bad_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
 
     cmd.arg(SUB_COMMAND).args(vec![
         "keys",
@@ -49,6 +52,7 @@ pub async fn test_secrets_bad() -> Result<(), CliError> {
         "--policy-binary",
         "test_data/policy.bin",
     ]);
+    recover_cmd_logs(&mut cmd);
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("Database secret is wrong"));
@@ -62,6 +66,7 @@ pub async fn test_conf_does_not_exist() -> Result<(), CliError> {
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/configs/kms_bad_group_id.bad");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
 
     cmd.arg(SUB_COMMAND).args(vec![
         "keys",
@@ -69,7 +74,7 @@ pub async fn test_conf_does_not_exist() -> Result<(), CliError> {
         "--policy-binary",
         "test_data/policy.bin",
     ]);
-    let output = cmd.output()?;
+    let output = recover_cmd_logs(&mut cmd);
     assert!(!output.status.success());
     Ok(())
 }
@@ -91,6 +96,7 @@ pub async fn test_secrets_key_bad() -> Result<(), CliError> {
     let invalid_conf_path = generate_invalid_conf(&ctx.owner_cli_conf);
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, invalid_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
 
     cmd.arg(SUB_COMMAND).args(vec![
         "keys",
@@ -98,7 +104,7 @@ pub async fn test_secrets_key_bad() -> Result<(), CliError> {
         "--policy-binary",
         "test_data/policy.bin",
     ]);
-
+    recover_cmd_logs(&mut cmd);
     cmd.assert().failure();
 
     Ok(())
