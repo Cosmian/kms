@@ -51,8 +51,8 @@ josekit = "0.8.3"
 native-tls = "0.2"
 num-bigint = { version = "0.4", features = ["rand", "serde"] }
 openssl = { version = "0.10", features = ["vendored"] }
-tee_attestation = { git = "https://github.com/Cosmian/tee-tools", branch = "tee_attestation" }
-ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "tee_attestation" }
+tee_attestation = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
+ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
 redis = { version = "0.23", features = [
   "aio",
   "ahash",
@@ -60,11 +60,13 @@ redis = { version = "0.23", features = [
   "connection-manager",
   "tokio-comp",
 ] }
+# Important: align the rustls version with reqwest rustls dependency
 rustls = { version = "0.20", features = ["dangerous_configuration"] }
+webpki-roots = { version = "0.20" }
 reqwest = { version = "0.11", features = [
   "json",
   "multipart",
-  # "native-tls",
+  "native-tls",
   "rustls-tls",
   "stream",
 ] }

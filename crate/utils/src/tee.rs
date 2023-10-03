@@ -7,7 +7,7 @@ pub fn forge_report_data(
     nonce: &[u8; 32],
     pem_certificate: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
-    // user_report_data = ( sha256(certificate_x509_pem) || 32bytes_nounce )
+    // user_report_data = ( sha256(certificate_x509_pem) || 32bytes_nonce )
     let mut user_report_data = nonce.to_vec();
 
     let mut hasher = Sha256::new();

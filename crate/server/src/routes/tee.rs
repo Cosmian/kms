@@ -41,12 +41,12 @@ pub async fn get_attestation_report(
 /// Get the public key of the  enclave
 ///
 /// This service is only enabled when the server is running SGX
-#[get("/enclave_public_key")]
+#[get("/tee/sgx_enclave_public_key")]
 pub async fn get_enclave_public_key(
     req: HttpRequest,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<String>> {
-    info!("GET /enclave_public_key {}", kms.get_user(req)?);
+    info!("GET /tee/sgx_enclave_public_key {}", kms.get_user(req)?);
     Ok(Json(kms.get_sgx_enclave_public_key()?))
 }
 

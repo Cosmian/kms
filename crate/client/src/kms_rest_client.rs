@@ -1,9 +1,11 @@
 use std::{
     fs::File,
     io::{BufReader, Read},
-    time::{Duration, SystemTime},
+    sync::Arc,
+    time::Duration,
 };
 
+use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 // re-export the kmip module as kmip
 use cosmian_kmip::kmip::{
     kmip_operations::{
@@ -27,14 +29,14 @@ use josekit::{
     jwe::{alg::ecdh_es::EcdhEsJweAlgorithm, serialize_compact, JweHeader},
     jwk::Jwk,
 };
-use reqwest::{Client, Identity, Response};
-use rustls::{
-    client::{ServerCertVerified, ServerCertVerifier},
-    Certificate, Error as RustTLSError, ServerName,
-};
+use reqwest::{Client, ClientBuilder, Identity, Response};
+use rustls::{client::WebPkiVerifier, Certificate};
 use serde::{Deserialize, Serialize};
 
-use crate::error::RestClientError;
+use crate::{
+    certificate_verifier::{LeafCertificateVerifier, NoVerifier},
+    error::RestClientError,
+};
 
 /// A struct implementing some of the 50+ operations a KMIP client should implement:
 /// <https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip>
@@ -426,19 +428,26 @@ impl KmsRestClient {
     }
 
     /// This operation requests the server to get the sgx quote or sev attestation report.
-    pub async fn get_attestation_report(&self, nonce: &str) -> Result<String, RestClientError> {
-        self.get_no_ttlv(
-            "/tee/attestation_report",
-            Some(&QuoteParams {
-                nonce: nonce.to_string(),
-            }),
-        )
-        .await
+    pub async fn get_attestation_report(
+        &self,
+        nonce: &[u8; 32],
+    ) -> Result<Vec<u8>, RestClientError> {
+        let quote: String = self
+            .get_no_ttlv(
+                "/tee/attestation_report",
+                Some(&QuoteParams {
+                    nonce: b64.encode(nonce),
+                }),
+            )
+            .await?;
+
+        Ok(b64.decode(quote.as_bytes())?)
     }
 
     /// This operation requests the server to get the HTTPS certificate.
-    pub async fn get_enclave_public_key(&self) -> Result<String, RestClientError> {
-        self.get_no_ttlv("/enclave_public_key", None::<&()>).await
+    pub async fn get_sgx_enclave_public_key(&self) -> Result<String, RestClientError> {
+        self.get_no_ttlv("/tee/sgx_enclave_public_key", None::<&()>)
+            .await
     }
 
     /// This operation requests the version of the server
@@ -447,40 +456,9 @@ impl KmsRestClient {
     }
 }
 
-pub struct LeafCertificateVerifier {
-    expected_cert: Certificate,
-}
-
-impl LeafCertificateVerifier {
-    pub fn new(expected_cert: Certificate) -> Self {
-        Self { expected_cert }
-    }
-}
-
-impl ServerCertVerifier for LeafCertificateVerifier {
-    fn verify_server_cert(
-        &self,
-        end_entity: &Certificate,              // end_entity
-        intermediates: &[Certificate],         // intermediates
-        server_name: &ServerName,              // server_name
-        scts: &mut dyn Iterator<Item = &[u8]>, // scts
-        ocsp_response: &[u8],                  // ocsp_response
-        now: SystemTime,                       // now
-    ) -> Result<ServerCertVerified, RustTLSError> {
-        if !end_entity.eq(&self.expected_cert) {
-            return Err(RustTLSError::General(
-                "Leaf certificate doesn't match the expecting one".to_string(),
-            ))
-        }
-
-        // TODO: add classical checks
-
-        Ok(ServerCertVerified::assertion())
-    }
-}
-
 impl KmsRestClient {
     /// Instantiate a new KMIP REST Client
+    #[allow(clippy::too_many_arguments)]
     #[allow(dead_code)]
     pub fn instantiate(
         server_url: &str,
@@ -489,6 +467,7 @@ impl KmsRestClient {
         ssl_client_pkcs12_password: Option<&str>,
         database_secret: Option<&str>,
         accept_invalid_certs: bool,
+        allowed_tee_tls_cert: Option<Certificate>,
         jwe_public_key: Option<&str>,
     ) -> Result<Self, RestClientError> {
         let server_url = match server_url.strip_suffix('/') {
@@ -522,25 +501,16 @@ impl KmsRestClient {
         // 1. HTTP: no TLS
         // 2. HTTPS:
         //    a) self-signed: we want to remove the verifications
-        //    b) signed in an enclave context: we want to verify the /quote and then only accept the allowed certificate
-        //    c) signed in a non-enclave context: we want classical TLS verification based on the root ca
-
-        let root_store = rustls::RootCertStore::empty();
-        let mut config = rustls::ClientConfig::builder()
-            .with_safe_defaults()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
-        // config
-        //     .dangerous()
-        //     .set_certificate_verifier(std::sync::Arc::new(LeafCertificateVerifier {
-        //         expected_cert: Certificate(fs::read("/tmp/test2.crt.der").unwrap()),
-        //     }));
-
-        // Create a client builder
-        let builder = Client::builder()
-            // .use_preconfigured_tls(config)
-            .tls_built_in_root_certs(false)
-            .danger_accept_invalid_certs(true);
+        //    b) signed in a tee context: we want to verify the /quote and then only accept the allowed certificate
+        //          -> For efficency purpose, this verification is made outside this call (asynch with the queries)
+        //             Only the verified certificate is used here
+        //    c) signed in a non-tee context: we want classical TLS verification based on the root ca
+        let builder = if let Some(certificate) = allowed_tee_tls_cert {
+            build_tls_client_tee(certificate, accept_invalid_certs)?
+        } else {
+            println!("Insecure: {accept_invalid_certs}");
+            ClientBuilder::new().danger_accept_invalid_certs(accept_invalid_certs)
+        };
 
         // If a PKCS12 file is provided, use it to build the client
         let builder = match ssl_client_pkcs12_path {
@@ -719,4 +689,42 @@ async fn handle_error(response: Response) -> Result<String, RestClientError> {
             _ => format!("{status} {text}"),
         })
     }
+}
+
+/// Build a TLSClient to use with a KMS running inside a tee
+/// The TLS verification is the basic one but also include the verification of the leaf certificate
+/// The TLS socket is mounted since the leaf certificate is exactly the same than the expected one.
+pub fn build_tls_client_tee(
+    leaf_cert: Certificate,
+    accept_invalid_certs: bool,
+) -> Result<ClientBuilder, RestClientError> {
+    let mut root_cert_store = rustls::RootCertStore::empty();
+
+    use rustls::OwnedTrustAnchor;
+
+    let trust_anchors = webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|trust_anchor| {
+        OwnedTrustAnchor::from_subject_spki_name_constraints(
+            trust_anchor.subject,
+            trust_anchor.spki,
+            trust_anchor.name_constraints,
+        )
+    });
+    root_cert_store.add_server_trust_anchors(trust_anchors);
+
+    let verifier = if !accept_invalid_certs {
+        LeafCertificateVerifier::new(
+            leaf_cert,
+            Arc::new(WebPkiVerifier::new(root_cert_store, None)),
+        )
+    } else {
+        LeafCertificateVerifier::new(leaf_cert, Arc::new(NoVerifier))
+    };
+
+    let config = rustls::ClientConfig::builder()
+        .with_safe_defaults()
+        .with_custom_certificate_verifier(std::sync::Arc::new(verifier))
+        .with_no_client_auth();
+
+    // Create a client builder
+    Ok(Client::builder().use_preconfigured_tls(config))
 }

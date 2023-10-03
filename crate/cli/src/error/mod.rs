@@ -68,6 +68,10 @@ pub enum CliError {
     // Other errors
     #[error("{0}")]
     Default(String),
+
+    // Other errors
+    #[error(transparent)]
+    UrlParsing(#[from] url::ParseError),
 }
 
 impl From<KmipUtilsError> for CliError {

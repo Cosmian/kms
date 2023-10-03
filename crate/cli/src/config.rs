@@ -7,8 +7,11 @@ use std::{
 
 use cosmian_kms_client::{BootstrapRestClient, KmsRestClient};
 use hex::decode;
+use openssl::x509::X509;
+use rustls::Certificate;
 use serde::{Deserialize, Serialize};
 use tee_attestation::{SevMeasurement, SgxMeasurement, TeeMeasurement};
+use url::Url;
 
 use crate::error::{result::CliResultHelper, CliError};
 
@@ -57,8 +60,15 @@ fn not(b: &bool) -> bool {
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone, Default)]
 pub struct TeeConf {
+    // tls_verify = true means that the leaf certificate needs to be the exact one
+    // used when verifying the quote. This option should be true if the KMS has been deployed on a TEE. False is unsecured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) verified_cert: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) mr_enclave: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) public_signer_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) sev_measurement: Option<String>,
 }
 
@@ -136,7 +146,7 @@ pub struct CliConf {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) bootstrap_server_url: Option<String>,
     #[serde(default)]
-    pub tee_conf: TeeConf,
+    pub tee_conf: TeeConf, // TODO: Option?
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) kms_access_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -147,6 +157,20 @@ pub struct CliConf {
     pub(crate) kms_database_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) jwe_public_key: Option<String>,
+}
+
+impl CliConf {
+    pub fn kms_server_url(&self) -> Result<Url, CliError> {
+        Ok(Url::parse(&self.kms_server_url)?)
+    }
+
+    pub fn bootstrap_server_url(&self) -> Result<Option<Url>, CliError> {
+        if let Some(url) = &self.bootstrap_server_url {
+            Ok(Some(Url::parse(url)?))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 impl Default for CliConf {
@@ -188,21 +212,37 @@ impl Default for CliConf {
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
 
 impl CliConf {
-    pub fn load() -> Result<Self, CliError> {
+    pub fn location() -> Result<PathBuf, CliError> {
         // Obtain the configuration file path from the environment variable or default to a pre-determined path
-        let conf_path = if let Ok(conf_path) = env::var(KMS_CLI_CONF_ENV).map(PathBuf::from) {
+        if let Ok(conf_path) = env::var(KMS_CLI_CONF_ENV).map(PathBuf::from) {
             // Error if the specified file does not exist
             if !conf_path.exists() {
                 return Err(CliError::NotSupported(format!(
                     "Configuration file {conf_path:?} does not exist"
                 )))
             }
-            conf_path
-        } else {
-            get_default_conf_path()?
-        };
+            return Ok(conf_path)
+        }
 
+        get_default_conf_path()
+    }
+
+    pub fn save(&self) -> Result<(), CliError> {
+        let conf_path = CliConf::location()?;
+
+        fs::write(
+            conf_path,
+            serde_json::to_string(&self)
+                .with_context(|| format!("Unable to serialize default configuration {self:?}"))?,
+        )
+        .with_context(|| format!("Unable to write default configuration to file {self:?}"))?;
+
+        Ok(())
+    }
+
+    pub fn load() -> Result<Self, CliError> {
         // Deserialize the configuration from the file, or create a default configuration if none exists
+        let conf_path = CliConf::location()?;
         let conf = if conf_path.exists() {
             // Configuration file exists, read and deserialize it
             let file = File::open(&conf_path)
@@ -217,16 +257,9 @@ impl CliConf {
             fs::create_dir_all(parent).with_context(|| {
                 format!("Unable to create directory for configuration file {parent:?}")
             })?;
+
             let default_conf = Self::default();
-            fs::write(
-                &conf_path,
-                serde_json::to_string(&default_conf).with_context(|| {
-                    format!("Unable to serialize default configuration {default_conf:?}")
-                })?,
-            )
-            .with_context(|| {
-                format!("Unable to write default configuration to file {conf_path:?}")
-            })?;
+            default_conf.save()?;
             default_conf
         };
 
@@ -242,6 +275,14 @@ impl CliConf {
             self.ssl_client_pkcs12_password.as_deref(),
             self.kms_database_secret.as_deref(),
             self.accept_invalid_certs,
+            self.tee_conf.verified_cert.as_ref().map(|certificate| {
+                Certificate(
+                    X509::from_pem(certificate.as_bytes())
+                        .unwrap()
+                        .to_der()
+                        .unwrap(),
+                )
+            }),
             self.jwe_public_key.as_deref(),
         )
         .with_context(|| {

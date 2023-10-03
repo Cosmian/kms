@@ -197,7 +197,7 @@ impl BootstrapRestClient {
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 
         // Create a client builder hat accepts invalid certs
-        let builder = ClientBuilder::new().danger_accept_invalid_certs(true);
+        let builder = ClientBuilder::new();
 
         // If a PKCS12 file is provided, use it to build the client
         let builder = match ssl_client_pkcs12_path {
@@ -244,6 +244,7 @@ impl BootstrapRestClient {
         // Build the client
         Ok(Self {
             client: builder
+                .danger_accept_invalid_certs(true)
                 .tls_built_in_root_certs(false) // Disallow all root certs from the system
                 .add_root_certificate(ratls_cert) // Allow our ratls cert
                 .connect_timeout(Duration::from_secs(5))

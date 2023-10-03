@@ -20,7 +20,7 @@ The KMS enables you to check its trustworthiness. To do so, three routes are use
 With these three routes, you can proceed a remote attestation on Microsoft Azure Service. Note that the report data of the quote is generated has follow:
 
 ```c
-report_data = Sha256( certificate + nounce )
+report_data = Sha256(PEM certificate) + nonce 
 ```
 
 Let's explain why:
