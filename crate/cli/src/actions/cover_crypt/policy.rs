@@ -4,9 +4,7 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use cloudproof::reexport::cover_crypt::abe_policy::{
-    Attribute, EncryptionHint, Policy, PolicyAxis,
-};
+use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     ttlv::{deserializer::from_ttlv, TTLV},
@@ -29,7 +27,7 @@ pub struct PolicySpecifications(HashMap<String, Vec<String>>);
 impl PolicySpecifications {
     /// Create a `Policy` from `PolicySpecifications`
     pub fn to_policy(&self) -> Result<Policy, CliError> {
-        let mut policy = Policy::new(u32::MAX);
+        let mut policy = Policy::new();
         for (axis, attributes) in &self.0 {
             // Split the axis into axis name and hierarchy flag
             let (axis_name, hierarchical) = match axis.split_once("::") {
@@ -65,7 +63,7 @@ impl PolicySpecifications {
             }
 
             // Add the axis to the policy
-            policy.add_axis(PolicyAxis::new(
+            policy.add_dimension(DimensionBuilder::new(
                 axis_name,
                 attributes_properties,
                 hierarchical,
@@ -88,24 +86,25 @@ impl TryInto<Policy> for PolicySpecifications {
     }
 }
 
-impl TryFrom<&Policy> for PolicySpecifications {
+impl TryFrom<Policy> for PolicySpecifications {
     type Error = CliError;
 
-    fn try_from(policy: &Policy) -> Result<Self, Self::Error> {
-        let mut result: HashMap<String, Vec<String>> = HashMap::new();
-        for (axis_name, params) in &policy.axes {
-            let axis_full_name =
-                axis_name.clone() + if params.is_hierarchical { "::+" } else { "" };
-            let mut attributes = Vec::with_capacity(params.attribute_names.len());
-            for att in &params.attribute_names {
-                let name = att.clone()
-                    + match policy.attribute_hybridization_hint(&Attribute::new(axis_name, att))? {
+    fn try_from(policy: Policy) -> Result<Self, Self::Error> {
+        let mut result: HashMap<String, Vec<String>> =
+            HashMap::with_capacity(policy.dimensions.len());
+        for (dim_name, dimension) in policy.dimensions {
+            let dim_full_name = dim_name + if dimension.order.is_some() { "::+" } else { "" };
+            let attributes = dimension
+                .attributes_properties()
+                .into_iter()
+                .map(|(name, enc_hint)| {
+                    name + match enc_hint {
                         EncryptionHint::Hybridized => "::+",
                         EncryptionHint::Classic => "",
-                    };
-                attributes.push(name);
-            }
-            result.insert(axis_full_name, attributes);
+                    }
+                })
+                .collect();
+            result.insert(dim_full_name, attributes);
         }
         Ok(Self(result))
     }
@@ -275,7 +274,7 @@ impl SpecsAction {
             kms_rest_client,
         )
         .await?;
-        let specs = PolicySpecifications::try_from(&policy)?;
+        let specs = PolicySpecifications::try_from(policy)?;
         // save the policy to the specifications file
         write_json_object_to_file(&specs, &self.policy_specs_file)
     }
@@ -358,7 +357,7 @@ impl ViewAction {
         let json = if self.detailed {
             serde_json::to_string_pretty(&policy)?
         } else {
-            let specs = PolicySpecifications::try_from(&policy)?;
+            let specs = PolicySpecifications::try_from(policy)?;
             serde_json::to_string_pretty(&specs)?
         };
         println!("{json}");
@@ -436,15 +435,22 @@ mod tests {
 
         let policy_json: PolicySpecifications = serde_json::from_str(json).unwrap();
         let policy = policy_json.to_policy()?;
-        assert_eq!(policy.axes.len(), 2);
-        assert!(policy.axes.get("Security Level").unwrap().is_hierarchical);
-        assert!(!policy.axes.get("Department").unwrap().is_hierarchical);
-        assert_eq!(
+        assert_eq!(policy.dimensions.len(), 2);
+        assert!(
             policy
-                .axes
+                .dimensions
                 .get("Security Level")
                 .unwrap()
-                .attribute_names
+                .order
+                .is_some()
+        );
+        assert!(policy.dimensions.get("Department").unwrap().order.is_none());
+        assert_eq!(
+            policy
+                .dimensions
+                .get("Security Level")
+                .unwrap()
+                .attributes
                 .len(),
             3
         );

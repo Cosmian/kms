@@ -7,7 +7,7 @@
 //!
 use std::sync::{Arc, Mutex};
 
-use cosmian_crypto_core::{
+use cloudproof::reexport::crypto_core::{
     reexport::{
         pkcs8::{DecodePrivateKey, DecodePublicKey},
         rand_core::SeedableRng,

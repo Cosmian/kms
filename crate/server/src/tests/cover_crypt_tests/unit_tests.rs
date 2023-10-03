@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::cover_crypt::abe_policy::{EncryptionHint, Policy, PolicyAxis};
+use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{DecryptedData, Get, Import, Locate},
@@ -41,8 +41,8 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
     //
-    let mut policy = Policy::new(10);
-    policy.add_axis(PolicyAxis::new(
+    let mut policy = Policy::new();
+    policy.add_dimension(DimensionBuilder::new(
         "Department",
         vec![
             ("MKG", EncryptionHint::Classic),
@@ -51,7 +51,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         ],
         false,
     ))?;
-    policy.add_axis(PolicyAxis::new(
+    policy.add_dimension(DimensionBuilder::new(
         "Level",
         vec![
             ("confidential", EncryptionHint::Classic),
@@ -222,8 +222,8 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let owner = "cceyJhbGciOiJSUzI1Ni";
     let nonexistent_owner = "invalid_owner";
     //
-    let mut policy = Policy::new(10);
-    policy.add_axis(PolicyAxis::new(
+    let mut policy = Policy::new();
+    policy.add_dimension(DimensionBuilder::new(
         "Department",
         vec![
             ("MKG", EncryptionHint::Classic),
@@ -232,7 +232,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
         ],
         false,
     ))?;
-    policy.add_axis(PolicyAxis::new(
+    policy.add_dimension(DimensionBuilder::new(
         "Level",
         vec![
             ("confidential", EncryptionHint::Classic),
@@ -439,8 +439,8 @@ async fn test_abe_json_access() -> KResult<()> {
     let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
     //
-    let mut policy = Policy::new(10);
-    policy.add_axis(PolicyAxis::new(
+    let mut policy = Policy::new();
+    policy.add_dimension(DimensionBuilder::new(
         "Department",
         vec![
             ("MKG", EncryptionHint::Classic),
@@ -449,7 +449,7 @@ async fn test_abe_json_access() -> KResult<()> {
         ],
         false,
     ))?;
-    policy.add_axis(PolicyAxis::new(
+    policy.add_dimension(DimensionBuilder::new(
         "Level",
         vec![
             ("confidential", EncryptionHint::Classic),
@@ -536,8 +536,8 @@ async fn test_import_decrypt() -> KResult<()> {
     let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(&clap_config).await?).await?);
     let owner = "cceyJhbGciOiJSUzI1Ni";
 
-    let mut policy = Policy::new(10);
-    policy.add_axis(PolicyAxis::new(
+    let mut policy = Policy::new();
+    policy.add_dimension(DimensionBuilder::new(
         "Department",
         vec![
             ("MKG", EncryptionHint::Classic),
@@ -546,7 +546,7 @@ async fn test_import_decrypt() -> KResult<()> {
         ],
         false,
     ))?;
-    policy.add_axis(PolicyAxis::new(
+    policy.add_dimension(DimensionBuilder::new(
         "Level",
         vec![
             ("confidential", EncryptionHint::Classic),

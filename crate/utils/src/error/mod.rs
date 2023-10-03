@@ -75,8 +75,8 @@ impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::spki::Error> for K
     }
 }
 
-impl From<cosmian_crypto_core::reexport::pkcs8::Error> for KmipUtilsError {
-    fn from(e: cosmian_crypto_core::reexport::pkcs8::Error) -> Self {
+impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::Error> for KmipUtilsError {
+    fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::Error) -> Self {
         Self::ConversionError(e.to_string())
     }
 }

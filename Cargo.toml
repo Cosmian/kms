@@ -43,7 +43,7 @@ clap = { version = "4.4", default-features = false, features = [
   "derive",
   "cargo",
 ] }
-cloudproof = { version = "2.2.5", features = ["findex-redis"] }
+cloudproof = { version = "2.3.0", features = ["findex-redis"] }
 env_logger = "0.10"
 hex = "0.4"
 http = "0.2"

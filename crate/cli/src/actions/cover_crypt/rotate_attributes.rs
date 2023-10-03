@@ -1,7 +1,9 @@
 use clap::Parser;
 use cloudproof::reexport::cover_crypt::abe_policy::Attribute;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::cover_crypt::kmip_requests::build_rekey_keypair_request;
+use cosmian_kms_utils::crypto::cover_crypt::{
+    attributes::EditPolicyAction, kmip_requests::build_rekey_keypair_request,
+};
 
 use crate::{
     cli_bail,
@@ -55,7 +57,8 @@ impl RotateAttributesAction {
         };
 
         // Create the kmip query
-        let rotate_query = build_rekey_keypair_request(&id, ats)?;
+        let rotate_query =
+            build_rekey_keypair_request(&id, EditPolicyAction::RotateAttributes(ats))?;
 
         // Query the KMS with your kmip data
         let rotate_response = kms_rest_client

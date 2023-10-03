@@ -1,5 +1,5 @@
 use cloudproof::reexport::cover_crypt::abe_policy::{
-    Attribute, EncryptionHint, Policy, PolicyAxis,
+    Attribute, DimensionBuilder, EncryptionHint, Policy,
 };
 use cosmian_kmip::kmip::{
     kmip_operations::{
@@ -9,9 +9,12 @@ use cosmian_kmip::kmip::{
     kmip_types::RevocationReason,
 };
 use cosmian_kms_utils::crypto::{
-    cover_crypt::kmip_requests::{
-        build_create_master_keypair_request, build_create_user_decryption_private_key_request,
-        build_destroy_key_request, build_rekey_keypair_request,
+    cover_crypt::{
+        attributes::EditPolicyAction,
+        kmip_requests::{
+            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
+            build_destroy_key_request, build_rekey_keypair_request,
+        },
     },
     generic::kmip_requests::{build_decryption_request, build_encryption_request},
 };
@@ -27,8 +30,8 @@ async fn integration_tests_with_tags() -> KResult<()> {
 
     let app = test_utils::test_app().await;
 
-    let mut policy = Policy::new(10);
-    policy.add_axis(PolicyAxis::new(
+    let mut policy = Policy::new();
+    policy.add_dimension(DimensionBuilder::new(
         "Department",
         vec![
             ("MKG", EncryptionHint::Classic),
@@ -37,7 +40,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         ],
         false,
     ))?;
-    policy.add_axis(PolicyAxis::new(
+    policy.add_dimension(DimensionBuilder::new(
         "Level",
         vec![
             ("Confidential", EncryptionHint::Classic),
@@ -201,7 +204,10 @@ async fn integration_tests_with_tags() -> KResult<()> {
     // Rekey all key pairs with matching ABE attributes
     let abe_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
 
-    let request = build_rekey_keypair_request(&mkp_json_tag, abe_policy_attributes)?;
+    let request = build_rekey_keypair_request(
+        &mkp_json_tag,
+        EditPolicyAction::RotateAttributes(abe_policy_attributes),
+    )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
         &rekey_keypair_response.private_key_unique_identifier,
