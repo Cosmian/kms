@@ -109,7 +109,7 @@ ENV LC_ALL C.UTF-8
 
 WORKDIR /root
 
-RUN mkdir -p scripts 
+RUN mkdir -p scripts
 # private_data, public_data and shared_data are supposed to be given as parameters of the docker run
 
 COPY --from=minimal-rust /root/target/release/cosmian_kms_server scripts/server

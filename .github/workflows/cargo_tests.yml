@@ -81,8 +81,8 @@ jobs:
         run: |
           rm -rf /tmp/sqlite-data /tmp/tmp.json
           export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
-          cargo build --no-default-features --features insecure
-          cargo test  --no-default-features --features insecure -- --nocapture
+          cargo build --no-default-features
+          cargo test  --no-default-features -- --nocapture
           cargo test --bins -- --nocapture
         env:
           POSTGRES_USER: kms
@@ -95,7 +95,6 @@ jobs:
           MYSQL_ROOT_PASSWORD: kms
           KMS_MYSQL_URL: mysql://root:kms@mariadb/kms
 
-          KMS_DELEGATED_AUTHORITY_DOMAIN: kms-cosmian.eu.auth0.com
           KMS_ENCLAVE_DIR_PATH: data/public
           KMS_SQLITE_PATH: data/shared
           KMS_CERTBOT_SSL_PATH: data/private

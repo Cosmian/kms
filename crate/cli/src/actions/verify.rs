@@ -96,7 +96,7 @@ impl TeeAction {
             .await
             .map_err(|e| CliError::Default(format!("Can't verify quote: {e}")))?
         {
-            Ok(_) => println!("Verification succeed"),
+            Ok(()) => println!("Verification succeed"),
             Err(e) => return Err(e.into()),
         }
 

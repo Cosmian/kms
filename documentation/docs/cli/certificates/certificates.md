@@ -174,6 +174,7 @@ ckms certificates export [OPTIONS] --format <OUTPUT_FORMAT> <CERTIFICATE_FILE>
 ## Import
 
 Import into the KMS database the following elements:
+
 - a certificate (as PEM or TTLV format)
 - a private key (as PEM or TTLV format)
 - a certificate chain as a PEM-stack

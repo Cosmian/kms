@@ -19,7 +19,7 @@ The KMS enables you to check its trustworthiness. To do so, two routes are usefu
 With these routes, you can proceed a remote attestation. Note that the report data of the quote is generated has follow:
 
 ```c
-report_data = Sha256(PEM certificate) + nonce 
+report_data = Sha256(PEM certificate) + nonce
 ```
 
 Let's explain why:

@@ -7,7 +7,7 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-exclude: crate/cli/test_data|crate/cli/demo.sh|scripts/deploy_sgx.sh|documentation/pandoc|documentation/overrides|crate/cli/remove/kms.json|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml
+exclude: crate/cli/test_data|crate/cli/demo.sh|scripts/deploy_sgx.sh|documentation/pandoc|documentation/overrides|crate/cli/remove/kms.json|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml|.github/workflows/python_and_docker.yml|sgx
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v2.1.1
@@ -29,7 +29,15 @@ repos:
     rev: v0.32.2
     hooks:
       - id: markdownlint-fix
-        args: [--disable=MD004, --disable=MD013, --disable=MD024, --disable=MD029, --disable=MD041, --disable=MD046]
+        args:
+          [
+            --disable=MD004,
+            --disable=MD013,
+            --disable=MD024,
+            --disable=MD029,
+            --disable=MD041,
+            --disable=MD046,
+          ]
 
   - repo: https://github.com/Lucas-C/pre-commit-hooks-nodejs
     rev: v1.1.2
@@ -42,7 +50,7 @@ repos:
     rev: 0.2.2
     hooks:
       - id: yamlfmt
-        args: [--mapping, '2', --sequence, '4', --offset, '2']
+        args: [--mapping, "2", --sequence, "4", --offset, "2"]
 
   - repo: https://github.com/crate-ci/typos
     rev: v1.13.1
@@ -111,6 +119,18 @@ repos:
         # avoid clash with `double-quote-string-fixer`
         args: [--skip-string-normalization]
 
+  - repo: https://github.com/Cube707/mkdocs
+    rev: e8733d1373c1543d6052925d3272b2ff51dbb140
+    hooks:
+      - id: mkdocs-build
+        additional_dependencies:
+          - mkdocs-plugin-progress
+          - mkdocs-kroki-plugin
+          - mkdocs-material
+          - mkdocs-meta-descriptions-plugin
+          - markdown-katex
+        entry: bash -c 'cd documentation && mkdocs build --strict'
+
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.16
     hooks:
@@ -123,11 +143,8 @@ repos:
       - id: cargo-test
       - id: cargo-audit
       - id: cargo-outdated
-      # - id: cargo-udeps
-      # - id: cargo-test-doc
       - id: clippy-autofix-all
       - id: clippy-autofix-pedantic
       - id: clippy-autofix-others
-      # - id: clippy-all-targets-all-features
       - id: clippy-all-targets-all-features-release
       - id: cargo-format # in last du to clippy fixes

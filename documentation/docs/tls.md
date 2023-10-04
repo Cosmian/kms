@@ -29,7 +29,7 @@ Say the certificate is called `server.mydomain.com.p12`, is protected by the pas
 ```sh
 docker run --rm -p 443:9998 \
   -v /certificate/server.mydomain.com.p12:/root/cosmian-kms/server.mydomain.com.p12 \
-  --name kms ghcr.io/cosmian/kms:4.6.0 \
+  --name kms ghcr.io/cosmian/kms:4.7.0 \
   --database-type=mysql \
   --database-url=mysql://mysql_server:3306/kms \
   --https-p12-file=server.mydomain.com.p12 \
@@ -59,7 +59,7 @@ The hostname must be a valid DNS A or AAAA record pointing to the IP address of 
 
 By default, the bot saves the certificates inside the container in the `/root/cosmian-kms/certbot-ssl` directory. This directory is adjustable with the `--certbot-ssl-path` option. Ensure this directory is mapped to a host directory or persistent docker volume to persist the generated certificates between restarts.
 
-If the KMS runs inside a TEE, you can also use the option `--certbot-use-tee-key` following by an hexadecimal string standing for a salt in order to generate the TLS key using the TEE. The key is tied to the TEE starting parameters and the code. Two KMS instances from the same code and the same TEE parameters will generate the same TLS key for a given salt. 
+If the KMS runs inside a TEE, you can also use the option `--certbot-use-tee-key` following by an hexadecimal string standing for a salt in order to generate the TLS key using the TEE. The key is tied to the TEE starting parameters and the code. Two KMS instances from the same code and the same TEE parameters will generate the same TLS key for a given salt.
 
 Example:
 
@@ -67,7 +67,7 @@ Example:
 docker run --rm -p 443:9998 \
   -v cosmian-kms:/root/cosmian-kms/sqlite-data \
   -v cosmian-kms-certs:/root/cosmian-kms/certbot-ssl \
-  --name kms ghcr.io/cosmian/kms:4.6.0 \
+  --name kms ghcr.io/cosmian/kms:4.7.0 \
   --database-type=sqlite-enc \
   --use-certbot \
   --certbot-server-name server.mydomain.com \

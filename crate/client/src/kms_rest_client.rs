@@ -688,7 +688,7 @@ async fn handle_error(response: Response) -> Result<String, RestClientError> {
     }
 }
 
-/// Build a TLSClient to use with a KMS running inside a tee
+/// Build a `TLSClient` to use with a KMS running inside a tee
 /// The TLS verification is the basic one but also include the verification of the leaf certificate
 /// The TLS socket is mounted since the leaf certificate is exactly the same than the expected one.
 pub fn build_tls_client_tee(

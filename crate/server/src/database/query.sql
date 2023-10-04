@@ -34,9 +34,9 @@ DELETE FROM tags;
 INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4);
 
 -- name: select-object
-SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions 
-        FROM objects 
-        LEFT JOIN read_access 
+SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions
+        FROM objects
+        LEFT JOIN read_access
         ON objects.id = read_access.id AND ( read_access.userid=$2 OR read_access.userid='*' )
         WHERE objects.id=$1;
 
@@ -105,7 +105,7 @@ FROM objects
 INNER JOIN (
     SELECT id
     FROM tags
-    WHERE tag IN (@TAGS) 
+    WHERE tag IN (@TAGS)
     GROUP BY id
     HAVING COUNT(DISTINCT tag) = @LEN
 ) AS matched_tags

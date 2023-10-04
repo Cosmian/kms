@@ -1,6 +1,6 @@
 # Cosmian KMS
 
-![Build status](https://github.com/Cosmian/kms/actions/workflows/ci.yml/badge.svg)
+![Build status](https://github.com/Cosmian/kms/actions/workflows/ci.yml/badge.svg?branch=main)
 
 Cosmian KMS is an open-source implementation of a high-performance, massively scalable, **Key Management System** that presents some unique features, such as
 
