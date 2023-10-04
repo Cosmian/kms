@@ -3,11 +3,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use acme_lib::{
-    create_p384_key, persist::FilePersist, Account, Certificate, Directory, DirectoryUrl,
-};
+use acme_lib::{persist::FilePersist, Account, Certificate, Directory, DirectoryUrl};
 use openssl::{
-    pkey::{PKey, Private},
+    pkey::{self, PKey, Private},
     x509::X509,
 };
 
@@ -130,7 +128,7 @@ impl Certbot {
         kms_bail!("Certificate can't be found...");
     }
 
-    pub fn request_cert(&mut self) -> KResult<()> {
+    pub fn request_cert(&mut self, private_key: &PKey<pkey::Private>) -> KResult<()> {
         let acc = self
             .account
             .as_ref()
@@ -195,16 +193,11 @@ impl Certbot {
             fs::remove_dir_all(&target_parent)?;
         };
 
-        // Ownership is proven. Create a private key for
-        // the certificate. These are provided for convenience, you
-        // can provide your own keypair instead if you want.
-        let pkey_pri = create_p384_key();
-
-        // Submit the CSR. This causes the ACME provider to enter a
+        // Submit th: PKey<Private>e CSR. This causes the ACME provider to enter a
         // state of "processing" that must be polled until the
         // certificate is either issued or rejected. Again we poll
         // for the status change.
-        let ord_cert = ord_csr.finalize_pkey(pkey_pri, 5000)?;
+        let ord_cert = ord_csr.finalize_pkey(private_key.clone(), 5000)?;
 
         // Now download the certificate. Also stores the cert in
         // the persistence.
