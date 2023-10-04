@@ -16,7 +16,7 @@ use crate::{
     error::{result::CliResultHelper, CliError},
 };
 
-/// Query the enclave to check its trustworthiness
+/// Query the KMS to check its trustworthiness. Validate the TLS certificate to use in any further queries.
 #[derive(Parser, Debug)]
 pub struct TeeAction {
     /// The path to store working files (quote, certificate, ...)

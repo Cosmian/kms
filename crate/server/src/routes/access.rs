@@ -80,7 +80,7 @@ pub async fn grant_access(
     let user = kms.get_user(req)?;
     info!("POST /access/grant {access:?} {user}");
 
-    kms.insert_access(&access, &user, database_params.as_ref())
+    kms.grant_access(&access, &user, database_params.as_ref())
         .await?;
     debug!(
         "Access granted on {:?} for {:?} to {}",

@@ -60,8 +60,8 @@ fn not(b: &bool) -> bool {
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone, Default)]
 pub struct TeeConf {
-    // tls_verify = true means that the leaf certificate needs to be the exact one
-    // used when verifying the quote. This option should be true if the KMS has been deployed on a TEE. False is unsecured.
+    // verified_cert = Some(PEM) means that the leaf certificate needs to be the exact one
+    // used when verifying the quote. This option should be set if the KMS has been deployed on a TEE. None is unsecured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) verified_cert: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -196,7 +196,6 @@ impl BootstrapRestClient {
         }
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 
-        // Create a client builder hat accepts invalid certs
         let builder = ClientBuilder::new();
 
         // If a PKCS12 file is provided, use it to build the client

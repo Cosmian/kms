@@ -26,6 +26,7 @@ hex = { workspace = true }
 openssl = { workspace = true }
 rand = "0.8"
 ratls = { workspace = true }
+reqwest = { workspace = true }
 rustls = { workspace = true }
 tee_attestation = { workspace = true }
 serde = { workspace = true }

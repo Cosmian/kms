@@ -26,7 +26,6 @@ use cosmian_kms_utils::{
     },
     tee::forge_report_data,
 };
-use tee_attestation::get_quote;
 use tracing::debug;
 use uuid::Uuid;
 
@@ -147,7 +146,10 @@ impl KMS {
     /// Return the enclave quote
     ///
     /// This service is not available if the server is not running inside an enclave
+    #[cfg(target_os = "linux")]
     pub fn get_attestation_report(&self, nonce: [u8; 32]) -> KResult<String> {
+        use tee_attestation::get_quote;
+
         let certificate = self.get_server_x509_certificate()?;
 
         if let Some(certificate) = certificate {

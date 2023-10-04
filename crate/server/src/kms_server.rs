@@ -440,8 +440,8 @@ pub fn prepare_kms_server(
         };
 
         if is_running_inside_tee {
-            app.service(routes::tee::get_attestation_report)
-                .service(routes::tee::get_enclave_public_key)
+            app.service(routes::tee::get_enclave_public_key)
+                .service(routes::tee::get_attestation_report)
         } else {
             app
         }

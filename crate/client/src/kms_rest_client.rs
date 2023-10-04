@@ -495,8 +495,6 @@ impl KmsRestClient {
         }
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 
-        // Use RUSTTLS
-
         // We deal with 4 scenarios:
         // 1. HTTP: no TLS
         // 2. HTTPS:
@@ -508,7 +506,6 @@ impl KmsRestClient {
         let builder = if let Some(certificate) = allowed_tee_tls_cert {
             build_tls_client_tee(certificate, accept_invalid_certs)?
         } else {
-            println!("Insecure: {accept_invalid_certs}");
             ClientBuilder::new().danger_accept_invalid_certs(accept_invalid_certs)
         };
 
