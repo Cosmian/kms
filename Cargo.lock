@@ -3707,7 +3707,11 @@ dependencies = [
 [[package]]
 name = "sev_quote"
 version = "0.1.0"
+<<<<<<< HEAD
 source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#d1be62d6e9ee1b2e169997fc80c694578c29b24a"
+=======
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#2d14dcdb20c791d4642c4ee91d5b42adf8051205"
+>>>>>>> dd1fafb (:recycle: rebase)
 dependencies = [
  "asn1",
  "asn1-rs",
