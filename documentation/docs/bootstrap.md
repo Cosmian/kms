@@ -11,7 +11,7 @@ When [running in a zero-trust environment](./zero_trust.md) inside a confidentia
 To start the KMS server in bootstrap mode, use the `--use-bootstrap-server` option:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 \
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.7.0 \
   --use-bootstrap-server
 ```
 
@@ -22,13 +22,11 @@ Two options can be used to further configure the bootstrap server TLS connection
 
 - `--bootstrap-server-port <BOOTSTRAP_SERVER_PORT>` to specify the bootstrap server TLS port. The default value is `9998`. When changed, the docker port mapping must be updated accordingly.
 
-
 ##### Running inside a confidential VM
 
 When [running in a zero-trust environment](./zero_trust.md) inside a confidential VM, the bootstrap server should be started with the `--ensure-ra-tls` option. This will ensure that the bootstrap server self-signed TLS certificate contains information (a `quote`) that will enable the `ckms` client to verify the correctness of the environment (correct confidential hardware and correct KMS server code). Such server certificate is called an "RA TLS certificate" where RA stands for "Remote Attestation".
 
 If the `ensure-ra-tls` option is enabled on a machine that does not have a confidential CPU, the bootstrap server will fail to start.
-
 
 #### Available configurations
 

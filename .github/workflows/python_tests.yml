@@ -15,9 +15,6 @@ jobs:
         image: ghcr.io/cosmian/kms:${{ inputs.kms-version }}
         env:
           COSMIAN_SERVER_URL: http://localhost:9998
-          KMS_PUBLIC_PATH: /tmp
-          KMS_PRIVATE_PATH: /tmp
-          KMS_SHARED_PATH: /tmp
         ports:
           - 9998:9998
 

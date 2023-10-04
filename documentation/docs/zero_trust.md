@@ -34,11 +34,10 @@ To perform a zero-trust deployment, the system administrator must follow the ste
 
 The KMS servers must be installed in confidential VMs and started in bootstrap mode.
 
-- The install procedure for SGX enclaves and TDX and SEV-SNP confidential VMs is available [here](./confidential_vm_install.md).
-- To start the database server in bootstrap mode, use the `-use-bootstrap-server` option (see [bootstrap](./bootstrap.md) from more details) on the docker started in the confidential VM : 
+- To start the database server in bootstrap mode, use the `-use-bootstrap-server` option (see [bootstrap](./bootstrap.md) from more details) on the docker started in the confidential VM :
 
 ```bash
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 --use-bootstrap-server
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.7.0 --use-bootstrap-server
 ```
 
 - To use the TLS generation using LetsEncrypt inside the confidential VM add the arguments described in [tls](./tls.md#using-the-certificates-bot)
@@ -54,7 +53,8 @@ On SGX, for example, you could install and start the KMS server using a docker b
 sudo docker build -f sgx/Dockerfile.sgx -t enclave-kms .
 ```
 
-3. Run the docker 
+3. Run the docker
+
 ```bash
 # Plain text directory
 mkdir -p public_data/
@@ -74,17 +74,17 @@ sudo docker run \
     -it enclave-kms
 ```
 
-4. (KMS owner) Configure the bootstrap server remotly. Don't forget to edit the cli configuration file with the proper measurement values and the KMS server url. This step also transparently verifies the RATLS connection.
+4. (KMS owner) Configure the bootstrap server remotely. Don't forget to edit the cli configuration file with the proper measurement values and the KMS server url. This step also transparently verifies the RA-TLS connection.
 
 ```bash
 KMS_CLI_CONF=sgx/kms-test.json ckms bootstrap-start \
                                     --database-type redis-findex \
                                     --database-url redis://redis-server:6379 \
                                     --redis-master-password master-password \
-                                    --redis-findex-label label 
+                                    --redis-findex-label label
 ```
 
-5. (KMS user) Verify the trustworthiness of the KMS. Don't forget to edit the cli configuration file with the proper measurement values and the KMS server url. 
+5. (KMS user) Verify the trustworthiness of the KMS. Don't forget to edit the cli configuration file with the proper measurement values and the KMS server url.
 
 ```bash
 KMS_CLI_CONF=sgx/kms-test.json ckms verify
@@ -134,5 +134,4 @@ The main KMS server is now started, and the bootstrap will shutdown.
 
 The users, like the system administrator, can attest to the correctness of the installation by using the `ckms` CLI `verify` subcommand. Please check the [`ckms` documentation](./cli/cli.md) for more details on performing this operation.
 
-The `ckms` CLI will connect to the API endpoint `/quote` to get the attestation report and verify it locally. Once verified, the TLS certificate used to query this endpoint will be the only one accepted for any further queries. This way, the user is confident that the KMS is still trusted at any time. 
-
+The `ckms` CLI will connect to the API endpoint `/quote` to get the attestation report and verify it locally. Once verified, the TLS certificate used to query this endpoint will be the only one accepted for any further queries. This way, the user is confident that the KMS is still trusted at any time.

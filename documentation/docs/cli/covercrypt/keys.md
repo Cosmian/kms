@@ -60,7 +60,7 @@ ckms cc keys create-master-key-pair [OPTIONS]
         or to extract it from existing keys
 
 -t, --tag <TAG>
-        The tag to associate with the master key pair. 
+        The tag to associate with the master key pair.
         To specify multiple tags, use the option multiple times
 
 -h, --help
@@ -127,7 +127,7 @@ ckms cc keys create-user-key <MASTER_PRIVATE_KEY_ID> <ACCESS_POLICY>
 
 ```sh
 -t, --tag <TAG>
-        The tag to associate with the user decryption key. 
+        The tag to associate with the user decryption key.
         To specify multiple tags, use the option multiple times
 
 -h, --help
@@ -240,8 +240,8 @@ ckms cc keys import [OPTIONS] <KEY_FILE> [KEY_ID]
         Replace an existing key under the same id
 
 -t, --tag <TAG>
-        The tag to associate with the key. 
-        To specify multiple tags, use the option multiple times          
+        The tag to associate with the key.
+        To specify multiple tags, use the option multiple times
 
 -h, --help
         Print help (see a summary with '-h')
@@ -376,11 +376,11 @@ ckms cc keys revoke [OPTIONS] <REVOCATION_REASON>
 
 ```sh
 -k, --key-id <KEY_ID>
-        The key unique identifier of the key to revoke. 
+        The key unique identifier of the key to revoke.
         If not specified, tags should be specified
 
 -t, --tag <TAG>
-        Tag to use to retrieve the key when no key id is specified. 
+        Tag to use to retrieve the key when no key id is specified.
         To specify multiple tags, use the option multiple times
 
 -h, --help
@@ -409,11 +409,11 @@ ckms cc keys destroy [OPTIONS]
 
 ```sh
 -k, --key-id <KEY_ID>
-        The key unique identifier. 
+        The key unique identifier.
         If not specified, tags should be specified
 
 -t, --tag <TAG>
-        Tag to use to retrieve the key when no key id is specified. 
+        Tag to use to retrieve the key when no key id is specified.
         To specify multiple tags, use the option multiple times
 
 -h, --help

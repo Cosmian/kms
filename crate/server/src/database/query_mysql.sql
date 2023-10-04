@@ -35,10 +35,10 @@ DELETE FROM tags;
 INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?);
 
 -- name: select-object
-SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions 
-        FROM objects 
-        LEFT JOIN read_access 
-        ON objects.id = read_access.id AND ( read_access.userid=? OR read_access.userid='*' ) 
+SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions
+        FROM objects
+        LEFT JOIN read_access
+        ON objects.id = read_access.id AND ( read_access.userid=? OR read_access.userid='*' )
         WHERE objects.id=?;
 
 -- name: update-object-with-object
@@ -57,13 +57,13 @@ INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?)
                 state = IF(objects.owner=?, VALUES(state), state);
 
 -- name: select-user-accesses-for-object
-SELECT permissions 
-        FROM read_access 
+SELECT permissions
+        FROM read_access
         WHERE id=? AND userid=?;
 
 -- name: upsert-row-read_access
-INSERT INTO read_access (id, userid, permissions) VALUES (?, ?, ?) 
-        ON DUPLICATE KEY 
+INSERT INTO read_access (id, userid, permissions) VALUES (?, ?, ?)
+        ON DUPLICATE KEY
         UPDATE permissions = IF((id=VALUES(id)) AND (userid=VALUES(userid)), VALUES(permissions), permissions);
 
 -- name: delete-rows-read_access
@@ -104,7 +104,7 @@ FROM objects
 INNER JOIN (
     SELECT id
     FROM tags
-    WHERE tag IN (@TAGS) 
+    WHERE tag IN (@TAGS)
     GROUP BY id
     HAVING COUNT(DISTINCT tag) = ?
 ) AS matched_tags

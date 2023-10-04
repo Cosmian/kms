@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SGX_SIGNER_KEY="/opt/cosmian-internal/cosmian-signer-key.pem" 
+SGX_SIGNER_KEY="/opt/cosmian-internal/cosmian-signer-key.pem"
 
 if [ $# -eq 0 ]; then
     if ! [ -e "/dev/sgx_enclave" ]; then

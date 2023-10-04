@@ -21,7 +21,6 @@ pyo3 = { version = "0.18", features = [
     "generate-import-lib",
 ] }
 pyo3-asyncio = { version = "0.18", features = ["tokio-runtime"] }
-rustls = { workspace = true }
 serde_json = { workspace = true }
 
 # Added with build.rs to fix build issues on MacOS

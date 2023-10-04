@@ -56,18 +56,6 @@ jobs:
           file: delivery/Dockerfile.standalone
           network: host
 
-      - name: Re-tag docker for git tags
-        if: startsWith(github.ref, 'refs/tags')
-        env:
-          BUILD_IMAGE: ${{ env.REGISTRY_IMAGE }}:${{ github.ref_name }}
-        run: |
-          # Get the latest main image
-          docker pull ${{ env.REGISTRY_IMAGE }}:main
-          # Tag it with the tag name
-          docker tag ${{ env.REGISTRY_IMAGE }}:main ${BUILD_IMAGE}
-          # Push the tagged image
-          docker push ${BUILD_IMAGE}
-
     outputs:
       image-tag: ${{ steps.meta.outputs.version }}
 
@@ -86,10 +74,10 @@ jobs:
       - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_js.yml@develop
     with:
-      branch: v9.1.0
+      branch: ser_server_side
       target: wasm32-unknown-unknown
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
-      findex-cloud-version: 0.1.0
+      findex-cloud-version: 0.3.1
       copy_fresh_build: false
 
   cloudproof_java:
@@ -104,7 +92,7 @@ jobs:
       destination: linux-x86-64
       os: ubuntu-20.04
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
-      findex-cloud-version: 0.1.0
+      findex-cloud-version: 0.3.1
       copy_fresh_build: false
 
   cloudproof_python:
@@ -113,7 +101,7 @@ jobs:
       - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@develop
     with:
-      branch: develop
+      branch: v4.1.0
       target: x86_64-unknown-linux-gnu
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       copy_fresh_build: true

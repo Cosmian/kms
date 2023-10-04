@@ -6,7 +6,7 @@ The Cosmian KMS is designed to [operate in **zero-trust** environments](./zero_t
     To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.7.0
     ```
 
     Check the Cosmian KMS server version
@@ -78,7 +78,7 @@ The KMS has an easy-to-use command line interface client built for many operatin
 
 The KMS server is available as a Docker image on the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
-Raw binaries for multiple operating systems are also available on the [Cosmian public packages repository](https://package.cosmian.com/kms/4.6.0/)
+Raw binaries for multiple operating systems are also available on the [Cosmian public packages repository](https://package.cosmian.com/kms/4.7.0/)
 
 #### Integrated with Cloudproof libraries
 
@@ -91,7 +91,7 @@ The libraries are available in many languages, including Javascript, Java, Dart,
 Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has a built-in help system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.6.0 --help
+docker run --rm ghcr.io/cosmian/kms:4.7.0 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the options help.
@@ -113,195 +113,195 @@ Options:
             A key must be supplied on every call
           - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
             The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
-          
+
           The database configuration can be securely provided via the bootstrap server. Check the documentation.
-          
+
           [env: KMS_DATABASE_TYPE=]
           [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
 
       --database-url <DATABASE_URL>
           The url of the database for postgresql, mysql or findex-redis
-          
+
           [env: KMS_DATABASE_URL=]
 
       --sqlite-path <SQLITE_PATH>
           The directory path of the sqlite or sqlite-enc
-          
+
           [env: KMS_SQLITE_PATH=]
           [default: ./sqlite-data]
 
       --redis-master-password <REDIS_MASTER_PASSWORD>
           redis-findex: a master password used to encrypt the Redis data and indexes
-          
+
           [env: KMS_REDIS_MASTER_PASSWORD=]
 
       --redis-findex-label <REDIS_FINDEX_LABEL>
           redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
-          
+
           [env: KMS_REDIS_FINDEX_LABEL=]
 
       --clear-database
           Clear the database on start.
           WARNING: This will delete ALL the data in the database
-          
+
           [env: KMS_CLEAR_DATABASE=]
 
       --port <PORT>
           The KMS server port
-          
+
           [env: KMS_PORT=]
           [default: 9998]
 
       --hostname <HOSTNAME>
           The KMS server (and bootstrap server) hostname
-          
+
           [env: KMS_HOSTNAME=]
           [default: 0.0.0.0]
 
       --https-p12-file <HTTPS_P12_FILE>
           The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode.
-          
+
           The PKCS#12 can be securely provided via the bootstrap server. Check the documentation.
-          
+
           [env: KMS_HTTPS_P12_FILE=]
 
       --https-p12-password <HTTPS_P12_PASSWORD>
           The password to open the PKCS#12 Certificates and Key file
-          
+
           The PKCS#12 password can be securely provided via the bootstrap server. Check the documentation.
-          
+
           [env: KMS_HTTPS_P12_PASSWORD=]
           [default: ]
 
       --authority-cert-file <AUTHORITY_CERT_FILE>
           The server optional authority X509 certificate in PEM format used to validate the client certificate presented for authentication. If provided, this will require clients to present a certificate signed by this authority for authentication. The server must run in TLS mode for this to be used
-          
+
           [env: KMS_AUTHORITY_CERT_FILE=]
 
       --jwt-issuer-uri <JWT_ISSUER_URI>
           The issuer URI of the JWT token
-          
+
           For Auth0, this is the delegated authority domain configured on Auth0, for instance `https://<your-tenant>.<region>.auth0.com/`
-          
+
           For Google, this would be `https://accounts.google.com`
-          
+
           [env: KMS_JWT_ISSUER_URI=]
 
       --jwks-uri <JWKS_URI>
           The JWKS (Json Web Key Set) URI of the JWT token
-          
+
           For Auth0, this would be `https://<your-tenant>.<region>.auth0.com/.well-known/jwks.json`
-          
+
           For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
-          
+
           Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` is not set
-          
+
           [env: KMS_JWKS_URI=]
 
       --jwt-audience <JWT_AUDIENCE>
           The audience of the JWT token
-          
+
           Optional: the server will validate the JWT `aud` claim against this value if set
-          
+
           [env: KMS_JST_AUDIENCE=]
 
       --use-bootstrap-server
           Whether configuration should be finalized using a bootstrap server
-          
+
           [env: KMS_USE_BOOTSTRAP_SERVER=]
 
       --bootstrap-server-subject <BOOTSTRAP_SERVER_SUBJECT>
           Subject as an RFC 4514 string for the RA-TLS certificate in the bootstrap server
-          
+
           [env: KMS_BOOTSTRAP_SERVER_SUBJECT=]
           [default: "CN=cosmian.kms,O=Cosmian Tech,C=FR,L=Paris,ST=Ile-de-France"]
 
       --bootstrap-server-expiration-days <BOOTSTRAP_SERVER_EXPIRATION_DAYS>
           Number of days before the certificate expires
-          
+
           [env: KMS_BOOTSTRAP_SERVER_EXPIRATION_DAYS=]
           [default: 365]
 
       --bootstrap-server-port <BOOTSTRAP_SERVER_PORT>
           The bootstrap server may be started on a specific port, The hostname will be that configured in --hostname
-          
+
           [env: KMS_BOOTSTRAP_SERVER_PORT=]
           [default: 9998]
 
       --ensure-ra-tls
           Ensure RA-TLS is available and used. The server will not start if this is not the case
-          
+
           [env: KMS_ENSURE_RA_TLS=]
 
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user HOME directory
-          
+
           [env: KMS_ROOT_DATA_PATH=]
           [default: ./cosmian-kms]
 
       --tmp-path <TMP_PATH>
           The folder to store temporary data (non-persistent data readable by no-one but the current instance during the current execution)
-          
+
           [env: KMS_TMP_PATH=]
           [default: /tmp]
 
       --use-certbot
           Enable TLS and use Let's Encrypt certbot to get a certificate
-          
+
           [env: KMS_USE_CERTBOT=]
 
       --certbot-use-tee-key
           Use TEE key generation to generate the certificate certificate (only available on tee)
-          
+
           [env: KMS_CERTBOT_USE_TEE_KEY=]
 
       --certbot-hostname <CERTBOT_HOSTNAME>
           The hostname of the KMS HTTPS server that will be used as the Common Name in the Let's Encrypt certificate
-          
+
           [env: KMS_CERTBOT_HOSTNAME=]
           [default: ]
 
       --certbot-email <CERTBOT_EMAIL>
           The email used during the Let's Encrypt certbot certification process
-          
+
           [env: KMS_CERTBOT_EMAIL=]
           [default: ]
 
       --certbot-ssl-path <CERTBOT_SSL_PATH>
           The folder where the KMS will store the SSL material created by certbot
-          
+
           A relative path is taken relative to the root_data_path
-          
+
           [env: KMS_CERTBOT_SSL_PATH=]
           [default: ./certbot-ssl]
 
       --default-username <DEFAULT_USERNAME>
           The default username to use when no authentication method is provided
-          
+
           [env: KMS_DEFAULT_USERNAME=]
           [default: admin]
 
       --force-default-username
           When an authentication method is provided, perform the authentication but always use the default username instead of the one provided by the authentication method
-          
+
           [env: KMS_FORCE_DEFAULT_USERNAME=]
 
       --jwk-private-key <JWK_PRIVATE_KEY>
           Enable the use of encryption by providing a JWK private key as JSON
-          
+
           [env: JWK_PRIVATE_KEY=]
 
       --tee-dir-path <TEE_DIR_PATH>
           The directory where the public key or other required files are located This path should not be encrypted by the enclave and should be directly readable from it
-          
+
           A relative path is taken relative to the root_data_path
-          
+
           [env: KMS_TEE_DIR_PATH=]
           [default: ./tee]
 
       --sgx-public-signer-key-filename <SGX_PUBLIC_SIGNER_KEY_FILENAME>
           The filename of the public key for SGX
-          
+
           [env: KMS_SGX_PUBLIC_SIGNER_KEY_FILENAME=]
 
   -h, --help

@@ -142,3 +142,29 @@ jobs:
       - python_publish
     uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
     secrets: inherit
+
+  public_documentation:
+    needs:
+      - cleanup
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Deploy documentation in staging
+        if: ${{ github.ref_name == 'develop' }}
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: staging.yml
+          repo: Cosmian/public_documentation
+          ref: develop
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Deploy documentation in prod
+        if: startsWith(github.ref, 'refs/tags')
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: prod.yml
+          repo: Cosmian/public_documentation
+          ref: main
+          token: ${{ secrets.PAT_TOKEN }}

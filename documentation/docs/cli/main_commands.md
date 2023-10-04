@@ -217,7 +217,7 @@ ckms locate [OPTIONS]
 -h, --help                 Print help
 ```
 
-### [new-database](enclaves.md) 
+### [new-database](enclaves.md)
 
 Initialize a new user encrypted database and return the secret (SQLCipher only).
 
@@ -240,7 +240,7 @@ ckms new-database
 ### verify
 
 When running the KMS inside a secure environment (TEE), before any query,
-the user needs to verify the trustworthiness of the KMS. 
+the user needs to verify the trustworthiness of the KMS.
 
 First, edit the CLI configuration file by adding the measurements in the `tee_conf` section.
 
@@ -252,15 +252,15 @@ ckms verify
 
 If the verification fails, *DO NOT* use this KMS instance.
 
-If the verification succeeds, the CLI will update the configuration by adding the TLS certificate used to communicate 
-with the KMS during the verification stage. 
+If the verification succeeds, the CLI will update the configuration by adding the TLS certificate used to communicate
+with the KMS during the verification stage.
 
-This certificate will then be the only allowed for any further requests to the KMS. 
+This certificate will then be the only allowed for any further requests to the KMS.
 
-The user can then used the CLI with full trust and does not need 
-to restart the verification process as long as the KMS is not updated. 
+The user can then used the CLI with full trust and does not need
+to restart the verification process as long as the KMS is not updated.
 
-If a query to the KMS fails because the certificates don't match, proceed a new verification. Otherwise, call the KMS administrator.  
+If a query to the KMS fails because the certificates don't match, proceed a new verification. Otherwise, call the KMS administrator.
 
 ### [sym](sym/sym.md)
 

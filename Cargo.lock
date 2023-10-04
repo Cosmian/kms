@@ -1203,7 +1203,6 @@ dependencies = [
  "pyo3",
  "pyo3-asyncio",
  "pyo3-build-config",
- "rustls 0.20.8",
  "serde_json",
 ]
 
@@ -1225,7 +1224,6 @@ dependencies = [
  "async-recursion",
  "async-trait",
  "base64 0.21.4",
- "bincode",
  "clap",
  "cloudproof",
  "cosmian_kmip",

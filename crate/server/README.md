@@ -85,7 +85,7 @@ The KMS server relies on an OAuth2 authentication provided by Auth0 to authentic
 Example of how to run for test authentication:
 
 ```sh
-KMS_DELEGATED_AUTHORITY_DOMAIN="kms-cosmian.eu.auth0.com" cargo run
+KMS_JWT_ISSUER_URI="kms-cosmian.eu.auth0.com" cargo run
 ```
 
 This authentication enables the KMS to deal with several users with the same database.
