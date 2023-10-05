@@ -6,7 +6,6 @@ use std::{
     time::Duration,
 };
 
-use acme_lib::create_p384_key;
 use actix_cors::Cors;
 use actix_web::{
     dev::ServerHandle,
@@ -226,11 +225,10 @@ async fn start_auto_renew_https(
 
             // It's time to renew!!
             info!("Updating certificate now...");
-            let pkey_pri = create_p384_key();
             let request_cert = cert_copy
                 .lock()
                 .expect("can't lock certificate mutex")
-                .request_cert(&pkey_pri);
+                .request_cert();
             match request_cert {
                 Ok(()) => restart_me.store(true, Ordering::Relaxed),
                 Err(error) => {
@@ -314,11 +312,10 @@ async fn start_certbot_https_kms_server(
         spawn(async move {
             // Generate the certificate in another thread
             info!("Requesting acme...");
-            let pkey_pri = create_p384_key();
             let request_cert = cert_copy
                 .lock()
                 .expect("can't lock certificate mutex")
-                .request_cert(&pkey_pri);
+                .request_cert();
             match request_cert {
                 Ok(()) => succeed_me.store(true, Ordering::Relaxed),
                 Err(error) => {
