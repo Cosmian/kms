@@ -92,9 +92,12 @@ impl TeeAction {
             TeeMeasurement::default()
         };
 
-        match spawn_blocking(move || verify_quote(&quote, &report_data, tee_conf)).await {
+        match spawn_blocking(move || verify_quote(&quote, &report_data, tee_conf))
+            .await
+            .map_err(|e| CliError::Default(format!("Can't verify quote: {e}")))?
+        {
             Ok(_) => println!("Verification succeed"),
-            Err(e) => println!("Verification failed: {e:?}"),
+            Err(e) => return Err(e.into()),
         }
 
         // Now, the user doesn't need to verify the quote each time it queries the KMS since it forces the certificate to be that one.

@@ -18,12 +18,17 @@ sys.stack.size = "1G"
 sys.enable_extra_runtime_domain_names_conf = true
 
 loader.env.LD_LIBRARY_PATH = "/lib:/lib64:{{ arch_libdir }}:/usr/{{ arch_libdir }}"
-loader.env.KMS_ENCLAVE_MANIFEST_FILENAME = "kms.manifest.sgx"
-loader.env.KMS_ENCLAVE_PUBLIC_KEY_FILENAME = "{{ sgx_signer_public_key }}"
-loader.env.KMS_ENCLAVE_DIR_PATH = "/public_data"
+loader.env.KMS_SGX_PUBLIC_SIGNER_KEY_FILENAME = "{{ sgx_signer_public_key }}"
+loader.env.KMS_TEE_DIR_PATH = "/public_data"
 loader.env.KMS_ROOT_DATA_PATH = "/private_data"
 loader.env.RUST_BACKTRACE="0"
-loader.env.KMS_USE_BOOTSTRAP_SERVER = "true"
+# loader.env.KMS_USE_BOOTSTRAP_SERVER = "true"
+loader.env.KMS_USE_CERTBOT="true"
+loader.env.KMS_CERTBOT_HOSTNAME="kms.sgx.cosmian.dev"
+loader.env.KMS_CERTBOT_EMAIL="tech@cosmian.com"
+loader.env.KMS_CERTBOT_USE_TEE_KEY="abcdef0123456789"
+
+
 
 sgx.nonpie_binary = true
 sgx.remote_attestation = 'dcap'
@@ -47,7 +52,6 @@ fs.mounts = [
 
 # Public path
 sgx.allowed_files = [
-  "file:public_data/kms.manifest.sgx",
   "file:public_data"
 ]
 
