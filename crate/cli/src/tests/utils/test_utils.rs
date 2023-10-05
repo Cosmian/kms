@@ -20,6 +20,7 @@ use cosmian_kms_server::{
     kms_server::start_kms_server,
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;
+use cosmian_logger::log_utils::log_init;
 use rand::SeedableRng;
 use tokio::sync::OnceCell;
 use tracing::trace;
@@ -56,8 +57,12 @@ pub(crate) fn recover_cmd_logs(cmd: &mut Command) -> Output {
         .stderr(Stdio::piped())
         .output()
         .unwrap();
-    std::io::stdout().write_all(&output.stdout).unwrap();
-    std::io::stderr().write_all(&output.stderr).unwrap();
+    std::io::stdout()
+        .write_all(format!("\r\x1b[K{}", String::from_utf8_lossy(&output.stdout)).as_bytes())
+        .unwrap();
+    std::io::stderr()
+        .write_all(format!("\r\x1b[K{}", String::from_utf8_lossy(&output.stderr)).as_bytes())
+        .unwrap();
     output
 }
 
@@ -99,7 +104,7 @@ pub async fn start_test_server_with_options(
     use_jwe_encryption: bool,
     use_bootstrap_server: bool,
 ) -> TestsContext {
-    let _ = env_logger::builder().is_test(true).try_init();
+    log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
 
     let server_params = genererate_server_params(
         port,

@@ -24,18 +24,31 @@ pub fn log_init(paths: &str) {
 /// - we cannot set global subscriber
 /// - we cannot init the log tracer
 fn tracing_setup() {
-    let layer = tracing_tree::HierarchicalLayer::default()
-        .with_verbose_exit(true)
-        .with_verbose_entry(true)
-        .with_targets(true)
-        .with_thread_names(true)
+    let format = tracing_subscriber::fmt::layer()
+        .with_level(true)
+        .with_target(true)
+        // .with_thread_names(true)
         .with_thread_ids(true)
-        .with_indent_lines(true);
+        .with_line_number(true)
+        .with_file(true)
+        .with_ansi(true)
+        .compact();
+
+    // let layer = tracing_tree::HierarchicalLayer::default()
+    //     .with_verbose_exit(true)
+    //     .with_verbose_entry(true)
+    //     .with_targets(true)
+    //     .with_thread_names(true)
+    //     .with_thread_ids(true)
+    //     .with_indent_lines(true)
+    //     .with_ansi(true);
+
     let (filter, _reload_handle) =
         tracing_subscriber::reload::Layer::new(EnvFilter::from_default_env());
 
     tracing_subscriber::registry()
         .with(filter)
-        .with(layer)
+        // .with(layer)
+        .with(format)
         .init();
 }

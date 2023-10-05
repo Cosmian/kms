@@ -76,6 +76,9 @@ time = "0.3"
 tokio = { version = "1.32", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tracing = "0.1"
+# Uncomment and remove `env-logger` dep when `env_logger` is
+# finally updated in `tracing-log` crate.
+# tracing-log = { version = "0.1", features = ["env_logger"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-tree = "0.2"
 url = "2.2"
