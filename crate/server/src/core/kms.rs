@@ -61,7 +61,14 @@ impl KMS {
             crate::config::HttpParams::Certbot(certbot) => {
                 let cert = certbot.lock().expect("can't lock certificate mutex");
                 let (_, certificate) = cert.get_cert()?;
-                Ok(Some(certificate[0].to_pem()?))
+                Ok(Some(
+                    certificate
+                        .get(0)
+                        .ok_or(KmsError::Certificate(
+                            "No leaf certificate in the KMS certificate chain".to_owned(),
+                        ))?
+                        .to_pem()?,
+                ))
             }
             crate::config::HttpParams::Https(p12) => {
                 let pem = p12

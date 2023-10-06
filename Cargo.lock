@@ -3200,7 +3200,7 @@ dependencies = [
 [[package]]
 name = "ratls"
 version = "0.1.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#2d14dcdb20c791d4642c4ee91d5b42adf8051205"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#d1be62d6e9ee1b2e169997fc80c694578c29b24a"
 dependencies = [
  "asn1-rs",
  "bincode",
@@ -3208,7 +3208,6 @@ dependencies = [
  "der",
  "ecdsa",
  "p256",
- "rand",
  "rand_chacha",
  "rustls 0.21.7",
  "sha2",
@@ -3708,7 +3707,7 @@ dependencies = [
 [[package]]
 name = "sev_quote"
 version = "0.1.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#2d14dcdb20c791d4642c4ee91d5b42adf8051205"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#d1be62d6e9ee1b2e169997fc80c694578c29b24a"
 dependencies = [
  "asn1",
  "asn1-rs",
@@ -3716,7 +3715,6 @@ dependencies = [
  "hex",
  "hkdf",
  "log",
- "rand_chacha",
  "reqwest",
  "serde",
  "sev",
@@ -3729,7 +3727,7 @@ dependencies = [
 [[package]]
 name = "sgx_pck_extension"
 version = "0.1.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#2d14dcdb20c791d4642c4ee91d5b42adf8051205"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#d1be62d6e9ee1b2e169997fc80c694578c29b24a"
 dependencies = [
  "asn1",
  "asn1-rs",
@@ -3740,7 +3738,7 @@ dependencies = [
 [[package]]
 name = "sgx_quote"
 version = "0.2.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#2d14dcdb20c791d4642c4ee91d5b42adf8051205"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#d1be62d6e9ee1b2e169997fc80c694578c29b24a"
 dependencies = [
  "chrono",
  "elliptic-curve",
@@ -3748,7 +3746,6 @@ dependencies = [
  "hkdf",
  "log",
  "p256",
- "rand_chacha",
  "reqwest",
  "rsa",
  "scroll",
@@ -4188,7 +4185,7 @@ checksum = "9410d0f6853b1d94f0e519fb95df60f29d2c1eff2d921ffdf01a4c8a3b54f12d"
 [[package]]
 name = "tee_attestation"
 version = "0.1.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#2d14dcdb20c791d4642c4ee91d5b42adf8051205"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#d1be62d6e9ee1b2e169997fc80c694578c29b24a"
 dependencies = [
  "bincode",
  "sev_quote",

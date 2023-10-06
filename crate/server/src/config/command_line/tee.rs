@@ -1,11 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use clap::Args;
+use tee_attestation::is_running_inside_tee;
 
 use super::WorkspaceConfig;
-use crate::{
-    config::params::TeeParams, kms_bail, result::KResult, routes::tee::is_running_inside_tee,
-};
+use crate::{config::params::TeeParams, kms_bail, result::KResult};
 
 #[derive(Debug, Args)]
 pub struct TeeConfig {

@@ -7,13 +7,13 @@ use std::{
 
 use alcoholic_jwt::JWKS;
 use openssl::x509::X509;
+use tee_attestation::is_running_inside_tee;
 
 use super::{BootstrapServerParams, DbParams, HttpParams, TeeParams};
 use crate::{
     config::{command_line::JWEConfig, ClapConfig},
     kms_bail,
     result::KResult,
-    routes::tee::is_running_inside_tee,
 };
 
 /// This structure is the context used by the server

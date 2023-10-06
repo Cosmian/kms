@@ -1,12 +1,12 @@
 use std::fmt::{self};
 
 use clap::Parser;
+use tee_attestation::is_running_inside_tee;
 
 use super::{
     BootstrapServerConfig, DBConfig, HttpConfig, HttpsCertbotConfig, JWEConfig, JwtAuthConfig,
     TeeConfig, WorkspaceConfig,
 };
-use crate::routes::tee::is_running_inside_tee;
 
 #[derive(Parser, Default)]
 #[clap(version, about, long_about = None)]

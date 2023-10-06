@@ -18,6 +18,7 @@ use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
+use tee_attestation::is_running_inside_tee;
 use tracing::{debug, error, info};
 
 use crate::{
@@ -29,7 +30,7 @@ use crate::{
         JwtAuth, JwtConfig,
     },
     result::KResult,
-    routes::{self, tee::is_running_inside_tee},
+    routes::{self},
     KMSServer,
 };
 
@@ -398,7 +399,6 @@ pub fn prepare_kms_server(
     // Determine if Client Cert Auth should be used for authentication.
     let use_cert_auth = kms_server.params.verify_cert.is_some();
     // Determine if the application is running inside an enclave.
-    let is_running_inside_tee = is_running_inside_tee();
     // Determine if the application is using an encrypted SQLite database.
     let is_using_sqlite_enc = matches!(
         kms_server.params.db_params,
@@ -439,7 +439,7 @@ pub fn prepare_kms_server(
             app
         };
 
-        if is_running_inside_tee {
+        if is_running_inside_tee() {
             app.service(routes::tee::get_enclave_public_key)
                 .service(routes::tee::get_attestation_report)
         } else {

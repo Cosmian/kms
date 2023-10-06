@@ -5,7 +5,6 @@ use actix_web::{
     web::{Data, Json},
     HttpRequest,
 };
-use tee_attestation::guess_tee;
 use tracing::info;
 
 use crate::{database::KMSServer, result::KResult, routes::KmsError};
@@ -62,10 +61,4 @@ pub async fn get_enclave_public_key(
 ) -> KResult<Json<String>> {
     info!("GET /tee/sgx_enclave_public_key {}", kms.get_user(req)?);
     Ok(Json(kms.get_sgx_enclave_public_key()?))
-}
-
-/// Check if the current program is running inside a tee
-#[must_use]
-pub fn is_running_inside_tee() -> bool {
-    guess_tee().is_ok()
 }
