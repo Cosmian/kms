@@ -30,7 +30,6 @@ kms.manifest.sgx: kms.manifest
 		--key $(SGX_SIGNER_KEY) \
 		--manifest kms.manifest \
 		--output $@
-	cp $@ public_data/
 	openssl rsa -in $(SGX_SIGNER_KEY) -pubout -out public_data/$(SGX_SIGNER_PUBLIC_KEY)
 
 kms.sig: kms.manifest.sgx

@@ -15,7 +15,7 @@ use assert_cmd::cargo::CargoError;
 use x509_parser::prelude::PEMError;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
-#[derive(Error, Debug, Eq, PartialEq)]
+#[derive(Error, Debug)]
 pub enum CliError {
     // When a user requests an endpoint which does not exist
     #[error("Not Supported route: {0}")]
@@ -69,7 +69,11 @@ pub enum CliError {
     #[error("{0}")]
     Default(String),
 
-    // Other errors
+    // TEE errors
+    #[error(transparent)]
+    TeeAttestationError(#[from] tee_attestation::error::Error),
+
+    // Url parsing errors
     #[error(transparent)]
     UrlParsing(#[from] url::ParseError),
 }

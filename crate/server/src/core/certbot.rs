@@ -7,6 +7,9 @@ use acme_lib::{
     create_p384_key, persist::FilePersist, Account, Certificate, Directory, DirectoryUrl,
 };
 use openssl::{
+    bn::{BigNum, BigNumContext},
+    ec::{EcGroup, EcKey, EcPoint},
+    nid::Nid,
     pkey::{PKey, Private},
     x509::X509,
 };
@@ -20,6 +23,7 @@ pub struct Certbot {
     pub common_name: String,
     pub http_root_path: PathBuf,
     pub keys_path: PathBuf,
+    pub use_tee_key: Option<Vec<u8>>,
     account: Option<Account<FilePersist>>,
     certificate: Option<Certificate>,
 }
@@ -46,6 +50,7 @@ impl Default for Certbot {
             String::new(),
             PathBuf::from(""),
             PathBuf::from(""),
+            None,
         )
     }
 }
@@ -56,6 +61,7 @@ impl Certbot {
         common_name: String,
         http_root_path: PathBuf,
         keys_path: PathBuf,
+        use_tee_key: Option<Vec<u8>>,
     ) -> Self {
         Self {
             days_threshold_before_renew: 15,
@@ -63,6 +69,7 @@ impl Certbot {
             common_name,
             http_root_path,
             keys_path,
+            use_tee_key,
             account: None,
             certificate: None,
         }
@@ -130,7 +137,33 @@ impl Certbot {
         kms_bail!("Certificate can't be found...");
     }
 
+    #[cfg(target_os = "linux")]
+    pub fn generate_private_key(&self) -> KResult<PKey<Private>> {
+        if let Some(salt) = &self.use_tee_key {
+            let key = tee_attestation::get_key(Some(salt))?;
+            let private_number = BigNum::from_slice(&key)?;
+            let group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?;
+
+            let mut public_point = EcPoint::new(&group)?;
+            let ctx = BigNumContext::new()?;
+            public_point.mul_generator(&group, &private_number, &ctx)?;
+
+            let pri_key_ec =
+                EcKey::from_private_components(&group, &private_number, &public_point)?;
+            Ok(PKey::from_ec_key(pri_key_ec)?)
+        } else {
+            Ok(create_p384_key())
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn generate_private_key(&self) -> KResult<PKey<Private>> {
+        Ok(create_p384_key())
+    }
+
     pub fn request_cert(&mut self) -> KResult<()> {
+        let pkey_pri = self.generate_private_key()?;
+
         let acc = self
             .account
             .as_ref()
@@ -194,11 +227,6 @@ impl Certbot {
             #[allow(clippy::needless_borrow)]
             fs::remove_dir_all(&target_parent)?;
         };
-
-        // Ownership is proven. Create a private key for
-        // the certificate. These are provided for convenience, you
-        // can provide your own keypair instead if you want.
-        let pkey_pri = create_p384_key();
 
         // Submit the CSR. This causes the ACME provider to enter a
         // state of "processing" that must be polled until the

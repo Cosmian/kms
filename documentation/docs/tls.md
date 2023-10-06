@@ -59,6 +59,8 @@ The hostname must be a valid DNS A or AAAA record pointing to the IP address of 
 
 By default, the bot saves the certificates inside the container in the `/root/cosmian-kms/certbot-ssl` directory. This directory is adjustable with the `--certbot-ssl-path` option. Ensure this directory is mapped to a host directory or persistent docker volume to persist the generated certificates between restarts.
 
+If the KMS runs inside a TEE, you can also use the option `--certbot-use-tee-key` following by an hexadecimal string standing for a salt in order to generate the TLS key using the TEE. The key is tied to the TEE starting parameters and the code. Two KMS instances from the same code and the same TEE parameters will generate the same TLS key for a given salt. 
+
 Example:
 
 ```sh

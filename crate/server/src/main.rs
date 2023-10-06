@@ -14,14 +14,14 @@ mod expiry;
 
 use clap::Parser;
 
-/// The main entry point of the program.
+/// The main entrypoint of the program.
 ///
 /// This function sets up the necessary environment variables and logging options,
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
 ///
 /// After that, it starts the correct server based on
 /// whether the bootstrap server should be used or not (using `start_bootstrap_server()` or `start_kms_server()`, respectively).
-#[tokio::main]
+#[actix_web::main]
 async fn main() -> KResult<()> {
     // Set up environment variables and logging options
     if option_env!("RUST_BACKTRACE").is_none() {

@@ -8,11 +8,11 @@ use cosmian_kms_utils::tee::forge_report_data;
 use openssl::x509::X509;
 use rand::Rng;
 use ratls::verify::get_server_certificate;
-use tee_attestation::verify_quote;
+use tee_attestation::{verify_quote, TeeMeasurement};
 use tokio::task::spawn_blocking;
 
 use crate::{
-    config::CliConf,
+    config::{CliConf, TeeConf},
     error::{result::CliResultHelper, CliError},
 };
 
@@ -53,7 +53,16 @@ impl TeeAction {
 
         // Let's use this certificate when querying the KMS to get the quote
         let mut local_conf = conf.clone();
-        local_conf.tee_conf.verified_cert = Some(String::from_utf8_lossy(&certificate).to_string());
+        let verified_cert = Some(String::from_utf8_lossy(&certificate).to_string());
+        if let Some(mut local_tee_conf) = local_conf.tee_conf {
+            local_tee_conf.verified_cert = verified_cert;
+            local_conf.tee_conf = Some(local_tee_conf);
+        } else {
+            local_conf.tee_conf = Some(TeeConf {
+                verified_cert,
+                ..Default::default()
+            });
+        }
         let kms_rest_client = local_conf.initialize_kms_client()?;
 
         // Generate a nonce to make the quote unique. Use an arbitrary and non predictable string.
@@ -77,10 +86,18 @@ impl TeeAction {
         // Let's verify the quote
         let report_data = forge_report_data(&nonce, &certificate)?;
 
-        let tee_conf = conf.tee_conf.clone().try_into()?;
-        match spawn_blocking(move || verify_quote(&quote, &report_data, tee_conf)).await {
+        let tee_conf = if let Some(tee_conf) = conf.tee_conf.clone() {
+            tee_conf.try_into()?
+        } else {
+            TeeMeasurement::default()
+        };
+
+        match spawn_blocking(move || verify_quote(&quote, &report_data, tee_conf))
+            .await
+            .map_err(|e| CliError::Default(format!("Can't verify quote: {e}")))?
+        {
             Ok(_) => println!("Verification succeed"),
-            Err(e) => println!("Verification failed: {e:?}"),
+            Err(e) => return Err(e.into()),
         }
 
         // Now, the user doesn't need to verify the quote each time it queries the KMS since it forces the certificate to be that one.

@@ -8,13 +8,13 @@ The design provides:
 - runtime memory encryption
 - verifiability of the correctness of the running environment
 
-![zero_trust_better.drawio.svg](./drawings/zero_trust_better.drawio.svg)
+![zero_trust_better.drawio.svg](./drawings/zero_trust.drawio.svg)
 
 ## Zero-trust design
 
 The design relies on 3 features:
 
-**Starting the server in bootstrap mode**: This initial phase allows the secure input of secret components, including the database encryption secret and the HTTPS certificate key, directly into the encrypted machine memory, through a secure connection
+**Starting the server in bootstrap mode**: This initial phase allows the secure input of secret components, including the database encryption secret, directly into the encrypted machine memory, through a secure connection
 
 **Running the KMS server in a confidential VM**: The KMS runs in a confidential VM, which keeps memory encrypted at runtime using a key concealed in the CPU
 
@@ -27,8 +27,7 @@ Confidential VMs are now available at most cloud providers using either AMD SEV-
 To perform a zero-trust deployment, the system administrator must follow the steps below:
 
 - Install a KMS server in an enclave confidential VM and start the server in bootstrap mode
-- Generate an API TLS certificate
-- Provision the KMS server with the API TLS certificate and database configuration details.
+- Provision the database configuration details
 - Add more KMS servers to the deployment if need be
 
 ### Installing and starting a KMS server
@@ -36,10 +35,67 @@ To perform a zero-trust deployment, the system administrator must follow the ste
 The KMS servers must be installed in confidential VMs and started in bootstrap mode.
 
 - The install procedure for SGX enclaves and TDX and SEV-SNP confidential VMs is available [here](./confidential_vm_install.md).
-- To start the database server in bootstrap mode, use the `-use-bootstrap-server` option on the docker started in the confidential VM:
+- To start the database server in bootstrap mode, use the `-use-bootstrap-server` option (see [bootstrap](./bootstrap.md) from more details) on the docker started in the confidential VM : 
 
 ```bash
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 \  --use-bootstrap-server
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 --use-bootstrap-server
+```
+
+- To use the TLS generation using LetsEncrypt inside the confidential VM add the arguments described in [tls](./tls.md#using-the-certificates-bot)
+
+### Example on SGX
+
+On SGX, for example, you could install and start the KMS server using a docker build from [github](https://github.com/Cosmian/kms/tree/main/sgx):
+
+1. Download the KMS repository
+2. Build the docker:
+
+```bash
+sudo docker build -f sgx/Dockerfile.sgx -t enclave-kms .
+```
+
+3. Run the docker 
+```bash
+# Plain text directory
+mkdir -p public_data/
+# Encrypted directory
+mkdir -p private_data/
+
+# Start the docker
+sudo docker run \
+    --device /dev/sgx_enclave \
+    --device /dev/sgx_provision \
+    -v /var/run/aesmd:/var/run/aesmd/ \
+    -v /opt/cosmian-internal:/opt/cosmian-internal \
+    -v $PWD/public_data:/root/public_data \
+    -v $PWD/private_data:/root/private_data \
+    -p80:80 \
+    -p9998:9998 \
+    -it enclave-kms
+```
+
+4. (KMS owner) Configure the bootstrap server remotly. Don't forget to edit the cli configuration file with the proper measurement values and the KMS server url. This step also transparently verifies the RATLS connection.
+
+```bash
+KMS_CLI_CONF=sgx/kms-test.json ckms bootstrap-start \
+                                    --database-type redis-findex \
+                                    --database-url redis://redis-server:6379 \
+                                    --redis-master-password master-password \
+                                    --redis-findex-label label 
+```
+
+5. (KMS user) Verify the trustworthiness of the KMS. Don't forget to edit the cli configuration file with the proper measurement values and the KMS server url. 
+
+```bash
+KMS_CLI_CONF=sgx/kms-test.json ckms verify
+```
+
+You don't need to redo that step if the KMS is not updated.
+
+6. (KMS user) Use the KMS
+
+```bash
+KMS_CLI_CONF=sgx/kms-test.json ckms sym keys create
 ```
 
 ### Horizontal scaling
@@ -47,7 +103,7 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 \  --use-bootstrap-
 To scale the deployment horizontally,
 
 - Configure the first server according to the workflow below
-- install new servers according to the [high-availability documentation](./high_availability_mode.md), then repeat the workflow below for each server starting at the **Provisioning phase**.
+- Install new servers according to the [high-availability documentation](./high_availability_mode.md), then repeat the workflow below for each server starting at the **Provisioning phase**.
 
 All servers must run the **same version** of the software.
 
@@ -68,37 +124,15 @@ HTTPS connections with these types of certificates are called *RA-TLS* connectio
 
 Before sending any configuration data to the bootstrap server, the system administrator attests the connection by verifying the *quote* of the bootstrap certificate. This can easily be done [using the `ckms` client CLI](./cli/main_commands.md#bootstrap-start).
 
-The workflow is then divided into 2 phases:
+After attesting the RA-TLS connection, the system administrator sends the database configuration details to the bootstrap server. Please check the [bootstrap mode documentation](./bootstrap.md) for more details on performing this operation.
 
-- **API TLS Certificate generation phase**: This phase is done once for the first server and only needs to be repeated when the KMS server software is updated.
-- **Provisioning phase**: This phase is done for each server, including the first one, and needs to be repeated when the KMS server is horizontally scaled.
+The bootstrap server will then start the main KMS server, which will open an HTTPS port using the API TLS certificate; this port exposes the API endpoints to the users. The API TLS certificate is generating by the secure environment and signed by LetsEncrypt.
 
-### API TLS certificate generation phase (1)
+The main KMS server is now started, and the bootstrap will shutdown.
 
-On the RA-TLS connection, the system administrator will send the X509 Subject Name details to the `/csr` endpoint. Please check the [bootstrap mode documentation](./bootstrap.md) for more details on how the system administrator performs this operation. Using the secret key *sk* above, the bootstrap server will generate a certificate signing request (CSR) and send it back to the system administrator.
-
-Depending on the Certificate Authority (CA) capabilities, the system administrator will request a CSR that may or may not contain a *quote* in its extensions.
-
-The system administrator will then send the CSR to a trusted certificate authority, who will sign the certificate and return it to the system administrator. This certificate will be referred to as the *API TLS certificate* further down in this documentation; if it contains a *quote*, it may also be referred to as the *API RA-TLS certificate*.
-
-### Provisioning phase (2)
-
-After attesting the RA-TLS connection, the system administrator sends the API TLS certificate and the database configuration details to the bootstrap server. Please check the [bootstrap mode documentation](./bootstrap.md) for more details on performing this operation.
-
-The bootstrap server will then start the main KMS server (3), which will open an HTTPS port using the API TLS certificate; this port exposes the API endpoints to the users.
-
-If the API TLS certificate does **not** contain a *quote*, the bootstrap server will request the main KMS server to open a second HTTPS port initialized with the bootstrap certificate above (which contains a *quote*).
-
-The main KMS server is now started, and the bootstrap will shut down.
-
-## Attesting the correctness of the installation (4)
+## Attesting the correctness of the installation
 
 The users, like the system administrator, can attest to the correctness of the installation by using the `ckms` CLI `verify` subcommand. Please check the [`ckms` documentation](./cli/cli.md) for more details on performing this operation.
 
-### If the server API endpoints are behind an RA-TLS certificate
+The `ckms` CLI will connect to the API endpoint `/quote` to get the attestation report and verify it locally. Once verified, the TLS certificate used to query this endpoint will be the only one accepted for any further queries. This way, the user is confident that the KMS is still trusted at any time. 
 
-The `ckms` CLI will connect to the API endpoint, verify the TLS certificate signature chain, and, using the *quote* contained in the X509 extension of the certificate, verify that the server is running the correct software inside a genuine confidential VM.
-
-### If the server the API endpoints are NOT behind an RA-TLS certificate
-
-The `ckms` CLI will connect to the API endpoint and verify the TLS certificate signature chain. It will then connect to the RA-TLS port and, using the *quote* contained in the X509 extension of the certificate, verify that the server is running the correct software inside a genuine confidential VM. Finally, it will verify that the two public keys on the two certificates are the same to ensure that the API TLS port is indeed running on the confidential VM (cluster).

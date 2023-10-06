@@ -18,6 +18,14 @@ All notable changes to this project will be documented in this file.
 - KMS CLI `ckms`:
   - can import the Mozilla Common CA Database (CCADB)
   - can import a PKCS12 certificate (splitting in 2 KMIP objects: X509 certificate and private key)
+- KMS running inside TEE (SGX or SEV)
+  - review the `verify` subcommand 
+  - force checking the leaf TLS certiticate when querying a KMS running inside a TEE
+  - verify RATLS certificate before querying the bootstrap server
+  - review the TLS certificate generation using the key tied to the TEE
+  - remove libsgx and create a new dependance to tee_attestion crate  
+  - update KMS server argument regarding the TEE and cerbot
+  - review documentation regarding the KMS usage inside a TEE
 
 ### Bug Fixes
 

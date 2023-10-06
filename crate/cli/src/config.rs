@@ -145,8 +145,8 @@ pub struct CliConf {
     pub(crate) kms_server_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) bootstrap_server_url: Option<String>,
-    #[serde(default)]
-    pub tee_conf: TeeConf, // TODO: Option?
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tee_conf: Option<TeeConf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) kms_access_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -179,7 +179,7 @@ impl Default for CliConf {
             accept_invalid_certs: false,
             kms_server_url: "http://0.0.0.0:9998".to_string(),
             bootstrap_server_url: None,
-            tee_conf: TeeConf::default(),
+            tee_conf: None,
             kms_access_token: None,
             kms_database_secret: None,
             ssl_client_pkcs12_path: None,
@@ -275,14 +275,18 @@ impl CliConf {
             self.ssl_client_pkcs12_password.as_deref(),
             self.kms_database_secret.as_deref(),
             self.accept_invalid_certs,
-            self.tee_conf.verified_cert.as_ref().map(|certificate| {
-                Certificate(
-                    X509::from_pem(certificate.as_bytes())
-                        .unwrap()
-                        .to_der()
-                        .unwrap(),
-                )
-            }),
+            match &self.tee_conf {
+                Some(tee_conf) => {
+                    if let Some(certificate) = &tee_conf.verified_cert {
+                        Some(Certificate(
+                            X509::from_pem(certificate.as_bytes())?.to_der()?,
+                        ))
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            },
             self.jwe_public_key.as_deref(),
         )
         .with_context(|| {
@@ -304,7 +308,11 @@ impl CliConf {
             self.kms_access_token.as_deref(),
             self.ssl_client_pkcs12_path.as_deref(),
             self.ssl_client_pkcs12_password.as_deref(),
-            self.tee_conf.clone().try_into()?,
+            if let Some(tee_conf) = self.tee_conf.clone() {
+                tee_conf.try_into()?
+            } else {
+                TeeMeasurement::default()
+            },
         )
         .with_context(|| {
             format!(

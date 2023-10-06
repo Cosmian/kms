@@ -60,7 +60,6 @@ pub enum KmsError {
     #[error("Unexpected server error: {0}")]
     ServerError(String),
 
-    /// TODO: sgx-sev: not my concern here, Have a tee-core lib
     // Any errors related to a bad behavior of the server concerning the SGX environment
     #[error(transparent)]
     TeeAttestationError(#[from] tee_attestation::error::Error),
