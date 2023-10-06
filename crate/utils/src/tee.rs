@@ -17,9 +17,9 @@ pub fn forge_report_data(
     Ok(user_report_data)
 }
 
-// Response when querying the KMS certificates
+// Response when querying the KMS certificate
 #[derive(Deserialize, Serialize, Debug)]
-pub struct CertificatesResponse {
+pub struct CertificateResponse {
     pub certificate: Option<String>,
 }
 

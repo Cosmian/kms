@@ -12,7 +12,7 @@ pub struct TeeConfig {
     /// The directory where the public key or other required files are located
     /// This path should not be encrypted by the enclave and should be directly readable from it
     ///   
-    /// A relative path is taken relative to the root_data_path
+    /// A relative path is taken relative to the `root_data_path` (see `WorkspaceConfig` struct)
     #[clap(long, env("KMS_TEE_DIR_PATH"), default_value("./tee"))]
     pub tee_dir_path: PathBuf,
 

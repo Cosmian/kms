@@ -500,9 +500,9 @@ impl KmsRestClient {
         // 2. HTTPS:
         //    a) self-signed: we want to remove the verifications
         //    b) signed in a tee context: we want to verify the /quote and then only accept the allowed certificate
-        //          -> For efficency purpose, this verification is made outside this call (asynch with the queries)
+        //          -> For efficiency purpose, this verification is made outside this call (async with the queries)
         //             Only the verified certificate is used here
-        //    c) signed in a non-tee context: we want classical TLS verification based on the root ca
+        //    c) signed in a non-tee context: we want classic TLS verification based on the root ca
         let builder = if let Some(certificate) = allowed_tee_tls_cert {
             build_tls_client_tee(certificate, accept_invalid_certs)?
         } else {
@@ -697,10 +697,8 @@ pub fn build_tls_client_tee(
 ) -> Result<ClientBuilder, RestClientError> {
     let mut root_cert_store = rustls::RootCertStore::empty();
 
-    use rustls::OwnedTrustAnchor;
-
     let trust_anchors = webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|trust_anchor| {
-        OwnedTrustAnchor::from_subject_spki_name_constraints(
+        rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
             trust_anchor.subject,
             trust_anchor.spki,
             trust_anchor.name_constraints,
@@ -719,7 +717,7 @@ pub fn build_tls_client_tee(
 
     let config = rustls::ClientConfig::builder()
         .with_safe_defaults()
-        .with_custom_certificate_verifier(std::sync::Arc::new(verifier))
+        .with_custom_certificate_verifier(Arc::new(verifier))
         .with_no_client_auth();
 
     // Create a client builder

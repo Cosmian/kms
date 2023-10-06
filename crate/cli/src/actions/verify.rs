@@ -43,7 +43,7 @@ impl TeeAction {
         .map_err(|e| CliError::Default(format!("Can't get KMS server certificate: {e}")))?;
 
         let certificate = X509::from_der(&certificate)
-            .map_err(|e| CliError::Default(format!("Can't convert certificate to DER: {e}")))?
+            .map_err(|e| CliError::Default(format!("Can't convert certificate from DER: {e}")))?
             .to_pem()
             .map_err(|e| CliError::Default(format!("Can't convert certificate to PEM: {e}")))?;
 

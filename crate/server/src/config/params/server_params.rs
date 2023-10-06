@@ -62,7 +62,7 @@ pub struct ServerParams {
     /// used for authentication
     pub verify_cert: Option<X509>,
 
-    /// Use a bootstrap server (inside an tee for instance)
+    /// Use a bootstrap server (inside a tee for instance)
     pub bootstrap_server_params: BootstrapServerParams,
 
     /// Ensure RA-TLS is available and used.
