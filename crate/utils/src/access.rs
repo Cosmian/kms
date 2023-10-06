@@ -211,14 +211,3 @@ impl
 pub struct SuccessResponse {
     pub success: String,
 }
-
-// Response when querying the KMS certificates
-#[derive(Deserialize, Serialize, Debug)]
-pub struct CertificatesResponse {
-    pub certificate: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct QuoteParams {
-    pub nonce: String,
-}

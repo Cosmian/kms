@@ -11,6 +11,7 @@ pub mod crypto;
 pub mod error;
 pub mod kmip_utils;
 pub mod tagging;
+pub mod tee;
 
 pub trait EncryptionSystem {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError>;

@@ -7,9 +7,11 @@ use std::{
 
 use cosmian_kms_client::{BootstrapRestClient, KmsRestClient};
 use hex::decode;
-use libsgx::quote::compute_mr_signer;
-use ratls::{guess_tee, TeeMeasurement, TeeType};
+use openssl::x509::X509;
+use rustls::Certificate;
 use serde::{Deserialize, Serialize};
+use tee_attestation::{SevMeasurement, SgxMeasurement, TeeMeasurement};
+use url::Url;
 
 use crate::error::{result::CliResultHelper, CliError};
 
@@ -56,10 +58,17 @@ fn not(b: &bool) -> bool {
     !*b
 }
 
-#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone, Default)]
 pub struct TeeConf {
+    // verified_cert = Some(PEM) means that the leaf certificate needs to be the exact one
+    // used when verifying the quote. This option should be set if the KMS has been deployed on a TEE. None is unsecured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) verified_cert: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) mr_enclave: Option<String>,
-    pub(crate) signing_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) public_signer_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) sev_measurement: Option<String>,
 }
 
@@ -67,21 +76,9 @@ impl TryInto<TeeMeasurement> for TeeConf {
     type Error = CliError;
 
     fn try_into(self) -> Result<TeeMeasurement, Self::Error> {
-        match (
-            self.mr_enclave,
-            self.signing_key,
-            self.sev_measurement,
-            guess_tee(),
-        ) {
-            (Some(e), Some(s), None, Ok(TeeType::Sgx)) => Ok(TeeMeasurement::Sgx {
-                mr_signer: compute_mr_signer(&fs::read_to_string(s)?)
-                    .map_err(|e| CliError::Default(format!("MR signer computation failed: {e:?}")))?
-                    .as_slice()
-                    .try_into()
-                    .map_err(|e| {
-                        CliError::Default(format!("Bad MR signer bytes-size: error: {e}"))
-                    })?,
-                mr_enclave: decode(e)
+        let mrenclave = if let Some(v) = &self.mr_enclave {
+            Some(
+                decode(v)
                     .map_err(|_| {
                         CliError::Default("Invalid hexadecimal format for mr enclave".to_string())
                     })?
@@ -90,24 +87,51 @@ impl TryInto<TeeMeasurement> for TeeConf {
                     .map_err(|e| {
                         CliError::Default(format!("Bad MR enclave bytes-size: error: {e}"))
                     })?,
-            }),
-            (None, None, Some(m), Ok(TeeType::Sev)) => Ok(TeeMeasurement::Sev(
-                decode(m)
+            )
+        } else {
+            None
+        };
+
+        let sev_measurement = if let Some(v) = &self.sev_measurement {
+            Some(
+                decode(v)
                     .map_err(|_| {
-                        CliError::Default(
-                            "Invalid hexadecimal format for SEV measurement".to_string(),
-                        )
+                        CliError::Default("Invalid hexadecimal format for mr enclave".to_string())
                     })?
                     .as_slice()
                     .try_into()
                     .map_err(|e| {
                         CliError::Default(format!("Bad SEV measurement bytes-size: error: {e}"))
                     })?,
-            )),
-            (_, _, _, _) => Err(CliError::Default(
-                "Unsupported combination for tee parameters and tee envrionment".to_string(),
-            )),
-        }
+            )
+        } else {
+            None
+        };
+
+        let measurement = match (self.public_signer_key, mrenclave, sev_measurement) {
+            (None, None, None) => TeeMeasurement {
+                sgx: None,
+                sev: None,
+            },
+            (Some(s), Some(e), None) => TeeMeasurement {
+                sgx: Some(SgxMeasurement {
+                    public_signer_key_pem: s.to_string(),
+                    mr_enclave: e,
+                }),
+                sev: None,
+            },
+            (None, None, Some(m)) => TeeMeasurement {
+                sgx: None,
+                sev: Some(SevMeasurement(m)),
+            },
+            _ => {
+                return Err(CliError::Default(
+                    "Bad measurements combination".to_string(),
+                ))
+            }
+        };
+
+        Ok(measurement)
     }
 }
 
@@ -122,7 +146,7 @@ pub struct CliConf {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) bootstrap_server_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) tee_conf: Option<TeeConf>,
+    pub tee_conf: Option<TeeConf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) kms_access_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -133,6 +157,20 @@ pub struct CliConf {
     pub(crate) kms_database_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) jwe_public_key: Option<String>,
+}
+
+impl CliConf {
+    pub fn kms_server_url(&self) -> Result<Url, CliError> {
+        Ok(Url::parse(&self.kms_server_url)?)
+    }
+
+    pub fn bootstrap_server_url(&self) -> Result<Option<Url>, CliError> {
+        if let Some(url) = &self.bootstrap_server_url {
+            Ok(Some(Url::parse(url)?))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 impl Default for CliConf {
@@ -174,21 +212,37 @@ impl Default for CliConf {
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
 
 impl CliConf {
-    pub fn load() -> Result<Self, CliError> {
+    pub fn location() -> Result<PathBuf, CliError> {
         // Obtain the configuration file path from the environment variable or default to a pre-determined path
-        let conf_path = if let Ok(conf_path) = env::var(KMS_CLI_CONF_ENV).map(PathBuf::from) {
+        if let Ok(conf_path) = env::var(KMS_CLI_CONF_ENV).map(PathBuf::from) {
             // Error if the specified file does not exist
             if !conf_path.exists() {
                 return Err(CliError::NotSupported(format!(
                     "Configuration file {conf_path:?} does not exist"
                 )))
             }
-            conf_path
-        } else {
-            get_default_conf_path()?
-        };
+            return Ok(conf_path)
+        }
 
+        get_default_conf_path()
+    }
+
+    pub fn save(&self) -> Result<(), CliError> {
+        let conf_path = CliConf::location()?;
+
+        fs::write(
+            conf_path,
+            serde_json::to_string(&self)
+                .with_context(|| format!("Unable to serialize default configuration {self:?}"))?,
+        )
+        .with_context(|| format!("Unable to write default configuration to file {self:?}"))?;
+
+        Ok(())
+    }
+
+    pub fn load() -> Result<Self, CliError> {
         // Deserialize the configuration from the file, or create a default configuration if none exists
+        let conf_path = CliConf::location()?;
         let conf = if conf_path.exists() {
             // Configuration file exists, read and deserialize it
             let file = File::open(&conf_path)
@@ -203,16 +257,9 @@ impl CliConf {
             fs::create_dir_all(parent).with_context(|| {
                 format!("Unable to create directory for configuration file {parent:?}")
             })?;
+
             let default_conf = Self::default();
-            fs::write(
-                &conf_path,
-                serde_json::to_string(&default_conf).with_context(|| {
-                    format!("Unable to serialize default configuration {default_conf:?}")
-                })?,
-            )
-            .with_context(|| {
-                format!("Unable to write default configuration to file {conf_path:?}")
-            })?;
+            default_conf.save()?;
             default_conf
         };
 
@@ -228,6 +275,18 @@ impl CliConf {
             self.ssl_client_pkcs12_password.as_deref(),
             self.kms_database_secret.as_deref(),
             self.accept_invalid_certs,
+            match &self.tee_conf {
+                Some(tee_conf) => {
+                    if let Some(certificate) = &tee_conf.verified_cert {
+                        Some(Certificate(
+                            X509::from_pem(certificate.as_bytes())?.to_der()?,
+                        ))
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            },
             self.jwe_public_key.as_deref(),
         )
         .with_context(|| {
@@ -242,16 +301,6 @@ impl CliConf {
 
     pub fn initialize_bootstrap_client(&self) -> Result<BootstrapRestClient, CliError> {
         // Instantiate a Bootstrap server REST client with the given configuration
-
-        let measurement = if let Some(tee_conf) = self.tee_conf.clone() {
-            match tee_conf.try_into() {
-                Ok(measurement_conf) => Some(measurement_conf),
-                Err(e) => return Err(e),
-            }
-        } else {
-            None
-        };
-
         let bootstrap_rest_client = BootstrapRestClient::instantiate(
             self.bootstrap_server_url
                 .as_ref()
@@ -259,7 +308,11 @@ impl CliConf {
             self.kms_access_token.as_deref(),
             self.ssl_client_pkcs12_path.as_deref(),
             self.ssl_client_pkcs12_password.as_deref(),
-            measurement,
+            if let Some(tee_conf) = self.tee_conf.clone() {
+                tee_conf.try_into()?
+            } else {
+                TeeMeasurement::default()
+            },
         )
         .with_context(|| {
             format!(

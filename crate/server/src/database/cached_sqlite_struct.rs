@@ -505,9 +505,9 @@ mod tests {
     #[test]
     pub fn test_fsc_push() {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1), Ok(0));
-        assert_eq!(fsc.push(2), Ok(1));
-        assert_eq!(fsc.push(3), Ok(2));
+        assert_eq!(fsc.push(1).unwrap(), 0);
+        assert_eq!(fsc.push(2).unwrap(), 1);
+        assert_eq!(fsc.push(3).unwrap(), 2);
 
         assert_eq!(fsc.head, 0);
         assert_eq!(fsc.tail, 2);
@@ -530,11 +530,11 @@ mod tests {
     #[test]
     pub fn test_fsc_pop() {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1), Ok(0));
-        assert_eq!(fsc.push(2), Ok(1));
-        assert_eq!(fsc.push(3), Ok(2));
+        assert_eq!(fsc.push(1).unwrap(), 0);
+        assert_eq!(fsc.push(2).unwrap(), 1);
+        assert_eq!(fsc.push(3).unwrap(), 2);
 
-        assert_eq!(fsc.pop(), Ok(1));
+        assert_eq!(fsc.pop().unwrap(), 1);
 
         assert_eq!(fsc.head, 1);
         assert_eq!(fsc.tail, 2);
@@ -546,7 +546,7 @@ mod tests {
         assert_eq!(fsc.entries[1].next, FSCNeighborEntry::Chained(2));
         assert_eq!(fsc.entries[1].prev, FSCNeighborEntry::Nil);
 
-        assert_eq!(fsc.push(4), Ok(3));
+        assert_eq!(fsc.push(4).unwrap(), 3);
 
         assert_eq!(fsc.head, 1);
         assert_eq!(fsc.tail, 3);
@@ -558,16 +558,16 @@ mod tests {
         assert_eq!(fsc.entries[3].next, FSCNeighborEntry::Nil);
         assert_eq!(fsc.entries[3].prev, FSCNeighborEntry::Chained(2));
 
-        assert_eq!(fsc.pop(), Ok(2));
-        assert_eq!(fsc.pop(), Ok(3));
-        assert_eq!(fsc.pop(), Ok(4));
+        assert_eq!(fsc.pop().unwrap(), 2);
+        assert_eq!(fsc.pop().unwrap(), 3);
+        assert_eq!(fsc.pop().unwrap(), 4);
 
         assert_eq!(fsc.length, 0);
         assert_eq!(fsc.size, 4);
 
         assert!(fsc.pop().is_err());
 
-        assert_eq!(fsc.push(5), Ok(4));
+        assert_eq!(fsc.push(5).unwrap(), 4);
 
         assert_eq!(fsc.head, 4);
         assert_eq!(fsc.tail, 4);
@@ -577,16 +577,16 @@ mod tests {
         assert_eq!(fsc.entries[4].next, FSCNeighborEntry::Nil);
         assert_eq!(fsc.entries[4].prev, FSCNeighborEntry::Nil);
 
-        assert_eq!(fsc.pop(), Ok(5));
+        assert_eq!(fsc.pop().unwrap(), 5);
     }
 
     #[test]
     pub fn test_fsc_uncache() {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1), Ok(0));
-        assert_eq!(fsc.push(2), Ok(1));
-        assert_eq!(fsc.push(3), Ok(2));
-        assert_eq!(fsc.push(4), Ok(3));
+        assert_eq!(fsc.push(1).unwrap(), 0);
+        assert_eq!(fsc.push(2).unwrap(), 1);
+        assert_eq!(fsc.push(3).unwrap(), 2);
+        assert_eq!(fsc.push(4).unwrap(), 3);
 
         assert!(fsc.uncache(4).is_err());
 
@@ -635,7 +635,7 @@ mod tests {
         assert!(fsc.uncache(1).is_err());
         assert!(fsc.pop().is_err());
 
-        assert_eq!(fsc.push(5), Ok(4));
+        assert_eq!(fsc.push(5).unwrap(), 4);
         assert_eq!(fsc.head, 4);
         assert_eq!(fsc.tail, 4);
         assert_eq!(fsc.length, 1);
@@ -649,10 +649,10 @@ mod tests {
     #[test]
     pub fn test_fsc_recache() {
         let mut fsc = FreeableSqliteCache::new(10);
-        assert_eq!(fsc.push(1), Ok(0));
-        assert_eq!(fsc.push(2), Ok(1));
-        assert_eq!(fsc.push(3), Ok(2));
-        assert_eq!(fsc.push(4), Ok(3));
+        assert_eq!(fsc.push(1).unwrap(), 0);
+        assert_eq!(fsc.push(2).unwrap(), 1);
+        assert_eq!(fsc.push(3).unwrap(), 2);
+        assert_eq!(fsc.push(4).unwrap(), 3);
 
         assert!(fsc.recache(4).is_err());
         assert!(fsc.recache(3).is_err());

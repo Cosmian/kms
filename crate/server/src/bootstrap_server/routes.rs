@@ -245,8 +245,7 @@ pub async fn start_kms_server_config(
         .read()
         .expect("pkcs12 supplied lock poisoned")
     {
-        let warning =
-            "No PKCS12 file has been supplied, therefore the KMS will start in plain HTTP mode.";
+        let warning = "No PKCS12 file has been supplied";
         warnings += " ";
         warnings += warning;
         warn!(warning);

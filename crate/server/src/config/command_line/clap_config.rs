@@ -1,11 +1,11 @@
 use std::fmt::{self};
 
 use clap::Parser;
-use libsgx::utils::is_running_inside_enclave;
+use tee_attestation::is_running_inside_tee;
 
 use super::{
-    BootstrapServerConfig, DBConfig, EnclaveConfig, HttpConfig, HttpsCertbotConfig, JWEConfig,
-    JwtAuthConfig, WorkspaceConfig,
+    BootstrapServerConfig, DBConfig, HttpConfig, HttpsCertbotConfig, JWEConfig, JwtAuthConfig,
+    TeeConfig, WorkspaceConfig,
 };
 
 #[derive(Parser, Default)]
@@ -42,7 +42,7 @@ pub struct ClapConfig {
     pub jwe: JWEConfig,
 
     #[clap(flatten)]
-    pub enclave: EnclaveConfig,
+    pub tee: TeeConfig,
 }
 
 impl fmt::Debug for ClapConfig {
@@ -70,8 +70,8 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
-        let x = if is_running_inside_enclave() {
-            x.field("enclave", &self.enclave)
+        let x = if is_running_inside_tee() {
+            x.field("tee", &self.tee)
         } else {
             x
         };

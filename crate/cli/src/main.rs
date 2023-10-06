@@ -6,7 +6,7 @@ use cosmian_kms_cli::{
         access::AccessAction, bootstrap::BootstrapServerAction, certificates::CertificatesCommands,
         cover_crypt::CovercryptCommands, elliptic_curves::EllipticCurveCommands,
         new_database::NewDatabaseAction, shared::LocateObjectsAction, symmetric::SymmetricCommands,
-        version::ServerVersionAction,
+        verify::TeeAction, version::ServerVersionAction,
     },
     config::CliConf,
     error::CliError,
@@ -36,6 +36,7 @@ enum CliCommands {
     ServerVersion(ServerVersionAction),
     #[command(subcommand)]
     Sym(SymmetricCommands),
+    Verify(TeeAction),
 }
 
 #[tokio::main]
@@ -55,6 +56,20 @@ async fn main_() -> Result<(), CliError> {
 
     let opts = Cli::parse();
     let conf = CliConf::load()?;
+
+    if let CliCommands::Verify(action) = opts.command {
+        action.process(&conf).await?;
+        return Ok(())
+    }
+
+    if let CliCommands::BootstrapStart(action) = opts.command {
+        let bootstrap_rest_client = spawn_blocking(move || conf.initialize_bootstrap_client())
+            .await
+            .map_err(|e| CliError::Default(e.to_string()))??;
+        action.process(&bootstrap_rest_client).await?;
+        return Ok(())
+    }
+
     let kms_rest_client = conf.initialize_kms_client()?;
 
     match opts.command {
@@ -66,12 +81,7 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Certificates(action) => action.process(&kms_rest_client).await?,
         CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
         CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
-        CliCommands::BootstrapStart(action) => {
-            let bootstrap_rest_client = spawn_blocking(move || conf.initialize_bootstrap_client())
-                .await
-                .map_err(|e| CliError::Default(e.to_string()))??;
-            action.process(&bootstrap_rest_client).await?;
-        }
+        CliCommands::BootstrapStart(_) | CliCommands::Verify(_) => {}
     };
 
     Ok(())

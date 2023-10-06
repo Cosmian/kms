@@ -44,6 +44,9 @@ pub enum RestClientError {
 
     #[error(transparent)]
     UrlError(#[from] url::ParseError),
+
+    #[error(transparent)]
+    Base64DecodeError(#[from] base64::DecodeError),
 }
 
 impl From<TtlvError> for RestClientError {

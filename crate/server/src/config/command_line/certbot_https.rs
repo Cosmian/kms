@@ -7,13 +7,22 @@ use clap::Args;
 use tracing::info;
 
 use super::WorkspaceConfig;
-use crate::{core::certbot::Certbot, kms_error, result::KResult};
+use crate::{core::certbot::Certbot, error::KmsError, kms_error, result::KResult};
 
 #[derive(Debug, Args)]
 pub struct HttpsCertbotConfig {
     /// Enable TLS and use Let's Encrypt certbot to get a certificate
     #[clap(long, required(false), env("KMS_USE_CERTBOT"), default_value = "false")]
     pub use_certbot: bool,
+
+    /// Use TEE key generation to generate the certificate certificate (only available on tee). The value (hexadecimal) is a random salt used to derive a key from the  TEE materials
+    #[clap(
+        long,
+        required(false),
+        env("KMS_CERTBOT_USE_TEE_KEY"),
+        default_value = None
+    )]
+    pub certbot_use_tee_key: Option<String>,
 
     /// The hostname of the KMS HTTPS server
     /// that will be used as the Common Name in the Let's Encrypt certificate
@@ -47,6 +56,7 @@ impl Default for HttpsCertbotConfig {
     fn default() -> Self {
         Self {
             use_certbot: false,
+            certbot_use_tee_key: None,
             certbot_email: String::new(),
             certbot_hostname: String::new(),
             certbot_ssl_path: std::env::temp_dir(),
@@ -70,6 +80,15 @@ impl HttpsCertbotConfig {
             self.certbot_hostname.clone(),
             std::fs::canonicalize(http_root_path).map_err(|e| kms_error!(e))?,
             std::fs::canonicalize(certbot_ssl_path).map_err(|e| kms_error!(e))?,
+            if let Some(salt) = &self.certbot_use_tee_key {
+                Some(hex::decode(salt).map_err(|_| {
+                    KmsError::ConversionError(
+                        "`certbot_use_tee_key` value is not a hexadecimal string".to_string(),
+                    )
+                })?)
+            } else {
+                None
+            },
         ))
     }
 }

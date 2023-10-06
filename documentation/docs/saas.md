@@ -11,16 +11,15 @@ Compared to the on-premise self-installation, this service is configured using:
 
 ## Trustworthiness
 
-The KMS enables you to check its trustworthiness. To do so, three routes are useful, using `GET` method:
+The KMS enables you to check its trustworthiness. To do so, two routes are useful, using `GET` method:
 
-- `/enclave_quote?nonce=<nonce>` returning the quote of the KMS running inside the enclave. It takes a nonce as parameter which is an arbitrary and non predictable string. The returning quote is base64 encoded.
-- `/certificate` returning the SSL certificate and the enclave public key of the HTTPS server
-- `/enclave_manifest` returning the manifest of the enclave. You can therefore analyse the hashes of the trusted files and the execution context such as env variables or enclave parameters
+- `/tee/attestation_report?nonce=<nonce>` returning the quote of the KMS running inside the enclave. It takes a nonce as parameter which is an arbitrary and non predictable string. The returning quote is base64 encoded.
+- `/tee/sgx_enclave_public_key` returning the SGX enclave public key of the HTTPS server
 
-With these three routes, you can proceed a remote attestation on Microsoft Azure Service. Note that the report data of the quote is generated has follow:
+With these routes, you can proceed a remote attestation. Note that the report data of the quote is generated has follow:
 
 ```c
-report_data = Sha256( certificate + nounce )
+report_data = Sha256(PEM certificate) + nonce 
 ```
 
 Let's explain why:
@@ -36,6 +35,7 @@ Once obtained the remote attestation, you can proceed several checks:
 - assert the `mr_enclave` and `mr_signer` are the expected ones. See below.
 - assert the Remote Attestation is not outdated (time is between `iat` and `exp`)
 - assert the quote's report data is both the same in the remote attestation and in the quote
+- etc.
 
 ### `mr_signer`
 
