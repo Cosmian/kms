@@ -19,12 +19,9 @@ use cosmian_kmip::kmip::{
     },
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::{
-    access::{
-        Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
-        UserAccessResponse,
-    },
-    tee::forge_report_data,
+use cosmian_kms_utils::access::{
+    Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
+    UserAccessResponse,
 };
 use tracing::debug;
 use uuid::Uuid;
@@ -155,13 +152,11 @@ impl KMS {
     /// This service is not available if the server is not running inside an enclave
     #[cfg(target_os = "linux")]
     pub fn get_attestation_report(&self, nonce: [u8; 32]) -> KResult<String> {
-        use tee_attestation::get_quote;
-
         let certificate = self.get_server_x509_certificate()?;
 
         if let Some(certificate) = certificate {
-            let report_data = forge_report_data(&nonce, &certificate)?;
-            return Ok(b64.encode(get_quote(&report_data)?))
+            let report_data = cosmian_kms_utils::tee::forge_report_data(&nonce, &certificate)?;
+            return Ok(b64.encode(tee_attestation::get_quote(&report_data)?))
         }
 
         Err(KmsError::NotSupported(

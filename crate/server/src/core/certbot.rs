@@ -137,6 +137,7 @@ impl Certbot {
         kms_bail!("Certificate can't be found...");
     }
 
+    #[cfg(target_os = "linux")]
     pub fn generate_private_key(&self) -> KResult<PKey<Private>> {
         if let Some(salt) = &self.use_tee_key {
             let key = tee_attestation::get_key(Some(salt))?;
@@ -153,6 +154,11 @@ impl Certbot {
         } else {
             Ok(create_p384_key())
         }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn generate_private_key(&self) -> KResult<PKey<Private>> {
+        Ok(create_p384_key())
     }
 
     pub fn request_cert(&mut self) -> KResult<()> {
