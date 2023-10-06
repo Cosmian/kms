@@ -24,7 +24,7 @@ All notable changes to this project will be documented in this file.
   - verify RATLS certificate before querying the bootstrap server
   - review the TLS certificate generation using the key tied to the TEE
   - remove libsgx and create a new dependance to tee_attestion crate  
-  - update KMS server arguement regarding the TEE and cerbot
+  - update KMS server argument regarding the TEE and cerbot
   - review documentation regarding the KMS usage inside a TEE
 
 ### Bug Fixes
