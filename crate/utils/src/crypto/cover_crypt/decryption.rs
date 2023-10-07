@@ -84,6 +84,26 @@ impl CovercryptDecryption {
     ///
     /// The input encrypted data is serialized using LEB128 (bulk mode).
     /// Each chunk of data is decrypted and serialized back to LEB128.
+    ///
+    /// Bulk encryption / decryption scheme
+    ///
+    /// ENC request
+    /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
+    ///                           <-------------- `nb_chunks` times ------------>
+    ///
+    /// ENC response
+    /// | EH | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (encrypted)
+    ///                                <-------------- `nb_chunks` times ------------>
+    ///
+    /// DEC request
+    /// | `nb_chunks` (LEB128) | size(EH + `chunk_data`) (LEB128) | EH | `chunk_data` (encrypted)
+    ///                                                             <------ chunk with EH ------>
+    ///                          <------------------------ `nb_chunks` times ------------------->
+    ///
+    /// DEC response
+    /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
+    ///                           <------------- `nb_chunks` times ------------->
+    ///
     fn bulk_decrypt(
         &self,
         encrypted_bytes: &[u8],
