@@ -410,62 +410,64 @@ pub fn prepare_kms_server(
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
-        // Create an `App` instance and configure the routes.
-        let app = App::new()
-            // Endpoint for Google Client-Side Encryption
-            .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
-            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
-            .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
+        // The default scope serves from the root / the KMIP, permissions and tee endpoints
+        let default_scope = web::scope("")
+            .wrap(Condition::new(
+                use_jwt_auth,
+                JwtAuth::new(jwt_config.clone()),
+            )) // Use JWT for authentication if necessary.
+            .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
+            // Enable CORS for the application.
+            // Since Actix is running the middlewares in reverse order, it's important that the
+            // CORS middleware is the last one so that the auth middlewares do not run on
+            // preflight (OPTION) requests.
+            .wrap(Cors::permissive())
+            .service(routes::kmip::kmip)
+            .service(routes::access::list_owned_objects)
+            .service(routes::access::list_access_rights_obtained)
+            .service(routes::access::list_accesses)
+            .service(routes::access::grant_access)
+            .service(routes::access::revoke_access)
+            .service(routes::get_version);
+
+        // The default scope is extended with the /new_database endpoint if the application is using an encrypted SQLite database.
+        let default_scope = if is_using_sqlite_enc {
+            default_scope.service(routes::add_new_database)
+        } else {
+            default_scope
+        };
+        // The default scope is extended with the /tee endpoints if the application is running inside an enclave.
+        let default_scope = if is_running_inside_tee() {
+            default_scope
+                .service(routes::tee::get_enclave_public_key)
+                .service(routes::tee::get_attestation_report)
+        } else {
+            default_scope
+        };
+
+        // The scope for the Google Client-Side Encryption endpoints served from /google_cse
+        let google_cse_scope = web::scope("/google_cse")
+            // The /status endpoint is not protected by authentication (but requires CORS)
+            .service(routes::google_cse::get_status)
+            .wrap(Cors::permissive())
+            // The other Google CSE endpoints are protected by authentication (and require CORS)
             .service(
-                web::scope("/google_cse")
-                    // The /status endpoint is not protected by authentication (but requires CORS)
-                    .service(routes::google_cse::get_status)
-                    .wrap(Cors::permissive())
-                    // The other Google CSE endpoints are protected by authentication (and require CORS)
-                    .service(
-                        web::scope("")
-                            .wrap(Condition::new(
-                                use_jwt_auth,
-                                JwtAuth::new(jwt_config.clone()),
-                            )) // Use JWT for authentication if necessary.
-                            .wrap(Cors::permissive())
-                            .service(routes::google_cse::say_blah),
-                    ),
-            )
-            // Other endpoints: KMIP and permissions
-            .service(
-                web::scope("/")
+                web::scope("")
                     .wrap(Condition::new(
                         use_jwt_auth,
                         JwtAuth::new(jwt_config.clone()),
                     )) // Use JWT for authentication if necessary.
-                    .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
-                    // Enable CORS for the application.
-                    // Since Actix is running the middlewares in reverse order, it's important that the
-                    // CORS middleware is the last one so that the auth middlewares do not run on
-                    // preflight (OPTION) requests.
                     .wrap(Cors::permissive())
-                    .service(routes::kmip)
-                    .service(routes::list_owned_objects)
-                    .service(routes::list_access_rights_obtained)
-                    .service(routes::list_accesses)
-                    .service(routes::grant_access)
-                    .service(routes::revoke_access)
-                    .service(routes::get_version),
+                    .service(routes::google_cse::say_blah),
             );
 
-        let app = if is_using_sqlite_enc {
-            app.service(routes::add_new_database)
-        } else {
-            app
-        };
-
-        if is_running_inside_tee() {
-            app.service(routes::tee::get_enclave_public_key)
-                .service(routes::tee::get_attestation_report)
-        } else {
-            app
-        }
+        // Create an `App` instance and configure the passed data and the various scopes
+        App::new()
+            .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
+            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
+            .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
+            .service(google_cse_scope)
+            .service(default_scope)
     })
     .client_request_timeout(std::time::Duration::from_secs(10));
 
