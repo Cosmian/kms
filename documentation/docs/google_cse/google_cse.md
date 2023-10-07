@@ -44,11 +44,16 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 \
     --jwt-audience=cse-authorization
 ```
 
-If you are a developer working on the KMS, you can run the following command:
+The KMS must be behind a valid TLS certificate when started.
+Assuming it is running at `https://cse.example.com`, you should add the External Key Service with URL `https://cse.example.com/google_cse` in the Client-Side Encryption page of the Google Workspace admin console.
 
-```sh
-cargo run --bin cosmian_kms_server -- \
-    --jwt-issuer-uri=https://gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
-    --jwks-uri=https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
-    --jwt-audience=cse-authorization
-```
+![external keys service](./images/configure_external_key_service.png)
+
+Then test the connection; it should show:
+
+![external key service ok](./images/external_key_service_ok.png)
+
+Finalize the configuration. The Client Side Encryption page should now show the service to be active and you will now have to decide whether to assign this service to all users or to a subset of users.
+
+![Cosmian KMS active](./images/cosmian_kms_active.png)
+

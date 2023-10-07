@@ -449,15 +449,25 @@ pub fn prepare_kms_server(
         let google_cse_scope = web::scope("/google_cse")
             // The /status endpoint is not protected by authentication (but requires CORS)
             .service(routes::google_cse::get_status)
-            .wrap(Cors::permissive())
+            .wrap(
+                Cors::default()
+                    .allowed_origin("https://admin.google.com")
+                    .allowed_methods(vec!["GET", "POST"]),
+            )
             // The other Google CSE endpoints are protected by authentication (and require CORS)
             .service(
                 web::scope("")
+                    // Use JWT for authentication if necessary.
                     .wrap(Condition::new(
                         use_jwt_auth,
                         JwtAuth::new(jwt_config.clone()),
-                    )) // Use JWT for authentication if necessary.
-                    .wrap(Cors::permissive())
+                    ))
+                    // CORS must come after  JWT since wrapper are tested in reverse order
+                    .wrap(
+                        Cors::default()
+                            .allowed_origin("https://admin.google.com")
+                            .allowed_methods(vec!["GET", "POST"]),
+                    )
                     .service(routes::google_cse::say_blah),
             );
 
