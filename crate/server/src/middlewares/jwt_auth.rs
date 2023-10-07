@@ -97,9 +97,9 @@ where
                     .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
             })
             .unwrap_or_default();
+        trace!("Checking JWT identity: {:?}", identity);
 
         // decode the JWT
-        trace!("Checking JWT");
         let private_claim = decode_jwt(jwt_config, &identity).map(|claim| claim.email);
         match private_claim {
             Err(e) => Box::pin(async move {
