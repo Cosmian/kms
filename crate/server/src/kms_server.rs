@@ -11,7 +11,7 @@ use actix_web::{
     dev::ServerHandle,
     middleware::Condition,
     rt::{spawn, time::sleep},
-    web::{Data, JsonConfig, PayloadConfig},
+    web::{self, Data, JsonConfig, PayloadConfig},
     App, HttpServer,
 };
 use openssl::{
@@ -412,26 +412,47 @@ pub fn prepare_kms_server(
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the routes.
         let app = App::new()
-            .wrap(Condition::new(
-                use_jwt_auth,
-                JwtAuth::new(jwt_config.clone()),
-            )) // Use JWT for authentication if necessary.
-            .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
-            // Enable CORS for the application.
-            // Since Actix is running the middlewares in reverse order, it's important that the
-            // CORS middleware is the last one so that the auth middlewares do not run on
-            // preflight (OPTION) requests.
-            .wrap(Cors::permissive())
+            // Endpoint for Google Client-Side Encryption
             .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
-            .service(routes::kmip::kmip)
-            .service(routes::access::list_owned_objects)
-            .service(routes::access::list_access_rights_obtained)
-            .service(routes::access::list_accesses)
-            .service(routes::access::grant_access)
-            .service(routes::access::revoke_access)
-            .service(routes::get_version);
+            .service(
+                web::scope("/google_cse")
+                    // The /status endpoint is not protected by authentication (but requires CORS)
+                    .service(routes::google_cse::get_status)
+                    .wrap(Cors::permissive())
+                    // The other Google CSE endpoints are protected by authentication (and require CORS)
+                    .service(
+                        web::scope("")
+                            .wrap(Condition::new(
+                                use_jwt_auth,
+                                JwtAuth::new(jwt_config.clone()),
+                            )) // Use JWT for authentication if necessary.
+                            .wrap(Cors::permissive())
+                            .service(routes::google_cse::say_blah),
+                    ),
+            )
+            // Other endpoints: KMIP and permissions
+            .service(
+                web::scope("/")
+                    .wrap(Condition::new(
+                        use_jwt_auth,
+                        JwtAuth::new(jwt_config.clone()),
+                    )) // Use JWT for authentication if necessary.
+                    .wrap(Condition::new(use_cert_auth, SslAuth)) // Use certificates for authentication if necessary.
+                    // Enable CORS for the application.
+                    // Since Actix is running the middlewares in reverse order, it's important that the
+                    // CORS middleware is the last one so that the auth middlewares do not run on
+                    // preflight (OPTION) requests.
+                    .wrap(Cors::permissive())
+                    .service(routes::kmip)
+                    .service(routes::list_owned_objects)
+                    .service(routes::list_access_rights_obtained)
+                    .service(routes::list_accesses)
+                    .service(routes::grant_access)
+                    .service(routes::revoke_access)
+                    .service(routes::get_version),
+            );
 
         let app = if is_using_sqlite_enc {
             app.service(routes::add_new_database)

@@ -43,3 +43,12 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 \
     --jwks-uri=https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
     --jwt-audience=cse-authorization
 ```
+
+If you are a developer working on the KMS, you can run the following command:
+
+```sh
+cargo run --bin cosmian_kms_server -- \
+    --jwt-issuer-uri=https://gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
+    --jwks-uri=https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
+    --jwt-audience=cse-authorization
+```
