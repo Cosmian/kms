@@ -3,7 +3,10 @@ use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_types::LinkType,
 };
-use cosmian_kms_utils::{access::ExtraDatabaseParams, crypto::wrap::unwrap_key_block};
+use cosmian_kms_utils::{
+    access::{ExtraDatabaseParams, ObjectOperationType},
+    crypto::wrap::unwrap_key_block,
+};
 use tracing::debug;
 use x509_parser::parse_x509_certificate;
 
@@ -36,7 +39,7 @@ pub async fn unwrap_key(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()> {
-    let wrapping_key_uid = match &object_key_block.key_wrapping_data {
+    let unwrapping_key_uid = match &object_key_block.key_wrapping_data {
         Some(kwd) => match &kwd.encryption_key_information {
             Some(eki) => &eki.unique_identifier,
             None => kms_bail!("unwrap_key: unable to unwrap key: unwrapping key uid is missing"),
@@ -45,21 +48,35 @@ pub async fn unwrap_key(
     };
 
     // fetch the unwrapping key
-    let wrap_key = get_key(wrapping_key_uid, kms, owner, params).await?;
+    let unwrapping_key = get_key(
+        unwrapping_key_uid,
+        ObjectOperationType::Decrypt,
+        kms,
+        owner,
+        params,
+    )
+    .await?;
 
     // in the case the key is a PublicKey or Certificate, we need to fetch the corresponding private key
-    let unwrapping_key = match wrap_key.object_type() {
+    let unwrapping_key = match unwrapping_key.object_type() {
         ObjectType::PublicKey => {
-            let private_key_uid = wrap_key
+            let private_key_uid = unwrapping_key
                 .attributes()?
                 .get_link(LinkType::PrivateKeyLink)
                 .context("unable to unwrap key: public key does not have a private key link")?;
             // fetch the private key
-            get_key(&private_key_uid, kms, owner, params).await?
+            get_key(
+                &private_key_uid,
+                ObjectOperationType::Decrypt,
+                kms,
+                owner,
+                params,
+            )
+            .await?
         }
         ObjectType::Certificate => {
             debug!("unwrap_key: certificate: locate private key from certificate uid");
-            let certificate_value = match wrap_key {
+            let certificate_value = match unwrapping_key {
                 Object::Certificate {
                     certificate_value, ..
                 } => Ok(certificate_value),
@@ -75,7 +92,14 @@ pub async fn unwrap_key(
                         locate_by_spki(&ski, ObjectType::PrivateKey, kms, owner, params).await?;
                     debug!("unwrap_key: found private key uid: {private_key_uid}");
                     // fetch the private key
-                    get_key(&private_key_uid, kms, owner, params).await?
+                    get_key(
+                        &private_key_uid,
+                        ObjectOperationType::Decrypt,
+                        kms,
+                        owner,
+                        params,
+                    )
+                    .await?
                 }
                 None => {
                     return Err(KmsError::Certificate(
@@ -84,7 +108,7 @@ pub async fn unwrap_key(
                 }
             }
         }
-        _ => wrap_key,
+        _ => unwrapping_key,
     };
 
     unwrap_key_block(object_type, object_key_block, &unwrapping_key)?;

@@ -5,115 +5,27 @@ use actix_web::{
     web::{Data, Json},
     HttpRequest,
 };
-use alcoholic_jwt::{token_kid, JWKS};
+use base64::{engine::general_purpose, Engine};
 use clap::crate_version;
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyWrappingData, KeyWrappingSpecification},
+    kmip_objects::ObjectType,
+    kmip_types::{self, CryptographicAlgorithm, EncodingOption},
+};
+use cosmian_kms_utils::crypto::symmetric::create_symmetric_key;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info, trace};
+use tracing::{info, trace};
 
 use crate::{
-    error::KmsError,
-    kms_ensure,
-    middlewares::{decode_jwt_authentication_token, JwtConfig, JwtTokenHeaders, UserClaim},
+    core::operations::{unwrap_key, wrap_key},
     result::KResult,
+    routes::google_cse::jwt::validate_tokens,
     KMSServer,
 };
 
-/// Fetch the JWT authorization configuration for Google CSE
-pub async fn jwt_authorization_config() -> KResult<JwtConfig> {
-    let jwks_uri =std::env::var("KMS_GOOGLE_CSE_JWKS_URI").unwrap_or("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com".to_string());
-
-    let jwks = reqwest::get(&jwks_uri)
-        .await
-        .map_err(|e| {
-            KmsError::ServerError(format!(
-                "Failed to fetch Google CSE authorization JWKS at: {}, {:?} ",
-                jwks_uri, e
-            ))
-        })?
-        .json::<JWKS>()
-        .await
-        .map_err(|e| {
-            KmsError::ServerError(format!(
-                "Failed to parse Google CSE authorization JWKS at: {}, {:?} ",
-                jwks_uri, e
-            ))
-        })?;
-
-    Ok(JwtConfig {
-        jwt_issuer_uri: std::env::var("KMS_GOOGLE_CSE_JWT_ISSUER")
-            .unwrap_or("gsuitecse-tokenissuer-drive@system.gserviceaccount.com".to_string()),
-        jwks,
-        jwt_audience: Some(
-            std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or("cse-authorization".to_string()),
-        ),
-    })
-}
-
-/// Decode a json web token (JWT) used for Google CSE
-pub fn decode_jwt_authorization_token(
-    jwt_config: &JwtConfig,
-    token: &str,
-) -> KResult<(UserClaim, JwtTokenHeaders)> {
-    kms_ensure!(
-        !token.is_empty(),
-        KmsError::Unauthorized("token is empty".to_owned())
-    );
-    tracing::trace!("validating CSE authorization token {}", &token);
-    tracing::trace!(
-        "expected JWT issuer {}",
-        &jwt_config.jwt_issuer_uri.to_string()
-    );
-
-    let validations = vec![
-        alcoholic_jwt::Validation::Issuer(jwt_config.jwt_issuer_uri.to_string()),
-        alcoholic_jwt::Validation::Audience(
-            jwt_config
-                .jwt_audience
-                .as_ref()
-                .ok_or_else(|| {
-                    KmsError::ServerError(
-                        "JWT audience should be configured with Google Workspace client-side \
-                         encryption"
-                            .to_string(),
-                    )
-                })?
-                .to_string(),
-        ),
-    ];
-
-    // If a JWKS contains multiple keys, the correct KID first
-    // needs to be fetched from the token headers.
-    let kid = token_kid(token)
-        .map_err(|_| KmsError::Unauthorized("Failed to decode token headers".to_string()))?
-        .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_string()))?;
-
-    let jwk = jwt_config
-        .jwks
-        .find(&kid)
-        .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_string()))?;
-
-    let valid_jwt = alcoholic_jwt::validate(token, jwk, validations)
-        .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;
-
-    let user_claims = serde_json::from_value(valid_jwt.claims)
-        .map_err(|err| KmsError::Unauthorized(format!("JWT claims are malformed: {err:?}")))?;
-
-    let jwt_headers = serde_json::from_value(valid_jwt.headers)
-        .map_err(|err| KmsError::Unauthorized(format!("JWT headers is malformed: {err:?}")))?;
-
-    Ok((user_claims, jwt_headers))
-}
-
-/// The configuration for for Google CSE:
-///  - JWT authentication and authorization configurations
-///  - external KACLS URL of this server configured in Google Workspace client-side encryption
-/// (something like https://cse.mydomain.com/google_cse)
-#[derive(Clone)]
-pub struct GoogleCseConfig {
-    pub authentication: JwtConfig,
-    pub authorization: JwtConfig,
-    pub kacls_url: String,
-}
+mod jwt;
+mod operations;
+pub use jwt::{jwt_authorization_config, GoogleCseConfig};
 
 // {
 //   "server_type": "KACLS",
@@ -160,14 +72,6 @@ pub async fn get_status(
     Ok(response)
 }
 
-/*
-{
-  "authentication": string,
-  "authorization": string,
-  "key": string,
-  "reason": string
-}
-*/
 #[derive(Deserialize, Debug)]
 pub struct WrapRequest {
     pub authentication: String,
@@ -176,11 +80,6 @@ pub struct WrapRequest {
     pub reason: String,
 }
 
-/*
-{
-  "wrapped_key": string
-}
- */
 #[derive(Serialize, Debug)]
 pub struct WrapResponse {
     pub wrapped_key: String,
@@ -192,73 +91,172 @@ pub struct WrapResponse {
 /// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
 #[post("/wrap")]
 pub async fn wrap(
-    req: HttpRequest,
+    req_http: HttpRequest,
     wrap_request: Json<WrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<WrapResponse>> {
-    info!("POST /wrap {}", kms.get_user(req)?);
+    info!("POST /google_cse/wrap");
 
+    // unwrap all calls parameters
+
+    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
+    let user = kms.get_user(req_http)?;
+    let kms = kms.into_inner();
     let wrap_request = wrap_request.into_inner();
     trace!("wrap_request: {:?}", wrap_request);
 
-    let cse_config_inner = cse_config.into_inner();
-    let cse_config = cse_config_inner.as_ref().as_ref().ok_or_else(|| {
-        KmsError::ServerError(
-            "JWT authentication and authorization configurations for Google CSE are not set"
-                .to_string(),
-        )
-    })?;
+    validate_tokens(
+        &wrap_request.authentication,
+        &wrap_request.authorization,
+        cse_config,
+        &["writer", "upgrader"],
+    )?;
 
-    // validate authentication token
-    let authentication_token =
-        decode_jwt_authentication_token(&cse_config.authentication, &wrap_request.authentication)?;
-    trace!("authentication token: {:?}", authentication_token);
-
-    let (authorization_token, jwt_headers) =
-        decode_jwt_authorization_token(&cse_config.authorization, &wrap_request.authorization)?;
-    trace!("authorization token: {:?}", authorization_token);
-    trace!("authorization token headers: {:?}", jwt_headers);
-
-    // The emails should match (case insensitive)
-    let authentication_email = authentication_token.email.ok_or_else(|| {
-        KmsError::Unauthorized("Authentication token should contain an email".to_string())
-    })?;
-    let authorization_email = authorization_token.email.ok_or_else(|| {
-        KmsError::Unauthorized("Authorization token should contain an email".to_string())
-    })?;
-    kms_ensure!(
-        authorization_email == authentication_email,
-        KmsError::Unauthorized(
-            "Authentication and authorization emails in tokens do not match".to_string()
-        )
+    // decode the DEK and create a KMIP object from the key bytes
+    let mut dek = create_symmetric_key(
+        &general_purpose::STANDARD.decode(&wrap_request.key)?,
+        CryptographicAlgorithm::AES,
     );
 
-    let role = authorization_token.role.ok_or_else(|| {
-        KmsError::Unauthorized("Authorization token should contain a role".to_string())
-    })?;
-    kms_ensure!(
-        role.as_str() == "writer" || role.as_str() == "reader",
-        KmsError::Unauthorized(
-            "Authorization token should contain a role of writer or owner".to_string()
-        )
-    );
+    wrap_key(
+        "Google CSE DEK",
+        dek.key_block_mut()?,
+        &KeyWrappingSpecification {
+            wrapping_method: kmip_types::WrappingMethod::Encrypt,
+            encoding_option: Some(EncodingOption::NoEncoding),
+            encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
+                unique_identifier: "[google_cse]".to_string(),
+                cryptographic_parameters: Some(kmip_types::CryptographicParameters {
+                    ..Default::default()
+                }),
+            }),
+            ..Default::default()
+        },
+        &kms,
+        &user,
+        database_params.as_ref(),
+    )
+    .await?;
 
-    let kacls_url = authorization_token.kacls_url.ok_or_else(|| {
-        KmsError::Unauthorized("Authorization token should contain a kacls_url".to_string())
-    })?;
-    kms_ensure!(
-        kacls_url == cse_config.kacls_url,
-        KmsError::Unauthorized(format!(
-            "KACLS Urls should match: expected: {}, got: {} ",
-            cse_config.kacls_url, kacls_url
-        ))
-    );
-
-    debug!("wrap request authorized");
+    // re-extract the bytes from the key
+    let wrapped_dek = dek.key_block()?.key_bytes()?;
 
     Ok(Json(WrapResponse {
-        wrapped_key: "wrapped_key".to_string(),
+        wrapped_key: general_purpose::STANDARD.encode(wrapped_dek),
+    }))
+}
+
+#[derive(Deserialize, Debug)]
+pub struct UnwrapRequest {
+    pub authentication: String,
+    pub authorization: String,
+    pub reason: String,
+    pub wrapped_key: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct UnwrapResponse {
+    pub key: String,
+}
+
+/// Decrypt the Data Encryption Key (DEK) and associated data.
+///
+/// See [doc](https://developers.google.com/workspace/cse/reference/wrap) and
+/// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
+#[post("/unwrap")]
+pub async fn unwrap(
+    req_http: HttpRequest,
+    unwrap_request: Json<UnwrapRequest>,
+    cse_config: Data<Option<GoogleCseConfig>>,
+    kms: Data<Arc<KMSServer>>,
+) -> KResult<Json<UnwrapResponse>> {
+    info!("POST /google_cse/unwrap");
+
+    // unwrap all calls parameters
+
+    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
+    let user = kms.get_user(req_http)?;
+    let kms = kms.into_inner();
+    let unwrap_request = unwrap_request.into_inner();
+    trace!("unwrap_request: {:?}", unwrap_request);
+
+    validate_tokens(
+        &unwrap_request.authentication,
+        &unwrap_request.authorization,
+        cse_config,
+        &["writer", "upgrader"],
+    )?;
+
+    // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
+    let mut wrapped_dek = create_symmetric_key(
+        &general_purpose::STANDARD.decode(&unwrap_request.wrapped_key)?,
+        CryptographicAlgorithm::AES,
+    );
+    // add key wrapping parameters to the wrapped key
+    wrapped_dek.key_block_mut()?.key_wrapping_data = Some(KeyWrappingData {
+        wrapping_method: kmip_types::WrappingMethod::Encrypt,
+        encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
+            unique_identifier: "[google_cse]".to_string(),
+            cryptographic_parameters: None,
+        }),
+        encoding_option: Some(EncodingOption::NoEncoding),
+        ..Default::default()
+    });
+
+    unwrap_key(
+        ObjectType::SymmetricKey,
+        wrapped_dek.key_block_mut()?,
+        &kms,
+        &user,
+        database_params.as_ref(),
+    )
+    .await?;
+
+    // re-extract the bytes from the key
+    let dek = wrapped_dek.key_block()?.key_bytes()?;
+
+    Ok(Json(UnwrapResponse {
+        key: general_purpose::STANDARD.encode(dek),
+    }))
+}
+
+#[derive(Deserialize, Debug)]
+pub struct DigestRequest {
+    pub authorization: String,
+    pub reason: String,
+    pub wrapped_key: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct DigestResponse {
+    pub checksum: String,
+}
+
+/// Returns the checksum ("digest") of an unwrapped Data Encryption Key (DEK).
+///
+/// ```SHA-256("KACLMigration" + resource_identifier + unwrapped_dek)```
+///
+/// See [doc](https://developers.google.com/workspace/cse/reference/digest)
+#[post("/digest")]
+pub async fn digest(
+    req_http: HttpRequest,
+    digest_request: Json<DigestRequest>,
+    cse_config: Data<Option<GoogleCseConfig>>,
+    kms: Data<Arc<KMSServer>>,
+) -> KResult<Json<DigestResponse>> {
+    info!("POST /google_cse/digest");
+
+    // unwrap all calls parameters
+
+    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
+    let user = kms.get_user(req_http)?;
+    let kms = kms.into_inner();
+    let digest_request = digest_request.into_inner();
+    trace!("digest_request: {:?}", digest_request);
+
+    Ok(Json(DigestResponse {
+        checksum: "digest".to_string(),
     }))
 }
 
@@ -268,7 +266,8 @@ mod tests {
     use tracing::info;
 
     use crate::routes::google_cse::{
-        decode_jwt_authorization_token, jwt_authorization_config, WrapRequest,
+        jwt::{decode_jwt_authorization_token, jwt_authorization_config},
+        WrapRequest,
     };
 
     #[actix_rt::test]

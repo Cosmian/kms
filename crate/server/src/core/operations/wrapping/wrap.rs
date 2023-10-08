@@ -4,7 +4,10 @@ use cosmian_kmip::kmip::{
     },
     kmip_types::{EncodingOption, WrappingMethod},
 };
-use cosmian_kms_utils::{access::ExtraDatabaseParams, crypto::wrap::encrypt_bytes};
+use cosmian_kms_utils::{
+    access::{ExtraDatabaseParams, ObjectOperationType},
+    crypto::wrap::encrypt_bytes,
+};
 
 use super::get_key;
 use crate::{core::KMS, kms_bail, result::KResult};
@@ -14,11 +17,11 @@ use crate::{core::KMS, kms_bail, result::KResult};
 /// The key is wrapped using the wrapping key
 ///
 /// # Arguments
-/// * `object_uid` - the uid of the object to wrap
+/// * `object_uid` - the uid of the object to wrap (only used to display errors)
 /// * `object_key_block` - the key block of the object to wrap
 /// * `key_wrapping_specification` - the key wrapping specification
 /// * `kms` - the kms
-/// * `owner` - the owner of the object
+/// * `user` - the user performing the call
 /// * `params` - the extra database parameters
 /// # Returns
 /// * `KResult<()>` - the result of the operation
@@ -27,7 +30,7 @@ pub async fn wrap_key(
     object_key_block: &mut KeyBlock,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
-    owner: &str,
+    user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()> {
     if object_key_block.key_wrapping_data.is_some() {
@@ -56,7 +59,14 @@ pub async fn wrap_key(
     };
 
     // fetch the wrapping key
-    let wrapping_key = get_key(wrapping_key_uid, kms, owner, params).await?;
+    let wrapping_key = get_key(
+        wrapping_key_uid,
+        ObjectOperationType::Encrypt,
+        kms,
+        user,
+        params,
+    )
+    .await?;
 
     // wrap the key based on the encoding
     let mut rng = kms.rng.lock().expect("could not acquire a lock on the rng");

@@ -20,11 +20,13 @@ pub struct UserClaim {
     pub exp: Option<usize>,
     pub nbf: Option<usize>,
     pub jti: Option<String>,
-    // Google specific (?)
+    // Google CSE
     pub role: Option<String>,
-    // Google specific (?)
+    // Google CSE
     pub resource_name: Option<String>,
-    // Google specific
+    // Google CSE
+    pub perimeter_id: Option<String>,
+    // Google CSE
     pub kacls_url: Option<String>,
 }
 
