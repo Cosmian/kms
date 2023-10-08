@@ -1,15 +1,119 @@
 use std::sync::Arc;
 
 use actix_web::{
-    get,
+    get, post,
     web::{Data, Json},
     HttpRequest,
 };
+use alcoholic_jwt::{token_kid, JWKS};
 use clap::crate_version;
-use serde::Serialize;
-use tracing::info;
+use serde::{Deserialize, Serialize};
+use tracing::{debug, info, trace};
 
-use crate::{result::KResult, KMSServer};
+use crate::{
+    error::KmsError,
+    kms_ensure,
+    middlewares::{decode_jwt_authentication_token, JwtConfig, JwtTokenHeaders, UserClaim},
+    result::KResult,
+    KMSServer,
+};
+
+/// Fetch the JWT authorization configuration for Google CSE
+pub async fn jwt_authorization_config() -> KResult<JwtConfig> {
+    let jwks_uri =std::env::var("KMS_GOOGLE_CSE_JWKS_URI").unwrap_or("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com".to_string());
+
+    let jwks = reqwest::get(&jwks_uri)
+        .await
+        .map_err(|e| {
+            KmsError::ServerError(format!(
+                "Failed to fetch Google CSE authorization JWKS at: {}, {:?} ",
+                jwks_uri, e
+            ))
+        })?
+        .json::<JWKS>()
+        .await
+        .map_err(|e| {
+            KmsError::ServerError(format!(
+                "Failed to parse Google CSE authorization JWKS at: {}, {:?} ",
+                jwks_uri, e
+            ))
+        })?;
+
+    Ok(JwtConfig {
+        jwt_issuer_uri: std::env::var("KMS_GOOGLE_CSE_JWT_ISSUER")
+            .unwrap_or("gsuitecse-tokenissuer-drive@system.gserviceaccount.com".to_string()),
+        jwks,
+        jwt_audience: Some(
+            std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or("cse-authorization".to_string()),
+        ),
+    })
+}
+
+/// Decode a json web token (JWT) used for Google CSE
+pub fn decode_jwt_authorization_token(
+    jwt_config: &JwtConfig,
+    token: &str,
+) -> KResult<(UserClaim, JwtTokenHeaders)> {
+    kms_ensure!(
+        !token.is_empty(),
+        KmsError::Unauthorized("token is empty".to_owned())
+    );
+    tracing::trace!("validating CSE authorization token {}", &token);
+    tracing::trace!(
+        "expected JWT issuer {}",
+        &jwt_config.jwt_issuer_uri.to_string()
+    );
+
+    let validations = vec![
+        alcoholic_jwt::Validation::Issuer(jwt_config.jwt_issuer_uri.to_string()),
+        alcoholic_jwt::Validation::Audience(
+            jwt_config
+                .jwt_audience
+                .as_ref()
+                .ok_or_else(|| {
+                    KmsError::ServerError(
+                        "JWT audience should be configured with Google Workspace client-side \
+                         encryption"
+                            .to_string(),
+                    )
+                })?
+                .to_string(),
+        ),
+    ];
+
+    // If a JWKS contains multiple keys, the correct KID first
+    // needs to be fetched from the token headers.
+    let kid = token_kid(token)
+        .map_err(|_| KmsError::Unauthorized("Failed to decode token headers".to_string()))?
+        .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_string()))?;
+
+    let jwk = jwt_config
+        .jwks
+        .find(&kid)
+        .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_string()))?;
+
+    let valid_jwt = alcoholic_jwt::validate(token, jwk, validations)
+        .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;
+
+    let user_claims = serde_json::from_value(valid_jwt.claims)
+        .map_err(|err| KmsError::Unauthorized(format!("JWT claims are malformed: {err:?}")))?;
+
+    let jwt_headers = serde_json::from_value(valid_jwt.headers)
+        .map_err(|err| KmsError::Unauthorized(format!("JWT headers is malformed: {err:?}")))?;
+
+    Ok((user_claims, jwt_headers))
+}
+
+/// The configuration for for Google CSE:
+///  - JWT authentication and authorization configurations
+///  - external KACLS URL of this server configured in Google Workspace client-side encryption
+/// (something like https://cse.mydomain.com/google_cse)
+#[derive(Clone)]
+pub struct GoogleCseConfig {
+    pub authentication: JwtConfig,
+    pub authorization: JwtConfig,
+    pub kacls_url: String,
+}
 
 // {
 //   "server_type": "KACLS",
@@ -22,7 +126,7 @@ use crate::{result::KResult, KMSServer};
 //   ]
 // }
 
-#[derive(Serialize, Debug)] // Debug is required by ok_json()
+#[derive(Serialize, Debug)]
 pub struct StatusResponse {
     pub server_type: String,
     pub vendor_id: String,
@@ -56,9 +160,169 @@ pub async fn get_status(
     Ok(response)
 }
 
-/// Get the status for Google CSE
-#[get("/blah")]
-pub async fn say_blah(req: HttpRequest, kms: Data<Arc<KMSServer>>) -> KResult<Json<String>> {
-    info!("XXXX GET /blah {}", kms.get_user(req)?);
-    Ok(Json(crate_version!().to_string()))
+/*
+{
+  "authentication": string,
+  "authorization": string,
+  "key": string,
+  "reason": string
+}
+*/
+#[derive(Deserialize, Debug)]
+pub struct WrapRequest {
+    pub authentication: String,
+    pub authorization: String,
+    pub key: String,
+    pub reason: String,
+}
+
+/*
+{
+  "wrapped_key": string
+}
+ */
+#[derive(Serialize, Debug)]
+pub struct WrapResponse {
+    pub wrapped_key: String,
+}
+
+/// Returns encrypted Data Encryption Key (DEK) and associated data.
+///
+/// See [doc](https://developers.google.com/workspace/cse/reference/wrap) and
+/// for more details, see [Encrypt & decrypt data](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data)
+#[post("/wrap")]
+pub async fn wrap(
+    req: HttpRequest,
+    wrap_request: Json<WrapRequest>,
+    cse_config: Data<Option<GoogleCseConfig>>,
+    kms: Data<Arc<KMSServer>>,
+) -> KResult<Json<WrapResponse>> {
+    info!("POST /wrap {}", kms.get_user(req)?);
+
+    let wrap_request = wrap_request.into_inner();
+    trace!("wrap_request: {:?}", wrap_request);
+
+    let cse_config_inner = cse_config.into_inner();
+    let cse_config = cse_config_inner.as_ref().as_ref().ok_or_else(|| {
+        KmsError::ServerError(
+            "JWT authentication and authorization configurations for Google CSE are not set"
+                .to_string(),
+        )
+    })?;
+
+    // validate authentication token
+    let authentication_token =
+        decode_jwt_authentication_token(&cse_config.authentication, &wrap_request.authentication)?;
+    trace!("authentication token: {:?}", authentication_token);
+
+    let (authorization_token, jwt_headers) =
+        decode_jwt_authorization_token(&cse_config.authorization, &wrap_request.authorization)?;
+    trace!("authorization token: {:?}", authorization_token);
+    trace!("authorization token headers: {:?}", jwt_headers);
+
+    // The emails should match (case insensitive)
+    let authentication_email = authentication_token.email.ok_or_else(|| {
+        KmsError::Unauthorized("Authentication token should contain an email".to_string())
+    })?;
+    let authorization_email = authorization_token.email.ok_or_else(|| {
+        KmsError::Unauthorized("Authorization token should contain an email".to_string())
+    })?;
+    kms_ensure!(
+        authorization_email == authentication_email,
+        KmsError::Unauthorized(
+            "Authentication and authorization emails in tokens do not match".to_string()
+        )
+    );
+
+    let role = authorization_token.role.ok_or_else(|| {
+        KmsError::Unauthorized("Authorization token should contain a role".to_string())
+    })?;
+    kms_ensure!(
+        role.as_str() == "writer" || role.as_str() == "reader",
+        KmsError::Unauthorized(
+            "Authorization token should contain a role of writer or owner".to_string()
+        )
+    );
+
+    let kacls_url = authorization_token.kacls_url.ok_or_else(|| {
+        KmsError::Unauthorized("Authorization token should contain a kacls_url".to_string())
+    })?;
+    kms_ensure!(
+        kacls_url == cse_config.kacls_url,
+        KmsError::Unauthorized(format!(
+            "KACLS Urls should match: expected: {}, got: {} ",
+            cse_config.kacls_url, kacls_url
+        ))
+    );
+
+    debug!("wrap request authorized");
+
+    Ok(Json(WrapResponse {
+        wrapped_key: "wrapped_key".to_string(),
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmian_logger::log_utils::log_init;
+    use tracing::info;
+
+    use crate::routes::google_cse::{
+        decode_jwt_authorization_token, jwt_authorization_config, WrapRequest,
+    };
+
+    #[actix_rt::test]
+    async fn test_wrap_auth() {
+        log_init("info");
+        let wrap_request = r#"
+        { 
+            "authentication": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImM2MjYzZDA5NzQ1YjUwMzJlNTdmYTZlMWQwNDFiNzdhNTQwNjZkYmQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiI5OTY3Mzk1MTAzNzQtYXU5ZmRiZ3A3MmRhY3JzYWcyNjdja2czMmpmM2QzZTIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiI5OTY3Mzk1MTAzNzQtYXU5ZmRiZ3A3MmRhY3JzYWcyNjdja2czMmpmM2QzZTIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMDI5NjU4MTQxNjkwOTQzMDMxMTIiLCJoZCI6ImNvc21pYW4uY29tIiwiZW1haWwiOiJibHVlQGNvc21pYW4uY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsIm5vbmNlIjoieVpqSXJ0TzRuTHktMU5tSGZVU09rZzpodHRwczovL2NsaWVudC1zaWRlLWVuY3J5cHRpb24uZ29vZ2xlLmNvbSIsIm5iZiI6MTY5Njc0MzU0MSwiaWF0IjoxNjk2NzQzODQxLCJleHAiOjE2OTY3NDc0NDEsImp0aSI6Ijc2YzM1NTYyZjE3MjQ4ZWYyYjdlN2JmZTFiMWNiNzc0OWIyZGY2OWUifQ.E1894qHpBShp9xPLozEejZPainkuCGrEtM8FhLtevz-3-ywAqCzW6K0crw8u8Rd0rsyFH4MLRCXd_WaF1KH97HwKivA9rrTYOom4wESiINmQuIRjUr_8m2nOUQ-BvA8hqC2iu1gOowOAWB_npVQIpBaqujzdeQVy9cZgm5Hqr7QEiZEvh0_fPhIXQi38IOelTvUYqOoLdX_c6QOf2lbFd7RWzbJYgB7ZMHQr_Tyomhx2Budmwu5VCI8w7hERgjepCGdemLJanyW6Ia3YdH6Tj2-Xp7B2-5kFH4idsaqMiimeqopxBKtDD5cpkjLwbi_bryk1sX2MhzcrKZSkie40Eg", 
+            "authorization": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImFhYTk2ODk5ZThjYmM5YThlODBjMzBjMzU1NjVhOTM4YzE1MTgyNmQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJnc3VpdGVjc2UtdG9rZW5pc3N1ZXItZHJpdmVAc3lzdGVtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCJhdWQiOiJjc2UtYXV0aG9yaXphdGlvbiIsImVtYWlsIjoiYmx1ZUBjb3NtaWFuLmNvbSIsInJlc291cmNlX25hbWUiOiIvL2dvb2dsZWFwaXMuY29tL2RyaXZlL2ZpbGVzLzEzQXBwUWpVVmpCT2VVczB3VTc0cXFYbUkzQjZyTFJxcCIsInJvbGUiOiJ3cml0ZXIiLCJrYWNsc191cmwiOiJodHRwczovL2NzZS5jb3NtaWFuLmNvbS9nb29nbGVfY3NlIiwicGVyaW1ldGVyX2lkIjoiIiwiaWF0IjoxNjk2NzQ2MzkxLCJleHAiOjE2OTY3NDk5OTF9.NCR_zrE4K6fuxtGttIZyZVrvpF0cwqryUCYU01DbbPtgmNzO6jd3kVWHAKwouNSI_JU4k9SjNaU9-1T1FUBWIfRtWkPMdETPUgiDC51dmqdgxHTlA0ILvZI2drlrzrXInyWq7hik1G-zqL0KO3MdDa0ioPd0he2Wq2Pi5z8I-A2mwyYK8kzYHbZ-zvQK3NORuQYrqAssAqIGfZeNMz6rlfO1GBYwJoAagGKu23A-__e7dRT_XkebiTJZ-FpAajue4xjPYsqe1D73yi95T6nJo9s7iHZf32j0U2yH0cLgbN3Hn-G_ePVFHrBh3i5LU2x0qb2f3a1HiDiFoOa9qbt5Pg", 
+            "key": "GiBtiozOv+COIrEPxPUYH9gFKw1tY9kBzHaW/gSi7u9ZLA==", 
+            "reason": "" 
+        }
+        "#;
+        let wrap_request: WrapRequest = serde_json::from_str(wrap_request).unwrap();
+
+        // Note: the token cannot be tested because it is expired. if it were not the case, the following code would work:
+
+        // let jwt_authentication_config = JwtAuthConfig {
+        //     jwt_issuer_uri: Some("https://accounts.google.com".to_string()),
+        //     jwks_uri: Some("https://www.googleapis.com/oauth2/v3/certs".to_string()),
+        //     jwt_audience: None,
+        // };
+        // let jwt_authentication_config = JwtConfig {
+        //     jwt_issuer_uri: jwt_authentication_config.jwt_issuer_uri.clone().unwrap(),
+        //     jwks: jwt_authentication_config
+        //         .fetch_jwks()
+        //         .await
+        //         .unwrap()
+        //         .unwrap(),
+        //     jwt_audience: jwt_authentication_config.jwt_audience.clone(),
+        // };
+
+        // let authentication_token = decode_jwt_authentication_token(
+        //     &jwt_authentication_config,
+        //     &wrap_request.authentication,
+        // )
+        // .unwrap();
+        // println!("AUTHENTICATION token: {:?}", authentication_token);
+
+        let jwt_authorization_config = jwt_authorization_config().await.unwrap();
+
+        let (authorization_token, jwt_headers) =
+            decode_jwt_authorization_token(&jwt_authorization_config, &wrap_request.authorization)
+                .unwrap();
+        info!("AUTHORIZATION token: {:?}", authorization_token);
+        info!("AUTHORIZATION token headers: {:?}", jwt_headers);
+
+        assert_eq!(
+            authorization_token.email,
+            Some("blue@cosmian.com".to_string())
+        );
+        assert_eq!(
+            authorization_token.aud,
+            Some("cse-authorization".to_string())
+        );
+    }
 }

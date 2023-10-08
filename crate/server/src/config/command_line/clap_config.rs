@@ -43,6 +43,14 @@ pub struct ClapConfig {
 
     #[clap(flatten)]
     pub tee: TeeConfig,
+
+    #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL")]
+    /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
+    ///
+    /// It should contain the external URL of this server as configured in Google Workspace client side encryption settings
+    /// For instance, if this server is running on domain cse.my_domain.com,
+    /// the URL should be something like https://cse.my_domain.com/google_cse
+    pub google_cse_kacls_url: Option<String>,
 }
 
 impl fmt::Debug for ClapConfig {
@@ -84,6 +92,10 @@ impl fmt::Debug for ClapConfig {
         let x = x.field("workspace", &self.workspace);
         let x = x.field("default username", &self.default_username);
         let x = x.field("force default username", &self.force_default_username);
+        let x = x.field(
+            "Google Workspace CSE, KACLS Url",
+            &self.google_cse_kacls_url,
+        );
         x.finish()
     }
 }

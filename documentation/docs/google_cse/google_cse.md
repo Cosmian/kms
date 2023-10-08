@@ -28,24 +28,31 @@ Once this is complete, the screen on refresh should turn to this:
 
 ### 2. Configuring the Key Management Server
 
+The KMS must be behind a valid TLS certificate when started.
+Assuming it is running at `https://cse.example.com`, you should add the External Key Service with KACLS URL `https://cse.example.com/google_cse` in the Client-Side Encryption page of the Google Workspace admin console.
+
+To enable Client Side Encryption on the Cosmian KMS server, it must be started with the `--google-cse-kacls-url` option. This option is the URL at which the KMS will serve the Key Access Control Lists (KACLs) for the Google CSE service. The KACLs are used by the Google CSE service to determine which users have access to which keys. The KACLs are served by the KMS at the URL `https://cse.example.com/google_cse` in the example above.
+
 The Key Management Server must be configured to use the same Identity Provider as the one configured in the previous step. When using Google Identity, the server should be configured with the following options set in the [corresponding Google documentation](https://developers.google.com/workspace/cse/guides/configure-service?hl=en)
 
+
+Assuming Google is the Identity Provider, the KMS should be started with the following options:
+
 ```sh
---jwt-issuer-uri=https://gsuitecse-tokenissuer-drive@system.gserviceaccount.com
---jwks-uri=https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com
---jwt-audience=cse-authorization
+--jwt-issuer-uri=https://accounts.google.com
+--jwks-uri=https://www.googleapis.com/oauth2/v3/certs
+--google-cse-kacls-url=https://cse.example.com/google_cse
 ```
 For example, if you are using the docker image, you can run the following command:
 
 ```sh
 docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 \
-    --jwt-issuer-uri=https://gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
-    --jwks-uri=https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
-    --jwt-audience=cse-authorization
+    --jwt-issuer-uri=https://accounts.google.com \
+    --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
+    --google-cse-kacls-url=https://cse.example.com/google_cse
 ```
 
-The KMS must be behind a valid TLS certificate when started.
-Assuming it is running at `https://cse.example.com`, you should add the External Key Service with URL `https://cse.example.com/google_cse` in the Client-Side Encryption page of the Google Workspace admin console.
+
 
 ![external keys service](./images/configure_external_key_service.png)
 
