@@ -13,15 +13,38 @@ pub struct JwtConfig {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserClaim {
     pub email: Option<String>,
-    pub iss: String,
-    pub sub: String,
-    pub aud: String,
-    pub iat: usize,
-    pub exp: usize,
+    pub iss: Option<String>,
+    pub sub: Option<String>,
+    pub aud: Option<String>,
+    pub iat: Option<usize>,
+    pub exp: Option<usize>,
+    pub nbf: Option<usize>,
+    pub jti: Option<String>,
+    // Google specific (?)
+    pub role: Option<String>,
+    // Google specific (?)
+    pub resource_name: Option<String>,
+    // Google specific
+    pub kacls_url: Option<String>,
 }
 
-/// Decode a json web token (JWT)
-pub fn decode_jwt(jwt_config: &JwtConfig, authorization_content: &str) -> KResult<UserClaim> {
+#[derive(Debug, Deserialize)]
+pub struct JwtTokenHeaders {
+    pub typ: Option<String>,
+    pub cty: Option<String>,
+    pub alg: Option<String>,
+    pub kid: Option<String>,
+    pub x5t: Option<String>,
+    pub x5u: Option<String>,
+    pub x5c: Option<Vec<String>>,
+    pub crit: Option<String>,
+}
+
+/// Decode a JWT bearer header
+pub fn decode_jwt_bearer_header(
+    jwt_config: &JwtConfig,
+    authorization_content: &str,
+) -> KResult<UserClaim> {
     let bearer: Vec<&str> = authorization_content.splitn(2, ' ').collect();
     kms_ensure!(
         bearer.len() == 2 && bearer[0] == "Bearer",
@@ -29,7 +52,11 @@ pub fn decode_jwt(jwt_config: &JwtConfig, authorization_content: &str) -> KResul
     );
 
     let token: &str = bearer[1];
+    decode_jwt_authentication_token(jwt_config, token)
+}
 
+/// Decode a json web token (JWT)
+pub fn decode_jwt_authentication_token(jwt_config: &JwtConfig, token: &str) -> KResult<UserClaim> {
     kms_ensure!(
         !token.is_empty(),
         KmsError::Unauthorized("token is empty".to_owned())

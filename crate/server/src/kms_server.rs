@@ -29,8 +29,11 @@ use crate::{
         ssl_auth::{extract_peer_certificate, SslAuth},
         JwtAuth, JwtConfig,
     },
-    result::KResult,
-    routes::{self},
+    result::{KResult, KResultHelper},
+    routes::{
+        self,
+        google_cse::{self, GoogleCseConfig},
+    },
     KMSServer,
 };
 
@@ -92,7 +95,7 @@ async fn start_plain_http_kms_server(
     let kms_server = Arc::new(KMSServer::instantiate(server_params).await?);
 
     // Prepare the server
-    let server = prepare_kms_server(kms_server, None)?;
+    let server = prepare_kms_server(kms_server, None).await?;
 
     // send the server handle to the caller
     if let Some(tx) = &server_handle_transmitter {
@@ -153,7 +156,7 @@ async fn start_https_kms_server(
 
     // Instantiate and prepare the KMS server
     let kms_server = Arc::new(KMSServer::instantiate(server_params).await?);
-    let server = prepare_kms_server(kms_server, Some(builder))?;
+    let server = prepare_kms_server(kms_server, Some(builder)).await?;
 
     // send the server handle to the caller
     if let Some(tx) = &server_handle_transmitter {
@@ -191,7 +194,7 @@ async fn start_auto_renew_https(
             builder.add_extra_chain_cert(x)?;
         }
 
-        let server = prepare_kms_server(kms_server.clone(), Some(builder))?;
+        let server = prepare_kms_server(kms_server.clone(), Some(builder)).await?;
 
         // send the server handle to the caller
         if let Some(tx) = &server_handle_transmitter {
@@ -371,7 +374,7 @@ async fn start_certbot_https_kms_server(
  * something went wrong.
  *
  */
-pub fn prepare_kms_server(
+pub async fn prepare_kms_server(
     kms_server: Arc<KMS>,
     builder: Option<SslAcceptorBuilder>,
 ) -> KResult<actix_web::dev::Server> {
@@ -408,8 +411,43 @@ pub fn prepare_kms_server(
     // Determine the address to bind the server to.
     let address = format!("{}:{}", kms_server.params.hostname, kms_server.params.port);
 
+    // Check if this auth server is enabled for Google Client-Side Encryption
+    let enable_google_cse = kms_server.params.google_cse_kacls_url.is_some();
+
+    // Get the Google Client-Side Encryption JWT authorization config
+    let google_cse_jwt_config = if enable_google_cse {
+        Some(GoogleCseConfig {
+            authentication: jwt_config.clone().context(
+                "When using Google client-side encryption, an identity provider used to \
+                 authenticate Google Workspace users must be configured.",
+            )?,
+            authorization: google_cse::jwt_authorization_config().await?,
+            kacls_url: kms_server.params.google_cse_kacls_url.clone().context(
+                "The Google Workspace Client Side Encryption KACLS URL must be provided",
+            )?,
+        })
+    } else {
+        None
+    };
+
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
+        // Create an `App` instance and configure the passed data and the various scopes
+        let mut app = App::new()
+            .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
+            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
+            .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.;
+
+        if enable_google_cse {
+            // The scope for the Google Client-Side Encryption endpoints served from /google_cse
+            let google_cse_scope = web::scope("/google_cse")
+                .app_data(Data::new(google_cse_jwt_config.clone()))
+                .wrap(Cors::permissive())
+                .service(routes::google_cse::get_status)
+                .service(routes::google_cse::wrap);
+            app = app.service(google_cse_scope);
+        }
+
         // The default scope serves from the root / the KMIP, permissions and tee endpoints
         let default_scope = web::scope("")
             .wrap(Condition::new(
@@ -445,39 +483,7 @@ pub fn prepare_kms_server(
             default_scope
         };
 
-        // The scope for the Google Client-Side Encryption endpoints served from /google_cse
-        let google_cse_scope = web::scope("/google_cse")
-            // The /status endpoint is not protected by authentication (but requires CORS)
-            .service(routes::google_cse::get_status)
-            .wrap(
-                Cors::default()
-                    .allowed_origin("https://admin.google.com")
-                    .allowed_methods(vec!["GET", "POST"]),
-            )
-            // The other Google CSE endpoints are protected by authentication (and require CORS)
-            .service(
-                web::scope("")
-                    // Use JWT for authentication if necessary.
-                    .wrap(Condition::new(
-                        use_jwt_auth,
-                        JwtAuth::new(jwt_config.clone()),
-                    ))
-                    // CORS must come after  JWT since wrapper are tested in reverse order
-                    .wrap(
-                        Cors::default()
-                            .allowed_origin("https://admin.google.com")
-                            .allowed_methods(vec!["GET", "POST"]),
-                    )
-                    .service(routes::google_cse::say_blah),
-            );
-
-        // Create an `App` instance and configure the passed data and the various scopes
-        App::new()
-            .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
-            .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
-            .app_data(JsonConfig::default().limit(10_000_000_000)) // Set the maximum size of the JSON request payload.
-            .service(google_cse_scope)
-            .service(default_scope)
+        app.service(default_scope)
     })
     .client_request_timeout(std::time::Duration::from_secs(10));
 
