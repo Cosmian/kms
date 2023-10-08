@@ -227,6 +227,12 @@ impl From<url::ParseError> for KmsError {
     }
 }
 
+impl From<base64::DecodeError> for KmsError {
+    fn from(e: base64::DecodeError) -> Self {
+        Self::ConversionError(e.to_string())
+    }
+}
+
 impl KmsError {
     #[must_use]
     pub fn reason(&self, reason: ErrorReason) -> Self {
