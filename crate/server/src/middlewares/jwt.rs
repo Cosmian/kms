@@ -63,9 +63,8 @@ pub fn decode_jwt_authentication_token(jwt_config: &JwtConfig, token: &str) -> K
         !token.is_empty(),
         KmsError::Unauthorized("token is empty".to_owned())
     );
-    tracing::trace!("token {}", &token);
     tracing::trace!(
-        "expected JWT issuer {}",
+        "validating authentication token, expected JWT issuer: {}",
         &jwt_config.jwt_issuer_uri.to_string()
     );
 
