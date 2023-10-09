@@ -82,6 +82,8 @@ impl DecryptAction {
             Some(cryptographic_algorithm),
         );
 
+        tracing::debug!("{decrypt_request:?}");
+
         // Query the KMS with your kmip data and get the key pair ids
         let decrypt_response = kms_rest_client
             .decrypt(decrypt_request)

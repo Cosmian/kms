@@ -13,7 +13,7 @@ use crate::{
             master_key_pair::create_cc_master_key_pair,
             user_decryption_keys::create_user_decryption_key, SUB_COMMAND,
         },
-        utils::{start_default_test_kms_server, ONCE},
+        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -29,6 +29,7 @@ pub fn encrypt(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
 
     let mut args = vec!["encrypt", "--key-id", public_key_id];
     args.append(&mut input_files.to_vec());
@@ -43,6 +44,7 @@ pub fn encrypt(
         args.push(authentication_data);
     }
     cmd.arg(SUB_COMMAND).args(args);
+    recover_cmd_logs(&mut cmd);
     cmd.assert().success().stdout(predicate::str::contains(
         "The encrypted file is available at",
     ));
@@ -59,6 +61,7 @@ pub fn decrypt(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
 
     let mut args = vec!["decrypt", "--key-id", private_key_id];
     args.append(&mut input_files.to_vec());
@@ -72,7 +75,7 @@ pub fn decrypt(
         args.push(authentication_data);
     }
     cmd.arg(SUB_COMMAND).args(args);
-    let output = cmd.output()?;
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(())
     }

@@ -8,7 +8,9 @@ use crate::{
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
-        utils::{extract_uids::extract_user_key, start_default_test_kms_server, ONCE},
+        utils::{
+            extract_uids::extract_user_key, recover_cmd_logs, start_default_test_kms_server, ONCE,
+        },
         PROG_NAME,
     },
 };
@@ -21,6 +23,7 @@ pub fn create_user_decryption_key(
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     let mut args = vec![
         "keys",
         "create-user-key",
@@ -34,7 +37,7 @@ pub fn create_user_decryption_key(
     }
     cmd.arg(SUB_COMMAND).args(args);
 
-    let output = cmd.output()?;
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let user_key_output = std::str::from_utf8(&output.stdout)?;
         return Ok(extract_user_key(user_key_output)

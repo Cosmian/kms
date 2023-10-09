@@ -1,6 +1,7 @@
 use std::{
+    io::Write,
     path::PathBuf,
-    process::Command,
+    process::{Command, Output, Stdio},
     sync::mpsc,
     thread::{self, JoinHandle},
     time::Duration,
@@ -19,6 +20,7 @@ use cosmian_kms_server::{
     kms_server::start_kms_server,
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;
+use cosmian_logger::log_utils::log_init;
 use rand::SeedableRng;
 use tokio::sync::OnceCell;
 use tracing::trace;
@@ -46,6 +48,22 @@ pub fn get_auth0_jwt_config() -> JwtAuthConfig {
         jwks_uri: None,
         jwt_audience: None,
     }
+}
+
+/// Recover output logs from a command call `cmd` and re-inject it into stdio
+pub(crate) fn recover_cmd_logs(cmd: &mut Command) -> Output {
+    let output = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+    std::io::stdout()
+        .write_all(format!("\r\x1b[K{}", String::from_utf8_lossy(&output.stdout)).as_bytes())
+        .unwrap();
+    std::io::stderr()
+        .write_all(format!("\r\x1b[K{}", String::from_utf8_lossy(&output.stderr)).as_bytes())
+        .unwrap();
+    output
 }
 
 /// In order to run most tests in parallel,
@@ -86,7 +104,7 @@ pub async fn start_test_server_with_options(
     use_jwe_encryption: bool,
     use_bootstrap_server: bool,
 ) -> TestsContext {
-    let _ = env_logger::builder().is_test(true).try_init();
+    log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
 
     let server_params = genererate_server_params(
         port,

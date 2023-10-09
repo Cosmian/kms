@@ -11,6 +11,7 @@ use cosmian_kms_cli::{
     config::CliConf,
     error::CliError,
 };
+use cosmian_logger::log_utils::log_init;
 use tokio::task::spawn_blocking;
 
 #[derive(Parser)]
@@ -48,11 +49,7 @@ async fn main() {
 }
 
 async fn main_() -> Result<(), CliError> {
-    // Uncomment the following if you need debug logs in the CLI
-    // if option_env!("RUST_LOG").is_none() {
-    //     std::env::set_var("RUST_LOG", "debug");
-    // }
-    // env_logger::init();
+    log_init("");
 
     let opts = Cli::parse();
     let conf = CliConf::load()?;
