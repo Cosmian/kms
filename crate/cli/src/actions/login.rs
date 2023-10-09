@@ -274,13 +274,13 @@ pub struct OAuthResponse {
 ///
 /// This function wa rewritten because Google returns the JWT token in the `id_token` field,
 /// not the access_token field.
+///
+/// For Google see: https://developers.google.com/identity/openid-connect/openid-connect#obtainuserinfo
 pub async fn request_token(
     login_config: Oauth2LoginConfig,
     pkce_verifier: PkceCodeVerifier,
     authorization_code: &str,
 ) -> Result<OAuthResponse, CliError> {
-    // let root_url = "https://oauth2.googleapis.com/token";
-
     let params = vec![
         ("grant_type", "authorization_code"),
         ("redirect_uri", REDIRECT_URL),
