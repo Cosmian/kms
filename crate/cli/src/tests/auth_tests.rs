@@ -1,6 +1,7 @@
-use std::{collections::HashMap, future::Future, pin::Pin, process::Command};
+use std::{collections::HashMap, future::Future, net::SocketAddr, pin::Pin, process::Command};
 
 use assert_cmd::prelude::*;
+use cosmian_logger::log_utils::log_init;
 
 use super::utils::recover_cmd_logs;
 use crate::{
@@ -53,6 +54,7 @@ use url::Url;
 
 #[tokio::test]
 pub async fn authorization_code_grant_test() -> Result<(), CliError> {
+    log_init("trace");
     const CLIENT_ID: &str =
         "996739510374-au9fdbgp72dacrsag267ckg32jf3d3e2.apps.googleusercontent.com";
     const CLIENT_SECRET: &str = "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";
@@ -95,25 +97,27 @@ pub async fn authorization_code_grant_test() -> Result<(), CliError> {
     println!("Browse to: {}", auth_url);
 
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
-    let (tx, rx) = std::sync::mpsc::channel::<HashMap<String, String>>();
+    let (query_params_tx, query_params_rx) = std::sync::mpsc::channel::<HashMap<String, String>>();
 
-    let server = wait_for_token(shutdown_rx, tx);
+    // let server = access_token_server(shutdown_rx, query_params_tx);
 
     // Spawn the server into a runtime
-    tokio::task::spawn(server);
+    tokio::task::spawn(async move { access_token_server(shutdown_rx, query_params_tx).await });
 
-    let tokio_handle = tokio::runtime::Handle::current();
-    let thread_handle = std::thread::spawn(move || {
-        tokio_handle
-            .block_on(wait_for_token(tx))
-            .map_err(|e| CliError::ServerError(e.to_string()))
-    });
-    let server_handle = rx
-        .recv_timeout(Duration::from_secs(25))
-        .expect("Can't get test bootstrap server handle after 25 seconds");
+    // let tokio_handle = tokio::runtime::Handle::current();
+    // let thread_handle = std::thread::spawn(move || {
+    //     tokio_handle.block_on(wait_for_token(shutdown_rx, query_params_tx));
+    // });
+    let query_params = query_params_rx
+        .recv()
+        .map_err(|e| CliError::Default(format!("query params not received: {:?}", e)))?;
+
+    println!("REceived Query Data : {:?}", query_params);
 
     // shutdown server
-    shutdown_tx.send(())?;
+    shutdown_tx
+        .send(())
+        .map_err(|e| CliError::Default(format!("could not shutdown the local server: {:?}", e)))?;
 
     // // Once the user has been redirected to the redirect URL, you'll have access to the
     // // authorization code. For security reasons, your code should verify that the `state`
@@ -129,13 +133,15 @@ pub async fn authorization_code_grant_test() -> Result<(), CliError> {
     //     .request_async(async_http_client)
     //     .await?;
 
+    println!("DONE");
+
     Ok(())
 }
 
-use tokio::sync::oneshot;
+use tokio::{join, sync::oneshot};
 use warp::Filter;
 
-async fn wait_for_token(
+async fn access_token_server(
     shutdown_rx: oneshot::Receiver<()>,
     tx: std::sync::mpsc::Sender<HashMap<String, String>>,
 ) -> Box<dyn Future<Output = ()> + Send> {
@@ -150,9 +156,61 @@ async fn wait_for_token(
         });
 
     let (_addr, server) =
-        warp::serve(route).bind_with_graceful_shutdown(([127, 0, 0, 1], 17899), async {
+        warp::serve(route).bind_with_graceful_shutdown(([0, 0, 0, 0], 17899), async {
+            print!("Waiting for shutdown signal...");
             shutdown_rx.await.ok();
+            println!("Shutting down...");
         });
 
+    println!("server created");
     Box::new(server)
+}
+
+#[tokio::test]
+async fn test_server() {
+    // let (shutdown_tx, shutdown_rx) = oneshot::channel();
+    // let (query_params_tx, query_params_rx) = std::sync::mpsc::channel::<HashMap<String, String>>();
+
+    // Spawn the server into a runtime
+    let tokio_handle = tokio::runtime::Handle::current();
+    let task = std::thread::spawn(move || {
+        tokio_handle.block_on({
+            let routes = warp::path("hello")
+                // .and(warp::query::<HashMap<String, String>>())
+                .map(move || {
+                    // Do something with the query parameters.
+                    // println!("send params: {:?}", params);
+                    // query_params_tx.send(params).unwrap();
+                    "HEllo".to_string()
+                });
+            // .with(warp::log("hello"));
+
+            // let routes = hello.with(warp::cors().allow_any_origin());
+
+            let server = warp::serve(routes);
+            let addr: SocketAddr = ([127, 0, 0, 1], 8080).into();
+            println!("Spawning...");
+            // server.bind(addr).await;
+            let fut = server.run(addr);
+            println!("Started...");
+            fut
+            // let (_addr, server) = server.bind_with_graceful_shutdown(addr, async {
+            //     println!("Started...");
+            //     shutdown_rx.await.unwrap();
+            //     println!("Shutting down...");
+            // });
+
+            // println!("Server listening on {}", _addr);
+
+            // server.await
+        })
+    });
+    println!("server created");
+    // let params = query_params_rx.recv().unwrap();
+    // println!("Received Query Data : {:?}", params);
+
+    // Wait for the shutdown signal
+    // shutdown_tx.send(()).unwrap();
+
+    task.join().unwrap();
 }
