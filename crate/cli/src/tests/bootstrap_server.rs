@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 
-use super::PROG_NAME;
+use super::{utils::recover_cmd_logs, PROG_NAME};
 use crate::{
     config::KMS_CLI_CONF_ENV, error::CliError, tests::utils::start_test_server_with_options,
 };
@@ -45,8 +45,10 @@ pub async fn test_bootstrap_server() -> Result<(), CliError> {
 fn run_bootstrap_start(cli_conf_path: &str, args: &[&str]) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     cmd.arg(SUB_COMMAND).args(args);
-    let output = cmd.output()?;
+
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
         return Ok(output.to_string())

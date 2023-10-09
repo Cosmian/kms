@@ -3,6 +3,7 @@
 #![feature(min_specialization)]
 
 mod bootstrap_rest_client;
+mod certificate_verifier;
 mod error;
 mod kms_rest_client;
 mod result;

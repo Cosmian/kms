@@ -1,11 +1,12 @@
 [package]
 name = "cosmian_kms_client"
-version = "4.7.0"
+version = "4.8.0"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 license-file = "../../LICENSE.md"
 
 [dependencies]
+base64 = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils" }
 http = { workspace = true }
@@ -15,7 +16,10 @@ ratls = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+tee_attestation = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 url = { workspace = true }
+rustls = { workspace = true }
+webpki-roots = { workspace = true }

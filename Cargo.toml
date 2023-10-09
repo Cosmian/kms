@@ -5,7 +5,6 @@ members = [
   "crate/kmip",
   "crate/server",
   "crate/utils",
-  "crate/libsgx",
   "crate/pyo3",
   "crate/logger",
 ]
@@ -33,7 +32,6 @@ opt-level = 0
 [workspace.dependencies]
 async-trait = "0.1"
 base64 = "0.21"
-base64-url = "2.0"
 bitflags = "2.3"
 clap = { version = "4.4", default-features = false, features = [
   "help",
@@ -60,15 +58,19 @@ redis = { version = "0.23", features = [
   "connection-manager",
   "tokio-comp",
 ] }
-reqwest = { version = "0.11", features = [
+# Important: align the rustls version with reqwest rustls dependency
+reqwest = { version = "0.11.14", features = [
   "json",
   "multipart",
   "native-tls",
+  "rustls-tls",
   "stream",
 ] }
+rustls = { version = "0.20", features = ["dangerous_configuration"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.96"
 strum = { version = "0.25", features = ["std", "derive", "strum_macros"] }
+tee_attestation = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
 thiserror = "1.0"
 time = "0.3"
 # It is important to keep this version in sync with that of actix-web
@@ -76,10 +78,13 @@ time = "0.3"
 tokio = { version = "1.32", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tracing = "0.1"
-tracing-log = "0.1"
+# Uncomment and remove `env-logger` dep when `env_logger` is
+# finally updated in `tracing-log` crate.
+# tracing-log = { version = "0.1", features = ["env_logger"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-tree = "0.2"
 url = "2.2"
 uuid = { version = "1.3", features = ["v4"] }
-zeroize = { version = "1.6", features = ["zeroize_derive"] }
+webpki-roots = "0.22"
 x509-parser = { version = "0.15.1", features = ["verify"] }
+zeroize = { version = "1.6", features = ["zeroize_derive"] }

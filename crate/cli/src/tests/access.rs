@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 
-use super::symmetric::create_key::create_symmetric_key;
+use super::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs};
 use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
@@ -30,9 +30,11 @@ pub(crate) fn grant_access(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     cmd.arg(SUB_COMMAND)
         .args(vec!["grant", user, object_id, operation]);
-    let output = cmd.output()?;
+
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(())
     }
@@ -50,9 +52,11 @@ pub(crate) fn revoke_access(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     cmd.arg(SUB_COMMAND)
         .args(vec!["revoke", user, object_id, operation]);
-    let output = cmd.output()?;
+
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         return Ok(())
     }
@@ -65,8 +69,10 @@ pub(crate) fn revoke_access(
 fn list_access(cli_conf_path: &str, object_id: &str) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     cmd.arg(SUB_COMMAND).args(vec!["list", object_id]);
-    let output = cmd.output()?;
+
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let out = String::from_utf8(output.stdout)?;
         return Ok(out)
@@ -80,8 +86,10 @@ fn list_access(cli_conf_path: &str, object_id: &str) -> Result<String, CliError>
 fn list_owned_objects(cli_conf_path: &str) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
-    let output = cmd.output()?;
+
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let out = String::from_utf8(output.stdout)?;
         return Ok(out)
@@ -95,8 +103,10 @@ fn list_owned_objects(cli_conf_path: &str) -> Result<String, CliError> {
 fn list_accesses_rights_obtained(cli_conf_path: &str) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     cmd.arg(SUB_COMMAND).args(vec!["obtained"]);
-    let output = cmd.output()?;
+
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let out = String::from_utf8(output.stdout)?;
         return Ok(out)

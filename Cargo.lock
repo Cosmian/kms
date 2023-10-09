@@ -641,15 +641,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ba43ea6f343b788c8764558649e08df62f86c6ef251fdaeb1ffd010a9ae50a2"
 
 [[package]]
-name = "base64-url"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c5b0a88aa36e9f095ee2e2b13fb8c5e4313e022783aedacc123328c0084916d"
-dependencies = [
- "base64 0.21.4",
-]
-
-[[package]]
 name = "base64ct"
 version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -983,17 +974,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12170080f3533d6f09a19f81596f836854d0fa4867dc32c8172b8474b4e9de61"
 
 [[package]]
-name = "colored"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3616f750b84d8f0de8a58bda93e08e2a81ad3f523089b05f1dffecab48c6cbd"
-dependencies = [
- "atty",
- "lazy_static",
- "winapi",
-]
-
-[[package]]
 name = "combine"
 version = "4.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1138,7 +1118,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "4.7.0"
+version = "4.8.0"
 dependencies = [
  "bitflags 2.3.2",
  "cloudproof",
@@ -1155,44 +1135,45 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "4.7.0"
+version = "4.8.0"
 dependencies = [
  "actix-rt",
  "actix-server",
  "assert_cmd",
  "base64 0.21.4",
- "base64-url",
  "clap",
  "cloudproof",
- "colored",
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_server",
  "cosmian_kms_utils",
- "env_logger",
+ "cosmian_logger",
  "hex",
- "libsgx",
  "openssl",
  "predicates",
  "rand",
  "ratls",
  "regex",
  "reqwest",
+ "rustls 0.20.8",
  "serde",
  "serde_json",
  "strum",
+ "tee_attestation",
  "tempfile",
  "thiserror",
  "tokio",
  "tracing",
+ "url",
  "uuid",
  "x509-parser",
 ]
 
 [[package]]
 name = "cosmian_kms_client"
-version = "4.7.0"
+version = "4.8.0"
 dependencies = [
+ "base64 0.21.4",
  "cosmian_kmip",
  "cosmian_kms_utils",
  "http",
@@ -1200,17 +1181,20 @@ dependencies = [
  "openssl",
  "ratls",
  "reqwest",
+ "rustls 0.20.8",
  "serde",
  "serde_json",
+ "tee_attestation",
  "thiserror",
  "tokio",
  "tokio-util",
  "url",
+ "webpki-roots",
 ]
 
 [[package]]
 name = "cosmian_kms_python"
-version = "4.7.0"
+version = "4.8.0"
 dependencies = [
  "cloudproof",
  "cosmian_kmip",
@@ -1224,7 +1208,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "4.7.0"
+version = "4.8.0"
 dependencies = [
  "acme-lib",
  "actix-cors",
@@ -1253,7 +1237,6 @@ dependencies = [
  "http",
  "josekit",
  "lazy_static",
- "libsgx",
  "mime",
  "openssl",
  "ratls",
@@ -1263,6 +1246,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
+ "tee_attestation",
  "thiserror",
  "time 0.3.17",
  "tokio",
@@ -1275,7 +1259,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_utils"
-version = "4.7.0"
+version = "4.8.0"
 dependencies = [
  "argon2",
  "cloudproof",
@@ -1291,10 +1275,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_logger"
-version = "4.7.0"
+version = "4.8.0"
 dependencies = [
  "tracing",
- "tracing-log",
  "tracing-subscriber",
  "tracing-tree",
 ]
@@ -1708,17 +1691,6 @@ name = "equivalent"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
-
-[[package]]
-name = "errno"
-version = "0.2.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f639046355ee4f37944e44f60642c6f3a7efa3cf6b78c78a0d989a8ce6c396a1"
-dependencies = [
- "errno-dragonfly",
- "libc",
- "winapi",
-]
 
 [[package]]
 name = "errno"
@@ -2184,6 +2156,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyper-rustls"
+version = "0.23.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1788965e61b367cd03a62950836d5cd41560c3577d90e40e0819373194d1661c"
+dependencies = [
+ "http",
+ "hyper",
+ "rustls 0.20.8",
+ "tokio",
+ "tokio-rustls",
+]
+
+[[package]]
 name = "hyper-tls"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2305,14 +2290,14 @@ checksum = "30e22bd8629359895450b59ea7a776c850561b96a3b1d31321c1949d9e6c9146"
 
 [[package]]
 name = "is-terminal"
-version = "0.4.3"
+version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22e18b0a45d56fe973d6db23972bf5bc46f988a4a2385deac9cc29572f09daef"
+checksum = "adcf93614601c8129ddf72e2d5633df827ba6551541c6d8c59520a371475be1f"
 dependencies = [
  "hermit-abi 0.3.0",
  "io-lifetimes",
- "rustix 0.36.8",
- "windows-sys 0.45.0",
+ "rustix",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -2367,20 +2352,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jsonwebtoken"
-version = "8.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6971da4d9c3aa03c3d8f3ff0f4155b534aad021292003895a469716b2a230378"
-dependencies = [
- "base64 0.21.4",
- "pem",
- "ring",
- "serde",
- "serde_json",
- "simple_asn1",
-]
-
-[[package]]
 name = "keccak"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2423,23 +2394,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 
 [[package]]
-name = "libsgx"
-version = "4.7.0"
-dependencies = [
- "base64 0.21.4",
- "base64-url",
- "hex",
- "jsonwebtoken",
- "openssl",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "libsqlite3-sys"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2449,12 +2403,6 @@ dependencies = [
  "pkg-config",
  "vcpkg",
 ]
-
-[[package]]
-name = "linux-raw-sys"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f051f77a7c8e6957c0696eac88f26b0117e54f52d3fc682ab19397a8812846a4"
 
 [[package]]
 name = "linux-raw-sys"
@@ -2915,15 +2863,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pem"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8835c273a76a90455d7344889b0964598e3316e2a79ede8e36f16bdcf2228b8"
-dependencies = [
- "base64 0.13.1",
-]
-
-[[package]]
 name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3241,7 +3180,7 @@ dependencies = [
 [[package]]
 name = "ratls"
 version = "0.1.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#9b34ee601026cd22ae728c61731742c7f8c542b1"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#d1be62d6e9ee1b2e169997fc80c694578c29b24a"
 dependencies = [
  "asn1-rs",
  "bincode",
@@ -3249,13 +3188,11 @@ dependencies = [
  "der",
  "ecdsa",
  "p256",
- "rand",
  "rand_chacha",
  "rustls 0.21.7",
- "sev_quote",
- "sgx_quote",
  "sha2",
  "spki",
+ "tee_attestation",
  "thiserror",
  "x509-cert",
  "x509-parser",
@@ -3362,6 +3299,7 @@ dependencies = [
  "http",
  "http-body",
  "hyper",
+ "hyper-rustls",
  "hyper-tls",
  "ipnet",
  "js-sys",
@@ -3372,11 +3310,14 @@ dependencies = [
  "once_cell",
  "percent-encoding",
  "pin-project-lite",
+ "rustls 0.20.8",
+ "rustls-pemfile",
  "serde",
  "serde_json",
  "serde_urlencoded",
  "tokio",
  "tokio-native-tls",
+ "tokio-rustls",
  "tokio-util",
  "tower-service",
  "url",
@@ -3384,6 +3325,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams",
  "web-sys",
+ "webpki-roots",
  "winreg",
 ]
 
@@ -3460,29 +3402,15 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "0.36.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f43abb88211988493c1abb44a70efa56ff0ce98f233b7b276146f1f3f7ba9644"
-dependencies = [
- "bitflags 1.3.2",
- "errno 0.2.8",
- "io-lifetimes",
- "libc",
- "linux-raw-sys 0.1.4",
- "windows-sys 0.45.0",
-]
-
-[[package]]
-name = "rustix"
 version = "0.37.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d69718bf81c6127a49dc64e44a742e8bb9213c0ff8869a22c308f84c1d4ab06"
 dependencies = [
  "bitflags 1.3.2",
- "errno 0.3.3",
+ "errno",
  "io-lifetimes",
  "libc",
- "linux-raw-sys 0.3.8",
+ "linux-raw-sys",
  "windows-sys 0.48.0",
 ]
 
@@ -3508,6 +3436,15 @@ dependencies = [
  "ring",
  "rustls-webpki",
  "sct",
+]
+
+[[package]]
+name = "rustls-pemfile"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d3987094b1d07b653b7dfdc3f70ce9a1da9c51ac18c1b06b662e4f9a0e9f4b2"
+dependencies = [
+ "base64 0.21.4",
 ]
 
 [[package]]
@@ -3736,7 +3673,7 @@ dependencies = [
 [[package]]
 name = "sev_quote"
 version = "0.1.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#9b34ee601026cd22ae728c61731742c7f8c542b1"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#d1be62d6e9ee1b2e169997fc80c694578c29b24a"
 dependencies = [
  "asn1",
  "asn1-rs",
@@ -3744,7 +3681,6 @@ dependencies = [
  "hex",
  "hkdf",
  "log",
- "rand_chacha",
  "reqwest",
  "serde",
  "sev",
@@ -3757,7 +3693,7 @@ dependencies = [
 [[package]]
 name = "sgx_pck_extension"
 version = "0.1.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#9b34ee601026cd22ae728c61731742c7f8c542b1"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#d1be62d6e9ee1b2e169997fc80c694578c29b24a"
 dependencies = [
  "asn1",
  "asn1-rs",
@@ -3768,7 +3704,7 @@ dependencies = [
 [[package]]
 name = "sgx_quote"
 version = "0.2.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#9b34ee601026cd22ae728c61731742c7f8c542b1"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#d1be62d6e9ee1b2e169997fc80c694578c29b24a"
 dependencies = [
  "chrono",
  "elliptic-curve",
@@ -3776,7 +3712,6 @@ dependencies = [
  "hkdf",
  "log",
  "p256",
- "rand_chacha",
  "reqwest",
  "rsa",
  "scroll",
@@ -3853,18 +3788,6 @@ checksum = "5e1788eed21689f9cf370582dfc467ef36ed9c707f073528ddafa8d83e3b8500"
 dependencies = [
  "digest",
  "rand_core",
-]
-
-[[package]]
-name = "simple_asn1"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adc4e5204eb1910f40f9cfa375f6f05b68c3abac4b6fd879c8ff5e7ae8a0a085"
-dependencies = [
- "num-bigint",
- "num-traits",
- "thiserror",
- "time 0.3.17",
 ]
 
 [[package]]
@@ -4226,6 +4149,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9410d0f6853b1d94f0e519fb95df60f29d2c1eff2d921ffdf01a4c8a3b54f12d"
 
 [[package]]
+name = "tee_attestation"
+version = "0.1.0"
+source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#d1be62d6e9ee1b2e169997fc80c694578c29b24a"
+dependencies = [
+ "bincode",
+ "sev_quote",
+ "sgx_quote",
+ "thiserror",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4235,7 +4169,7 @@ dependencies = [
  "cfg-if",
  "fastrand",
  "redox_syscall 0.3.5",
- "rustix 0.37.23",
+ "rustix",
  "windows-sys 0.48.0",
 ]
 
@@ -4408,6 +4342,17 @@ dependencies = [
  "pin-project",
  "rand",
  "tokio",
+]
+
+[[package]]
+name = "tokio-rustls"
+version = "0.23.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c43ee83903113e03984cb9e5cebe6c04a5116269e900e3ddba8f068a62adda59"
+dependencies = [
+ "rustls 0.20.8",
+ "tokio",
+ "webpki",
 ]
 
 [[package]]
@@ -4842,7 +4787,7 @@ version = "0.48.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e686886bc078bc1b0b600cac0147aadb815089b6e4da64016cbd754b6342700f"
 dependencies = [
- "windows-targets 0.48.0",
+ "windows-targets",
 ]
 
 [[package]]
@@ -4862,35 +4807,11 @@ dependencies = [
 
 [[package]]
 name = "windows-sys"
-version = "0.45.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75283be5efb2831d37ea142365f009c02ec203cd29a3ebecbc093d52315b66d0"
-dependencies = [
- "windows-targets 0.42.1",
-]
-
-[[package]]
-name = "windows-sys"
 version = "0.48.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "677d2418bec65e3338edb076e806bc1ec15693c5d0104683f2efe857f61056a9"
 dependencies = [
- "windows-targets 0.48.0",
-]
-
-[[package]]
-name = "windows-targets"
-version = "0.42.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e2522491fbfcd58cc84d47aeb2958948c4b8982e9a2d8a2a35bbaed431390e7"
-dependencies = [
- "windows_aarch64_gnullvm 0.42.1",
- "windows_aarch64_msvc 0.42.1",
- "windows_i686_gnu 0.42.1",
- "windows_i686_msvc 0.42.1",
- "windows_x86_64_gnu 0.42.1",
- "windows_x86_64_gnullvm 0.42.1",
- "windows_x86_64_msvc 0.42.1",
+ "windows-targets",
 ]
 
 [[package]]

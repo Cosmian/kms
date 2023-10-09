@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_server"
-version = "4.7.0"
+version = "4.8.0"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 license-file = "../../LICENSE.md"
@@ -48,10 +48,10 @@ hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 josekit = { workspace = true }
 lazy_static = "1.4"
-libsgx = { path = "../libsgx" }
 mime = "0.3"
 openssl = { workspace = true }
 ratls = { workspace = true }
+tee_attestation = { workspace = true }
 rawsql = "0.1"
 redis = { workspace = true }
 reqwest = { workspace = true }

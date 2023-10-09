@@ -10,3 +10,4 @@ data/keys
 **/data/public
 **/data/shared
 crate/cli/*.sqlite
+sgx/kms-test-*.json

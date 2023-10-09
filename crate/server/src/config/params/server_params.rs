@@ -6,10 +6,10 @@ use std::{
 };
 
 use alcoholic_jwt::JWKS;
-use libsgx::utils::is_running_inside_enclave;
 use openssl::x509::X509;
+use tee_attestation::is_running_inside_tee;
 
-use super::{BootstrapServerParams, DbParams, EnclaveParams, HttpParams};
+use super::{BootstrapServerParams, DbParams, HttpParams, TeeParams};
 use crate::{
     config::{command_line::JWEConfig, ClapConfig},
     kms_bail,
@@ -55,14 +55,14 @@ pub struct ServerParams {
     // pub certbot: Option<Arc<Mutex<Certbot>>>,
     pub http_params: HttpParams,
 
-    /// The enclave parameters when running inside an enclave
-    pub enclave_params: EnclaveParams,
+    /// The tee parameters when running inside a tee
+    pub tee_params: TeeParams,
 
     /// The certificate used to verify the client TLS certificates
     /// used for authentication
     pub verify_cert: Option<X509>,
 
-    /// Use a bootstrap server (inside an enclave for instance)
+    /// Use a bootstrap server (inside a tee for instance)
     pub bootstrap_server_params: BootstrapServerParams,
 
     /// Ensure RA-TLS is available and used.
@@ -104,7 +104,7 @@ impl ServerParams {
             hostname: conf.http.hostname.clone(),
             port: conf.http.port,
             http_params: HttpParams::try_from(conf, &workspace)?,
-            enclave_params: conf.enclave.init(&workspace)?,
+            tee_params: conf.tee.init(&workspace)?,
             default_username: conf.default_username.clone(),
             force_default_username: conf.force_default_username,
             verify_cert,
@@ -186,8 +186,8 @@ impl fmt::Debug for ServerParams {
             .field("default_username", &self.default_username)
             .field("force_default_username", &self.force_default_username);
         let x = x.field("http_params", &self.http_params);
-        let x = if is_running_inside_enclave() {
-            x.field("enclave_params", &self.enclave_params)
+        let x = if is_running_inside_tee() {
+            x.field("tee_params", &self.tee_params)
         } else {
             x
         };
@@ -212,7 +212,7 @@ impl Clone for ServerParams {
             hostname: self.hostname.clone(),
             port: self.port,
             http_params: HttpParams::Http,
-            enclave_params: self.enclave_params.clone(),
+            tee_params: self.tee_params.clone(),
             verify_cert: self.verify_cert.clone(),
             bootstrap_server_params: self.bootstrap_server_params.clone(),
             ensure_ra_tls: self.ensure_ra_tls,

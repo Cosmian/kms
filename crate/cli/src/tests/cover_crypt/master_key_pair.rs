@@ -9,7 +9,7 @@ use crate::{
     tests::{
         utils::{
             extract_uids::{extract_private_key, extract_public_key},
-            start_default_test_kms_server, ONCE,
+            recover_cmd_logs, start_default_test_kms_server, ONCE,
         },
         PROG_NAME,
     },
@@ -23,6 +23,7 @@ pub fn create_cc_master_key_pair(
 ) -> Result<(String, String), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     let mut args = vec!["keys", "create-master-key-pair", policy_option, file];
     // add tags
     for tag in tags {
@@ -31,7 +32,7 @@ pub fn create_cc_master_key_pair(
     }
     cmd.arg(SUB_COMMAND).args(args);
 
-    let output = cmd.output()?;
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let master_keys_output = std::str::from_utf8(&output.stdout)?;
         assert!(master_keys_output.contains("Private key unique identifier:"));

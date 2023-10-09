@@ -12,7 +12,7 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        utils::{extract_uids::extract_uid, start_default_test_kms_server, ONCE},
+        utils::{extract_uids::extract_uid, recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -26,6 +26,7 @@ pub fn create_symmetric_key(
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     let mut args = vec!["keys", "create"];
     let num_s;
     if let Some(number_of_bits) = number_of_bits {
@@ -45,7 +46,7 @@ pub fn create_symmetric_key(
     }
     cmd.arg(SUB_COMMAND).args(args);
 
-    let output = cmd.output()?;
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
 

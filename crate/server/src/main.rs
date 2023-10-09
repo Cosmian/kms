@@ -14,14 +14,14 @@ mod expiry;
 
 use clap::Parser;
 
-/// The main entry point of the program.
+/// The main entrypoint of the program.
 ///
 /// This function sets up the necessary environment variables and logging options,
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
 ///
 /// After that, it starts the correct server based on
 /// whether the bootstrap server should be used or not (using `start_bootstrap_server()` or `start_kms_server()`, respectively).
-#[tokio::main]
+#[actix_web::main]
 async fn main() -> KResult<()> {
     // Set up environment variables and logging options
     if option_env!("RUST_BACKTRACE").is_none() {
@@ -38,6 +38,9 @@ async fn main() -> KResult<()> {
     // Load variable from a .env file
     dotenv().ok();
 
+    // Uncomment and remove `env-logger` dep when `env_logger` is
+    // finally updated in tracing-log crate.
+    // cosmian_logger::reexport::tracing_log::env_logger::init();
     env_logger::init();
 
     // Instantiate a config object using the env variables and the args of the binary

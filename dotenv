@@ -1,4 +1,3 @@
-KMS_DELEGATED_AUTHORITY_DOMAIN = "kms-cosmian.eu.auth0.com"
 KMS_CERTBOT_EMAIL = "tech@cosmian.com"
 KMS_CERTBOT_HOSTNAME = "testsgx.cosmian.com"
 KMS_ENCLAVE_DIR_PATH = "data/public"

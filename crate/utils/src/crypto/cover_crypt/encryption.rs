@@ -69,8 +69,29 @@ impl CoverCryptEncryption {
     ///
     /// The input plaintext data is serialized using LEB128 (bulk mode).
     /// Each chunk of data is encrypted and serialized back to LEB128.
+    ///
+    /// Bulk encryption / decryption scheme
+    ///
+    /// ENC request
+    /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
+    ///                           <-------------- `nb_chunks` times ------------>
+    ///
+    /// ENC response
+    /// | EH | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (encrypted)
+    ///                                <-------------- `nb_chunks` times ------------>
+    ///
+    /// DEC request
+    /// | `nb_chunks` (LEB128) | size(EH + `chunk_data`) (LEB128) | EH | `chunk_data` (encrypted)
+    ///                                                             <------ chunk with EH ------>
+    ///                          <------------------------ `nb_chunks` times ------------------->
+    ///
+    /// DEC response
+    /// | `nb_chunks` (LEB128) | `chunk_size` (LEB128) | `chunk_data` (plaintext)
+    ///                           <------------- `nb_chunks` times ------------->
+    ///
     fn bulk_encrypt(
         &self,
+        encrypted_header: &[u8],
         plaintext: &[u8],
         aead: Option<&[u8]>,
         symmetric_key: &SymmetricKey<SYM_KEY_LENGTH>,
@@ -90,11 +111,14 @@ impl CoverCryptEncryption {
             })?
         };
 
-        // encrypt every chunk and serialize them
+        // encrypt each chunk and serialize it
+        // a copy of the encrypted header is also serialized, prepending the chunk
         for _ in 0..nb_chunks {
             let chunk_data = de.read_vec_as_ref()?;
-            let encrypted_block = self.encrypt(chunk_data, aead, symmetric_key)?;
-            ser.write_vec(&encrypted_block)?;
+            let mut encrypted_block = self.encrypt(chunk_data, aead, symmetric_key)?;
+            let mut chunk = encrypted_header.to_vec();
+            chunk.append(&mut encrypted_block);
+            ser.write_vec(&chunk)?;
         }
 
         Ok(ser.finalize().to_vec())
@@ -175,34 +199,34 @@ impl EncryptionSystem for CoverCryptEncryption {
         )
         .map_err(|e| KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string()))?;
 
-        let mut ciphertext = encrypted_header.serialize().map_err(|e| {
+        let mut encrypted_header = encrypted_header.serialize().map_err(|e| {
             KmipUtilsError::Kmip(ErrorReason::Invalid_Attribute_Value, e.to_string())
         })?;
 
-        let mut encrypted_data = if let Some(CryptographicParameters {
+        let encrypted_data = if let Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCryptBulk),
             ..
         }) = request.cryptographic_parameters
         {
             self.bulk_encrypt(
+                &encrypted_header,
                 &data_to_encrypt.plaintext,
                 authenticated_encryption_additional_data,
                 &symmetric_key,
             )?
         } else {
-            self.encrypt(
+            let mut encrypted_data = self.encrypt(
                 &data_to_encrypt.plaintext,
                 authenticated_encryption_additional_data,
                 &symmetric_key,
-            )?
+            )?;
+            encrypted_header.append(&mut encrypted_data);
+            encrypted_header.to_vec()
         };
-
-        // Concatenate serialized encrypted header with encrypted data
-        ciphertext.append(&mut encrypted_data);
 
         Ok(EncryptResponse {
             unique_identifier: self.public_key_uid.clone(),
-            data: Some(ciphertext.to_vec()),
+            data: Some(encrypted_data),
             iv_counter_nonce: None,
             correlation_value: None,
             authenticated_encryption_tag: authenticated_encryption_additional_data

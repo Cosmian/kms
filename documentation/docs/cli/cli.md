@@ -1,7 +1,7 @@
 The `ckms` binary is a command line interface (CLI) used to manage cryptographic objects inside the KMS.
 
 !!! info "Download ckms"
-    Please download the latest version of the CLI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.6.0/)
+    Please download the latest version of the CLI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.8.0/)
 
 The CLI expects a configuration file to be located at `~/.cosmian/kms.json` where `~` is your home folder.
 
@@ -22,6 +22,11 @@ The configuration file should be edited manually to reflect the actual configura
 - `ssl_client_pkcs12_password`: is OPTIONAL and is the password to open the PKCS12 file when authenticating to the KMS server (or bootstrap server) using a certificate.
 - `kms_database_secret` is OPTIONAL and is the base 64 encoded secret to use when connecting to a KMS using an encrypted database
 - `accept_invalid_certs` is OPTIONAL and should be set to "true" to allow the CLI to connect to a KMS using an "invalid" certificate, such as a self-signed SSL certificate. Useful to run tests with a self-signed certificate.
+- `tee_conf` is OPTIONAL but is required if you want to verify a KMS running inside a TEE. The inner structure is:
+  - `verified_cert` is automatically filled in by the `ckms verify` command. It contains the verified PEM TLS certificate
+  - `mr_enclave` is the MR enclave value of the KMS running on a SGX enclave
+  - `public_signer_key` is the public key of the KMS SGX enclave signer key
+  - `sev_measurement` is the measurement of the KMS running on a SEV VM
 
 Here is an example configuration with TLS authentication and an encrypted database:
 

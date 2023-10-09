@@ -106,7 +106,7 @@
                     <div xmlns="http://www.w3.org/1999/xhtml" style="display: flex; align-items: unsafe center; justify-content: unsafe flex-start; width: 114px; height: 1px; padding-top: 195px; margin-left: 44px;">
                         <div data-drawio-colors="color: #333333; " style="box-sizing: border-box; font-size: 0px; text-align: left;">
                             <div style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(51, 51, 51); line-height: 1.2; pointer-events: all; white-space: normal; overflow-wrap: normal;">
-                                =&gt; Redis-Findex DB secret + HTTPS  Certificate
+                                =&gt; Redis-Findex DB secret + HTTPS  Certificate
                             </div>
                         </div>
                     </div>
@@ -274,9 +274,9 @@
                     <div xmlns="http://www.w3.org/1999/xhtml" style="display: flex; align-items: unsafe center; justify-content: unsafe center; width: 194px; height: 1px; padding-top: 25px; margin-left: 281px;">
                         <div data-drawio-colors="color: #ffffff; " style="box-sizing: border-box; font-size: 0px; text-align: center;">
                             <div style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(255, 255, 255); line-height: 1.2; pointer-events: all; white-space: normal; overflow-wrap: normal;">
-                                TLS connections encrypted
+                                TLS connections encrypted
                                 <br/>
-                                with a secret derived from s
+                                with a secret derived from s
                                 <sub>
                                     k
                                 </sub>
@@ -285,7 +285,7 @@
                     </div>
                 </foreignObject>
                 <text x="378" y="29" fill="#ffffff" font-family="Helvetica" font-size="12px" text-anchor="middle">
-                    TLS connections encrypted...
+                    TLS connections encrypted...
                 </text>
             </switch>
         </g>

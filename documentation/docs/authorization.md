@@ -4,10 +4,8 @@ The authorization system in the Cosmian Key Management Service (KMS) operates ba
 
 2. **Access rights delegation:** owners can grant access rights, allowing one or more users to perform certain KMIP operations on an object. When granted such rights, a user can invoke the corresponding KMIP operation on the KMS for that particular object. The owner retains the authority to withdraw these access rights at any given time.
 
-
 !!!important  "The Wildcard User: *"
-    In addition to regular users, a special user called `*` (the wildcard user) can be used to grant access rights on objects to all users. 
-
+    In addition to regular users, a special user called `*` (the wildcard user) can be used to grant access rights on objects to all users.
 
 To manage access rights, the user can call the following endpoints or use the `ckms` [command line interface](./cli/cli.md).
 

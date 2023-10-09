@@ -98,7 +98,7 @@ sudo docker run \
     -v $PWD/public_data:/root/public_data \
     -v $PWD/private_data:/root/private_data \
     -p80:80 \
-    -p443:443 \
+    -p9998:9998 \
     -it enclave-kms
 ```
 

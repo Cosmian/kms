@@ -15,7 +15,7 @@ use assert_cmd::cargo::CargoError;
 use x509_parser::prelude::PEMError;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
-#[derive(Error, Debug, Eq, PartialEq)]
+#[derive(Error, Debug)]
 pub enum CliError {
     // When a user requests an endpoint which does not exist
     #[error("Not Supported route: {0}")]
@@ -68,6 +68,14 @@ pub enum CliError {
     // Other errors
     #[error("{0}")]
     Default(String),
+
+    // TEE errors
+    #[error(transparent)]
+    TeeAttestationError(#[from] tee_attestation::error::Error),
+
+    // Url parsing errors
+    #[error(transparent)]
+    UrlParsing(#[from] url::ParseError),
 }
 
 impl From<KmipUtilsError> for CliError {
@@ -139,12 +147,6 @@ impl From<serde_json::Error> for CliError {
 impl From<cloudproof::reexport::cover_crypt::Error> for CliError {
     fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
         Self::InvalidRequest(e.to_string())
-    }
-}
-
-impl From<libsgx::error::SgxError> for CliError {
-    fn from(e: libsgx::error::SgxError) -> Self {
-        Self::SGXError(e.to_string())
     }
 }
 

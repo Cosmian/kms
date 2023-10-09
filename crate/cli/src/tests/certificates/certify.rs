@@ -16,7 +16,7 @@ use crate::{
     tests::{
         certificates::openssl::check_certificate,
         shared::locate,
-        utils::{extract_uids::extract_uid, start_default_test_kms_server, ONCE},
+        utils::{extract_uids::extract_uid, recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -30,6 +30,8 @@ pub fn certify(
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+
     let mut args = vec!["create"];
 
     args.extend(vec!["--ca_subject_common_names", ca]);
@@ -43,8 +45,7 @@ pub fn certify(
         args.push(tag);
     }
     cmd.arg(SUB_COMMAND).args(args);
-
-    let output = cmd.output()?;
+    let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::str::from_utf8(&output.stdout)?;
 

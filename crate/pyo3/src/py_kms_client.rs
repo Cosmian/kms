@@ -44,8 +44,10 @@ impl KmsClient {
         client_pkcs12_password = None,
         database_secret = None,
         insecure_mode = false,
+        _allowed_tee_tls_cert = None,
         jwe_public_key = None,
     ))]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         server_url: &str,
         api_key: Option<&str>,
@@ -53,6 +55,7 @@ impl KmsClient {
         client_pkcs12_password: Option<&str>,
         database_secret: Option<&str>,
         insecure_mode: bool,
+        _allowed_tee_tls_cert: Option<&str>,
         jwe_public_key: Option<&str>,
     ) -> PyResult<Self> {
         let kms_connector = KmsRestClient::instantiate(
@@ -62,6 +65,7 @@ impl KmsClient {
             client_pkcs12_password,
             database_secret,
             insecure_mode,
+            None, /* TODO */
             jwe_public_key,
         )
         .map_err(|_| {

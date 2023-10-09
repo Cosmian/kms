@@ -8,15 +8,13 @@ use std::{
 use cosmian_kms_utils::access::SuccessResponse;
 use http::{HeaderMap, HeaderValue, StatusCode};
 use openssl::x509::X509;
-use ratls::{
-    verify::{get_server_certificate, verify_ratls},
-    TeeMeasurement,
-};
+use ratls::verify::{get_server_certificate, verify_ratls};
 use reqwest::{
     multipart::{Form, Part},
     Body, Certificate, Client, ClientBuilder, Identity, Response,
 };
 use serde::{Deserialize, Serialize};
+use tee_attestation::TeeMeasurement;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
@@ -182,7 +180,7 @@ impl BootstrapRestClient {
         bearer_token: Option<&str>,
         ssl_client_pkcs12_path: Option<&str>,
         ssl_client_pkcs12_password: Option<&str>,
-        measurement: Option<TeeMeasurement>,
+        measurement: TeeMeasurement,
     ) -> Result<Self, RestClientError> {
         let server_url = match bootstrap_server_url.strip_suffix('/') {
             Some(s) => s.to_string(),
@@ -198,8 +196,7 @@ impl BootstrapRestClient {
         }
         headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 
-        // Create a client builder hat accepts invalid certs
-        let builder = ClientBuilder::new().danger_accept_invalid_certs(true);
+        let builder = ClientBuilder::new();
 
         // If a PKCS12 file is provided, use it to build the client
         let builder = match ssl_client_pkcs12_path {
@@ -246,6 +243,7 @@ impl BootstrapRestClient {
         // Build the client
         Ok(Self {
             client: builder
+                .danger_accept_invalid_certs(true)
                 .tls_built_in_root_certs(false) // Disallow all root certs from the system
                 .add_root_certificate(ratls_cert) // Allow our ratls cert
                 .connect_timeout(Duration::from_secs(5))

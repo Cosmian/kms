@@ -6,7 +6,7 @@ The Cosmian KMS is designed to [operate in **zero-trust** environments](./zero_t
     To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.8.0
     ```
 
     Check the Cosmian KMS server version
@@ -78,7 +78,7 @@ The KMS has an easy-to-use command line interface client built for many operatin
 
 The KMS server is available as a Docker image on the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
-Raw binaries for multiple operating systems are also available on the [Cosmian public packages repository](https://package.cosmian.com/kms/4.6.0/)
+Raw binaries for multiple operating systems are also available on the [Cosmian public packages repository](https://package.cosmian.com/kms/4.8.0/)
 
 #### Integrated with Cloudproof libraries
 
@@ -91,7 +91,7 @@ The libraries are available in many languages, including Javascript, Java, Dart,
 Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has a built-in help system that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.6.0 --help
+docker run --rm ghcr.io/cosmian/kms:4.8.0 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the options help.
@@ -210,11 +210,17 @@ Options:
 
           [env: KMS_USE_BOOTSTRAP_SERVER=]
 
-      --bootstrap-server-common-name <BOOTSTRAP_SERVER_COMMON_NAME>
-          The name that will be the CN in the bootstrap server self-signed certificate
+      --bootstrap-server-subject <BOOTSTRAP_SERVER_SUBJECT>
+          Subject as an RFC 4514 string for the RA-TLS certificate in the bootstrap server
 
-          [env: KMS_BOOTSTRAP_SERVER_COMMON_NAME=]
-          [default: cosmian.kms]
+          [env: KMS_BOOTSTRAP_SERVER_SUBJECT=]
+          [default: "CN=cosmian.kms,O=Cosmian Tech,C=FR,L=Paris,ST=Ile-de-France"]
+
+      --bootstrap-server-expiration-days <BOOTSTRAP_SERVER_EXPIRATION_DAYS>
+          Number of days before the certificate expires
+
+          [env: KMS_BOOTSTRAP_SERVER_EXPIRATION_DAYS=]
+          [default: 365]
 
       --bootstrap-server-port <BOOTSTRAP_SERVER_PORT>
           The bootstrap server may be started on a specific port, The hostname will be that configured in --hostname
@@ -224,7 +230,7 @@ Options:
 
       --ensure-ra-tls
           Ensure RA-TLS is available and used. The server will not start if this is not the case
-          
+
           [env: KMS_ENSURE_RA_TLS=]
 
       --root-data-path <ROOT_DATA_PATH>
@@ -243,6 +249,11 @@ Options:
           Enable TLS and use Let's Encrypt certbot to get a certificate
 
           [env: KMS_USE_CERTBOT=]
+
+      --certbot-use-tee-key
+          Use TEE key generation to generate the certificate certificate (only available on tee)
+
+          [env: KMS_CERTBOT_USE_TEE_KEY=]
 
       --certbot-hostname <CERTBOT_HOSTNAME>
           The hostname of the KMS HTTPS server that will be used as the Common Name in the Let's Encrypt certificate
@@ -280,30 +291,22 @@ Options:
 
           [env: JWK_PRIVATE_KEY=]
 
-      --enclave-dir-path <ENCLAVE_DIR_PATH>
-          The directory where the manifest and public key files are located This path should not be encrypted by the enclave and should be directly readable from it
+      --tee-dir-path <TEE_DIR_PATH>
+          The directory where the public key or other required files are located This path should not be encrypted by the enclave and should be directly readable from it
 
           A relative path is taken relative to the root_data_path
 
-          [env: KMS_ENCLAVE_DIR_PATH=]
-          [default: ./enclave]
+          [env: KMS_TEE_DIR_PATH=]
+          [default: ./tee]
 
-      --manifest-filename <MANIFEST_FILENAME>
-          The filename of the sgx manifest
+      --sgx-public-signer-key-filename <SGX_PUBLIC_SIGNER_KEY_FILENAME>
+          The filename of the public key for SGX
 
-          [env: KMS_ENCLAVE_MANIFEST_FILENAME=]
-          [default: kms.manifest.sgx]
-
-      --public-key-filename <PUBLIC_KEY_FILENAME>
-          The filename of the public key
-
-          [env: KMS_ENCLAVE_PUBLIC_KEY_FILENAME=]
-          [default: mr-signer-key.pub]
+          [env: KMS_SGX_PUBLIC_SIGNER_KEY_FILENAME=]
 
   -h, --help
           Print help (see a summary with '-h')
 
   -V, --version
           Print version
-
 ```
