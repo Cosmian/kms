@@ -135,6 +135,27 @@ impl TryInto<TeeMeasurement> for TeeConf {
     }
 }
 
+/// The configuration that is used by the Login command
+/// to perform the OAuth2 authorize code flow and obtain an access token.
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
+pub struct Oauth2Conf {
+    /// The client ID of the OAuth2 application.
+    /// This is obtained from the OAuth2 provider.
+    pub(crate) client_id: String,
+    /// The client secret of the OAuth2 application.
+    /// This is obtained from the OAuth2 provider.
+    pub(crate) client_secret: String,
+    /// The URL of the OAuth2 provider's authorization endpoint.
+    /// For example, for Google, this is `https://accounts.google.com/o/oauth2/v2/auth`.
+    pub(crate) authorize_url: String,
+    /// The URL of the OAuth2 provider's token endpoint.
+    /// For example, for Google, this is `https://oauth2.googleapis.com/token`.
+    pub(crate) token_url: String,
+    /// The scopes to request.
+    /// For example, for Google, this is `["openid", "profile"]`.
+    pub(crate) scopes: Vec<String>,
+}
+
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
 pub struct CliConf {
     // accept_invalid_certs is useful if the cli needs to connect to an HTTPS KMS server
@@ -157,6 +178,8 @@ pub struct CliConf {
     pub(crate) kms_database_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) jwe_public_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) oauth2_conf: Option<Oauth2Conf>,
 }
 
 impl CliConf {
@@ -185,6 +208,7 @@ impl Default for CliConf {
             ssl_client_pkcs12_path: None,
             ssl_client_pkcs12_password: None,
             jwe_public_key: None,
+            oauth2_conf: None,
         }
     }
 }
@@ -232,7 +256,7 @@ impl CliConf {
 
         fs::write(
             conf_path,
-            serde_json::to_string(&self)
+            serde_json::to_string_pretty(&self)
                 .with_context(|| format!("Unable to serialize default configuration {self:?}"))?,
         )
         .with_context(|| format!("Unable to write default configuration to file {self:?}"))?;

@@ -5,8 +5,9 @@ use cosmian_kms_cli::{
     actions::{
         access::AccessAction, bootstrap::BootstrapServerAction, certificates::CertificatesCommands,
         cover_crypt::CovercryptCommands, elliptic_curves::EllipticCurveCommands,
-        new_database::NewDatabaseAction, shared::LocateObjectsAction, symmetric::SymmetricCommands,
-        verify::TeeAction, version::ServerVersionAction,
+        login::LoginAction, logout::LogoutAction, new_database::NewDatabaseAction,
+        shared::LocateObjectsAction, symmetric::SymmetricCommands, verify::TeeAction,
+        version::ServerVersionAction,
     },
     config::CliConf,
     error::CliError,
@@ -38,6 +39,8 @@ enum CliCommands {
     #[command(subcommand)]
     Sym(SymmetricCommands),
     Verify(TeeAction),
+    Login(LoginAction),
+    Logout(LogoutAction),
 }
 
 #[tokio::main]
@@ -79,6 +82,8 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
         CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
         CliCommands::BootstrapStart(_) | CliCommands::Verify(_) => {}
+        CliCommands::Login(action) => action.process().await?,
+        CliCommands::Logout(action) => action.process().await?,
     };
 
     Ok(())

@@ -14,6 +14,7 @@ path = "src/main.rs"
 staging = []
 
 [dependencies]
+actix-web = "4.4"
 base64 = { workspace = true }
 clap = { workspace = true }
 cloudproof = { workspace = true }
@@ -22,6 +23,7 @@ cosmian_kms_client = { path = "../client" }
 cosmian_kms_utils = { path = "../utils" }
 cosmian_logger = { path = "../logger" }
 hex = { workspace = true }
+oauth2 = { version = "4.4" }
 openssl = { workspace = true }
 pem = "3.0"
 rand = "0.8"
@@ -49,8 +51,6 @@ cosmian_kms_server = { path = "../server", features = [
 ], default-features = false }
 cosmian_logger = { path = "../logger" }
 env_logger = { workspace = true }
-oauth2 = { version = "4.4" }
 predicates = "2.1"
 regex = { version = "1.7", default-features = false }
 tempfile = "3.2"
-warp = "0.3"
