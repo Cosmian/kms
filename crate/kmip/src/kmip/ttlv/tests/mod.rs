@@ -512,7 +512,6 @@ fn test_aes_key_material() {
 }
 
 #[test]
-#[allow(clippy::large_enum_variant)]
 fn test_some_attributes() {
     log_init("info,hyper=info,reqwest=info");
     #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -520,17 +519,17 @@ fn test_some_attributes() {
     enum Wrapper {
         Attr {
             #[serde(skip_serializing_if = "Option::is_none", rename = "Attributes")]
-            attributes: Option<Attributes>,
+            attributes: Option<Box<Attributes>>,
         },
         NoAttr {
             whatever: i32,
         },
     }
     let value = Wrapper::Attr {
-        attributes: Some(Attributes {
+        attributes: Some(Box::new(Attributes {
             object_type: Some(ObjectType::SymmetricKey),
             ..Attributes::default()
-        }),
+        })),
     };
     let ttlv = to_ttlv(&value).unwrap();
     let json = serde_json::to_value(&ttlv).unwrap();
