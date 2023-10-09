@@ -260,6 +260,14 @@ pub struct OAuthResponse {
     pub access_token: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_in: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_type: Option<String>,
 }
 
 /// This function requests the access token from the Identity Provider.
@@ -315,6 +323,7 @@ pub async fn request_token(
     }
 
     let response_body = response.body.as_slice();
+
     serde_json::from_slice(response_body)
         .map_err(|e| CliError::Default(format!("failed parsing token exchange response: {:?}", e)))
 }
