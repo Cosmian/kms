@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
   - remove libsgx and create a new dependance to tee_attestation crate
   - update KMS server argument regarding the TEE and certbot
   - review documentation regarding the KMS usage inside a TEE
+- Activate tracing in CLI tests when binary is instrumented ([#56])
 
 ### Ci
 
