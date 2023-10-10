@@ -162,7 +162,7 @@ pub async fn unwrap(
     // } else {
     //     &["writer", "reader"]
     // };
-    let roles = &["writer", "upgrader"];
+    let roles = &["writer", "reader"];
 
     let user = validate_tokens(
         &unwrap_request.authentication,
