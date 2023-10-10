@@ -1152,6 +1152,7 @@ dependencies = [
  "cosmian_kms_client",
  "cosmian_kms_server",
  "cosmian_kms_utils",
+ "cosmian_logger",
  "env_logger",
  "hex",
  "oauth2",
