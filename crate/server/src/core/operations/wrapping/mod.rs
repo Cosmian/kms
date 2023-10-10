@@ -6,7 +6,7 @@ use tracing::trace;
 pub(crate) use unwrap::unwrap_key;
 pub(crate) use wrap::wrap_key;
 
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
 
 mod unwrap;
 mod wrap;
