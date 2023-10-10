@@ -136,7 +136,7 @@ impl TryInto<TeeMeasurement> for TeeConf {
 }
 
 /// The configuration that is used by the Login command
-/// to perform the OAuth2 authorize code flow and obtain an access token.
+/// to perform the `OAuth2` authorize code flow and obtain an access token.
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
 pub struct Oauth2Conf {
     /// The client ID of the OAuth2 application.

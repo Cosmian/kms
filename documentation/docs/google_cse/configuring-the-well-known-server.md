@@ -6,13 +6,11 @@ The URL at which Google client-side encryption expects the well-known file is on
 
 Assuming your organization is on the domain `acme.com` (which should match that of your email address domain), the URL would be: `https://cse.acme.com/.well-known/cse-configuration`
 
+#### 1. Configure a server running Ubuntu 23.04
 
-#### 1. Configure a server running Ubuntu 23.04 
-
- The server should be reachable using an external IP; configure your DNS so that a `A` record with value `cse.acme.com` points to that external IP address of the server. 
+ The server should be reachable using an external IP; configure your DNS so that a `A` record with value `cse.acme.com` points to that external IP address of the server.
 
  Make sure ports 80 and 443 are open to external traffic on this machine. Access to port 80 can be closed at the end of this procedure.
-
 
 #### 2. Install `nginx` on the server
 
@@ -33,10 +31,8 @@ The file will simply contain an empty JSON object `{}` at this stage; you need t
 
 #### 4. Configure `nginx` to serve the well-known file
 
-
 Since, the well-known file is served from a different domain than the one used by Google client-side encryption,
  CORS calls need to be enabled on NGINX to allow the browser to fetch the well-known file.
-
 
 Edit the file `/etc/nginx/sites-available/default` and add the following `location`:
 
@@ -72,8 +68,8 @@ sudo ln -s /snap/bin/certbot /usr/bin/certbot
 
 General instructions on installing `certbot` are available at [this URL](https://certbot.eff.org/lets-encrypt/ubuntufocal-nginx).
 
-
 Get a certificate and configure `nginx`
+
 ```sh
 sudo certbot --nginx
 ```
@@ -84,7 +80,7 @@ That's it, the empty well-known file should now be served using HTTPS. From anot
 and that the `Access-Control-Allow-Origin` header is set to `*`:
 
 ```sh
-➜ curl https://cse.acme.com/.well-known/cse-configuration                                                   
+➜ curl https://cse.acme.com/.well-known/cse-configuration
 < HTTP/1.1 200 OK
 < Server: nginx/1.22.0 (Ubuntu)
 < Date: Sat, 07 Oct 2023 15:25:58 GMT
@@ -95,7 +91,7 @@ and that the `Access-Control-Allow-Origin` header is set to `*`:
 < ETag: "65194c8d-5d4"
 < Access-Control-Allow-Origin: *
 < Accept-Ranges: bytes
-< 
+<
 {}
 ```
 

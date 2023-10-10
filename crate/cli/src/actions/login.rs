@@ -23,16 +23,16 @@ use url::Url;
 
 use crate::{actions, cli_bail, config::CliConf, error::CliError};
 
-/// Login to the Identity Provider of the KMS server using the OAuth2 authorization code flow.
+/// Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
 ///
 /// This command will open a browser window and ask you to login to the Identity Provider.
 /// Once you have logged in, the access token will be saved in the ckms configuration file.
 ///
-/// The configuration file must contain an oauth2_conf object with the following fields:
-/// - client_id: The client ID of your application. This is provided by the Identity Provider.
-/// - client_secret: The client secret of your application. This is provided by the Identity Provider.
-/// - authorize_url: The authorization URL of the provider. For example, for Google it is `https://accounts.google.com/o/oauth2/v2/auth`.
-/// - token_url: The token URL of the provider. For example, for Google it is `https://oauth2.googleapis.com/token`.
+/// The configuration file must contain an `oauth2_conf` object with the following fields:
+/// - `client_id`: The client ID of your application. This is provided by the Identity Provider.
+/// - `client_secret`: The client secret of your application. This is provided by the Identity Provider.
+/// - `authorize_url`: The authorization URL of the provider. For example, for Google it is `https://accounts.google.com/o/oauth2/v2/auth`.
+/// - `token_url`: The token URL of the provider. For example, for Google it is `https://oauth2.googleapis.com/token`.
 /// - scopes: The scopes to request. For example, for Google it is `["openid", "email"]`.
 ///
 /// The callback url must be authorized on the Identity Provider with value `http://localhost:17899/token`.
@@ -45,7 +45,7 @@ impl LoginAction {
         let conf_location = CliConf::location()?;
         let mut conf = CliConf::load()?;
         let oauth2_conf = conf.oauth2_conf.as_ref().ok_or_else(|| {
-            CliError::Default(format!("No oauth2_conf object in {:?}", conf_location))
+            CliError::Default(format!("No oauth2_conf object in {conf_location:?}"))
         })?;
         let login_config = Oauth2LoginConfig {
             client_id: oauth2_conf.client_id.clone(),
@@ -64,8 +64,8 @@ impl LoginAction {
         conf.save()?;
 
         println!(
-            "\nSuccess! The access token was saved in the KMS configuration file: {:?}",
-            conf_location
+            "\nSuccess! The access token was saved in the KMS configuration file: \
+             {conf_location:?}"
         );
 
         Ok(())
@@ -112,6 +112,7 @@ pub struct LoginState {
 }
 
 impl LoginState {
+    #[must_use]
     pub fn auth_url(&self) -> &Url {
         &self.auth_url
     }
@@ -129,10 +130,10 @@ pub async fn login_initialize(login_config: Oauth2LoginConfig) -> Result<LoginSt
     // if the port is specified in the environment variable, use it
     if let Ok(port_s) = std::env::var("KMS_CLI_OAUTH2_REDIRECT_URL_PORT") {
         let port = port_s.parse::<u16>().map_err(|e| {
-            CliError::Default(format!("Invalid KMS_CLI_OAUTH2_REDIRECT_URL_PORT: {:?}", e))
+            CliError::Default(format!("Invalid KMS_CLI_OAUTH2_REDIRECT_URL_PORT: {e:?}"))
         })?;
         redirect_url.set_port(Some(port)).map_err(|e| {
-            CliError::Default(format!("Invalid KMS_CLI_OAUTH2_REDIRECT_URL_PORT: {:?}", e))
+            CliError::Default(format!("Invalid KMS_CLI_OAUTH2_REDIRECT_URL_PORT: {e:?}"))
         })?;
     }
 
@@ -262,7 +263,7 @@ fn receive_authorization_parameters() -> Result<HashMap<String, String>, CliErro
     });
     auth_params_rx
         .recv()
-        .map_err(|e| CliError::Default(format!("authorization code not received: {:?}", e)))
+        .map_err(|e| CliError::Default(format!("authorization code not received: {e:?}")))
 }
 
 #[derive(Deserialize, Debug)]
@@ -283,9 +284,9 @@ pub struct OAuthResponse {
 /// This function requests the access token from the Identity Provider.
 ///
 /// This function wa rewritten because Google returns the JWT token in the `id_token` field,
-/// not the access_token field.
+/// not the `access_token` field.
 ///
-/// For Google see: https://developers.google.com/identity/openid-connect/openid-connect#obtainuserinfo
+/// For Google see: <https://developers.google.com/identity/openid-connect/openid-connect#obtainuserinfo>
 pub async fn request_token(
     login_config: Oauth2LoginConfig,
     redirect_url: &Url,
@@ -322,9 +323,7 @@ pub async fn request_token(
 
     let response = oauth2::reqwest::async_http_client(request)
         .await
-        .map_err(|e| {
-            CliError::Default(format!("failed issuing token exchange request: {:?}", e))
-        })?;
+        .map_err(|e| CliError::Default(format!("failed issuing token exchange request: {e:?}")))?;
 
     if response.status_code != StatusCode::OK {
         cli_bail!(
@@ -336,5 +335,5 @@ pub async fn request_token(
     let response_body = response.body.as_slice();
 
     serde_json::from_slice(response_body)
-        .map_err(|e| CliError::Default(format!("failed parsing token exchange response: {:?}", e)))
+        .map_err(|e| CliError::Default(format!("failed parsing token exchange response: {e:?}")))
 }

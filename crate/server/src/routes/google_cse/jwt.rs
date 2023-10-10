@@ -16,16 +16,14 @@ pub async fn jwt_authorization_config() -> KResult<JwtConfig> {
         .await
         .map_err(|e| {
             KmsError::ServerError(format!(
-                "Failed to fetch Google CSE authorization JWKS at: {}, {:?} ",
-                jwks_uri, e
+                "Failed to fetch Google CSE authorization JWKS at: {jwks_uri}, {e:?} "
             ))
         })?
         .json::<JWKS>()
         .await
         .map_err(|e| {
             KmsError::ServerError(format!(
-                "Failed to parse Google CSE authorization JWKS at: {}, {:?} ",
-                jwks_uri, e
+                "Failed to parse Google CSE authorization JWKS at: {jwks_uri}, {e:?} "
             ))
         })?;
 
@@ -99,7 +97,7 @@ pub fn decode_jwt_authorization_token(
 /// The configuration for for Google CSE:
 ///  - JWT authentication and authorization configurations
 ///  - external KACLS URL of this server configured in Google Workspace client-side encryption
-/// (something like https://cse.mydomain.com/google_cse)
+/// (something like <https://cse.mydomain.com/google_cse>)
 #[derive(Clone)]
 pub struct GoogleCseConfig {
     pub authentication: JwtConfig,
@@ -186,11 +184,11 @@ mod tests {
     async fn test_wrap_auth() {
         log_init("info");
         let wrap_request = r#"
-        { 
-            "authentication": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImM2MjYzZDA5NzQ1YjUwMzJlNTdmYTZlMWQwNDFiNzdhNTQwNjZkYmQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiI5OTY3Mzk1MTAzNzQtYXU5ZmRiZ3A3MmRhY3JzYWcyNjdja2czMmpmM2QzZTIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiI5OTY3Mzk1MTAzNzQtYXU5ZmRiZ3A3MmRhY3JzYWcyNjdja2czMmpmM2QzZTIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMDI5NjU4MTQxNjkwOTQzMDMxMTIiLCJoZCI6ImNvc21pYW4uY29tIiwiZW1haWwiOiJibHVlQGNvc21pYW4uY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsIm5vbmNlIjoieVpqSXJ0TzRuTHktMU5tSGZVU09rZzpodHRwczovL2NsaWVudC1zaWRlLWVuY3J5cHRpb24uZ29vZ2xlLmNvbSIsIm5iZiI6MTY5Njc0MzU0MSwiaWF0IjoxNjk2NzQzODQxLCJleHAiOjE2OTY3NDc0NDEsImp0aSI6Ijc2YzM1NTYyZjE3MjQ4ZWYyYjdlN2JmZTFiMWNiNzc0OWIyZGY2OWUifQ.E1894qHpBShp9xPLozEejZPainkuCGrEtM8FhLtevz-3-ywAqCzW6K0crw8u8Rd0rsyFH4MLRCXd_WaF1KH97HwKivA9rrTYOom4wESiINmQuIRjUr_8m2nOUQ-BvA8hqC2iu1gOowOAWB_npVQIpBaqujzdeQVy9cZgm5Hqr7QEiZEvh0_fPhIXQi38IOelTvUYqOoLdX_c6QOf2lbFd7RWzbJYgB7ZMHQr_Tyomhx2Budmwu5VCI8w7hERgjepCGdemLJanyW6Ia3YdH6Tj2-Xp7B2-5kFH4idsaqMiimeqopxBKtDD5cpkjLwbi_bryk1sX2MhzcrKZSkie40Eg", 
-            "authorization": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImFhYTk2ODk5ZThjYmM5YThlODBjMzBjMzU1NjVhOTM4YzE1MTgyNmQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJnc3VpdGVjc2UtdG9rZW5pc3N1ZXItZHJpdmVAc3lzdGVtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCJhdWQiOiJjc2UtYXV0aG9yaXphdGlvbiIsImVtYWlsIjoiYmx1ZUBjb3NtaWFuLmNvbSIsInJlc291cmNlX25hbWUiOiIvL2dvb2dsZWFwaXMuY29tL2RyaXZlL2ZpbGVzLzEzQXBwUWpVVmpCT2VVczB3VTc0cXFYbUkzQjZyTFJxcCIsInJvbGUiOiJ3cml0ZXIiLCJrYWNsc191cmwiOiJodHRwczovL2NzZS5jb3NtaWFuLmNvbS9nb29nbGVfY3NlIiwicGVyaW1ldGVyX2lkIjoiIiwiaWF0IjoxNjk2NzQ2MzkxLCJleHAiOjE2OTY3NDk5OTF9.NCR_zrE4K6fuxtGttIZyZVrvpF0cwqryUCYU01DbbPtgmNzO6jd3kVWHAKwouNSI_JU4k9SjNaU9-1T1FUBWIfRtWkPMdETPUgiDC51dmqdgxHTlA0ILvZI2drlrzrXInyWq7hik1G-zqL0KO3MdDa0ioPd0he2Wq2Pi5z8I-A2mwyYK8kzYHbZ-zvQK3NORuQYrqAssAqIGfZeNMz6rlfO1GBYwJoAagGKu23A-__e7dRT_XkebiTJZ-FpAajue4xjPYsqe1D73yi95T6nJo9s7iHZf32j0U2yH0cLgbN3Hn-G_ePVFHrBh3i5LU2x0qb2f3a1HiDiFoOa9qbt5Pg", 
-            "key": "GiBtiozOv+COIrEPxPUYH9gFKw1tY9kBzHaW/gSi7u9ZLA==", 
-            "reason": "" 
+        {
+            "authentication": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImM2MjYzZDA5NzQ1YjUwMzJlNTdmYTZlMWQwNDFiNzdhNTQwNjZkYmQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiI5OTY3Mzk1MTAzNzQtYXU5ZmRiZ3A3MmRhY3JzYWcyNjdja2czMmpmM2QzZTIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJhdWQiOiI5OTY3Mzk1MTAzNzQtYXU5ZmRiZ3A3MmRhY3JzYWcyNjdja2czMmpmM2QzZTIuYXBwcy5nb29nbGV1c2VyY29udGVudC5jb20iLCJzdWIiOiIxMDI5NjU4MTQxNjkwOTQzMDMxMTIiLCJoZCI6ImNvc21pYW4uY29tIiwiZW1haWwiOiJibHVlQGNvc21pYW4uY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsIm5vbmNlIjoieVpqSXJ0TzRuTHktMU5tSGZVU09rZzpodHRwczovL2NsaWVudC1zaWRlLWVuY3J5cHRpb24uZ29vZ2xlLmNvbSIsIm5iZiI6MTY5Njc0MzU0MSwiaWF0IjoxNjk2NzQzODQxLCJleHAiOjE2OTY3NDc0NDEsImp0aSI6Ijc2YzM1NTYyZjE3MjQ4ZWYyYjdlN2JmZTFiMWNiNzc0OWIyZGY2OWUifQ.E1894qHpBShp9xPLozEejZPainkuCGrEtM8FhLtevz-3-ywAqCzW6K0crw8u8Rd0rsyFH4MLRCXd_WaF1KH97HwKivA9rrTYOom4wESiINmQuIRjUr_8m2nOUQ-BvA8hqC2iu1gOowOAWB_npVQIpBaqujzdeQVy9cZgm5Hqr7QEiZEvh0_fPhIXQi38IOelTvUYqOoLdX_c6QOf2lbFd7RWzbJYgB7ZMHQr_Tyomhx2Budmwu5VCI8w7hERgjepCGdemLJanyW6Ia3YdH6Tj2-Xp7B2-5kFH4idsaqMiimeqopxBKtDD5cpkjLwbi_bryk1sX2MhzcrKZSkie40Eg",
+            "authorization": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImFhYTk2ODk5ZThjYmM5YThlODBjMzBjMzU1NjVhOTM4YzE1MTgyNmQiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJnc3VpdGVjc2UtdG9rZW5pc3N1ZXItZHJpdmVAc3lzdGVtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCJhdWQiOiJjc2UtYXV0aG9yaXphdGlvbiIsImVtYWlsIjoiYmx1ZUBjb3NtaWFuLmNvbSIsInJlc291cmNlX25hbWUiOiIvL2dvb2dsZWFwaXMuY29tL2RyaXZlL2ZpbGVzLzEzQXBwUWpVVmpCT2VVczB3VTc0cXFYbUkzQjZyTFJxcCIsInJvbGUiOiJ3cml0ZXIiLCJrYWNsc191cmwiOiJodHRwczovL2NzZS5jb3NtaWFuLmNvbS9nb29nbGVfY3NlIiwicGVyaW1ldGVyX2lkIjoiIiwiaWF0IjoxNjk2NzQ2MzkxLCJleHAiOjE2OTY3NDk5OTF9.NCR_zrE4K6fuxtGttIZyZVrvpF0cwqryUCYU01DbbPtgmNzO6jd3kVWHAKwouNSI_JU4k9SjNaU9-1T1FUBWIfRtWkPMdETPUgiDC51dmqdgxHTlA0ILvZI2drlrzrXInyWq7hik1G-zqL0KO3MdDa0ioPd0he2Wq2Pi5z8I-A2mwyYK8kzYHbZ-zvQK3NORuQYrqAssAqIGfZeNMz6rlfO1GBYwJoAagGKu23A-__e7dRT_XkebiTJZ-FpAajue4xjPYsqe1D73yi95T6nJo9s7iHZf32j0U2yH0cLgbN3Hn-G_ePVFHrBh3i5LU2x0qb2f3a1HiDiFoOa9qbt5Pg",
+            "key": "GiBtiozOv+COIrEPxPUYH9gFKw1tY9kBzHaW/gSi7u9ZLA==",
+            "reason": ""
         }
         "#;
         let wrap_request: WrapRequest = serde_json::from_str(wrap_request).unwrap();

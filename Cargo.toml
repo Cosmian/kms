@@ -30,6 +30,7 @@ rpath = false
 opt-level = 0
 
 [workspace.dependencies]
+actix-web = { version = "4.4", features = ["openssl"] }
 async-trait = "0.1"
 base64 = "0.21"
 bitflags = "2.3"
