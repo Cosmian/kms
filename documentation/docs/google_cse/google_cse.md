@@ -12,7 +12,7 @@ The identity provider (IdP) is either a third party IdP or Google identity. Usin
 
 ![Enable CSE](./images/url-of-well-known-file.png)
 
-The initial page should look like this. What matters here is the link shown at the tip of the red-arrow. This is the URL at which Google client-side encryption expects the well-known file to be served.
+The initial page should look like this. What matters here is the link shown at the tip of the red-arrow. This is the URL at which Google client-side encryption expects the well-known file to be served. Assuming your domain is `example.com`, the URL will likely be `https://cse.example.com/.well-known/cse-configuration`.
 
 To configure a well-known file, you need to:
 
