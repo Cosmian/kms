@@ -71,11 +71,25 @@ pub async fn wrap(
 ) -> KResult<WrapResponse> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
+    let application = if wrap_request.reason.contains("Meet") {
+        "meet"
+    } else {
+        "drive"
+    };
+
+    // let roles: &[&str] = if application == "meet" {
+    //     &["writer", "upgrader"]
+    // } else {
+    //     &["writer", "upgrader"]
+    // };
+    let roles = &["writer", "upgrader"];
+
     let user = validate_tokens(
         &wrap_request.authentication,
         &wrap_request.authorization,
         cse_config,
-        &["writer", "upgrader"],
+        application,
+        roles,
     )?;
 
     // decode the DEK and create a KMIP object from the key bytes
@@ -137,11 +151,25 @@ pub async fn unwrap(
 ) -> KResult<UnwrapResponse> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
 
+    let application = if unwrap_request.reason.contains("Meet") {
+        "meet"
+    } else {
+        "drive"
+    };
+
+    // let roles: &[&str] = if application == "meet" {
+    //     &["writer", "reader"]
+    // } else {
+    //     &["writer", "reader"]
+    // };
+    let roles = &["writer", "upgrader"];
+
     let user = validate_tokens(
         &unwrap_request.authentication,
         &unwrap_request.authorization,
         cse_config,
-        &["writer", "reader"],
+        application,
+        roles,
     )?;
 
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes

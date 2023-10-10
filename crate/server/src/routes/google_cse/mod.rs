@@ -6,7 +6,7 @@ use actix_web::{
     HttpRequest, HttpResponse,
 };
 use serde::Serialize;
-use tracing::{info, trace};
+use tracing::{debug, info, trace};
 
 use crate::{error::KmsError, result::KResult, KMSServer};
 mod jwt;
@@ -35,6 +35,7 @@ impl CseErrorReply {
 
 impl From<CseErrorReply> for HttpResponse {
     fn from(e: CseErrorReply) -> Self {
+        debug!("CSE Error: {:?}", e);
         HttpResponse::InternalServerError().json(e)
     }
 }
