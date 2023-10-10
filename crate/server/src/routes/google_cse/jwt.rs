@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use alcoholic_jwt::{token_kid, JWKS};
 use tracing::{debug, trace};
 
@@ -8,33 +10,61 @@ use crate::{
     result::KResult,
 };
 
-/// Fetch the JWT authorization configuration for Google CSE
-pub async fn jwt_authorization_config() -> KResult<JwtConfig> {
-    let jwks_uri =std::env::var("KMS_GOOGLE_CSE_JWKS_URI").unwrap_or("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com".to_string());
-
-    let jwks = reqwest::get(&jwks_uri)
+async fn fetch_jwks(jwks_uri: &str) -> KResult<JWKS> {
+    let jwks = reqwest::get(jwks_uri)
         .await
         .map_err(|e| {
             KmsError::ServerError(format!(
-                "Failed to fetch Google CSE authorization JWKS at: {jwks_uri}, {e:?} "
+                "Failed to fetch Google CSE JWKS at: {jwks_uri}, {e:?} "
             ))
         })?
         .json::<JWKS>()
         .await
         .map_err(|e| {
             KmsError::ServerError(format!(
-                "Failed to parse Google CSE authorization JWKS at: {jwks_uri}, {e:?} "
+                "Failed to parse Google CSE JWKS at: {jwks_uri}, {e:?} "
             ))
         })?;
 
+    Ok(jwks)
+}
+
+/// Fetch the JWT authorization configuration for Google CSE 'drive' or 'meet'
+async fn jwt_authorization_config_application(application: &str) -> KResult<JwtConfig> {
+    let jwks_uri= std::env::var(format!("KMS_GOOGLE_CSE_{}_JWKS_URI",application.to_uppercase()))
+        .unwrap_or(format!("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{}@system.gserviceaccount.com",application));
+
+    // Fetch the JWKS for the two Google CSE service accounts
+    let jwks = fetch_jwks(&jwks_uri).await?;
+
     Ok(JwtConfig {
-        jwt_issuer_uri: std::env::var("KMS_GOOGLE_CSE_JWT_ISSUER")
-            .unwrap_or("gsuitecse-tokenissuer-drive@system.gserviceaccount.com".to_string()),
+        jwt_issuer_uri: std::env::var(format!(
+            "KMS_GOOGLE_CSE_{}_JWT_ISSUER",
+            application.to_uppercase()
+        ))
+        .unwrap_or(format!(
+            "gsuitecse-tokenissuer-{}@system.gserviceaccount.com",
+            application
+        )),
         jwks,
         jwt_audience: Some(
             std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or("cse-authorization".to_string()),
         ),
     })
+}
+
+/// Fetch the JWT authorization configuration for Google CSE 'drive' and'meet'
+pub async fn jwt_authorization_config() -> KResult<HashMap<String, JwtConfig>> {
+    let mut jwt_authorization_config = HashMap::new();
+    jwt_authorization_config.insert(
+        "drive".to_string(),
+        jwt_authorization_config_application("drive").await?,
+    );
+    jwt_authorization_config.insert(
+        "meet".to_string(),
+        jwt_authorization_config_application("meet").await?,
+    );
+    Ok(jwt_authorization_config)
 }
 
 /// Decode a json web token (JWT) used for Google CSE
@@ -101,7 +131,7 @@ pub fn decode_jwt_authorization_token(
 #[derive(Clone)]
 pub struct GoogleCseConfig {
     pub authentication: JwtConfig,
-    pub authorization: JwtConfig,
+    pub authorization: HashMap<String, JwtConfig>,
     pub kacls_url: String,
 }
 
@@ -111,6 +141,7 @@ pub fn validate_tokens(
     authentication_token: &str,
     authorization_token: &str,
     cse_config: &Option<GoogleCseConfig>,
+    application: &str,
     roles: &[&str],
 ) -> KResult<String> {
     let cse_config = cse_config.as_ref().ok_or_else(|| {
@@ -125,8 +156,14 @@ pub fn validate_tokens(
         decode_jwt_authentication_token(&cse_config.authentication, authentication_token)?;
     trace!("authentication token: {:?}", authentication_token);
 
-    let (authorization_token, jwt_headers) =
-        decode_jwt_authorization_token(&cse_config.authorization, authorization_token)?;
+    let (authorization_token, jwt_headers) = decode_jwt_authorization_token(
+        cse_config.authorization.get(application).ok_or_else(|| {
+            KmsError::NotSupported(format!(
+                "no JWT config available for application: {application} "
+            ))
+        })?,
+        authorization_token,
+    )?;
     trace!("authorization token: {:?}", authorization_token);
     trace!("authorization token headers: {:?}", jwt_headers);
 
@@ -219,9 +256,11 @@ mod tests {
 
         let jwt_authorization_config = jwt_authorization_config().await.unwrap();
 
-        let (authorization_token, jwt_headers) =
-            decode_jwt_authorization_token(&jwt_authorization_config, &wrap_request.authorization)
-                .unwrap();
+        let (authorization_token, jwt_headers) = decode_jwt_authorization_token(
+            jwt_authorization_config.get("drive").unwrap(),
+            &wrap_request.authorization,
+        )
+        .unwrap();
         info!("AUTHORIZATION token: {:?}", authorization_token);
         info!("AUTHORIZATION token headers: {:?}", jwt_headers);
 
