@@ -10,7 +10,6 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::crypto::symmetric::create_symmetric_key;
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use super::GoogleCseConfig;
 use crate::{
@@ -71,9 +70,8 @@ pub async fn wrap(
     kms: &Arc<KMSServer>,
 ) -> KResult<WrapResponse> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-    let user = kms.get_user(req_http)?;
 
-    validate_tokens(
+    let user = validate_tokens(
         &wrap_request.authentication,
         &wrap_request.authorization,
         cse_config,
@@ -138,9 +136,8 @@ pub async fn unwrap(
     kms: &Arc<KMSServer>,
 ) -> KResult<UnwrapResponse> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-    let user = kms.get_user(req_http)?;
 
-    validate_tokens(
+    let user = validate_tokens(
         &unwrap_request.authentication,
         &unwrap_request.authorization,
         cse_config,
@@ -177,40 +174,5 @@ pub async fn unwrap(
 
     Ok(UnwrapResponse {
         key: general_purpose::STANDARD.encode(dek),
-    })
-}
-
-#[derive(Deserialize, Debug)]
-pub struct DigestRequest {
-    pub authorization: String,
-    pub reason: String,
-    pub wrapped_key: String,
-}
-
-#[derive(Serialize, Debug)]
-pub struct DigestResponse {
-    pub checksum: String,
-}
-
-/// Returns the checksum ("digest") of an unwrapped Data Encryption Key (DEK).
-///
-/// ```SHA-256("KACLMigration" + resource_identifier + unwrapped_dek)```
-///
-/// See [doc](https://developers.google.com/workspace/cse/reference/digest)
-pub async fn digest(
-    req_http: HttpRequest,
-    digest_request: DigestRequest,
-    cse_config: &Option<GoogleCseConfig>,
-    kms: &Arc<KMSServer>,
-) -> KResult<DigestResponse> {
-    info!("POST /google_cse/digest");
-
-    // unwrap all calls parameters
-
-    let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
-    let user = kms.get_user(req_http)?;
-
-    Ok(DigestResponse {
-        checksum: "digest".to_string(),
     })
 }

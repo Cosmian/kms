@@ -107,14 +107,14 @@ pub struct GoogleCseConfig {
     pub kacls_url: String,
 }
 
-/// Validate the authentication and the authorization tokens
+/// Validate the authentication and the authorization tokens and return the calling user
 /// See [doc](https://developers.google.com/workspace/cse/guides/encrypt-and-decrypt-data?hl=en)
 pub fn validate_tokens(
     authentication_token: &str,
     authorization_token: &str,
     cse_config: &Option<GoogleCseConfig>,
     roles: &[&str],
-) -> KResult<()> {
+) -> KResult<String> {
     let cse_config = cse_config.as_ref().ok_or_else(|| {
         KmsError::ServerError(
             "JWT authentication and authorization configurations for Google CSE are not set"
@@ -167,9 +167,9 @@ pub fn validate_tokens(
         ))
     );
 
-    debug!("wrap request authorized");
+    debug!("wrap request authorized for user {}", authentication_email);
 
-    Ok(())
+    Ok(authentication_email)
 }
 
 #[cfg(test)]

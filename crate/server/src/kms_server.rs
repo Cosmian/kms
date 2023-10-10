@@ -446,7 +446,6 @@ pub async fn prepare_kms_server(
                 .service(routes::google_cse::get_status)
                 .service(routes::google_cse::wrap)
                 .service(routes::google_cse::unwrap)
-                .service(routes::google_cse::digest);
             app = app.service(google_cse_scope);
         }
 
