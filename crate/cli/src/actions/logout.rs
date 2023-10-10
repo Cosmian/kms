@@ -17,8 +17,7 @@ impl LogoutAction {
         conf.save()?;
 
         println!(
-            "\nThe access token was removed from the KMS configuration file: {:?}",
-            conf_location
+            "\nThe access token was removed from the KMS configuration file: {conf_location:?}"
         );
 
         Ok(())

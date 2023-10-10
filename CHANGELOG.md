@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [X.Y.Z] - 2023-XX-YY
+
+### Features
+
+- adds support for Google Workspace Client Side Encryption. Single key for now.
+- ckms: adds support for login to the Identity Provider and get an access token
+
 ## [4.8.2] - 2023-10-31
 
 ### Bug Fixes
@@ -12,7 +19,7 @@ All notable changes to this project will be documented in this file.
 
 ### Bug Fixes
 
-Fix for [#64](https://github.com/Cosmian/kms/issues/64)
+- Fix for [#64](https://github.com/Cosmian/kms/issues/64)
 
 ## [4.8.0] - 2023-10-07
 

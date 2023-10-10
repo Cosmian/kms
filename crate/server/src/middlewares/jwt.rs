@@ -83,7 +83,7 @@ pub fn decode_jwt_authentication_token(jwt_config: &JwtConfig, token: &str) -> K
     // If a JWKS contains multiple keys, the correct KID first
     // needs to be fetched from the token headers.
     let kid = token_kid(token)
-        .map_err(|e| KmsError::Unauthorized(format!("Failed to decode kid: {}", e)))?
+        .map_err(|e| KmsError::Unauthorized(format!("Failed to decode kid: {e}")))?
         .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_string()))?;
 
     let jwk = jwt_config

@@ -1,10 +1,8 @@
-
 The Cosmian Key Management Server is compatible with Google Workspace client-side encryption. Using this feature, your users can encrypt files and documents, in their browsers, before sending them to Google servers. The ephemeral encryption keys are protected by "key wrapping keys", stored in the KMS and unavailable to Google. Only users that have the right to unwrap the ephemeral encryption keys inside the KMS, can decrypt the files. An overview is provided in Google's [About client-side encryption page](https://support.google.com/a/answer/10741897?hl=en).
 
 To enable client-side encryption (CSE) in Google Workspace, connect as an admin to the admin console and go to the [Google Workspace client-side encryption page](https://admin.google.com/ac/cse?hl=en).
 
 Google has extensive documentation on how to enable CSE in Google Workspace. The [Use client-side encryption for users' data page](https://support.google.com/a/topic/10742486?hl=en) is a good starting point. It may be slightly overwhelming, and this documentation adds some details to help you get started.
-
 
 ### 1. Choosing and configuring the Identity Provider
 
@@ -35,7 +33,6 @@ To enable Client Side Encryption on the Cosmian KMS server, it must be started w
 
 The Key Management Server must be configured to use the same Identity Provider as the one configured in the previous step. When using Google Identity, the server should be configured with the following options set in the [corresponding Google documentation](https://developers.google.com/workspace/cse/guides/configure-service?hl=en)
 
-
 Assuming Google is the Identity Provider, the KMS should be started with the following options:
 
 ```sh
@@ -43,6 +40,7 @@ Assuming Google is the Identity Provider, the KMS should be started with the fol
 --jwks-uri=https://www.googleapis.com/oauth2/v3/certs
 --google-cse-kacls-url=https://cse.example.com/google_cse
 ```
+
 For example, if you are using the docker image, you can run the following command:
 
 ```sh
@@ -51,8 +49,6 @@ docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 \
     --jwks-uri=https://www.googleapis.com/oauth2/v3/certs \
     --google-cse-kacls-url=https://cse.example.com/google_cse
 ```
-
-
 
 ![external keys service](./images/configure_external_key_service.png)
 
@@ -63,4 +59,3 @@ Then test the connection; it should show:
 Finalize the configuration. The Client Side Encryption page should now show the service to be active and you will now have to decide whether to assign this service to all users or to a subset of users.
 
 ![Cosmian KMS active](./images/cosmian_kms_active.png)
-
