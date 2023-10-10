@@ -72,8 +72,6 @@ impl LoginAction {
     }
 }
 
-const REDIRECT_URL: &str = "http://localhost:17899/token";
-
 pub struct Oauth2LoginConfig {
     /// The client ID of your application.
     pub client_id: String,
@@ -107,6 +105,7 @@ pub struct Oauth2LoginConfig {
 /// See [OAuth2 RFC](https://tools.ietf.org/html/rfc6749) for more details.
 pub struct LoginState {
     login_config: Oauth2LoginConfig,
+    redirect_url: Url,
     auth_url: Url,
     pkce_verifier: PkceCodeVerifier,
     csrf_token: CsrfToken,
@@ -126,6 +125,17 @@ impl LoginState {
 ///
 /// The Url can be recovered by calling `auth_url()` on the returned `LoginState`.
 pub async fn login_initialize(login_config: Oauth2LoginConfig) -> Result<LoginState, CliError> {
+    let mut redirect_url = Url::parse("http://localhost:17899/authorization")?;
+    // if the port is specified in the environment variable, use it
+    if let Ok(port_s) = std::env::var("KMS_CLI_OAUTH2_REDIRECT_URL_PORT") {
+        let port = port_s.parse::<u16>().map_err(|e| {
+            CliError::Default(format!("Invalid KMS_CLI_OAUTH2_REDIRECT_URL_PORT: {:?}", e))
+        })?;
+        redirect_url.set_port(Some(port)).map_err(|e| {
+            CliError::Default(format!("Invalid KMS_CLI_OAUTH2_REDIRECT_URL_PORT: {:?}", e))
+        })?;
+    }
+
     // Create an OAuth2 client by specifying the client ID, client secret, authorization URL and
     // token URL.
     let client = BasicClient::new(
@@ -135,7 +145,7 @@ pub async fn login_initialize(login_config: Oauth2LoginConfig) -> Result<LoginSt
         Some(TokenUrl::new(login_config.token_url.to_string())?),
     )
     // Set the URL the user will be redirected to after the authorization process.
-    .set_redirect_uri(RedirectUrl::new(REDIRECT_URL.to_string())?);
+    .set_redirect_uri(RedirectUrl::new(redirect_url.to_string())?);
 
     // Generate a PKCE challenge.
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
@@ -159,6 +169,7 @@ pub async fn login_initialize(login_config: Oauth2LoginConfig) -> Result<LoginSt
     // process.
     Ok(LoginState {
         login_config,
+        redirect_url,
         auth_url,
         pkce_verifier,
         csrf_token,
@@ -206,12 +217,11 @@ pub async fn login_finalize(login_state: LoginState) -> Result<String, CliError>
 
     let token_result = request_token(
         login_state.login_config,
+        &login_state.redirect_url,
         login_state.pkce_verifier,
         authorization_code,
     )
     .await?;
-
-    println!("token_result: {:?}", token_result);
 
     Ok(match token_result.id_token {
         // this is where Google returns the JWT token
@@ -229,14 +239,14 @@ fn receive_authorization_parameters() -> Result<HashMap<String, String>, CliErro
     let _task = thread::spawn(move || {
         tokio_handle.block_on({
             // server.await
-            #[get("/token")]
-            async fn token_handler(
-                query_params: web::Query<HashMap<String, String>>,
-                query_params_tx: Data<Sender<HashMap<String, String>>>,
+            #[get("/authorization")]
+            async fn authorization_handler(
+                auth_params: web::Query<HashMap<String, String>>,
+                auth_params_tx: Data<Sender<HashMap<String, String>>>,
             ) -> HttpResponse {
-                query_params_tx
+                auth_params_tx
                     .into_inner()
-                    .send(query_params.into_inner())
+                    .send(auth_params.into_inner())
                     .unwrap();
                 HttpResponse::Ok().body("Authentication Success! You can close this window.")
             }
@@ -244,7 +254,7 @@ fn receive_authorization_parameters() -> Result<HashMap<String, String>, CliErro
             HttpServer::new(move || {
                 App::new()
                     .app_data(Data::new(auth_params_tx.clone()))
-                    .service(token_handler)
+                    .service(authorization_handler)
             })
             .bind(("127.0.0.1", 17899))?
             .run()
@@ -278,12 +288,13 @@ pub struct OAuthResponse {
 /// For Google see: https://developers.google.com/identity/openid-connect/openid-connect#obtainuserinfo
 pub async fn request_token(
     login_config: Oauth2LoginConfig,
+    redirect_url: &Url,
     pkce_verifier: PkceCodeVerifier,
     authorization_code: &str,
 ) -> Result<OAuthResponse, CliError> {
     let params = vec![
         ("grant_type", "authorization_code"),
-        ("redirect_uri", REDIRECT_URL),
+        ("redirect_uri", redirect_url.as_str()),
         ("client_id", login_config.client_id.as_str()),
         ("code", authorization_code),
         ("client_secret", login_config.client_secret.as_str()),
