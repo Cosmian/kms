@@ -6,13 +6,11 @@ The URL at which Google client-side encryption expects the well-known file is on
 
 Assuming your organization is on the domain `acme.com` (which should match that of your email address domain), the URL would be: `https://cse.acme.com/.well-known/cse-configuration`
 
-
-#### 1. Configure a server running Ubuntu 23.04 
+#### 1. Configure a server running Ubuntu 23.04
 
  The server should be reachable using an external IP; configure your DNS so that a `A` record with value `cse.acme.com` points to that external IP address of the server.
 
  Make sure ports 80 and 443 are open to external traffic on this machine. Access to port 80 can be closed at the end of this procedure.
-
 
 #### 2. Install `nginx` on the server
 
@@ -80,6 +78,7 @@ General instructions on installing `certbot` are available at [this URL](https:/
 
 
 Get a certificate and configure `nginx`
+
 ```sh
 sudo certbot --nginx
 ```

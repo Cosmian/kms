@@ -111,6 +111,12 @@ pub struct LoginState {
     csrf_token: CsrfToken,
 }
 
+impl LoginState {
+    pub fn auth_url(&self) -> &Url {
+        &self.auth_url
+    }
+}
+
 /// This function initializes the login process.
 /// It returns a `LoginState` that holds the state of the login process.
 ///
