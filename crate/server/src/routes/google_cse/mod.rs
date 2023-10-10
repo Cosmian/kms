@@ -3,26 +3,41 @@ use std::sync::Arc;
 use actix_web::{
     get, post,
     web::{Data, Json},
-    HttpRequest,
+    HttpRequest, HttpResponse,
 };
+use serde::Serialize;
 use tracing::{info, trace};
 
-use crate::{result::KResult, KMSServer};
-
+use crate::{error::KmsError, result::KResult, KMSServer};
 mod jwt;
 mod operations;
 pub use jwt::{jwt_authorization_config, GoogleCseConfig};
 
-// {
-//   "server_type": "KACLS",
-//   "vendor_id": "Test",
-//   "version": "demo",
-//   "name": "K8 reference",
-//   "operations_supported": [
-//     "wrap", "unwrap", "privilegedunwrap",
-//     "privatekeydecrypt", "privatekeysign", "privilegedprivatekeydecrypt"
-//   ]
-// }
+/// Error reply for Google CSE
+///
+/// see: https://developers.google.com/workspace/cse/reference/structured-errors?hl=en
+#[derive(Serialize, Debug)]
+struct CseErrorReply {
+    code: u16,
+    message: String,
+    details: String,
+}
+
+impl CseErrorReply {
+    fn from(e: KmsError) -> Self {
+        Self {
+            code: http::StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
+            message: "A CSE request to the Cosmian KMS failed".to_string(),
+            details: e.to_string(),
+        }
+    }
+}
+
+impl From<CseErrorReply> for HttpResponse {
+    fn from(e: CseErrorReply) -> Self {
+        HttpResponse::InternalServerError().json(e)
+    }
+}
 
 /// Get the status for Google CSE
 #[get("/status")]
@@ -44,7 +59,7 @@ pub async fn wrap(
     wrap_request: Json<operations::WrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
-) -> KResult<Json<operations::WrapResponse>> {
+) -> HttpResponse {
     info!("POST /google_cse/wrap");
 
     let wrap_request = wrap_request.into_inner();
@@ -52,9 +67,13 @@ pub async fn wrap(
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 
-    operations::wrap(req_http, wrap_request, &cse_config, &kms)
+    match operations::wrap(req_http, wrap_request, &cse_config, &kms)
         .await
         .map(Json)
+    {
+        Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
+        Err(e) => CseErrorReply::from(e).into(),
+    }
 }
 
 /// Decrypt the Data Encryption Key (DEK) and associated data.
@@ -67,7 +86,7 @@ pub async fn unwrap(
     unwrap_request: Json<operations::UnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
     kms: Data<Arc<KMSServer>>,
-) -> KResult<Json<operations::UnwrapResponse>> {
+) -> HttpResponse {
     info!("POST /google_cse/unwrap");
 
     // unwrap all calls parameters
@@ -76,32 +95,11 @@ pub async fn unwrap(
     let kms = kms.into_inner();
     let cse_config = cse_config.into_inner();
 
-    operations::unwrap(req_http, unwrap_request, &cse_config, &kms)
+    match operations::unwrap(req_http, unwrap_request, &cse_config, &kms)
         .await
         .map(Json)
-}
-
-/// Returns the checksum ("digest") of an unwrapped Data Encryption Key (DEK).
-///
-/// ```SHA-256("KACLMigration" + resource_identifier + unwrapped_dek)```
-///
-/// See [doc](https://developers.google.com/workspace/cse/reference/digest)
-#[post("/digest")]
-pub async fn digest(
-    req_http: HttpRequest,
-    digest_request: Json<operations::DigestRequest>,
-    cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
-) -> KResult<Json<operations::DigestResponse>> {
-    info!("POST /google_cse/digest");
-
-    let digest_request = digest_request.into_inner();
-    trace!("digest_request: {:?}", digest_request);
-
-    let kms = kms.into_inner();
-    let cse_config = cse_config.into_inner();
-
-    operations::digest(req_http, digest_request, &cse_config, &kms)
-        .await
-        .map(Json)
+    {
+        Ok(wrap_response) => HttpResponse::Ok().json(wrap_response),
+        Err(e) => CseErrorReply::from(e).into(),
+    }
 }
