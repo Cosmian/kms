@@ -74,7 +74,7 @@ jobs:
       - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_js.yml@develop
     with:
-      branch: ser_server_side
+      branch: develop
       target: wasm32-unknown-unknown
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       findex-cloud-version: 0.3.1
