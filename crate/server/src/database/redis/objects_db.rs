@@ -120,12 +120,14 @@ impl ObjectsDB {
             let mut rng = self.rng.lock().expect("failed acquiring a lock on the RNG");
             Nonce::new(&mut *rng)
         };
-        let mut ciphertext = nonce.as_bytes().to_vec();
-        ciphertext.extend(self.dem.encrypt(
+        let ct = self.dem.encrypt(
             &nonce,
             &serde_json::to_vec(redis_db_object)?,
             Some(uid.as_bytes()),
-        )?);
+        )?;
+        let mut ciphertext = Vec::with_capacity(Aes256Gcm::NONCE_LENGTH + ct.len());
+        ciphertext.extend_from_slice(nonce.as_bytes());
+        ciphertext.extend(ct);
         Ok(ciphertext)
     }
 
@@ -135,7 +137,7 @@ impl ObjectsDB {
                 "invalid ciphertext".to_string(),
             ))
         }
-        let nonce_bytes = &ciphertext[0..Aes256Gcm::NONCE_LENGTH];
+        let nonce_bytes = &ciphertext[..Aes256Gcm::NONCE_LENGTH];
         let plaintext = self.dem.decrypt(
             &Nonce::try_from(nonce_bytes)?,
             &ciphertext[Aes256Gcm::NONCE_LENGTH..],
