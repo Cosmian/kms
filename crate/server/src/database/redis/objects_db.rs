@@ -1,8 +1,14 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Mutex,
+};
 
 use async_trait::async_trait;
 use cloudproof::reexport::{
-    crypto_core::{kdf256, Aes256Gcm, Dem, Instantiable, Nonce, SymmetricKey},
+    crypto_core::{
+        reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, Dem, Instantiable, Nonce,
+        RandomFixedSizeCBytes, SymmetricKey,
+    },
     findex::{
         implementations::redis::{FindexRedisError, RemovedLocationsFinder},
         Keyword, Location,
@@ -15,7 +21,7 @@ use cosmian_kmip::kmip::{
 use redis::{aio::ConnectionManager, pipe, AsyncCommands};
 use serde::{Deserialize, Serialize};
 
-use crate::result::KResult;
+use crate::{error::KmsError, result::KResult};
 
 /// Extract the keywords from the attributes
 pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keyword> {
@@ -93,6 +99,7 @@ pub const DB_KEY_LENGTH: usize = 32;
 pub(crate) struct ObjectsDB {
     mgr: ConnectionManager,
     dem: Aes256Gcm,
+    rng: Mutex<CsRng>,
 }
 
 impl ObjectsDB {
@@ -100,6 +107,7 @@ impl ObjectsDB {
         Ok(Self {
             mgr,
             dem: Aes256Gcm::new(&db_key),
+            rng: Mutex::new(CsRng::from_entropy()),
         })
     }
 
@@ -108,22 +116,33 @@ impl ObjectsDB {
     }
 
     fn encrypt_object(&self, uid: &str, redis_db_object: &RedisDbObject) -> KResult<Vec<u8>> {
-        let mut nonce_bytes = [0; Aes256Gcm::NONCE_LENGTH];
-        kdf256!(&mut nonce_bytes, uid.as_bytes());
-        let ciphertext = self.dem.encrypt(
-            &Nonce::from(nonce_bytes),
+        let nonce = {
+            let mut rng = self.rng.lock().expect("failed acquiring a lock on the RNG");
+            Nonce::new(&mut *rng)
+        };
+        let ct = self.dem.encrypt(
+            &nonce,
             &serde_json::to_vec(redis_db_object)?,
-            None,
+            Some(uid.as_bytes()),
         )?;
+        let mut ciphertext = Vec::with_capacity(Aes256Gcm::NONCE_LENGTH + ct.len());
+        ciphertext.extend_from_slice(nonce.as_bytes());
+        ciphertext.extend(ct);
         Ok(ciphertext)
     }
 
     fn decrypt_object(&self, uid: &str, ciphertext: &[u8]) -> KResult<RedisDbObject> {
-        let mut nonce_bytes = [0; Aes256Gcm::NONCE_LENGTH];
-        kdf256!(&mut nonce_bytes, uid.as_bytes());
-        let plaintext = self
-            .dem
-            .decrypt(&Nonce::from(nonce_bytes), ciphertext, None)?;
+        if ciphertext.len() <= Aes256Gcm::NONCE_LENGTH {
+            return Err(KmsError::CryptographicError(
+                "invalid ciphertext".to_string(),
+            ))
+        }
+        let nonce_bytes = &ciphertext[..Aes256Gcm::NONCE_LENGTH];
+        let plaintext = self.dem.decrypt(
+            &Nonce::try_from(nonce_bytes)?,
+            &ciphertext[Aes256Gcm::NONCE_LENGTH..],
+            Some(uid.as_bytes()),
+        )?;
         let redis_db_object: RedisDbObject = serde_json::from_slice(&plaintext)?;
         Ok(redis_db_object)
     }
@@ -141,6 +160,9 @@ impl ObjectsDB {
 
     pub async fn object_get(&self, uid: &str) -> KResult<RedisDbObject> {
         let ciphertext: Vec<u8> = self.mgr.clone().get(ObjectsDB::object_key(uid)).await?;
+        if ciphertext.is_empty() {
+            return Err(KmsError::ItemNotFound(uid.to_string()))
+        }
         let mut dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
         dbo.object = Object::post_fix(dbo.object_type, dbo.object);
         Ok(dbo)

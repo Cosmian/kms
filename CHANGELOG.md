@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.8.1] - 2023-10-12
+
+### Bug Fixes
+
+Fix for [#64](https://github.com/Cosmian/kms/issues/64)
+
 ## [4.8.0] - 2023-10-07
 
 ### Bug Fixes
