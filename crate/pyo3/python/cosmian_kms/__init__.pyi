@@ -1,13 +1,7 @@
 from asyncio import Future
 from typing import List, Optional, Tuple, Union
 
-from cloudproof_cover_crypt import (
-    Attribute,
-    MasterSecretKey,
-    Policy,
-    MasterPublicKey,
-    UserSecretKey,
-)
+from cloudproof_cover_crypt import Attribute, Policy
 
 class KmsObject:
     def object_type(self) -> str:
@@ -31,17 +25,25 @@ class KmsClient:
     def __init__(
         self,
         server_url: str,
-        api_key: Optional[str] = "",
-        database_secret: Optional[str] = "",
+        api_key: Optional[str] = None,
+        client_pkcs12_path: Optional[str] = None,
+        client_pkcs12_password: Optional[str] = None,
+        database_secret: Optional[str] = None,
         insecure_mode: bool = False,
+        allowed_tee_tls_cert: Optional[bytes] = None,
+        jwe_public_key: Optional[str] = None,
     ) -> None:
         """Instantiate a KMS Client
 
         Args:
             server_url (str): url of the KMS server
             api_key (str, optional): to authenticate to the KMS server
+            client_pkcs12_path (Optional[str]): optional path to client PKCS12, to authenticate to the KMS
+            client_pkcs12_password (Optional[str]): optional password to client PKCS12
             database_secret (str, optional): to authenticate to the KMS database
             insecure_mode (bool, optional): accept self signed ssl cert. Defaults to False.
+            allowed_tee_tls_cert (Optional[bytes])  : PEM certificate of a tee.
+            jwe_public_key (Optional[str]): public key for JWE
         """
     def create_cover_crypt_master_key_pair(
         self, policy: Union[Policy, bytes]

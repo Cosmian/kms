@@ -15,10 +15,12 @@ use cosmian_kms_utils::crypto::{
         build_decryption_request, build_encryption_request, build_revoke_key_request,
     },
 };
+use openssl::x509::X509;
 use pyo3::{
     exceptions::{PyException, PyTypeError},
     prelude::*,
 };
+use rustls::Certificate;
 
 use crate::py_kms_object::KmsObject;
 
@@ -36,6 +38,8 @@ impl KmsClient {
     ///     - `client_pkcs12_password` (Optional[str])  : optional password to client PKCS12
     ///     - `database_secret` (Optional[str])         : secret to authenticate to the KMS database
     ///     - `insecure_mode` (bool)                    : accept self signed ssl cert. defaults to False
+    ///     - `allowed_tee_tls_cert` (Optional[bytes])  : PEM certificate of a tee.
+    ///     - `jwe_public_key` (Optional[str])          : public key for JWE
     #[new]
     #[pyo3(signature = (
         server_url,
@@ -44,7 +48,7 @@ impl KmsClient {
         client_pkcs12_password = None,
         database_secret = None,
         insecure_mode = false,
-        _allowed_tee_tls_cert = None,
+        allowed_tee_tls_cert = None,
         jwe_public_key = None,
     ))]
     #[allow(clippy::too_many_arguments)]
@@ -55,9 +59,22 @@ impl KmsClient {
         client_pkcs12_password: Option<&str>,
         database_secret: Option<&str>,
         insecure_mode: bool,
-        _allowed_tee_tls_cert: Option<&str>,
+        allowed_tee_tls_cert: Option<&str>,
         jwe_public_key: Option<&str>,
     ) -> PyResult<Self> {
+        let tee_cert = match allowed_tee_tls_cert {
+            Some(cert_bytes) => Some(Certificate(
+                X509::from_pem(cert_bytes.as_bytes())
+                    .map_err(|_| {
+                        PyException::new_err("Cannot parse TEE certificate as PEM".to_string())
+                    })?
+                    .to_der()
+                    .map_err(|_| {
+                        PyException::new_err("Cannot convert TEE certificate to DER".to_string())
+                    })?,
+            )),
+            None => None,
+        };
         let kms_connector = KmsRestClient::instantiate(
             server_url,
             api_key,
@@ -65,7 +82,7 @@ impl KmsClient {
             client_pkcs12_password,
             database_secret,
             insecure_mode,
-            None, /* TODO */
+            tee_cert,
             jwe_public_key,
         )
         .map_err(|_| {
