@@ -56,83 +56,83 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  pyo3-mac:
-    runs-on: macos-12
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
-          cache: pip # caching pip dependencies
+  # pyo3-mac:
+  #   runs-on: macos-12
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: actions/setup-python@v4
+  #       with:
+  #         python-version: 3.11
+  #         cache: pip # caching pip dependencies
 
-      - name: Prerequisites for macos
-        run: |
-          set -x
-          rustup target add x86_64-apple-darwin
+  #     - name: Prerequisites for macos
+  #       run: |
+  #         set -x
+  #         rustup target add x86_64-apple-darwin
 
-          NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-          brew install autoconf automake libtool openssl@1.1 pkg-config openssl
-          pip3 install maturin
+  #         NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  #         brew install autoconf automake libtool openssl@1.1 pkg-config openssl
+  #         pip3 install maturin
 
-      - name: Python maturin build
-        run: |
-          set -x
-          cd crate/pyo3
-          maturin build --release --target x86_64-apple-darwin
+  #     - name: Python maturin build
+  #       run: |
+  #         set -x
+  #         cd crate/pyo3
+  #         maturin build --release --target x86_64-apple-darwin
 
-      - name: Upload WHL for MacOS
-        uses: actions/upload-artifact@v3
-        with:
-          name: kms_python_macos
-          path: target/wheels/*macosx*.whl
-          retention-days: 1
-          if-no-files-found: error
+  #     - name: Upload WHL for MacOS
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: kms_python_macos
+  #         path: target/wheels/*macosx*.whl
+  #         retention-days: 1
+  #         if-no-files-found: error
 
-  pyo3-windows:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v3
-      - run: |
-          rustup default ${{ inputs.toolchain }}
-          rustup target add x86_64-pc-windows-gnu
+  # pyo3-windows:
+  #   runs-on: ubuntu-20.04
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - run: |
+  #         rustup default ${{ inputs.toolchain }}
+  #         rustup target add x86_64-pc-windows-gnu
 
-      - uses: actions/setup-python@v4
-        with:
-          python-version: 3
-          cache: pip # caching pip dependencies
+  #     - uses: actions/setup-python@v4
+  #       with:
+  #         python-version: 3
+  #         cache: pip # caching pip dependencies
 
-      - name: Prerequisites
-        run: |
-          set -x
-          pip install maturin==1.2.3
-          sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64 pkg-config
+  #     - name: Prerequisites
+  #       run: |
+  #         set -x
+  #         pip install maturin==1.2.3
+  #         sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64 pkg-config
 
-          # build openssl
-          pushd .
-          cd /tmp
-          wget https://www.openssl.org/source/openssl-1.1.1s.tar.gz
-          tar -xf openssl-1.1.1s.tar.gz
-          cd openssl-1.1.1s
-          ./Configure --cross-compile-prefix=x86_64-w64-mingw32- mingw64 --prefix=/usr/local/ssl --openssldir=/usr/local/ssl
-          make -j
-          sudo make install_sw
-          cd ..
-          rm -rf openssl-1.1.1s*
-          popd
+  #         # build openssl
+  #         pushd .
+  #         cd /tmp
+  #         wget https://www.openssl.org/source/openssl-1.1.1s.tar.gz
+  #         tar -xf openssl-1.1.1s.tar.gz
+  #         cd openssl-1.1.1s
+  #         ./Configure --cross-compile-prefix=x86_64-w64-mingw32- mingw64 --prefix=/usr/local/ssl --openssldir=/usr/local/ssl
+  #         make -j
+  #         sudo make install_sw
+  #         cd ..
+  #         rm -rf openssl-1.1.1s*
+  #         popd
 
-          cd crate/pyo3/python
-          pip install -r requirements.txt
+  #         cd crate/pyo3/python
+  #         pip install -r requirements.txt
 
-      - name: Python maturin build
-        run: |
-          pushd crate/pyo3
-          OPENSSL_DIR=/usr/local/ssl maturin build --release --target x86_64-pc-windows-gnu --target-dir target_python
-          popd
+  #     - name: Python maturin build
+  #       run: |
+  #         pushd crate/pyo3
+  #         OPENSSL_DIR=/usr/local/ssl maturin build --release --target x86_64-pc-windows-gnu --target-dir target_python
+  #         popd
 
-      - name: Upload WHL for Windows
-        uses: actions/upload-artifact@v3
-        with:
-          name: kms_python_windows
-          path: target/wheels/*win*.whl
-          retention-days: 1
-          if-no-files-found: error
+  #     - name: Upload WHL for Windows
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: kms_python_windows
+  #         path: target/wheels/*win*.whl
+  #         retention-days: 1
+  #         if-no-files-found: error
