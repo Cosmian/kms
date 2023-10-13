@@ -10,14 +10,6 @@ on:
 
 jobs:
   pyo3-test-linux:
-    services:
-      enclave-kms:
-        image: ghcr.io/cosmian/enclave-kms:${{ inputs.kms-version }}
-        env:
-          COSMIAN_SERVER_URL: http://localhost:9998
-        ports:
-          - 9998:9998
-
     runs-on: ubuntu-20.04
     steps:
 
