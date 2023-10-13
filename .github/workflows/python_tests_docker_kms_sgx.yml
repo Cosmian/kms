@@ -37,7 +37,7 @@ jobs:
             -v $PWD/private_data:/root/private_data \
             -p80:80 \
             -p9998:9998 \
-            -it ghcr.io/cosmian/enclave-kms:${{ inputs.kms-version }}
+            ghcr.io/cosmian/enclave-kms:${{ inputs.kms-version }}
 
       - name: Bootstrap
         run: |
