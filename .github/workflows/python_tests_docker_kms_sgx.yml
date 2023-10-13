@@ -1,0 +1,71 @@
+---
+name: KMS Python
+
+on:
+  workflow_call:
+    inputs:
+      kms-version:
+        required: true
+        type: string
+
+jobs:
+  pyo3-test-linux:
+    services:
+      enclave-kms:
+        image: ghcr.io/cosmian/enclave-kms:${{ inputs.kms-version }}
+        env:
+          COSMIAN_SERVER_URL: http://localhost:9998
+        ports:
+          - 9998:9998
+
+    runs-on: ubuntu-20.04
+    steps:
+
+      - name: Create directories
+        run: |
+          mkdir -p public_data/
+          mkdir -p private_data/
+
+      - name: Docker check container
+        run: |
+          docker run \
+            --device /dev/sgx_enclave \
+            --device /dev/sgx_provision \
+            -v /var/run/aesmd:/var/run/aesmd/ \
+            -v /opt/cosmian-internal:/opt/cosmian-internal \
+            -v $PWD/public_data:/root/public_data \
+            -v $PWD/private_data:/root/private_data \
+            -p80:80 \
+            -p9998:9998 \
+            -it ghcr.io/cosmian/enclave-kms:${{ inputs.kms-version }}
+
+      - name: Bootstrap
+        run: |
+          KMS_CLI_CONF=sgx/kms-test.json ckms bootstrap-start \
+            --database-type redis-findex \
+            --database-url redis://redis-server:6379 \
+            --redis-master-password master-password \
+            --redis-findex-label label
+      
+      - name: Verify
+        run: KMS_CLI_CONF=sgx/kms-test.json ckms verify
+      
+      - name: Symmetric key create
+        run: KMS_CLI_CONF=sgx/kms-test.json ckms sym keys create
+
+      - uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v3
+      - run: find .
+
+      - name: Test KMS python client on KMS server
+        run: |
+          # Check python code
+          pip install kms_python_linux/*manylinux*.whl
+          pip install -r crate/pyo3/python/requirements.txt
+          mypy crate/pyo3/python/scripts/test_kms.py
+          python3 crate/pyo3/python/scripts/test_kms.py
+          # Check that the lib version is the same as the server
+          cargo install cargo-get
+          diff <(cargo get --entry crate/pyo3 package.version) <(cargo get --entry crate/server package.version) || (echo "Update the version in crate/pyo3/Cargo.toml"; exit
+            1)
