@@ -1012,6 +1012,7 @@ pub enum AttributeReference {
     Vendor(VendorAttributeReference),
     Standard(Tag),
 }
+
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_variant_names)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString, Display)]
@@ -1615,34 +1616,273 @@ pub enum KeyWrapType {
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
 pub enum StateEnumeration {
-    // Pre-Active: The object exists and SHALL NOT be used for any cryptographic purpose.
+    /// Pre-Active: The object exists and SHALL NOT be used for any cryptographic purpose.
     PreActive = 0x0000_0001,
-    // Active: The object SHALL be transitioned to the Active state prior to being used for any
-    // cryptographic purpose. The object SHALL only be used for all cryptographic purposes that
-    // are allowed by its Cryptographic Usage Mask attribute. If a Process Start Date attribute is
-    // set, then the object SHALL NOT be used for cryptographic purposes prior to the Process
-    // Start Date. If a Protect Stop attribute is set, then the object SHALL NOT be used for
-    // cryptographic purposes after the Process Stop Date.
+    /// Active: The object SHALL be transitioned to the Active state prior to being used for any
+    /// cryptographic purpose. The object SHALL only be used for all cryptographic purposes that
+    /// are allowed by its Cryptographic Usage Mask attribute. If a Process Start Date attribute is
+    /// set, then the object SHALL NOT be used for cryptographic purposes prior to the Process
+    /// Start Date. If a Protect Stop attribute is set, then the object SHALL NOT be used for
+    /// cryptographic purposes after the Process Stop Date.
     Active = 0x0000_0002,
-    // Deactivated: The object SHALL NOT be used for applying cryptographic protection (e.g.,
-    // encryption, signing, wrapping, MACing, deriving) . The object SHALL only be used for
-    // cryptographic purposes permitted by the Cryptographic Usage Mask attribute. The object
-    // SHOULD only be used to process cryptographically-protected information (e.g., decryption,
-    // signature verification, unwrapping, MAC verification under extraordinary circumstances and
-    // when special permission is granted.
+    /// Deactivated: The object SHALL NOT be used for applying cryptographic protection (e.g.,
+    /// encryption, signing, wrapping, MACing, deriving) . The object SHALL only be used for
+    /// cryptographic purposes permitted by the Cryptographic Usage Mask attribute. The object
+    /// SHOULD only be used to process cryptographically-protected information (e.g., decryption,
+    /// signature verification, unwrapping, MAC verification under extraordinary circumstances and
+    /// when special permission is granted.
     Deactivated = 0x0000_0003,
-    // Compromised: The object SHALL NOT be used for applying cryptographic protection (e.g.,
-    // encryption, signing, wrapping, MACing, deriving). The object SHOULD only be used to process
-    // cryptographically-protected information (e.g., decryption, signature verification,
-    // unwrapping, MAC verification in a client that is trusted to use managed objects that have
-    // been compromised. The object SHALL only be used for cryptographic purposes permitted by the
-    // Cryptographic Usage Mask attribute.
+    /// Compromised: The object SHALL NOT be used for applying cryptographic protection (e.g.,
+    /// encryption, signing, wrapping, MACing, deriving). The object SHOULD only be used to process
+    /// cryptographically-protected information (e.g., decryption, signature verification,
+    /// unwrapping, MAC verification in a client that is trusted to use managed objects that have
+    /// been compromised. The object SHALL only be used for cryptographic purposes permitted by the
+    /// Cryptographic Usage Mask attribute.
     Compromised = 0x0000_0004,
-    // Destroyed: The object SHALL NOT be used for any cryptographic purpose.
+    /// Destroyed: The object SHALL NOT be used for any cryptographic purpose.
     Destroyed = 0x0000_0005,
-    // Destroyed Compromised: The object SHALL NOT be used for any cryptographic purpose; however
-    // its compromised status SHOULD be retained for audit or security purposes.
+    /// Destroyed Compromised: The object SHALL NOT be used for any cryptographic purpose; however
+    /// its compromised status SHOULD be retained for audit or security purposes.
     Destroyed_Compromised = 0x0000_0006,
 }
 
 pub type UniqueIdentifier = String;
+
+/// This field contains the version number of the protocol, ensuring that
+/// the protocol is fully understood by both communicating parties.
+///
+/// The version number SHALL be specified in two parts, major and minor.
+///
+/// Servers and clients SHALL support backward compatibility with versions
+/// of the protocol with the same major version.
+///
+/// Support for backward compatibility with different major versions is OPTIONAL.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct ProtocolVersion {
+    pub protocol_version_major: u32,
+    pub protocol_version_minor: u32,
+}
+
+/// This Enumeration indicates whether the client is able to accept
+/// an asynchronous response.
+///
+/// If not present in a request, then Prohibited is assumed.
+///
+/// If the value is Prohibited, the server SHALL process the request synchronously.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub enum AsynchronousIndicator {
+    /// The server SHALL process all batch items in the request asynchronously
+    /// (returning an Asynchronous Correlation Value for each batch item).
+    Mandatory = 0x0000_0001,
+    /// The server MAY process each batch item in the request either asynchronously
+    /// (returning an Asynchronous Correlation Value for a batch item) or synchronously.
+    /// The method or policy by which the server determines whether or not to process
+    /// an individual batch item asynchronously is a decision of the server and
+    /// is outside of the scope of this protocol.
+    Optional = 0x0000_0002,
+    /// The server SHALL NOT process any batch item asynchronously.
+    /// All batch items SHALL be processed synchronously.
+    Prohibited = 0x0000_0003,
+}
+
+/// Types of attestation supported by the server
+#[allow(non_camel_case_types)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub enum AttestationType {
+    TPM_Quote = 0x0000_0001,
+    TCG_Integrity_Report = 0x0000_0002,
+    SAML_Assertion = 0x0000_0003,
+}
+
+/// A Credential is a structure used for client identification purposes
+/// and is not managed by the key management system
+/// (e.g., user id/password pairs, Kerberos tokens, etc.).
+#[allow(non_camel_case_types)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub enum Credential {
+    Username_and_Password {
+        username: String,
+        password: Option<String>,
+    },
+    Device {
+        device_serial_number: Option<String>,
+        password: Option<String>,
+        device_identifier: Option<String>,
+        network_identifier: Option<String>,
+        machine_identifier: Option<String>,
+        media_identifier: Option<String>,
+    },
+    Attestation {
+        nonce: Nonce,
+        attestation_type: AttestationType,
+        attestation_measurement: Option<Vec<u8>>,
+        attestation_assertion: Option<Vec<u8>>,
+    },
+    One_Time_Password {
+        username: String,
+        password: Option<String>,
+        one_time_password: String,
+    },
+    Hashed_Password {
+        username: String,
+        timestamp: u64, // epoch millis
+        hashing_algorithm: Option<HashingAlgorithm>,
+        hashed_password: Vec<u8>,
+    },
+    Ticket {
+        ticket_type: TicketType,
+        ticket_value: Vec<u8>,
+    },
+}
+
+impl Credential {
+    #[allow(dead_code)]
+    fn value(&self) -> u32 {
+        match *self {
+            Credential::Username_and_Password { .. } => 0x0000_0001,
+            Credential::Device { .. } => 0x0000_0002,
+            Credential::Attestation { .. } => 0x0000_0003,
+            Credential::One_Time_Password { .. } => 0x0000_0004,
+            Credential::Hashed_Password { .. } => 0x0000_0005,
+            Credential::Ticket { .. } => 0x0000_0006,
+        }
+    }
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub enum TicketType {
+    Login = 0x0000_0001,
+}
+
+/// A Nonce object is a structure used by the server to send a random value to the client.
+///
+/// The Nonce Identifier is assigned by the server and used to identify the Nonce object.
+/// The Nonce Value consists of the random data created by the server.
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct Nonce {
+    nonce_id: Vec<u8>,
+    nonce_value: Vec<u8>,
+}
+
+/// This option SHALL only be present if the Batch Count is greater than 1.
+/// This option SHALL have one of three values (Undo, Stop or Continue).
+/// If not specified, then Stop is assumed.
+#[allow(non_camel_case_types)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+pub enum BatchErrorContinuationOption {
+    /// If any operation in the request fails, then the server SHALL undo all the previous operations.
+    ///
+    /// Batch item fails and Result Status is set to Operation Failed.
+    /// Responses to batch items that have already been processed are returned normally.
+    /// Responses to batch items that have not been processed are not returned.
+    Undo,
+    Stop,
+    Continue,
+}
+
+/// The Message Extension is an OPTIONAL structure that MAY be appended to any Batch Item.
+///
+/// It is used to extend protocol messages for the purpose of adding vendor-specified extensions.
+/// The Message Extension is a structure that SHALL contain the Vendor Identification,
+/// Criticality Indicator, and Vendor Extension fields.
+///
+/// The Vendor Identification SHALL be a text string that uniquely identifies the vendor,
+/// allowing a client to determine if it is able to parse and understand the extension.
+///
+/// If a client or server receives a protocol message containing a message extension
+/// that it does not understand, then its actions depend on the Criticality Indicator.
+///
+/// If the indicator is True (i.e., Critical), and the receiver does not understand the extension,
+/// then the receiver SHALL reject the entire message.
+/// If the indicator is False (i.e., Non-Critical), and the receiver does not
+/// understand the extension, then the receiver MAY process the rest of the message as
+/// if the extension were not present.
+///
+/// The Vendor Extension structure SHALL contain vendor-specific extensions.
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
+pub struct MessageExtension {
+    /// Text String (with usage limited to alphanumeric, underscore and period –
+    /// i.e. [A-Za-z0-9_.])
+    pub vendor_identification: String,
+    pub criticality_indicator: bool,
+    // Vendor extension structure is not precisely defined by KMIP reference
+    pub vendor_extension: Vec<u8>,
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+pub enum OperationEnumeration {
+    Create = 0x0000_0001,
+    CreateKeyPair = 0x0000_0002,
+    Register = 0x0000_0003,
+    Rekey = 0x0000_0004,
+    DeriveKey = 0x0000_0005,
+    Certify = 0x0000_0006,
+    Recertify = 0x0000_0007,
+    Locate = 0x0000_0008,
+    Check = 0x0000_0009,
+    Get = 0x0000_000A,
+    GetAttributes = 0x0000_000B,
+    GetAttributeList = 0x0000_000C,
+    AddAttribute = 0x0000_000D,
+    ModifyAttribute = 0x0000_000E,
+    DeleteAttribute = 0x0000_000F,
+    ObtainLease = 0x0000_0010,
+    GetUsageAllocation = 0x0000_0011,
+    Activate = 0x0000_0012,
+    Revoke = 0x0000_0013,
+    Destroy = 0x0000_0014,
+    Archive = 0x0000_0015,
+    Recover = 0x0000_0016,
+    Validate = 0x0000_0017,
+    Query = 0x0000_0018,
+    Cancel = 0x0000_0019,
+    Poll = 0x0000_001A,
+    Notify = 0x0000_001B,
+    Put = 0x0000_001C,
+    RekeyKeyPair = 0x0000_001D,
+    DiscoverVersions = 0x0000_001E,
+    Encrypt = 0x0000_001F,
+    Decrypt = 0x0000_0020,
+    Sign = 0x0000_0021,
+    SignatureVerify = 0x0000_0022,
+    MAC = 0x0000_0023,
+    MACVerify = 0x0000_0024,
+    RNGRetrieve = 0x0000_0025,
+    RNGSeed = 0x0000_0026,
+    Hash = 0x0000_0027,
+    CreateSplitKey = 0x0000_0028,
+    JoinSplitKey = 0x0000_0029,
+    Import = 0x0000_002A,
+    Export = 0x0000_002B,
+    Log = 0x0000_002C,
+    Login = 0x0000_002D,
+    Logout = 0x0000_002E,
+    DelegatedLogin = 0x0000_002F,
+    AdjustAttribute = 0x0000_0030,
+    SetAttribute = 0x0000_0031,
+    SetEndpointRole = 0x0000_0032,
+    PKCS11 = 0x0000_0033,
+    Interop = 0x0000_0034,
+    ReProvision = 0x0000_0035,
+    SetDefaults = 0x0000_0036,
+    SetConstraints = 0x0000_0037,
+    GetConstraints = 0x0000_0038,
+    QueryAsynchronousRequests = 0x0000_0039,
+    Process = 0x0000_003A,
+    Ping = 0x0000_003B,
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
+pub enum ResultStatusEnumeration {
+    Success = 0x0000_0000,
+    OperationFailed = 0x0000_0001,
+    OperationPending = 0x0000_0002,
+    OperationUndone = 0x0000_0003,
+}

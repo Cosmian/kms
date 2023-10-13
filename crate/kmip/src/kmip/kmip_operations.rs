@@ -19,7 +19,7 @@ use super::{
 use crate::error::KmipError;
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Display, Debug, Eq, PartialEq)]
+#[derive(Serialize, Copy, Clone, Display, Debug, Eq, PartialEq)]
 pub enum ErrorReason {
     Item_Not_Found = 0x0000_0001,
     Response_Too_Large = 0x0000_0002,
@@ -88,6 +88,9 @@ pub enum ErrorReason {
     PKCS_11_Invalid_Interface = 0x0000_0047,
     Private_Protection_Storage_Unavailable = 0x0000_0048,
     Public_Protection_Storage_Unavailable = 0x0000_0049,
+    Unknown_Object_Group = 0x0000_004A,
+    Constraint_Violation = 0x0000_004B,
+    Duplicate_Process_Request = 0x0000_004C,
     General_Failure = 0x0000_0100,
 }
 
