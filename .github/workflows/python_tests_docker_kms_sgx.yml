@@ -10,7 +10,7 @@ on:
 
 jobs:
   pyo3-test-linux:
-    runs-on: ubuntu-20.04
+    runs-on: [self-hosted, sgx]
     steps:
 
       - name: Create directories
