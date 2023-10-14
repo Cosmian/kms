@@ -77,11 +77,7 @@ pub async fn wrap(
         "drive"
     };
 
-    // let roles: &[&str] = if application == "meet" {
-    //     &["writer", "upgrader"]
-    // } else {
-    //     &["writer", "upgrader"]
-    // };
+    // the possible roles to wrap a key
     let roles = &["writer", "upgrader"];
 
     let user = validate_tokens(
@@ -157,11 +153,7 @@ pub async fn unwrap(
         "drive"
     };
 
-    // let roles: &[&str] = if application == "meet" {
-    //     &["writer", "reader"]
-    // } else {
-    //     &["writer", "reader"]
-    // };
+    // the possible roles to unwrap a key
     let roles = &["writer", "reader"];
 
     let user = validate_tokens(
