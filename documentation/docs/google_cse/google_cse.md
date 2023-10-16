@@ -59,3 +59,10 @@ Then test the connection; it should show:
 Finalize the configuration. The Client Side Encryption page should now show the service to be active and you will now have to decide whether to assign this service to all users or to a subset of users.
 
 ![Cosmian KMS active](./images/cosmian_kms_active.png)
+
+
+## Configuring CSE for GNail
+
+
+[Generating a self-signed certificate and user certificates](./smime_self_signed_cert.pem.md)
+
