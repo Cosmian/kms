@@ -49,6 +49,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: ./sgx_ci
+          file: ./sgx_ci/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
