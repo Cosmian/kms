@@ -6,7 +6,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  REGISTRY_IMAGE: ghcr.io/cosmian/enclave-kms
+  REGISTRY_IMAGE: ghcr.io/cosmian/enclave-kms-insecure
 jobs:
   pyo3:
     uses: ./.github/workflows/python_build.yml
@@ -48,11 +48,13 @@ jobs:
       - name: Build and tag docker container
         uses: docker/build-push-action@v3
         with:
-          context: .
+          context: "{{defaultContext}}:sgx_ci"
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           network: host
+          build-args: |
+            FEATURES = "staging"
 
     outputs:
       image-tag: ${{ steps.meta.outputs.version }}
