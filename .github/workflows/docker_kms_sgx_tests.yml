@@ -7,16 +7,13 @@ on:
       kms-version:
         required: true
         type: string
-      toolchain:
-        required: true
-        type: string
 
 jobs:
 
   build_ckms:
     uses: ./.github/workflows/cargo_build.yml
     with:
-      toolchain: ${{ inputs.toolchain }}
+      toolchain: nightly
       distribution: ubuntu-20.04
       archive-name: ckms_ubuntu_20_04
       commands: |
