@@ -27,7 +27,6 @@ kms.manifest: kms.manifest.template
         -DKMS_CERTBOT_HOSTNAME=$(KMS_CERTBOT_HOSTNAME) \
         -DKMS_CERTBOT_EMAIL=$(KMS_CERTBOT_EMAIL) \
         -DKMS_CERTBOT_USE_TEE_KEY=$(KMS_CERTBOT_USE_TEE_KEY) \
-
 		-Dkms_domain="$(KMS_DOMAIN)" \
 		$< >$@
 
