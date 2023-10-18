@@ -28,7 +28,7 @@ kms.manifest: kms.manifest.template
 		-Dentrypoint_abs="$(PWD)/scripts"  \
 		-Dentrypoint="/scripts"  \
 		-Dsgx_signer_public_key=$(SGX_SIGNER_PUBLIC_KEY) \
-		-Dkms_use_bootsrap_server=$(KMS_USE_BOOTSTRAP_SERVER) \
+		-Dkms_use_bootstrap_server=$(KMS_USE_BOOTSTRAP_SERVER) \
         -Dkms_use_cerbot=$(KMS_USE_CERTBOT) \
         -Dkms_cerbot_hostname=$(KMS_CERTBOT_HOSTNAME) \
         -Dkms_cerbot_email=$(KMS_CERTBOT_EMAIL) \
