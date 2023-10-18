@@ -7,10 +7,24 @@ on:
       kms-version:
         required: true
         type: string
+      toolchain:
+        required: true
+        type: string
 
-jobs:    
+jobs:
 
-  pyo3-test-linux:  
+  build_ckms:
+    uses: ./.github/workflows/cargo_build.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: ubuntu-20.04
+      archive-name: ckms_ubuntu_20_04
+      commands: |
+        cargo build --release --bin ckms
+      artifacts: |
+        target/release/ckms
+
+  kms_sgx_test:  
     env: 
         KMS_USE_BOOTSTRAP_SERVER: true
         KMS_USE_CERTBOT: true
