@@ -22,11 +22,11 @@ loader.env.KMS_SGX_PUBLIC_SIGNER_KEY_FILENAME = "{{ sgx_signer_public_key }}"
 loader.env.KMS_TEE_DIR_PATH = "/public_data"
 loader.env.KMS_ROOT_DATA_PATH = "/private_data"
 loader.env.RUST_BACKTRACE="0"
-loader.env.KMS_USE_BOOTSTRAP_SERVER = "{{ kms_use_bootstrap_server}}"
-loader.env.KMS_USE_CERTBOT="{{ kms_use_cerbot}}"
-loader.env.KMS_CERTBOT_HOSTNAME="{{ kms_cerbot_hostname }}"
-loader.env.KMS_CERTBOT_EMAIL="{{ kms_cerbot_email }}"
-loader.env.KMS_CERTBOT_USE_TEE_KEY="{{ kms_cerbot_use_tee_key }}"
+loader.env.KMS_USE_BOOTSTRAP_SERVER = "{{ kms_use_bootstrap_server }}"
+loader.env.KMS_USE_CERTBOT = "{{ kms_use_cerbot}}"
+loader.env.KMS_CERTBOT_HOSTNAME = "{{ kms_cerbot_hostname }}"
+loader.env.KMS_CERTBOT_EMAIL = "{{ kms_cerbot_email }}"
+loader.env.KMS_CERTBOT_USE_TEE_KEY = "{{ kms_cerbot_use_tee_key }}"
 
 
 

@@ -22,11 +22,11 @@ kms.manifest: kms.manifest.template
 		-Dentrypoint_abs="$(PWD)/scripts"  \
 		-Dentrypoint="/scripts"  \
 		-Dsgx_signer_public_key=$(SGX_SIGNER_PUBLIC_KEY) \
-		-DKMS_USE_BOOTSTRAP_SERVER=$(KMS_USE_BOOTSTRAP_SERVER) \
-        -DKMS_USE_CERTBOT=$(KMS_USE_CERTBOT) \
-        -DKMS_CERTBOT_HOSTNAME=$(KMS_CERTBOT_HOSTNAME) \
-        -DKMS_CERTBOT_EMAIL=$(KMS_CERTBOT_EMAIL) \
-        -DKMS_CERTBOT_USE_TEE_KEY=$(KMS_CERTBOT_USE_TEE_KEY) \
+		-Dkms_use_bootsrap_server=$(KMS_USE_BOOTSTRAP_SERVER) \
+        -Dkms_use_cerbot=$(KMS_USE_CERTBOT) \
+        -Dkms_cerbot_hostname=$(KMS_CERTBOT_HOSTNAME) \
+        -Dkms_cerbot_email=$(KMS_CERTBOT_EMAIL) \
+        -Dkms_cerbot_use_tee_key=$(KMS_CERTBOT_USE_TEE_KEY) \
 		-Dkms_domain="$(KMS_DOMAIN)" \
 		$< >$@
 
