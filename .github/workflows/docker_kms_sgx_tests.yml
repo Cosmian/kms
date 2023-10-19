@@ -62,17 +62,6 @@ jobs:
             -p 80:80 \
             -d ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
 
-      - name: Bootstrap
-        run: |
-          KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms bootstrap-start \
-            --sqlite-path private_data/  --database-type sqlite
-
-      - name: Verify
-        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms verify
-      
-      - name: Symmetric key create
-        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms sym keys create
-
       - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
@@ -89,3 +78,12 @@ jobs:
           cargo install cargo-get
           diff <(cargo get --entry crate/pyo3 package.version) <(cargo get --entry crate/server package.version) || (echo "Update the version in crate/pyo3/Cargo.toml"; exit
             1)
+
+      - name: Bootstrap
+        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
+
+      - name: Verify
+        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms verify
+      
+      - name: Symmetric key create
+        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms sym keys create
