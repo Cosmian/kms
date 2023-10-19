@@ -162,6 +162,7 @@ impl Serialize for TTLV {
             ttlv.serialize_field("value", value)?;
             ttlv.end()
         }
+
         match &self.value {
             TTLValue::Structure(v) => _serialize(serializer, &self.tag, "Structure", v),
             TTLValue::Integer(v) => _serialize(serializer, &self.tag, "Integer", v),
@@ -303,6 +304,7 @@ impl<'de> Deserialize<'de> for TTLV {
                 let mut tag: Option<String> = None;
                 let mut typ: Option<String> = None;
                 let mut value: Option<TTLValue> = None;
+
                 while let Some(key) = map.next_key()? {
                     match key {
                         Field::Tag => {

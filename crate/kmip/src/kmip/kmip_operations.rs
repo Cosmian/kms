@@ -19,7 +19,7 @@ use super::{
 use crate::error::KmipError;
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Copy, Clone, Display, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Display, Debug, Eq, PartialEq)]
 pub enum ErrorReason {
     Item_Not_Found = 0x0000_0001,
     Response_Too_Large = 0x0000_0002,
@@ -92,6 +92,38 @@ pub enum ErrorReason {
     Constraint_Violation = 0x0000_004B,
     Duplicate_Process_Request = 0x0000_004C,
     General_Failure = 0x0000_0100,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+#[allow(clippy::large_enum_variant)]
+pub enum Operation {
+    Import(Import),
+    ImportResponse(ImportResponse),
+    Certify(Certify),
+    CertifyResponse(CertifyResponse),
+    Create(Create),
+    CreateResponse(CreateResponse),
+    CreateKeyPair(CreateKeyPair),
+    CreateKeyPairResponse(CreateKeyPairResponse),
+    Export(Export),
+    ExportResponse(ExportResponse),
+    Get(Get),
+    GetResponse(GetResponse),
+    GetAttributes(GetAttributes),
+    GetAttributesResponse(GetAttributesResponse),
+    Encrypt(Encrypt),
+    EncryptResponse(EncryptResponse),
+    Decrypt(Decrypt),
+    DecryptResponse(DecryptResponse),
+    Locate(Locate),
+    LocateResponse(LocateResponse),
+    Revoke(Revoke),
+    RevokeResponse(RevokeResponse),
+    ReKeyKeyPair(ReKeyKeyPair),
+    ReKeyKeyPairResponse(ReKeyKeyPairResponse),
+    Destroy(Destroy),
+    DestroyResponse(DestroyResponse),
 }
 
 /// This operation requests the server to Import a Managed Object specified by

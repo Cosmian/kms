@@ -5,11 +5,15 @@ use time::OffsetDateTime;
 
 use crate::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+    kmip_messages::{
+        RequestBatchItem, RequestHeader, RequestMessage, ResponseBatchItem, ResponseHeader,
+        ResponseMessage,
+    },
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{Create, Import, ImportResponse},
+    kmip_operations::{Create, Decrypt, Encrypt, Import, ImportResponse, Locate, Operation},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
-        LinkedObjectIdentifier,
+        LinkedObjectIdentifier, OperationEnumeration, ProtocolVersion, ResultStatusEnumeration,
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
 };
@@ -698,7 +702,118 @@ pub fn test_create() {
         create_.attributes.cryptographic_algorithm.unwrap()
     );
     assert_eq!(
-        LinkedObjectIdentifier::TextString("SK".to_string(),),
+        LinkedObjectIdentifier::TextString("SK".to_string()),
         create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
     );
+}
+
+#[test]
+pub fn test_message_request() {
+    log_init("info,hyper=info,reqwest=info");
+
+    let req = RequestMessage {
+        header: RequestHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            maximum_response_size: Some(9999),
+            batch_count: 1,
+            client_correlation_value: None,
+            server_correlation_value: None,
+            asynchronous_indicator: None,
+            attestation_capable_indicator: None,
+            attestation_type: None,
+            authentication: None,
+            batch_error_continuation_option: None,
+            batch_order_option: None,
+            timestamp: None,
+        },
+        items: vec![RequestBatchItem {
+            operation: OperationEnumeration::Encrypt,
+            ephemeral: None,
+            unique_batch_item_id: None,
+            request_payload: Operation::Encrypt(Encrypt {
+                data: Some(b"to be enc".to_vec()),
+                ..Default::default()
+            }),
+            message_extension: None,
+        }],
+    };
+    let ttlv = to_ttlv(&req).unwrap();
+    let req_: RequestMessage = from_ttlv(&ttlv).unwrap();
+    assert_eq!(req_.items[0].operation, OperationEnumeration::Encrypt);
+    let Operation::Encrypt(encrypt) = &req_.items[0].request_payload else {
+        panic!(
+            "not an encrypt operation's request payload: {:?}",
+            req_.items[0]
+        );
+    };
+    assert_eq!(encrypt.data, Some(b"to be enc".to_vec()))
+}
+
+#[test]
+pub fn test_message_response() {
+    log_init("info,hyper=info,reqwest=info");
+
+    let res = ResponseMessage {
+        header: ResponseHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            batch_count: 1,
+            client_correlation_value: None,
+            server_correlation_value: None,
+            attestation_type: None,
+            timestamp: 1697201574,
+            nonce: None,
+            server_hashed_password: None,
+        },
+        items: vec![
+            ResponseBatchItem {
+                operation: Some(OperationEnumeration::Locate),
+                unique_batch_item_id: None,
+                response_payload: Some(Operation::Locate(Locate::default())),
+                message_extension: None,
+                result_status: ResultStatusEnumeration::OperationPending,
+                result_reason: None,
+                result_message: None,
+                asynchronous_correlation_value: None,
+            },
+            ResponseBatchItem {
+                operation: Some(OperationEnumeration::Decrypt),
+                unique_batch_item_id: None,
+                response_payload: Some(Operation::Decrypt(Decrypt {
+                    unique_identifier: Some("id_12345".to_string()),
+                    data: Some(b"decrypted_data".to_vec()),
+                    ..Default::default()
+                })),
+                message_extension: None,
+                result_status: ResultStatusEnumeration::Success,
+                result_reason: None,
+                result_message: None,
+                asynchronous_correlation_value: None,
+            },
+        ],
+    };
+    let ttlv = to_ttlv(&res).unwrap();
+    let res_: ResponseMessage = from_ttlv(&ttlv).unwrap();
+    assert_eq!(res_.items.len(), 2);
+    assert_eq!(res_.items[0].operation, Some(OperationEnumeration::Locate));
+    assert_eq!(
+        res_.items[0].result_status,
+        ResultStatusEnumeration::OperationPending
+    );
+    assert_eq!(res_.items[1].operation, Some(OperationEnumeration::Decrypt));
+    assert_eq!(
+        res_.items[1].result_status,
+        ResultStatusEnumeration::Success
+    );
+
+    let Some(Operation::Decrypt(decrypt)) = &res_.items[1].response_payload else {
+        panic!("not a decrypt operation's response payload");
+    };
+    assert_eq!(decrypt.data, Some(b"decrypted_data".to_vec()));
+    assert_eq!(decrypt.unique_identifier, Some("id_12345".to_string()));
 }
