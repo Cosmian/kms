@@ -21,20 +21,23 @@ jobs:
       artifacts: |
         target/release/ckms
 
-  install_ckms:
+  run_ckms:
     needs:
       - build_ckms
     runs-on: [self-hosted, sgx]
     steps:
-      - name: Run ckms
-        run: |
-          curl https://sh.rustup.rs -sSf | sh
-          cargo run --bin ckms
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - uses: actions-rs/cargo@v1
+        with:
+          command: run
+          args: --bin ckms
 
   kms_sgx_test:
     needs:
-      - install_ckms
-
+      - run_ckms
     env: 
         KMS_USE_BOOTSTRAP_SERVER: true
         KMS_USE_CERTBOT: true
