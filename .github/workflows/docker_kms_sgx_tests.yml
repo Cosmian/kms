@@ -11,33 +11,37 @@ on:
 jobs:
 
   build_ckms:
+    uses: ./.github/workflows/cargo_build.yml
+    with:
+      toolchain: nightly
+      distribution: ubuntu-20.04
+      archive-name: ckms_ubuntu_20_04
+      commands: |
+        cargo build --bin ckms
+      artifacts: |
+        target/ci_test/ckms
+
+  install_ckms:
     runs-on: [self-hosted, sgx]
     steps:
-    - uses: actions/checkout@v3
 
-    - uses: ./.github/workflows/cargo_build.yml
-      with:
-        toolchain: nightly
-        distribution: ubuntu-20.04
-        archive-name: ckms_ubuntu_20_04
-        commands: |
-          cargo build --bin ckms
-        artifacts: |
-          target/ci_test/ckms
+      - name: checkout repo
+        uses: actions/checkout@v3
 
-    - uses: actions/download-artifact@v3
-    - run: find .
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+      - run: find .
 
-    - name: Upload ckms for kms sgx tests
-      uses: actions/upload-artifact@v3
-      with:
-        name: ckms
-        path: target/ci_test/ckms
-        retention-days: 1
-        if-no-files-found: error
+      - name: Upload ckms
+        uses: actions/upload-artifact@v3
+        with:
+          name: ckms
+          path: target/ci_test/ckms
+          retention-days: 1
+          if-no-files-found: error
 
-    - name: Run ckms
-      run: cargo run --bin /home/cosmian/actions-runner/_work/kms/kms/ckms
+      - name: Run ckms
+        run: cargo run --bin ckms
 
   kms_sgx_test:  
     env: 

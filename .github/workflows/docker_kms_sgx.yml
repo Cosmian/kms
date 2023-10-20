@@ -63,7 +63,7 @@ jobs:
     outputs:
       image-tag: ${{ steps.meta.outputs.version }}
 
-  python_tests:
+  tests:
         needs:
           - pyo3
           - build-and-push-image
