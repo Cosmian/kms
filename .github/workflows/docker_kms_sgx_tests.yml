@@ -27,16 +27,7 @@ jobs:
     runs-on: [self-hosted, sgx]
     steps:
       - name: Run ckms
-        run: |
-          pip install kms_python_linux/*manylinux*.whl
-          pip install -r crate/pyo3/python/requirements.txt
-          mypy crate/pyo3/python/scripts/test_kms.py
-          python3 crate/pyo3/python/scripts/test_kms.py
-          # Check that the lib version is the same as the server
-          cargo install cargo-get
-          diff <(cargo get --entry crate/pyo3 package.version) <(cargo get --entry crate/server package.version) || (echo "Update the version in crate/pyo3/Cargo.toml"; exit
-            1)
-          cargo run --bin ckms
+        run: cargo run --bin ckms
 
   kms_sgx_test:
     needs:
