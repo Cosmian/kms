@@ -65,6 +65,7 @@ jobs:
   run_ckms:
     needs:
       - build_ckms
+      - run_docker
     runs-on: [self-hosted, sgx]
     steps:
       - uses: actions/checkout@v1
