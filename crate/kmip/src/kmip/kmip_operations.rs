@@ -12,8 +12,8 @@ use super::{
     kmip_objects::{Object, ObjectType},
     kmip_types::{
         AttributeReference, Attributes, CertificateRequestType, CryptographicParameters,
-        KeyCompressionType, KeyFormatType, KeyWrapType, ObjectGroupMember, ProtectionStorageMasks,
-        RevocationReason, StorageStatusMask, UniqueIdentifier,
+        KeyCompressionType, KeyFormatType, KeyWrapType, ObjectGroupMember, OperationEnumeration,
+        ProtectionStorageMasks, RevocationReason, StorageStatusMask, UniqueIdentifier,
     },
 };
 use crate::error::KmipError;
@@ -124,6 +124,32 @@ pub enum Operation {
     ReKeyKeyPairResponse(ReKeyKeyPairResponse),
     Destroy(Destroy),
     DestroyResponse(DestroyResponse),
+}
+
+impl Operation {
+    pub fn operation_enum(&self) -> OperationEnumeration {
+        match self {
+            Operation::Import(_) | Operation::ImportResponse(_) => OperationEnumeration::Import,
+            Operation::Certify(_) | Operation::CertifyResponse(_) => OperationEnumeration::Certify,
+            Operation::Create(_) | Operation::CreateResponse(_) => OperationEnumeration::Create,
+            Operation::CreateKeyPair(_) | Operation::CreateKeyPairResponse(_) => {
+                OperationEnumeration::CreateKeyPair
+            }
+            Operation::Export(_) | Operation::ExportResponse(_) => OperationEnumeration::Export,
+            Operation::Get(_) | Operation::GetResponse(_) => OperationEnumeration::Get,
+            Operation::GetAttributes(_) | Operation::GetAttributesResponse(_) => {
+                OperationEnumeration::GetAttributes
+            }
+            Operation::Encrypt(_) | Operation::EncryptResponse(_) => OperationEnumeration::Encrypt,
+            Operation::Decrypt(_) | Operation::DecryptResponse(_) => OperationEnumeration::Decrypt,
+            Operation::Locate(_) | Operation::LocateResponse(_) => OperationEnumeration::Locate,
+            Operation::Revoke(_) | Operation::RevokeResponse(_) => OperationEnumeration::Revoke,
+            Operation::ReKeyKeyPair(_) | Operation::ReKeyKeyPairResponse(_) => {
+                OperationEnumeration::RekeyKeyPair
+            }
+            Operation::Destroy(_) | Operation::DestroyResponse(_) => OperationEnumeration::Destroy,
+        }
+    }
 }
 
 /// This operation requests the server to Import a Managed Object specified by

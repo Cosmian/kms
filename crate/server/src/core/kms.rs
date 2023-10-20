@@ -10,6 +10,7 @@ use base64::{
 };
 use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
+    kmip_messages::{RequestMessage, ResponseMessage},
     kmip_operations::{
         Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
         Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
@@ -755,5 +756,14 @@ impl KMS {
                 _ => None,
             },
         )
+    }
+
+    pub async fn message(
+        &self,
+        request: RequestMessage,
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<ResponseMessage> {
+        operations::message(self, request, user, params).await
     }
 }

@@ -1657,7 +1657,7 @@ pub type UniqueIdentifier = String;
 /// of the protocol with the same major version.
 ///
 /// Support for backward compatibility with different major versions is OPTIONAL.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ProtocolVersion {
     pub protocol_version_major: u32,
