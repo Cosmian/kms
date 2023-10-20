@@ -17,22 +17,11 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: ckms_ubuntu_20_04
       commands: |
-        cargo build --bin cosmian_kms_cli
+        cargo build --bin ckms
       artifacts: |
-        target/release/cosmian_kms_cli
+        target/release/ckms
 
-  run_ckms:
-    needs:
-      - build_ckms
-    runs-on: [self-hosted, sgx]
-    steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
-      - run: cargo run --bin cosmian_kms_cli
-
-  kms_sgx_test:
-    needs:
-      - run_ckms
+  run_docker:
     env: 
         KMS_USE_BOOTSTRAP_SERVER: true
         KMS_USE_CERTBOT: true
@@ -73,11 +62,26 @@ jobs:
             -p 80:80 \
             -d ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
 
-      - name: Bootstrap
-        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
-
-      - name: Verify
-        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms verify
+  run_ckms:
+    needs:
+      - build_ckms
+    runs-on: [self-hosted, sgx]
+    steps:
+      - uses: actions/checkout@v1
+      - uses: actions-rs/toolchain@v1
+      - run: cargo run --bin ckms   
+          
+  test:
+          needs:
+            - run_docker
+            - run_ckms
+          runs-on: [self-hosted, sgx]
+          steps:      
+            - name: Bootstrap
+              run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
       
-      - name: Symmetric key create
-        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms sym keys create
+            - name: Verify
+              run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms verify
+            
+            - name: Symmetric key create
+              run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms sym keys create
