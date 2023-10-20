@@ -26,7 +26,7 @@ jobs:
       - build_ckms
     runs-on: [self-hosted, sgx]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v1
       - uses: actions-rs/toolchain@v1
       - run: cargo run --bin ckms
 
