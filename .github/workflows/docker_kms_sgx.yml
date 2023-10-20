@@ -9,11 +9,6 @@ env:
   REGISTRY_IMAGE: ghcr.io/cosmian/enclave-kms-insecure
 
 jobs:
-  pyo3:
-    uses: ./.github/workflows/python_build.yml
-    with:
-      toolchain: nightly-2023-08-17
-
   build-and-push-image:
     runs-on: [self-hosted, sgx]
     defaults:
@@ -65,7 +60,6 @@ jobs:
 
   tests:
         needs:
-          - pyo3
           - build-and-push-image
         uses: ./.github/workflows/docker_kms_sgx_tests.yml
         secrets: inherit
