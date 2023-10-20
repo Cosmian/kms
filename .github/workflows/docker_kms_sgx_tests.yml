@@ -1,5 +1,5 @@
 ---
-name: KMS Python
+name: KMS SGX
 
 on:
   workflow_call:
@@ -17,9 +17,9 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: ckms_ubuntu_20_04
       commands: |
-        cargo build --bin ckms
+        cargo build --bin cosmian_kms_cli
       artifacts: |
-        target/release/ckms
+        target/release/cosmian_kms_cli
 
   run_ckms:
     needs:
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - uses: actions-rs/toolchain@v1
-      - run: cargo run --bin ckms
+      - run: cargo run --bin cosmian_kms_cli
 
   kms_sgx_test:
     needs:
