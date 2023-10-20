@@ -11,15 +11,33 @@ on:
 jobs:
 
   build_ckms:
-    uses: ./.github/workflows/cargo_build.yml
-    with:
-      toolchain: nightly
-      distribution: ubuntu-20.04
-      archive-name: ckms_ubuntu_20_04
-      commands: |
-        cargo build --release --bin ckms
-      artifacts: |
-        target/release/ckms
+    runs-on: [self-hosted, sgx]
+    steps:
+    - uses: ./.github/workflows/cargo_build.yml
+      with:
+        toolchain: nightly
+        distribution: ubuntu-20.04
+        archive-name: ckms_ubuntu_20_04
+        commands: |
+          cargo build --bin ckms
+        artifacts: |
+          target/ci_test/ckms
+
+    - uses: actions/checkout@v3
+
+    - uses: actions/download-artifact@v3
+    - run: find .
+
+    - name: Upload ckms for kms sgx tests
+      uses: actions/upload-artifact@v3
+      with:
+        name: ckms
+        path: target/ci_test/ckms
+        retention-days: 1
+        if-no-files-found: error
+
+    - name: Run ckms
+      run: cargo run --bin /home/cosmian/actions-runner/_work/kms/kms/ckms
 
   kms_sgx_test:  
     env: 
@@ -61,11 +79,6 @@ jobs:
             -v $PWD/private_data:/root/private_data \
             -p 80:80 \
             -d ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
-
-      - uses: actions/checkout@v3
-
-      - uses: actions/download-artifact@v3
-      - run: find .
 
       - name: Bootstrap
         run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
