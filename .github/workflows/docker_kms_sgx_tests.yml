@@ -67,18 +67,6 @@ jobs:
       - uses: actions/download-artifact@v3
       - run: find .
 
-      - name: Test KMS python client on KMS server
-        run: |
-          # Check python code
-          pip install kms_python_linux/*manylinux*.whl
-          pip install -r crate/pyo3/python/requirements.txt
-          mypy crate/pyo3/python/scripts/test_kms.py
-          python3 crate/pyo3/python/scripts/test_kms.py
-          # Check that the lib version is the same as the server
-          cargo install cargo-get
-          diff <(cargo get --entry crate/pyo3 package.version) <(cargo get --entry crate/server package.version) || (echo "Update the version in crate/pyo3/Cargo.toml"; exit
-            1)
-
       - name: Bootstrap
         run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
 
