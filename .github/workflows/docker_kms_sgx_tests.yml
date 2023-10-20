@@ -22,6 +22,8 @@ jobs:
         target/release/ckms
 
   install_ckms:
+    needs:
+      - build_ckms
     runs-on: [self-hosted, sgx]
     steps:
       - name: Run ckms
@@ -36,7 +38,10 @@ jobs:
             1)
           cargo run --bin ckms
 
-  kms_sgx_test:  
+  kms_sgx_test:
+    needs:
+      - install_ckms
+
     env: 
         KMS_USE_BOOTSTRAP_SERVER: true
         KMS_USE_CERTBOT: true
