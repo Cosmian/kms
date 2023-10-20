@@ -13,6 +13,8 @@ jobs:
   build_ckms:
     runs-on: [self-hosted, sgx]
     steps:
+    - uses: actions/checkout@v3
+
     - uses: ./.github/workflows/cargo_build.yml
       with:
         toolchain: nightly
@@ -22,8 +24,6 @@ jobs:
           cargo build --bin ckms
         artifacts: |
           target/ci_test/ckms
-
-    - uses: actions/checkout@v3
 
     - uses: actions/download-artifact@v3
     - run: find .
