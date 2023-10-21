@@ -62,7 +62,7 @@ jobs:
             -p 80:80 \
             -d ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
 
-  run_ckms:
+  install_ckms:
     needs:
       # - build_ckms
       - run_docker
@@ -75,9 +75,11 @@ jobs:
   test:
           needs:
             - run_docker
-            - run_ckms
+            - install_ckms
           runs-on: [self-hosted, sgx]
           steps:      
+            - uses: actions/checkout@v1
+
             - name: Bootstrap
               run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
       
