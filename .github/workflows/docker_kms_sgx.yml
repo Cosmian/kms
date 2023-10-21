@@ -17,8 +17,6 @@ jobs:
     container: docker:19.03.15
 
     steps:
-      - name: Display cpuinfo
-        run: cat /proc/cpuinfo
 
       - uses: actions/checkout@v1
 

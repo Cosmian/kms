@@ -1,5 +1,5 @@
 ---
-name: KMS SGX
+name: KMS SGX tests
 
 on:
   workflow_call:
@@ -9,17 +9,6 @@ on:
         type: string
 
 jobs:
-
-  # build_ckms:
-  #   uses: ./.github/workflows/cargo_build.yml
-  #   with:
-  #     toolchain: nightly
-  #     distribution: ubuntu-20.04
-  #     archive-name: ckms_ubuntu_20_04
-  #     commands: |
-  #       cargo build --bin ckms
-  #     artifacts: |
-  #       target/release/ckms
 
   run_docker:
     env: 
@@ -62,9 +51,8 @@ jobs:
             -p 80:80 \
             -d ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
 
-  install_ckms:
+  test_kms_sgx:
     needs:
-      # - build_ckms
       - run_docker
     runs-on: [self-hosted, sgx]
     steps:
