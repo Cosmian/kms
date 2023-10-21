@@ -68,23 +68,21 @@ jobs:
       - run_docker
     runs-on: [self-hosted, sgx]
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
-      - run: cargo install --path crate/cli   
-          
-  test:
-          needs:
-            - run_docker
-            - install_ckms
-          runs-on: [self-hosted, sgx]
-          steps:      
-            - uses: actions/checkout@v1
 
-            - name: Bootstrap
-              run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
+      - name: Checkout repo
+        uses: actions/checkout@v1
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+
+      - name: Install ckms
+        run: cargo install --path crate/cli   
+
+      - name: Bootstrap
+        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
       
-            - name: Verify
-              run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms verify
+      - name: Verify
+        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms verify
             
-            - name: Symmetric key create
-              run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms sym keys create
+      - name: Symmetric key create
+        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms sym keys create
