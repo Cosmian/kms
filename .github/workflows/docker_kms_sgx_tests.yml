@@ -10,16 +10,16 @@ on:
 
 jobs:
 
-  build_ckms:
-    uses: ./.github/workflows/cargo_build.yml
-    with:
-      toolchain: nightly
-      distribution: ubuntu-20.04
-      archive-name: ckms_ubuntu_20_04
-      commands: |
-        cargo build --bin ckms
-      artifacts: |
-        target/release/ckms
+  # build_ckms:
+  #   uses: ./.github/workflows/cargo_build.yml
+  #   with:
+  #     toolchain: nightly
+  #     distribution: ubuntu-20.04
+  #     archive-name: ckms_ubuntu_20_04
+  #     commands: |
+  #       cargo build --bin ckms
+  #     artifacts: |
+  #       target/release/ckms
 
   run_docker:
     env: 
@@ -64,13 +64,13 @@ jobs:
 
   run_ckms:
     needs:
-      - build_ckms
+      # - build_ckms
       - run_docker
     runs-on: [self-hosted, sgx]
     steps:
       - uses: actions/checkout@v1
       - uses: actions-rs/toolchain@v1
-      - run: cargo run --bin ckms   
+      - run: cargo install --path crate/cli   
           
   test:
           needs:
