@@ -6,10 +6,16 @@ use std::{
 use acme_lib::{
     create_p384_key, persist::FilePersist, Account, Certificate, Directory, DirectoryUrl,
 };
+#[cfg(target_os = "linux")]
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint},
     nid::Nid,
+    pkey::{PKey, Private},
+    x509::X509,
+};
+#[cfg(not(target_os = "linux"))]
+use openssl::{
     pkey::{PKey, Private},
     x509::X509,
 };

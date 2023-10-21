@@ -1143,11 +1143,13 @@ dependencies = [
  "base64 0.21.4",
  "clap",
  "cloudproof",
+ "const-oid",
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_server",
  "cosmian_kms_utils",
  "cosmian_logger",
+ "der",
  "hex",
  "openssl",
  "predicates",
@@ -1473,9 +1475,9 @@ checksum = "c2e66c9d817f1720209181c316d28635c050fa304f9c79e47a520882661b7308"
 
 [[package]]
 name = "der"
-version = "0.7.7"
+version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c7ed52955ce76b1554f509074bb357d3fb8ac9b51288a65a3fd480d1dfba946"
+checksum = "fffa369a668c8af7dbf8b5e56c9f744fbd399949ed171606040001947de40b1c"
 dependencies = [
  "arbitrary",
  "const-oid",
@@ -1757,9 +1759,9 @@ checksum = "d0870c84016d4b481be5c9f323c24f65e31e901ae618f0e80f4308fb00de1d2d"
 
 [[package]]
 name = "flagset"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cda653ca797810c02f7ca4b804b40b8b95ae046eb989d356bce17919a8c25499"
+checksum = "d52a7e408202050813e6f1d9addadcaafef3dca7530c7ddfb005d4081cce6779"
 
 [[package]]
 name = "flate2"
