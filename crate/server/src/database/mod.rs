@@ -20,10 +20,11 @@ pub(crate) mod redis;
 pub(crate) mod sqlite;
 pub(crate) use database_trait::Database;
 mod locate_query;
-
+mod retrieve_object_utils;
 pub(crate) use locate_query::{
     query_from_attributes, MySqlPlaceholder, PgSqlPlaceholder, SqlitePlaceholder,
 };
+pub use retrieve_object_utils::retrieve_object_for_operation;
 
 #[cfg(test)]
 mod tests;

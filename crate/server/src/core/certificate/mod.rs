@@ -27,6 +27,7 @@ pub(crate) mod create_ca_certificate;
 pub(crate) mod create_leaf_certificate;
 pub(crate) mod locate;
 pub(crate) mod parsing;
+pub(crate) mod sign_csr;
 pub(crate) mod verify;
 
 async fn get_fixed_size_key_bytes<const LENGTH: usize>(

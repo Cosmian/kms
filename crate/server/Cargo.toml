@@ -16,7 +16,7 @@ timeout = []
 # To run in a test environment using a real domain name and enclaves without the rest api limit of let's encrypt
 staging = ["insecure"]
 
-# No features (insecure, timeout or staging)
+# No features (insecure, timeout or staging) and contain non FIPS approved librairies (e.g. Rust Crypto)
 default = []
 prod = []
 
@@ -39,6 +39,8 @@ clap = { workspace = true }
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
+ratls = { workspace = true }
+tee_attestation = { workspace = true }
 dirs = "5.0"
 dotenvy = "0.15"
 env_logger = "0.10"
@@ -50,8 +52,6 @@ lazy_static = "1.4"
 mime = "0.3"
 num-bigint-dig = { workspace = true }
 openssl = { workspace = true }
-ratls = { workspace = true }
-tee_attestation = { workspace = true }
 rawsql = "0.1"
 redis = { workspace = true }
 reqwest = { workspace = true }
