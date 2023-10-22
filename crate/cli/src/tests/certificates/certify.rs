@@ -33,10 +33,7 @@ pub fn certify(
     cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
 
     let mut args = vec!["create"];
-
-    args.extend(vec!["--ca_subject_common_names", ca]);
     args.extend(vec!["--subject_common_name", subject]);
-
     debug!("certify: tags: {:?}", tags);
 
     // add tags
@@ -44,6 +41,7 @@ pub fn certify(
         args.push("--tag");
         args.push(tag);
     }
+    args.push(ca);
     cmd.arg(SUB_COMMAND).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
