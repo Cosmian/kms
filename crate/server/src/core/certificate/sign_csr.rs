@@ -8,8 +8,8 @@ use cosmian_kms_utils::{
     tagging::{check_user_tags, get_tags},
 };
 use openssl::{
-    pkey::{PKey, Private},
-    x509::{X509NameBuilder, X509Req, X509},
+    pkey::PKey,
+    x509::{X509Req, X509},
 };
 use tracing::{debug, trace};
 
@@ -42,7 +42,13 @@ pub async fn sign_certificate_request(
     // - "CA Root/Sub CA"
     // -> "CA Root" is the Subject Common Name of the root CA
     // -> "Sub CA" is the Subject Common Name of the intermediate CA
-    let ca_subject_common_names = ca_subject_common_names_from_attributes(attributes)?;
+    let ca_subject_common_names =
+        ca_subject_common_names_from_attributes(attributes)?.ok_or_else(|| {
+            KmsError::InvalidRequest(
+                "The full chain of CA Subject Common Names are not found in the attributes"
+                    .to_string(),
+            )
+        })?;
     trace!(
         "CA Subject Common Names on input: {:?}",
         &ca_subject_common_names
@@ -84,15 +90,17 @@ pub async fn sign_certificate_request(
 
     // Create an X509 struct with the desired certificate information.
     let mut x509 = X509::builder().unwrap();
-    x509.set_version(2);
-    x509.set_subject_name(&csr.subject_name());
-    x509.set_pubkey(csr.public_key()?.as_ref());
+    x509.set_version(2)?;
+    x509.set_subject_name(&csr.subject_name())?;
+    x509.set_pubkey(csr.public_key()?.as_ref())?;
 
     // Sign the X509 struct with the PKey struct.
     x509.sign(&private_pkey, openssl::hash::MessageDigest::sha256())?;
 
-    // Encode the X509 struct to a PEM-encoded certificate.
-    let pem_certificate = x509.to_pem().unwrap();
+    // // Encode the X509 struct to a PEM-encoded certificate.
+    // let pem_certificate = x509.to_pem().unwrap();
 
-    todo!()
+    Ok(CertifyResponse {
+        unique_identifier: "BLAH".to_string(),
+    })
 }

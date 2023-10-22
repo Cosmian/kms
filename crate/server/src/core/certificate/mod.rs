@@ -229,6 +229,7 @@ async fn link_key_pair_to_certificate(
 /// a tuple containing two values: a `CreateKeyPairResponse` and a
 /// `CertifyResponse`.
 async fn create_key_pair_and_certificate<PublicKey, const LENGTH: usize>(
+    certificate_id: &Option<String>,
     subject_common_name: &str,
     ca_signing_key: Option<&CASigningKey>,
     profile: Profile,
@@ -289,6 +290,7 @@ where
     };
 
     let certificate = build_certificate::<PublicKey>(
+        certificate_id,
         &signing_key,
         &public_key,
         profile.clone(),
@@ -316,13 +318,7 @@ where
 
     let certificate_uid = kms
         .db
-        .create(
-            Some(certificate.uuid.to_string()),
-            owner,
-            &object,
-            &cert_tags,
-            params,
-        )
+        .create(Some(certificate.id), owner, &object, &cert_tags, params)
         .await?;
     debug!("Created KMS Object with id {certificate_uid} with tags: {cert_tags:?}");
 

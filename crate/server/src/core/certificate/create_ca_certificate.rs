@@ -23,6 +23,7 @@ async fn create_root_ca(
 ) -> KResult<CASigningKey> {
     let (create_key_pair_response, _) =
         create_key_pair_and_certificate::<Ed25519PublicKey, ED25519_PUBLIC_KEY_LENGTH>(
+            &None,
             ca_subject_common_name,
             None,
             Profile::Root,
@@ -62,6 +63,7 @@ async fn create_sub_ca(
     };
     let (create_key_pair_response, _) =
         create_key_pair_and_certificate::<Ed25519PublicKey, ED25519_PUBLIC_KEY_LENGTH>(
+            &None,
             subca_subject_common_name,
             Some(&ca_signing_key),
             profile,

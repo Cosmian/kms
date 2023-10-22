@@ -7,7 +7,8 @@ use cosmian_kmip::kmip::kmip_operations::{Certify, CertifyResponse};
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::certificate::attributes::{
-        ca_subject_common_names_from_attributes, subject_common_name_from_attributes,
+        ca_subject_common_names_from_attributes, certificate_id_from_attributes,
+        subject_common_name_from_attributes,
     },
     tagging::{check_user_tags, get_tags},
 };
@@ -34,10 +35,8 @@ pub(crate) async fn create_certificate(
     ))?;
     debug!("Certify attributes: {:?}", &attributes);
 
-    // Check all required input elements from request
-    // - tags
-    // - ca name
-    // - subject name
+    // The Certificate ID, if one is provided
+    let certificate_id = certificate_id_from_attributes(attributes)?;
 
     // Retrieve and update tags
     let tags = get_tags(attributes);
@@ -49,14 +48,23 @@ pub(crate) async fn create_certificate(
     // - "CA Root/Sub CA"
     // -> "CA Root" is the Subject Common Name of the root CA
     // -> "Sub CA" is the Subject Common Name of the intermediate CA
-    let ca_subject_common_names = ca_subject_common_names_from_attributes(attributes)?;
+    let ca_subject_common_names =
+        ca_subject_common_names_from_attributes(attributes)?.ok_or_else(|| {
+            KmsError::InvalidRequest(
+                "Attributes specifying the chain of certification are mandatory".to_string(),
+            )
+        })?;
     trace!(
         "CA Subject Common Names on input: {:?}",
         &ca_subject_common_names
     );
 
     // Get Subject CN from attributes for the desired future Certificate
-    let subject = subject_common_name_from_attributes(attributes)?;
+    let subject = subject_common_name_from_attributes(attributes)?.ok_or_else(|| {
+        KmsError::InvalidRequest(
+            "The Subject Common Name is mandatory when a CSR is not provided".to_string(),
+        )
+    })?;
     trace!("subject on input: {:?}", &subject);
 
     // Create the chain: CA and all subCAs (public key + certificate)
@@ -69,10 +77,20 @@ pub(crate) async fn create_certificate(
         "Last subCA (or CA): {}",
         last_ca_signing_key.ca_subject_common_name
     );
-    create_leaf_certificate(&last_ca_signing_key, &subject, &tags, kms, owner, params).await
+    create_leaf_certificate(
+        &certificate_id,
+        &last_ca_signing_key,
+        &subject,
+        &tags,
+        kms,
+        owner,
+        params,
+    )
+    .await
 }
 
 async fn create_leaf_certificate(
+    certificate_id: &Option<String>,
     last_ca_signing_key: &CASigningKey,
     subject_common_name: &str,
     tags: &HashSet<String>,
@@ -91,6 +109,7 @@ async fn create_leaf_certificate(
 
     Ok(
         create_key_pair_and_certificate::<X25519PublicKey, X25519_PUBLIC_KEY_LENGTH>(
+            certificate_id,
             subject_common_name,
             Some(last_ca_signing_key),
             profile,

@@ -66,6 +66,10 @@ pub enum CliError {
     KmsClientError(String),
 
     // Other errors
+    #[error("invalid options: {0}")]
+    UserError(String),
+
+    // Other errors
     #[error("{0}")]
     Default(String),
 
