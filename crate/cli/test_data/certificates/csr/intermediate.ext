@@ -1,0 +1,6 @@
+[ v3_ca ]
+basicConstraints=CA:TRUE,pathlen:0
+keyUsage=keyCertSign,digitalSignature
+extendedKeyUsage=emailProtection
+crlDistributionPoints=URI:http://cse.cosmian.com/crl.pem
+
