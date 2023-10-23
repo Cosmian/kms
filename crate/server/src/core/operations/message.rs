@@ -1,5 +1,6 @@
 use cosmian_kmip::kmip::{
     kmip_messages::{RequestMessage, ResponseBatchItem, ResponseHeader, ResponseMessage},
+    kmip_operations::ErrorReason,
     kmip_types::ResultStatusEnumeration,
     ttlv::serializer::to_ttlv,
 };
@@ -8,9 +9,17 @@ use tracing::trace;
 
 use crate::{
     core::{operations::dispatch, KMS},
+    error::KmsError,
     result::KResult,
 };
 
+/// Processing of an input KMIP Message
+///
+/// Process every item from the message request.
+/// Each batch item contains an operation to process.
+///
+/// The items are processed sequentially.
+/// Each item may fail but a response is still sent back.
 pub async fn message(
     kms: &KMS,
     request: RequestMessage,
@@ -22,16 +31,39 @@ pub async fn message(
     let mut response_items = Vec::new();
     for item_request in request.items {
         let operation = item_request.request_payload;
+        // conversion for `dispatch` call convenience
         let ttlv = to_ttlv(&operation)?;
-        let operation = dispatch(kms, &ttlv, owner, params).await?;
+
+        let (result_status, result_reason, result_message, response_payload) =
+            match dispatch(kms, &ttlv, owner, params).await {
+                Ok(operation) => (
+                    ResultStatusEnumeration::Success,
+                    None,
+                    None,
+                    Some(operation),
+                ),
+                Err(KmsError::KmipError(reason, error_message)) => (
+                    ResultStatusEnumeration::OperationFailed,
+                    Some(reason),
+                    Some(error_message),
+                    None,
+                ),
+                Err(err) => (
+                    ResultStatusEnumeration::OperationFailed,
+                    Some(ErrorReason::Operation_Not_Supported),
+                    Some(err.to_string()),
+                    None,
+                ),
+            };
+
         response_items.push(ResponseBatchItem {
-            operation: Some(operation.operation_enum()),
+            operation: Some(item_request.operation),
             unique_batch_item_id: item_request.unique_batch_item_id,
-            result_status: ResultStatusEnumeration::Success,
-            result_reason: None,
-            result_message: None,
+            result_status,
+            result_reason,
+            result_message,
             asynchronous_correlation_value: None,
-            response_payload: Some(operation),
+            response_payload,
             message_extension: None,
         });
     }
@@ -39,11 +71,11 @@ pub async fn message(
     let response_message = ResponseMessage {
         header: ResponseHeader {
             protocol_version: request.header.protocol_version,
-            batch_count: 1,
+            batch_count: response_items.len() as u32,
             client_correlation_value: None,
             server_correlation_value: None,
             attestation_type: None,
-            timestamp: 1697201574,
+            timestamp: chrono::Utc::now().timestamp() as u64,
             nonce: None,
             server_hashed_password: None,
         },

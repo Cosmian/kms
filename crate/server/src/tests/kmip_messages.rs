@@ -1,30 +1,22 @@
 use std::sync::Arc;
 
-use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip::{
     kmip_messages::{RequestBatchItem, RequestHeader, RequestMessage},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Import, Operation},
+    kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
     kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        OperationEnumeration, ProtocolVersion, RecommendedCurve,
+        OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
     },
 };
-use cosmian_kms_utils::crypto::curve_25519::{
-    kmip_requests::{ec_create_key_pair_request, get_private_key_request, get_public_key_request},
-    operation::{self, to_curve_25519_256_public_key},
-};
+use cosmian_kms_utils::crypto::curve_25519::kmip_requests::ec_create_key_pair_request;
 use cosmian_logger::log_utils::log_init;
-use uuid::Uuid;
 
 use crate::{
-    config::ServerParams, error::KmsError, result::KResult, tests::test_utils::https_clap_config,
-    KMSServer,
+    config::ServerParams, result::KResult, tests::test_utils::https_clap_config, KMSServer,
 };
 
 #[actix_rt::test]
 async fn test_kmip_messages() -> KResult<()> {
-    log_init("trace,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
 
     let clap_config = https_clap_config();
 
@@ -34,6 +26,35 @@ async fn test_kmip_messages() -> KResult<()> {
     // request key pair creation
     let ec_create_request =
         ec_create_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
+
+    // prepare and send the single message
+    let items = vec![
+        RequestBatchItem {
+            operation: OperationEnumeration::CreateKeyPair,
+            ephemeral: None,
+            unique_batch_item_id: None,
+            request_payload: Operation::CreateKeyPair(ec_create_request),
+            message_extension: None,
+        },
+        RequestBatchItem {
+            operation: OperationEnumeration::Locate,
+            ephemeral: None,
+            unique_batch_item_id: None,
+            request_payload: Operation::Locate(Locate::default()),
+            message_extension: None,
+        },
+        RequestBatchItem {
+            operation: OperationEnumeration::Decrypt,
+            ephemeral: None,
+            unique_batch_item_id: None,
+            request_payload: Operation::Decrypt(Decrypt {
+                unique_identifier: Some("id_12345".to_string()),
+                data: Some(b"decrypted_data".to_vec()),
+                ..Default::default()
+            }),
+            message_extension: None,
+        },
+    ];
     let message_request = RequestMessage {
         header: RequestHeader {
             protocol_version: ProtocolVersion {
@@ -52,32 +73,65 @@ async fn test_kmip_messages() -> KResult<()> {
             batch_order_option: None,
             timestamp: None,
         },
-        items: vec![RequestBatchItem {
-            operation: OperationEnumeration::CreateKeyPair,
-            ephemeral: None,
-            unique_batch_item_id: None,
-            request_payload: Operation::CreateKeyPair(ec_create_request),
-            message_extension: None,
-        }],
+        items,
     };
-    let response = kms.message(message_request, owner, None).await?;
-    // request import
-    // let import_pk = vec![1_u8, 2, 3];
-    // let import_pk = to_curve_25519_256_public_key(&, sk_uid);
-    // let import_uid = Uuid::new_v4().to_string();
-    // let import_request = Import {
-    //     unique_identifier: import_uid.clone(),
-    //     object_type: ObjectType::PublicKey,
-    //     replace_existing: Some(true),
-    //     key_wrap_type: None,
-    //     attributes: Attributes {
-    //         object_type: Some(ObjectType::PublicKey),
-    //         ..Attributes::default()
-    //     },
-    //     object: import_pk.clone(),
-    // };
-    // let update_response = kms.import(request, owner, None).await?;
-    // assert_eq!(new_uid, update_response.unique_identifier);
 
+    let response = kms.message(message_request, owner, None).await?;
+    assert_eq!(response.items.len(), 3);
+
+    // 1. Create keypair
+    assert_eq!(
+        response.items[0].operation,
+        Some(OperationEnumeration::CreateKeyPair)
+    );
+    assert_eq!(
+        response.items[0].result_status,
+        ResultStatusEnumeration::Success
+    );
+    let Some(Operation::CreateKeyPairResponse(create_keypair_response)) =
+        &response.items[0].response_payload
+    else {
+        panic!("not a create key pair response payload");
+    };
+
+    // 2. Locate
+    assert_eq!(
+        response.items[1].operation,
+        Some(OperationEnumeration::Locate)
+    );
+    assert_eq!(
+        response.items[1].result_status,
+        ResultStatusEnumeration::Success
+    );
+    let Some(Operation::LocateResponse(locate_response)) = &response.items[1].response_payload
+    else {
+        panic!("not a locate response payload");
+    };
+    // locate response contains only 2 keys, the pair that was created
+    // by the first batch item, because processing is sequential and order is preserved
+    assert_eq!(locate_response.located_items, Some(2));
+    let locate_uids = locate_response.unique_identifiers.clone().unwrap();
+    assert_eq!(locate_uids.len(), 2);
+    assert!(locate_uids.contains(&create_keypair_response.private_key_unique_identifier));
+    assert!(locate_uids.contains(&create_keypair_response.public_key_unique_identifier));
+
+    // 3. Decrypt (that failed)
+    assert_eq!(
+        response.items[2].operation,
+        Some(OperationEnumeration::Decrypt)
+    );
+    assert_eq!(
+        response.items[2].result_status,
+        ResultStatusEnumeration::OperationFailed
+    );
+    assert_eq!(
+        response.items[2].result_reason,
+        Some(ErrorReason::Item_Not_Found)
+    );
+    assert_eq!(
+        response.items[2].result_message,
+        Some("id_12345".to_string())
+    );
+    assert!(response.items[2].response_payload.is_none());
     Ok(())
 }

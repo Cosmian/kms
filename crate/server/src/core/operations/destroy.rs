@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
         Object,
         ObjectType::{self, PrivateKey, PublicKey, SymmetricKey},
     },
-    kmip_operations::{Destroy, DestroyResponse},
+    kmip_operations::{Destroy, DestroyResponse, ErrorReason},
     kmip_types::{KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
@@ -67,7 +67,10 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
         .collect::<Vec<ObjectWithMetadata>>();
 
     if owm_s.is_empty() {
-        return Err(KmsError::ItemNotFound(uid_or_tags.to_owned()))
+        return Err(KmsError::KmipError(
+            ErrorReason::Item_Not_Found,
+            uid_or_tags.to_owned(),
+        ))
     }
 
     // destroy the keys found
