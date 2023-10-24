@@ -39,8 +39,8 @@ jobs:
           docker run \
             --device /dev/sgx_enclave \
             --device /dev/sgx_provision \
-            -e KMS_USE_BOOTSTRAP_SERVER={{ KMS_USE_BOOTSTRAP_SERVER }} \
-            -e KMS_USE_CERTBOT={{ KMS_USE_CERTBOT }} \
+            -e KMS_USE_BOOTSTRAP_SERVER="{{ KMS_USE_BOOTSTRAP_SERVER }}" \
+            -e KMS_USE_CERTBOT="{{ KMS_USE_CERTBOT }}" \
             -e KMS_CERTBOT_HOSTNAME="{{ KMS_CERTBOT_HOSTNAME }}" \
             -e KMS_CERTBOT_EMAIL="{{ KMS_CERTBOT_EMAIL }}" \
             -e KMS_CERTBOT_USE_TEE_KEY="{{ KMS_CERTBOT_USE_TEE_KEY }}" \
