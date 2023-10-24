@@ -1,6 +1,7 @@
 use std::{
     fs::{self, File},
     io::Read,
+    path::PathBuf,
     process::Command,
 };
 
@@ -10,11 +11,11 @@ use tracing::debug;
 
 use super::SUB_COMMAND;
 use crate::{
-    actions::certificates::CertificateExportFormat,
+    actions::certificates::{CertificateExportFormat, CertificateInputFormat},
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        certificates::openssl::check_certificate,
+        certificates::{import::import, openssl::check_certificate},
         shared::locate,
         utils::{extract_uids::extract_uid, recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
@@ -25,23 +26,34 @@ use crate::{
 pub fn certify(
     cli_conf_path: &str,
     ca: &str,
-    subject: &str,
+    subject: Option<String>,
+    csr: Option<PathBuf>,
+    csr_format: Option<String>,
     tags: &[&str],
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
 
-    let mut args = vec!["create"];
-    args.extend(vec!["--subject_common_name", subject]);
+    let mut args = vec!["create".to_owned()];
+    if let Some(subject) = subject {
+        args.push("--subject-common-name".to_owned());
+        args.push(subject);
+    }
+    if let Some(csr) = csr {
+        args.push("--certificate-signing-request".to_owned());
+        args.push(csr.to_string_lossy().to_string());
+        args.push("--certificate-signing-request-format".to_owned());
+        args.push(csr_format.unwrap_or_else(|| "pem".to_owned()));
+    }
     debug!("certify: tags: {:?}", tags);
 
     // add tags
     for tag in tags {
-        args.push("--tag");
-        args.push(tag);
+        args.push("--tag".to_owned());
+        args.push(tag.to_string());
     }
-    args.push(ca);
+    args.push(ca.to_string());
     cmd.arg(SUB_COMMAND).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -179,7 +191,7 @@ pub fn destroy(
 }
 
 #[tokio::test]
-pub async fn test_certify() -> Result<(), CliError> {
+pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.into_path();
@@ -191,8 +203,15 @@ pub async fn test_certify() -> Result<(), CliError> {
 
     // create, export, check, revoke and destroy
     {
-        let subject = "My server";
-        let certificate_id = certify(&ctx.owner_cli_conf_path, ca, subject, tags)?;
+        let subject = "My server".to_owned();
+        let certificate_id = certify(
+            &ctx.owner_cli_conf_path,
+            ca,
+            Some(subject),
+            None,
+            None,
+            tags,
+        )?;
 
         // Count the number of KMIP objects created
         let ids = locate(&ctx.owner_cli_conf_path, Some(tags), None, None, None)?;
@@ -205,8 +224,15 @@ pub async fn test_certify() -> Result<(), CliError> {
         // create another certificate (CA root already created)
         debug!("\n\n\ntest_certify: create another certificate");
         {
-            let subject = "My server Number 2";
-            let _certificate_id = certify(&ctx.owner_cli_conf_path, ca, subject, tags)?;
+            let subject = "My server Number 2".to_owned();
+            let _certificate_id = certify(
+                &ctx.owner_cli_conf_path,
+                ca,
+                Some(subject),
+                None,
+                None,
+                tags,
+            )?;
         }
 
         let ids = locate(&ctx.owner_cli_conf_path, Some(tags), None, None, None)?;
@@ -303,6 +329,50 @@ pub async fn test_certify() -> Result<(), CliError> {
             "cert revocation test",
         )?;
         destroy(&ctx.owner_cli_conf_path, SUB_COMMAND, &certificate_id).unwrap();
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_certify_with_csr() -> Result<(), CliError> {
+    // create a temp dir
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.into_path();
+    // let tmp_path = std::path::Path::new("./");
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ca = "RootCA/SubCA";
+    let hierarchical_depth = ca.split('/').count();
+    let tags = &["certificate"];
+
+    // import the intermediate certificate
+    {
+        import(
+            &ctx.owner_cli_conf_path,
+            "certificates",
+            "test_data/certificates/csr/intermediate.p12",
+            CertificateInputFormat::PKCS12,
+            None,
+            Some("intermediate".to_string()),
+            Some(&["import_pkcs12"]),
+            false,
+            true,
+        )?;
+    }
+
+    let csr = PathBuf::from("test_data/certificates/csr/csr_wikipedia.pem");
+
+    // create, export, check, revoke and destroy
+    {
+        let subject = "My server";
+        let certificate_id = certify(
+            &ctx.owner_cli_conf_path,
+            ca,
+            None,
+            Some(csr),
+            Some("pem".to_string()),
+            tags,
+        )?;
     }
 
     Ok(())

@@ -24,11 +24,11 @@ pub enum CertificateInputFormat {
     PKCS12,
 }
 
-/// Import into the KMS database the following elements:
+/// Import into the KMS database one of the following:
 /// - a certificate (as PEM or TTLV format)
-/// - a private key (as PEM or TTLV format)
 /// - a certificate chain as a PEM-stack
-/// - the Mozilla Common CA Database (CCADB). Automate the Mozilla database fetch.
+/// - a PKCS12 file containing a certificate, a private key and a chain
+/// - the Mozilla Common CA Database (CCADB - fetched by the CLI before import)
 ///
 /// When no certificate unique id is specified, a random UUID v4 is generated.
 ///
@@ -36,8 +36,10 @@ pub enum CertificateInputFormat {
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct ImportCertificateAction {
-    /// The input file in PEM or KMIP-JSON-TTLV format
-    #[clap(required = false)]
+    /// The input file in PEM, KMIP-JSON-TTLV or PKCS#12 format
+    #[clap(
+        required_if_eq_any([("input_format", "ttlv"), ("input_format", "pem"), ("input_format", "chains"), ("input_format", "pkcs12")])
+    )]
     certificate_file: Option<PathBuf>,
 
     /// The unique id of the certificate; a random UUID v4 is generated if not specified
@@ -51,15 +53,6 @@ pub struct ImportCertificateAction {
     /// PKCS12 password: only available for PKCS12 format
     #[clap(long = "pkcs12-password", short = 'p')]
     pkcs12_password: Option<String>,
-
-    /// Unwrap the object if it is wrapped before storing it
-    #[clap(
-        long = "unwrap",
-        short = 'u',
-        required = false,
-        default_value = "false"
-    )]
-    unwrap: bool,
 
     /// Replace an existing certificate under the same id
     #[clap(
@@ -217,7 +210,7 @@ impl ImportCertificateAction {
             kms_rest_client,
             self.certificate_id.clone(),
             object,
-            self.unwrap,
+            false,
             replace_existing,
             &self.tags,
         )

@@ -21,6 +21,7 @@ pub fn import(
     sub_command: &str,
     key_file: &str,
     format: CertificateInputFormat,
+    pkcs12_password: Option<&str>,
     key_id: Option<String>,
     tags: Option<&[&str]>,
     unwrap: bool,
@@ -49,7 +50,7 @@ pub fn import(
         CertificateInputFormat::PKCS12 => {
             args.push("pkcs12".to_owned());
             args.push("--pkcs12-password".to_owned());
-            args.push("secret".to_string());
+            args.push(pkcs12_password.unwrap_or("").to_owned());
         }
     };
     if let Some(tags) = tags {
@@ -81,8 +82,10 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
     import(
         &ctx.owner_cli_conf_path,
         "certificates",
-        "test_data/certificates/ca.crt",
-        CertificateInputFormat::PEM,
+        "test_data/certificates/exported_certificate_ttlv.json",
+        CertificateInputFormat::TTLV,
+        None,
+        None,
         None,
         Some(&["import_cert"]),
         false,
@@ -97,6 +100,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         CertificateInputFormat::TTLV,
         None,
         None,
+        Some(&["import_cert"]),
         false,
         false,
     )?;
@@ -107,6 +111,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         "certificates",
         "test_data/certificates/mozilla_IncludedRootsPEM.txt",
         CertificateInputFormat::CHAIN,
+        None,
         None,
         Some(&["import_chain"]),
         false,
@@ -119,6 +124,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         "certificates",
         "test_data/certificates/kms/output.p12",
         CertificateInputFormat::PKCS12,
+        Some("secret"),
         None,
         Some(&["import_pkcs12"]),
         false,

@@ -25,6 +25,7 @@ pub fn import(
     sub_command: &str,
     key_file: &str,
     key_id: Option<String>,
+    tags: &[String],
     unwrap: bool,
     replace_existing: bool,
 ) -> Result<String, CliError> {
@@ -34,6 +35,10 @@ pub fn import(
     let mut args: Vec<String> = vec!["keys".to_owned(), "import".to_owned(), key_file.to_owned()];
     if let Some(key_id) = key_id {
         args.push(key_id);
+    }
+    for tag in tags {
+        args.push("--tag".to_owned());
+        args.push(tag.to_owned());
     }
     if unwrap {
         args.push("-u".to_owned());
@@ -64,6 +69,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
         "cc",
         "test_data/ttlv_public_key.json",
         None,
+        &[],
         false,
         false,
     )?;
@@ -76,6 +82,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
             "cc",
             "test_data/ttlv_public_key.json",
             Some(uid.clone()),
+            &[],
             false,
             false,
         )
@@ -88,6 +95,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
         "cc",
         "test_data/ttlv_public_key.json",
         Some(uid.clone()),
+        &[],
         false,
         true,
     )?;
@@ -161,6 +169,7 @@ pub fn export_import_test(
         sub_command,
         "/tmp/output.export",
         None,
+        &[],
         false,
         false,
     )?;

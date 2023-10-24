@@ -99,7 +99,14 @@ async fn test_certificate_encrypt_decrypt() -> Result<(), CliError> {
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
-    let certificate_id = certify(&ctx.owner_cli_conf_path, "CA", "My server", tags)?;
+    let certificate_id = certify(
+        &ctx.owner_cli_conf_path,
+        "CA",
+        Some("My server".to_string()),
+        None,
+        None,
+        tags,
+    )?;
 
     encrypt(
         &ctx.owner_cli_conf_path,
@@ -166,6 +173,7 @@ async fn test_certificate_import_encrypt(
         &format!("test_data/certificates/{ca_path}"),
         CertificateInputFormat::PEM,
         None,
+        None,
         Some(tags),
         false,
         false,
@@ -177,6 +185,7 @@ async fn test_certificate_import_encrypt(
         &format!("test_data/certificates/{subca_path}"),
         CertificateInputFormat::PEM,
         None,
+        None,
         Some(tags),
         false,
         false,
@@ -187,6 +196,7 @@ async fn test_certificate_import_encrypt(
         "certificates",
         &format!("test_data/certificates/{cert_path}"),
         CertificateInputFormat::PEM,
+        None,
         None,
         Some(tags),
         false,
@@ -208,6 +218,7 @@ async fn test_certificate_import_encrypt(
         "certificates",
         &format!("test_data/certificates/{key_path}"),
         CertificateInputFormat::PEM,
+        None,
         None,
         Some(tags),
         false,
@@ -268,6 +279,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
         CertificateInputFormat::PEM,
         None,
+        None,
         Some(tags),
         false,
         false,
@@ -288,6 +300,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         "certificates",
         &format!("test_data/certificates/openssl/{curve_name}-private-key.pem"),
         CertificateInputFormat::PEM,
+        None,
         None,
         Some(tags),
         false,
@@ -319,6 +332,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         CertificateInputFormat::TTLV,
         None,
         None,
+        None,
         true,
         true,
     )?;
@@ -329,6 +343,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         "certificates",
         &private_key_wrapped,
         CertificateInputFormat::TTLV,
+        None,
         None,
         None,
         false,
@@ -427,6 +442,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
         &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
         CertificateInputFormat::PEM,
         None,
+        None,
         Some(tags),
         false,
         false,
@@ -438,6 +454,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
         "certificates",
         &format!("test_data/certificates/openssl/{curve_name}-revoked.crt"),
         CertificateInputFormat::PEM,
+        None,
         None,
         Some(tags),
         false,
