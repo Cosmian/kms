@@ -137,6 +137,7 @@ async fn test_rotate_error() -> Result<(), CliError> {
         SUB_COMMAND,
         &exported_wrapped_key_file.to_string_lossy(),
         None,
+        &[],
         false,
         true,
     )?;
@@ -252,6 +253,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
         SUB_COMMAND,
         &exported_user_decryption_key_file.to_string_lossy(),
         None,
+        &[],
         false,
         false,
     )?;

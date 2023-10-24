@@ -30,7 +30,6 @@ pub async fn sign_certificate_request(
     let attributes = request.attributes.as_ref().ok_or(KmsError::InvalidRequest(
         "Attributes specifying the chain of certification are mandatory".to_string(),
     ))?;
-    debug!("Certify attributes: {:?}", &attributes);
 
     // Retrieve and update tags
     let tags = get_tags(attributes);
@@ -49,7 +48,7 @@ pub async fn sign_certificate_request(
                     .to_string(),
             )
         })?;
-    trace!(
+    debug!(
         "CA Subject Common Names on input: {:?}",
         &ca_subject_common_names
     );

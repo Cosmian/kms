@@ -41,16 +41,16 @@ pub struct CreateCertificateAction {
     ca_subject_common_names: String,
 
     /// The path to a certificate signing request..
-    #[clap(long = "certificate_signing_request", short = 'c', group = "csr_or_cn")]
+    #[clap(long = "certificate-signing-request", short = 'c', group = "csr_or_cn")]
     certificate_signing_request: Option<PathBuf>,
 
     /// The format of the certificate signing request.
-    #[clap(long ="certificate_signing_request_format", short = 'f', default_value="pem", value_parser(["pem", "der"]))]
+    #[clap(long ="certificate-signing-request-format", short = 'f', default_value="pem", value_parser(["pem", "der"]))]
     certificate_signing_request_format: String,
 
     /// The subject CN of the desired certificate when a CSR is not provided.
     /// A certificate will be created after generating a X25519 keypair
-    #[clap(long = "subject_common_name", short = 's', group = "csr_or_cn")]
+    #[clap(long = "subject-common-name", short = 's', group = "csr_or_cn")]
     subject_common_name: Option<String>,
 
     /// The tag to associate to the certificate.

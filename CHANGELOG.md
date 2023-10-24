@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.8.0] - 2023-10-07
+
+### Bug Fixes
+
+- Clarified CLI documentation for certificates sub command
+- TODO: Re-used existing import facility
+
+### Features
+
+- KMS running inside TEE (SGX or SEV)
+  - review the `verify` subcommand
+
+
+
 ## [4.8.1] - 2023-10-12
 
 ### Bug Fixes

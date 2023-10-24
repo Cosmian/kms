@@ -43,6 +43,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
         "sym",
         wrap_key_path.to_str().unwrap(),
         None,
+        &[],
         false,
         false,
     )?;
@@ -111,6 +112,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         "ec",
         wrap_private_key_path.to_str().unwrap(),
         Some(wrap_private_key_uid.to_string()),
+        &[],
         false,
         true,
     )?;
@@ -122,6 +124,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         "ec",
         wrap_public_key_path.to_str().unwrap(),
         Some(wrap_public_key_uid.to_string()),
+        &[],
         false,
         true,
     )?;
@@ -242,6 +245,7 @@ fn test_import_export_wrap_private_key(
             sub_command,
             wrapped_private_key_file.to_str().unwrap(),
             None,
+            &[],
             true,
             true,
         )?;
@@ -273,6 +277,7 @@ fn test_import_export_wrap_private_key(
             sub_command,
             wrapped_private_key_file.to_str().unwrap(),
             None,
+            &[],
             false,
             true,
         )?;
