@@ -50,10 +50,7 @@ jobs:
             -v $PWD/private_data:/root/private_data \
             -p 80:80 \
             -d ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
-
-      - name: Checkout repo
-        uses: actions/checkout@v1
-
+            
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
 
