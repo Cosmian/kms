@@ -10,7 +10,7 @@ on:
 
 jobs:
 
-  run_docker:
+  run_and_test:
     env: 
         KMS_USE_BOOTSTRAP_SERVER: true
         KMS_USE_CERTBOT: true
@@ -50,12 +50,6 @@ jobs:
             -v $PWD/private_data:/root/private_data \
             -p 80:80 \
             -d ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
-
-  test_kms_sgx:
-    needs:
-      - run_docker
-    runs-on: [self-hosted, sgx]
-    steps:
 
       - name: Checkout repo
         uses: actions/checkout@v1
