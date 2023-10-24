@@ -1183,7 +1183,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
- "x509-parser",
+ "x509-cert",
 ]
 
 [[package]]

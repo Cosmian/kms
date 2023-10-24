@@ -80,7 +80,16 @@ impl CreateKeyAction {
         let unique_identifier = match key_bytes {
             Some(key_bytes) => {
                 let object = create_symmetric_key(key_bytes.as_slice(), algorithm);
-                import_object(kms_rest_client, None, object, false, false, &self.tags).await?
+                import_object(
+                    kms_rest_client,
+                    None,
+                    object,
+                    None,
+                    false,
+                    false,
+                    &self.tags,
+                )
+                .await?
             }
             None => {
                 let create_key_request =

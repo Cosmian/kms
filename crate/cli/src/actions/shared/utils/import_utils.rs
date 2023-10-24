@@ -10,10 +10,15 @@ use uuid::Uuid;
 
 use crate::error::{result::CliResultHelper, CliError};
 
+/// Import an Object into the KMS
+///
+/// If the `import_attributes` are not specified,
+/// the attributes of the object are used, if any.
 pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     kms_rest_client: &KmsRestClient,
     object_id: Option<String>,
     object: Object,
+    import_attributes: Option<Attributes>,
     unwrap: bool,
     replace_existing: bool,
     tags: T,
@@ -32,7 +37,7 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     let (key_wrap_type, mut attributes) = match object_type {
         ObjectType::Certificate => {
             // add the tags to the attributes
-            let attributes = Attributes::default();
+            let attributes = import_attributes.unwrap_or(Attributes::default());
 
             (None, attributes)
         } // no wrapping for certificate
@@ -46,8 +51,11 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
                 }
             });
             // add the tags to the attributes
-            let attributes = object.attributes().cloned()?;
-
+            let attributes = if let Some(attributes) = import_attributes {
+                attributes
+            } else {
+                object.attributes().cloned()?
+            };
             (key_wrap_type, attributes)
         }
     };

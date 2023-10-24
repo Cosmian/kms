@@ -1,11 +1,15 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::CertificateType};
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_types::{Attributes, CertificateType},
+};
 use cosmian_kms_client::KmsRestClient;
-use openssl::x509::X509;
+use der::{Decode, DecodePem, Encode};
+use pkcs12::pfx::Pfx;
 use tracing::{debug, trace};
-use x509_parser::{nom::AsBytes, pem::parse_x509_pem};
+use x509_parser::nom::AsBytes;
 
 use crate::{
     actions::shared::utils::{import_object, read_bytes_from_file, read_key_from_file},
@@ -19,15 +23,16 @@ const MOZILLA_CCADB: &str =
 pub enum CertificateInputFormat {
     TTLV,
     PEM,
+    DER,
     CHAIN,
     CCADB,
     PKCS12,
 }
 
 /// Import into the KMS database one of the following:
-/// - a certificate (as PEM or TTLV format)
+/// - a certificate (in PEM, DER or JSON TTLV format)
 /// - a certificate chain as a PEM-stack
-/// - a PKCS12 file containing a certificate, a private key and a chain
+/// - a PKCS12 file containing a certificate, a private key and possibly a chain
 /// - the Mozilla Common CA Database (CCADB - fetched by the CLI before import)
 ///
 /// When no certificate unique id is specified, a random UUID v4 is generated.
@@ -36,25 +41,25 @@ pub enum CertificateInputFormat {
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct ImportCertificateAction {
-    /// The input file in PEM, KMIP-JSON-TTLV or PKCS#12 format
+    /// The input file in PEM, KMIP-JSON-TTLV or PKCS#12 format.
     #[clap(
-        required_if_eq_any([("input_format", "ttlv"), ("input_format", "pem"), ("input_format", "chains"), ("input_format", "pkcs12")])
+        required_if_eq_any([("input_format", "ttlv"), ("input_format", "pem"),("input_format", "der"), ("input_format", "chain"), ("input_format", "pkcs12")])
     )]
     certificate_file: Option<PathBuf>,
 
-    /// The unique id of the certificate; a random UUID v4 is generated if not specified
+    /// The unique id of the leaf certificate; a random UUID v4 is generated if not specified.
     #[clap(required = false)]
     certificate_id: Option<String>,
 
-    /// Import the certificate in the selected format
+    /// Import the certificate in the selected format.
     #[clap(long = "format", short = 'f')]
     input_format: CertificateInputFormat,
 
-    /// PKCS12 password: only available for PKCS12 format
+    /// PKCS12 password: only available for PKCS12 format.
     #[clap(long = "pkcs12-password", short = 'p')]
     pkcs12_password: Option<String>,
 
-    /// Replace an existing certificate under the same id
+    /// Replace an existing certificate under the same id.
     #[clap(
         required = false,
         long = "replace",
@@ -80,18 +85,41 @@ impl ImportCertificateAction {
                 let object = read_key_from_file(self.get_certificate_file()?)?;
                 trace!("CLI: read key from file OK");
 
-                self.import(kms_rest_client, object, self.replace_existing)
+                self.import(kms_rest_client, object, None, self.replace_existing)
                     .await?;
             }
             CertificateInputFormat::PEM => {
                 debug!("CLI: import certificate as PEM file");
                 let pem_value = read_bytes_from_file(&self.get_certificate_file()?)?;
-                let (_, pem) = parse_x509_pem(&pem_value)?;
+                // convert the PEM to X509 to make sure it is correct
+                let cert = Certificate::from_pem(&pem_value).map_err(|e| {
+                    CliError::Conversion(format!("Cannot read PEM content to X509. Error: {e:?}"))
+                })?;
+                // convert back to DER to ensure conformity
+                let mut encoded = Vec::new();
+                cert.encode_to_vec(&mut encoded)?;
                 let object = Object::Certificate {
                     certificate_type: CertificateType::X509,
-                    certificate_value: pem.contents,
+                    certificate_value: encoded,
                 };
-                self.import(kms_rest_client, object, self.replace_existing)
+                self.import(kms_rest_client, object, None, self.replace_existing)
+                    .await?;
+            }
+            CertificateInputFormat::DER => {
+                debug!("CLI: import certificate as PEM file");
+                let der_value = read_bytes_from_file(&self.get_certificate_file()?)?;
+                // convert DER to X509 to make sure it is correct
+                let cert = Certificate::from_der(&der_value).map_err(|e| {
+                    CliError::Conversion(format!("Cannot read DER content to X509. Error: {e:?}"))
+                })?;
+                // convert back to DER to ensure conformity
+                let mut encoded = Vec::new();
+                cert.encode_to_vec(&mut encoded)?;
+                let object = Object::Certificate {
+                    certificate_type: CertificateType::X509,
+                    certificate_value: pem_value,
+                };
+                self.import(kms_rest_client, object, None, self.replace_existing)
                     .await?;
             }
             CertificateInputFormat::PKCS12 => {
@@ -101,7 +129,6 @@ impl ImportCertificateAction {
                     .as_deref()
                     .ok_or(CliError::InvalidRequest("PKCS12 is required".to_string()))?;
                 let pkcs12_bytes = read_bytes_from_file(&self.get_certificate_file()?)?;
-
                 let pkcs12_parser = openssl::pkcs12::Pkcs12::from_der(&pkcs12_bytes)?;
                 let pkcs12 = pkcs12_parser.parse2(password)?;
 
@@ -117,7 +144,7 @@ impl ImportCertificateAction {
                         })?
                         .to_der()?,
                 };
-                self.import(kms_rest_client, object, self.replace_existing)
+                self.import(kms_rest_client, object, None, self.replace_existing)
                     .await?;
                 // Import PKCS12 private key
                 let object = Object::Certificate {
@@ -129,7 +156,7 @@ impl ImportCertificateAction {
                         })?
                         .private_key_to_der()?,
                 };
-                self.import(kms_rest_client, object, self.replace_existing)
+                self.import(kms_rest_client, object, None, self.replace_existing)
                     .await?;
 
                 // Import PKCS12 chain
@@ -141,7 +168,7 @@ impl ImportCertificateAction {
                         certificate_type: CertificateType::X509,
                         certificate_value: x509.to_der()?,
                     };
-                    self.import(kms_rest_client, object, self.replace_existing)
+                    self.import(kms_rest_client, object, None, self.replace_existing)
                         .await?;
                 }
             }
@@ -155,7 +182,7 @@ impl ImportCertificateAction {
                         certificate_type: CertificateType::X509,
                         certificate_value: cert.to_der()?,
                     };
-                    self.import(kms_rest_client, object, self.replace_existing)
+                    self.import(kms_rest_client, object, None, self.replace_existing)
                         .await?;
                 }
             }
@@ -182,7 +209,7 @@ impl ImportCertificateAction {
                         certificate_type: CertificateType::X509,
                         certificate_value: cert.to_der()?,
                     };
-                    self.import(kms_rest_client, object, true).await?;
+                    self.import(kms_rest_client, object, None, true).await?;
                 }
             }
         };
@@ -203,6 +230,7 @@ impl ImportCertificateAction {
         &self,
         kms_rest_client: &KmsRestClient,
         object: Object,
+        import_attributes: Option<Attributes>,
         replace_existing: bool,
     ) -> Result<(), CliError> {
         // import the certificate
@@ -210,6 +238,7 @@ impl ImportCertificateAction {
             kms_rest_client,
             self.certificate_id.clone(),
             object,
+            import_attributes,
             false,
             replace_existing,
             &self.tags,
