@@ -22,8 +22,6 @@ jobs:
     services:
       kms:
         image: ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
-        ports:
-          - 9998:9998
 
     runs-on: [self-hosted, sgx]
     steps:
@@ -48,6 +46,7 @@ jobs:
             -v $PWD/public_data:/root/public_data \
             -v $PWD/private_data:/root/private_data \
             -p 80:80 \
+            -p 9998:9998 \
             -d ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
 
       - name: Install Rust toolchain
