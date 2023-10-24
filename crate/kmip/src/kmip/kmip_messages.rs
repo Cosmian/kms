@@ -32,11 +32,11 @@ use super::{
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct RequestMessage {
+pub struct Message {
     /// Header of the request
-    pub header: RequestHeader,
+    pub header: MessageHeader,
     /// Batch items of the request
-    pub items: Vec<RequestBatchItem>,
+    pub items: Vec<MessageBatchItem>,
 }
 
 /// Header of the request
@@ -44,7 +44,7 @@ pub struct RequestMessage {
 /// Contains fields whose presence is determined by the protocol features used.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct RequestHeader {
+pub struct MessageHeader {
     pub protocol_version: ProtocolVersion,
     /// This is an OPTIONAL field contained in a request message,
     /// and is used to indicate the maximum size of a response, in bytes,
@@ -101,7 +101,7 @@ pub struct RequestHeader {
 /// `request_payload` depends on the request
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct RequestBatchItem {
+pub struct MessageBatchItem {
     pub operation: OperationEnumeration,
     /// Indicates that the Data output of the operation should not
     /// be returned to the client
@@ -116,7 +116,7 @@ pub struct RequestBatchItem {
     pub message_extension: Option<Vec<MessageExtension>>,
 }
 
-impl<'de> Deserialize<'de> for RequestBatchItem {
+impl<'de> Deserialize<'de> for MessageBatchItem {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -131,13 +131,13 @@ impl<'de> Deserialize<'de> for RequestBatchItem {
             MessageExtension,
         }
 
-        struct RequestBatchItemVisitor;
+        struct MessageBatchItemVisitor;
 
-        impl<'de> Visitor<'de> for RequestBatchItemVisitor {
-            type Value = RequestBatchItem;
+        impl<'de> Visitor<'de> for MessageBatchItemVisitor {
+            type Value = MessageBatchItem;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("struct RequestBatchItem")
+                formatter.write_str("struct MessageBatchItem")
             }
 
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
@@ -231,13 +231,13 @@ impl<'de> Deserialize<'de> for RequestBatchItem {
                     }
                 }
                 let operation = operation.ok_or_else(|| de::Error::missing_field("operation"))?;
-                tracing::trace!("RequestBatchItem operation: {operation:?}");
+                tracing::trace!("MessageBatchItem operation: {operation:?}");
 
                 let request_payload =
                     request_payload.ok_or_else(|| de::Error::missing_field("request_payload"))?;
-                tracing::trace!("RequestBatchItem request payload: {request_payload:?}");
+                tracing::trace!("MessageBatchItem request payload: {request_payload:?}");
 
-                Ok(RequestBatchItem {
+                Ok(MessageBatchItem {
                     operation,
                     ephemeral,
                     unique_batch_item_id,
@@ -254,22 +254,22 @@ impl<'de> Deserialize<'de> for RequestBatchItem {
             "request_payload",
             "message_extension",
         ];
-        deserializer.deserialize_struct("RequestBatchItem", FIELDS, RequestBatchItemVisitor)
+        deserializer.deserialize_struct("MessageBatchItem", FIELDS, MessageBatchItemVisitor)
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct ResponseMessage {
+pub struct MessageResponse {
     /// Header of the response
-    pub header: ResponseHeader,
+    pub header: MessageResponseHeader,
     /// Batch items of the response
-    pub items: Vec<ResponseBatchItem>,
+    pub items: Vec<MessageResponseBatchItem>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct ResponseHeader {
+pub struct MessageResponseHeader {
     pub protocol_version: ProtocolVersion,
     pub timestamp: u64, // epoch millis
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -295,7 +295,7 @@ pub struct ResponseHeader {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct ResponseBatchItem {
+pub struct MessageResponseBatchItem {
     /// Required if present in Request Batch Item
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operation: Option<OperationEnumeration>,
@@ -338,7 +338,7 @@ pub struct ResponseBatchItem {
     pub message_extension: Option<MessageExtension>,
 }
 
-impl<'de> Deserialize<'de> for ResponseBatchItem {
+impl<'de> Deserialize<'de> for MessageResponseBatchItem {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -356,13 +356,13 @@ impl<'de> Deserialize<'de> for ResponseBatchItem {
             MessageExtension,
         }
 
-        struct ResponseBatchItemVisitor;
+        struct MessageResponseBatchItemVisitor;
 
-        impl<'de> Visitor<'de> for ResponseBatchItemVisitor {
-            type Value = ResponseBatchItem;
+        impl<'de> Visitor<'de> for MessageResponseBatchItemVisitor {
+            type Value = MessageResponseBatchItem;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("struct ResponseBatchItem")
+                formatter.write_str("struct MessageResponseBatchItem")
             }
 
             fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
@@ -440,38 +440,40 @@ impl<'de> Deserialize<'de> for ResponseBatchItem {
                             // using the `operation` enum.
                             response_payload = Some(match operation {
                                 OperationEnumeration::Encrypt => {
-                                    Operation::Encrypt(map.next_value()?)
+                                    Operation::EncryptResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Create => {
-                                    Operation::Create(map.next_value()?)
+                                    Operation::CreateResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::CreateKeyPair => {
-                                    Operation::CreateKeyPair(map.next_value()?)
+                                    Operation::CreateKeyPairResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Certify => {
-                                    Operation::Certify(map.next_value()?)
+                                    Operation::CertifyResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Locate => {
-                                    Operation::Locate(map.next_value()?)
+                                    Operation::LocateResponse(map.next_value()?)
                                 }
-                                OperationEnumeration::Get => Operation::Get(map.next_value()?),
+                                OperationEnumeration::Get => {
+                                    Operation::GetResponse(map.next_value()?)
+                                }
                                 OperationEnumeration::GetAttributes => {
-                                    Operation::GetAttributes(map.next_value()?)
+                                    Operation::GetAttributesResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Revoke => {
-                                    Operation::Revoke(map.next_value()?)
+                                    Operation::RevokeResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Destroy => {
-                                    Operation::Destroy(map.next_value()?)
+                                    Operation::DestroyResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Decrypt => {
-                                    Operation::Decrypt(map.next_value()?)
+                                    Operation::DecryptResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Import => {
-                                    Operation::Import(map.next_value()?)
+                                    Operation::ImportResponse(map.next_value()?)
                                 }
                                 OperationEnumeration::Export => {
-                                    Operation::Export(map.next_value()?)
+                                    Operation::ExportResponse(map.next_value()?)
                                 }
                                 _ => {
                                     return Err(de::Error::missing_field(
@@ -486,10 +488,10 @@ impl<'de> Deserialize<'de> for ResponseBatchItem {
                 let result_status =
                     result_status.ok_or_else(|| de::Error::missing_field("result_status"))?;
 
-                tracing::trace!("ResponseBatchItem operation: {operation:?}");
-                tracing::trace!("ResponseBatchItem response payload: {response_payload:?}");
+                tracing::trace!("MessageResponseBatchItem operation: {operation:?}");
+                tracing::trace!("MessageResponseBatchItem response payload: {response_payload:?}");
 
-                Ok(ResponseBatchItem {
+                Ok(MessageResponseBatchItem {
                     operation,
                     unique_batch_item_id,
                     result_status,
@@ -512,6 +514,10 @@ impl<'de> Deserialize<'de> for ResponseBatchItem {
             "response_payload",
             "message_extension",
         ];
-        deserializer.deserialize_struct("ResponseBatchItem", FIELDS, ResponseBatchItemVisitor)
+        deserializer.deserialize_struct(
+            "MessageResponseBatchItem",
+            FIELDS,
+            MessageResponseBatchItemVisitor,
+        )
     }
 }

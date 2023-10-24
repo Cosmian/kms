@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip::{
-    kmip_messages::{RequestMessage, ResponseBatchItem, ResponseHeader, ResponseMessage},
+    kmip_messages::{Message, MessageResponse, MessageResponseBatchItem, MessageResponseHeader},
     kmip_operations::ErrorReason,
     kmip_types::ResultStatusEnumeration,
     ttlv::serializer::to_ttlv,
@@ -22,10 +22,10 @@ use crate::{
 /// Each item may fail but a response is still sent back.
 pub async fn message(
     kms: &KMS,
-    request: RequestMessage,
+    request: Message,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
-) -> KResult<ResponseMessage> {
+) -> KResult<MessageResponse> {
     trace!("Entering message KMIP operation: {request:#?}");
 
     let mut response_items = Vec::new();
@@ -56,7 +56,7 @@ pub async fn message(
                 ),
             };
 
-        response_items.push(ResponseBatchItem {
+        response_items.push(MessageResponseBatchItem {
             operation: Some(item_request.operation),
             unique_batch_item_id: item_request.unique_batch_item_id,
             result_status,
@@ -68,8 +68,8 @@ pub async fn message(
         });
     }
 
-    let response_message = ResponseMessage {
-        header: ResponseHeader {
+    let response_message = MessageResponse {
+        header: MessageResponseHeader {
             protocol_version: request.header.protocol_version,
             batch_count: response_items.len() as u32,
             client_correlation_value: None,

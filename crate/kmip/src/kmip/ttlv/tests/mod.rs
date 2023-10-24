@@ -6,8 +6,8 @@ use time::OffsetDateTime;
 use crate::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_messages::{
-        RequestBatchItem, RequestHeader, RequestMessage, ResponseBatchItem, ResponseHeader,
-        ResponseMessage,
+        Message, MessageBatchItem, MessageHeader, MessageResponse, MessageResponseBatchItem,
+        MessageResponseHeader,
     },
     kmip_objects::{Object, ObjectType},
     kmip_operations::{Create, Decrypt, Encrypt, Import, ImportResponse, Locate, Operation},
@@ -711,8 +711,8 @@ pub fn test_create() {
 pub fn test_message_request() {
     log_init("info,hyper=info,reqwest=info");
 
-    let req = RequestMessage {
-        header: RequestHeader {
+    let req = Message {
+        header: MessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -729,7 +729,7 @@ pub fn test_message_request() {
             batch_order_option: None,
             timestamp: None,
         },
-        items: vec![RequestBatchItem {
+        items: vec![MessageBatchItem {
             operation: OperationEnumeration::Encrypt,
             ephemeral: None,
             unique_batch_item_id: None,
@@ -741,7 +741,7 @@ pub fn test_message_request() {
         }],
     };
     let ttlv = to_ttlv(&req).unwrap();
-    let req_: RequestMessage = from_ttlv(&ttlv).unwrap();
+    let req_: Message = from_ttlv(&ttlv).unwrap();
     assert_eq!(req_.items[0].operation, OperationEnumeration::Encrypt);
     let Operation::Encrypt(encrypt) = &req_.items[0].request_payload else {
         panic!(
@@ -756,8 +756,8 @@ pub fn test_message_request() {
 pub fn test_message_response() {
     log_init("info,hyper=info,reqwest=info");
 
-    let res = ResponseMessage {
-        header: ResponseHeader {
+    let res = MessageResponse {
+        header: MessageResponseHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
@@ -771,7 +771,7 @@ pub fn test_message_response() {
             server_hashed_password: None,
         },
         items: vec![
-            ResponseBatchItem {
+            MessageResponseBatchItem {
                 operation: Some(OperationEnumeration::Locate),
                 unique_batch_item_id: None,
                 response_payload: Some(Operation::Locate(Locate::default())),
@@ -781,7 +781,7 @@ pub fn test_message_response() {
                 result_message: None,
                 asynchronous_correlation_value: None,
             },
-            ResponseBatchItem {
+            MessageResponseBatchItem {
                 operation: Some(OperationEnumeration::Decrypt),
                 unique_batch_item_id: None,
                 response_payload: Some(Operation::Decrypt(Decrypt {
@@ -798,7 +798,7 @@ pub fn test_message_response() {
         ],
     };
     let ttlv = to_ttlv(&res).unwrap();
-    let res_: ResponseMessage = from_ttlv(&ttlv).unwrap();
+    let res_: MessageResponse = from_ttlv(&ttlv).unwrap();
     assert_eq!(res_.items.len(), 2);
     assert_eq!(res_.items[0].operation, Some(OperationEnumeration::Locate));
     assert_eq!(
@@ -811,9 +811,9 @@ pub fn test_message_response() {
         ResultStatusEnumeration::Success
     );
 
-    let Some(Operation::Decrypt(decrypt)) = &res_.items[1].response_payload else {
+    let Some(Operation::DecryptResponse(decrypt)) = &res_.items[1].response_payload else {
         panic!("not a decrypt operation's response payload");
     };
     assert_eq!(decrypt.data, Some(b"decrypted_data".to_vec()));
-    assert_eq!(decrypt.unique_identifier, Some("id_12345".to_string()));
+    assert_eq!(decrypt.unique_identifier, "id_12345".to_string());
 }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cosmian_kmip::kmip::{
-    kmip_messages::{RequestBatchItem, RequestHeader, RequestMessage},
+    kmip_messages::{Message, MessageBatchItem, MessageHeader},
     kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
     kmip_types::{
         OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
@@ -29,21 +29,21 @@ async fn test_kmip_messages() -> KResult<()> {
 
     // prepare and send the single message
     let items = vec![
-        RequestBatchItem {
+        MessageBatchItem {
             operation: OperationEnumeration::CreateKeyPair,
             ephemeral: None,
             unique_batch_item_id: None,
             request_payload: Operation::CreateKeyPair(ec_create_request),
             message_extension: None,
         },
-        RequestBatchItem {
+        MessageBatchItem {
             operation: OperationEnumeration::Locate,
             ephemeral: None,
             unique_batch_item_id: None,
             request_payload: Operation::Locate(Locate::default()),
             message_extension: None,
         },
-        RequestBatchItem {
+        MessageBatchItem {
             operation: OperationEnumeration::Decrypt,
             ephemeral: None,
             unique_batch_item_id: None,
@@ -55,8 +55,8 @@ async fn test_kmip_messages() -> KResult<()> {
             message_extension: None,
         },
     ];
-    let message_request = RequestMessage {
-        header: RequestHeader {
+    let message_request = Message {
+        header: MessageHeader {
             protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
