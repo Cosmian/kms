@@ -38,11 +38,11 @@ jobs:
           docker run \
             --device /dev/sgx_enclave \
             --device /dev/sgx_provision \
-            -e KMS_USE_BOOTSTRAP_SERVER="{{ KMS_USE_BOOTSTRAP_SERVER }}" \
-            -e KMS_USE_CERTBOT="{{ KMS_USE_CERTBOT }}" \
-            -e KMS_CERTBOT_HOSTNAME="{{ KMS_CERTBOT_HOSTNAME }}" \
-            -e KMS_CERTBOT_EMAIL="{{ KMS_CERTBOT_EMAIL }}" \
-            -e KMS_CERTBOT_USE_TEE_KEY="{{ KMS_CERTBOT_USE_TEE_KEY }}" \
+            -e KMS_USE_BOOTSTRAP_SERVER="${{ env.KMS_USE_BOOTSTRAP_SERVER }}" \
+            -e KMS_USE_CERTBOT="${{ env.KMS_USE_CERTBOT }}" \
+            -e KMS_CERTBOT_HOSTNAME="${{ env.KMS_CERTBOT_HOSTNAME }}" \
+            -e KMS_CERTBOT_EMAIL="${{ env.KMS_CERTBOT_EMAIL }}" \
+            -e KMS_CERTBOT_USE_TEE_KEY="${{ env.KMS_CERTBOT_USE_TEE_KEY }}" \
             -v /var/run/aesmd:/var/run/aesmd/ \
             -v /opt/cosmian-internal:/opt/cosmian-internal \
             -v $PWD/public_data:/root/public_data \
