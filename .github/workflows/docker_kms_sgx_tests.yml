@@ -11,18 +11,16 @@ on:
 jobs:
 
   run_and_test:
-    env: 
-        KMS_USE_BOOTSTRAP_SERVER: true
-        KMS_USE_CERTBOT: true
-        KMS_CERTBOT_HOSTNAME: "kms.sgx.ci.cosmian.dev"
-        KMS_CERTBOT_EMAIL: "tech@cosmian.com"
-        KMS_CERTBOT_USE_TEE_KEY: "abcdef0123456789"
 
     services:
       kms:
         image: ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
         env:
-          COSMIAN_SERVER_URL: http://kms.sgx.ci.cosmian.dev:9998
+          KMS_USE_BOOTSTRAP_SERVER: true
+          KMS_USE_CERTBOT: true
+          KMS_CERTBOT_HOSTNAME: "kms.sgx.ci.cosmian.dev"
+          KMS_CERTBOT_EMAIL: "tech@cosmian.com"
+          KMS_CERTBOT_USE_TEE_KEY: "abcdef0123456789"        
         ports:
           - 9998:9998
 
@@ -50,7 +48,7 @@ jobs:
             -v $PWD/private_data:/root/private_data \
             -p 80:80 \
             -d ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
-            
+
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
 
