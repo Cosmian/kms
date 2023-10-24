@@ -45,6 +45,7 @@ pub fn import(
     match format {
         CertificateInputFormat::TTLV => args.push("ttlv".to_owned()),
         CertificateInputFormat::PEM => args.push("pem".to_owned()),
+        CertificateInputFormat::DER => args.push("der".to_owned()),
         CertificateInputFormat::CHAIN => args.push("chain".to_owned()),
         CertificateInputFormat::CCADB => args.push("ccadb".to_owned()),
         CertificateInputFormat::PKCS12 => {

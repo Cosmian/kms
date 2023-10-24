@@ -67,6 +67,7 @@ impl ImportKeyAction {
             kms_rest_client,
             self.key_id.clone(),
             object,
+            None,
             self.unwrap,
             self.replace_existing,
             &self.tags,
