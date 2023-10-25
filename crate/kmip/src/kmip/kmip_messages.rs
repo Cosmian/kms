@@ -19,6 +19,7 @@
 /// asynchronous responses only if the Asynchronous Indicator is present in the header.
 use serde::{
     de::{self, MapAccess, Visitor},
+    ser::{self, SerializeStruct},
     Deserialize, Serialize,
 };
 
@@ -30,13 +31,45 @@ use super::{
     },
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct Message {
     /// Header of the request
     pub header: MessageHeader,
     /// Batch items of the request
     pub items: Vec<MessageBatchItem>,
+}
+
+impl Serialize for Message {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // check batch item count
+        if self.header.batch_count as usize != self.items.len() {
+            return Err(ser::Error::custom(format!(
+                "mismatch number of batch items between header (`{}`) and items list (`{}`)",
+                self.header.batch_count,
+                self.items.len()
+            )))
+        }
+        // check version of protocol version defined in the header is
+        // equal or greater than the protocol version of each item's payload.
+        for item in &self.items {
+            if self.header.protocol_version >= item.request_payload.protocol_version() {
+                return Err(ser::Error::custom(format!(
+                    "item's protocol version is greater (`{}`) than header's protocol version \
+                     (`{}`)",
+                    self.header.protocol_version,
+                    item.request_payload.protocol_version()
+                )))
+            }
+        }
+        let mut st = serializer.serialize_struct("Message", 2)?;
+        st.serialize_field("Header", &self.header)?;
+        st.serialize_field("Items", &self.items)?;
+        st.end()
+    }
 }
 
 /// Header of the request
@@ -99,21 +132,50 @@ pub struct MessageHeader {
 /// Batch item for a message request
 ///
 /// `request_payload` depends on the request
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "PascalCase")]
+#[derive(Debug)]
 pub struct MessageBatchItem {
+    /// Type of the KMIP operation
     pub operation: OperationEnumeration,
     /// Indicates that the Data output of the operation should not
     /// be returned to the client
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub ephemeral: Option<bool>,
-    /// Required if `batch_count` > 1
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// This is an OPTIONAL field contained in a request,
+    /// and is used for correlation between requests and responses.
+    ///
+    /// If a request has a Unique Batch Item ID, then responses to
+    /// that request SHALL have the same Unique Batch Item ID.
     pub unique_batch_item_id: Option<u32>,
     /// The KMIP request, which depends on the KMIP Operation
     pub request_payload: Operation,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub message_extension: Option<Vec<MessageExtension>>,
+}
+
+impl Serialize for MessageBatchItem {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if self.operation != self.request_payload.operation_enum() {
+            return Err(ser::Error::custom(format!(
+                "operation enum (`{}`) doesn't correspond to request payload (`{}`)",
+                self.operation,
+                self.request_payload.operation_enum()
+            )))
+        }
+        let mut st = serializer.serialize_struct("MessageBatchItem", 5)?;
+        st.serialize_field("Operation", &self.operation)?;
+        if let Some(ephemeral) = &self.ephemeral {
+            st.serialize_field("Ephemeral", ephemeral)?;
+        }
+        if let Some(unique_batch_item_id) = &self.unique_batch_item_id {
+            st.serialize_field("UniqueBatchItemId", unique_batch_item_id)?;
+        }
+        st.serialize_field("RequestPayload", &self.request_payload)?;
+        if let Some(message_extension) = &self.message_extension {
+            st.serialize_field("MessageExtension", &message_extension)?;
+        }
+        st.end()
+    }
 }
 
 impl<'de> Deserialize<'de> for MessageBatchItem {
@@ -237,6 +299,14 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
                     request_payload.ok_or_else(|| de::Error::missing_field("request_payload"))?;
                 tracing::trace!("MessageBatchItem request payload: {request_payload:?}");
 
+                if operation != request_payload.operation_enum() {
+                    return Err(de::Error::custom(format!(
+                        "operation enum (`{}`) doesn't correspond to request payload (`{}`)",
+                        operation,
+                        request_payload.operation_enum()
+                    )))
+                }
+
                 Ok(MessageBatchItem {
                     operation,
                     ephemeral,
@@ -258,13 +328,47 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct MessageResponse {
     /// Header of the response
     pub header: MessageResponseHeader,
     /// Batch items of the response
     pub items: Vec<MessageResponseBatchItem>,
+}
+
+impl Serialize for MessageResponse {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // check batch item count
+        if self.header.batch_count as usize != self.items.len() {
+            return Err(ser::Error::custom(format!(
+                "mismatch number of batch items between header (`{}`) and items list (`{}`)",
+                self.header.batch_count,
+                self.items.len()
+            )))
+        }
+        // check version of protocol version defined in the header is
+        // equal or greater than the protocol version of each item's payload.
+        for item in &self.items {
+            if let Some(response_payload) = &item.response_payload {
+                if self.header.protocol_version >= response_payload.protocol_version() {
+                    return Err(ser::Error::custom(format!(
+                        "item's protocol version is greater (`{}`) than header's protocol version \
+                         (`{}`)",
+                        self.header.protocol_version,
+                        response_payload.protocol_version()
+                    )))
+                }
+            }
+        }
+        let mut st = serializer.serialize_struct("Message", 2)?;
+        st.serialize_field("Header", &self.header)?;
+        st.serialize_field("Items", &self.items)?;
+        st.end()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -293,14 +397,11 @@ pub struct MessageResponseHeader {
     pub batch_count: u32,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "PascalCase")]
+#[derive(Debug)]
 pub struct MessageResponseBatchItem {
-    /// Required if present in Request Batch Item
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Required if present in request Batch Item
     pub operation: Option<OperationEnumeration>,
-    /// Required if present in Request Batch Item
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Required if present in request Batch Item
     pub unique_batch_item_id: Option<u32>,
     /// Indicates the success or failure of a request
     pub result_status: ResultStatusEnumeration,
@@ -309,13 +410,11 @@ pub struct MessageResponseBatchItem {
     /// responses that return a Result Status of Failure.
     ///
     /// Required if `result_status` is `Failure`
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub result_reason: Option<ErrorReason>,
     /// Contains a more descriptive error message,
     /// which MAY be provided to an end user or used for logging/auditing purposes.
     ///
     /// Required if `result_status` is NOT `Pending` or `Success`
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub result_message: Option<String>,
     /// Returned in the immediate response to an operation that is pending and
     /// that requires asynchronous polling. Note: the server decides which
@@ -325,17 +424,79 @@ pub struct MessageResponseBatchItem {
     /// Poll or Cancel operations that pertain to the original operation.
     ///
     /// Required if `result_status` is `Pending`
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub asynchronous_correlation_value: Option<Vec<u8>>,
     /// The KMIP response, which depends on the KMIP Operation
     ///
     /// Mandatory if a success, `None` in case of failure.
     ///
     /// Content depends on Operation.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub response_payload: Option<Operation>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub message_extension: Option<MessageExtension>,
+}
+
+impl Serialize for MessageResponseBatchItem {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self.result_status {
+            ResultStatusEnumeration::OperationFailed if self.result_reason.is_none() => {
+                return Err(ser::Error::custom(
+                    "missing `ResultReason` with failed status (`ResultStatus` is set to \
+                     `OperationFailed`)",
+                ))
+            }
+            ResultStatusEnumeration::OperationFailed | ResultStatusEnumeration::OperationUndone
+                if self.result_message.is_none() =>
+            {
+                return Err(ser::Error::custom(
+                    "missing `ResultMessage` with unsuccessful status (`ResultStatus` is set to \
+                     either `OperationFailed` or `OperationUndone`)",
+                ))
+            }
+            ResultStatusEnumeration::OperationPending
+                if self.asynchronous_correlation_value.is_none() =>
+            {
+                return Err(ser::Error::custom(
+                    "missing `AsynchronousCorrelationValue` with pending status (`ResultStatus` \
+                     is set to `OperationPending`)",
+                ))
+            }
+            _ => (),
+        }
+
+        let mut st = serializer.serialize_struct("MessageResponseBatchItem", 5)?;
+        if let Some(operation) = self.operation {
+            if let Some(response_payload) = &self.response_payload {
+                if operation != response_payload.operation_enum() {
+                    return Err(ser::Error::custom(format!(
+                        "operation enum (`{}`) doesn't correspond to response payload (`{}`)",
+                        operation,
+                        response_payload.operation_enum()
+                    )))
+                }
+            }
+
+            st.serialize_field("Operation", &self.operation)?;
+        }
+        st.serialize_field("ResultStatus", &self.result_status)?;
+        if let Some(result_reason) = &self.result_reason {
+            st.serialize_field("ResultReason", result_reason)?;
+        }
+        if let Some(result_message) = &self.result_message {
+            st.serialize_field("ResultMessage", result_message)?;
+        }
+        if let Some(acv) = &self.asynchronous_correlation_value {
+            st.serialize_field("AsynchronousCorrelationValue", &acv)?;
+        }
+        if let Some(response_payload) = &self.response_payload {
+            st.serialize_field("ResponsePayload", &response_payload)?;
+        }
+        if let Some(message_extension) = &self.message_extension {
+            st.serialize_field("MessageExtension", &message_extension)?;
+        }
+        st.end()
+    }
 }
 
 impl<'de> Deserialize<'de> for MessageResponseBatchItem {
@@ -485,11 +646,32 @@ impl<'de> Deserialize<'de> for MessageResponseBatchItem {
                     }
                 }
 
+                tracing::trace!("MessageResponseBatchItem operation: {operation:?}");
+                tracing::trace!("MessageResponseBatchItem response payload: {response_payload:?}");
+
                 let result_status =
                     result_status.ok_or_else(|| de::Error::missing_field("result_status"))?;
 
-                tracing::trace!("MessageResponseBatchItem operation: {operation:?}");
-                tracing::trace!("MessageResponseBatchItem response payload: {response_payload:?}");
+                match result_status {
+                    ResultStatusEnumeration::OperationFailed if result_reason.is_none() => {
+                        // missing `ResultReason` with failed status
+                        return Err(de::Error::missing_field("result_reason"))
+                    }
+                    ResultStatusEnumeration::OperationFailed
+                    | ResultStatusEnumeration::OperationUndone
+                        if result_message.is_none() =>
+                    {
+                        // missing `ResultMessage` with unsuccessful status
+                        return Err(de::Error::missing_field("result_message"))
+                    }
+                    ResultStatusEnumeration::OperationPending
+                        if asynchronous_correlation_value.is_none() =>
+                    {
+                        // missing `ResultMessage` with unsuccessful status
+                        return Err(de::Error::missing_field("asynchronous_correlation_value"))
+                    }
+                    _ => (),
+                }
 
                 Ok(MessageResponseBatchItem {
                     operation,

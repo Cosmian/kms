@@ -13,7 +13,8 @@ use super::{
     kmip_types::{
         AttributeReference, Attributes, CertificateRequestType, CryptographicParameters,
         KeyCompressionType, KeyFormatType, KeyWrapType, ObjectGroupMember, OperationEnumeration,
-        ProtectionStorageMasks, RevocationReason, StorageStatusMask, UniqueIdentifier,
+        ProtectionStorageMasks, ProtocolVersion, RevocationReason, StorageStatusMask,
+        UniqueIdentifier,
     },
 };
 use crate::error::KmipError;
@@ -149,6 +150,17 @@ impl Operation {
             }
             Operation::Destroy(_) | Operation::DestroyResponse(_) => OperationEnumeration::Destroy,
         }
+    }
+
+    /// Allow to ensure that the protocol version used by the operation
+    /// is compatible with this KMIP implementation.
+    ///
+    /// Backward compatibility within major version is mandatory.
+    ///
+    /// The check is enforced only if a upper version than the default one
+    /// is detected when receiving an operation.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        ProtocolVersion::default()
     }
 }
 

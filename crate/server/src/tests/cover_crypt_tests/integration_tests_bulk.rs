@@ -12,7 +12,7 @@ use crate::{result::KResult, tests::test_utils};
 
 #[actix_web::test]
 async fn integration_tests_bulk() -> KResult<()> {
-    cosmian_logger::log_utils::log_init("trace,hyper=info,reqwest=info");
+    // cosmian_logger::log_utils::log_init("trace,hyper=info,reqwest=info");
 
     let app = test_utils::test_app().await;
 

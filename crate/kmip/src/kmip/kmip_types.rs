@@ -1657,11 +1657,32 @@ pub type UniqueIdentifier = String;
 /// of the protocol with the same major version.
 ///
 /// Support for backward compatibility with different major versions is OPTIONAL.
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, PartialOrd)]
 #[serde(rename_all = "PascalCase")]
 pub struct ProtocolVersion {
     pub protocol_version_major: u32,
     pub protocol_version_minor: u32,
+}
+
+/// The KMIP version 2.1 is used as the reference
+/// for the implementation here
+impl Default for ProtocolVersion {
+    fn default() -> Self {
+        ProtocolVersion {
+            protocol_version_major: 2,
+            protocol_version_minor: 1,
+        }
+    }
+}
+
+impl fmt::Display for ProtocolVersion {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}.{}",
+            self.protocol_version_major, self.protocol_version_minor
+        )
+    }
 }
 
 /// This Enumeration indicates whether the client is able to accept

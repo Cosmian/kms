@@ -753,6 +753,235 @@ pub fn test_message_request() {
 }
 
 #[test]
+pub fn test_message_request_enforce_enum() {
+    log_init("info,hyper=info,reqwest=info");
+
+    // check Message request serializer reinforcement
+    let req = Message {
+        header: MessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            maximum_response_size: Some(9999),
+            batch_count: 1,
+            client_correlation_value: None,
+            server_correlation_value: None,
+            asynchronous_indicator: None,
+            attestation_capable_indicator: None,
+            attestation_type: None,
+            authentication: None,
+            batch_error_continuation_option: None,
+            batch_order_option: None,
+            timestamp: None,
+        },
+        items: vec![MessageBatchItem {
+            operation: OperationEnumeration::Create,
+            ephemeral: None,
+            unique_batch_item_id: None,
+            // mismatch operation regarding the enum
+            request_payload: Operation::Locate(Locate::default()),
+            message_extension: None,
+        }],
+    };
+    assert_eq!(
+        to_ttlv(&req).unwrap_err().to_string(),
+        "operation enum (`Create`) doesn't correspond to request payload (`Locate`)".to_string()
+    );
+
+    let req = Message {
+        header: MessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            maximum_response_size: Some(9999),
+            batch_count: 15,
+            client_correlation_value: None,
+            server_correlation_value: None,
+            asynchronous_indicator: None,
+            attestation_capable_indicator: None,
+            attestation_type: None,
+            authentication: None,
+            batch_error_continuation_option: None,
+            batch_order_option: None,
+            timestamp: None,
+        },
+        items: vec![MessageBatchItem {
+            operation: OperationEnumeration::Locate,
+            ephemeral: None,
+            unique_batch_item_id: None,
+            // mismatch operation regarding the enum
+            request_payload: Operation::Locate(Locate::default()),
+            message_extension: None,
+        }],
+    };
+    assert_eq!(
+        to_ttlv(&req).unwrap_err().to_string(),
+        "mismatch number of batch items between header (`15`) and items list (`1`)".to_string()
+    );
+
+    let req = Message {
+        header: MessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 3,
+                protocol_version_minor: 0,
+            },
+            batch_count: 1,
+            maximum_response_size: None,
+            client_correlation_value: None,
+            server_correlation_value: None,
+            asynchronous_indicator: None,
+            attestation_capable_indicator: None,
+            attestation_type: None,
+            authentication: None,
+            batch_error_continuation_option: None,
+            batch_order_option: None,
+            timestamp: None,
+        },
+        items: vec![MessageBatchItem {
+            operation: OperationEnumeration::Locate,
+            ephemeral: None,
+            unique_batch_item_id: None,
+            // mismatch operation regarding the enum
+            request_payload: Operation::Locate(Locate::default()),
+            message_extension: None,
+        }],
+    };
+    assert_eq!(
+        to_ttlv(&req).unwrap_err().to_string(),
+        "item's protocol version is greater (`3.0`) than header's protocol version (`2.1`)"
+            .to_string()
+    );
+
+    // check Message response serializer reinforcement
+    let res = MessageResponse {
+        header: MessageResponseHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            batch_count: 1,
+            client_correlation_value: None,
+            server_correlation_value: None,
+            attestation_type: None,
+            timestamp: 1697201574,
+            nonce: None,
+            server_hashed_password: None,
+        },
+        items: vec![MessageResponseBatchItem {
+            operation: Some(OperationEnumeration::Decrypt),
+            unique_batch_item_id: None,
+            // mismatch operation regarding the enum
+            response_payload: Some(Operation::Locate(Locate::default())),
+            message_extension: None,
+            result_status: ResultStatusEnumeration::OperationPending,
+            result_reason: None,
+            result_message: None,
+            asynchronous_correlation_value: None,
+        }],
+    };
+    assert_eq!(
+        to_ttlv(&res).unwrap_err().to_string(),
+        "missing `AsynchronousCorrelationValue` with pending status (`ResultStatus` is set to \
+         `OperationPending`)"
+            .to_string()
+    );
+
+    let res = MessageResponse {
+        header: MessageResponseHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            batch_count: 1,
+            client_correlation_value: None,
+            server_correlation_value: None,
+            attestation_type: None,
+            timestamp: 1697201574,
+            nonce: None,
+            server_hashed_password: None,
+        },
+        items: vec![MessageResponseBatchItem {
+            operation: Some(OperationEnumeration::Decrypt),
+            unique_batch_item_id: None,
+            // mismatch operation regarding the enum
+            response_payload: Some(Operation::Locate(Locate::default())),
+            message_extension: None,
+            result_status: ResultStatusEnumeration::OperationPending,
+            result_reason: None,
+            result_message: None,
+            asynchronous_correlation_value: Some(vec![0, 0, 1]),
+        }],
+    };
+    assert_eq!(
+        to_ttlv(&res).unwrap_err().to_string(),
+        "operation enum (`Decrypt`) doesn't correspond to response payload (`Locate`)".to_string()
+    );
+
+    let res = MessageResponse {
+        header: MessageResponseHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            batch_count: 22,
+            client_correlation_value: None,
+            server_correlation_value: None,
+            attestation_type: None,
+            timestamp: 1697201574,
+            nonce: None,
+            server_hashed_password: None,
+        },
+        items: vec![MessageResponseBatchItem {
+            operation: Some(OperationEnumeration::Locate),
+            unique_batch_item_id: None,
+            response_payload: Some(Operation::Locate(Locate::default())),
+            message_extension: None,
+            result_status: ResultStatusEnumeration::OperationPending,
+            result_reason: None,
+            result_message: None,
+            asynchronous_correlation_value: None,
+        }],
+    };
+    assert_eq!(
+        to_ttlv(&res).unwrap_err().to_string(),
+        "mismatch number of batch items between header (`22`) and items list (`1`)".to_string()
+    );
+
+    let res = MessageResponse {
+        header: MessageResponseHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 2,
+            },
+            batch_count: 1,
+            client_correlation_value: None,
+            server_correlation_value: None,
+            attestation_type: None,
+            timestamp: 1697201574,
+            nonce: None,
+            server_hashed_password: None,
+        },
+        items: vec![MessageResponseBatchItem {
+            operation: Some(OperationEnumeration::Locate),
+            unique_batch_item_id: None,
+            response_payload: Some(Operation::Locate(Locate::default())),
+            message_extension: None,
+            result_status: ResultStatusEnumeration::OperationPending,
+            result_reason: None,
+            result_message: None,
+            asynchronous_correlation_value: None,
+        }],
+    };
+    assert_eq!(
+        to_ttlv(&res).unwrap_err().to_string(),
+        "item's protocol version is greater (`2.2`) than header's protocol version (`2.1`)"
+            .to_string()
+    );
+}
+
+#[test]
 pub fn test_message_response() {
     log_init("info,hyper=info,reqwest=info");
 

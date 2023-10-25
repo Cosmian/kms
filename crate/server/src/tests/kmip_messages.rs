@@ -8,7 +8,6 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_utils::crypto::curve_25519::kmip_requests::ec_create_key_pair_request;
-use cosmian_logger::log_utils::log_init;
 
 use crate::{
     config::ServerParams, result::KResult, tests::test_utils::https_clap_config, KMSServer,
@@ -16,7 +15,7 @@ use crate::{
 
 #[actix_rt::test]
 async fn test_kmip_messages() -> KResult<()> {
-    log_init("info,hyper=info,reqwest=info");
+    cosmian_logger::log_utils::log_init("info,hyper=info,reqwest=info");
 
     let clap_config = https_clap_config();
 
