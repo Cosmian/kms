@@ -25,7 +25,6 @@ jobs:
 
     runs-on: [self-hosted, sgx]
     steps:
-
       - name: Docker check container
         run: |
           docker run \
