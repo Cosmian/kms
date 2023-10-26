@@ -3,11 +3,10 @@ use std::path::PathBuf;
 use clap::Parser;
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
-    kmip_types::{Attributes, CertificateType},
+    kmip_types::{Attributes, CertificateType, LinkType, LinkedObjectIdentifier},
 };
 use cosmian_kms_client::KmsRestClient;
 use der::{Decode, DecodePem, Encode, EncodePem};
-use openssl::x509;
 use tracing::{debug, trace};
 use x509_parser::nom::AsBytes;
 
@@ -84,20 +83,8 @@ impl ImportCertificateAction {
                 // read the certificate file
                 let object = read_key_from_file(self.get_certificate_file()?)?;
                 trace!("CLI: read key from file OK");
-                let unique_identifier = import_object(
-                    kms_rest_client,
-                    self.certificate_id.clone(),
-                    object,
-                    None,
-                    false,
-                    self.replace_existing,
-                    &self.tags,
-                )
-                .await?;
-                println!(
-                    "[TTLV] The certificate was imported with id: {}",
-                    unique_identifier
-                );
+                self.import_chain(kms_rest_client, vec![object], self.replace_existing)
+                    .await?;
             }
             CertificateInputFormat::PEM => {
                 debug!("CLI: import certificate as PEM file");
@@ -106,7 +93,12 @@ impl ImportCertificateAction {
                 let certificate = Certificate::from_pem(&pem_value).map_err(|e| {
                     CliError::Conversion(format!("Cannot read PEM content to X509. Error: {e:?}"))
                 })?;
-                self.import_chain(kms_rest_client, vec![certificate], self.replace_existing)
+                let object = Object::Certificate {
+                    certificate_type: CertificateType::X509,
+                    // TODO: change to DER: https://github.com/Cosmian/kms/issues/72
+                    certificate_value: certificate.to_pem(der::pem::LineEnding::LF)?.into_bytes(),
+                };
+                self.import_chain(kms_rest_client, vec![object], self.replace_existing)
                     .await?;
             }
             CertificateInputFormat::DER => {
@@ -116,7 +108,12 @@ impl ImportCertificateAction {
                 let certificate = Certificate::from_der(&der_value).map_err(|e| {
                     CliError::Conversion(format!("Cannot read DER content to X509. Error: {e:?}"))
                 })?;
-                self.import_chain(kms_rest_client, vec![certificate], self.replace_existing)
+                let object = Object::Certificate {
+                    certificate_type: CertificateType::X509,
+                    // TODO: change to DER: https://github.com/Cosmian/kms/issues/72
+                    certificate_value: certificate.to_pem(der::pem::LineEnding::LF)?.into_bytes(),
+                };
+                self.import_chain(kms_rest_client, vec![object], self.replace_existing)
                     .await?;
             }
             CertificateInputFormat::PKCS12 => {
@@ -130,8 +127,10 @@ impl ImportCertificateAction {
                 let pkcs12 = pkcs12_parser.parse2(password)?;
 
                 // Import PKCS12 X509 certificate
-                let mut certificates = vec![
-                    pkcs12
+                let leaf_certificate = Object::Certificate {
+                    certificate_type: CertificateType::X509,
+                    // TODO: change to DER: https://github.com/Cosmian/kms/issues/72
+                    certificate_value: pkcs12
                         .cert
                         .ok_or_else(|| {
                             CliError::InvalidRequest(
@@ -139,19 +138,21 @@ impl ImportCertificateAction {
                             )
                         })?
                         .to_pem()?,
-                ];
+                };
+                let mut objects = vec![leaf_certificate];
                 //add the chain if any
                 if let Some(chain) = pkcs12.ca {
                     for x509 in chain {
                         let object = Object::Certificate {
                             certificate_type: CertificateType::X509,
+                            // TODO: change to DER: https://github.com/Cosmian/kms/issues/72
                             certificate_value: x509.to_pem()?,
                         };
-                        certificates.push(object);
+                        objects.push(object);
                     }
                 }
                 // import the full chain
-                self.import_chain(kms_rest_client, certificates, self.replace_existing)
+                self.import_chain(kms_rest_client, objects, self.replace_existing)
                     .await?;
                 // Import PKCS12 private key
                 // let object = Object::Certificate {
@@ -169,7 +170,7 @@ impl ImportCertificateAction {
             CertificateInputFormat::CHAIN => {
                 debug!("CLI: import certificate chain as PEM file");
                 let pem_stack = read_bytes_from_file(&self.get_certificate_file()?)?;
-                let mut objects = build_chain_from_stack(&pem_stack)?;
+                let objects = build_chain_from_stack(&pem_stack)?;
                 // import the full chain
                 self.import_chain(kms_rest_client, objects, self.replace_existing)
                     .await?;
@@ -191,7 +192,7 @@ impl ImportCertificateAction {
                     })?;
 
                 // import the certificates
-                let mut objects = build_chain_from_stack(&ccadb_bytes)?;
+                let objects = build_chain_from_stack(&ccadb_bytes)?;
                 self.import_chain(kms_rest_client, objects, self.replace_existing)
                     .await?;
             }
@@ -214,15 +215,14 @@ impl ImportCertificateAction {
     async fn import_chain(
         &self,
         kms_rest_client: &KmsRestClient,
-        mut certificates: Vec<Certificate>,
+        mut objects: Vec<Object>,
         replace_existing: bool,
     ) -> Result<(), CliError> {
         let mut previous_identifier: Option<String> = None;
-        for certificate in certificates.pop() {
-            let object = Object::Certificate {
-                certificate_type: CertificateType::X509,
-                // TODO: change to DER: https://github.com/Cosmian/kms/issues/72
-                certificate_value: certificate.to_pem(der::pem::LineEnding::LF)?.into_bytes(),
+        loop {
+            let object = match objects.pop() {
+                Some(o) => o,
+                None => return Ok(()),
             };
             let import_attributes = previous_identifier.map(|id| {
                 let mut attributes = Attributes::default();
@@ -264,7 +264,6 @@ impl ImportCertificateAction {
             }
             previous_identifier = Some(unique_identifier);
         }
-        Ok(())
     }
 }
 

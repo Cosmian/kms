@@ -291,7 +291,6 @@ where
     };
 
     let certificate = build_certificate::<PublicKey>(
-        certificate_id,
         &signing_key,
         &public_key,
         profile.clone(),
@@ -320,7 +319,13 @@ where
 
     let certificate_uid = kms
         .db
-        .create(Some(certificate.id), owner, &object, &cert_tags, params)
+        .create(
+            certificate_id.to_owned(),
+            owner,
+            &object,
+            &cert_tags,
+            params,
+        )
         .await?;
     debug!("Created KMS Object with id {certificate_uid} with tags: {cert_tags:?}");
 
