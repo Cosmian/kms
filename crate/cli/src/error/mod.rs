@@ -12,7 +12,6 @@ pub mod result;
 
 #[cfg(test)]
 use assert_cmd::cargo::CargoError;
-use x509_parser::prelude::PEMError;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug)]
@@ -114,12 +113,6 @@ impl From<cloudproof::reexport::crypto_core::CryptoCoreError> for CliError {
 
 impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::Error> for CliError {
     fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::Error) -> Self {
-        Self::Conversion(e.to_string())
-    }
-}
-
-impl From<x509_parser::nom::Err<PEMError>> for CliError {
-    fn from(e: x509_parser::nom::Err<PEMError>) -> Self {
         Self::Conversion(e.to_string())
     }
 }
