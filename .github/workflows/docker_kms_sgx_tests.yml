@@ -37,8 +37,6 @@ jobs:
             -e KMS_CERTBOT_USE_TEE_KEY="${{ env.KMS_CERTBOT_USE_TEE_KEY }}" \
             -v /var/run/aesmd:/var/run/aesmd/ \
             -v /opt/cosmian-internal:/opt/cosmian-internal \
-            # -v /root/public_data:/root/public_data \
-            # -v /root/private_data:/root/private_data \
             -p 80:80 \
             -p 9998:9998 \
             -d ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
