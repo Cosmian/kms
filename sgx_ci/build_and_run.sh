@@ -2,8 +2,8 @@
 
 SGX_SIGNER_KEY="/opt/cosmian-internal/cosmian-signer-key.pem"
 
-mkdir -p public_data/
-mkdir -p private_data/
+mkdir -p /root/public_data/
+mkdir -p /root/private_data/
 
 if [ $# -eq 0 ]; then
     if ! [ -e "/dev/sgx_enclave" ]; then
