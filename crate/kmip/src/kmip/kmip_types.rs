@@ -941,6 +941,19 @@ impl Attributes {
         self.get_link(LinkType::ParentLink)
     }
 
+    /// Add a link to the object.
+    pub fn add_link(
+        &mut self,
+        link_type: LinkType,
+        linked_object_identifier: LinkedObjectIdentifier,
+    ) {
+        let links = self.link.get_or_insert_with(Vec::new);
+        links.push(Link {
+            link_type,
+            linked_object_identifier,
+        });
+    }
+
     /// Set the attributes's object type.
     pub fn set_object_type(&mut self, object_type: ObjectType) {
         self.object_type = Some(object_type);

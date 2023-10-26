@@ -1,12 +1,29 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyBlock, KeyValue},
+    kmip_objects::Object,
+    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
+};
 use cosmian_kms_client::KmsRestClient;
 
 use crate::{
     actions::shared::utils::{import_object, read_key_from_file},
     error::CliError,
 };
+
+#[derive(clap::ValueEnum, Debug, Clone)]
+pub enum KeyFormat {
+    JsonTtlv,
+    Pkcs8Pem,
+    Pkcs8Der,
+    Pkcs1Pem,
+    Pkcs1Der,
+    Sec1Pem,
+    Sec1Der,
+    RawBytes,
+}
 
 /// Import a key in the KMS.
 ///
@@ -88,4 +105,113 @@ impl ImportKeyAction {
 
         Ok(())
     }
+}
+
+// pub fn parse_encoded_key(key_bytes: &[u8], format: KeyFormat) -> Result<Vec<Object>, CliError> {
+//     match format {
+//         KeyFormat::JsonTtlv => {
+//             // Read the object from the bytes
+//             let ttlv = serde_json::from_slice::<TTLV>(&key_bytes)
+//                 .with_context(|| "failed parsing the object from the json file")?;
+//             // Deserialize the object
+//             let object: Object = from_ttlv(&ttlv)?;
+//             Ok(vec![object])
+//         }
+//         KeyFormat::Pkcs8Pem => {
+//             let spki = pkcs8::PrivateKeyInfo::from_pem(key_bytes)
+//                 .with_context(|| "failed parsing the object from the pkcs8 pem file")?;
+
+//             match spki.algorithm.oid.to_string().as_str() {
+//                 "id-rsaEncryption" => {
+//                     let mut attributes = None;
+//                     let rsa_private_key = rsa::RsaPrivateKey::from_pkcs8_pem(
+//                         String::from_utf8(key_bytes.to_vec())?.as_str(),
+//                     )?;
+//                     rsa_private_key.n();
+//                     let key_value = KeyValue {
+//                         key_material: KeyMaterial::TransparentRSAPrivateKey {
+//                             modulus: rsa_private_key.n().to_owned().into(),
+//                             private_exponent: Some(rsa_private_key.e().to_owned()),
+//                             public_exponent: (),
+//                             p: (),
+//                             q: (),
+//                             prime_exponent_p: (),
+//                             prime_exponent_q: (),
+//                             crt_coefficient: (),
+//                         },
+//                         attributes,
+//                     };
+//                     let private_object = create_private_key(
+//                         spki.to_der()?.as_slice(),
+//                         KeyFormatType::PKCS8,
+//                         CryptographicAlgorithm::RSA,
+//                         -1,
+//                         None,
+//                     )?;
+//                     // if let Some(public_key) = spki.public_key {
+//                     //     let public_object = create_public_key(
+//                     //         public_key.to_der()?.as_slice(),
+//                     //         KeyFormatType::PKCS8,
+//                     //         CryptographicAlgorithm::RSA,
+//                     //         -1,
+//                     //         None,
+//                     //     )?;
+//                     // }
+//                 }
+//                 "id-ecPublicKey" => {
+//                     todo!()
+//                 }
+//                 _ => return Err(CliError::Default("unsupported algorithm".to_owned())),
+//             }
+//         }
+//         KeyFormat::Pkcs8Der => todo!(),
+//         KeyFormat::Pkcs1Pem => todo!(),
+//         KeyFormat::Pkcs1Der => todo!(),
+//         KeyFormat::Sec1Pem => todo!(),
+//         KeyFormat::Sec1Der => todo!(),
+//         KeyFormat::RawBytes => {
+//             //let key = create_symmetric_key(key_bytes, CryptographicAlgorithm::Aes)?;
+//             todo!()
+//         }
+//     }
+// }
+
+fn create_private_key(
+    bytes: &[u8],
+    key_format_type: KeyFormatType,
+    key_value: KeyValue,
+    cryptographic_algorithm: CryptographicAlgorithm,
+    cryptographic_length: i32,
+    attributes: Option<Attributes>,
+) -> Result<Object, CliError> {
+    Ok(Object::PrivateKey {
+        key_block: KeyBlock {
+            key_format_type,
+            key_compression_type: None,
+            key_value,
+            cryptographic_algorithm,
+            cryptographic_length,
+            key_wrapping_data: None,
+        },
+    })
+}
+
+fn create_public_key(
+    bytes: &[u8],
+    key_format_type: KeyFormatType,
+    key_value: KeyValue,
+    cryptographic_algorithm: CryptographicAlgorithm,
+    cryptographic_length: i32,
+    attributes: Option<Attributes>,
+) -> Result<Object, CliError> {
+    Ok(Object::PublicKey {
+        key_block: KeyBlock {
+            key_format_type,
+            key_compression_type: None,
+            key_value,
+            cryptographic_algorithm,
+            cryptographic_length,
+            key_wrapping_data: None,
+        },
+    })
 }
