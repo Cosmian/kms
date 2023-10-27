@@ -239,6 +239,16 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                 let u = &self.get_bytes()?[self.index - 1];
                 visitor.visit_u8(*u)
             }
+            Deserializing::StructureValue => {
+                let child = &self.get_structure()?[self.index - 1];
+                trace!("deserialize_u8 child {child:?}");
+                match &child.value {
+                    TTLValue::Integer(i) => visitor.visit_i32(*i),
+                    x => Err(TtlvError::custom(format!(
+                        "deserialize_u8. Invalid type for value: {x:?}"
+                    ))),
+                }
+            }
             x => Err(TtlvError::custom(format!(
                 "deserialize_u8. Unexpected {x:?}"
             ))),
