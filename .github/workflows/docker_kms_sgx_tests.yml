@@ -45,10 +45,12 @@ jobs:
         uses: actions-rs/toolchain@v1
 
       - name: Install ckms
-        run: cargo install --path crate/cli   
+        run: cargo install --locked --path crate/cli
 
       - name: Bootstrap
-        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
+        run: |
+          KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
+          sleep 20
       
       - name: Verify
         run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms verify

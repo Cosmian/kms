@@ -51,7 +51,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           network: host
           build-args: |
-            FEATURES = "staging"
+            FEATURES=--features staging
 
     outputs:
       image-tag: ${{ steps.meta.outputs.version }}
