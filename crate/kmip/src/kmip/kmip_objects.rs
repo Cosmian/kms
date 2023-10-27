@@ -39,7 +39,8 @@ pub enum Object {
     #[serde(rename_all = "PascalCase")]
     Certificate {
         certificate_type: CertificateType,
-        /// A Managed Cryptographic Object that is a digital certificate. It is a DER-encoded X.509 public key certificate.
+        /// A Managed Cryptographic Object that is a digital certificate.
+        /// It is a DER-encoded X.509 public key certificate.
         certificate_value: Vec<u8>,
     },
     #[serde(rename_all = "PascalCase")]

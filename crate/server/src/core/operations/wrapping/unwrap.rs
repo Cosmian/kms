@@ -5,7 +5,7 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::{access::ExtraDatabaseParams, crypto::wrap::unwrap_key_block};
 use tracing::debug;
-use x509_parser::{parse_x509_certificate, prelude::parse_x509_pem};
+use x509_parser::parse_x509_certificate;
 
 use super::get_key;
 use crate::{
@@ -67,8 +67,7 @@ pub async fn unwrap_key(
                     "Invalid object type: Expected Certificate".to_string(),
                 )),
             }?;
-            let (_, pem_cert) = parse_x509_pem(&certificate_value)?;
-            let (_, x509_cert) = parse_x509_certificate(&pem_cert.contents)?;
+            let (_, x509_cert) = parse_x509_certificate(&certificate_value)?;
             let ski = get_certificate_subject_key_identifier(&x509_cert)?;
             match ski {
                 Some(ski) => {

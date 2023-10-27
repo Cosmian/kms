@@ -255,7 +255,7 @@ async fn import_pem(
         parse_certificate_and_create_tags(tags, pem_value)?;
         Object::Certificate {
             certificate_type: CertificateType::X509,
-            certificate_value: pem_value.to_vec(),
+            certificate_value: pem.contents,
         }
     } else if pem.label.contains("PRIVATE KEY") {
         debug!("import_pem: parsing private key: {}", pem.label);

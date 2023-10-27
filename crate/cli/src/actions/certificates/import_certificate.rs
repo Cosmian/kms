@@ -5,7 +5,7 @@ use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::CertificateType};
 use cosmian_kms_client::KmsRestClient;
 use openssl::x509::X509;
 use tracing::{debug, trace};
-use x509_parser::nom::AsBytes;
+use x509_parser::{nom::AsBytes, prelude::parse_x509_pem};
 
 use crate::{
     actions::shared::utils::{import_object, read_bytes_from_file, read_key_from_file},
@@ -101,9 +101,11 @@ impl ImportCertificateAction {
                 debug!("CLI: import certificate as PEM file");
                 let pem_value = read_bytes_from_file(&self.get_certificate_file()?)?;
 
+                let (_, pem) = parse_x509_pem(&pem_value)?;
+
                 let object = Object::Certificate {
                     certificate_type: CertificateType::X509,
-                    certificate_value: pem_value,
+                    certificate_value: pem.contents,
                 };
                 self.import(kms_rest_client, object, self.replace_existing)
                     .await?;
@@ -129,7 +131,7 @@ impl ImportCertificateAction {
                                 "X509 certificate not found in PKCS12".to_string(),
                             )
                         })?
-                        .to_pem()?,
+                        .to_der()?,
                 };
                 self.import(kms_rest_client, object, self.replace_existing)
                     .await?;
@@ -141,7 +143,7 @@ impl ImportCertificateAction {
                         .ok_or_else(|| {
                             CliError::InvalidRequest("Private key not found in PKCS12".to_string())
                         })?
-                        .private_key_to_pem_pkcs8()?,
+                        .private_key_to_der()?,
                 };
                 self.import(kms_rest_client, object, self.replace_existing)
                     .await?;
@@ -153,7 +155,7 @@ impl ImportCertificateAction {
                 for x509 in chain {
                     let object = Object::Certificate {
                         certificate_type: CertificateType::X509,
-                        certificate_value: x509.to_pem()?,
+                        certificate_value: x509.to_der()?,
                     };
                     self.import(kms_rest_client, object, self.replace_existing)
                         .await?;
@@ -167,7 +169,7 @@ impl ImportCertificateAction {
                 for cert in stack {
                     let object = Object::Certificate {
                         certificate_type: CertificateType::X509,
-                        certificate_value: cert.to_pem()?,
+                        certificate_value: cert.to_der()?,
                     };
                     self.import(kms_rest_client, object, self.replace_existing)
                         .await?;
@@ -194,7 +196,7 @@ impl ImportCertificateAction {
                 for cert in stack {
                     let object = Object::Certificate {
                         certificate_type: CertificateType::X509,
-                        certificate_value: cert.to_pem()?,
+                        certificate_value: cert.to_der()?,
                     };
                     self.import(kms_rest_client, object, true).await?;
                 }
