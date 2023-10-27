@@ -38,7 +38,7 @@ use crate::{
 ///
 /// Arguments:
 ///
-/// * `pem_certificate`: A byte slice containing the PEM-encoded certificate.
+/// * `der_certificate`: A byte slice containing the DER-encoded certificate.
 /// * `leaf_serial_number`: This parameter represents the serial number of the leaf
 /// certificate that is being verified. If provided, it is used to check if the
 /// serial number is already revoked in the Certificate Revocation List (CRL) of all the CRL found in the chain.
@@ -57,15 +57,14 @@ use crate::{
 /// Nothing if success
 #[async_recursion(?Send)]
 pub(crate) async fn verify_certificate(
-    pem_certificate: &[u8],
+    der_certificate: &[u8],
     leaf_serial_number: Option<&'async_recursion BigUint>,
     kms: &KMS,
     owner: &str,
     params: Option<&'async_recursion ExtraDatabaseParams>,
 ) -> KResult<()> {
-    // Parse PEM file and verify the validity of the certificate
-    let (_, pem_cert) = parse_x509_pem(pem_certificate)?;
-    let (_, x509_cert) = parse_x509_certificate(&pem_cert.contents)?;
+    // Verify the validity of the DER certificate
+    let (_, x509_cert) = parse_x509_certificate(der_certificate)?;
     let common_name = get_common_name(x509_cert.subject())?;
     let issuer_common_name = get_common_name(x509_cert.issuer())?;
     let spki = get_certificate_subject_key_identifier(&x509_cert)?;
@@ -119,8 +118,7 @@ pub(crate) async fn verify_certificate(
             };
 
         // Parse PEM file and verify the validity of the signature certificate
-        let (_, pem_ca) = parse_x509_pem(&ca_certificate_bytes)?;
-        let (_, x509_ca) = parse_x509_certificate(&pem_ca.contents)?;
+        let (_, x509_ca) = parse_x509_certificate(&ca_certificate_bytes)?;
         let ca_spki = get_certificate_subject_key_identifier(&x509_ca)?;
         debug!(
             "verify_certificate: issuer certificate recovered from KMS with Subject Public Key \

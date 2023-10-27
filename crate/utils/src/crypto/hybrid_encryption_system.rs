@@ -66,7 +66,7 @@ impl HybridEncryptionSystem {
         let rng = CsRng::from_entropy();
 
         debug!("instantiate_with_certificate: parsing");
-        let cert = X509::from_pem(certificate_value)
+        let cert = X509::from_der(certificate_value)
             .map_err(|e| KmipUtilsError::ConversionError(format!("invalid PEM: {e:?}")))?;
 
         debug!("instantiate_with_certificate: get the public key of the certificate");
@@ -79,7 +79,6 @@ impl HybridEncryptionSystem {
         );
 
         let (public_key_in_der_bytes, curve_nid) = match public_key.id() {
-            // Id::RSA => debug!("RSA"),
             Id::EC => {
                 debug!("instantiate_with_certificate: EC");
                 let ec_public_key = public_key.ec_key()?;
