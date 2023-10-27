@@ -95,7 +95,13 @@ pub enum ErrorReason {
     General_Failure = 0x0000_0100,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Eq, PartialEq)]
+pub enum Direction {
+    Request,
+    Response,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 #[allow(clippy::large_enum_variant)]
 pub enum Operation {
@@ -128,6 +134,38 @@ pub enum Operation {
 }
 
 impl Operation {
+    pub fn direction(&self) -> Direction {
+        match self {
+            Operation::Import(_)
+            | Operation::Certify(_)
+            | Operation::Create(_)
+            | Operation::CreateKeyPair(_)
+            | Operation::Export(_)
+            | Operation::Get(_)
+            | Operation::GetAttributes(_)
+            | Operation::Encrypt(_)
+            | Operation::Decrypt(_)
+            | Operation::Locate(_)
+            | Operation::Revoke(_)
+            | Operation::ReKeyKeyPair(_)
+            | Operation::Destroy(_) => Direction::Request,
+
+            Operation::ImportResponse(_)
+            | Operation::CertifyResponse(_)
+            | Operation::CreateResponse(_)
+            | Operation::CreateKeyPairResponse(_)
+            | Operation::ExportResponse(_)
+            | Operation::GetResponse(_)
+            | Operation::GetAttributesResponse(_)
+            | Operation::EncryptResponse(_)
+            | Operation::DecryptResponse(_)
+            | Operation::LocateResponse(_)
+            | Operation::RevokeResponse(_)
+            | Operation::ReKeyKeyPairResponse(_)
+            | Operation::DestroyResponse(_) => Direction::Response,
+        }
+    }
+
     pub fn operation_enum(&self) -> OperationEnumeration {
         match self {
             Operation::Import(_) | Operation::ImportResponse(_) => OperationEnumeration::Import,
@@ -175,7 +213,7 @@ impl Operation {
 /// assigned by the server. The server SHALL copy the Unique Identifier returned
 /// by this operations into the ID Placeholder variable.
 /// `https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115657`
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Import {
     /// The Unique Identifier of the object to be imported
@@ -346,7 +384,7 @@ pub struct ImportResponse {
 /// into the ID Placeholder variable. If the information in the Certificate
 /// Request conflicts with the attributes specified in the Attributes, then the
 /// information in the Certificate Request takes precedence.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Certify {
     // The Unique Identifier of the Public Key or the Certificate Request being certified. If
@@ -370,7 +408,7 @@ pub struct Certify {
     pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CertifyResponse {
     /// The Unique Identifier of the newly created object.
@@ -384,7 +422,7 @@ pub struct CertifyResponse {
 /// Cryptographic Length, etc.). The response contains the Unique Identifier of
 /// the created object. The server SHALL copy the Unique Identifier returned by
 /// this operation into the ID Placeholder variable.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Create {
     /// Determines the type of object to be created.
@@ -397,7 +435,7 @@ pub struct Create {
     pub protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateResponse {
     /// Type of object created.
@@ -420,7 +458,7 @@ pub struct CreateResponse {
 /// Private Key pointing to the Private Key. The response contains the Unique
 /// Identifiers of both created objects. The ID Placeholder value SHALL be set
 /// to the Unique Identifier of the Private Key
-#[derive(Debug, Deserialize, Serialize, Default)]
+#[derive(Debug, Deserialize, Serialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPair {
     /// Specifies desired attributes to be associated with the new object that
@@ -449,7 +487,7 @@ pub struct CreateKeyPair {
     pub public_protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CreateKeyPairResponse {
     /// The Unique Identifier of the newly created private key object.
@@ -466,7 +504,7 @@ pub struct CreateKeyPairResponse {
 /// SHALL not be returned in the response.
 /// The server SHALL copy the Unique Identifier returned by this operations
 /// into the ID Placeholder variable.
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Export {
     /// Determines the object being requested. If omitted, then the ID
@@ -545,7 +583,7 @@ impl From<&str> for Export {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ExportResponse {
     pub object_type: ObjectType,
@@ -584,7 +622,7 @@ pub struct ExportResponse {
 /// A Get operation may use both a Key Wrap Type and a Wrapping Key Specification,
 /// in which case the Key Wrap Type is processed as if there was no Wrapping Key Specification,
 /// and the result is then wrapped as specified.
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Get {
     /// Determines the object being requested. If omitted, then the ID
@@ -663,7 +701,7 @@ impl From<&str> for Get {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetResponse {
     pub object_type: ObjectType,
@@ -671,7 +709,7 @@ pub struct GetResponse {
     pub object: Object,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributes {
     /// Determines the object whose attributes
@@ -704,7 +742,7 @@ impl From<&str> for GetAttributes {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributesResponse {
     /// The Unique Identifier of the object
@@ -713,7 +751,7 @@ pub struct GetAttributesResponse {
     pub attributes: Attributes,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Encrypt {
     /// The Unique Identifier of the Managed
@@ -763,7 +801,7 @@ pub struct Encrypt {
     pub authenticated_encryption_additional_data: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct EncryptResponse {
     /// The Unique Identifier of the Managed
@@ -797,7 +835,7 @@ pub struct EncryptResponse {
     pub authenticated_encryption_tag: Option<Vec<u8>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Decrypt {
     /// The Unique Identifier of the Managed
@@ -899,7 +937,7 @@ impl TryFrom<&[u8]> for DecryptedData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DecryptResponse {
     /// The Unique Identifier of the Managed
@@ -1000,7 +1038,7 @@ pub struct DecryptResponse {
 /// Mask field includes the Destroyed Storage indicator. The server SHALL NOT
 /// return unique identifiers for objects that are archived unless the Storage
 /// Status Mask field includes the Archived Storage indicator.
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Locate {
     /// An Integer object that indicates the maximum number of object
@@ -1025,7 +1063,7 @@ pub struct Locate {
     pub attributes: Attributes,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LocateResponse {
     /// An Integer object that indicates the number of object identifiers that
     /// satisfy the identification criteria specified in the request. A server
@@ -1055,7 +1093,7 @@ pub struct LocateResponse {
 /// If the revocation reason is neither "key
 /// compromise" nor "CA compromise", the object is placed into the "deactivated"
 /// state, and the Deactivation Date is set to the current date and time.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Revoke {
     /// Determines the object being revoked. If omitted, then the ID Placeholder
@@ -1071,7 +1109,7 @@ pub struct Revoke {
     pub compromise_occurrence_date: Option<u64>, // epoch millis
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct RevokeResponse {
     /// The Unique Identifier of the object.
@@ -1103,7 +1141,7 @@ pub struct RevokeResponse {
 /// key pair. If Offset is set and dates exist for the existing key pair, then
 /// the dates of the replacement key pair SHALL be set based on the dates of the
 /// existing key pair as follows
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPair {
     // Determines the existing Asymmetric key pair to be re-keyed.  If omitted, then the ID
@@ -1144,7 +1182,7 @@ pub struct ReKeyKeyPair {
     pub public_protection_storage_masks: Option<ProtectionStorageMasks>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct ReKeyKeyPairResponse {
     // The Unique Identifier of the newly created replacement Private Key object.
@@ -1153,7 +1191,7 @@ pub struct ReKeyKeyPairResponse {
     pub public_key_unique_identifier: UniqueIdentifier,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Destroy {
     /// Determines the object being destroyed. If omitted, then the ID
@@ -1162,7 +1200,7 @@ pub struct Destroy {
     pub unique_identifier: Option<UniqueIdentifier>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct DestroyResponse {
     /// The Unique Identifier of the object.

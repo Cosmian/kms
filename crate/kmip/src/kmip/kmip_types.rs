@@ -7,7 +7,8 @@
 use std::{fmt, vec::Vec};
 
 use serde::{
-    de::{self, Visitor},
+    de::{self, MapAccess, Visitor},
+    ser::SerializeStruct,
     Deserialize, Serialize,
 };
 use strum::{Display, EnumIter, EnumString};
@@ -388,7 +389,7 @@ impl<'de> Deserialize<'de> for CryptographicUsageMask {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct ProtectionStorageMasks(u32);
 
@@ -476,7 +477,7 @@ pub enum ObjectGroupMember {
     // Extensions 8XXXXXXX
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct StorageStatusMask(u32);
 
@@ -1719,11 +1720,9 @@ pub enum AttestationType {
 /// A Credential is a structure used for client identification purposes
 /// and is not managed by the key management system
 /// (e.g., user id/password pairs, Kerberos tokens, etc.).
-#[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(rename_all = "PascalCase")]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Credential {
-    Username_and_Password {
+    UsernameAndPassword {
         username: String,
         password: Option<String>,
     },
@@ -1741,12 +1740,12 @@ pub enum Credential {
         attestation_measurement: Option<Vec<u8>>,
         attestation_assertion: Option<Vec<u8>>,
     },
-    One_Time_Password {
+    OneTimePassword {
         username: String,
         password: Option<String>,
         one_time_password: String,
     },
-    Hashed_Password {
+    HashedPassword {
         username: String,
         timestamp: u64, // epoch millis
         hashing_algorithm: Option<HashingAlgorithm>,
@@ -1762,13 +1761,347 @@ impl Credential {
     #[allow(dead_code)]
     fn value(&self) -> u32 {
         match *self {
-            Credential::Username_and_Password { .. } => 0x0000_0001,
+            Credential::UsernameAndPassword { .. } => 0x0000_0001,
             Credential::Device { .. } => 0x0000_0002,
             Credential::Attestation { .. } => 0x0000_0003,
-            Credential::One_Time_Password { .. } => 0x0000_0004,
-            Credential::Hashed_Password { .. } => 0x0000_0005,
+            Credential::OneTimePassword { .. } => 0x0000_0004,
+            Credential::HashedPassword { .. } => 0x0000_0005,
             Credential::Ticket { .. } => 0x0000_0006,
         }
+    }
+}
+
+impl Serialize for Credential {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Credential::UsernameAndPassword { username, password } => {
+                let mut st = serializer.serialize_struct("UsernameAndPassword", 2)?;
+                st.serialize_field("Username", username)?;
+                if let Some(password) = password {
+                    st.serialize_field("Password", password)?;
+                }
+                st.end()
+            }
+            Credential::Device {
+                device_serial_number,
+                password,
+                device_identifier,
+                network_identifier,
+                machine_identifier,
+                media_identifier,
+            } => {
+                let mut st = serializer.serialize_struct("Device", 6)?;
+                if let Some(device_serial_number) = device_serial_number {
+                    st.serialize_field("DeviceSerialNumber", device_serial_number)?;
+                }
+                if let Some(password) = password {
+                    st.serialize_field("Password", password)?;
+                }
+                if let Some(device_identifier) = device_identifier {
+                    st.serialize_field("DeviceIdentifier", device_identifier)?;
+                }
+                if let Some(network_identifier) = network_identifier {
+                    st.serialize_field("NetworkIdentifier", network_identifier)?;
+                }
+                if let Some(machine_identifier) = machine_identifier {
+                    st.serialize_field("MachineIdentifier", machine_identifier)?;
+                }
+                if let Some(media_identifier) = media_identifier {
+                    st.serialize_field("MediaIdentifier", media_identifier)?;
+                }
+                st.end()
+            }
+            Credential::Attestation {
+                nonce,
+                attestation_type,
+                attestation_measurement,
+                attestation_assertion,
+            } => {
+                let mut st = serializer.serialize_struct("Attestation", 4)?;
+                st.serialize_field("Nonce", nonce)?;
+                st.serialize_field("AttestationType", attestation_type)?;
+                if let Some(attestation_measurement) = attestation_measurement {
+                    st.serialize_field("AttestationMeasurement", attestation_measurement)?;
+                }
+                if let Some(attestation_assertion) = attestation_assertion {
+                    st.serialize_field("AttestationAssertion", attestation_assertion)?;
+                }
+                st.end()
+            }
+            Credential::OneTimePassword {
+                username,
+                password,
+                one_time_password,
+            } => {
+                let mut st = serializer.serialize_struct("OneTimePassword", 3)?;
+                st.serialize_field("Username", username)?;
+                if let Some(password) = password {
+                    st.serialize_field("Password", password)?;
+                }
+                st.serialize_field("OneTimePassword", one_time_password)?;
+                st.end()
+            }
+            Credential::HashedPassword {
+                username,
+                timestamp,
+                hashing_algorithm,
+                hashed_password,
+            } => {
+                let mut st = serializer.serialize_struct("HashedPassword", 4)?;
+                st.serialize_field("Username", username)?;
+                st.serialize_field("Timestamp", timestamp)?;
+                if let Some(hashing_algorithm) = hashing_algorithm {
+                    st.serialize_field("HashingAlgorithm", hashing_algorithm)?;
+                }
+                st.serialize_field("HashedPassword", hashed_password)?;
+                st.end()
+            }
+            Credential::Ticket {
+                ticket_type,
+                ticket_value,
+            } => {
+                let mut st = serializer.serialize_struct("Ticket", 2)?;
+                st.serialize_field("TicketType", ticket_type)?;
+                st.serialize_field("TicketValue", ticket_value)?;
+                st.end()
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Credential {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier)]
+        enum Field {
+            Username,
+            Password,
+            DeviceSerialNumber,
+            DeviceIdentifier,
+            NetworkIdentifier,
+            MachineIdentifier,
+            MediaIdentifier,
+            Nonce,
+            AttestationType,
+            AttestationMeasurement,
+            AttestationAssertion,
+            OneTimePassword,
+            Timestamp,
+            HashingAlgorithm,
+            HashedPassword,
+            TicketType,
+            TicketValue,
+        }
+
+        struct CredentialVisitor;
+
+        impl<'de> Visitor<'de> for CredentialVisitor {
+            type Value = Credential;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct Credential")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut username: Option<String> = None;
+                let mut password: Option<String> = None;
+                let mut device_serial_number: Option<String> = None;
+                let mut device_identifier: Option<String> = None;
+                let mut network_identifier: Option<String> = None;
+                let mut machine_identifier: Option<String> = None;
+                let mut media_identifier: Option<String> = None;
+                let mut nonce: Option<Nonce> = None;
+                let mut attestation_type: Option<AttestationType> = None;
+                let mut attestation_measurement: Option<Vec<u8>> = None;
+                let mut attestation_assertion: Option<Vec<u8>> = None;
+                let mut one_time_password: Option<String> = None;
+                let mut timestamp: Option<u64> = None;
+                let mut hashing_algorithm: Option<HashingAlgorithm> = None;
+                let mut hashed_password: Option<Vec<u8>> = None;
+                let mut ticket_type: Option<TicketType> = None;
+                let mut ticket_value: Option<Vec<u8>> = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Username => {
+                            if username.is_some() {
+                                return Err(de::Error::duplicate_field("username"))
+                            }
+                            username = Some(map.next_value()?);
+                        }
+                        Field::Password => {
+                            if password.is_some() {
+                                return Err(de::Error::duplicate_field("password"))
+                            }
+                            password = Some(map.next_value()?);
+                        }
+                        Field::DeviceSerialNumber => {
+                            if device_serial_number.is_some() {
+                                return Err(de::Error::duplicate_field("device_serial_number"))
+                            }
+                            device_serial_number = Some(map.next_value()?);
+                        }
+                        Field::DeviceIdentifier => {
+                            if device_identifier.is_some() {
+                                return Err(de::Error::duplicate_field("device_identifier"))
+                            }
+                            device_identifier = Some(map.next_value()?);
+                        }
+                        Field::NetworkIdentifier => {
+                            if network_identifier.is_some() {
+                                return Err(de::Error::duplicate_field("network_identifier"))
+                            }
+                            network_identifier = Some(map.next_value()?);
+                        }
+                        Field::MachineIdentifier => {
+                            if machine_identifier.is_some() {
+                                return Err(de::Error::duplicate_field("machine_identifier"))
+                            }
+                            machine_identifier = Some(map.next_value()?);
+                        }
+                        Field::MediaIdentifier => {
+                            if media_identifier.is_some() {
+                                return Err(de::Error::duplicate_field("media_identifier"))
+                            }
+                            media_identifier = Some(map.next_value()?);
+                        }
+                        Field::Nonce => {
+                            if nonce.is_some() {
+                                return Err(de::Error::duplicate_field("nonce"))
+                            }
+                            nonce = Some(map.next_value()?);
+                        }
+                        Field::AttestationType => {
+                            if attestation_type.is_some() {
+                                return Err(de::Error::duplicate_field("attestation_type"))
+                            }
+                            attestation_type = Some(map.next_value()?);
+                        }
+                        Field::AttestationMeasurement => {
+                            if attestation_measurement.is_some() {
+                                return Err(de::Error::duplicate_field(
+                                    "attesattestation_measurementtation_type",
+                                ))
+                            }
+                            attestation_measurement = Some(map.next_value()?);
+                        }
+                        Field::AttestationAssertion => {
+                            if attestation_assertion.is_some() {
+                                return Err(de::Error::duplicate_field("attestation_assertion"))
+                            }
+                            attestation_assertion = Some(map.next_value()?);
+                        }
+                        Field::OneTimePassword => {
+                            if one_time_password.is_some() {
+                                return Err(de::Error::duplicate_field("one_time_password"))
+                            }
+                            one_time_password = Some(map.next_value()?);
+                        }
+                        Field::Timestamp => {
+                            if timestamp.is_some() {
+                                return Err(de::Error::duplicate_field("timestamp"))
+                            }
+                            timestamp = Some(map.next_value()?);
+                        }
+                        Field::HashingAlgorithm => {
+                            if hashing_algorithm.is_some() {
+                                return Err(de::Error::duplicate_field("hashing_algorithm"))
+                            }
+                            hashing_algorithm = Some(map.next_value()?);
+                        }
+                        Field::HashedPassword => {
+                            if hashed_password.is_some() {
+                                return Err(de::Error::duplicate_field("hashed_password"))
+                            }
+                            hashed_password = Some(map.next_value()?);
+                        }
+                        Field::TicketType => {
+                            if ticket_type.is_some() {
+                                return Err(de::Error::duplicate_field("ticket_type"))
+                            }
+                            ticket_type = Some(map.next_value()?);
+                        }
+                        Field::TicketValue => {
+                            if ticket_value.is_some() {
+                                return Err(de::Error::duplicate_field("ticket_value"))
+                            }
+                            ticket_value = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                if let (Some(nonce), Some(attestation_type)) = (nonce, attestation_type) {
+                    return Ok(Credential::Attestation {
+                        nonce,
+                        attestation_type,
+                        attestation_measurement,
+                        attestation_assertion,
+                    })
+                } else if let (Some(ticket_type), Some(ticket_value)) = (ticket_type, ticket_value)
+                {
+                    return Ok(Credential::Ticket {
+                        ticket_type,
+                        ticket_value,
+                    })
+                } else if let Some(username) = username {
+                    if let (Some(timestamp), Some(hashed_password)) = (timestamp, hashed_password) {
+                        return Ok(Credential::HashedPassword {
+                            username,
+                            timestamp,
+                            hashing_algorithm,
+                            hashed_password,
+                        })
+                    } else if let Some(one_time_password) = one_time_password {
+                        return Ok(Credential::OneTimePassword {
+                            username,
+                            password,
+                            one_time_password,
+                        })
+                    }
+
+                    return Ok(Credential::UsernameAndPassword { username, password })
+                }
+
+                Ok(Credential::Device {
+                    device_serial_number,
+                    password,
+                    device_identifier,
+                    network_identifier,
+                    machine_identifier,
+                    media_identifier,
+                })
+            }
+        }
+
+        const FIELDS: &[&str] = &[
+            "username",
+            "password",
+            "device_serial_number",
+            "device_identifier",
+            "network_identifier",
+            "machine_identifier",
+            "media_identifier",
+            "nonce",
+            "attestation_type",
+            "attestation_measurement",
+            "attestation_assertion",
+            "one_time_password",
+            "timestamp",
+            "hashing_algorithm",
+            "hashed_password",
+            "ticket_type",
+            "ticket_value",
+        ];
+        deserializer.deserialize_struct("Credential", FIELDS, CredentialVisitor)
     }
 }
 
@@ -1785,8 +2118,8 @@ pub enum TicketType {
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Nonce {
-    nonce_id: Vec<u8>,
-    nonce_value: Vec<u8>,
+    pub nonce_id: Vec<u8>,
+    pub nonce_value: Vec<u8>,
 }
 
 /// This option SHALL only be present if the Batch Count is greater than 1.

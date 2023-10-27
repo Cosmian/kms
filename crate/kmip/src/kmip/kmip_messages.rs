@@ -24,14 +24,14 @@ use serde::{
 };
 
 use super::{
-    kmip_operations::{ErrorReason, Operation},
+    kmip_operations::{Direction, ErrorReason, Operation},
     kmip_types::{
         AsynchronousIndicator, AttestationType, BatchErrorContinuationOption, Credential,
         MessageExtension, Nonce, OperationEnumeration, ProtocolVersion, ResultStatusEnumeration,
     },
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct Message {
     /// Header of the request
@@ -75,7 +75,7 @@ impl Serialize for Message {
 /// Header of the request
 ///
 /// Contains fields whose presence is determined by the protocol features used.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct MessageHeader {
     pub protocol_version: ProtocolVersion,
@@ -132,7 +132,7 @@ pub struct MessageHeader {
 /// Batch item for a message request
 ///
 /// `request_payload` depends on the request
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct MessageBatchItem {
     /// Type of the KMIP operation
     pub operation: OperationEnumeration,
@@ -162,6 +162,13 @@ impl Serialize for MessageBatchItem {
                 self.request_payload.operation_enum()
             )))
         }
+        if self.request_payload.direction() != Direction::Request {
+            return Err(ser::Error::custom(format!(
+                "request payload operation is not a request type operation (`{:?}`)",
+                self.request_payload.direction()
+            )))
+        }
+
         let mut st = serializer.serialize_struct("MessageBatchItem", 5)?;
         st.serialize_field("Operation", &self.operation)?;
         if let Some(ephemeral) = &self.ephemeral {
@@ -328,7 +335,7 @@ impl<'de> Deserialize<'de> for MessageBatchItem {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct MessageResponse {
     /// Header of the response
@@ -371,7 +378,7 @@ impl Serialize for MessageResponse {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct MessageResponseHeader {
     pub protocol_version: ProtocolVersion,
@@ -397,7 +404,7 @@ pub struct MessageResponseHeader {
     pub batch_count: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct MessageResponseBatchItem {
     /// Required if present in request Batch Item
     pub operation: Option<OperationEnumeration>,
@@ -475,9 +482,19 @@ impl Serialize for MessageResponseBatchItem {
                         response_payload.operation_enum()
                     )))
                 }
+
+                if response_payload.direction() != Direction::Response {
+                    return Err(ser::Error::custom(format!(
+                        "response payload operation is not a response type operation (`{:?}`)",
+                        response_payload.direction()
+                    )))
+                }
             }
 
             st.serialize_field("Operation", &self.operation)?;
+        }
+        if let Some(unique_batch_item_id) = &self.unique_batch_item_id {
+            st.serialize_field("UniqueBatchItemId", unique_batch_item_id)?;
         }
         st.serialize_field("ResultStatus", &self.result_status)?;
         if let Some(result_reason) = &self.result_reason {
