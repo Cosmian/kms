@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use cosmian_kmip::kmip::kmip_objects::{Object, ObjectType};
 use cosmian_kms_client::KmsRestClient;
 
+use super::utils::objects_from_pem;
 use crate::{
-    actions::shared::utils::{import_object, read_key_from_json_ttlv_file},
+    actions::shared::utils::{import_object, read_bytes_from_file, read_key_from_json_ttlv_bytes},
     error::CliError,
 };
 
@@ -17,17 +19,19 @@ pub enum KeyFormat {
     //SecretData
 }
 
-/// Import a key in the KMS.
+/// Import a private or public key in the KMS.
 ///
-/// The key must be in KMIP JSON TTLV format.
 /// When no key unique id is specified, a random UUID v4 is generated.
 ///
-/// The key can be wrapped when imported. Wrapping using:
-///  - a password or a supplied key in base64 is done locally
-///  - a symmetric key id is performed server-side
+/// Import of a private key will automatically generate the corresponding public key
+/// with id `{private_key_id}-pub`.
 ///
-/// A password is first converted to a 256-bit key using Argon 2.
-/// Wrapping is performed according to RFC 5649.
+/// By default, the format is expected to be JSON TTLV but
+/// other formats can be specified with the option `-f`.
+///   * json-ttlv (the default)
+///   * pem (PKCS#1, PKCS#8, SEC1): the function will attempt to detect the PKCS format
+///   * der
+///   * symmetric-key
 ///
 /// Tags can later be used to retrieve the key. Tags are optional.
 #[derive(Parser, Debug)]
@@ -41,7 +45,12 @@ pub struct ImportKeyAction {
     #[clap(required = false)]
     key_id: Option<String>,
 
-    /// Unwrap the object if it is wrapped before storing it
+    /// The format of the key
+    #[clap(long = "key-format", short = 'f', default_value = "json-ttlv")]
+    key_format: KeyFormat,
+
+    /// In the case of a JSON TTLV key,
+    /// unwrap the key if it is wrapped before storing it
     #[clap(
         long = "unwrap",
         short = 'u',
@@ -68,7 +77,12 @@ pub struct ImportKeyAction {
 impl ImportKeyAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // read the key file
-        let object = read_key_from_json_ttlv_file(&self.key_file)?;
+        let bytes = read_bytes_from_file(&self.key_file)?;
+        let object = match &self.key_format {
+            KeyFormat::JsonTtlv => read_key_from_json_ttlv_bytes(&bytes)?,
+            KeyFormat::Pem => read_key_from_pem(&bytes)?,
+            x => unimplemented!("The key format {:?} is not supported yet", x),
+        };
         let object_type = object.object_type();
 
         // import the key
@@ -96,5 +110,28 @@ impl ImportKeyAction {
         }
 
         Ok(())
+    }
+}
+
+fn read_key_from_pem(bytes: &[u8]) -> Result<Object, CliError> {
+    let mut objects = objects_from_pem(bytes)?;
+    if objects.len() > 1 {
+        println!(
+            "Warning: the PEM file contains multiple objects. Only the private key will be \
+             imported. A corresponding public key will be generated automatically."
+        );
+    }
+    let object = objects
+        .pop()
+        .ok_or_else(|| CliError::Default("The PEM file does not contain any object".to_owned()))?;
+    match object.object_type() {
+        ObjectType::PrivateKey | ObjectType::PublicKey => Ok(object),
+        ObjectType::Certificate => Err(CliError::Default(
+            "For certificates, use the `ckms certificate` sub-command".to_owned(),
+        )),
+        _ => Err(CliError::Default(format!(
+            "The PEM file contains an object of type {:?} which is not supported",
+            object.object_type()
+        ))),
     }
 }
