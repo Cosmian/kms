@@ -56,7 +56,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         sk_key_block.cryptographic_algorithm,
         Some(CryptographicAlgorithm::ECDH),
     );
-    assert_eq!(sk_key_block.cryptographic_length, Q_LENGTH_BITS,);
+    assert_eq!(sk_key_block.cryptographic_length, Some(Q_LENGTH_BITS));
     assert_eq!(
         sk_key_block.key_format_type,
         KeyFormatType::TransparentECPrivateKey
@@ -101,7 +101,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         pk_key_block.cryptographic_algorithm,
         Some(CryptographicAlgorithm::ECDH),
     );
-    assert_eq!(pk_key_block.cryptographic_length, Q_LENGTH_BITS,);
+    assert_eq!(pk_key_block.cryptographic_length, Some(Q_LENGTH_BITS));
     assert_eq!(
         pk_key_block.key_format_type,
         KeyFormatType::TransparentECPublicKey
@@ -181,7 +181,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
                 attributes: None,
             },
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            cryptographic_length: wrapped_symmetric_key.len() as i32,
+            cryptographic_length: Some(wrapped_symmetric_key.len() as i32 * 8),
             key_wrapping_data: Some(KeyWrappingData {
                 wrapping_method: WrappingMethod::Encrypt,
                 iv_counter_nonce: Some(aesgcm_nonce.to_vec()),

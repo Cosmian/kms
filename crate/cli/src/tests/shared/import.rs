@@ -185,7 +185,7 @@ pub fn export_import_test(
     )?;
     let object = read_key_from_json_ttlv_file(&PathBuf::from("/tmp/output.export"))?;
     assert_eq!(object.key_block()?.key_bytes()?, key_bytes);
-    assert_eq!(object.key_block()?.cryptographic_algorithm, algorithm);
+    assert_eq!(object.key_block()?.cryptographic_algorithm, Some(algorithm));
     assert!(object.key_block()?.key_wrapping_data.is_none());
 
     Ok(())

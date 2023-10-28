@@ -130,12 +130,17 @@ impl KMS {
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => {
                     match &key_block.cryptographic_algorithm {
-                        CryptographicAlgorithm::AES => {
+                        Some(CryptographicAlgorithm::AES) => {
                             Ok(Box::new(AesGcmSystem::instantiate(&owm.id, &owm.object)?)
                                 as Box<dyn EncryptionSystem>)
                         }
                         other => {
-                            kms_not_supported!("symmetric encryption with algorithm: {other:?}")
+                            kms_not_supported!(
+                                "symmetric encryption with algorithm: {}",
+                                other
+                                    .map(|alg| alg.to_string())
+                                    .unwrap_or("[N/A]".to_string())
+                            )
                         }
                     }
                 }
@@ -147,21 +152,23 @@ impl KMS {
                 )
                     as Box<dyn EncryptionSystem>),
                 KeyFormatType::TransparentECPublicKey => match key_block.cryptographic_algorithm {
-                    CryptographicAlgorithm::ECDH => Ok(Box::new(
+                    Some(CryptographicAlgorithm::ECDH) => Ok(Box::new(
                         HybridEncryptionSystem::instantiate(&owm.id, &owm.object)?,
                     )
                         as Box<dyn EncryptionSystem>),
                     x => kms_not_supported!(
-                        "EC public key with cryptographic algorithm {x:?} not supported",
+                        "EC public key with cryptographic algorithm {} not supported",
+                        x.map(|alg| alg.to_string()).unwrap_or("[N/A]".to_string())
                     ),
                 },
                 KeyFormatType::TransparentRSAPublicKey => match key_block.cryptographic_algorithm {
-                    CryptographicAlgorithm::RSA => Ok(
-                        Box::new(HybridEncryptionSystem::instantiate(&owm.id, &owm.object)?)
-                            as Box<dyn EncryptionSystem>,
-                    ),
+                    Some(CryptographicAlgorithm::RSA) => Ok(Box::new(
+                        HybridEncryptionSystem::instantiate(&owm.id, &owm.object)?,
+                    )
+                        as Box<dyn EncryptionSystem>),
                     x => kms_not_supported!(
-                        "RSA public key with cryptographic algorithm {x:?} not supported"
+                        "RSA public key with cryptographic algorithm {} not supported",
+                        x.map(|alg| alg.to_string()).unwrap_or("[N/A]".to_string())
                     ),
                 },
                 other => kms_not_supported!("encryption with public keys of format: {other}"),
@@ -210,24 +217,26 @@ impl KMS {
                     CovercryptDecryption::instantiate(cover_crypt, &owm.id, &owm.object)?,
                 )),
                 KeyFormatType::TransparentECPrivateKey => match key_block.cryptographic_algorithm {
-                    CryptographicAlgorithm::ECDH => Ok(Box::new(HybridDecryptionSystem {
+                    Some(CryptographicAlgorithm::ECDH) => Ok(Box::new(HybridDecryptionSystem {
                         private_key: owm.object.clone(),
                         private_key_uid: Some(owm.id),
                     })
                         as Box<dyn DecryptionSystem>),
                     x => kms_not_supported!(
-                        "EC public keys with cryptographic algorithm {x:?} not supported"
+                        "EC public keys with cryptographic algorithm {} not supported",
+                        x.map(|alg| alg.to_string()).unwrap_or("[N/A]".to_string())
                     ),
                 },
                 KeyFormatType::TransparentRSAPrivateKey => {
                     match key_block.cryptographic_algorithm {
-                        CryptographicAlgorithm::RSA => Ok(Box::new(HybridDecryptionSystem {
+                        Some(CryptographicAlgorithm::RSA) => Ok(Box::new(HybridDecryptionSystem {
                             private_key: owm.object.clone(),
                             private_key_uid: Some(owm.id),
                         })
                             as Box<dyn DecryptionSystem>),
                         x => kms_not_supported!(
-                            "RSA public keys with cryptographic algorithm {x:?} not supported"
+                            "RSA public keys with cryptographic algorithm {} not supported",
+                            x.map(|alg| alg.to_string()).unwrap_or("[N/A]".to_string())
                         ),
                     }
                 }
@@ -236,11 +245,16 @@ impl KMS {
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => {
                     match &key_block.cryptographic_algorithm {
-                        CryptographicAlgorithm::AES => {
+                        Some(CryptographicAlgorithm::AES) => {
                             Ok(Box::new(AesGcmSystem::instantiate(&owm.id, &owm.object)?))
                         }
                         other => {
-                            kms_not_supported!("symmetric decryption with algorithm: {other:?}")
+                            kms_not_supported!(
+                                "symmetric decryption with algorithm: {}",
+                                other
+                                    .map(|alg| alg.to_string())
+                                    .unwrap_or("[N/A]".to_string())
+                            )
                         }
                     }
                 }

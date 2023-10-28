@@ -50,9 +50,12 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     };
     assert_eq!(
         sk_key_block.cryptographic_algorithm,
-        CryptographicAlgorithm::ECDH,
+        Some(CryptographicAlgorithm::ECDH),
     );
-    assert_eq!(sk_key_block.cryptographic_length, operation::Q_LENGTH_BITS,);
+    assert_eq!(
+        sk_key_block.cryptographic_length,
+        Some(operation::Q_LENGTH_BITS)
+    );
     assert_eq!(
         sk_key_block.key_format_type,
         KeyFormatType::TransparentECPrivateKey
@@ -96,9 +99,12 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     };
     assert_eq!(
         pk_key_block.cryptographic_algorithm,
-        CryptographicAlgorithm::ECDH,
+        Some(CryptographicAlgorithm::ECDH),
     );
-    assert_eq!(pk_key_block.cryptographic_length, operation::Q_LENGTH_BITS,);
+    assert_eq!(
+        pk_key_block.cryptographic_length,
+        Some(operation::Q_LENGTH_BITS)
+    );
     assert_eq!(
         pk_key_block.key_format_type,
         KeyFormatType::TransparentECPublicKey
