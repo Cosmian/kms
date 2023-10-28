@@ -125,7 +125,7 @@ pub fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
             },
             TTLV {
                 tag: "CryptographicLength".to_string(),
-                value: TTLValue::Integer(256),
+                value: TTLValue::Integer(key_value.len() as i32 * 8),
             },
         ]),
     }

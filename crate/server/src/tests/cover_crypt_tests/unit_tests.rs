@@ -95,7 +95,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         recovered_kms_sk_key_block.cryptographic_algorithm
     );
     assert_eq!(
-        CryptographicAlgorithm::CoverCrypt,
+        Some(CryptographicAlgorithm::CoverCrypt),
         recovered_kms_sk_key_block.cryptographic_algorithm
     );
 
@@ -119,7 +119,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         recovered_kms_pk_key_block.cryptographic_algorithm
     );
     assert_eq!(
-        CryptographicAlgorithm::CoverCrypt,
+        Some(CryptographicAlgorithm::CoverCrypt),
         recovered_kms_pk_key_block.cryptographic_algorithm
     );
 
