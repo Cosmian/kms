@@ -84,7 +84,7 @@ pub fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
                     },
                     TTLV {
                         tag: "CryptographicLength".to_string(),
-                        value: TTLValue::Integer(256),
+                        value: TTLValue::Integer(key_value.len() as i32 * 8),
                     },
                     TTLV {
                         tag: "CryptographicUsageMask".to_string(),

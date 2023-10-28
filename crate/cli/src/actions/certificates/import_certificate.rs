@@ -95,6 +95,7 @@ impl ImportCertificateAction {
             CertificateInputFormat::PEM => {
                 debug!("CLI: import certificate as PEM file");
                 let pem_value = read_bytes_from_file(&self.get_certificate_file()?)?;
+                debug!("pem_value: {:?}", String::from_utf8(pem_value.clone()));
                 // convert the PEM to X509 to make sure it is correct
                 let certificate = Certificate::from_pem(&pem_value).map_err(|e| {
                     CliError::Conversion(format!("Cannot read PEM content to X509. Error: {e:?}"))
