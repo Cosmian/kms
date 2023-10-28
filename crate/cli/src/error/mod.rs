@@ -7,6 +7,7 @@ use cosmian_kmip::{
 use cosmian_kms_client::RestClientError;
 use cosmian_kms_utils::error::KmipUtilsError;
 use openssl::error::ErrorStack;
+use pem::PemError;
 use thiserror::Error;
 pub mod result;
 
@@ -194,6 +195,12 @@ impl From<base64::DecodeError> for CliError {
 impl From<RestClientError> for CliError {
     fn from(e: RestClientError) -> Self {
         Self::KmsClientError(e.to_string())
+    }
+}
+
+impl From<PemError> for CliError {
+    fn from(e: PemError) -> Self {
+        Self::Conversion(format!("PEM error: {}", e.to_string()))
     }
 }
 

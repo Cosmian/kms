@@ -4,7 +4,7 @@ use assert_cmd::prelude::*;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 
 use crate::{
-    actions::shared::utils::read_key_from_file,
+    actions::shared::utils::read_key_from_json_ttlv_file,
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
@@ -160,7 +160,7 @@ pub fn export_import_test(
         None,
         false,
     )?;
-    let object = read_key_from_file(&PathBuf::from("/tmp/output.export"))?;
+    let object = read_key_from_json_ttlv_file(&PathBuf::from("/tmp/output.export"))?;
     let key_bytes = object.key_block()?.key_bytes()?;
 
     // import and re-export
@@ -183,7 +183,7 @@ pub fn export_import_test(
         None,
         false,
     )?;
-    let object = read_key_from_file(&PathBuf::from("/tmp/output.export"))?;
+    let object = read_key_from_json_ttlv_file(&PathBuf::from("/tmp/output.export"))?;
     assert_eq!(object.key_block()?.key_bytes()?, key_bytes);
     assert_eq!(object.key_block()?.cryptographic_algorithm, algorithm);
     assert!(object.key_block()?.key_wrapping_data.is_none());

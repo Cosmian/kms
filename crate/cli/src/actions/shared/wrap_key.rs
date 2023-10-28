@@ -13,7 +13,7 @@ use rand::SeedableRng;
 
 use crate::{
     actions::shared::{
-        utils::{export_object, read_key_from_file, write_kmip_object_to_file},
+        utils::{export_object, read_key_from_json_ttlv_file, write_kmip_object_to_file},
         SYMMETRIC_WRAPPING_KEY_SIZE,
     },
     cli_bail,
@@ -62,7 +62,7 @@ pub struct WrapKeyAction {
 impl WrapKeyAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // read the key file
-        let mut object = read_key_from_file(&self.key_file_in)?;
+        let mut object = read_key_from_json_ttlv_file(&self.key_file_in)?;
 
         // cannot wrap an already wrapped key
         if object.key_wrapping_data().is_some() {
@@ -86,7 +86,7 @@ impl WrapKeyAction {
         } else if let Some(key_id) = &self.wrap_key_id {
             export_object(kms_rest_client, key_id, false, None, false).await?
         } else if let Some(key_file) = &self.wrap_key_file {
-            read_key_from_file(key_file)?
+            read_key_from_json_ttlv_file(key_file)?
         } else {
             cli_bail!("one of the wrapping options must be specified");
         };

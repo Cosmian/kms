@@ -28,6 +28,7 @@ hex = { workspace = true }
 openssl = { workspace = true }
 ## When this crate is ready, remove the use of openssl and use this instead
 # pkcs12 = { version = "0" }
+pem = "3"
 rand = "0.8"
 ratls = { workspace = true }
 reqwest = { workspace = true }

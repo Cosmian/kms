@@ -144,14 +144,14 @@ impl UserDecryptionKeysHandler {
         }]);
         Ok(Object::PrivateKey {
             key_block: KeyBlock {
-                cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
+                cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(user_decryption_key_bytes.to_vec()),
                     attributes: Some(attributes),
                 },
-                cryptographic_length: user_decryption_key_len as i32 * 8,
+                cryptographic_length: Some(user_decryption_key_len as i32 * 8),
                 key_wrapping_data: None,
             },
         })
@@ -199,14 +199,14 @@ impl UserDecryptionKeysHandler {
 
         Ok(Object::PrivateKey {
             key_block: KeyBlock {
-                cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
+                cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(user_decryption_key_bytes.to_vec()),
                     attributes: Some(usk_attributes),
                 },
-                cryptographic_length: user_decryption_key_len,
+                cryptographic_length: Some(user_decryption_key_len),
                 key_wrapping_data: None,
             },
         })
