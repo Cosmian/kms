@@ -11,7 +11,7 @@ use tracing::{debug, trace};
 use x509_parser::nom::AsBytes;
 
 use crate::{
-    actions::shared::utils::{import_object, read_bytes_from_file, read_key_from_file},
+    actions::shared::utils::{import_object, read_bytes_from_file, read_key_from_json_ttlv_file},
     error::CliError,
 };
 
@@ -42,7 +42,13 @@ pub enum CertificateInputFormat {
 pub struct ImportCertificateAction {
     /// The input file in PEM, KMIP-JSON-TTLV or PKCS#12 format.
     #[clap(
-        required_if_eq_any([("input_format", "ttlv"), ("input_format", "pem"),("input_format", "der"), ("input_format", "chain"), ("input_format", "pkcs12")])
+        required_if_eq_any([
+            ("input_format", "ttlv"), 
+            ("input_format", "pem"),
+            ("input_format", "der"), 
+            ("input_format", "chain"), 
+            ("input_format", "pkcs12")
+            ])
     )]
     certificate_file: Option<PathBuf>,
 
@@ -81,7 +87,7 @@ impl ImportCertificateAction {
             CertificateInputFormat::TTLV => {
                 trace!("CLI: import certificate as TTLV JSON file");
                 // read the certificate file
-                let object = read_key_from_file(self.get_certificate_file()?)?;
+                let object = read_key_from_json_ttlv_file(self.get_certificate_file()?)?;
                 trace!("CLI: read key from file OK");
                 self.import_chain(kms_rest_client, vec![object], self.replace_existing)
                     .await?;

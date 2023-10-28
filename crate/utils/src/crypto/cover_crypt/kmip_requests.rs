@@ -114,14 +114,14 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
         attributes: attributes.clone(),
         object: Object::PrivateKey {
             key_block: KeyBlock {
-                cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
+                cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(key),
                     attributes: Some(attributes),
                 },
-                cryptographic_length: private_key.len() as i32,
+                cryptographic_length: Some(private_key.len() as i32 * 8),
                 key_wrapping_data: if is_wrapped {
                     Some(KeyWrappingData {
                         wrapping_method: WrappingMethod::Encrypt,
@@ -187,14 +187,14 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
         attributes: attributes.clone(),
         object: Object::PrivateKey {
             key_block: KeyBlock {
-                cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
+                cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(key),
                     attributes: Some(attributes),
                 },
-                cryptographic_length: private_key.len() as i32,
+                cryptographic_length: Some(private_key.len() as i32 * 8),
                 key_wrapping_data: if is_wrapped {
                     Some(KeyWrappingData {
                         wrapping_method: WrappingMethod::Encrypt,
@@ -242,14 +242,14 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
         attributes: attributes.clone(),
         object: Object::PublicKey {
             key_block: KeyBlock {
-                cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
+                cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
                 key_format_type: KeyFormatType::CoverCryptPublicKey,
                 key_compression_type: None,
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(public_key.to_vec()),
                     attributes: Some(attributes),
                 },
-                cryptographic_length: public_key.len() as i32,
+                cryptographic_length: Some(public_key.len() as i32 * 8),
                 key_wrapping_data: None,
             },
         },

@@ -23,12 +23,22 @@ use crate::{
 #[serde(rename_all = "PascalCase")]
 pub struct KeyBlock {
     pub key_format_type: KeyFormatType,
+    /// Indicates the format of the elliptic curve public key. By default, the public key is uncompressed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_compression_type: Option<KeyCompressionType>,
-    // may be a KeyValue serialized struct - see specs
+    /// Byte String: for wrapped Key Value; Structure: for plaintext Key Value
     pub key_value: KeyValue,
-    pub cryptographic_algorithm: CryptographicAlgorithm,
-    pub cryptographic_length: i32,
+    /// MAY be omitted only if this information is available from the Key Value.
+    /// Does not apply to Secret Data  or Opaque.
+    /// If present, the Cryptographic Length SHALL also be present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    /// MAY be omitted only if this information is available from the Key Value.
+    /// Does not apply to Secret Data (or Opaque.
+    /// If present, the Cryptographic Algorithm SHALL also be present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_length: Option<i32>,
+    /// SHALL only be present if the key is wrapped.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrapping_data: Option<KeyWrappingData>,
 }
@@ -327,6 +337,10 @@ impl Default for KeyWrappingSpecification {
 // }
 // ```
 // So we use the `untagged` which unfortunately breaks pascalCase
+//
+/// Byte String: for Raw, Opaque, PKCS1, PKCS8, ECPrivateKey, or Extension Key Format types;
+/// Structure: for Transparent, or Extension Key Format Types
+/// The Key Value Byte String is either the wrapped TTLV-encoded Key Value structure, or the wrapped un-encoded value of the Byte String Key Material field.
 #[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum KeyMaterial {

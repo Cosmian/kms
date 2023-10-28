@@ -18,7 +18,7 @@ pub fn create_symmetric_key(
     //
     Object::SymmetricKey {
         key_block: KeyBlock {
-            cryptographic_algorithm,
+            cryptographic_algorithm: Some(cryptographic_algorithm),
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
             key_value: KeyValue {
@@ -40,7 +40,7 @@ pub fn create_symmetric_key(
                     ..Attributes::default()
                 }),
             },
-            cryptographic_length: symmetric_key_len,
+            cryptographic_length: Some(symmetric_key_len),
             key_wrapping_data: None,
         },
     }

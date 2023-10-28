@@ -47,7 +47,7 @@ pub fn wrapped_secret_key(
         ..Attributes::default()
     };
 
-    let cryptographic_length = sk.encrypted_symmetric_key.len() as i32;
+    let cryptographic_length = sk.encrypted_symmetric_key.len() as i32 * 8;
     let key_value = KeyValue {
         key_material: KeyMaterial::ByteString(sk.encrypted_symmetric_key),
         attributes: Some(wrapped_key_attributes),
@@ -60,11 +60,11 @@ pub fn wrapped_secret_key(
 
     Ok(Object::SymmetricKey {
         key_block: KeyBlock {
-            cryptographic_algorithm: CryptographicAlgorithm::AES,
+            cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
             key_value,
-            cryptographic_length,
+            cryptographic_length: Some(cryptographic_length),
             key_wrapping_data: Some(key_wrapping_data),
         },
     })
@@ -130,7 +130,7 @@ impl TryFrom<&KeyBlock> for CoverCryptSymmetricKey {
     type Error = KmipError;
 
     fn try_from(sk: &KeyBlock) -> Result<Self, Self::Error> {
-        if sk.cryptographic_algorithm != CryptographicAlgorithm::CoverCrypt
+        if sk.cryptographic_algorithm != Some(CryptographicAlgorithm::CoverCrypt)
             || sk.key_format_type != KeyFormatType::TransparentSymmetricKey
         {
             return Err(KmipError::InvalidKmipObject(

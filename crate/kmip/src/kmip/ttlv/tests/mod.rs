@@ -35,7 +35,7 @@ pub fn aes_key_value(key_value: &[u8]) -> KeyValue {
         attributes: Some(Attributes {
             object_type: Some(ObjectType::SymmetricKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            cryptographic_length: Some(256),
+            cryptographic_length: Some(key_value.len() as i32 * 8),
             cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
             ..Attributes::default()
@@ -48,8 +48,8 @@ pub fn aes_key_block(key_value: &[u8]) -> KeyBlock {
         key_format_type: KeyFormatType::TransparentSymmetricKey,
         key_compression_type: None,
         key_value: aes_key_value(key_value),
-        cryptographic_algorithm: CryptographicAlgorithm::AES,
-        cryptographic_length: 256,
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        cryptographic_length: Some(key_value.len() as i32 * 8),
         key_wrapping_data: None,
     }
 }
@@ -681,7 +681,12 @@ pub fn test_import_correct_object() {
     assert_eq!(ObjectType::PublicKey, import.object.object_type());
     assert_eq!(
         CryptographicAlgorithm::CoverCrypt,
-        import.object.key_block().unwrap().cryptographic_algorithm
+        import
+            .object
+            .key_block()
+            .unwrap()
+            .cryptographic_algorithm
+            .unwrap()
     );
 }
 

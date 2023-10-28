@@ -56,6 +56,26 @@ pub enum SplitKeyMethod {
     PolynomialSharingGf28 = 0x0000_0004,
 }
 
+/// Keys have a default Key Format Type that SHALL be produced by KMIP servers.
+///
+/// The default Key Format Type by object (and algorithm) is listed in the following table:
+///
+/// | Type | Default Key Format Type |
+/// |------|-------------------------|
+/// | Certificate | X.509 |
+/// | Certificate Request | PKCS#10 |
+/// | Opaque Object | Opaque |
+/// | PGP Key | Raw |
+/// | Secret Data | Raw |
+/// | Symmetric Key | Raw |
+/// | Split Key | Raw |
+/// | RSA Private Key | PKCS#1 |
+/// | RSA Public Key | PKCS#1 |
+/// | EC Private Key | Transparent EC Private Key |
+/// | EC Public Key | Transparent EC Public Key |
+/// | DSA Private Key | Transparent DSA Private Key |
+/// | DSA Public Key | Transparent DSA Public Key |
+///
 #[allow(clippy::enum_clike_unportable_variant)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumIter)]
 pub enum KeyFormatType {

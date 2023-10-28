@@ -27,7 +27,7 @@ pub const Q_LENGTH_BITS: i32 = (SECRET_KEY_LENGTH * 8) as i32;
 pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Object {
     Object::PublicKey {
         key_block: KeyBlock {
-            cryptographic_algorithm: CryptographicAlgorithm::ECDH,
+            cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
             key_format_type: KeyFormatType::TransparentECPublicKey,
             key_compression_type: None,
             key_value: KeyValue {
@@ -59,7 +59,7 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Obj
                     ..Attributes::default()
                 }),
             },
-            cryptographic_length: Q_LENGTH_BITS,
+            cryptographic_length: Some(Q_LENGTH_BITS),
             key_wrapping_data: None,
         },
     }
@@ -71,7 +71,7 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Obj
 pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Object {
     Object::PrivateKey {
         key_block: KeyBlock {
-            cryptographic_algorithm: CryptographicAlgorithm::ECDH,
+            cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
             key_format_type: KeyFormatType::TransparentECPrivateKey,
             key_compression_type: None,
             key_value: KeyValue {
@@ -103,7 +103,7 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Obj
                     ..Attributes::default()
                 }),
             },
-            cryptographic_length: Q_LENGTH_BITS,
+            cryptographic_length: Some(Q_LENGTH_BITS),
             key_wrapping_data: None,
         },
     }
