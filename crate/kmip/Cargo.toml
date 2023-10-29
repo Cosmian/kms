@@ -4,18 +4,24 @@ version = "4.9.1"
 edition = "2021"
 license-file = "../../LICENSE.md"
 
+[features]
+default = []
+openssl = ["dep:openssl"]
+
 [dependencies]
 bitflags = { workspace = true }
 chrono = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }
-num-bigint-dig = { workspace = true }
+num-bigint = { workspace = true }
+openssl = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 cosmian_logger = { path = "../logger" }

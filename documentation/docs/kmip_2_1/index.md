@@ -4,7 +4,7 @@ The Key Management Interoperability Protocol Specification Version 2.1 and Key M
 
 The goal of the OASIS KMIP is to define a single, comprehensive protocol for communication between encryption systems and a broad range of new and legacy enterprise applications, including email, databases, and storage devices. By removing redundant, incompatible key management processes, KMIP provides better data security while at the same time reducing expenditures on multiple products.
 
-KMIP is a massive specification, and support is limited to the requirements of Cosmian advanced cryptography. Although the KMS server functionalities evolve quickly to support the growing demand of customers, the Cosmian KMS server, like most KMS servers, is in no way claiming to be a complete solution for all cryptographic objects and operations.
+KMIP is a massive specification, and support is limited to the requirements of Cosmian advanced cryptography usage cases. Although the KMS server functionalities evolve quickly to support the growing demand of customers, the Cosmian KMS server, like most KMS servers, is in no way claiming to be a complete solution for all cryptographic objects and operations.
 
 ### Objects tagging extension
 
@@ -23,6 +23,38 @@ Since there is no provision in the KMIP 2.1 specification for tagging. The Cosmi
 1. When `Attributes` are passed as part of the KMIP operation, such as in the `Create`, `Create Key Pair`, `Locate`, and `Import` operations, the tags are passed as `VendorAttributes` with the vendor identification `Cosmian` and attribute name `tag`. The value is the serialization of the tags as a JSON array of strings.
 
 2. When unique identifiers are passed as part of the KMIP operation, such as in the `Encrypt`, `Decrypt`, `Get`, `Get Attributes`, `Revoke`, and `Destroy` operations, the tags are in the unique identifier itself as a serialized JSON array e.g. `[ "tag1", "tag2" ]`.
+
+### Notes on KMIP 2.1 PKCS formats compliance and interoperability
+
+The KMIP 2.1 specification states that keys have a default Key Format Type that SHALL be produced by KMIP servers.
+When requesting the export of an Object without specifying the Key Format Type, a default Key Format Type by object (and algorithm) should be used as listed in the following table:
+
+| Type | Default Key Format Type |
+|------|-------------------------|
+| Certificate | X.509 |
+| Certificate Request | PKCS#10 |
+| Opaque Object | Opaque |
+| PGP Key | Raw |
+| Secret Data | Raw |
+| Symmetric Key | Raw |
+| Split Key | Raw |
+| RSA Private Key | PKCS#1 |
+| RSA Public Key | PKCS#1 |
+| EC Private Key | Transparent EC Private Key |
+| EC Public Key | Transparent EC Public Key |
+| DSA Private Key | Transparent DSA Private Key |
+| DSA Public Key | Transparent DSA Public Key |
+
+Some of these formats need to be updated, and the IETF recommends using PKCS#8 and Subject Public Key Info. 
+So, even though this server enforces KMIP 2.1 default export formats, the storage formats used are:
+ - `PKCS#8 DER` for RSA and EC private Keys (RFC 5208 and 5958).
+ - `SPKI DER` (RFC 5480) for RSA and EC public keys, using the Key Format Type PKCS#8, since SPKI is not listed.
+ - `X509 DER` for certificates (RFC 5280).
+ - `PKCS#10 DER` for certificate requests (RFC 2986).
+ - `TransparentSymmetricKey` for symmetric keys
+ - `Raw` for opaque objects and Secret Data
+
+Users requesting keys are encouraged to request them in the storage formats above to avoid conversion.
 
 ### Example API calls
 

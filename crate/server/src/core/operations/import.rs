@@ -1,14 +1,17 @@
 use std::collections::HashSet;
 
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Import, ImportResponse},
-    kmip_types::{
-        Attributes, CertificateType, CryptographicAlgorithm, CryptographicDomainParameters,
-        CryptographicUsageMask, KeyFormatType, KeyWrapType, Link, LinkType, LinkedObjectIdentifier,
-        RecommendedCurve, StateEnumeration,
+use cosmian_kmip::{
+    kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Import, ImportResponse},
+        kmip_types::{
+            Attributes, CertificateType, CryptographicAlgorithm, CryptographicDomainParameters,
+            CryptographicUsageMask, KeyFormatType, KeyWrapType, Link, LinkType,
+            LinkedObjectIdentifier, RecommendedCurve, StateEnumeration,
+        },
     },
+    openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
@@ -335,31 +338,59 @@ pub async fn import(
 
     let object_type = request.object.object_type();
     let object = match object_type {
-        ObjectType::SymmetricKey | ObjectType::PublicKey | ObjectType::PrivateKey => {
+        ObjectType::SymmetricKey => {
             let mut object = request.object;
+            // insert the tag corresponding to the object type
+            tags.insert("_kk".to_string());
+            // unwrap key block if required
             let object_key_block = object.key_block_mut()?;
             // unwrap before storing if requested
             if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
                 unwrap_key(object_type, object_key_block, kms, owner, params).await?;
             }
             // replace attributes
+            object_key_block.key_value.attributes = Some(request.attributes);
+            object
+        }
+        ObjectType::PublicKey => {
+            // first, see if the public key can be parsed as an openssl object
+            let openssl_pk = kmip_public_key_to_openssl(&request.object)?;
+            // insert the tag corresponding to the object type
+            tags.insert("_pk".to_string());
+            // Update the object
+            let mut object = request.object;
+            let object_key_block = object.key_block_mut()?;
+            // unwrap key block if required
+            if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
+                unwrap_key(object_type, object_key_block, kms, owner, params).await?;
+            }
+            // The Key Format Type should really be SPKI, but it does not exist
+            object_key_block.key_format_type = KeyFormatType::PKCS8;
             object_key_block.key_value = KeyValue {
-                key_material: object_key_block.key_value.key_material.clone(),
+                key_material: KeyMaterial::ByteString(openssl_pk.public_key_to_der()?),
+                // replace attributes
                 attributes: Some(request.attributes),
             };
+            object
+        }
+        ObjectType::PrivateKey => {
+            // first, see if the private key can be parsed as an openssl object
+            let openssl_sk = kmip_private_key_to_openssl(&request.object)?;
             // insert the tag corresponding to the object type
-            match object_type {
-                ObjectType::SymmetricKey => {
-                    tags.insert("_kk".to_string());
-                }
-                ObjectType::PublicKey => {
-                    tags.insert("_pk".to_string());
-                }
-                ObjectType::PrivateKey => {
-                    tags.insert("_sk".to_string());
-                }
-                _ => unreachable!(),
+            tags.insert("_sk".to_string());
+            // Update the object
+            let mut object = request.object;
+            let object_key_block = object.key_block_mut()?;
+            // unwrap key block if required
+            if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
+                unwrap_key(object_type, object_key_block, kms, owner, params).await?;
             }
+            object_key_block.key_format_type = KeyFormatType::PKCS8;
+            object_key_block.key_value = KeyValue {
+                key_material: KeyMaterial::ByteString(openssl_sk.private_key_to_pkcs8()?),
+                // replace attributes
+                attributes: Some(request.attributes),
+            };
             object
         }
         ObjectType::Certificate => {

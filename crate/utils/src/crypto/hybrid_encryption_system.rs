@@ -5,7 +5,10 @@
 //! This module uses for PKCS#11 RSA hybrid encryption system the suite `Aes256Sha256`
 //! These schemes do not support additional authenticated data.
 //!
-use std::sync::{Arc, Mutex};
+use std::{
+    ops::Deref,
+    sync::{Arc, Mutex},
+};
 
 use cloudproof::reexport::crypto_core::{
     reexport::{
@@ -52,7 +55,7 @@ impl HybridEncryptionSystem {
         Ok(Self {
             rng: Arc::new(Mutex::new(rng)),
             public_key_uid: public_key_uid.into(),
-            public_key_in_der_bytes: public_key.key_block()?.key_bytes()?,
+            public_key_in_der_bytes: public_key.key_block()?.key_bytes()?.deref().to_owned(),
             public_key_id: Id::X25519,
             curve_nid: None,
         })
@@ -239,6 +242,7 @@ pub struct HybridDecryptionSystem {
 }
 
 impl HybridDecryptionSystem {
+    // TODO: This should support Zeroized keys - Maybe do this as we re-inject openssl here
     fn ecies_decrypt(
         &self,
         recommended_curve: RecommendedCurve,
@@ -246,29 +250,49 @@ impl HybridDecryptionSystem {
     ) -> Result<Vec<u8>, KmipUtilsError> {
         let plaintext = match recommended_curve {
             RecommendedCurve::P192 => {
-                let private_key_bytes: [u8; P192_PRIVATE_KEY_LENGTH] =
-                    self.private_key.key_block()?.key_bytes()?.try_into()?;
-                let private_key = P192PrivateKey::try_from_bytes(private_key_bytes)?;
+                let private_key_bytes: [u8; P192_PRIVATE_KEY_LENGTH] = self
+                    .private_key
+                    .key_block()?
+                    .key_bytes()?
+                    .deref()
+                    .to_owned()
+                    .try_into()?;
+                let private_key = P192PrivateKey::try_from_bytes(private_key_bytes.clone())?;
                 EciesP192Aes128::decrypt(&private_key, ciphertext, None)?
             }
             RecommendedCurve::P224 => {
-                let private_key_bytes: [u8; P224_PRIVATE_KEY_LENGTH] =
-                    self.private_key.key_block()?.key_bytes()?.try_into()?;
+                let private_key_bytes: [u8; P224_PRIVATE_KEY_LENGTH] = self
+                    .private_key
+                    .key_block()?
+                    .key_bytes()?
+                    .deref()
+                    .to_owned()
+                    .try_into()?;
                 let private_key = P224PrivateKey::try_from_bytes(private_key_bytes)?;
                 EciesP224Aes128::decrypt(&private_key, ciphertext, None)?
             }
             RecommendedCurve::P256 => {
                 debug!("decrypt: RecommendedCurve::P256: size: {P256_PRIVATE_KEY_LENGTH}");
-                let private_key_bytes: [u8; P256_PRIVATE_KEY_LENGTH] =
-                    self.private_key.key_block()?.key_bytes()?.try_into()?;
+                let private_key_bytes: [u8; P256_PRIVATE_KEY_LENGTH] = self
+                    .private_key
+                    .key_block()?
+                    .key_bytes()?
+                    .deref()
+                    .to_owned()
+                    .try_into()?;
                 debug!("decrypt: converted to slice OK");
                 let private_key = P256PrivateKey::try_from_bytes(private_key_bytes)?;
                 debug!("decrypt: converted to NIST curve OK");
                 EciesP256Aes128::decrypt(&private_key, ciphertext, None)?
             }
             RecommendedCurve::P384 => {
-                let private_key_bytes: [u8; P384_PRIVATE_KEY_LENGTH] =
-                    self.private_key.key_block()?.key_bytes()?.try_into()?;
+                let private_key_bytes: [u8; P384_PRIVATE_KEY_LENGTH] = self
+                    .private_key
+                    .key_block()?
+                    .key_bytes()?
+                    .deref()
+                    .to_owned()
+                    .try_into()?;
                 let private_key = P384PrivateKey::try_from_bytes(private_key_bytes)?;
                 EciesP384Aes128::decrypt(&private_key, ciphertext, None)?
             }
@@ -278,6 +302,8 @@ impl HybridDecryptionSystem {
                     .private_key
                     .key_block()?
                     .key_bytes()?
+                    .deref()
+                    .to_owned()
                     .try_into()
                     .map_err(|_| {
                         KmipUtilsError::ConversionError(
@@ -297,6 +323,8 @@ impl HybridDecryptionSystem {
                     .private_key
                     .key_block()?
                     .key_bytes()?
+                    .deref()
+                    .to_owned()
                     .try_into()
                     .map_err(|_| {
                         KmipUtilsError::ConversionError(

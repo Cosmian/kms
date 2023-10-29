@@ -111,7 +111,7 @@ impl ExportCertificateAction {
             Object::Certificate {
                 certificate_value, ..
             } => certificate_value.clone(),
-            Object::PrivateKey { key_block } => key_block.key_bytes()?,
+            Object::PrivateKey { key_block } => key_block.key_bytes()?.to_vec(),
             _ => {
                 cli_bail!(
                     "The object {} is not a certificate but a {}",

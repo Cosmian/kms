@@ -44,7 +44,7 @@ tracing = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }
 x509-cert = { workspace = true }
-# x509-parser = { workspace = true }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-rt = { workspace = true }

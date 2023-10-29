@@ -2,6 +2,7 @@ use std::clone::Clone;
 
 use num_bigint_dig::BigUint;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};
 use crate::{
@@ -46,18 +47,18 @@ pub struct KeyBlock {
 impl KeyBlock {
     /// Give a slice view on the key bytes (which may be wrapped)
     /// Returns an error if there is no valid key material
-    pub fn key_bytes(&self) -> Result<Vec<u8>, KmipError> {
+    pub fn key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
         match &self.key_value.key_material {
-            KeyMaterial::ByteString(v) => Ok(v.clone()),
-            KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
+            KeyMaterial::ByteString(v) => Ok(Zeroizing::new(v.clone())),
+            KeyMaterial::TransparentSymmetricKey { key } => Ok(Zeroizing::new(key.clone())),
             KeyMaterial::TransparentECPrivateKey {
                 d,
                 recommended_curve: _,
-            } => Ok(d.to_bytes_be()),
+            } => Ok(Zeroizing::new(d.to_bytes_be())),
             KeyMaterial::TransparentECPublicKey {
                 recommended_curve: _,
                 q_string,
-            } => Ok(q_string.clone()),
+            } => Ok(Zeroizing::new(q_string.clone())),
             other => Err(KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Data_Type,
                 format!("The key has an invalid key material: {other:?}"),
@@ -68,7 +69,9 @@ impl KeyBlock {
     /// Extract the Key bytes from the given `KeyBlock`
     /// and give an optional reference to `Attributes`
     /// Returns an error if there is no valid key material
-    pub fn key_bytes_and_attributes(&self) -> Result<(Vec<u8>, Option<&Attributes>), KmipError> {
+    pub fn key_bytes_and_attributes(
+        &self,
+    ) -> Result<(Zeroizing<Vec<u8>>, Option<&Attributes>), KmipError> {
         let key = self.key_bytes().map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Data_Type, e.to_string())
         })?;

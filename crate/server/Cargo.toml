@@ -37,7 +37,7 @@ base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 cloudproof = { workspace = true }
-cosmian_kmip = { path = "../kmip" }
+cosmian_kmip = { path = "../kmip", features = ["openssl"] }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
 ratls = { workspace = true }
 tee_attestation = { workspace = true }

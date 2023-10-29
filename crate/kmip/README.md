@@ -3,7 +3,7 @@
 The `cosmian_kmip` library implements the KMIP standard such as operations, objects, types, etc.
 It also implements the TTLV serialization format.
 
-This KMIP data are then used by the `cosmian_kms_client` to query the `cosmian_kms_server` and then by the `cosmian_kms_server` to respond.
+Using feature `openssl` it provides conversions from KMIP objects to OpenSSL objects.
 
 For specific Cosmian crypto-systems, you can use the [cosmian_kms_utils](https://github.com/Cosmian/kms/tree/main/crate/utils) to generate KMIP data with an abstraction level.
 
@@ -14,10 +14,13 @@ erDiagram
     Object ||--o| PrivateKey : enum
     Object ||--o| PublicKey : enum
     Object ||--o| SymmetricKey : enum
+    Object ||--o| Certificate : enum
 
     PrivateKey ||--o| KeyBlock : has
     PublicKey ||--o| KeyBlock : has
     SymmetricKey ||--o| KeyBlock : has
+    Certificate ||--o| CertificateType : has
+    Certificate ||--o| CertificateValue : "DER bytes"
 
     KeyBlock ||--|| KeyFormatType : has
     KeyBlock ||--o| KeyCompressionType : has
@@ -60,5 +63,4 @@ erDiagram
 
 -->
 
-<-
-->
+

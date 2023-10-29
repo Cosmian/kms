@@ -53,6 +53,8 @@ impl From<KmipError> for KmipUtilsError {
             KmipError::KmipNotSupported(error_reason, value) => Self::Kmip(error_reason, value),
             KmipError::NotSupported(value) => Self::Kmip(ErrorReason::Feature_Not_Supported, value),
             KmipError::KmipError(error_reason, value) => Self::Kmip(error_reason, value),
+            KmipError::Default(value) => Self::NotSupported(value),
+            KmipError::OpenSSL(value) => Self::NotSupported(value),
         }
     }
 }

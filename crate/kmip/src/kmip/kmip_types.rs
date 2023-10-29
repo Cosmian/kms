@@ -76,6 +76,15 @@ pub enum SplitKeyMethod {
 /// | DSA Private Key | Transparent DSA Private Key |
 /// | DSA Public Key | Transparent DSA Public Key |
 ///
+/// Cosmian Note: These default formats are outdated. So, even though default export
+/// formats are enforced, storage formats are:
+///  - PKCS#8 DER for RSA and EC private Keys (RFC 5208 and 5958)
+///  - SPKI DER (RFC 5480) for RSA and EC public keys
+///  - X509 DER for certificates (RFC 5280)
+///  - PKCS#10 DER for certificate requests (RFC 2986)
+///  - TransparentSymmetricKey for symmetric keys
+///  - Raw for opaque objects adn Secret Data
+///
 #[allow(clippy::enum_clike_unportable_variant)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumIter)]
 pub enum KeyFormatType {

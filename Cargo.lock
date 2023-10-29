@@ -1136,13 +1136,15 @@ dependencies = [
  "cloudproof",
  "cosmian_logger",
  "hex",
- "num-bigint-dig",
+ "num-bigint",
+ "openssl",
  "serde",
  "serde_json",
  "strum",
  "thiserror",
  "time 0.3.30",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
@@ -1184,6 +1186,7 @@ dependencies = [
  "url",
  "uuid",
  "x509-cert",
+ "zeroize",
 ]
 
 [[package]]
