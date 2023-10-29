@@ -45,7 +45,7 @@ use crate::{
 ///
 /// * `PKey<Public>` - The openssl Public key
 ///
-pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, KmipError> {
+pub fn kmip_public_key_to_openssl(public_key: Object) -> Result<PKey<Public>, KmipError> {
     let key_block = match public_key {
         Object::PublicKey { key_block } => key_block,
         x => kmip_bail!("Invalid Object: {:?}. KMIP Public Key expected", x),
