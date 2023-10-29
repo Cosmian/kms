@@ -81,6 +81,8 @@ impl From<KmipError> for RestClientError {
             KmipError::KmipNotSupported(r, s) => Self::KmipNotSupported(r, s),
             KmipError::NotSupported(s) => Self::NotSupported(s),
             KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            KmipError::Default(s) => Self::NotSupported(s),
+            KmipError::OpenSSL(s) => Self::NotSupported(s),
         }
     }
 }

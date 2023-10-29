@@ -9,6 +9,7 @@ use cloudproof::reexport::{
         SymmetricKey,
     },
 };
+use cosmian_crypto_core::reexport::zeroize::Zeroizing;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -32,7 +33,7 @@ use crate::{
 pub struct CoverCryptEncryption {
     cover_crypt: Covercrypt,
     public_key_uid: String,
-    public_key_bytes: Vec<u8>,
+    public_key_bytes: Zeroizing<Vec<u8>>,
     policy: Policy,
 }
 

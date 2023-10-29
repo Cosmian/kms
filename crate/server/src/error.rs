@@ -199,6 +199,8 @@ impl From<KmipError> for KmsError {
             KmipError::KmipNotSupported(_, s) => Self::NotSupported(s),
             KmipError::NotSupported(s) => Self::NotSupported(s),
             KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            KmipError::Default(e) => Self::NotSupported(e),
+            KmipError::OpenSSL(e) => Self::NotSupported(e),
         }
     }
 }

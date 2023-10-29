@@ -1125,12 +1125,14 @@ dependencies = [
  "cosmian_logger",
  "hex",
  "num-bigint",
+ "openssl",
  "serde",
  "serde_json",
  "strum",
  "thiserror",
  "time 0.3.17",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
@@ -1170,6 +1172,7 @@ dependencies = [
  "url",
  "uuid",
  "x509-cert",
+ "zeroize",
 ]
 
 [[package]]
