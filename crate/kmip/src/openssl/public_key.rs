@@ -45,7 +45,7 @@ use crate::{
 ///
 /// * `PKey<Public>` - The openssl Public key
 ///
-pub fn kmip_public_key_to_openssl(public_key: Object) -> Result<PKey<Public>, KmipError> {
+pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, KmipError> {
     let key_block = match public_key {
         Object::PublicKey { key_block } => key_block,
         x => kmip_bail!("Invalid Object: {:?}. KMIP Public Key expected", x),
@@ -150,50 +150,4 @@ fn ec_public_key_from_point_encoding(
     let key = EcKey::from_public_key(&group, &ec_point)?;
     key.check_key()?;
     Ok(PKey::from_ec_key(key)?)
-}
-
-#[cfg(test)]
-mod tests {
-    // use openssl::{
-    //     bn::BigNumContext,
-    //     ec::{EcGroup, EcKey, EcPoint},
-    //     nid::Nid,
-    // };
-
-    // // test creating a X25519 key pair with openssl
-    // #[test]
-    // fn test_create_x25519_key_pair() {
-    // use openssl::{pkey::PKey, sign::Signer, symm::Cipher};
-
-    // let key = PKey::generate_x25519().unwrap();
-    // let bytes = key.private_key_to_pem_pkcs8().unwrap();
-    // println!("bytes: {:?}", String::from_utf8(bytes.clone()).unwrap());
-    // let key = PKey::private_key_from_pem(&bytes).unwrap();
-
-    // let public_key = PKey::public_key_from_raw_bytes(public, Id::X448)?;
-
-    // let group = EcGroup::from_curve_name(Nid::SECP384R1)?;
-    // let mut ctx = BigNumContext::new()?;
-
-    // /*
-    // In addition EC_POINT can be converted to and from various external representations. The octet form is the binary encoding of the ECPoint structure (as defined in RFC5480 and used in certificates and TLS records): only the content octets are present, the OCTET STRING tag and length are not included. BIGNUM form is the octet form interpreted as a big endian integer converted to a BIGNUM structure. Hexadecimal form is the octet form converted to a NULL terminated character string where each character is one of the printable values 0-9 or A-F (or a-f).
-
-    // The functions EC_POINT_point2oct(), EC_POINT_oct2point(), EC_POINT_point2bn(), EC_POINT_bn2point(), EC_POINT_point2hex() and EC_POINT_hex2point() convert from and to EC_POINTs for the formats: octet, BIGNUM and hexadecimal respectively.
-
-    // The function EC_POINT_point2oct() encodes the given curve point p as an octet string into the buffer buf of size len, using the specified conversion form form. The encoding conforms with Sec. 2.3.3 of the SECG SEC 1 (“Elliptic Curve Cryptography”) standard. Similarly the function EC_POINT_oct2point() decodes a curve point into p from the octet string contained in the given buffer buf of size len, conforming to Sec. 2.3.4 of the SECG SEC 1 (“Elliptic Curve Cryptography”) standard.
-    //          */
-    // //get bytes from somewhere
-    // //let public_key = /...
-    // //# EcKey::generate(&group)?.public_key().to_bytes(&group,
-    // //# PointConversionForm::COMPRESSED, &mut ctx)?;
-
-    // let ec_point = EcPoint::from_bytes(&group, buf, &mut ctx)?;
-    // let key = EcKey::from_public_key(&group, &ec_point)?;
-    // /// key.check_key()?;
-    // let ec_key = EcKey::from_public_key_affine_coordinates(
-    //     Nid::from_raw(elliptic_curve_type),
-    //     &BigNum::from_slice(&public_point.x_coordinate.to_bytes_be())?,
-    //     &BigNum::from_slice(&public_point.y_coordinate.to_bytes_be())?,
-    // )?;
-    // }
 }

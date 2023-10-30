@@ -355,51 +355,95 @@ pub async fn import(
         ObjectType::PublicKey => {
             // insert the tag corresponding to the object type
             tags.insert("_pk".to_string());
-            // Update the object
-            let mut object = request.object;
-            let object_key_block = object.key_block_mut()?;
+
             // unwrap key block if required
-            if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
+            let object = if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
+                let mut object = request.object;
+                let object_key_block = object.key_block_mut()?;
                 unwrap_key(object_type, object_key_block, kms, owner, params).await?;
-            }
+                object
+            } else {
+                request.object
+            };
+
             // if the key is not wrapped, try to parse it as an openssl object and import it
             // else import it as such
-            if object_key_block.key_wrapping_data.is_none() {
-                // first, see if the public key can be parsed as an openssl object
-                let openssl_pk = kmip_public_key_to_openssl(object.clone())?;
-                // The Key Format Type should really be SPKI, but it does not exist
-                object_key_block.key_format_type = KeyFormatType::PKCS8;
-                object_key_block.key_value = KeyValue {
-                    key_material: KeyMaterial::ByteString(openssl_pk.public_key_to_der()?),
-                    // replace attributes
-                    attributes: Some(request.attributes),
-                };
+            let mut object = if object.key_wrapping_data().is_none() {
+                // TODO: add Covercrypt keys when support for SPKI is added
+                // TODO: https://github.com/Cosmian/cover_crypt/issues/118
+                if object.key_block()?.cryptographic_algorithm
+                    == Some(CryptographicAlgorithm::CoverCrypt)
+                {
+                    object
+                } else {
+                    // first, see if the public key can be parsed as an openssl object
+                    let openssl_pk = kmip_public_key_to_openssl(&object)?;
+                    let mut object = object;
+                    let object_key_block = object.key_block_mut()?;
+                    // The Key Format Type should really be SPKI, but it does not exist
+                    object_key_block.key_format_type = KeyFormatType::PKCS8;
+                    object_key_block.key_value = KeyValue {
+                        key_material: KeyMaterial::ByteString(openssl_pk.public_key_to_der()?),
+                        attributes: None,
+                    };
+                    object
+                }
             } else {
-                // replace attributes
-                object_key_block.key_value.attributes = Some(request.attributes);
-            }
+                object
+            };
+
+            // replace attributes
+            let object_key_block = object.key_block_mut()?;
+            object_key_block.key_value.attributes = Some(request.attributes);
             object
         }
         ObjectType::PrivateKey => {
-            // first, see if the private key can be parsed as an openssl object
-            let openssl_sk = kmip_private_key_to_openssl(&request.object)?;
             // insert the tag corresponding to the object type
             tags.insert("_sk".to_string());
-            // Update the object
-            let mut object = request.object;
-            let object_key_block = object.key_block_mut()?;
+
             // unwrap key block if required
-            if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
+            let object = if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
+                let mut object = request.object;
+                let object_key_block = object.key_block_mut()?;
                 unwrap_key(object_type, object_key_block, kms, owner, params).await?;
-            }
-            object_key_block.key_format_type = KeyFormatType::PKCS8;
-            object_key_block.key_value = KeyValue {
-                key_material: KeyMaterial::ByteString(openssl_sk.private_key_to_pkcs8()?),
-                // replace attributes
-                attributes: Some(request.attributes),
+                object
+            } else {
+                request.object
             };
+
+            // if the key is not wrapped, try to parse it as an openssl object and import it
+            // else import it as such
+            let mut object = if object.key_wrapping_data().is_none() {
+                // TODO: add Covercrypt keys when support for PKCS#8 is added
+                // TODO: https://github.com/Cosmian/cover_crypt/issues/118
+                if object.key_block()?.cryptographic_algorithm
+                    == Some(CryptographicAlgorithm::CoverCrypt)
+                {
+                    object
+                } else {
+                    // first, see if the private key can be parsed as an openssl object
+                    let openssl_sk = kmip_private_key_to_openssl(&object)?;
+                    // Update the object
+                    let mut object = object;
+                    let object_key_block = object.key_block_mut()?;
+                    object_key_block.key_format_type = KeyFormatType::PKCS8;
+                    object_key_block.key_value = KeyValue {
+                        key_material: KeyMaterial::ByteString(openssl_sk.private_key_to_pkcs8()?),
+                        // replace attributes
+                        attributes: None,
+                    };
+                    object
+                }
+            } else {
+                object
+            };
+
+            // replace attributes
+            let object_key_block = object.key_block_mut()?;
+            object_key_block.key_value.attributes = Some(request.attributes);
             object
         }
+
         ObjectType::Certificate => {
             debug!("Import with _cert system tag");
             tags.insert("_cert".to_string());

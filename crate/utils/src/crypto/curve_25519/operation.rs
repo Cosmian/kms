@@ -109,7 +109,7 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Obj
     }
 }
 
-/// Generate a key CURVE 25519 Key Pair
+/// Generate a X25519 Key Pair
 pub fn create_x25519_key_pair<R>(
     rng: &mut R,
     private_key_uid: &str,

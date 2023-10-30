@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
@@ -234,7 +236,10 @@ fn test_import_export_wrap_private_key(
         );
         let wrapped_key_bytes = wrapped_private_key.key_block()?.key_bytes()?;
         let plaintext = decrypt_bytes(unwrapping_key, &wrapped_key_bytes)?;
-        assert_eq!(plaintext, private_key.key_block()?.key_bytes()?);
+        assert_eq!(
+            plaintext.as_slice(),
+            private_key.key_block()?.key_bytes()?.deref()
+        );
     }
 
     // test the unwrapping on import
