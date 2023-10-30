@@ -25,7 +25,7 @@ jobs:
 
     runs-on: [self-hosted, sgx]
     steps:
-      - name: Docker check container
+      - name: Docker start container
         run: |
           docker run \
             --device /dev/sgx_enclave \
@@ -39,8 +39,8 @@ jobs:
             -v /opt/cosmian-internal:/opt/cosmian-internal \
             -p 80:80 \
             -p 9998:9998 \
-            -d ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
-
+            -d --rm --name enclave-kms-insecure ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
+          
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
 
@@ -49,11 +49,15 @@ jobs:
 
       - name: Bootstrap
         run: |
-          KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
+          KMS_CLI_CONF=ci/sgx/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
           sleep 20
       
       - name: Verify
-        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms verify
+        run: KMS_CLI_CONF=ci/sgx/kms-test-ci.json ckms verify
             
       - name: Symmetric key create
-        run: KMS_CLI_CONF=sgx_ci/kms-test-ci.json ckms sym keys create
+        run: KMS_CLI_CONF=ci/sgx/kms-test-ci.json ckms sym keys create
+
+      - name: Docker stop container
+        if: success() || failure()
+        run: docker stop enclave-kms-insecure

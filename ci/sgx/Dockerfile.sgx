@@ -120,6 +120,6 @@ RUN mkdir -p scripts
 
 COPY --from=minimal-rust /root/target/release/cosmian_kms_server scripts/server
 
-COPY sgx_ci/build_and_run.sh sgx_ci/Makefile sgx_ci/kms.manifest.template /root/
+COPY ci/sgx/build_and_run.sh ci/sgx/Makefile ci/sgx/kms.manifest.template /root/
 
 ENTRYPOINT ["./build_and_run.sh"]

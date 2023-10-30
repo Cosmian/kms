@@ -59,11 +59,11 @@ jobs:
           # Speeds up Ristretto 25519 multiplication x 2
           RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
 
-      # - name: Upload KMS for ${{ inputs.distribution }}
-      #   if: steps.cargo_cache.outputs.cache-hit != 'true'
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: ${{ inputs.archive-name }}
-      #     path: ${{ inputs.artifacts }}
-      #     retention-days: 1
-      #     if-no-files-found: error
+      - name: Upload KMS for ${{ inputs.distribution }}
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ inputs.archive-name }}
+          path: ${{ inputs.artifacts }}
+          retention-days: 1
+          if-no-files-found: error
