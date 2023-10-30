@@ -140,8 +140,6 @@ fn ec_public_key_from_point_encoding(
 ) -> Result<PKey<Public>, KmipError> {
     let group = EcGroup::from_curve_name(curve_nid)?;
     let mut ctx = BigNumContext::new()?;
-    //# EcKey::generate(&group)?.public_key().to_bytes(&group,
-    //# PointConversionForm::COMPRESSED, &mut ctx)?;
     let ec_point = EcPoint::from_bytes(&group, point_encoding, &mut ctx)?;
     let key = EcKey::from_public_key(&group, &ec_point)?;
     key.check_key()?;
