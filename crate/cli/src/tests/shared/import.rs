@@ -106,6 +106,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_generate_export_import() -> Result<(), CliError> {
+    // log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // Generate

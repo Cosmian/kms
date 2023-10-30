@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::{ops::Deref, process::Command};
 
 use assert_cmd::prelude::*;
 use tempfile::TempDir;
@@ -294,7 +294,7 @@ pub async fn test_export_bytes_cover_crypt() -> Result<(), CliError> {
     )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
 
-    assert_eq!(key_bytes, bytes);
+    assert_eq!(key_bytes.deref(), bytes.as_slice());
 
     Ok(())
 }
@@ -338,7 +338,7 @@ pub async fn test_export_bytes_ec() -> Result<(), CliError> {
     )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
 
-    assert_eq!(key_bytes, bytes);
+    assert_eq!(key_bytes.deref(), bytes.as_slice());
 
     Ok(())
 }
@@ -382,7 +382,7 @@ pub async fn test_export_bytes_sym() -> Result<(), CliError> {
     )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
 
-    assert_eq!(key_bytes, bytes);
+    assert_eq!(key_bytes.deref(), bytes.as_slice());
 
     Ok(())
 }

@@ -413,32 +413,27 @@ impl KMS {
         pk_tags.insert("_pk".to_string());
 
         let object = match &cryptographic_algorithm {
-            CryptographicAlgorithm::ECDH => match attributes.key_format_type {
-                None => kms_bail!(KmsError::InvalidRequest(
-                    "Unable to create a EC key, the format type is not specified".to_string()
-                )),
-                Some(KeyFormatType::ECPrivateKey) => {
-                    let dp = attributes
-                        .cryptographic_domain_parameters
-                        .unwrap_or_default();
-                    match dp.recommended_curve.unwrap_or_default() {
-                        RecommendedCurve::CURVE25519 => {
-                            let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                            create_x25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
-                        }
-                        RecommendedCurve::CURVEED25519 => {
-                            let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                            create_ed25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
-                        }
-                        other => kms_not_supported!(
-                            "Generation of Key Pair for curve: {other:?}, is not supported"
-                        ),
+            CryptographicAlgorithm::ECDH => {
+                let dp = attributes
+                    .cryptographic_domain_parameters
+                    .unwrap_or_default();
+                match dp.recommended_curve.unwrap_or_default() {
+                    RecommendedCurve::CURVE25519 => {
+                        let mut rng = self.rng.lock().expect("RNG lock poisoned");
+                        create_x25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
                     }
+                    RecommendedCurve::CURVEED25519 => kms_not_supported!(
+                        "An Edwards Keypair on curve 25519 should not be requested to perform ECDH"
+                    ),
+                    other => kms_not_supported!(
+                        "Generation of Key Pair for curve: {other:?}, is not supported"
+                    ),
                 }
-                Some(other) => {
-                    kms_not_supported!("Unable to generate an DH key pair for format: {other}")
-                }
-            },
+            }
+            CryptographicAlgorithm::Ed25519 => {
+                let mut rng = self.rng.lock().expect("RNG lock poisoned");
+                create_ed25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+            }
             CryptographicAlgorithm::CoverCrypt => {
                 cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
                     &Covercrypt::default(),
