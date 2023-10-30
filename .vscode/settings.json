@@ -65,7 +65,7 @@
     "editor.formatOnSave": false
   },
   "python.analysis.typeCheckingMode": "basic",
-  "rust-analyzer.check.command": "check",
+  "rust-analyzer.check.command": "clippy",
   "[python]": {
     "editor.defaultFormatter": "ms-python.autopep8"
   }
