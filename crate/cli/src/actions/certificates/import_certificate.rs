@@ -30,13 +30,6 @@ pub enum CertificateInputFormat {
 /// - a certificate chain as a PEM-stack
 /// - the Mozilla Common CA Database (CCADB). Automate the Mozilla database fetch.
 ///
-/// The certificate can be in:
-/// - KMIP JSON TTLV format
-/// - PEM format
-///
-///
-/// The private/public keys format is PEM format.
-///
 /// When no certificate unique id is specified, a random UUID v4 is generated.
 ///
 /// Tags can later be used to retrieve the certificate. Tags are optional.

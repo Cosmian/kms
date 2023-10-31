@@ -217,7 +217,7 @@ pub async fn test_certify() -> Result<(), CliError> {
         assert_eq!(ids.len(), 3 * (hierarchical_depth + 2));
 
         // Export certificate as PKCS12
-        debug!("\n\n\ntest_certify: export");
+        debug!("\n\n\ntest_certify: export PKCS12");
         let export_filename = tmp_path.join("output.p12").to_str().unwrap().to_owned();
         export(
             &ctx.owner_cli_conf_path,
@@ -229,10 +229,12 @@ pub async fn test_certify() -> Result<(), CliError> {
             None,
             false,
         )?;
+
         // Read the bytes of the file and check them with openssl
         let certificate_bytes = get_file_as_byte_vec(&export_filename);
         check_certificate(&certificate_bytes, "secret");
 
+        debug!("\n\n\ntest_certify: export PEM");
         // Export certificate as PEM only
         let export_filename = tmp_path.join("cert.pem").to_str().unwrap().to_owned();
         export(
@@ -249,6 +251,7 @@ pub async fn test_certify() -> Result<(), CliError> {
         let certificate_str = std::str::from_utf8(&certificate_bytes).unwrap();
         println!("Certificate PEM: {certificate_str}");
 
+        debug!("\n\n\ntest_certify: export RAW KMIP TTLV");
         // Export certificate as RAW KMIP TTLV
         let export_filename = tmp_path.join("ttlv.json").to_str().unwrap().to_owned();
         export(

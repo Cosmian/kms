@@ -193,7 +193,7 @@ pub(crate) async fn get_certificate_bytes(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Vec<u8>> {
-    debug!("Certificate identifier: {}", certificate_id);
+    debug!("Certificate identifier: {certificate_id}");
     let get_response = kms.get(Get::from(certificate_id), owner, params).await?;
     match get_response.object {
         Object::Certificate {

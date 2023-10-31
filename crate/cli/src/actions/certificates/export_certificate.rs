@@ -106,6 +106,7 @@ impl ExportCertificateAction {
         )
         .await?;
 
+        // DER-encoded certificate bytes
         let certificate_bytes = match &object {
             Object::Certificate {
                 certificate_value, ..
@@ -127,8 +128,10 @@ impl ExportCertificateAction {
                 write_kmip_object_to_file(&object, &self.certificate_file)?;
             }
             CertificateExportFormat::PEM => {
+                // convert DER certificate to PEM certificate
+                let pem = pem::Pem::new("CERTIFICATE", certificate_bytes).to_string();
                 // save it to a file
-                write_bytes_to_file(&certificate_bytes, &self.certificate_file)?;
+                write_bytes_to_file(pem.as_bytes(), &self.certificate_file)?;
             }
             CertificateExportFormat::PKCS12 => {
                 let password = self.pkcs12_password.clone().ok_or(CliError::Cryptographic(
@@ -216,10 +219,10 @@ async fn create_pkcs12(
 
     // Create PKCS12 using Rust-OpenSSL
     let pkey = PKey::private_key_from_pem(private_key_as_pem.as_bytes())?;
-    let cert = X509::from_pem(certificate_bytes)?;
+    let cert = X509::from_der(certificate_bytes)?;
     let mut cas = Stack::<X509>::new()?;
     for ca_issuer_name in cert.issuer_name().entries() {
-        let pem = locate_ca_cert(
+        let der = locate_ca_cert(
             client_connector,
             ca_issuer_name.data().as_utf8()?.as_ref(),
             &Attributes {
@@ -228,7 +231,7 @@ async fn create_pkcs12(
             },
         )
         .await?;
-        let cert = X509::from_pem(&pem)?;
+        let cert = X509::from_der(&der)?;
         cas.push(cert)?;
     }
 

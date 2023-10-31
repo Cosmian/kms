@@ -84,8 +84,7 @@ pub(crate) async fn locate_ca_cert(
         } => certificate_value,
         _ => {
             cli_bail!(
-                "The object {} is not a certificate but a {}",
-                &cert_uid,
+                "The object {cert_uid} is not a certificate but a {}",
                 get_response.object.object_type()
             );
         }

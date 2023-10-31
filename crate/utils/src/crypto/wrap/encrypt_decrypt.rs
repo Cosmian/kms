@@ -29,7 +29,7 @@ where
         Object::Certificate {
             certificate_value, ..
         } => {
-            // TODO(ECSE): cert should be verify before anything
+            // TODO(ECSE): cert should be verified before anything
             //verify_certificate(certificate_value, kms, owner, params).await?;
             debug!("encrypt_bytes: Encryption with certificate: certificate OK");
             let encrypt_system =

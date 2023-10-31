@@ -37,7 +37,7 @@ The KMS servers must be installed in confidential VMs and started in bootstrap m
 - To start the database server in bootstrap mode, use the `-use-bootstrap-server` option (see [bootstrap](./bootstrap.md) from more details) on the docker started in the confidential VM :
 
 ```bash
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.8.0 --use-bootstrap-server
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.8.2 --use-bootstrap-server
 ```
 
 - To use the TLS generation using LetsEncrypt inside the confidential VM add the arguments described in [tls](./tls.md#using-the-certificates-bot)
