@@ -14,6 +14,7 @@ use cosmian_kms_utils::{
     access::ExtraDatabaseParams, crypto::curve_25519::kmip_requests::ec_create_key_pair_request,
 };
 use tracing::{debug, trace};
+use x509_parser::prelude::parse_x509_pem;
 
 use self::ca_signing_key::CASigningKey;
 use super::KMS;
@@ -297,11 +298,12 @@ where
 
     let pem = certificate.to_pem()?;
     debug!("new certificate: pem: {pem} with profile: {:?}", &profile);
+    let (_, pem) = parse_x509_pem(pem.as_bytes())?;
 
     // Save new certificate in database. Keep also link with key pair. This link uses tags instead of a proper KMIP structure since KMIP Certificate structure does not support attribute.
     let object = Object::Certificate {
         certificate_type: CertificateType::X509,
-        certificate_value: pem.as_bytes().to_vec(),
+        certificate_value: pem.contents,
     };
 
     let mut cert_tags = tags.clone();

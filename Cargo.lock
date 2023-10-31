@@ -1150,6 +1150,7 @@ dependencies = [
  "cosmian_logger",
  "hex",
  "openssl",
+ "pem",
  "predicates",
  "rand",
  "ratls",
@@ -2863,6 +2864,16 @@ checksum = "f0ca0b5a68607598bf3bad68f32227a8164f6254833f84eafaac409cd6746c31"
 dependencies = [
  "digest",
  "hmac",
+]
+
+[[package]]
+name = "pem"
+version = "3.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3163d2912b7c3b52d651a055f2c7eec9ba5cd22d26ef75b8dd3a59980b185923"
+dependencies = [
+ "base64 0.21.4",
+ "serde",
 ]
 
 [[package]]

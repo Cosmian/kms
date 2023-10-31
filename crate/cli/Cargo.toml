@@ -23,6 +23,7 @@ cosmian_kms_utils = { path = "../utils" }
 cosmian_logger = { path = "../logger" }
 hex = { workspace = true }
 openssl = { workspace = true }
+pem = "3.0"
 rand = "0.8"
 ratls = { workspace = true }
 reqwest = { workspace = true }
