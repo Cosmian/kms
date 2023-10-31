@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use serde::{de, ser};
 
+use crate::error::KmipError;
+
 #[derive(Debug)]
 pub struct TtlvError {
     pub error: String,
@@ -48,6 +50,12 @@ impl de::Error for TtlvError {
 
 impl From<time::Error> for TtlvError {
     fn from(err: time::error::Error) -> Self {
+        Self::new(&err.to_string())
+    }
+}
+
+impl From<KmipError> for TtlvError {
+    fn from(err: KmipError) -> Self {
         Self::new(&err.to_string())
     }
 }

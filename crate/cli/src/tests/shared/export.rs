@@ -4,7 +4,7 @@ use assert_cmd::prelude::*;
 use tempfile::TempDir;
 
 use crate::{
-    actions::shared::utils::{read_bytes_from_file, read_key_from_json_ttlv_file},
+    actions::shared::utils::{read_bytes_from_file, read_object_from_json_ttlv_file},
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
@@ -278,7 +278,7 @@ pub async fn test_export_bytes_cover_crypt() -> Result<(), CliError> {
     )?;
 
     // read the bytes from the exported file
-    let object = read_key_from_json_ttlv_file(&tmp_path.join("output.export"))?;
+    let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
     let key_bytes = object.key_block()?.key_bytes()?;
 
     // Export the bytes only
@@ -322,7 +322,7 @@ pub async fn test_export_bytes_ec() -> Result<(), CliError> {
     )?;
 
     // read the bytes from the exported file
-    let object = read_key_from_json_ttlv_file(&tmp_path.join("output.export"))?;
+    let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
     let key_bytes = object.key_block()?.key_bytes()?;
 
     // Export the bytes only
@@ -366,7 +366,7 @@ pub async fn test_export_bytes_sym() -> Result<(), CliError> {
     )?;
 
     // read the bytes from the exported file
-    let object = read_key_from_json_ttlv_file(&tmp_path.join("output.export"))?;
+    let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
     let key_bytes = object.key_block()?.key_bytes()?;
 
     // Export the bytes only

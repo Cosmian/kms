@@ -15,7 +15,7 @@ use cosmian_kms_utils::crypto::{
 use tempfile::TempDir;
 
 use crate::{
-    actions::shared::utils::{read_key_from_json_ttlv_file, write_kmip_object_to_file},
+    actions::shared::utils::{read_object_from_json_ttlv_file, write_kmip_object_to_file},
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
@@ -195,7 +195,7 @@ fn test_import_export_wrap_private_key(
         None,
         false,
     )?;
-    let private_key = read_key_from_json_ttlv_file(&private_key_file)?;
+    let private_key = read_object_from_json_ttlv_file(&private_key_file)?;
 
     // Export the private key with wrapping
     let wrapped_private_key_file = tmp_path.join("wrapped_master_private.key");
@@ -212,7 +212,7 @@ fn test_import_export_wrap_private_key(
 
     // test the exported private key with wrapping
     {
-        let wrapped_private_key = read_key_from_json_ttlv_file(&wrapped_private_key_file)?;
+        let wrapped_private_key = read_object_from_json_ttlv_file(&wrapped_private_key_file)?;
         let wrapped_key_wrapping_data = wrapped_private_key.key_wrapping_data().unwrap();
         assert_eq!(
             wrapped_key_wrapping_data.wrapping_method,
@@ -266,7 +266,7 @@ fn test_import_export_wrap_private_key(
             None,
             false,
         )?;
-        let re_exported_key = read_key_from_json_ttlv_file(&re_exported_key_file)?;
+        let re_exported_key = read_object_from_json_ttlv_file(&re_exported_key_file)?;
         assert_eq!(
             re_exported_key.key_block()?.key_bytes()?,
             private_key.key_block()?.key_bytes()?
@@ -298,7 +298,7 @@ fn test_import_export_wrap_private_key(
             None,
             false,
         )?;
-        let exported_unwrapped_key = read_key_from_json_ttlv_file(&exported_unwrapped_key_file)?;
+        let exported_unwrapped_key = read_object_from_json_ttlv_file(&exported_unwrapped_key_file)?;
         assert_eq!(
             exported_unwrapped_key.key_block()?.key_bytes()?,
             private_key.key_block()?.key_bytes()?

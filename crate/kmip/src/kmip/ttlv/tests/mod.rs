@@ -133,7 +133,7 @@ pub fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
 
 pub fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
-        tag: "Object".to_string(),
+        tag: "SymmetricKey".to_string(),
         value: TTLValue::Structure(vec![aes_key_block_ttlv(key_value)]),
     }
 }
@@ -479,12 +479,7 @@ fn test_des_aes_key() {
 
     let ttlv = aes_key_ttlv(key_bytes);
     let rec: Object = from_ttlv(&ttlv).unwrap();
-    // Deserialization cannot make the difference
-    // between a `SymmetricKey` or a `PrivateKey`
-    assert_eq!(
-        aes_key(key_bytes),
-        Object::post_fix(ObjectType::SymmetricKey, rec)
-    );
+    assert_eq!(aes_key(key_bytes), rec);
 }
 
 #[test]

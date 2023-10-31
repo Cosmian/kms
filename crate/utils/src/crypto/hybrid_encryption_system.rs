@@ -257,7 +257,7 @@ impl HybridDecryptionSystem {
                     .deref()
                     .to_owned()
                     .try_into()?;
-                let private_key = P192PrivateKey::try_from_bytes(private_key_bytes.clone())?;
+                let private_key = P192PrivateKey::try_from_bytes(private_key_bytes)?;
                 EciesP192Aes128::decrypt(&private_key, ciphertext, None)?
             }
             RecommendedCurve::P224 => {

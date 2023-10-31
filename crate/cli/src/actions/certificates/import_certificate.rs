@@ -11,7 +11,9 @@ use tracing::{debug, trace};
 use x509_parser::nom::AsBytes;
 
 use crate::{
-    actions::shared::utils::{import_object, read_bytes_from_file, read_key_from_json_ttlv_file},
+    actions::shared::utils::{
+        import_object, read_bytes_from_file, read_object_from_json_ttlv_file,
+    },
     error::CliError,
 };
 
@@ -87,7 +89,7 @@ impl ImportCertificateAction {
             CertificateInputFormat::TTLV => {
                 trace!("CLI: import certificate as TTLV JSON file");
                 // read the certificate file
-                let object = read_key_from_json_ttlv_file(self.get_certificate_file()?)?;
+                let object = read_object_from_json_ttlv_file(self.get_certificate_file()?)?;
                 trace!("CLI: read key from file OK");
                 self.import_chain(kms_rest_client, vec![object], self.replace_existing)
                     .await?;

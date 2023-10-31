@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip::kmip_operations::{CreateKeyPair, CreateKeyPairResponse};
 use cosmian_kms_utils::access::ExtraDatabaseParams;
-use tracing::trace;
+use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
