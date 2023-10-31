@@ -1,0 +1,67 @@
+---
+name: Docker KMS SGX
+
+on:
+  workflow_call:
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_IMAGE: ghcr.io/cosmian/enclave-kms-insecure
+
+jobs:
+  build-and-push-image:
+    runs-on: [self-hosted, sgx]
+    defaults:
+      run:
+        working-directory: ci/sgx/
+    container: docker:19.03.15
+
+    steps:
+
+      - uses: actions/checkout@v1
+
+      - name: Login to GitHub Packages
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      # Specify staging features to use Let's Encrypt staging environment in order to be able to request more than 5 certificates by week
+      # Documentation : https://letsencrypt.org/docs/duplicate-certificate-limit/
+      - name: Build and tag docker container
+        uses: docker/build-push-action@v3
+        with:
+          file: ./ci/sgx/Dockerfile.sgx
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          network: host
+          build-args: |
+            FEATURES=--features staging
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+
+  tests:
+        needs:
+          - build-and-push-image
+        uses: ./.github/workflows/docker_kms_sgx_tests.yml
+        secrets: inherit
+        with:
+          kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}

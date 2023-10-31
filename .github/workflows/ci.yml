@@ -41,6 +41,9 @@ jobs:
   python_and_docker:
     uses: ./.github/workflows/python_and_docker.yml
 
+  sgx_docker:
+    uses: ./.github/workflows/docker_kms_sgx.yml
+
   ##############################################################################
   ### Releases
   ##############################################################################
