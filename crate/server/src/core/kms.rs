@@ -60,7 +60,7 @@ impl KMS {
                 let (_, certificate) = cert.get_cert()?;
                 Ok(Some(
                     certificate
-                        .get(0)
+                        .first()
                         .ok_or(KmsError::Certificate(
                             "No leaf certificate in the KMS certificate chain".to_owned(),
                         ))?

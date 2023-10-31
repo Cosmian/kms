@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_python"
-version = "4.8.1"
+version = "4.8.2"
 authors = ["Hugo Rosenkranz-Costa <hugo.rosenkranz@cosmian.com>"]
 edition = "2021"
 license-file = "../../LICENSE.md"
@@ -24,7 +24,6 @@ pyo3 = { version = "0.19", features = [
 pyo3-asyncio = { version = "0.19", features = ["tokio-runtime"] }
 rustls = { workspace = true }
 serde_json = { workspace = true }
-x509-parser = { workspace = true }
 
 # Added with build.rs to fix build issues on MacOS
 # see https://github.com/PyO3/pyo3/issues/1857
