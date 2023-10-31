@@ -17,6 +17,7 @@
 /// Indicator in the header of a batched request.
 /// The batched responses MAY contain a mixture of synchronous and
 /// asynchronous responses only if the Asynchronous Indicator is present in the header.
+use chrono::Utc;
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::{self, SerializeStruct},
@@ -75,7 +76,7 @@ impl Serialize for Message {
 /// Header of the request
 ///
 /// Contains fields whose presence is determined by the protocol features used.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct MessageHeader {
     pub protocol_version: ProtocolVersion,
@@ -148,6 +149,18 @@ pub struct MessageBatchItem {
     /// The KMIP request, which depends on the KMIP Operation
     pub request_payload: Operation,
     pub message_extension: Option<Vec<MessageExtension>>,
+}
+
+impl MessageBatchItem {
+    pub fn new(request: Operation) -> Self {
+        Self {
+            operation: request.operation_enum(),
+            ephemeral: None,
+            unique_batch_item_id: None,
+            request_payload: request,
+            message_extension: None,
+        }
+    }
 }
 
 impl Serialize for MessageBatchItem {
@@ -404,6 +417,24 @@ pub struct MessageResponseHeader {
     pub batch_count: u32,
 }
 
+/// Default implementation for a message response header
+///
+/// The timestamp is automatically set to now (UTC time)
+impl Default for MessageResponseHeader {
+    fn default() -> Self {
+        Self {
+            timestamp: Utc::now().timestamp() as u64,
+            protocol_version: ProtocolVersion::default(),
+            nonce: None,
+            server_hashed_password: None,
+            attestation_type: None,
+            client_correlation_value: None,
+            server_correlation_value: None,
+            batch_count: 0,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct MessageResponseBatchItem {
     /// Required if present in request Batch Item
@@ -439,6 +470,34 @@ pub struct MessageResponseBatchItem {
     /// Content depends on Operation.
     pub response_payload: Option<Operation>,
     pub message_extension: Option<MessageExtension>,
+}
+
+impl MessageResponseBatchItem {
+    pub fn new(result_status: ResultStatusEnumeration) -> Self {
+        Self {
+            result_status,
+            operation: None,
+            unique_batch_item_id: None,
+            result_reason: None,
+            result_message: None,
+            asynchronous_correlation_value: None,
+            response_payload: None,
+            message_extension: None,
+        }
+    }
+
+    pub fn new_with_response(result_status: ResultStatusEnumeration, response: Operation) -> Self {
+        Self {
+            result_status,
+            operation: Some(response.operation_enum()),
+            response_payload: Some(response),
+            unique_batch_item_id: None,
+            result_reason: None,
+            result_message: None,
+            asynchronous_correlation_value: None,
+            message_extension: None,
+        }
+    }
 }
 
 impl Serialize for MessageResponseBatchItem {

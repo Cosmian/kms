@@ -864,15 +864,7 @@ pub fn test_message_enforce_enum() {
             },
             maximum_response_size: Some(9999),
             batch_count: 1,
-            client_correlation_value: None,
-            server_correlation_value: None,
-            asynchronous_indicator: None,
-            attestation_capable_indicator: None,
-            attestation_type: None,
-            authentication: None,
-            batch_error_continuation_option: None,
-            batch_order_option: None,
-            timestamp: None,
+            ..Default::default()
         },
         items: vec![MessageBatchItem {
             operation: OperationEnumeration::Create,
@@ -895,25 +887,11 @@ pub fn test_message_enforce_enum() {
                 protocol_version_minor: 0,
             },
             maximum_response_size: Some(9999),
+            // mismatch number of batch items
             batch_count: 15,
-            client_correlation_value: None,
-            server_correlation_value: None,
-            asynchronous_indicator: None,
-            attestation_capable_indicator: None,
-            attestation_type: None,
-            authentication: None,
-            batch_error_continuation_option: None,
-            batch_order_option: None,
-            timestamp: None,
+            ..Default::default()
         },
-        items: vec![MessageBatchItem {
-            operation: OperationEnumeration::Locate,
-            ephemeral: None,
-            unique_batch_item_id: None,
-            // mismatch operation regarding the enum
-            request_payload: Operation::Locate(Locate::default()),
-            message_extension: None,
-        }],
+        items: vec![MessageBatchItem::new(Operation::Locate(Locate::default()))],
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
@@ -927,25 +905,9 @@ pub fn test_message_enforce_enum() {
                 protocol_version_minor: 0,
             },
             batch_count: 1,
-            maximum_response_size: None,
-            client_correlation_value: None,
-            server_correlation_value: None,
-            asynchronous_indicator: None,
-            attestation_capable_indicator: None,
-            attestation_type: None,
-            authentication: None,
-            batch_error_continuation_option: None,
-            batch_order_option: None,
-            timestamp: None,
+            ..Default::default()
         },
-        items: vec![MessageBatchItem {
-            operation: OperationEnumeration::Locate,
-            ephemeral: None,
-            unique_batch_item_id: None,
-            // mismatch operation regarding the enum
-            request_payload: Operation::Locate(Locate::default()),
-            message_extension: None,
-        }],
+        items: vec![MessageBatchItem::new(Operation::Locate(Locate::default()))],
     };
     assert_eq!(
         to_ttlv(&req).unwrap_err().to_string(),
@@ -960,16 +922,7 @@ pub fn test_message_enforce_enum() {
                 protocol_version_minor: 0,
             },
             batch_count: 1,
-            maximum_response_size: None,
-            client_correlation_value: None,
-            server_correlation_value: None,
-            asynchronous_indicator: None,
-            attestation_capable_indicator: None,
-            attestation_type: None,
-            authentication: None,
-            batch_error_continuation_option: None,
-            batch_order_option: None,
-            timestamp: None,
+            ..Default::default()
         },
         items: vec![MessageBatchItem {
             operation: OperationEnumeration::Decrypt,
@@ -997,12 +950,8 @@ pub fn test_message_enforce_enum() {
                 protocol_version_minor: 0,
             },
             batch_count: 1,
-            client_correlation_value: None,
-            server_correlation_value: None,
-            attestation_type: None,
             timestamp: 1697201574,
-            nonce: None,
-            server_hashed_password: None,
+            ..Default::default()
         },
         items: vec![MessageResponseBatchItem {
             operation: Some(OperationEnumeration::Decrypt),
@@ -1030,12 +979,8 @@ pub fn test_message_enforce_enum() {
                 protocol_version_minor: 0,
             },
             batch_count: 1,
-            client_correlation_value: None,
-            server_correlation_value: None,
-            attestation_type: None,
             timestamp: 1697201574,
-            nonce: None,
-            server_hashed_password: None,
+            ..Default::default()
         },
         items: vec![MessageResponseBatchItem {
             operation: Some(OperationEnumeration::Decrypt),
@@ -1060,24 +1005,15 @@ pub fn test_message_enforce_enum() {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
             },
+            // mismatch number of items
             batch_count: 22,
-            client_correlation_value: None,
-            server_correlation_value: None,
-            attestation_type: None,
             timestamp: 1697201574,
-            nonce: None,
-            server_hashed_password: None,
+            ..Default::default()
         },
-        items: vec![MessageResponseBatchItem {
-            operation: Some(OperationEnumeration::Locate),
-            unique_batch_item_id: None,
-            response_payload: Some(Operation::Locate(Locate::default())),
-            message_extension: None,
-            result_status: ResultStatusEnumeration::OperationPending,
-            result_reason: None,
-            result_message: None,
-            asynchronous_correlation_value: None,
-        }],
+        items: vec![
+            MessageResponseBatchItem::new(ResultStatusEnumeration::OperationPending),
+            MessageResponseBatchItem::new(ResultStatusEnumeration::OperationPending),
+        ],
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
@@ -1087,31 +1023,21 @@ pub fn test_message_enforce_enum() {
     let res = MessageResponse {
         header: MessageResponseHeader {
             protocol_version: ProtocolVersion {
-                protocol_version_major: 2,
-                protocol_version_minor: 2,
+                protocol_version_major: 128,
+                protocol_version_minor: 128,
             },
             batch_count: 1,
-            client_correlation_value: None,
-            server_correlation_value: None,
-            attestation_type: None,
             timestamp: 1697201574,
-            nonce: None,
-            server_hashed_password: None,
+            ..Default::default()
         },
-        items: vec![MessageResponseBatchItem {
-            operation: Some(OperationEnumeration::Locate),
-            unique_batch_item_id: None,
-            response_payload: Some(Operation::Locate(Locate::default())),
-            message_extension: None,
-            result_status: ResultStatusEnumeration::OperationPending,
-            result_reason: None,
-            result_message: None,
-            asynchronous_correlation_value: None,
-        }],
+        items: vec![MessageResponseBatchItem::new_with_response(
+            ResultStatusEnumeration::OperationPending,
+            Operation::Locate(Locate::default()),
+        )],
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
-        "item's protocol version is greater (`2.2`) than header's protocol version (`2.1`)"
+        "item's protocol version is greater (`128.128`) than header's protocol version (`2.1`)"
             .to_string()
     );
 

@@ -42,42 +42,19 @@ async fn integration_tests_bulk() -> KResult<()> {
                 protocol_version_minor: 0,
             },
             batch_count: 2,
-            maximum_response_size: None,
-            client_correlation_value: None,
-            server_correlation_value: None,
-            asynchronous_indicator: None,
-            attestation_capable_indicator: None,
-            attestation_type: None,
-            authentication: None,
-            batch_error_continuation_option: None,
-            batch_order_option: None,
-            timestamp: None,
+            ..Default::default()
         },
         items: vec![
-            MessageBatchItem {
-                operation: OperationEnumeration::CreateKeyPair,
-                ephemeral: None,
-                unique_batch_item_id: None,
-                request_payload: Operation::CreateKeyPair(build_create_master_keypair_request(
-                    &policy, EMPTY_TAGS,
-                )?),
-                message_extension: None,
-            },
-            MessageBatchItem {
-                operation: OperationEnumeration::CreateKeyPair,
-                ephemeral: None,
-                unique_batch_item_id: None,
-                request_payload: Operation::CreateKeyPair(build_create_master_keypair_request(
-                    &policy, EMPTY_TAGS,
-                )?),
-                message_extension: None,
-            },
+            MessageBatchItem::new(Operation::CreateKeyPair(
+                build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
+            )),
+            MessageBatchItem::new(Operation::CreateKeyPair(
+                build_create_master_keypair_request(&policy, EMPTY_TAGS)?,
+            )),
         ],
     };
 
     let response: MessageResponse = test_utils::post(&app, &request_message).await?;
-
-    // tracing::trace!("{response:#?}");
     assert_eq!(response.items.len(), 2);
 
     // 1. Create keypair

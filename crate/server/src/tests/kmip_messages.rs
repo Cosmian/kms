@@ -28,31 +28,13 @@ async fn test_kmip_messages() -> KResult<()> {
 
     // prepare and send the single message
     let items = vec![
-        MessageBatchItem {
-            operation: OperationEnumeration::CreateKeyPair,
-            ephemeral: None,
-            unique_batch_item_id: None,
-            request_payload: Operation::CreateKeyPair(ec_create_request),
-            message_extension: None,
-        },
-        MessageBatchItem {
-            operation: OperationEnumeration::Locate,
-            ephemeral: None,
-            unique_batch_item_id: None,
-            request_payload: Operation::Locate(Locate::default()),
-            message_extension: None,
-        },
-        MessageBatchItem {
-            operation: OperationEnumeration::Decrypt,
-            ephemeral: None,
-            unique_batch_item_id: None,
-            request_payload: Operation::Decrypt(Decrypt {
-                unique_identifier: Some("id_12345".to_string()),
-                data: Some(b"decrypted_data".to_vec()),
-                ..Default::default()
-            }),
-            message_extension: None,
-        },
+        MessageBatchItem::new(Operation::CreateKeyPair(ec_create_request)),
+        MessageBatchItem::new(Operation::Locate(Locate::default())),
+        MessageBatchItem::new(Operation::Decrypt(Decrypt {
+            unique_identifier: Some("id_12345".to_string()),
+            data: Some(b"decrypted_data".to_vec()),
+            ..Default::default()
+        })),
     ];
     let message_request = Message {
         header: MessageHeader {
@@ -61,21 +43,16 @@ async fn test_kmip_messages() -> KResult<()> {
                 protocol_version_minor: 0,
             },
             maximum_response_size: Some(9999),
+            // wrong number of items but it is only checked
+            // when TTLV-serialization is done
             batch_count: 1,
-            client_correlation_value: None,
-            server_correlation_value: None,
-            asynchronous_indicator: None,
-            attestation_capable_indicator: None,
-            attestation_type: None,
-            authentication: None,
-            batch_error_continuation_option: None,
-            batch_order_option: None,
-            timestamp: None,
+            ..Default::default()
         },
         items,
     };
 
     let response = kms.message(message_request, owner, None).await?;
+    assert_eq!(response.header.batch_count, 3);
     assert_eq!(response.items.len(), 3);
 
     // 1. Create keypair

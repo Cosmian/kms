@@ -4,10 +4,10 @@ use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip::{
     kmip_messages::{Message, MessageBatchItem, MessageHeader},
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{Import, Operation},
+    kmip_operations::{ErrorReason, Import, Operation},
     kmip_types::{
         Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        OperationEnumeration, ProtocolVersion, RecommendedCurve,
+        ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
     },
 };
 use cosmian_kms_utils::crypto::curve_25519::{
@@ -141,7 +141,6 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     };
     let new_uid = kms.import(request, owner, None).await?.unique_identifier;
     // update
-
     let request = Import {
         unique_identifier: new_uid.clone(),
         object_type: ObjectType::PublicKey,
@@ -160,7 +159,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 
 #[actix_rt::test]
 async fn test_curve_25519_multiple() -> KResult<()> {
-    log_init("trace,hyper=info,reqwest=info");
+    log_init("info,hyper=info,reqwest=info");
 
     let clap_config = https_clap_config();
 
@@ -175,63 +174,71 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             },
             maximum_response_size: Some(9999),
             batch_count: 4,
-            client_correlation_value: None,
-            server_correlation_value: None,
-            asynchronous_indicator: None,
-            attestation_capable_indicator: None,
-            attestation_type: None,
-            authentication: None,
-            batch_error_continuation_option: None,
-            batch_order_option: None,
-            timestamp: None,
+            ..Default::default()
         },
         items: vec![
-            MessageBatchItem {
-                operation: OperationEnumeration::CreateKeyPair,
-                ephemeral: None,
-                unique_batch_item_id: None,
-                request_payload: Operation::CreateKeyPair(ec_create_key_pair_request(
-                    &[] as &[&str],
-                    RecommendedCurve::CURVE25519,
-                )?),
-                message_extension: None,
-            },
-            MessageBatchItem {
-                operation: OperationEnumeration::CreateKeyPair,
-                ephemeral: None,
-                unique_batch_item_id: None,
-                request_payload: Operation::CreateKeyPair(ec_create_key_pair_request(
-                    &[] as &[&str],
-                    RecommendedCurve::CURVEED25519,
-                )?),
-                message_extension: None,
-            },
-            MessageBatchItem {
-                operation: OperationEnumeration::CreateKeyPair,
-                ephemeral: None,
-                unique_batch_item_id: None,
-                request_payload: Operation::CreateKeyPair(ec_create_key_pair_request(
-                    &[] as &[&str],
-                    RecommendedCurve::SECP256K1,
-                )?),
-                message_extension: None,
-            },
-            MessageBatchItem {
-                operation: OperationEnumeration::CreateKeyPair,
-                ephemeral: None,
-                unique_batch_item_id: None,
-                request_payload: Operation::CreateKeyPair(ec_create_key_pair_request(
-                    &[] as &[&str],
-                    RecommendedCurve::CURVEED25519,
-                )?),
-                message_extension: None,
-            },
+            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::CURVE25519,
+            )?)),
+            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::CURVEED25519,
+            )?)),
+            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::SECP256K1,
+            )?)),
+            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::CURVEED25519,
+            )?)),
         ],
     };
 
     let response = kms.message(request, owner, None).await?;
+    assert_eq!(response.header.batch_count, 4);
+    assert_eq!(response.items.len(), 4);
 
-    tracing::trace!("response: {response:#?}");
+    assert_eq!(
+        response.items[0].result_status,
+        ResultStatusEnumeration::Success
+    );
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[0].response_payload else {
+        panic!("not a create key pair response payload");
+    };
+
+    assert_eq!(
+        response.items[1].result_status,
+        ResultStatusEnumeration::Success
+    );
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[1].response_payload else {
+        panic!("not a create key pair response payload");
+    };
+
+    assert_eq!(
+        response.items[2].result_status,
+        ResultStatusEnumeration::OperationFailed
+    );
+    assert_eq!(
+        response.items[2].result_reason,
+        Some(ErrorReason::Operation_Not_Supported)
+    );
+    assert_eq!(
+        response.items[2].result_message,
+        Some(
+            "Not Supported: Generation of Key Pair for curve: SECP256K1, is not supported"
+                .to_string()
+        )
+    );
+
+    assert_eq!(
+        response.items[3].result_status,
+        ResultStatusEnumeration::Success
+    );
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[3].response_payload else {
+        panic!("not a create key pair response payload");
+    };
 
     Ok(())
 }

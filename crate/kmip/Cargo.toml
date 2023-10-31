@@ -6,6 +6,7 @@ license-file = "../../LICENSE.md"
 
 [dependencies]
 bitflags = { workspace = true }
+chrono = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }
 num-bigint = { workspace = true }
