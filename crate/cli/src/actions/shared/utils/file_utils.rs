@@ -6,16 +6,12 @@ use std::{
 
 use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
 use cosmian_kmip::kmip::{
-    kmip_objects::{Object, ObjectType},
-    kmip_types::KeyFormatType,
+    kmip_objects::Object,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{
-    cli_bail,
-    error::{result::CliResultHelper, CliError},
-};
+use crate::error::{result::CliResultHelper, CliError};
 
 /// Read all bytes from a file
 pub fn read_bytes_from_file(file: &impl AsRef<Path>) -> Result<Vec<u8>, CliError> {
@@ -38,53 +34,20 @@ where
         .with_context(|| "failed parsing the object from the json file")
 }
 
-pub(crate) fn determine_key_object_type(object: &Object) -> Result<ObjectType, CliError> {
-    match object.object_type() {
-        ObjectType::Certificate => Ok(ObjectType::Certificate),
-        _ => {
-            let key_block = object.key_block().context("invalid key block")?;
-            Ok(match key_block.key_format_type {
-                KeyFormatType::CoverCryptSecretKey => ObjectType::PrivateKey,
-                KeyFormatType::CoverCryptPublicKey => ObjectType::PublicKey,
-                KeyFormatType::TransparentSymmetricKey => ObjectType::SymmetricKey,
-                KeyFormatType::TransparentECPrivateKey => ObjectType::PrivateKey,
-                KeyFormatType::TransparentECPublicKey => ObjectType::PublicKey,
-                KeyFormatType::TransparentDHPrivateKey => ObjectType::PrivateKey,
-                KeyFormatType::TransparentDHPublicKey => ObjectType::PublicKey,
-                KeyFormatType::TransparentRSAPrivateKey => ObjectType::PrivateKey,
-                KeyFormatType::TransparentRSAPublicKey => ObjectType::PublicKey,
-                x => cli_bail!("not a supported key format: {x}"),
-            })
-        }
-    }
-}
-
 /// Read an object from KMIP jSON TTLV bytes slice
-fn read_object_from_json_ttlv_bytes<F>(bytes: &[u8], post_fix_helper: F) -> Result<Object, CliError>
-where
-    F: Fn(&Object) -> Result<ObjectType, CliError>,
-{
+pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, CliError> {
     // Read the object from the file
-    let ttlv = serde_json::from_slice::<TTLV>(&bytes)
+    let ttlv = serde_json::from_slice::<TTLV>(bytes)
         .with_context(|| "failed parsing the object from the json file")?;
     // Deserialize the object
     let object: Object = from_ttlv(&ttlv)?;
-    // Post fix the object type
-    let object_type = post_fix_helper(&object)?;
-    let object = Object::post_fix(object_type, object);
-
     Ok(object)
 }
 
-/// Read a key from a KMIP jSON TTLV file
-pub fn read_key_from_json_ttlv_file(object_file: &PathBuf) -> Result<Object, CliError> {
+/// Read an  object from a KMIP jSON TTLV file
+pub fn read_object_from_json_ttlv_file(object_file: &PathBuf) -> Result<Object, CliError> {
     let bytes = read_bytes_from_file(object_file)?;
-    read_object_from_json_ttlv_bytes(&bytes, determine_key_object_type)
-}
-
-/// Read a key from a KMIP jSON TTLV bytes slice
-pub fn read_key_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, CliError> {
-    read_object_from_json_ttlv_bytes(&bytes, determine_key_object_type)
+    read_object_from_json_ttlv_bytes(&bytes)
 }
 
 /// Write all bytes to a file

@@ -8,6 +8,7 @@ use serde::{
 use tracing::{debug, trace};
 
 use super::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV};
+use crate::kmip::kmip_objects::{Object, ObjectType};
 
 type Result<T> = std::result::Result<T, TtlvError>;
 
@@ -18,6 +19,12 @@ pub struct TTLVSerializer {
 }
 
 /// The public API of the TTLV Serde serializer
+/// Serialize an Object to TTLV
+///
+/// `Object` is an untagged enum; it is is the serialized object,
+/// the root tag is replaced with the object type.
+/// This is only applied when serializing a root `Object`, not an embedded one in a
+/// KMIP Operation such as `Import`
 pub fn to_ttlv<T>(value: &T) -> Result<TTLV>
 where
     T: Serialize,
@@ -27,7 +34,27 @@ where
         current: TTLV::default(),
     };
     value.serialize(&mut serializer)?;
-    Ok(serializer.current)
+    let mut ttlv = serializer.current;
+
+    // postfix the TTLV if it is a root object
+    trait Detect {
+        fn detect(&self) -> Option<ObjectType>;
+    }
+    impl<T> Detect for T {
+        default fn detect(&self) -> Option<ObjectType> {
+            None
+        }
+    }
+    impl Detect for Object {
+        fn detect(&self) -> Option<ObjectType> {
+            Some(self.object_type())
+        }
+    }
+    if let Some(object_type) = value.detect() {
+        ttlv.tag = object_type.to_string();
+    };
+
+    Ok(ttlv)
 }
 
 impl<'a> ser::Serializer for &'a mut TTLVSerializer {
@@ -259,6 +286,7 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
         _variant_index: u32,
         variant: &'static str,
     ) -> Result<Self::Ok> {
+        trace!("serialize_unit_variant, name: {_name}::{variant}");
         self.current.value = TTLValue::Enumeration(TTLVEnumeration::Name(variant.to_owned()));
         Ok(())
     }
@@ -308,6 +336,7 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
     where
         T: ?Sized + Serialize,
     {
+        trace!("serialize_newtype_variant, name: {_name}::{_variant}");
         value.serialize(self)
     }
 
@@ -377,6 +406,7 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
     // for example struct S { r: u8, g: u8, b: u8 }.
     //#[instrument(skip(self))]
     fn serialize_struct(self, name: &'static str, _len: usize) -> Result<Self::SerializeStruct> {
+        trace!("serialize_struct {name} . Value: {:?}", &self.current);
         // Push the struct on the parents stack, collecting the name
         let tag = if self.current.tag.is_empty() {
             // top level struct => get its name

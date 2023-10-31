@@ -8,7 +8,7 @@ use cosmian_kms_utils::tagging::set_tags;
 use tracing::trace;
 use uuid::Uuid;
 
-use crate::error::{result::CliResultHelper, CliError};
+use crate::error::CliError;
 
 /// Import an Object into the KMS
 ///
@@ -37,8 +37,7 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     let (key_wrap_type, mut attributes) = match object_type {
         ObjectType::Certificate => {
             // add the tags to the attributes
-            let attributes = import_attributes.unwrap_or(Attributes::default());
-
+            let attributes = import_attributes.unwrap_or_default();
             (None, attributes)
         } // no wrapping for certificate
         _ => {
@@ -74,10 +73,7 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     };
 
     // send the import request
-    let response = kms_rest_client
-        .import(import)
-        .await
-        .with_context(|| "cannot connect to the kms server")?;
+    let response = kms_rest_client.import(import).await?;
 
     Ok(response.unique_identifier)
 }

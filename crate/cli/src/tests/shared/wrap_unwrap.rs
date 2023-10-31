@@ -13,7 +13,7 @@ use cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod};
 use tempfile::TempDir;
 
 use crate::{
-    actions::shared::utils::read_key_from_json_ttlv_file,
+    actions::shared::utils::read_object_from_json_ttlv_file,
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
@@ -162,7 +162,7 @@ pub fn password_wrap_import_test(
         false,
     )?;
 
-    let object = read_key_from_json_ttlv_file(&key_file)?;
+    let object = read_object_from_json_ttlv_file(&key_file)?;
     let key_bytes = object.key_block()?.key_bytes()?;
 
     //wrap and unwrap using a password
@@ -177,7 +177,7 @@ pub fn password_wrap_import_test(
             None,
             None,
         )?;
-        let wrapped_object = read_key_from_json_ttlv_file(&key_file)?;
+        let wrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(wrapped_object.key_wrapping_data().is_some());
         assert_eq!(
             wrapped_object.key_wrapping_data().unwrap().wrapping_method,
@@ -198,7 +198,7 @@ pub fn password_wrap_import_test(
             None,
             None,
         )?;
-        let unwrapped_object = read_key_from_json_ttlv_file(&key_file)?;
+        let unwrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(unwrapped_object.key_wrapping_data().is_none());
         assert_eq!(unwrapped_object.key_block()?.key_bytes()?, key_bytes);
     }
@@ -219,7 +219,7 @@ pub fn password_wrap_import_test(
             None,
             None,
         )?;
-        let wrapped_object = read_key_from_json_ttlv_file(&key_file)?;
+        let wrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(wrapped_object.key_wrapping_data().is_some());
         assert_eq!(
             wrapped_object.key_wrapping_data().unwrap().wrapping_method,
@@ -240,7 +240,7 @@ pub fn password_wrap_import_test(
             None,
             None,
         )?;
-        let unwrapped_object = read_key_from_json_ttlv_file(&key_file)?;
+        let unwrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(unwrapped_object.key_wrapping_data().is_none());
         assert_eq!(unwrapped_object.key_block()?.key_bytes()?, key_bytes);
     }

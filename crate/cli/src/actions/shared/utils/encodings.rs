@@ -34,7 +34,6 @@ use crate::error::CliError;
 /// | ENCRYPTED PRIVATE KEY | PKCS#8 |
 /// | ENCRYPTED PUBLIC KEY | PKCS#8 |
 /// | EC PRIVATE KEY | SEC1 |
-/// | EC PUBLIC KEY | SEC1 |
 /// | CERTIFICATE | X.509 |
 /// | X509 CRL | X.509 |
 /// | NEW CERTIFICATE REQUEST | PKCS#10 |
@@ -43,8 +42,8 @@ use crate::error::CliError;
 ///
 pub(crate) fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, CliError> {
     let mut objects = Vec::<Object>::new();
-    let pems = pem::parse_many(bytes)?;
-    for pem in pems.into_iter() {
+    let pem_s = pem::parse_many(bytes)?;
+    for pem in pem_s.into_iter() {
         match pem.tag() {
             "RSA PRIVATE KEY" => objects.push(Object::PrivateKey {
                 key_block: key_block(KeyFormatType::PKCS1, pem.into_contents()),
@@ -67,13 +66,13 @@ pub(crate) fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, CliError> {
             "EC PRIVATE KEY" => objects.push(Object::PrivateKey {
                 key_block: key_block(KeyFormatType::ECPrivateKey, pem.into_contents()),
             }),
-            "EC PUBLIC KEY" => objects.insert(
-                0,
-                Object::PublicKey {
-                    // ECPrivateKey for lack of a better alternative
-                    key_block: key_block(KeyFormatType::ECPrivateKey, pem.into_contents()),
-                },
-            ),
+            "EC PUBLIC KEY" => {
+                return Err(CliError::KmsClientError(
+                    "PEM files with EC PUBLIC KEY are not supported: SEC1 should be reserved for \
+                     EC private keys only"
+                        .to_string(),
+                ))
+            }
             "CERTIFICATE" => objects.push(Object::Certificate {
                 certificate_type: CertificateType::X509,
                 certificate_value: pem.into_contents(),

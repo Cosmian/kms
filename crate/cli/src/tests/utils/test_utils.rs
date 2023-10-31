@@ -20,7 +20,6 @@ use cosmian_kms_server::{
     kms_server::start_kms_server,
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;
-use cosmian_logger::log_utils::log_init;
 use rand::SeedableRng;
 use tokio::sync::OnceCell;
 use tracing::trace;

@@ -4,7 +4,7 @@ use assert_cmd::prelude::CommandCargoExt;
 use tempfile::TempDir;
 
 use crate::{
-    actions::shared::utils::read_key_from_json_ttlv_file,
+    actions::shared::utils::read_object_from_json_ttlv_file,
     cli_bail,
     config::KMS_CLI_CONF_ENV,
     error::CliError,
@@ -72,7 +72,7 @@ fn assert_destroyed(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
         )
         .is_ok()
     );
-    let object = read_key_from_json_ttlv_file(&tmp_path.join("output.export"))?;
+    let object = read_object_from_json_ttlv_file(&tmp_path.join("output.export"))?;
     match &object.key_block()?.key_value.key_material {
         cosmian_kmip::kmip::kmip_data_structures::KeyMaterial::ByteString(v) => {
             assert!(v.is_empty());
