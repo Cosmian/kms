@@ -57,7 +57,7 @@ impl Serialize for Message {
         // check version of protocol version defined in the header is
         // equal or greater than the protocol version of each item's payload.
         for item in &self.items {
-            if self.header.protocol_version >= item.request_payload.protocol_version() {
+            if self.header.protocol_version > item.request_payload.protocol_version() {
                 return Err(ser::Error::custom(format!(
                     "item's protocol version is greater (`{}`) than header's protocol version \
                      (`{}`)",
@@ -374,7 +374,7 @@ impl Serialize for MessageResponse {
         // equal or greater than the protocol version of each item's payload.
         for item in &self.items {
             if let Some(response_payload) = &item.response_payload {
-                if self.header.protocol_version >= response_payload.protocol_version() {
+                if self.header.protocol_version > response_payload.protocol_version() {
                     return Err(ser::Error::custom(format!(
                         "item's protocol version is greater (`{}`) than header's protocol version \
                          (`{}`)",

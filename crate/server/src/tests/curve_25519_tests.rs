@@ -169,6 +169,36 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     let request = Message {
         header: MessageHeader {
             protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            maximum_response_size: Some(9999),
+            batch_count: 2,
+            ..Default::default()
+        },
+        items: vec![
+            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::CURVE25519,
+            )?)),
+            MessageBatchItem::new(Operation::Locate(
+                cosmian_kmip::kmip::kmip_operations::Locate::default(),
+            )),
+        ],
+    };
+    println!(
+        "{:#?}",
+        cosmian_kmip::kmip::ttlv::serializer::to_ttlv(&request)
+    );
+    let response = kms.message(request, owner, None).await?;
+    println!(
+        "{:#?}",
+        cosmian_kmip::kmip::ttlv::serializer::to_ttlv(&response)
+    );
+
+    let request = Message {
+        header: MessageHeader {
+            protocol_version: ProtocolVersion {
                 protocol_version_major: 1,
                 protocol_version_minor: 0,
             },
@@ -216,6 +246,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         panic!("not a create key pair response payload");
     };
 
+    assert!(response.items[2].response_payload.is_none());
     assert_eq!(
         response.items[2].result_status,
         ResultStatusEnumeration::OperationFailed
