@@ -1010,10 +1010,9 @@ pub fn test_message_enforce_enum() {
             timestamp: 1697201574,
             ..Default::default()
         },
-        items: vec![
-            MessageResponseBatchItem::new(ResultStatusEnumeration::OperationPending),
-            MessageResponseBatchItem::new(ResultStatusEnumeration::OperationPending),
-        ],
+        items: vec![MessageResponseBatchItem::new(
+            ResultStatusEnumeration::OperationPending,
+        )],
     };
     assert_eq!(
         to_ttlv(&res).unwrap_err().to_string(),
