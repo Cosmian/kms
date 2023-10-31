@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.8.2] - 2023-10-31
+
+### Bug Fixes
+
+- Save certs as DER instead of PEM for KMIP compliance
+
 ## [4.8.1] - 2023-10-12
 
 ### Bug Fixes
