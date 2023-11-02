@@ -154,9 +154,9 @@ cargo build --bin cosmian_kms_cli
 cargo test -p cosmian_kms_cli
 ```
 
-A kms server is started by the test. Make sure, you don't start another one by yourself.
+A KMS server is started by the test. Make sure, you don't start another one by yourself.
 
-You can also test using a remote kms running inside an enclave. First, generate and start a docker as described in [README.md](../../enclave/README.md).
+You can also test using a remote KMS running inside an enclave. First, generate and start a docker as described in [README.md](../../sgx/README.md).
 
 Then:
 
