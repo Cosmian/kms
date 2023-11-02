@@ -103,6 +103,7 @@ impl ExportCertificateAction {
             false,
             self.wrap_key_id.as_deref(),
             self.allow_revoked,
+            Some(KeyFormatType::X509),
         )
         .await?;
 

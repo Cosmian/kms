@@ -534,19 +534,21 @@ impl Export {
     /// * `uid` - The Unique Identifier of the object to be retrieved
     /// * `unwrap` - If true, the object is returned unwrapped
     /// * `key_wrapping_data` - If unwrap is false, this is the key wrapping data to be used
+    /// * `key_format_type` - The key format type to be returned
     /// # Returns
     /// A `ExportRequest`
     /// # Example
     /// ```
     /// use cosmian_kmip::kmip::kmip_operations::Export;
     ///
-    /// let export_request = Export::new("1234", false, None);
+    /// let export_request = Export::new("1234", false, None, None);
     /// ```
     #[must_use]
     pub fn new(
         uid: &str,
         unwrap: bool,
         key_wrapping_specification: Option<KeyWrappingSpecification>,
+        key_format_type: Option<KeyFormatType>,
     ) -> Self {
         let key_wrap_type = if unwrap {
             // ignore key_wrapping_data if unwrap is true
@@ -559,7 +561,7 @@ impl Export {
 
         Self {
             unique_identifier: Some(uid.to_string()),
-            key_format_type: None,
+            key_format_type,
             key_wrap_type,
             key_compression_type: None,
             key_wrapping_specification,
@@ -570,19 +572,33 @@ impl Export {
 impl From<String> for Export {
     // Create a ExportRequest for an object to be returned "as registered"
     fn from(uid: String) -> Self {
-        Self::new(&uid, false, None)
+        Self::new(&uid, false, None, None)
     }
 }
 impl From<&String> for Export {
     // Create a ExportRequest for an object to be returned "as registered"
     fn from(uid: &String) -> Self {
-        Self::new(uid, false, None)
+        Self::new(uid, false, None, None)
     }
 }
 impl From<&str> for Export {
     // Create a ExportRequest for an object to be returned "as registered"
     fn from(uid: &str) -> Self {
-        Self::new(uid, false, None)
+        Self::new(uid, false, None, None)
+    }
+}
+
+impl From<Get> for Export {
+    // This is used to convert a GetRequest to an ExportRequest
+    // to use the common code of export-utils
+    fn from(get: Get) -> Self {
+        Export {
+            unique_identifier: get.unique_identifier,
+            key_format_type: get.key_format_type,
+            key_wrap_type: get.key_wrap_type,
+            key_compression_type: get.key_compression_type,
+            key_wrapping_specification: get.key_wrapping_specification,
+        }
     }
 }
 
@@ -658,13 +674,14 @@ impl Get {
     /// ```
     /// use cosmian_kmip::kmip::kmip_operations::Get;
     ///
-    /// let get_request = Get::new("1234", false, None);
+    /// let get_request = Get::new("1234", false, None, None);
     /// ```
     #[must_use]
     pub fn new(
         uid: &str,
         unwrap: bool,
         key_wrapping_specification: Option<KeyWrappingSpecification>,
+        key_format_type: Option<KeyFormatType>,
     ) -> Self {
         let key_wrap_type = if unwrap {
             // ignore key_wrapping_data if unwrap is true
@@ -677,7 +694,7 @@ impl Get {
 
         Self {
             unique_identifier: Some(uid.to_string()),
-            key_format_type: None,
+            key_format_type,
             key_wrap_type,
             key_compression_type: None,
             key_wrapping_specification,
@@ -688,19 +705,19 @@ impl Get {
 impl From<String> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: String) -> Self {
-        Self::new(&uid, false, None)
+        Self::new(&uid, false, None, None)
     }
 }
 impl From<&String> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: &String) -> Self {
-        Self::new(uid, false, None)
+        Self::new(uid, false, None, None)
     }
 }
 impl From<&str> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: &str) -> Self {
-        Self::new(uid, false, None)
+        Self::new(uid, false, None, None)
     }
 }
 
@@ -712,7 +729,17 @@ pub struct GetResponse {
     pub object: Object,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+impl From<ExportResponse> for GetResponse {
+    fn from(export_response: ExportResponse) -> Self {
+        Self {
+            object_type: export_response.object_type,
+            unique_identifier: export_response.unique_identifier,
+            object: export_response.object,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributes {
     /// Determines the object whose attributes

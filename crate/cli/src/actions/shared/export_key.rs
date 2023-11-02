@@ -1,13 +1,30 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use cosmian_kmip::{kmip::kmip_types::KeyFormatType, result::KmipResultHelper};
 use cosmian_kms_client::KmsRestClient;
 
 use crate::{
-    actions::shared::utils::{export_object, write_bytes_to_file, write_kmip_object_to_file},
+    actions::shared::utils::{
+        der_to_pem, export_object, write_bytes_to_file, write_kmip_object_to_file,
+    },
     cli_bail,
     error::CliError,
 };
+
+#[derive(clap::ValueEnum, Debug, Clone, PartialEq)]
+pub enum KeyFormat {
+    JsonTtlv,
+    Sec1Pem,
+    Sec1Der,
+    Pkcs1Pem,
+    Pkcs1Der,
+    Pkcs8Pem,
+    Pkcs8Der,
+    SpkiPem,
+    SpkiDer,
+    Bytes,
+}
 
 /// Export a key from the KMS
 ///
@@ -42,9 +59,9 @@ pub struct ExportKeyAction {
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
     tags: Option<Vec<String>>,
 
-    /// Export the key bytes only
-    #[clap(long = "bytes", short = 'b', default_value = "false")]
-    bytes: bool,
+    /// The format of the key
+    #[clap(long = "key-format", short = 'f', default_value = "json-ttlv")]
+    key_format: KeyFormat,
 
     /// Unwrap the key if it is wrapped before export
     #[clap(
@@ -82,6 +99,19 @@ impl ExportKeyAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
+        let (key_format_type, encode_to_pem) = match self.key_format {
+            KeyFormat::JsonTtlv => (None, false),
+            KeyFormat::Sec1Pem => (Some(KeyFormatType::ECPrivateKey), true),
+            KeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
+            KeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
+            KeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
+            KeyFormat::Pkcs8Pem => (Some(KeyFormatType::PKCS8), true),
+            KeyFormat::Pkcs8Der => (Some(KeyFormatType::PKCS8), false),
+            KeyFormat::SpkiPem => (Some(KeyFormatType::PKCS8), true),
+            KeyFormat::SpkiDer => (Some(KeyFormatType::PKCS8), false),
+            KeyFormat::Bytes => (Some(KeyFormatType::Raw), false),
+        };
+
         // export the object
         let object = export_object(
             kms_rest_client,
@@ -89,14 +119,27 @@ impl ExportKeyAction {
             self.unwrap,
             self.wrap_key_id.as_deref(),
             self.allow_revoked,
+            key_format_type,
         )
         .await?;
 
         // write the object to a file
-        if self.bytes {
-            // export the key bytes only
-            let key_bytes = object.key_block()?.key_bytes()?;
-            write_bytes_to_file(&key_bytes, &self.key_file)?;
+        if self.key_format != KeyFormat::JsonTtlv {
+            // export the bytes only
+            let bytes = {
+                let mut bytes = object.key_block()?.key_bytes()?;
+                if encode_to_pem {
+                    bytes = der_to_pem(
+                        bytes.as_slice(),
+                        key_format_type.context(
+                            "Server Error: the Key Format Type should be known at this stage",
+                        )?,
+                        object.object_type(),
+                    )?
+                }
+                bytes
+            };
+            write_bytes_to_file(&bytes, &self.key_file)?;
         } else {
             // save it to a file
             write_kmip_object_to_file(&object, &self.key_file)?;

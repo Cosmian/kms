@@ -12,3 +12,4 @@ data/keys
 crate/cli/*.sqlite
 sgx/kms-test-*.json
 .DS_Store
+.idea/

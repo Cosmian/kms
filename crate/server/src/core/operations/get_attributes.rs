@@ -1,14 +1,12 @@
 use cosmian_kmip::kmip::{
     kmip_operations::{GetAttributes, GetAttributesResponse},
-    kmip_types::{AttributeReference, Attributes, Tag},
+    kmip_types::{AttributeReference, Attributes, StateEnumeration, Tag},
 };
-use cosmian_kms_utils::access::ExtraDatabaseParams;
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::{debug, trace};
 
 use crate::{
-    core::{operations::get::get_active_object, KMS},
-    error::KmsError,
-    result::KResult,
+    core::KMS, database::object_with_metadata::ObjectWithMetadata, error::KmsError, result::KResult,
 };
 
 pub async fn get_attributes(
@@ -93,4 +91,33 @@ pub async fn get_attributes(
         unique_identifier: owm.id,
         attributes: res,
     })
+}
+
+pub(crate) async fn get_active_object(
+    kms: &KMS,
+    uid_or_tags: &str,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<ObjectWithMetadata> {
+    // retrieve from tags or use passed identifier
+    let mut owm_s = kms
+        .db
+        .retrieve(uid_or_tags, user, ObjectOperationType::Get, params)
+        .await?
+        .into_values()
+        .filter(|owm| owm.state == StateEnumeration::Active)
+        .collect::<Vec<ObjectWithMetadata>>();
+
+    // there can only be one object
+    let owm = owm_s
+        .pop()
+        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.to_owned()))?;
+
+    if !owm_s.is_empty() {
+        return Err(KmsError::InvalidRequest(format!(
+            "get: too many active objects for {uid_or_tags}",
+        )))
+    }
+
+    Ok(owm)
 }

@@ -17,7 +17,6 @@ use crate::{core::KMS, kms_bail, result::KResult};
 /// The key is wrapped using the wrapping key
 ///
 /// # Arguments
-/// * `object_uid` - the uid of the object to wrap (only used to display errors)
 /// * `object_key_block` - the key block of the object to wrap
 /// * `key_wrapping_specification` - the key wrapping specification
 /// * `kms` - the kms
@@ -26,7 +25,6 @@ use crate::{core::KMS, kms_bail, result::KResult};
 /// # Returns
 /// * `KResult<()>` - the result of the operation
 pub async fn wrap_key(
-    object_uid: &str,
     object_key_block: &mut KeyBlock,
     key_wrapping_specification: &KeyWrappingSpecification,
     kms: &KMS,
@@ -34,7 +32,7 @@ pub async fn wrap_key(
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()> {
     if object_key_block.key_wrapping_data.is_some() {
-        kms_bail!("unable to wrap the key {object_uid}: it is already wrapped")
+        kms_bail!("unable to wrap the key: it is already wrapped")
     }
     // check that the wrapping method is supported
     match &key_wrapping_specification.wrapping_method {
@@ -42,9 +40,7 @@ pub async fn wrap_key(
             // ok
         }
         x => {
-            kms_bail!(
-                "Unable to wrap the key {object_uid}: wrapping method is not supported: {x:?}"
-            )
+            kms_bail!("Unable to wrap the key: wrapping method is not supported: {x:?}")
         }
     }
 

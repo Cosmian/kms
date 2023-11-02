@@ -1,0 +1,351 @@
+use cosmian_kmip::{
+    kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Export, ExportResponse},
+        kmip_types::{Attributes, KeyFormatType, KeyWrapType, StateEnumeration},
+    },
+    openssl::{
+        kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_private_key_to_kmip,
+        openssl_public_key_to_kmip,
+    },
+    result::KmipResultHelper,
+};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use openssl::pkey::{Id, PKey, Private, Public};
+use tracing::{debug, trace};
+
+use crate::{
+    core::{
+        operations::{unwrap_key, wrapping::wrap_key},
+        KMS,
+    },
+    database::object_with_metadata::ObjectWithMetadata,
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
+
+/// Export an object
+///
+/// This function is used by the KMIP Export and Get operations
+pub async fn export_get(
+    kms: &KMS,
+    request: impl Into<Export>,
+    allow_full_export: bool,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<ExportResponse> {
+    let request: Export = request.into();
+    trace!("Export: {}", serde_json::to_string(&request)?);
+
+    // there must be an identifier
+    let uid_or_tags = request
+        .unique_identifier
+        .clone()
+        .ok_or(KmsError::UnsupportedPlaceholder)?;
+
+    // retrieve from tags or use passed identifier
+    let mut owm_s = kms
+        .db
+        .retrieve(&uid_or_tags, user, ObjectOperationType::Export, params)
+        .await?
+        .into_values()
+        .filter(|owm| owm.state == StateEnumeration::Active || allow_full_export)
+        .collect::<Vec<ObjectWithMetadata>>();
+
+    // there can only be one object
+    let mut owm = owm_s
+        .pop()
+        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.clone()))?;
+    if !owm_s.is_empty() {
+        return Err(KmsError::InvalidRequest(format!(
+            "get: too many objects for {uid_or_tags}",
+        )))
+    }
+
+    let object_type = owm.object.object_type();
+    let key_block = owm.object.key_block_mut()?;
+    // export based on the Object type
+    match object_type {
+        ObjectType::PrivateKey => {
+            // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
+            if allow_full_export
+                && (owm.state == StateEnumeration::Destroyed
+                    || owm.state == StateEnumeration::Destroyed_Compromised)
+            {
+                key_block.key_value = KeyValue {
+                    key_material: KeyMaterial::ByteString(vec![]),
+                    attributes: None,
+                };
+                key_block.key_format_type = KeyFormatType::Opaque;
+            } else {
+                prepare_private_key(
+                    &mut owm,
+                    &request.key_format_type,
+                    &request.key_wrap_type,
+                    &request.key_wrapping_specification,
+                    kms,
+                    user,
+                    params,
+                )
+                .await?;
+            }
+        }
+        ObjectType::PublicKey => {
+            // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
+            if allow_full_export
+                && (owm.state == StateEnumeration::Destroyed
+                    || owm.state == StateEnumeration::Destroyed_Compromised)
+            {
+                key_block.key_value = KeyValue {
+                    key_material: KeyMaterial::ByteString(vec![]),
+                    attributes: None,
+                };
+                key_block.key_format_type = KeyFormatType::Opaque;
+            } else {
+                prepare_public_key(
+                    &mut owm,
+                    &request.key_format_type,
+                    &request.key_wrap_type,
+                    &request.key_wrapping_specification,
+                    kms,
+                    user,
+                    params,
+                )
+                .await?;
+            }
+        }
+        // ObjectType::Certificate => {
+        //     //export_certificate(kms, request, user, params, &mut owm).await?;
+        // }
+        _ => {
+            kms_bail!(
+                "export: unsupported object type: {:?}",
+                owm.object.object_type()
+            )
+        }
+    }
+
+    Ok(ExportResponse {
+        object_type: owm.object.object_type(),
+        unique_identifier: owm.id,
+        attributes: owm
+            .object
+            .attributes()
+            .map_or(Attributes::default(), |v| v.clone()),
+        object: owm.object,
+    })
+}
+
+async fn prepare_private_key(
+    object_with_metadata: &mut ObjectWithMetadata,
+    key_format_type: &Option<KeyFormatType>,
+    key_wrap_type: &Option<KeyWrapType>,
+    key_wrapping_specification: &Option<KeyWrappingSpecification>,
+    kms: &KMS,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<()> {
+    let object_type = object_with_metadata.object.object_type();
+    let key_block = object_with_metadata.object.key_block_mut()?;
+
+    // First check is any unwrapping needs to be done
+    maybe_unwrap(key_block, object_type, kms, key_wrap_type, user, params).await?;
+
+    // If the key is still wrapped the the export KeyFormatType must be the default (none)
+    if key_block.key_wrapping_data.is_some() {
+        if key_format_type.is_some() {
+            kms_bail!(
+                "export: unable to export a wrapped key with a requested Key Format Type. It must \
+                 be the default"
+            )
+        } else {
+            // The key is wrapped and the Key Format Type is the default (none)
+            // The key is exported as such
+            return Ok(())
+        }
+    }
+
+    // parse the key to an openssl object
+    let openssl_key = kmip_private_key_to_openssl(&object_with_metadata.object)
+        .context("export: unable to parse the private key to openssl")?;
+
+    // Wrapping is only available for KeyFormatType being the default (i.e. None)
+    if key_wrapping_specification.is_some() {
+        if key_format_type.is_some() {
+            kms_bail!(
+                "export: unable to wrap a key with a specified Key Format Type. It must be the \
+                 default"
+            )
+        } else {
+            // generate a KMIP PrivateKey in the default format
+            let mut object = openssl_private_key_to_kmip_default_format(&openssl_key)?;
+            // wrap the key
+            wrap_key(
+                object.key_block_mut()?,
+                key_wrapping_specification.as_ref().unwrap(),
+                kms,
+                user,
+                params,
+            )
+            .await?;
+            // reassign the wrapped key
+            object_with_metadata.object = object;
+        }
+    }
+
+    //No wrapping requested: export the private key to the requested format
+    match key_format_type {
+        Some(kft) => match kft {
+            KeyFormatType::PKCS1
+            | KeyFormatType::PKCS8
+            | KeyFormatType::TransparentECPrivateKey
+            | KeyFormatType::TransparentRSAPrivateKey
+            | KeyFormatType::ECPrivateKey => {
+                let object = openssl_private_key_to_kmip(&openssl_key, *kft)?;
+                object_with_metadata.object = object;
+            }
+            _ => kms_bail!("export: unsupported Key Format Type: {:?}", kft),
+        },
+        None => {
+            // No format type requested: export the private key to the default format
+            let object = openssl_private_key_to_kmip_default_format(&openssl_key)?;
+            object_with_metadata.object = object;
+        }
+    }
+    Ok(())
+}
+
+async fn prepare_public_key(
+    object_with_metadata: &mut ObjectWithMetadata,
+    key_format_type: &Option<KeyFormatType>,
+    key_wrap_type: &Option<KeyWrapType>,
+    key_wrapping_specification: &Option<KeyWrappingSpecification>,
+    kms: &KMS,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<()> {
+    let object_type = object_with_metadata.object.object_type();
+    let key_block = object_with_metadata.object.key_block_mut()?;
+
+    // First check is any unwrapping needs to be done
+    maybe_unwrap(key_block, object_type, kms, key_wrap_type, user, params).await?;
+
+    // If the key is still wrapped the the export KeyFormatType must be the default (none)
+    if key_block.key_wrapping_data.is_some() {
+        if key_format_type.is_some() {
+            kms_bail!(
+                "export: unable to export a wrapped key with a requested Key Format Type. It must \
+                 be the default"
+            )
+        } else {
+            // The key is wrapped and the Key Format Type is the default (none)
+            // The key is exported as such
+            return Ok(())
+        }
+    }
+
+    // parse the key to an openssl object
+    let openssl_key = kmip_public_key_to_openssl(&object_with_metadata.object)
+        .context("export: unable to parse the private key to openssl")?;
+
+    // Wrapping is only available for KeyFormatType being the default (i.e. None)
+    if key_wrapping_specification.is_some() {
+        if key_format_type.is_some() {
+            kms_bail!(
+                "export: unable to wrap a key with a specified Key Format Type. It must be the \
+                 default"
+            )
+        } else {
+            // generate a KMIP PrivateKey in the default format
+            let mut object = openssl_public_key_to_kmip_default_format(&openssl_key)?;
+            // wrap the key
+            wrap_key(
+                object.key_block_mut()?,
+                key_wrapping_specification.as_ref().unwrap(),
+                kms,
+                user,
+                params,
+            )
+            .await?;
+            // reassign the wrapped key
+            object_with_metadata.object = object;
+        }
+    }
+
+    //No wrapping requested: export the private key to the requested format
+    match key_format_type {
+        Some(kft) => match kft {
+            KeyFormatType::PKCS1
+            | KeyFormatType::PKCS8
+            | KeyFormatType::TransparentECPublicKey
+            | KeyFormatType::TransparentRSAPublicKey => {
+                let object = openssl_public_key_to_kmip(&openssl_key, *kft)?;
+                object_with_metadata.object = object;
+            }
+            _ => kms_bail!("export: unsupported Key Format Type: {:?}", kft),
+        },
+        None => {
+            // No format type requested: export the private key to the default format
+            let object = openssl_public_key_to_kmip_default_format(&openssl_key)?;
+            object_with_metadata.object = object;
+        }
+    }
+    Ok(())
+}
+
+async fn maybe_unwrap(
+    key_block: &mut KeyBlock,
+    object_type: ObjectType,
+    kms: &KMS,
+    key_wrap_type: &Option<KeyWrapType>,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<()> {
+    if key_block.key_wrapping_data.is_none() {
+        return Ok(())
+    }
+    if let Some(key_wrap_type) = key_wrap_type {
+        if *key_wrap_type == KeyWrapType::NotWrapped {
+            debug!(
+                "export: unwrapping before exporting on object: {:?}",
+                object_type
+            );
+            unwrap_key(object_type, key_block, kms, user, params).await?;
+        }
+    }
+    Ok(())
+}
+
+fn openssl_private_key_to_kmip_default_format(key: &PKey<Private>) -> KResult<Object> {
+    let key_type_id = key.id();
+    let object = match key_type_id {
+        Id::RSA => {
+            // The default for RSA is `PKCS#1`
+            openssl_private_key_to_kmip(key, KeyFormatType::PKCS1)?
+        }
+        Id::EC | Id::ED25519 | Id::X448 | Id::X25519 => {
+            // The default for EC is `TransparentECPrivateKey`
+            openssl_private_key_to_kmip(key, KeyFormatType::TransparentECPrivateKey)?
+        }
+        x => kms_bail!("Private Keys of type: {x:?}, are not supported"),
+    };
+    Ok(object)
+}
+
+fn openssl_public_key_to_kmip_default_format(key: &PKey<Public>) -> KResult<Object> {
+    let key_type_id = key.id();
+    let object = match key_type_id {
+        Id::RSA => {
+            // The default for RSA is `PKCS#1`
+            openssl_public_key_to_kmip(key, KeyFormatType::PKCS1)?
+        }
+        Id::EC | Id::ED25519 | Id::X448 | Id::X25519 => {
+            // The default for EC is `TransparentECPrivateKey`
+            openssl_public_key_to_kmip(key, KeyFormatType::TransparentECPrivateKey)?
+        }
+        x => kms_bail!("Private Keys of type: {x:?}, are not supported"),
+    };
+    Ok(object)
+}
