@@ -138,8 +138,10 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                 }
                 other => ec_private_key_from_scalar(d, other)?,
             },
-            _ => kmip_bail!(
-                "Invalid Transparent EC private key material: TransparentECPrivateKey expected"
+            x => kmip_bail!(
+                "KMIP key to openssl: invalid Transparent EC private key material: {:?}: \
+                 TransparentECPrivateKey expected",
+                x
             ),
         },
         f => kmip_bail!(
@@ -234,21 +236,11 @@ pub fn openssl_private_key_to_kmip(
                     let d = BigUint::from_bytes_be(ec_key.private_key().to_vec().as_slice());
                     let recommended_curve = match ec_key.group().curve_name() {
                         Some(nid) => match nid {
-                            openssl::nid::Nid::X9_62_PRIME192V1 => {
-                                crate::kmip::kmip_types::RecommendedCurve::P192
-                            }
-                            openssl::nid::Nid::SECP224R1 => {
-                                crate::kmip::kmip_types::RecommendedCurve::P224
-                            }
-                            openssl::nid::Nid::X9_62_PRIME256V1 => {
-                                crate::kmip::kmip_types::RecommendedCurve::P256
-                            }
-                            openssl::nid::Nid::SECP384R1 => {
-                                crate::kmip::kmip_types::RecommendedCurve::P384
-                            }
-                            openssl::nid::Nid::SECP521R1 => {
-                                crate::kmip::kmip_types::RecommendedCurve::P521
-                            }
+                            Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
+                            Nid::SECP224R1 => RecommendedCurve::P224,
+                            Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,
+                            Nid::SECP384R1 => RecommendedCurve::P384,
+                            Nid::SECP521R1 => RecommendedCurve::P521,
                             _ => {
                                 kmip_bail!(
                                     "Unsupported openssl curve: {:?} in this KMIP implementation",

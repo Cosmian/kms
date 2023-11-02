@@ -2,7 +2,7 @@ use cloudproof::reexport::crypto_core::reexport::rand_core::CryptoRngCore;
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::{Object, ObjectType},
-    kmip_types::{EncodingOption, WrappingMethod},
+    kmip_types::{EncodingOption, KeyFormatType, WrappingMethod},
 };
 
 use crate::{
@@ -40,7 +40,7 @@ where
 
     let encoding = key_wrapping_data
         .encoding_option
-        .unwrap_or(EncodingOption::NoEncoding);
+        .unwrap_or(EncodingOption::TTLVEncoding);
     key_wrapping_data.encoding_option = Some(encoding);
 
     // wrap the key based on the encoding
@@ -55,7 +55,14 @@ where
             };
         }
         EncodingOption::NoEncoding => {
-            let plaintext = object_key_block.key_bytes()?;
+            let plaintext = match &object_key_block.key_value.key_material {
+                KeyMaterial::TransparentSymmetricKey { ref key } => key.clone(),
+                KeyMaterial::ByteString(ref key) => key.clone(),
+                x => kmip_utils_bail!(
+                    "unable to wrap key: NoEncoding is not supported for key material: {x:?}. Use \
+                     TTLVEncoding instead."
+                ),
+            };
             let ciphertext = encrypt_bytes(&mut *rng, wrapping_key, &plaintext)?;
             object_key_block.key_value.key_material = KeyMaterial::ByteString(ciphertext);
         }
@@ -68,13 +75,11 @@ where
 /// Unwrap a key block with a wrapping key
 ///
 /// # Arguments
-/// * `object_type` - the type of the object to unwrap
 /// * `object_key_block` - the key block of the object to unwrap
 /// * `unwrapping_key` - the unwrapping key
 /// # Returns
 /// * `KResult<()>` - the result of the operation
 pub fn unwrap_key_block(
-    object_type: ObjectType,
     object_key_block: &mut KeyBlock,
     unwrapping_key: &Object,
 ) -> Result<(), KmipUtilsError> {
@@ -83,16 +88,6 @@ pub fn unwrap_key_block(
         .key_wrapping_data
         .as_ref()
         .context("unable to unwrap key: key wrapping data is missing")?;
-
-    // check that the wrapping method is supported
-    match &key_wrapping_data.wrapping_method {
-        WrappingMethod::Encrypt => {
-            // ok
-        }
-        x => {
-            kmip_utils_bail!("unable to unwrap key: wrapping method is not supported: {x:?}")
-        }
-    }
 
     // check that the wrapping method is supported
     if WrappingMethod::Encrypt != key_wrapping_data.wrapping_method {
@@ -113,10 +108,12 @@ pub fn unwrap_key_block(
         }
         EncodingOption::NoEncoding => {
             let (ciphertext, attributes) = object_key_block.key_bytes_and_attributes()?;
-            let key_bytes = decrypt_bytes(unwrapping_key, &ciphertext)?;
-            let key_material: KeyMaterial = match object_type {
-                ObjectType::SymmetricKey => KeyMaterial::TransparentSymmetricKey { key: key_bytes },
-                _ => KeyMaterial::ByteString(key_bytes),
+            let plain_text = decrypt_bytes(unwrapping_key, &ciphertext)?;
+            let key_material: KeyMaterial = match object_key_block.key_format_type {
+                KeyFormatType::TransparentSymmetricKey => {
+                    KeyMaterial::TransparentSymmetricKey { key: plain_text }
+                }
+                _ => KeyMaterial::ByteString(plain_text),
             };
             KeyValue {
                 key_material,
@@ -233,11 +230,7 @@ mod tests {
                 Some(Default::default())
             );
             // unwrap
-            unwrap_key_block(
-                key_to_wrap.object_type(),
-                key_to_wrap.key_block_mut()?,
-                unwrapping_key,
-            )?;
+            unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
             assert_eq!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
             assert_eq!(key_to_wrap.key_block()?.key_wrapping_data, None);
         }
@@ -264,11 +257,7 @@ mod tests {
                 })
             );
             // unwrap
-            unwrap_key_block(
-                key_to_wrap.object_type(),
-                key_to_wrap.key_block_mut()?,
-                unwrapping_key,
-            )?;
+            unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;
             assert_eq!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
             assert_eq!(key_to_wrap.key_block()?.key_wrapping_data, None);
         }

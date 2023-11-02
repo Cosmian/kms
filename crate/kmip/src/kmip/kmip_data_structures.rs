@@ -51,17 +51,11 @@ impl KeyBlock {
         match &self.key_value.key_material {
             KeyMaterial::ByteString(v) => Ok(Zeroizing::new(v.clone())),
             KeyMaterial::TransparentSymmetricKey { key } => Ok(Zeroizing::new(key.clone())),
-            KeyMaterial::TransparentECPrivateKey {
-                d,
-                recommended_curve: _,
-            } => Ok(Zeroizing::new(d.to_bytes_be())),
-            KeyMaterial::TransparentECPublicKey {
-                recommended_curve: _,
-                q_string,
-            } => Ok(Zeroizing::new(q_string.clone())),
-            other => Err(KmipError::InvalidKmipValue(
+            _ => Err(KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Data_Type,
-                format!("The key has an invalid key material: {other:?}"),
+                "Key bytes can only be recovered from ByteString or TransparentSymmetricKey key \
+                 material."
+                    .to_string(),
             )),
         }
     }
@@ -170,11 +164,11 @@ impl KeyBlock {
 /// structure, or the wrapped un-encoded value of the Byte String Key Material
 /// field.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
 #[allow(clippy::large_enum_variant)]
 pub struct KeyValue {
-    #[serde(rename = "KeyMaterial")]
     pub key_material: KeyMaterial,
-    #[serde(rename = "Attributes/**/", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<Attributes>,
 }
 
@@ -208,18 +202,6 @@ impl KeyValue {
         }
     }
 }
-
-/*impl Serialize for KeyValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut st = serializer.serialize_struct("KeyValue", 2)?;
-        st.serialize_field("KeyMaterial", &self.key_material)?;
-        st.serialize_field("Attributes", &self.attributes)?;
-        st.end()
-    }
-}*/
 
 /// The Key Block MAY also supply OPTIONAL information about a cryptographic key
 /// wrapping mechanism used to wrap the Key Value. This consists of a Key
@@ -322,28 +304,11 @@ impl Default for KeyWrappingSpecification {
             encryption_key_information: None,
             mac_or_signature_key_information: None,
             attribute_name: None,
-            encoding_option: Some(EncodingOption::NoEncoding),
+            encoding_option: Some(EncodingOption::TTLVEncoding),
         }
     }
 }
 
-// KeyMaterial has variants that do not appear in the TTLV
-// Typically, for a Transparent Symmetric key it will look like
-// this
-// ```
-// TTLV {
-//     tag: "KeyMaterial".to_string(),
-//     value: TTLValue::Structure(vec![TTLV {
-//         tag: "Key".to_string(),
-//         value: TTLValue::ByteString(key_value.to_vec()),
-//     }]),
-// }
-// ```
-// So we use the `untagged` which unfortunately breaks pascalCase
-//
-/// Byte String: for Raw, Opaque, PKCS1, PKCS8, ECPrivateKey, or Extension Key Format types;
-/// Structure: for Transparent, or Extension Key Format Types
-/// The Key Value Byte String is either the wrapped TTLV-encoded Key Value structure, or the wrapped un-encoded value of the Byte String Key Material field.
 #[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum KeyMaterial {

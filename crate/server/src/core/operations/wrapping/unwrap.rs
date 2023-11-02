@@ -111,6 +111,6 @@ pub async fn unwrap_key(
         _ => unwrapping_key,
     };
 
-    unwrap_key_block(object_type, object_key_block, &unwrapping_key)?;
+    unwrap_key_block(object_key_block, &unwrapping_key)?;
     Ok(())
 }

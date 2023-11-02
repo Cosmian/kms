@@ -105,7 +105,7 @@ impl UnwrapKeyAction {
             cli_bail!("one of the unwrapping options must be specified");
         };
 
-        unwrap_key_block(object_type, object.key_block_mut()?, &unwrapping_key)?;
+        unwrap_key_block(object.key_block_mut()?, &unwrapping_key)?;
 
         // set the output file path to the input file path if not specified
         let output_file = self

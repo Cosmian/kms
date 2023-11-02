@@ -47,7 +47,7 @@ pub async fn wrap_key(
     // determine the encoding of the wrapping
     let encoding = key_wrapping_specification
         .encoding_option
-        .unwrap_or(EncodingOption::NoEncoding);
+        .unwrap_or(EncodingOption::TTLVEncoding);
 
     let wrapping_key_uid = match &key_wrapping_specification.encryption_key_information {
         Some(eki) => &eki.unique_identifier,

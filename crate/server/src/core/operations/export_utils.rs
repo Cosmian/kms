@@ -41,33 +41,11 @@ pub async fn export_get(
     let request: Export = request.into();
     trace!("Export: {}", serde_json::to_string(&request)?);
 
-    // there must be an identifier
-    let uid_or_tags = request
-        .unique_identifier
-        .clone()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
-
-    // retrieve from tags or use passed identifier
-    let mut owm_s = kms
-        .db
-        .retrieve(&uid_or_tags, user, ObjectOperationType::Export, params)
-        .await?
-        .into_values()
-        .filter(|owm| owm.state == StateEnumeration::Active || allow_full_export)
-        .collect::<Vec<ObjectWithMetadata>>();
-
-    // there can only be one object
-    let mut owm = owm_s
-        .pop()
-        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.clone()))?;
-    if !owm_s.is_empty() {
-        return Err(KmsError::InvalidRequest(format!(
-            "get: too many objects for {uid_or_tags}",
-        )))
-    }
-
+    let mut owm =
+        retrieve_object_with_metadata(kms, allow_full_export, user, params, &request).await?;
     let object_type = owm.object.object_type();
     let key_block = owm.object.key_block_mut()?;
+
     // export based on the Object type
     match object_type {
         ObjectType::PrivateKey => {
@@ -82,7 +60,7 @@ pub async fn export_get(
                 };
                 key_block.key_format_type = KeyFormatType::Opaque;
             } else {
-                prepare_private_key(
+                process_private_key(
                     &mut owm,
                     &request.key_format_type,
                     &request.key_wrap_type,
@@ -106,7 +84,31 @@ pub async fn export_get(
                 };
                 key_block.key_format_type = KeyFormatType::Opaque;
             } else {
-                prepare_public_key(
+                process_public_key(
+                    &mut owm,
+                    &request.key_format_type,
+                    &request.key_wrap_type,
+                    &request.key_wrapping_specification,
+                    kms,
+                    user,
+                    params,
+                )
+                .await?;
+            }
+        }
+        ObjectType::SymmetricKey => {
+            // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
+            if allow_full_export
+                && (owm.state == StateEnumeration::Destroyed
+                    || owm.state == StateEnumeration::Destroyed_Compromised)
+            {
+                key_block.key_value = KeyValue {
+                    key_material: KeyMaterial::ByteString(vec![]),
+                    attributes: None,
+                };
+                key_block.key_format_type = KeyFormatType::Opaque;
+            } else {
+                process_symmetric_key(
                     &mut owm,
                     &request.key_format_type,
                     &request.key_wrap_type,
@@ -140,7 +142,46 @@ pub async fn export_get(
     })
 }
 
-async fn prepare_private_key(
+/// Retrieve a single object from the database
+///
+/// The object is retrieved from the database based on the unique identifier or the tags
+/// The object is returned only if it is active or if the `allow_full_export` flag is set
+/// If the object is not found or if there are more than one object, an error is returned
+pub async fn retrieve_object_with_metadata(
+    kms: &KMS,
+    allow_full_export: bool,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+    request: &Export,
+) -> KResult<ObjectWithMetadata> {
+    // there must be an identifier
+    let uid_or_tags = request
+        .unique_identifier
+        .clone()
+        .ok_or(KmsError::UnsupportedPlaceholder)?;
+
+    // retrieve from tags or use passed identifier
+    let mut owm_s = kms
+        .db
+        .retrieve(&uid_or_tags, user, ObjectOperationType::Export, params)
+        .await?
+        .into_values()
+        .filter(|owm| owm.state == StateEnumeration::Active || allow_full_export)
+        .collect::<Vec<ObjectWithMetadata>>();
+
+    // there can only be one object
+    let owm = owm_s
+        .pop()
+        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.clone()))?;
+    if !owm_s.is_empty() {
+        return Err(KmsError::InvalidRequest(format!(
+            "get: too many objects for {uid_or_tags}",
+        )))
+    }
+    Ok(owm)
+}
+
+async fn process_private_key(
     object_with_metadata: &mut ObjectWithMetadata,
     key_format_type: &Option<KeyFormatType>,
     key_wrap_type: &Option<KeyWrapType>,
@@ -169,30 +210,17 @@ async fn prepare_private_key(
         }
     }
 
-    // Covercrypt keys cannot be post-processed
-
-    // process Covercrypt keys
+    // Covercrypt keys cannot be post-processed, process them here
     if key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt) {
-        // Wrapping is only available for KeyFormatType being the default (i.e. None)
-        if key_wrapping_specification.is_some() {
-            if key_format_type.is_some() {
-                kms_bail!(
-                    "export: unable to wrap a Covercrypt key with a specified Key Format Type. It \
-                     must be the default"
-                )
-            } else {
-                // wrap the key
-                wrap_key(
-                    key_block,
-                    key_wrapping_specification.as_ref().unwrap(),
-                    kms,
-                    user,
-                    params,
-                )
-                .await?;
-            }
-        }
-        return Ok(())
+        return process_covercrypt_key(
+            key_block,
+            key_wrapping_specification,
+            key_format_type,
+            kms,
+            user,
+            params,
+        )
+        .await
     }
 
     // parse the key to an openssl object
@@ -220,6 +248,7 @@ async fn prepare_private_key(
             .await?;
             // reassign the wrapped key
             object_with_metadata.object = object;
+            return Ok(())
         }
     }
 
@@ -245,7 +274,7 @@ async fn prepare_private_key(
     Ok(())
 }
 
-async fn prepare_public_key(
+async fn process_public_key(
     object_with_metadata: &mut ObjectWithMetadata,
     key_format_type: &Option<KeyFormatType>,
     key_wrap_type: &Option<KeyWrapType>,
@@ -276,26 +305,15 @@ async fn prepare_public_key(
 
     // process Covercrypt keys
     if key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt) {
-        // Wrapping is only available for KeyFormatType being the default (i.e. None)
-        if key_wrapping_specification.is_some() {
-            if key_format_type.is_some() {
-                kms_bail!(
-                    "export: unable to wrap a Covercrypt key with a specified Key Format Type. It \
-                     must be the default"
-                )
-            } else {
-                // wrap the key
-                wrap_key(
-                    key_block,
-                    key_wrapping_specification.as_ref().unwrap(),
-                    kms,
-                    user,
-                    params,
-                )
-                .await?;
-            }
-        }
-        return Ok(())
+        return process_covercrypt_key(
+            key_block,
+            key_wrapping_specification,
+            key_format_type,
+            kms,
+            user,
+            params,
+        )
+        .await
     }
 
     // parse the key to an openssl object
@@ -371,6 +389,36 @@ async fn maybe_unwrap(
     Ok(())
 }
 
+async fn process_covercrypt_key(
+    key_block: &mut KeyBlock,
+    key_wrapping_specification: &Option<KeyWrappingSpecification>,
+    key_format_type: &Option<KeyFormatType>,
+    kms: &KMS,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<()> {
+    // Wrapping is only available for KeyFormatType being the default (i.e. None)
+    if key_wrapping_specification.is_some() {
+        if key_format_type.is_some() {
+            kms_bail!(
+                "export: unable to wrap a Covercrypt key with a specified Key Format Type. It \
+                 must be the default"
+            )
+        } else {
+            // wrap the key
+            wrap_key(
+                key_block,
+                key_wrapping_specification.as_ref().unwrap(),
+                kms,
+                user,
+                params,
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
 fn openssl_private_key_to_kmip_default_format(key: &PKey<Private>) -> KResult<Object> {
     let key_type_id = key.id();
     let object = match key_type_id {
@@ -396,9 +444,60 @@ fn openssl_public_key_to_kmip_default_format(key: &PKey<Public>) -> KResult<Obje
         }
         Id::EC | Id::ED25519 | Id::X448 | Id::X25519 => {
             // The default for EC is `TransparentECPrivateKey`
-            openssl_public_key_to_kmip(key, KeyFormatType::TransparentECPrivateKey)?
+            openssl_public_key_to_kmip(key, KeyFormatType::TransparentECPublicKey)?
         }
         x => kms_bail!("Private Keys of type: {x:?}, are not supported"),
     };
     Ok(object)
+}
+
+async fn process_symmetric_key(
+    object_with_metadata: &mut ObjectWithMetadata,
+    key_format_type: &Option<KeyFormatType>,
+    key_wrap_type: &Option<KeyWrapType>,
+    key_wrapping_specification: &Option<KeyWrappingSpecification>,
+    kms: &KMS,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<()> {
+    let object_type = object_with_metadata.object.object_type();
+    let key_block = object_with_metadata.object.key_block_mut()?;
+
+    // First check is any unwrapping needs to be done
+    maybe_unwrap(key_block, object_type, kms, key_wrap_type, user, params).await?;
+
+    // If the key is still wrapped the the export KeyFormatType must be the default (none)
+    if key_block.key_wrapping_data.is_some() {
+        if key_format_type.is_some() {
+            kms_bail!(
+                "export: unable to export a wrapped symmetric key with a requested Key Format \
+                 Type. It must be the default"
+            )
+        } else {
+            // The key is wrapped and the Key Format Type is the default (none)
+            // The key is exported as such
+            return Ok(())
+        }
+    }
+
+    // Wrapping is only available for KeyFormatType being the default (i.e. None)
+    if key_wrapping_specification.is_some() {
+        if key_format_type.is_some() {
+            kms_bail!(
+                "export: unable to wrap a symmetric key with a specified Key Format Type. It must \
+                 be the default"
+            )
+        } else {
+            // wrap the key
+            wrap_key(
+                key_block,
+                key_wrapping_specification.as_ref().unwrap(),
+                kms,
+                user,
+                params,
+            )
+            .await?;
+        }
+    }
+    Ok(())
 }
