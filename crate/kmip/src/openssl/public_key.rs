@@ -121,8 +121,9 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, K
             ),
         },
         f => kmip_bail!(
-            "Unsupported key format type: {:?}, for a Transparent EC public key",
-            f
+            "Unsupported key format type: {:?}, for tr transforming a {} to openssl",
+            f,
+            public_key.object_type()
         ),
     };
     Ok(pk)
@@ -306,7 +307,7 @@ pub fn openssl_public_key_to_kmip(
             }
         }
         kft => kmip_bail!(
-            "Unsupported key format type: {:?}, for a Transparent EC public key",
+            "Unsupported target key format type: {:?}, for an openssl public key",
             kft
         ),
     };

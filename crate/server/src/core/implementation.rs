@@ -412,7 +412,7 @@ impl KMS {
         let mut pk_tags = tags;
         pk_tags.insert("_pk".to_string());
 
-        let object = match &cryptographic_algorithm {
+        let key_pair = match &cryptographic_algorithm {
             CryptographicAlgorithm::ECDH => {
                 let dp = attributes
                     .cryptographic_domain_parameters
@@ -447,6 +447,6 @@ impl KMS {
                 "The creation of a key pair for algorithm: {other:?} is not supported"
             ),
         }?;
-        Ok((object, sk_tags, pk_tags))
+        Ok((key_pair, sk_tags, pk_tags))
     }
 }
