@@ -77,4 +77,5 @@ nav:
       - Objects: kmip_2_1/objects.md
       - Attributes: kmip_2_1/attributes.md
       - Operations: kmip_2_1/operations.md
+      - Messages: kmip_2_1/messages.md
   # - SaaS: saas.md
