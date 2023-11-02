@@ -169,12 +169,12 @@ impl KeyBlock {
 /// • The Key Value Byte String is either the wrapped TTLV-encoded Key Value
 /// structure, or the wrapped un-encoded value of the Byte String Key Material
 /// field.
-#[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[allow(clippy::large_enum_variant)]
 pub struct KeyValue {
     #[serde(rename = "KeyMaterial")]
     pub key_material: KeyMaterial,
-    #[serde(rename = "Attributes", skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Attributes/**/", skip_serializing_if = "Option::is_none")]
     pub attributes: Option<Attributes>,
 }
 
@@ -209,7 +209,7 @@ impl KeyValue {
     }
 }
 
-impl Serialize for KeyValue {
+/*impl Serialize for KeyValue {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -219,7 +219,7 @@ impl Serialize for KeyValue {
         st.serialize_field("Attributes", &self.attributes)?;
         st.end()
     }
-}
+}*/
 
 /// The Key Block MAY also supply OPTIONAL information about a cryptographic key
 /// wrapping mechanism used to wrap the Key Value. This consists of a Key

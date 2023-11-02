@@ -3,7 +3,9 @@ use cosmian_kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingSpecification},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Export, ExportResponse},
-        kmip_types::{Attributes, KeyFormatType, KeyWrapType, StateEnumeration},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, StateEnumeration,
+        },
     },
     openssl::{
         kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_private_key_to_kmip,
@@ -167,6 +169,32 @@ async fn prepare_private_key(
         }
     }
 
+    // Covercrypt keys cannot be post-processed
+
+    // process Covercrypt keys
+    if key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt) {
+        // Wrapping is only available for KeyFormatType being the default (i.e. None)
+        if key_wrapping_specification.is_some() {
+            if key_format_type.is_some() {
+                kms_bail!(
+                    "export: unable to wrap a Covercrypt key with a specified Key Format Type. It \
+                     must be the default"
+                )
+            } else {
+                // wrap the key
+                wrap_key(
+                    key_block,
+                    key_wrapping_specification.as_ref().unwrap(),
+                    kms,
+                    user,
+                    params,
+                )
+                .await?;
+            }
+        }
+        return Ok(())
+    }
+
     // parse the key to an openssl object
     let openssl_key = kmip_private_key_to_openssl(&object_with_metadata.object)
         .context("export: unable to parse the private key to openssl")?;
@@ -246,6 +274,30 @@ async fn prepare_public_key(
         }
     }
 
+    // process Covercrypt keys
+    if key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt) {
+        // Wrapping is only available for KeyFormatType being the default (i.e. None)
+        if key_wrapping_specification.is_some() {
+            if key_format_type.is_some() {
+                kms_bail!(
+                    "export: unable to wrap a Covercrypt key with a specified Key Format Type. It \
+                     must be the default"
+                )
+            } else {
+                // wrap the key
+                wrap_key(
+                    key_block,
+                    key_wrapping_specification.as_ref().unwrap(),
+                    kms,
+                    user,
+                    params,
+                )
+                .await?;
+            }
+        }
+        return Ok(())
+    }
+
     // parse the key to an openssl object
     let openssl_key = kmip_public_key_to_openssl(&object_with_metadata.object)
         .context("export: unable to parse the private key to openssl")?;
@@ -271,6 +323,7 @@ async fn prepare_public_key(
             .await?;
             // reassign the wrapped key
             object_with_metadata.object = object;
+            return Ok(())
         }
     }
 

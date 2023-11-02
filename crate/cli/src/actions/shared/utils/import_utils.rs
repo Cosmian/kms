@@ -53,7 +53,7 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
             let attributes = if let Some(attributes) = import_attributes {
                 attributes
             } else {
-                object.attributes().cloned()?
+                object.attributes().cloned().unwrap_or_default()
             };
             (key_wrap_type, attributes)
         }

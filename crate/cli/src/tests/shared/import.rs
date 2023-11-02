@@ -110,19 +110,19 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
     log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
-    // // Covercrypt import/export test
-    // let (private_key_id, _public_key_id) = create_cc_master_key_pair(
-    //     &ctx.owner_cli_conf_path,
-    //     "--policy-specifications",
-    //     "test_data/policy_specifications.json",
-    //     &[],
-    // )?;
-    // export_import_test(
-    //     &ctx.owner_cli_conf_path,
-    //     "cc",
-    //     &private_key_id,
-    //     CryptographicAlgorithm::CoverCrypt,
-    // )?;
+    // Covercrypt import/export test
+    let (private_key_id, _public_key_id) = create_cc_master_key_pair(
+        &ctx.owner_cli_conf_path,
+        "--policy-specifications",
+        "test_data/policy_specifications.json",
+        &[],
+    )?;
+    export_import_test(
+        &ctx.owner_cli_conf_path,
+        "cc",
+        &private_key_id,
+        CryptographicAlgorithm::CoverCrypt,
+    )?;
 
     // Test import/export of an EC Key Pair
     let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
@@ -134,13 +134,13 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
     )?;
 
     // generate a symmetric key
-    /*    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     export_import_test(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
         CryptographicAlgorithm::AES,
-    )?;*/
+    )?;
 
     Ok(())
 }
