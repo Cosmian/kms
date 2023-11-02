@@ -1,10 +1,11 @@
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::Object,
+    kmip_objects::{Object, ObjectType},
     kmip_types::{CertificateType, KeyFormatType},
 };
+use zeroize::Zeroizing;
 
-use crate::error::CliError;
+use crate::{cli_bail, error::CliError};
 
 /// Build KMIP Objects from a PEM file.
 /// The PEM file can contain multiple objects.
@@ -119,4 +120,53 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
         cryptographic_length: None,
         key_wrapping_data: None,
     }
+}
+
+/// Converts DER bytes to PEM bytes for keys
+pub(crate) fn der_to_pem(
+    bytes: &[u8],
+    key_format_type: KeyFormatType,
+    object_type: ObjectType,
+) -> Result<Zeroizing<Vec<u8>>, CliError> {
+    let pem = match key_format_type {
+        KeyFormatType::PKCS1 => {
+            let tag = match object_type {
+                ObjectType::PrivateKey => "RSA PRIVATE KEY",
+                ObjectType::PublicKey => "RSA PUBLIC KEY",
+                x => {
+                    cli_bail!(
+                        "Object type {x:?} not supported for PKCS1. Must be a private key or \
+                         public key"
+                    )
+                }
+            };
+            pem::Pem::new(tag, bytes)
+        }
+        KeyFormatType::PKCS8 => {
+            let tag = match object_type {
+                ObjectType::PrivateKey => "PRIVATE KEY",
+                ObjectType::PublicKey => "PUBLIC KEY",
+                x => {
+                    cli_bail!(
+                        "Object type {x:?} not supported for PKCS#8 / SPKI. Must be a private key \
+                         (PKCS#8) or public key (SPKI)"
+                    )
+                }
+            };
+            pem::Pem::new(tag, bytes)
+        }
+        KeyFormatType::ECPrivateKey => {
+            let tag = match object_type {
+                ObjectType::PrivateKey => "EC PRIVATE KEY",
+                x => {
+                    cli_bail!("Object type {x:?} not supported for SEC1. Must be a private key.")
+                }
+            };
+            pem::Pem::new(tag, bytes)
+        }
+        _ => {
+            cli_bail!("Key format type {key_format_type:?} not supported for PEM conversion")
+        }
+    };
+    Ok(Zeroizing::new(pem::encode(&pem).into_bytes()))
 }

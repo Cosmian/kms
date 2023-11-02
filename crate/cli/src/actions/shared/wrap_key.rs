@@ -84,7 +84,7 @@ impl WrapKeyAction {
                     .to_vec();
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.wrap_key_id {
-            export_object(kms_rest_client, key_id, false, None, false).await?
+            export_object(kms_rest_client, key_id, false, None, false, None).await?
         } else if let Some(key_file) = &self.wrap_key_file {
             read_object_from_json_ttlv_file(key_file)?
         } else {

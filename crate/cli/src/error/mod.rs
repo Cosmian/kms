@@ -100,8 +100,8 @@ impl From<TtlvError> for CliError {
     }
 }
 
-impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::der::Error> for CliError {
-    fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::der::Error) -> Self {
+impl From<der::Error> for CliError {
+    fn from(e: der::Error) -> Self {
         Self::Conversion(e.to_string())
     }
 }
@@ -202,7 +202,7 @@ impl From<RestClientError> for CliError {
 
 impl From<PemError> for CliError {
     fn from(e: PemError) -> Self {
-        Self::Conversion(format!("PEM error: {}", e.to_string()))
+        Self::Conversion(format!("PEM error: {}", e))
     }
 }
 

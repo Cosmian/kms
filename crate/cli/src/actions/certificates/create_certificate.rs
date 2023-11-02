@@ -77,13 +77,13 @@ impl CreateCertificateAction {
 
         // A certificate id has been provided
         if let Some(certificate_id) = &self.certificate_id {
-            vendor_attributes.push(certificate_id_as_vendor_attribute(&certificate_id)?);
+            vendor_attributes.push(certificate_id_as_vendor_attribute(certificate_id)?);
         }
 
         // A Subject Common Name is provided.
         if let Some(subject_common_name) = &self.subject_common_name {
             vendor_attributes.push(subject_common_name_as_vendor_attribute(
-                &subject_common_name,
+                subject_common_name,
             )?);
         }
 

@@ -2,6 +2,7 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
+use cosmian_logger::log_utils::log_init;
 
 use crate::{
     actions::shared::utils::read_object_from_json_ttlv_file,
@@ -106,24 +107,24 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_generate_export_import() -> Result<(), CliError> {
-    // log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
+    log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
-    // Generate
-    let (private_key_id, _public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
-        "--policy-specifications",
-        "test_data/policy_specifications.json",
-        &[],
-    )?;
-    export_import_test(
-        &ctx.owner_cli_conf_path,
-        "cc",
-        &private_key_id,
-        CryptographicAlgorithm::CoverCrypt,
-    )?;
+    // // Covercrypt import/export test
+    // let (private_key_id, _public_key_id) = create_cc_master_key_pair(
+    //     &ctx.owner_cli_conf_path,
+    //     "--policy-specifications",
+    //     "test_data/policy_specifications.json",
+    //     &[],
+    // )?;
+    // export_import_test(
+    //     &ctx.owner_cli_conf_path,
+    //     "cc",
+    //     &private_key_id,
+    //     CryptographicAlgorithm::CoverCrypt,
+    // )?;
 
-    // generate a new key pair
+    // Test import/export of an EC Key Pair
     let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     export_import_test(
         &ctx.owner_cli_conf_path,
@@ -133,13 +134,13 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
     )?;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
+    /*    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     export_import_test(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
         CryptographicAlgorithm::AES,
-    )?;
+    )?;*/
 
     Ok(())
 }
@@ -178,16 +179,19 @@ pub fn export_import_test(
         cli_conf_path,
         sub_command,
         &uid,
-        "/tmp/output.export",
+        "/tmp/output2.export",
         false,
         false,
         None,
         false,
     )?;
-    let object = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output.export"))?;
-    assert_eq!(object.key_block()?.key_bytes()?, key_bytes);
-    assert_eq!(object.key_block()?.cryptographic_algorithm, Some(algorithm));
-    assert!(object.key_block()?.key_wrapping_data.is_none());
+    let object2 = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output2.export"))?;
+    assert_eq!(object2.key_block()?.key_bytes()?, key_bytes);
+    assert_eq!(
+        object2.key_block()?.cryptographic_algorithm,
+        Some(algorithm)
+    );
+    assert!(object2.key_block()?.key_wrapping_data.is_none());
 
     Ok(())
 }

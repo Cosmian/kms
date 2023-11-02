@@ -2,7 +2,7 @@ use cosmian_kmip::kmip::{
     kmip_data_structures::KeyWrappingSpecification,
     kmip_objects::Object,
     kmip_operations::{Export, Get},
-    kmip_types::{EncryptionKeyInformation, WrappingMethod},
+    kmip_types::{EncryptionKeyInformation, KeyFormatType, WrappingMethod},
 };
 use cosmian_kms_client::KmsRestClient;
 
@@ -32,6 +32,7 @@ pub async fn export_object(
     unwrap: bool,
     wrapping_key_id: Option<&str>,
     allow_revoked: bool,
+    key_format_type: Option<KeyFormatType>,
 ) -> Result<Object, CliError> {
     // If an unwrapping key is specified, generate the key (un)wrapping specification
     let key_wrapping_specification: Option<KeyWrappingSpecification> = if unwrap {
@@ -49,14 +50,24 @@ pub async fn export_object(
     let (object, object_type) = if allow_revoked {
         //use the KMIP export function to get revoked objects
         let export_response = kms_rest_client
-            .export(Export::new(object_id, unwrap, key_wrapping_specification))
+            .export(Export::new(
+                object_id,
+                unwrap,
+                key_wrapping_specification,
+                key_format_type,
+            ))
             .await
             .with_context(|| "export")?;
         (export_response.object, export_response.object_type)
     } else {
         // Query the KMS with your kmip data and get the key pair ids
         let get_response = kms_rest_client
-            .get(Get::new(object_id, unwrap, key_wrapping_specification))
+            .get(Get::new(
+                object_id,
+                unwrap,
+                key_wrapping_specification,
+                key_format_type,
+            ))
             .await
             .with_context(|| "export")?;
         (get_response.object, get_response.object_type)
