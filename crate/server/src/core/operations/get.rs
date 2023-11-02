@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip::kmip_operations::{Get, GetResponse};
 use cosmian_kms_utils::access::ExtraDatabaseParams;
-use tracing::{debug, trace};
+use tracing::trace;
 
 use crate::{
     core::{operations::export_get, KMS},
@@ -19,8 +19,9 @@ pub(crate) async fn get(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<GetResponse> {
-    debug!("Get: {}", serde_json::to_string(&request)?);
-    export_get(kms, request, false, user, params)
+    trace!("Get: {}", serde_json::to_string(&request)?);
+    let response = export_get(kms, request, false, user, params)
         .await
-        .map(Into::into)
+        .map(Into::into)?;
+    Ok(response)
 }
