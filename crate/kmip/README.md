@@ -5,7 +5,7 @@ It also implements the TTLV serialization format.
 
 This KMIP data are then used by the `cosmian_kms_client` to query the `cosmian_kms_server` and then by the `cosmian_kms_server` to respond.
 
-For specific Cosmian crypto-systems, you can use the [cosmian_kms_utils](http://gitlab.cosmian.com/core/kms/-/tree/main/utils) to generate KMIP data with an abstraction level.
+For specific Cosmian crypto-systems, you can use the [cosmian_kms_utils](https://github.com/Cosmian/kms/tree/main/crate/utils) to generate KMIP data with an abstraction level.
 
 ## Supported KMIP Objects
 

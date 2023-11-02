@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use async_recursion::async_recursion;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType::{self, PrivateKey, PublicKey, SymmetricKey},
-    kmip_operations::{Revoke, RevokeResponse},
+    kmip_operations::{ErrorReason, Revoke, RevokeResponse},
     kmip_types::{
         KeyFormatType, LinkType, RevocationReason, RevocationReasonEnumeration, StateEnumeration,
         UniqueIdentifier,
@@ -82,7 +82,10 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
         .collect::<Vec<ObjectWithMetadata>>();
 
     if owm_s.is_empty() {
-        return Err(KmsError::ItemNotFound(uid_or_tags.to_owned()))
+        return Err(KmsError::KmipError(
+            ErrorReason::Item_Not_Found,
+            uid_or_tags.to_owned(),
+        ))
     }
 
     // revoke the keys found

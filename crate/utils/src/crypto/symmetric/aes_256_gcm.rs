@@ -110,7 +110,7 @@ impl EncryptionSystem for AesGcmSystem {
 
         Ok(EncryptResponse {
             unique_identifier: self.key_uid.clone(),
-            data: Some(data.clone()),
+            data: Some(data),
             iv_counter_nonce: Some(nonce.as_bytes().to_vec()),
             correlation_value,
             authenticated_encryption_tag: Some(tag),
@@ -176,7 +176,7 @@ impl DecryptionSystem for AesGcmSystem {
 
         Ok(DecryptResponse {
             unique_identifier: self.key_uid.clone(),
-            data: Some(bytes.clone()),
+            data: Some(bytes),
             correlation_value,
         })
     }

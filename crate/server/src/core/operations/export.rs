@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyMaterial, KeyValue},
-    kmip_operations::{Export, ExportResponse},
+    kmip_operations::{ErrorReason, Export, ExportResponse},
     kmip_types::{KeyWrapType, StateEnumeration},
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
@@ -47,7 +47,7 @@ pub async fn export(
     // there can only be one object
     let mut owm = owm_s
         .pop()
-        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.clone()))?;
+        .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, uid_or_tags.clone()))?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(

@@ -1,10 +1,10 @@
-In [chapter 4](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html#_Toc32239322), the KMIP 2.1 specifications specifies a list of 63 Attributes, mostly made of enumerations and data structures, often nested in each other. Despite this impressive list, and as expected in such a large specification, KMIP allows for extensions to support new cryptographic schemes such as the ones enabled by Cosmian.
+In [chapter 4](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html#_Toc32239322), the KMIP 2.1 specification specifies a list of 63 Attributes, mostly made of enumerations and data structures, often nested in each other. Despite this impressive list, and as expected in such a large specification, KMIP allows for extensions to support new cryptographic schemes such as the ones enabled by Cosmian.
 
 Extensions in KMIP consist mostly in augmenting enumerations with new values and attributing a specific prefix values, usually `0x8880` to the new variants.
 
 The Cosmian extensions are listed below. They can also be viewed in the open sourced [Cloudproof Java library](https://github.com/Cosmian/cloudproof_java/) which implements the KMIP specifications required to interact with the Cosmian KMS server. For instance, the `CryptographicAlgorithm` enumeration extensions can be viewed in [this java source code](https://github.com/Cosmian/cloudproof_java/blob/main/src/main/java/com/cosmian/rest/kmip/types/CryptographicAlgorithm.java)
 
-#### KeyFormatType
+#### Key Format Type
 
 The Key Format Type attribute is a required attribute of a Cryptographic Object.
 
@@ -17,7 +17,7 @@ CoverCryptSecretKey = 0x8880_000C,
 CoverCryptPublicKey = 0x8880_000D,
 ```
 
-#### CryptographicAlgorithm
+#### Cryptographic Algorithm
 
 The Cryptographic Parameters attribute is a structure that contains a set of OPTIONAL fields that describe certain cryptographic parameters to be used when performing cryptographic operations using the object. Specific fields MAY pertain only to certain types of Managed Objects. The Cryptographic Parameters attribute of a Certificate object identifies the cryptographic parameters of the public key contained within the Certificate.
 
@@ -43,7 +43,7 @@ CoverCrypt = 0x8880_0004,
 
 All keys managed by the Cosmian KMS server are primarily a `KeyMaterial` made of bytes. Some keys, typically those of ABE, also carry information regarding the underlying access policies. This information is carried together with the keys using [VendorAttributes](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html#_Toc32239382)
 
-Typically a vendor attribute is made of 3 values: a `Vendor Identification` - always hardcoded to `cosmian`  - and a tuple `Attribute Name`, `Attribute Value`.
+Typically a vendor attribute is made of 3 values: a `Vendor Identification` - always hardcoded to `cosmian` - and a tuple `Attribute Name`, `Attribute Value`.
 The different attribute names can be seen in the [VendorAttributes.java](https://github.com/Cosmian/cloudproof_java/blob/main/src/main/java/com/cosmian/rest/kmip/types/VendorAttribute.java) file of the Cloudproof JavaLib.
 
 The attributes names and corresponding values used for a given `KeyFormatType` are as follows:
@@ -52,6 +52,6 @@ The attributes names and corresponding values used for a given `KeyFormatType` a
   - `VENDOR_ATTR_COVER_CRYPT_POLICY = "cover_crypt_policy"` : the JSONified Policy
 
 - `AbeUserDecryptionKey`:
-  - `VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY = "cover_crypt_access_policy"`: The JSONified boolean Access Policy of the key
+  - `VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY = "cover_crypt_access_policy"`: the JSONified boolean Access Policy of the key
 
 In addition, the `VENDOR_ATTR_COVER_CRYPT_ATTR = "cover_crypt_attributes"` name is used in Locate requests to identify User Decryption Keys holding certain Policy Attributes.

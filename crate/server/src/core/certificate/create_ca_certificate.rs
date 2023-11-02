@@ -4,6 +4,7 @@ use cloudproof::reexport::crypto_core::{
     reexport::x509_cert::{builder::Profile, name::Name},
     Ed25519PublicKey, ED25519_PUBLIC_KEY_LENGTH,
 };
+use cosmian_kmip::kmip::kmip_operations::ErrorReason;
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::debug;
 
@@ -103,7 +104,7 @@ pub(crate) async fn create_ca_chain(
                     CASigningKey::from_private_key_uid(current_ca, &uid, kms, owner, params).await
                 }
                 Err(err) => match err {
-                    KmsError::ItemNotFound(_) => {
+                    KmsError::KmipError(ErrorReason::Item_Not_Found, _) => {
                         debug!(
                             "[0]: Creating the root CA certificate: CA: {current_ca}: Error: \
                              {err:?}"
@@ -125,7 +126,7 @@ pub(crate) async fn create_ca_chain(
                     CASigningKey::from_private_key_uid(current_ca, &uid, kms, owner, params).await
                 }
                 Err(err) => match err {
-                    KmsError::ItemNotFound(_) => {
+                    KmsError::KmipError(ErrorReason::Item_Not_Found, _) => {
                         debug!("[{index}]: Creating the subCA certificate: {current_ca}");
                         create_sub_ca(last_ca_signing_key, current_ca, tags, kms, owner, params)
                             .await

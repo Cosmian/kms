@@ -109,6 +109,6 @@ pub async fn test_user_decryption_key_error() -> Result<(), CliError> {
     )
     .err()
     .unwrap();
-    assert!(err.to_string().contains("Item not found: BAD_KEY"));
+    assert!(err.to_string().contains("Item_Not_Found: BAD_KEY"));
     Ok(())
 }

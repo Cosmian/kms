@@ -33,6 +33,7 @@ opt-level = 0
 async-trait = "0.1"
 base64 = "0.21"
 bitflags = "2.3"
+chrono = "0.4"
 clap = { version = "4.4", default-features = false, features = [
   "help",
   "env",

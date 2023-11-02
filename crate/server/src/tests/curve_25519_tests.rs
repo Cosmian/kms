@@ -2,17 +2,19 @@ use std::sync::Arc;
 
 use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
 use cosmian_kmip::kmip::{
+    kmip_messages::{Message, MessageBatchItem, MessageHeader},
     kmip_objects::{Object, ObjectType},
-    kmip_operations::Import,
+    kmip_operations::{ErrorReason, Import, Operation},
     kmip_types::{
         Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        RecommendedCurve,
+        ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
     },
 };
 use cosmian_kms_utils::crypto::curve_25519::{
     kmip_requests::{ec_create_key_pair_request, get_private_key_request, get_public_key_request},
     operation::{self, to_curve_25519_256_public_key},
 };
+use cosmian_logger::log_utils::log_init;
 
 use crate::{
     config::ServerParams, error::KmsError, result::KResult, tests::test_utils::https_clap_config,
@@ -139,7 +141,6 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     };
     let new_uid = kms.import(request, owner, None).await?.unique_identifier;
     // update
-
     let request = Import {
         unique_identifier: new_uid.clone(),
         object_type: ObjectType::PublicKey,
@@ -153,5 +154,122 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     };
     let update_response = kms.import(request, owner, None).await?;
     assert_eq!(new_uid, update_response.unique_identifier);
+    Ok(())
+}
+
+#[actix_rt::test]
+async fn test_curve_25519_multiple() -> KResult<()> {
+    log_init("info,hyper=info,reqwest=info");
+
+    let clap_config = https_clap_config();
+
+    let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(&clap_config).await?).await?);
+    let owner = "eyJhbGciOiJSUzI1Ni";
+
+    let request = Message {
+        header: MessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 2,
+                protocol_version_minor: 1,
+            },
+            maximum_response_size: Some(9999),
+            batch_count: 2,
+            ..Default::default()
+        },
+        items: vec![
+            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::CURVE25519,
+            )?)),
+            MessageBatchItem::new(Operation::Locate(
+                cosmian_kmip::kmip::kmip_operations::Locate::default(),
+            )),
+        ],
+    };
+    println!(
+        "{:#?}",
+        cosmian_kmip::kmip::ttlv::serializer::to_ttlv(&request)
+    );
+    let response = kms.message(request, owner, None).await?;
+    println!(
+        "{:#?}",
+        cosmian_kmip::kmip::ttlv::serializer::to_ttlv(&response)
+    );
+
+    let request = Message {
+        header: MessageHeader {
+            protocol_version: ProtocolVersion {
+                protocol_version_major: 1,
+                protocol_version_minor: 0,
+            },
+            maximum_response_size: Some(9999),
+            batch_count: 4,
+            ..Default::default()
+        },
+        items: vec![
+            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::CURVE25519,
+            )?)),
+            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::CURVEED25519,
+            )?)),
+            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::SECP256K1,
+            )?)),
+            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::CURVEED25519,
+            )?)),
+        ],
+    };
+
+    let response = kms.message(request, owner, None).await?;
+    assert_eq!(response.header.batch_count, 4);
+    assert_eq!(response.items.len(), 4);
+
+    assert_eq!(
+        response.items[0].result_status,
+        ResultStatusEnumeration::Success
+    );
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[0].response_payload else {
+        panic!("not a create key pair response payload");
+    };
+
+    assert_eq!(
+        response.items[1].result_status,
+        ResultStatusEnumeration::Success
+    );
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[1].response_payload else {
+        panic!("not a create key pair response payload");
+    };
+
+    assert!(response.items[2].response_payload.is_none());
+    assert_eq!(
+        response.items[2].result_status,
+        ResultStatusEnumeration::OperationFailed
+    );
+    assert_eq!(
+        response.items[2].result_reason,
+        Some(ErrorReason::Operation_Not_Supported)
+    );
+    assert_eq!(
+        response.items[2].result_message,
+        Some(
+            "Not Supported: Generation of Key Pair for curve: SECP256K1, is not supported"
+                .to_string()
+        )
+    );
+
+    assert_eq!(
+        response.items[3].result_status,
+        ResultStatusEnumeration::Success
+    );
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[3].response_payload else {
+        panic!("not a create key pair response payload");
+    };
+
     Ok(())
 }

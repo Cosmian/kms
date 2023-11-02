@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{Get, Locate},
+    kmip_operations::{ErrorReason, Get, Locate},
     kmip_types::Attributes,
 };
 use cosmian_kms_utils::{access::ExtraDatabaseParams, tagging::set_tags};
@@ -31,9 +31,10 @@ async fn locate_by_tags(
     let locate_response = kms.locate(locate_request, owner, params).await?;
     match locate_response.unique_identifiers {
         Some(uids) => match uids.len() {
-            0 => Err(KmsError::ItemNotFound(format!(
-                "locate_by_tags: {object_type:?} with tags '{tags:?}' not found"
-            ))),
+            0 => Err(KmsError::KmipError(
+                ErrorReason::Item_Not_Found,
+                format!("locate_by_tags: {object_type:?} with tags '{tags:?}' not found"),
+            )),
             1 => {
                 let uid = uids[0].clone();
                 debug!(
@@ -47,9 +48,10 @@ async fn locate_by_tags(
             ))),
         },
 
-        None => Err(KmsError::ItemNotFound(format!(
-            "locate_by_tags: {object_type:?} with tags '{tags:?}' not found (None)"
-        ))),
+        None => Err(KmsError::KmipError(
+            ErrorReason::Item_Not_Found,
+            format!("locate_by_tags: {object_type:?} with tags '{tags:?}' not found (None)"),
+        )),
     }
 }
 
@@ -92,9 +94,10 @@ pub(crate) async fn locate_by_spki(
     let locate_response = kms.locate(locate_request, owner, params).await?;
     match locate_response.unique_identifiers {
         Some(uids) => match uids.len() {
-            0 => Err(KmsError::ItemNotFound(format!(
-                "locate_by_spki: {object_type:?} with tags '{tags:?}' not found"
-            ))),
+            0 => Err(KmsError::KmipError(
+                ErrorReason::Item_Not_Found,
+                format!("locate_by_spki: {object_type:?} with tags '{tags:?}' not found"),
+            )),
             _ => {
                 let uid = uids[0].clone();
                 debug!(
@@ -105,9 +108,10 @@ pub(crate) async fn locate_by_spki(
             }
         },
 
-        None => Err(KmsError::ItemNotFound(format!(
-            "locate_by_spki: {object_type:?} with tags '{tags:?}' not found (None)"
-        ))),
+        None => Err(KmsError::KmipError(
+            ErrorReason::Item_Not_Found,
+            format!("locate_by_spki: {object_type:?} with tags '{tags:?}' not found (None)"),
+        )),
     }
 }
 
