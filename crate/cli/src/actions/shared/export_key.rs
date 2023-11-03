@@ -23,7 +23,7 @@ pub enum KeyFormat {
     Pkcs8Der,
     SpkiPem,
     SpkiDer,
-    Bytes,
+    Raw,
 }
 
 /// Export a key from the KMS
@@ -109,7 +109,8 @@ impl ExportKeyAction {
             KeyFormat::Pkcs8Der => (Some(KeyFormatType::PKCS8), false),
             KeyFormat::SpkiPem => (Some(KeyFormatType::PKCS8), true),
             KeyFormat::SpkiDer => (Some(KeyFormatType::PKCS8), false),
-            KeyFormat::Bytes => (Some(KeyFormatType::Raw), false),
+            // For Raw: use the default format then do the local extraction of the bytes
+            KeyFormat::Raw => (None, false),
         };
 
         // export the object

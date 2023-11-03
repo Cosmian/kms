@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
