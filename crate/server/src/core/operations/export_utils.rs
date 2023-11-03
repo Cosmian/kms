@@ -228,7 +228,7 @@ async fn process_private_key(
         .context("export: unable to parse the private key to openssl")?;
 
     // Wrapping is only available for KeyFormatType being the default (i.e. None)
-    if key_wrapping_specification.is_some() {
+    if let Some(key_wrapping_specification) = key_wrapping_specification {
         if key_format_type.is_some() {
             kms_bail!(
                 "export: unable to wrap a key with a specified Key Format Type. It must be the \
@@ -240,7 +240,7 @@ async fn process_private_key(
             // wrap the key
             wrap_key(
                 object.key_block_mut()?,
-                key_wrapping_specification.as_ref().unwrap(),
+                key_wrapping_specification,
                 kms,
                 user,
                 params,
@@ -321,7 +321,7 @@ async fn process_public_key(
         .context("export: unable to parse the private key to openssl")?;
 
     // Wrapping is only available for KeyFormatType being the default (i.e. None)
-    if key_wrapping_specification.is_some() {
+    if let Some(key_wrapping_specification) = key_wrapping_specification {
         if key_format_type.is_some() {
             kms_bail!(
                 "export: unable to wrap a key with a specified Key Format Type. It must be the \
@@ -333,7 +333,7 @@ async fn process_public_key(
             // wrap the key
             wrap_key(
                 object.key_block_mut()?,
-                key_wrapping_specification.as_ref().unwrap(),
+                key_wrapping_specification,
                 kms,
                 user,
                 params,
@@ -383,7 +383,7 @@ async fn maybe_unwrap(
                 "export: unwrapping before exporting on object: {:?}",
                 object_type
             );
-            unwrap_key(object_type, key_block, kms, user, params).await?;
+            unwrap_key(key_block, kms, user, params).await?;
         }
     }
     Ok(())
@@ -398,7 +398,7 @@ async fn process_covercrypt_key(
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()> {
     // Wrapping is only available for KeyFormatType being the default (i.e. None)
-    if key_wrapping_specification.is_some() {
+    if let Some(key_wrapping_specification) = key_wrapping_specification {
         if key_format_type.is_some() {
             kms_bail!(
                 "export: unable to wrap a Covercrypt key with a specified Key Format Type. It \
@@ -406,14 +406,7 @@ async fn process_covercrypt_key(
             )
         } else {
             // wrap the key
-            wrap_key(
-                key_block,
-                key_wrapping_specification.as_ref().unwrap(),
-                kms,
-                user,
-                params,
-            )
-            .await?;
+            wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
         }
     }
     Ok(())
@@ -474,30 +467,61 @@ async fn process_symmetric_key(
                  Type. It must be the default"
             )
         } else {
-            // The key is wrapped and the Key Format Type is the default (none)
-            // The key is exported as such
+            // The key is wrapped and as expected the requested  Key Format Type is the default (none)
+            // => The key is exported as such
             return Ok(())
         }
     }
 
+    // we have an unwrapped key, convert it to the pivotal format first,
+    // which is getting the key bytes
+    let key_bytes = match key_block.key_value.key_material {
+        KeyMaterial::ByteString(ref mut key_bytes) => key_bytes.clone(),
+        KeyMaterial::TransparentSymmetricKey { ref mut key } => key.clone(),
+        _ => kms_bail!("export: unsupported key material"),
+    };
+
     // Wrapping is only available for KeyFormatType being the default (i.e. None)
-    if key_wrapping_specification.is_some() {
+    if let Some(key_wrapping_specification) = key_wrapping_specification {
         if key_format_type.is_some() {
             kms_bail!(
                 "export: unable to wrap a symmetric key with a specified Key Format Type. It must \
                  be the default"
             )
         } else {
+            // generate a key block in the default format, which is Raw
+            key_block.key_value = KeyValue {
+                key_material: KeyMaterial::ByteString(key_bytes),
+                attributes: key_block.key_value.attributes.clone(),
+            };
+            key_block.key_format_type = KeyFormatType::Raw;
             // wrap the key
-            wrap_key(
-                key_block,
-                key_wrapping_specification.as_ref().unwrap(),
-                kms,
-                user,
-                params,
-            )
-            .await?;
+            wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
+            return Ok(())
         }
     }
+
+    // The key  is not wrapped => export to desired format
+    match key_format_type {
+        Some(KeyFormatType::TransparentSymmetricKey) => {
+            key_block.key_value = KeyValue {
+                key_material: KeyMaterial::TransparentSymmetricKey { key: key_bytes },
+                attributes: key_block.key_value.attributes.clone(),
+            };
+            key_block.key_format_type = KeyFormatType::TransparentSymmetricKey;
+        }
+        None | Some(KeyFormatType::Raw) => {
+            key_block.key_value = KeyValue {
+                key_material: KeyMaterial::ByteString(key_bytes),
+                attributes: key_block.key_value.attributes.clone(),
+            };
+            key_block.key_format_type = KeyFormatType::Raw;
+        }
+        _ => kms_bail!(
+            "export: unsupported requested Key Format Type for a symmetric key: {:?}",
+            key_format_type
+        ),
+    }
+
     Ok(())
 }

@@ -90,7 +90,7 @@ pub async fn sign_certificate_request(
     // Create an X509 struct with the desired certificate information.
     let mut x509 = X509::builder().unwrap();
     x509.set_version(2)?;
-    x509.set_subject_name(&csr.subject_name())?;
+    x509.set_subject_name(csr.subject_name())?;
     x509.set_pubkey(csr.public_key()?.as_ref())?;
 
     // Sign the X509 struct with the PKey struct.

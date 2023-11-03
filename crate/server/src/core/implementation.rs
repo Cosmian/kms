@@ -118,9 +118,8 @@ impl KMS {
             Object::Certificate { .. } => {}
             _ => {
                 if owm.object.key_wrapping_data().is_some() {
-                    let object_type = owm.object.object_type();
                     let key_block = owm.object.key_block_mut()?;
-                    unwrap_key(object_type, key_block, self, &owm.owner, params).await?;
+                    unwrap_key(key_block, self, &owm.owner, params).await?;
                 }
             }
         }
@@ -202,9 +201,8 @@ impl KMS {
         debug!("get_decryption_system: entering");
         // unwrap if wrapped
         if owm.object.key_wrapping_data().is_some() {
-            let object_type = owm.object.object_type();
             let key_block = owm.object.key_block_mut()?;
-            unwrap_key(object_type, key_block, self, &owm.owner, params).await?;
+            unwrap_key(key_block, self, &owm.owner, params).await?;
         }
 
         trace!(

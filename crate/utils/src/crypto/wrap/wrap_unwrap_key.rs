@@ -1,7 +1,7 @@
 use cloudproof::reexport::crypto_core::reexport::rand_core::CryptoRngCore;
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-    kmip_objects::{Object, ObjectType},
+    kmip_objects::Object,
     kmip_types::{EncodingOption, KeyFormatType, WrappingMethod},
 };
 
@@ -124,6 +124,7 @@ pub fn unwrap_key_block(
     // update the object with the unwrapped key value, and remove the wrapping data
     object_key_block.key_value = key_value;
     object_key_block.key_wrapping_data = None;
+    // we assume that the key_block KeyFormatType is valid
 
     Ok(())
 }

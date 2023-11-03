@@ -348,7 +348,7 @@ pub async fn import(
             let object_key_block = object.key_block_mut()?;
             // unwrap before storing if requested
             if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-                unwrap_key(object_type, object_key_block, kms, owner, params).await?;
+                unwrap_key(object_key_block, kms, owner, params).await?;
             }
             // replace attributes
             object_key_block.key_value.attributes = Some(request.attributes);
@@ -362,7 +362,7 @@ pub async fn import(
             let object = if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
                 let mut object = request.object;
                 let object_key_block = object.key_block_mut()?;
-                unwrap_key(object_type, object_key_block, kms, owner, params).await?;
+                unwrap_key(object_key_block, kms, owner, params).await?;
                 object
             } else {
                 request.object
@@ -407,7 +407,7 @@ pub async fn import(
             let object = if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
                 let mut object = request.object;
                 let object_key_block = object.key_block_mut()?;
-                unwrap_key(object_type, object_key_block, kms, owner, params).await?;
+                unwrap_key(object_key_block, kms, owner, params).await?;
                 object
             } else {
                 request.object
