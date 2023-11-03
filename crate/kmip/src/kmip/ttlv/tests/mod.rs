@@ -1,5 +1,5 @@
 use cosmian_logger::log_utils::log_init;
-use num_bigint::BigUint;
+use num_bigint_dig::BigUint;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -278,7 +278,11 @@ fn test_ser_big_int() {
             TTLV {
                 tag: "BigInt",
                 value: BigInteger(
-                    1229782938265199138,
+                    BigUint {
+                        data: [
+                            1229782938265199138,
+                        ],
+                    },
                 ),
             },
         ],

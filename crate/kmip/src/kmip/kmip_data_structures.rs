@@ -1,6 +1,6 @@
 use std::clone::Clone;
 
-use num_bigint::BigUint;
+use num_bigint_dig::BigUint;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};

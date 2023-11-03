@@ -1125,7 +1125,7 @@ dependencies = [
  "cloudproof",
  "cosmian_logger",
  "hex",
- "num-bigint",
+ "num-bigint-dig",
  "serde",
  "serde_json",
  "strum",
@@ -1243,6 +1243,7 @@ dependencies = [
  "josekit",
  "lazy_static",
  "mime",
+ "num-bigint-dig",
  "openssl",
  "ratls",
  "rawsql",
@@ -1270,7 +1271,7 @@ dependencies = [
  "cloudproof",
  "cosmian_crypto_core",
  "cosmian_kmip",
- "num-bigint",
+ "num-bigint-dig",
  "openssl",
  "serde",
  "serde_json",
@@ -2596,8 +2597,6 @@ dependencies = [
  "autocfg",
  "num-integer",
  "num-traits",
- "rand",
- "serde",
 ]
 
 [[package]]
@@ -2613,6 +2612,7 @@ dependencies = [
  "num-iter",
  "num-traits",
  "rand",
+ "serde",
  "smallvec",
  "zeroize",
 ]

@@ -1,6 +1,6 @@
 use std::convert::TryInto;
 
-use num_bigint::BigUint;
+use num_bigint_dig::BigUint;
 use serde::{
     ser::{self, Error, SerializeSeq},
     Serialize,

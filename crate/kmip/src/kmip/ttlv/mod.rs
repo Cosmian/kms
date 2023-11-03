@@ -8,7 +8,7 @@ mod tests;
 use core::fmt;
 use std::convert::TryInto;
 
-use num_bigint::BigUint;
+use num_bigint_dig::BigUint;
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::{self, SerializeStruct, Serializer},
@@ -366,7 +366,10 @@ impl<'de> Deserialize<'de> for TTLV {
                                     let bytes = hex::decode(&hex[2..]).map_err(|_e| {
                                         de::Error::custom(format!("Invalid value for Mask: {hex}"))
                                     })?;
-                                    let v = BigUint::from_bytes_be(bytes.as_slice());
+                                    // build the `BigUint` using the `Vec<u32>` representation.
+                                    let v = BigUint::from_slice(&to_u32_digits(
+                                        &BigUint::from_bytes_be(bytes.as_slice()),
+                                    ));
                                     TTLValue::BigInteger(v)
                                 }
                                 "Enumeration" => {
@@ -444,4 +447,24 @@ impl<'de> Deserialize<'de> for TTLV {
         const FIELDS: &[&str] = &["tag", "value"];
         deserializer.deserialize_struct("TTLV", FIELDS, TTLVVisitor)
     }
+}
+
+/// Convert a `BigUint` into a `Vec<u32>`.
+///
+/// Get the `Vec<u8>` representation from the `BigUint`,
+/// and chunk it 4-by-4 bytes to create the multiple
+/// `u32` bytes needed for `Vec<u32>` representation.
+///
+/// This conversion is done manually, as `num-bigint-dig`
+/// doesn't provide such conversion.
+pub fn to_u32_digits(big_int: &BigUint) -> Vec<u32> {
+    big_int
+        .to_bytes_be()
+        .chunks(4)
+        .map(|group_of_4_bytes| {
+            group_of_4_bytes
+                .iter()
+                .fold(0, |acc, byte| (acc << 8) + (*byte as u32))
+        })
+        .collect::<Vec<_>>()
 }
