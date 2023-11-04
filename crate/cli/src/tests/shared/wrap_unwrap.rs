@@ -156,7 +156,7 @@ pub fn password_wrap_import_test(
         sub_command,
         private_key_id,
         key_file.to_str().unwrap(),
-        false,
+        None,
         false,
         None,
         false,

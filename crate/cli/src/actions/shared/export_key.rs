@@ -28,15 +28,16 @@ pub enum KeyFormat {
 
 /// Export a key from the KMS
 ///
-/// The key is exported in JSON KMIP TTLV format
-/// unless the `--bytes` option is specified, in which case
-/// the key bytes are exported without metadata, such as
-///  - the links between the keys in a pair
-///  - other metadata: policies, etc.
-/// Key bytes are sufficient to perform local encryption or decryption.
+/// If not format is specified, the key is exported as a json-ttlv with a
+/// KeyFormatType that follows the section 4.26 of the KMIP specification.
+/// https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
 ///
-/// The key can be wrapped or unwrapped when exported.
-/// If nothing is specified, it is returned as it is stored.
+/// The key can optionally be unwrapped and/or wrapped when exported.
+///
+/// If wrapping is specified, the key is wrapped using the specified wrapping key.
+/// The chosen Key Format must be either `json-ttlv` or `raw`. When `raw` is selected,
+/// only the wrapped bytes are returned.
+///
 /// Wrapping a key that is already wrapped is an error.
 /// Unwrapping a key that is not wrapped is ignored and returns the unwrapped key.
 ///
@@ -60,7 +61,21 @@ pub struct ExportKeyAction {
     tags: Option<Vec<String>>,
 
     /// The format of the key
-    #[clap(long = "key-format", short = 'f', default_value = "json-ttlv")]
+    ///  - `json-ttlv` [default]. It should be the format to use to later re-import the key
+    ///  - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+    ///  - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
+    ///  - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+    ///  - `spki-pem` and `spki-der` only apply to RSA and EC public keys
+    ///  - `raw` returns the raw bytes of
+    ///       - symmetric keys
+    ///       - Covercrypt keys
+    ///       - wrapped keys
+    #[clap(
+        long = "key-format",
+        short = 'f',
+        default_value = "json-ttlv",
+        verbatim_doc_comment
+    )]
     key_format: KeyFormat,
 
     /// Unwrap the key if it is wrapped before export
@@ -72,7 +87,7 @@ pub struct ExportKeyAction {
     )]
     unwrap: bool,
 
-    /// The id of key/certificate to use to wrap this key before export
+    /// The id of the key/certificate to use to wrap this key before export
     #[clap(
         long = "wrap-key-id",
         short = 'w',
@@ -84,7 +99,12 @@ pub struct ExportKeyAction {
     /// Allow exporting revoked and destroyed keys.
     /// The user must be the owner of the key.
     /// Destroyed keys have their key material removed.
-    #[clap(long = "allow-revoked", short = 'i', default_value = "false")]
+    #[clap(
+        long = "allow-revoked",
+        short = 'i',
+        default_value = "false",
+        verbatim_doc_comment
+    )]
     allow_revoked: bool,
 }
 

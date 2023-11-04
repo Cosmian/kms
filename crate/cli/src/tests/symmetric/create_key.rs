@@ -17,6 +17,7 @@ use crate::{
     },
 };
 
+/// Create a symmetric key via the CLI
 pub fn create_symmetric_key(
     cli_conf_path: &str,
     number_of_bits: Option<usize>,
