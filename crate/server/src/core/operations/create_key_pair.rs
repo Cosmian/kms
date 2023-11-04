@@ -22,7 +22,7 @@ pub async fn create_key_pair(
     // generate uids and create the key pair and tags
     let sk_uid = Uuid::new_v4().to_string();
     let pk_uid = Uuid::new_v4().to_string();
-    let (key_pair, sk_tags, pk_tags) = kms.create_key_pair_and_tags(&request, &sk_uid, &pk_uid)?;
+    let (key_pair, sk_tags, pk_tags) = kms.create_key_pair_and_tags(request, &sk_uid, &pk_uid)?;
 
     trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
     kms.db
