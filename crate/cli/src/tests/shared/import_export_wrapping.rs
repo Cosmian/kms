@@ -11,7 +11,6 @@ use cosmian_kms_utils::crypto::{
     curve_25519::operation::create_x25519_key_pair, symmetric::create_symmetric_key,
     wrap::decrypt_bytes,
 };
-use cosmian_logger::log_utils::log_init;
 use tempfile::TempDir;
 
 use crate::{
@@ -28,7 +27,6 @@ use crate::{
 
 #[tokio::test]
 pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
-    log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -54,21 +52,21 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
         false,
     )?;
 
-    // // test CC
-    // println!("testing Covercrypt keys");
-    // let (private_key_id, _public_key_id) = create_cc_master_key_pair(
-    //     &ctx.owner_cli_conf_path,
-    //     "--policy-specifications",
-    //     "test_data/policy_specifications.json",
-    //     &[],
-    // )?;
-    // test_import_export_wrap_private_key(
-    //     &ctx.owner_cli_conf_path,
-    //     "cc",
-    //     &private_key_id,
-    //     &wrap_key_uid,
-    //     &wrap_key,
-    // )?;
+    // test CC
+    println!("testing Covercrypt keys");
+    let (private_key_id, _public_key_id) = create_cc_master_key_pair(
+        &ctx.owner_cli_conf_path,
+        "--policy-specifications",
+        "test_data/policy_specifications.json",
+        &[],
+    )?;
+    test_import_export_wrap_private_key(
+        &ctx.owner_cli_conf_path,
+        "cc",
+        &private_key_id,
+        &wrap_key_uid,
+        &wrap_key,
+    )?;
 
     // test ec
     println!("testing ec keys");
@@ -82,22 +80,22 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
         &wrap_key,
     )?;
 
-    // // test sym
-    // println!("testing symmmetric keys");
-    // let key_id = symmetric::create_key::create_symmetric_key(
-    //     &ctx.owner_cli_conf_path,
-    //     None,
-    //     None,
-    //     None,
-    //     &[] as &[&str],
-    // )?;
-    // test_import_export_wrap_private_key(
-    //     &ctx.owner_cli_conf_path,
-    //     "sym",
-    //     &key_id,
-    //     &wrap_key_uid,
-    //     &wrap_key,
-    // )?;
+    // test sym
+    println!("testing symmetric keys");
+    let key_id = symmetric::create_key::create_symmetric_key(
+        &ctx.owner_cli_conf_path,
+        None,
+        None,
+        None,
+        &[] as &[&str],
+    )?;
+    test_import_export_wrap_private_key(
+        &ctx.owner_cli_conf_path,
+        "sym",
+        &key_id,
+        &wrap_key_uid,
+        &wrap_key,
+    )?;
 
     Ok(())
 }

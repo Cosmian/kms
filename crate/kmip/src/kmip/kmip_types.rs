@@ -942,6 +942,9 @@ impl Attributes {
                 va.vendor_identification != vendor_identification
                     || va.attribute_name != attribute_name
             });
+            if vas.is_empty() {
+                self.vendor_attributes = None;
+            }
         }
     }
 

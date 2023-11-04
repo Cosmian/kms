@@ -16,7 +16,7 @@ use cosmian_kmip::{
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::curve_25519::operation::Q_LENGTH_BITS,
-    tagging::{check_user_tags, get_tags},
+    tagging::{check_user_tags, remove_tags},
 };
 use num_bigint_dig::BigUint;
 use openssl::{
@@ -333,7 +333,8 @@ pub async fn import(
     }
 
     // recover user tags
-    let mut tags = get_tags(&request.attributes);
+    let mut request_attributes = request.attributes;
+    let mut tags = remove_tags(&mut request_attributes);
     check_user_tags(&tags)?;
 
     let object_type = request.object.object_type();
@@ -349,7 +350,7 @@ pub async fn import(
                 unwrap_key(object_key_block, kms, owner, params).await?;
             }
             // replace attributes
-            object_key_block.key_value.attributes = Some(request.attributes);
+            object_key_block.key_value.attributes = Some(request_attributes);
             object
         }
         ObjectType::PublicKey => {
@@ -394,7 +395,7 @@ pub async fn import(
 
             // replace attributes
             let object_key_block = object.key_block_mut()?;
-            object_key_block.key_value.attributes = Some(request.attributes);
+            object_key_block.key_value.attributes = Some(request_attributes);
             object
         }
         ObjectType::PrivateKey => {
@@ -440,7 +441,7 @@ pub async fn import(
 
             // replace attributes
             let object_key_block = object.key_block_mut()?;
-            object_key_block.key_value.attributes = Some(request.attributes);
+            object_key_block.key_value.attributes = Some(request_attributes);
             object
         }
 

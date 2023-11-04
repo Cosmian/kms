@@ -23,7 +23,7 @@ use cosmian_kms_utils::{
         hybrid_encryption_system::{HybridDecryptionSystem, HybridEncryptionSystem},
         symmetric::{create_symmetric_key, AesGcmSystem},
     },
-    tagging::{check_user_tags, get_tags},
+    tagging::{check_user_tags, get_tags, remove_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
 use tracing::{debug, trace};
@@ -378,14 +378,24 @@ impl KMS {
     /// Only Covercrypt master keys can be created using this function
     pub(crate) fn create_key_pair_and_tags(
         &self,
-        request: &CreateKeyPair,
+        request: CreateKeyPair,
         private_key_uid: &str,
         public_key_uid: &str,
     ) -> KResult<(KeyPair, HashSet<String>, HashSet<String>)> {
         trace!("Internal create key pair");
-        let attributes = request
-            .common_attributes
-            .as_ref()
+
+        let mut common_attributes = request.common_attributes.unwrap_or_default();
+
+        // recover tags
+        let tags = remove_tags(&mut common_attributes);
+        check_user_tags(&tags)?;
+        //update the tags
+        let mut sk_tags = tags.clone();
+        sk_tags.insert("_sk".to_string());
+        let mut pk_tags = tags;
+        pk_tags.insert("_pk".to_string());
+
+        let any_attributes = Some(&common_attributes)
             .or(request.private_key_attributes.as_ref())
             .or(request.public_key_attributes.as_ref())
             .ok_or_else(|| {
@@ -395,24 +405,15 @@ impl KMS {
             })?;
 
         // check that the cryptographic algorithm is specified
-        let cryptographic_algorithm = &attributes.cryptographic_algorithm.ok_or_else(|| {
+        let cryptographic_algorithm = &any_attributes.cryptographic_algorithm.ok_or_else(|| {
             KmsError::InvalidRequest(
                 "the cryptographic algorithm must be specified for key pair creation".to_string(),
             )
         })?;
 
-        // recover tags
-        let tags = get_tags(attributes);
-        check_user_tags(&tags)?;
-        //update the tags
-        let mut sk_tags = tags.clone();
-        sk_tags.insert("_sk".to_string());
-        let mut pk_tags = tags;
-        pk_tags.insert("_pk".to_string());
-
         let key_pair = match &cryptographic_algorithm {
             CryptographicAlgorithm::ECDH => {
-                let dp = attributes
+                let dp = any_attributes
                     .cryptographic_domain_parameters
                     .unwrap_or_default();
                 match dp.recommended_curve.unwrap_or_default() {
@@ -435,9 +436,11 @@ impl KMS {
             CryptographicAlgorithm::CoverCrypt => {
                 cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
                     &Covercrypt::default(),
-                    request,
                     private_key_uid,
                     public_key_uid,
+                    Some(common_attributes),
+                    request.private_key_attributes,
+                    request.public_key_attributes,
                 )
                 .map_err(Into::into)
             }
