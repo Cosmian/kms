@@ -15,7 +15,11 @@ pub fn create_symmetric_key(
 ) -> Object {
     // this length is in bits
     let symmetric_key_len = key_bytes.len() as i32 * 8;
-    //
+    // The default format for a symmetric key is Raw
+    //  according to sec. 4.26 Key Format Type of the KMIP 2.1 specs:
+    //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
+    // The key created here has a format of TransparentSymmetricKey
+    // This is no a problem since when it is exported, it is by default converted to a Raw key
     Object::SymmetricKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(cryptographic_algorithm),

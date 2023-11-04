@@ -338,11 +338,11 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
 pub async fn test_certify_with_csr() -> Result<(), CliError> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.into_path();
+    let _tmp_path = tmp_dir.into_path();
     // let tmp_path = std::path::Path::new("./");
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     let ca = "RootCA/SubCA";
-    let hierarchical_depth = ca.split('/').count();
+    let _hierarchical_depth = ca.split('/').count();
     let tags = &["certificate"];
 
     // import the intermediate certificate
@@ -364,8 +364,8 @@ pub async fn test_certify_with_csr() -> Result<(), CliError> {
 
     // create, export, check, revoke and destroy
     {
-        let subject = "My server";
-        let certificate_id = certify(
+        let _subject = "My server";
+        let _certificate_id = certify(
             &ctx.owner_cli_conf_path,
             ca,
             None,
