@@ -6,10 +6,10 @@ use cloudproof::reexport::{
     },
     crypto_core::{
         bytes_ser_de::{Deserializer, Serializable, Serializer},
+        reexport::zeroize::Zeroizing,
         SymmetricKey,
     },
 };
-use cosmian_crypto_core::reexport::zeroize::Zeroizing;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
