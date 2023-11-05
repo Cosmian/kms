@@ -12,6 +12,7 @@ use cosmian_kms_utils::crypto::{
     wrap::decrypt_bytes,
 };
 use tempfile::TempDir;
+use tracing::debug;
 
 use crate::{
     actions::shared::utils::{read_object_from_json_ttlv_file, write_kmip_object_to_file},
@@ -113,7 +114,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     let wrap_public_key_uid = "wrap_public_key_uid";
     let wrap_key_pair =
         create_x25519_key_pair(&mut rng, wrap_private_key_uid, wrap_public_key_uid)?;
-    // Write the private key to a file
+    // Write the private key to a file and import it
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
     write_kmip_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;
     import(
@@ -125,7 +126,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         false,
         true,
     )?;
-    // Write the public key to a file
+    // Write the public key to a file and import it
     let wrap_public_key_path = tmp_path.join("wrap.public.key");
     write_kmip_object_to_file(wrap_key_pair.public_key(), &wrap_public_key_path)?;
     import(
@@ -137,6 +138,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         false,
         true,
     )?;
+
     // test CC
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
         &ctx.owner_cli_conf_path,
@@ -151,7 +153,8 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         wrap_public_key_uid,
         wrap_key_pair.private_key(),
     )?;
-    // test ec
+
+    debug!("testing EC keys");
     let (private_key_id, _public_key_id) =
         elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     test_import_export_wrap_private_key(
@@ -161,7 +164,8 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         wrap_public_key_uid,
         wrap_key_pair.private_key(),
     )?;
-    // test sym
+
+    debug!("testing symmetric keys");
     let key_id = symmetric::create_key::create_symmetric_key(
         &ctx.owner_cli_conf_path,
         None,

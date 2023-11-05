@@ -10,17 +10,20 @@ use cloudproof::reexport::{
         Aes256Gcm, CsRng, FixedSizeCBytes, SymmetricKey,
     },
 };
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_operations::{Create, CreateKeyPair},
-    kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve, StateEnumeration},
+use cosmian_kmip::{
+    kmip::{
+        kmip_objects::Object,
+        kmip_operations::{Create, CreateKeyPair},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve, StateEnumeration},
+    },
+    openssl::kmip_public_key_to_openssl,
 };
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
         curve_25519::operation::{create_ed25519_key_pair, create_x25519_key_pair},
-        hybrid_encryption_system::{HybridDecryptionSystem, HybridEncryptionSystem},
+        hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
         symmetric::{create_symmetric_key, AesGcmSystem},
     },
     tagging::{check_user_tags, get_tags, remove_tags},
@@ -151,20 +154,22 @@ impl KMS {
                 )
                     as Box<dyn EncryptionSystem>),
                 KeyFormatType::TransparentECPublicKey => match key_block.cryptographic_algorithm {
-                    Some(CryptographicAlgorithm::ECDH) => Ok(Box::new(
-                        HybridEncryptionSystem::instantiate(&owm.id, &owm.object)?,
-                    )
-                        as Box<dyn EncryptionSystem>),
+                    Some(CryptographicAlgorithm::ECDH) => {
+                        let p_key = kmip_public_key_to_openssl(&owm.object)?;
+                        Ok(Box::new(HybridEncryptionSystem::new(&owm.id, p_key))
+                            as Box<dyn EncryptionSystem>)
+                    }
                     x => kms_not_supported!(
                         "EC public key with cryptographic algorithm {} not supported",
                         x.map(|alg| alg.to_string()).unwrap_or("[N/A]".to_string())
                     ),
                 },
                 KeyFormatType::TransparentRSAPublicKey => match key_block.cryptographic_algorithm {
-                    Some(CryptographicAlgorithm::RSA) => Ok(Box::new(
-                        HybridEncryptionSystem::instantiate(&owm.id, &owm.object)?,
-                    )
-                        as Box<dyn EncryptionSystem>),
+                    Some(CryptographicAlgorithm::RSA) => {
+                        let p_key = kmip_public_key_to_openssl(&owm.object)?;
+                        Ok(Box::new(HybridEncryptionSystem::new(&owm.id, p_key))
+                            as Box<dyn EncryptionSystem>)
+                    }
                     x => kms_not_supported!(
                         "RSA public key with cryptographic algorithm {} not supported",
                         x.map(|alg| alg.to_string()).unwrap_or("[N/A]".to_string())
@@ -386,15 +391,16 @@ impl KMS {
 
         let mut common_attributes = request.common_attributes.unwrap_or_default();
 
-        // recover tags
+        // recover tags and clean them up from the common attributes
         let tags = remove_tags(&mut common_attributes);
         check_user_tags(&tags)?;
-        //update the tags
+        //update the tags for the private key and the public key
         let mut sk_tags = tags.clone();
         sk_tags.insert("_sk".to_string());
         let mut pk_tags = tags;
         pk_tags.insert("_pk".to_string());
 
+        // Grab whatever attributes were supplied on the  create request
         let any_attributes = Some(&common_attributes)
             .or(request.private_key_attributes.as_ref())
             .or(request.public_key_attributes.as_ref())

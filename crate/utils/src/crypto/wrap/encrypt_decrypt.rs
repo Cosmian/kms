@@ -1,13 +1,17 @@
 use cloudproof::reexport::crypto_core::{key_unwrap, key_wrap, reexport::rand_core::CryptoRngCore};
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_operations::{Decrypt, DecryptedData, Encrypt},
-    kmip_types::KeyFormatType,
+use cosmian_kmip::{
+    kmip::{
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, DecryptedData, Encrypt},
+        kmip_types::KeyFormatType,
+    },
+    openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
+use openssl::pkey::{PKey, Private, Public};
 use tracing::debug;
 
 use crate::{
-    crypto::hybrid_encryption_system::{HybridDecryptionSystem, HybridEncryptionSystem},
+    crypto::hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail, DecryptionSystem, EncryptionSystem,
 };
@@ -64,29 +68,23 @@ where
                 KeyFormatType::TransparentSymmetricKey => {
                     // wrap using rfc_5649
                     let wrap_secret = key_block.key_bytes()?;
-                    key_wrap(plaintext, &wrap_secret)
+                    let ciphertext = key_wrap(plaintext, &wrap_secret)?;
+                    Ok(ciphertext)
                 }
                 KeyFormatType::TransparentECPublicKey | KeyFormatType::TransparentRSAPublicKey => {
-                    // wrap using ECIES/RSA
-                    let encrypt_system =
-                        HybridEncryptionSystem::instantiate("public_key_uid", wrapping_key)?;
-                    let request = Encrypt {
-                        data: Some(plaintext.to_vec()),
-                        ..Encrypt::default()
-                    };
-                    let encrypt_response = encrypt_system.encrypt(&request)?;
-                    let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
-                        "Encrypt response does not contain ciphertext".to_string(),
-                    ))?;
-                    debug!(
-                        "encrypt_bytes: succeeded: ciphertext length: {}",
-                        ciphertext.len()
-                    );
-                    Ok(ciphertext)
+                    //convert to transparent key and wrap
+                    // note: when moving to full openssl this double conversion will be unnecessary
+                    let p_key = kmip_public_key_to_openssl(wrapping_key)?;
+                    encrypt_with_public_key(p_key, plaintext)
+                }
+                // this really is SPKI
+                KeyFormatType::PKCS8 => {
+                    let p_key = PKey::public_key_from_der(&key_block.key_bytes()?)?;
+                    encrypt_with_public_key(p_key, plaintext)
                 }
                 x => {
                     kmip_utils_bail!(
-                        "Unable to wrap key: wrapping key: format not supported for wrapping: \
+                        "Unable to wrap key: wrapping key: key format not supported for wrapping: \
                          {x:?}"
                     )
                 }
@@ -98,6 +96,27 @@ where
             wrapping_key.object_type()
         ))),
     }
+}
+
+fn encrypt_with_public_key(
+    wrapping_key: PKey<Public>,
+    plaintext: &[u8],
+) -> Result<Vec<u8>, KmipUtilsError> {
+    // wrap using ECIES/RSA
+    let encrypt_system = HybridEncryptionSystem::new("public_key_uid", wrapping_key);
+    let request = Encrypt {
+        data: Some(plaintext.to_vec()),
+        ..Encrypt::default()
+    };
+    let encrypt_response = encrypt_system.encrypt(&request)?;
+    let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
+        "Encrypt response does not contain ciphertext".to_string(),
+    ))?;
+    debug!(
+        "encrypt_bytes: succeeded: ciphertext length: {}",
+        ciphertext.len()
+    );
+    Ok(ciphertext)
 }
 
 /// Decrypt bytes using the unwrapping key
@@ -124,27 +143,17 @@ pub fn decrypt_bytes(
         KeyFormatType::TransparentSymmetricKey => {
             // unwrap using rfc_5649
             let unwrap_secret = unwrapping_key_block.key_bytes()?;
-            key_unwrap(ciphertext, &unwrap_secret)
+            let plaintext = key_unwrap(ciphertext, &unwrap_secret)?;
+            Ok(plaintext)
         }
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {
-            let decrypt_system = HybridDecryptionSystem {
-                private_key: unwrapping_key.clone(),
-                private_key_uid: None,
-            };
-            let request = Decrypt {
-                data: Some(ciphertext.to_vec()),
-                ..Decrypt::default()
-            };
-            let decrypt_response = decrypt_system.decrypt(&request)?;
-            let plaintext = decrypt_response.data.ok_or(KmipUtilsError::Default(
-                "Decrypt response does not contain plaintext".to_string(),
-            ))?;
-            debug!(
-                "decrypt_bytes: succeeded: plaintext length: {}",
-                plaintext.len()
-            );
-            let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
-            Ok(decrypted_data.plaintext)
+            // convert to an openssl private key
+            let p_key = kmip_private_key_to_openssl(unwrapping_key)?;
+            decrypt_with_private_key(p_key, ciphertext)
+        }
+        KeyFormatType::PKCS8 => {
+            let p_key = PKey::private_key_from_der(&unwrapping_key_block.key_bytes()?)?;
+            decrypt_with_private_key(p_key, ciphertext)
         }
         x => {
             kmip_utils_bail!(
@@ -153,6 +162,27 @@ pub fn decrypt_bytes(
         }
     }?;
     Ok(plaintext)
+}
+
+fn decrypt_with_private_key(
+    p_key: PKey<Private>,
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, KmipUtilsError> {
+    let decrypt_system = HybridDecryptionSystem::new(None, p_key);
+    let request = Decrypt {
+        data: Some(ciphertext.to_vec()),
+        ..Decrypt::default()
+    };
+    let decrypt_response = decrypt_system.decrypt(&request)?;
+    let plaintext = decrypt_response.data.ok_or(KmipUtilsError::Default(
+        "Decrypt response does not contain plaintext".to_string(),
+    ))?;
+    debug!(
+        "decrypt_bytes: succeeded: plaintext length: {}",
+        plaintext.len()
+    );
+    let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
+    Ok(decrypted_data.plaintext)
 }
 
 #[cfg(test)]
@@ -185,7 +215,6 @@ mod tests {
     fn test_encrypt_decrypt_rfc_ecies() {
         let mut rng = CsRng::from_entropy();
         let wrap_key_pair = create_x25519_key_pair(&mut rng, "sk_uid", "pk_uid").unwrap();
-
         let plaintext = b"plaintext";
         let ciphertext =
             super::encrypt_bytes(&mut rng, wrap_key_pair.public_key(), plaintext).unwrap();

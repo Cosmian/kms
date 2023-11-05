@@ -1269,7 +1269,6 @@ version = "4.8.1"
 dependencies = [
  "argon2",
  "cloudproof",
- "cosmian_crypto_core",
  "cosmian_kmip",
  "num-bigint",
  "openssl",
