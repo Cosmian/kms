@@ -47,10 +47,20 @@ pub struct KeyBlock {
 impl KeyBlock {
     /// Give a slice view on the key bytes (which may be wrapped)
     /// Returns an error if there is no valid key material
+    /// For a transparent symmetric key, this is the key itself
+    /// For a wrapped key, this is the wrapped key
+    /// For a Transparent EC Private key it is big endian representation
+    /// of the scalar of the private key which is also the .
+    /// For a Transparent EC Public key it is the raw bytes of Q string (the EC point)
+    /// Other keys are not supported.
     pub fn key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
         match &self.key_value.key_material {
             KeyMaterial::ByteString(v) => Ok(Zeroizing::new(v.clone())),
             KeyMaterial::TransparentSymmetricKey { key } => Ok(Zeroizing::new(key.clone())),
+            KeyMaterial::TransparentECPrivateKey { d, .. } => Ok(Zeroizing::new(d.to_bytes_be())),
+            KeyMaterial::TransparentECPublicKey { q_string, .. } => {
+                Ok(Zeroizing::new(q_string.clone()))
+            }
             _ => Err(KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Data_Type,
                 "Key bytes can only be recovered from ByteString or TransparentSymmetricKey key \
@@ -263,7 +273,7 @@ impl Default for KeyWrappingData {
             mac_or_signature_key_information: None,
             mac_or_signature: None,
             iv_counter_nonce: None,
-            encoding_option: Some(EncodingOption::NoEncoding),
+            encoding_option: Some(EncodingOption::TTLVEncoding),
         }
     }
 }

@@ -16,7 +16,7 @@ use cosmian_kmip::{
         kmip_operations::{Create, CreateKeyPair},
         kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve, StateEnumeration},
     },
-    openssl::kmip_public_key_to_openssl,
+    openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
@@ -220,11 +220,11 @@ impl KMS {
                     CovercryptDecryption::instantiate(cover_crypt, &owm.id, &owm.object)?,
                 )),
                 KeyFormatType::TransparentECPrivateKey => match key_block.cryptographic_algorithm {
-                    Some(CryptographicAlgorithm::ECDH) => Ok(Box::new(HybridDecryptionSystem {
-                        private_key: owm.object.clone(),
-                        private_key_uid: Some(owm.id),
-                    })
-                        as Box<dyn DecryptionSystem>),
+                    Some(CryptographicAlgorithm::ECDH) => {
+                        let p_key = kmip_private_key_to_openssl(&owm.object)?;
+                        Ok(Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key))
+                            as Box<dyn DecryptionSystem>)
+                    }
                     x => kms_not_supported!(
                         "EC public keys with cryptographic algorithm {} not supported",
                         x.map(|alg| alg.to_string()).unwrap_or("[N/A]".to_string())
@@ -232,11 +232,11 @@ impl KMS {
                 },
                 KeyFormatType::TransparentRSAPrivateKey => {
                     match key_block.cryptographic_algorithm {
-                        Some(CryptographicAlgorithm::RSA) => Ok(Box::new(HybridDecryptionSystem {
-                            private_key: owm.object.clone(),
-                            private_key_uid: Some(owm.id),
-                        })
-                            as Box<dyn DecryptionSystem>),
+                        Some(CryptographicAlgorithm::RSA) => {
+                            let p_key = kmip_private_key_to_openssl(&owm.object)?;
+                            Ok(Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key))
+                                as Box<dyn DecryptionSystem>)
+                        }
                         x => kms_not_supported!(
                             "RSA public keys with cryptographic algorithm {} not supported",
                             x.map(|alg| alg.to_string()).unwrap_or("[N/A]".to_string())

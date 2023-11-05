@@ -97,7 +97,7 @@ pub fn unwrap_key_block(
     // get the encoding
     let encoding = key_wrapping_data
         .encoding_option
-        .unwrap_or(EncodingOption::NoEncoding);
+        .unwrap_or(EncodingOption::TTLVEncoding);
 
     // unwrap the key based on the encoding
     let key_value: KeyValue = match encoding {
