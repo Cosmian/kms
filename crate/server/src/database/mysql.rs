@@ -18,6 +18,7 @@ use sqlx::{
 };
 use tracing::{debug, trace};
 use uuid::Uuid;
+use cosmian_kmip::kmip::kmip_objects::Object;
 
 use super::{
     object_with_metadata::ObjectWithMetadata, query_from_attributes, state_from_string, DBObject,
@@ -176,8 +177,8 @@ impl Database for MySqlPool {
         &self,
         uid: &UniqueIdentifier,
         user: &str,
-        object: &kmip_objects::Object,
-        tags: &HashSet<String>,
+        object: &Object,
+        tags: Option<&HashSet<String>>,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -541,8 +542,8 @@ pub(crate) async fn delete_(
 pub(crate) async fn upsert_(
     uid: &UniqueIdentifier,
     owner: &str,
-    object: &kmip_objects::Object,
-    tags: &HashSet<String>,
+    object: &Object,
+    tags: Option<&HashSet<String>>,
     state: StateEnumeration,
     executor: &mut Transaction<'_, MySql>,
 ) -> KResult<()> {
@@ -578,16 +579,18 @@ pub(crate) async fn upsert_(
     .await?;
 
     // Insert the new tags
-    for tag in tags {
-        sqlx::query(
-            MYSQL_QUERIES
-                .get("insert-tags")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .bind(uid)
-        .bind(tag)
-        .execute(&mut **executor)
-        .await?;
+    if let Some(tags) = tags {
+        for tag in tags {
+            sqlx::query(
+                MYSQL_QUERIES
+                    .get("insert-tags")
+                    .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+            )
+            .bind(uid)
+            .bind(tag)
+            .execute(&mut **executor)
+            .await?;
+        }
     }
 
     trace!("Upserted in DB: {uid}");

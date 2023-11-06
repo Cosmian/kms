@@ -86,12 +86,14 @@ pub trait Database {
     ) -> KResult<()>;
 
     /// Upsert (update or create if does not exist)
+    ///
+    /// If tags is `None`, the tags will not be updated.
     async fn upsert(
         &self,
         uid: &UniqueIdentifier,
         user: &str,
         object: &Object,
-        tags: &HashSet<String>,
+        tags: Option<&HashSet<String>>,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;

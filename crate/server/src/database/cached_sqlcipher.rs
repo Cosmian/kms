@@ -17,6 +17,7 @@ use sqlx::{
     ConnectOptions, Pool, Sqlite,
 };
 use tracing::trace;
+use cosmian_kmip::kmip::kmip_objects::Object;
 
 use super::{
     cached_sqlite_struct::KMSSqliteCache,
@@ -271,16 +272,16 @@ impl Database for CachedSqlCipher {
     async fn upsert(
         &self,
         uid: &UniqueIdentifier,
-        owner: &str,
-        object: &kmip_objects::Object,
-        tags: &HashSet<String>,
+        user: &str,
+        object: &Object,
+        tags: Option<&HashSet<String>>,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let mut tx = pool.begin().await?;
-            match upsert_(uid, owner, object, tags, state, &mut tx).await {
+            match upsert_(uid, user, object, tags, state, &mut tx).await {
                 Ok(()) => {
                     tx.commit().await?;
                     self.post_query(params.group_id)?;

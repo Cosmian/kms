@@ -47,11 +47,12 @@ pub fn check_user_tags(tags: &HashSet<String>) -> Result<(), KmipUtilsError> {
 
 /// Remove the tags from the attributes and return them
 #[must_use]
-pub fn remove_tags(attributes: &mut Attributes) -> HashSet<String> {
+pub fn remove_tags(attributes: &mut Attributes) -> Option<HashSet<String>> {
     let tags = attributes
         .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
-        .map(|value| serde_json::from_slice::<HashSet<String>>(value).unwrap_or_default())
-        .unwrap_or_default();
-    attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG);
+        .map(|value| serde_json::from_slice::<HashSet<String>>(value).unwrap_or_default());
+    if tags.is_some() {
+        attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG);
+    }
     tags
 }

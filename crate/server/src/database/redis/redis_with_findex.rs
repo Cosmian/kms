@@ -129,7 +129,7 @@ impl Database for RedisWithFindex {
             object.clone(),
             owner.to_string(),
             StateEnumeration::Active,
-            tags.clone(),
+            Some(tags.clone()),
         );
 
         // extract the keywords
@@ -157,7 +157,7 @@ impl Database for RedisWithFindex {
                     object.clone(),
                     owner.to_string(),
                     StateEnumeration::Active,
-                    tags.clone(),
+                    Some(tags.clone()),
                 ),
             )
             .await?;
@@ -189,7 +189,7 @@ impl Database for RedisWithFindex {
                 object.clone(),
                 owner.to_string(),
                 StateEnumeration::Active,
-                (*tags).clone(),
+                Some((*tags).clone()),
             );
 
             // extract the keywords
@@ -306,7 +306,7 @@ impl Database for RedisWithFindex {
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
         let redis_db_object = self.objects_db.object_get(uid).await?;
-        Ok(redis_db_object.tags)
+        Ok(redis_db_object.tags.unwrap_or_default())
     }
 
     /// Update an object in the database.
@@ -321,9 +321,7 @@ impl Database for RedisWithFindex {
     ) -> KResult<()> {
         let mut db_object = self.objects_db.object_get(uid).await?;
         db_object.object = object.clone();
-        if let Some(tags) = tags {
-            db_object.tags = tags.clone();
-        }
+        db_object.tags = tags.cloned();
         self.objects_db.object_upsert(uid, &db_object).await?;
         Ok(())
     }
@@ -340,16 +338,25 @@ impl Database for RedisWithFindex {
         Ok(())
     }
 
+    /// Upsert (update or create if does not exist)
+    ///
+    /// If tags is `None`, the tags will not be updated.
     async fn upsert(
         &self,
         uid: &UniqueIdentifier,
-        owner: &str,
+        user: &str,
         object: &Object,
-        tags: &HashSet<String>,
+        tags: Option<&HashSet<String>>,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        self.create(Some(uid.clone()), owner, object, tags, params)
+        //replace the esiting tags (if any) with the new ones (if provided)
+        let tags = if let Some(tags) = tags {
+            tags.clone()
+        } else {
+            self.retrieve_tags(uid, params).await?
+        };
+        self.create(Some(uid.clone()), user, object, &tags, params)
             .await?;
         if state != StateEnumeration::Active {
             self.update_state(uid, state, params).await?;
