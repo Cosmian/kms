@@ -19,7 +19,7 @@ use num_bigint_dig::BigUint;
 use crate::KeyPair;
 
 pub const SECRET_KEY_LENGTH: usize = CURVE_25519_SECRET_LENGTH;
-pub const Q_LENGTH_BITS: i32 = (SECRET_KEY_LENGTH * 8) as i32;
+pub const Q_LENGTH_BITS: i32 = 253;
 
 /// convert to a X25519 256 bits KMIP Public Key
 /// no check performed

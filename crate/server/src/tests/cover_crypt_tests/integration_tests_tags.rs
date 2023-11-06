@@ -18,20 +18,69 @@ use cosmian_kms_utils::crypto::{
     },
     generic::kmip_requests::{build_decryption_request, build_encryption_request},
 };
+use cosmian_logger::log_utils::log_init;
 
 use crate::{
+    error::KmsError,
     result::{KResult, KResultHelper},
     tests::test_utils,
 };
 
-#[actix_web::test]
-async fn integration_tests_with_tags() -> KResult<()> {
-    // log_init("cosmian_kms_server=info");
-
+#[tokio::test]
+async fn test_rekey_with_tags() -> KResult<()> {
     let app = test_utils::test_app().await;
 
-    let mut policy = Policy::new();
-    policy.add_dimension(DimensionBuilder::new(
+    let policy = policy()?;
+
+    // create Key Pair
+    let mkp_tag = "mkp";
+    let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
+    let create_key_pair = build_create_master_keypair_request(&policy, [mkp_tag])?;
+    let create_key_pair_response: CreateKeyPairResponse =
+        test_utils::post(&app, &create_key_pair).await?;
+
+    log_init("cosmian_kms_server=debug");
+    let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
+    let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
+
+    //
+    // Rekey all key pairs with matching ABE attributes
+    let abe_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
+
+    let request = build_rekey_keypair_request(&mkp_json_tag, abe_policy_attributes)?;
+    let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
+    assert_eq!(
+        &rekey_keypair_response.private_key_unique_identifier,
+        private_key_unique_identifier
+    );
+    assert_eq!(
+        &rekey_keypair_response.public_key_unique_identifier,
+        public_key_unique_identifier
+    );
+
+    // Encrypt with the rekeyed keypair
+    let authentication_data = b"cc the uid".to_vec();
+    let data = "Voilà voilà".as_bytes();
+    let encryption_policy = "Level::Confidential && Department::MKG";
+    let request = build_encryption_request(
+        &mkp_json_tag,
+        Some(encryption_policy.to_string()),
+        data.to_vec(),
+        None,
+        Some(authentication_data.clone()),
+        None,
+    )?;
+    let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
+    let _encrypted_data = encrypt_response
+        .data
+        .expect("There should be encrypted data");
+
+    Ok(())
+}
+
+fn policy() -> Result<Policy, KmsError> {
+    let mut policy = Policy::new(10);
+    policy.add_axis(PolicyAxis::new(
         "Department",
         vec![
             ("MKG", EncryptionHint::Classic),
@@ -48,6 +97,16 @@ async fn integration_tests_with_tags() -> KResult<()> {
         ],
         true,
     ))?;
+    Ok(policy)
+}
+
+#[tokio::test]
+async fn integration_tests_with_tags() -> KResult<()> {
+    log_init("cosmian_kms_server=debug");
+
+    let app = test_utils::test_app().await;
+
+    let policy = policy()?;
 
     // create Key Pair
     let mkp_tag = "mkp";
