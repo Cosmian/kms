@@ -21,7 +21,7 @@ use reqwest::{
 use serde::Deserialize;
 use url::Url;
 
-use crate::{actions, cli_bail, config::CliConf, error::CliError};
+use crate::{cli_bail, config::CliConf, error::CliError};
 
 /// Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
 ///
@@ -55,9 +55,9 @@ impl LoginAction {
             scopes: oauth2_conf.scopes.clone(),
         };
 
-        let state = actions::login::login_initialize(login_config).await?;
+        let state = LoginState::try_from(login_config)?;
         println!("Browse to: {}", state.auth_url);
-        let access_token = actions::login::login_finalize(state).await?;
+        let access_token = state.finalize().await?;
 
         // update the configuration and save it
         conf.kms_access_token = Some(access_token);
@@ -115,148 +115,154 @@ pub struct LoginState {
 /// It returns a `LoginState` that holds the state of the login process.
 ///
 /// The process should be completed by instructing the user to browse to the authorization URL and follow the instructions to authenticate
-/// and immediately after calling `login_finalize()` with the returned `LoginState`.
+/// and immediately after calling `finalize()` with the returned `LoginState`.
 ///
-/// The Url can be recovered by calling `auth_url()` on the returned `LoginState`.
-pub async fn login_initialize(login_config: Oauth2LoginConfig) -> Result<LoginState, CliError> {
-    let mut redirect_url = Url::parse("http://localhost:17899/authorization")?;
-    // if the port is specified in the environment variable, use it
-    if let Ok(port_s) = std::env::var("KMS_CLI_OAUTH2_REDIRECT_URL_PORT") {
-        let port = port_s.parse::<u16>().map_err(|e| {
-            CliError::Default(format!("Invalid KMS_CLI_OAUTH2_REDIRECT_URL_PORT: {e:?}"))
-        })?;
-        redirect_url.set_port(Some(port)).map_err(|e| {
-            CliError::Default(format!("Invalid KMS_CLI_OAUTH2_REDIRECT_URL_PORT: {e:?}"))
-        })?;
-    }
+/// The Url can be recovered by accessing `auth_url` on the returned `LoginState` struct.
+impl TryFrom<Oauth2LoginConfig> for LoginState {
+    type Error = CliError;
 
-    // Create an OAuth2 client by specifying the client ID, client secret, authorization URL and
-    // token URL.
-    let client = BasicClient::new(
-        ClientId::new(login_config.client_id.to_string()),
-        Some(ClientSecret::new(login_config.client_secret.to_string())),
-        AuthUrl::new(login_config.authorize_url.to_string())?,
-        Some(TokenUrl::new(login_config.token_url.to_string())?),
-    )
-    // Set the URL the user will be redirected to after the authorization process.
-    .set_redirect_uri(RedirectUrl::new(redirect_url.to_string())?);
+    fn try_from(login_config: Oauth2LoginConfig) -> Result<Self, Self::Error> {
+        let mut redirect_url = Url::parse("http://localhost:17899/authorization")?;
+        // if the port is specified in the environment variable, use it
+        if let Ok(port_s) = std::env::var("KMS_CLI_OAUTH2_REDIRECT_URL_PORT") {
+            let port = port_s.parse::<u16>().map_err(|e| {
+                CliError::Default(format!("Invalid KMS_CLI_OAUTH2_REDIRECT_URL_PORT: {e:?}"))
+            })?;
+            redirect_url.set_port(Some(port)).map_err(|e| {
+                CliError::Default(format!("Invalid KMS_CLI_OAUTH2_REDIRECT_URL_PORT: {e:?}"))
+            })?;
+        }
 
-    // Generate a PKCE challenge.
-    let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+        // Create an OAuth2 client by specifying the client ID, client secret,
+        // authorization URL and token URL.
+        let client = BasicClient::new(
+            ClientId::new(login_config.client_id.clone()),
+            Some(ClientSecret::new(login_config.client_secret.clone())),
+            AuthUrl::new(login_config.authorize_url.clone())?,
+            Some(TokenUrl::new(login_config.token_url.clone())?),
+        )
+        // Set the URL the user will be redirected to after the authorization process.
+        .set_redirect_uri(RedirectUrl::new(redirect_url.to_string())?);
 
-    let scopes = login_config
-        .scopes
-        .iter()
-        .map(|s| Scope::new(s.to_string()))
-        .collect::<Vec<Scope>>();
+        // Generate a PKCE challenge.
+        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
 
-    // Generate the full authorization URL.
-    let (auth_url, csrf_token) = client
-        .authorize_url(CsrfToken::new_random)
-        // Set the desired scopes.
-        .add_scopes(scopes)
-        // Set the PKCE code challenge.
-        .set_pkce_challenge(pkce_challenge)
-        .url();
+        let scopes = login_config
+            .scopes
+            .iter()
+            .map(|s| Scope::new(s.clone()))
+            .collect::<Vec<_>>();
 
-    // This is the URL you should redirect the user to, in order to trigger the authorization
-    // process.
-    Ok(LoginState {
-        login_config,
-        redirect_url,
-        auth_url,
-        pkce_verifier,
-        csrf_token,
-    })
-}
+        // Generate the full authorization URL.
+        let (auth_url, csrf_token) = client
+            .authorize_url(CsrfToken::new_random)
+            // Set the desired scopes.
+            .add_scopes(scopes)
+            // Set the PKCE code challenge.
+            .set_pkce_challenge(pkce_challenge)
+            .url();
 
-/// This function finalizes the login process.
-/// It returns the access token.
-///
-/// This function should be called immediately after the user has been instructed to browse to the authorization URL.
-/// It starts a server on localhost:17899 and waits for the authorization code to be received
-/// from the browser window. Once the code is received, the server is closed and the code is returned.
-pub async fn login_finalize(login_state: LoginState) -> Result<String, CliError> {
-    // recover the authorization code, state and other parameters from the redirect URL
-    let auth_parameters = receive_authorization_parameters()?;
-
-    // Once the user has been redirected to the redirect URL, you'll have access to the
-    // authorization code. For security reasons, your code should verify that the `state`
-    // parameter returned by the server matches `csrf_state`.
-    let received_state = auth_parameters
-        .get("state")
-        .ok_or_else(|| CliError::Default("state not received on authentication".to_string()))?;
-    if received_state != login_state.csrf_token.secret() {
-        return Err(CliError::Default(
-            "state received on authentication does not match".to_string(),
-        ))
-    }
-
-    // extract the authorization code
-    let authorization_code = auth_parameters
-        .get("code")
-        .ok_or_else(|| CliError::Default("code not received on authentication".to_string()))?;
-
-    // Now you can trade it for an access token.
-
-    // TODO: unfortunately, the following does not work because Google return the JWT token in the `id_token` field, not the access_token field
-    // let token_result = login_state
-    //     .client
-    //     .exchange_code(AuthorizationCode::new(authorization_code.to_string()))
-    //     // Set the PKCE code verifier.
-    //     .set_pkce_verifier(login_state.pkce_verifier)
-    //     .request_async(async_http_client)
-    //     .await
-    //     .map_err(|e| CliError::Default(format!("token exchange failed: {:?}", e)))?;
-
-    let token_result = request_token(
-        login_state.login_config,
-        &login_state.redirect_url,
-        login_state.pkce_verifier,
-        authorization_code,
-    )
-    .await?;
-
-    Ok(match token_result.id_token {
-        // this is where Google returns the JWT token
-        Some(id_token) => id_token,
-        None => token_result.access_token,
-    })
-}
-
-/// This function starts the server on `localhost:17899` and waits for the authorization code to be received
-/// from the browser window. Once the code is received, the server is closed and the code is returned.
-fn receive_authorization_parameters() -> Result<HashMap<String, String>, CliError> {
-    let (auth_params_tx, auth_params_rx) = mpsc::channel::<HashMap<String, String>>();
-    // Spawn the server into a runtime
-    let tokio_handle = tokio::runtime::Handle::current();
-    let _task = thread::spawn(move || {
-        tokio_handle.block_on({
-            // server.await
-            #[get("/authorization")]
-            async fn authorization_handler(
-                auth_params: web::Query<HashMap<String, String>>,
-                auth_params_tx: Data<Sender<HashMap<String, String>>>,
-            ) -> HttpResponse {
-                auth_params_tx
-                    .into_inner()
-                    .send(auth_params.into_inner())
-                    .unwrap();
-                HttpResponse::Ok().body("Authentication Success! You can close this window.")
-            }
-
-            HttpServer::new(move || {
-                App::new()
-                    .app_data(Data::new(auth_params_tx.clone()))
-                    .service(authorization_handler)
-            })
-            .bind(("127.0.0.1", 17899))?
-            .run()
+        // This is the URL you should redirect the user to,
+        // in order to trigger the authorization process.
+        Ok(Self {
+            login_config,
+            redirect_url,
+            auth_url,
+            pkce_verifier,
+            csrf_token,
         })
-    });
-    auth_params_rx
-        .recv()
-        .map_err(|e| CliError::Default(format!("authorization code not received: {e:?}")))
+    }
+}
+
+impl LoginState {
+    /// This function finalizes the login process.
+    /// It returns the access token.
+    ///
+    /// This function should be called immediately after the user has been instructed to browse to the authorization URL.
+    /// It starts a server on localhost:17899 and waits for the authorization code to be received
+    /// from the browser window. Once the code is received, the server is closed and the code is returned.
+    pub async fn finalize(&self) -> Result<String, CliError> {
+        // recover the authorization code, state and other parameters from the redirect URL
+        let auth_parameters = LoginState::receive_authorization_parameters()?;
+
+        // Once the user has been redirected to the redirect URL, you'll have access to the
+        // authorization code. For security reasons, your code should verify that the `state`
+        // parameter returned by the server matches `csrf_state`.
+        let received_state = auth_parameters
+            .get("state")
+            .ok_or_else(|| CliError::Default("state not received on authentication".to_string()))?;
+        if received_state != self.csrf_token.secret() {
+            return Err(CliError::Default(
+                "state received on authentication does not match".to_string(),
+            ))
+        }
+
+        // extract the authorization code
+        let authorization_code = auth_parameters
+            .get("code")
+            .ok_or_else(|| CliError::Default("code not received on authentication".to_string()))?;
+
+        // Now you can trade it for an access token.
+
+        // TODO: unfortunately, the following does not work because Google return the JWT token in the `id_token` field, not the access_token field
+        // let token_result = login_state
+        //     .client
+        //     .exchange_code(AuthorizationCode::new(authorization_code.to_string()))
+        //     // Set the PKCE code verifier.
+        //     .set_pkce_verifier(login_state.pkce_verifier)
+        //     .request_async(async_http_client)
+        //     .await
+        //     .map_err(|e| CliError::Default(format!("token exchange failed: {:?}", e)))?;
+
+        let token_result = request_token(
+            &self.login_config,
+            &self.redirect_url,
+            &self.pkce_verifier,
+            authorization_code,
+        )
+        .await?;
+
+        Ok(match token_result.id_token {
+            // this is where Google returns the JWT token
+            Some(id_token) => id_token,
+            None => token_result.access_token,
+        })
+    }
+
+    /// This function starts the server on `localhost:17899` and waits for the authorization code to be received
+    /// from the browser window. Once the code is received, the server is closed and the authorization code is returned.
+    fn receive_authorization_parameters() -> Result<HashMap<String, String>, CliError> {
+        let (auth_params_tx, auth_params_rx) = mpsc::channel::<HashMap<String, String>>();
+        // Spawn the server into a runtime
+        let tokio_handle = tokio::runtime::Handle::current();
+        let _task = thread::spawn(move || {
+            tokio_handle.block_on({
+                // server.await
+                #[get("/authorization")]
+                async fn authorization_handler(
+                    auth_params: web::Query<HashMap<String, String>>,
+                    auth_params_tx: Data<Sender<HashMap<String, String>>>,
+                ) -> HttpResponse {
+                    auth_params_tx
+                        .into_inner()
+                        .send(auth_params.into_inner())
+                        .unwrap();
+                    HttpResponse::Ok().body("Authentication Success! You can close this window.")
+                }
+
+                HttpServer::new(move || {
+                    App::new()
+                        .app_data(Data::new(auth_params_tx.clone()))
+                        .service(authorization_handler)
+                })
+                .bind(("127.0.0.1", 17899))?
+                .run()
+            })
+        });
+        auth_params_rx
+            .recv()
+            .map_err(|e| CliError::Default(format!("authorization code not received: {e:?}")))
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -281,9 +287,9 @@ pub struct OAuthResponse {
 ///
 /// For Google see: <https://developers.google.com/identity/openid-connect/openid-connect#obtainuserinfo>
 pub async fn request_token(
-    login_config: Oauth2LoginConfig,
+    login_config: &Oauth2LoginConfig,
     redirect_url: &Url,
-    pkce_verifier: PkceCodeVerifier,
+    pkce_verifier: &PkceCodeVerifier,
     authorization_code: &str,
 ) -> Result<OAuthResponse, CliError> {
     let params = vec![
