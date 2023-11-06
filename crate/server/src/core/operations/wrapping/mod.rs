@@ -17,15 +17,12 @@ async fn get_key(
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object> {
     //TODO: we could improve the retrieve() DB calls to support a list of Any(operation..)
-    Ok(
-        match _get_key(key_uid_or_tags, operation_type, kms, user, params).await {
-            Ok(key) => key,
-            Err(_) => {
-                // see if we can Get it which is also acceptable in this case
-                _get_key(key_uid_or_tags, ObjectOperationType::Get, kms, user, params).await?
-            }
-        },
-    )
+    _get_key(key_uid_or_tags, operation_type, kms, user, params)
+        .await
+        .or(
+            // see if we can `Get` it which is also acceptable in this case
+            _get_key(key_uid_or_tags, ObjectOperationType::Get, kms, user, params).await,
+        )
 }
 
 /// check if unwrapping key exists and retrieve it

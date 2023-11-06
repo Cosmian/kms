@@ -11,7 +11,7 @@ use crate::{
 };
 
 async fn fetch_jwks(jwks_uri: &str) -> KResult<JWKS> {
-    let jwks = reqwest::get(jwks_uri)
+    reqwest::get(jwks_uri)
         .await
         .map_err(|e| {
             KmsError::ServerError(format!(
@@ -24,15 +24,13 @@ async fn fetch_jwks(jwks_uri: &str) -> KResult<JWKS> {
             KmsError::ServerError(format!(
                 "Failed to parse Google CSE JWKS at: {jwks_uri}, {e:?} "
             ))
-        })?;
-
-    Ok(jwks)
+        })
 }
 
 /// Fetch the JWT authorization configuration for Google CSE 'drive' or 'meet'
 async fn jwt_authorization_config_application(application: &str) -> KResult<JwtConfig> {
-    let jwks_uri= std::env::var(format!("KMS_GOOGLE_CSE_{}_JWKS_URI",application.to_uppercase()))
-        .unwrap_or(format!("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{}@system.gserviceaccount.com",application));
+    let jwks_uri = std::env::var(format!("KMS_GOOGLE_CSE_{}_JWKS_URI", application.to_uppercase()))
+        .unwrap_or(format!("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{}@system.gserviceaccount.com", application));
 
     // Fetch the JWKS for the two Google CSE service accounts
     let jwks = fetch_jwks(&jwks_uri).await?;
@@ -55,16 +53,16 @@ async fn jwt_authorization_config_application(application: &str) -> KResult<JwtC
 
 /// Fetch the JWT authorization configuration for Google CSE 'drive' and'meet'
 pub async fn jwt_authorization_config() -> KResult<HashMap<String, JwtConfig>> {
-    let mut jwt_authorization_config = HashMap::new();
-    jwt_authorization_config.insert(
-        "drive".to_string(),
-        jwt_authorization_config_application("drive").await?,
-    );
-    jwt_authorization_config.insert(
-        "meet".to_string(),
-        jwt_authorization_config_application("meet").await?,
-    );
-    Ok(jwt_authorization_config)
+    Ok(HashMap::from([
+        (
+            "drive".to_string(),
+            jwt_authorization_config_application("drive").await?,
+        ),
+        (
+            "meet".to_string(),
+            jwt_authorization_config_application("meet").await?,
+        ),
+    ]))
 }
 
 /// Decode a json web token (JWT) used for Google CSE
@@ -124,7 +122,7 @@ pub fn decode_jwt_authorization_token(
     Ok((user_claims, jwt_headers))
 }
 
-/// The configuration for for Google CSE:
+/// The configuration for Google CSE:
 ///  - JWT authentication and authorization configurations
 ///  - external KACLS URL of this server configured in Google Workspace client-side encryption
 /// (something like <https://cse.mydomain.com/google_cse>)
@@ -154,7 +152,7 @@ pub fn validate_tokens(
     // validate authentication token
     let authentication_token =
         decode_jwt_authentication_token(&cse_config.authentication, authentication_token)?;
-    trace!("authentication token: {:?}", authentication_token);
+    trace!("authentication token: {authentication_token:?}");
 
     let (authorization_token, jwt_headers) = decode_jwt_authorization_token(
         cse_config.authorization.get(application).ok_or_else(|| {
@@ -164,8 +162,8 @@ pub fn validate_tokens(
         })?,
         authorization_token,
     )?;
-    trace!("authorization token: {:?}", authorization_token);
-    trace!("authorization token headers: {:?}", jwt_headers);
+    trace!("authorization token: {authorization_token:?}");
+    trace!("authorization token headers: {jwt_headers:?}");
 
     // The emails should match (case insensitive)
     let authentication_email = authentication_token.email.ok_or_else(|| {

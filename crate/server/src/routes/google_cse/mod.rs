@@ -9,13 +9,15 @@ use serde::Serialize;
 use tracing::{debug, info, trace};
 
 use crate::{error::KmsError, result::KResult, KMSServer};
+
 mod jwt;
 mod operations;
+
 pub use jwt::{jwt_authorization_config, GoogleCseConfig};
 
 /// Error reply for Google CSE
 ///
-/// see: https://developers.google.com/workspace/cse/reference/structured-errors?hl=en
+/// see: <https://developers.google.com/workspace/cse/reference/structured-errors?hl=en>
 #[derive(Serialize, Debug)]
 struct CseErrorReply {
     code: u16,

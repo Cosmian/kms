@@ -97,7 +97,7 @@ where
                     .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
             })
             .unwrap_or_default();
-        trace!("Checking JWT identity: {:?}", identity);
+        trace!("Checking JWT identity: {identity:?}");
 
         // decode the JWT
         let private_claim =

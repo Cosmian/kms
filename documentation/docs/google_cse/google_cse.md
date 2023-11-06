@@ -8,7 +8,7 @@ Google has extensive documentation on how to enable CSE in Google Workspace. The
 
 The first thing that will need to be done is to configure the Identity Provider. This is the service that the Cosmian Key Management Server will use to authenticate users before they can encrypt files or access encrypted files.
 
-The identity provider (IdP) is either a third party IdP or Google identity. Using Google Identity is not recommended since Google as the authority could issue tokens to impersonate users and recover their keys. However, since configuring an Identity Provider is hard and Google Identity is the easiest to configure, we will use it in this tutorial.
+The Identity Provider (IdP) is either a third party IdP or Google identity. Using Google Identity is not recommended since Google as the authority could issue tokens to impersonate users and recover their keys. However, since configuring an Identity Provider is hard and Google Identity is the easiest to configure, we will use it in this tutorial.
 
 ![Enable CSE](./images/url-of-well-known-file.png)
 
@@ -31,7 +31,7 @@ Assuming it is running at `https://cse.example.com`, you should add the External
 
 To enable Client Side Encryption on the Cosmian KMS server, it must be started with the `--google-cse-kacls-url` option. This option is the URL at which the KMS will serve the Key Access Control Lists (KACLs) for the Google CSE service. The KACLs are used by the Google CSE service to determine which users have access to which keys. The KACLs are served by the KMS at the URL `https://cse.example.com/google_cse` in the example above.
 
-The Key Management Server must be configured to use the same Identity Provider as the one configured in the previous step. When using Google Identity, the server should be configured with the following options set in the [corresponding Google documentation](https://developers.google.com/workspace/cse/guides/configure-service?hl=en)
+The Key Management Server must be configured to use the same Identity Provider as the one configured in the previous step. When using Google Identity, the server should be configured with the following options set in the [corresponding Google documentation](https://developers.google.com/workspace/cse/guides/configure-service?hl=en).
 
 Assuming Google is the Identity Provider, the KMS should be started with the following options:
 
@@ -61,7 +61,7 @@ Finalize the configuration. The Client Side Encryption page should now show the 
 ![Cosmian KMS active](./images/cosmian_kms_active.png)
 
 
-## Configuring CSE for GNail
+## Configuring CSE for GMail
 
 
 [Generating a self-signed certificate and user certificates](./smime_self_signed_cert.pem.md)
