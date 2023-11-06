@@ -757,4 +757,13 @@ impl KMS {
             },
         )
     }
+
+    pub async fn message(
+        &self,
+        request: Message,
+        user: &str,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<MessageResponse> {
+        operations::message(self, request, user, params).await
+    }
 }
