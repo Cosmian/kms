@@ -48,8 +48,8 @@ pub struct ClapConfig {
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
     ///
     /// It should contain the external URL of this server as configured in Google Workspace client side encryption settings
-    /// For instance, if this server is running on domain cse.my_domain.com,
-    /// the URL should be something like https://cse.my_domain.com/google_cse
+    /// For instance, if this server is running on domain `cse.my_domain.com`,
+    /// the URL should be something like <https://cse.my_domain.com/google_cse>
     pub google_cse_kacls_url: Option<String>,
 }
 

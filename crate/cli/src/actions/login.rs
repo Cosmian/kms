@@ -33,7 +33,7 @@ use crate::{actions, cli_bail, config::CliConf, error::CliError};
 /// - `client_secret`: The client secret of your application. This is provided by the Identity Provider.
 /// - `authorize_url`: The authorization URL of the provider. For example, for Google it is `https://accounts.google.com/o/oauth2/v2/auth`.
 /// - `token_url`: The token URL of the provider. For example, for Google it is `https://oauth2.googleapis.com/token`.
-/// - scopes: The scopes to request. For example, for Google it is `["openid", "email"]`.
+/// - `scopes`: The scopes to request. For example, for Google it is `["openid", "email"]`.
 ///
 /// The callback url must be authorized on the Identity Provider with value `http://localhost:17899/token`.
 #[derive(Parser, Debug)]
@@ -231,7 +231,7 @@ pub async fn login_finalize(login_state: LoginState) -> Result<String, CliError>
     })
 }
 
-/// This function starts the server on localhost:17899 and waits for the authorization code to be received
+/// This function starts the server on `localhost:17899` and waits for the authorization code to be received
 /// from the browser window. Once the code is received, the server is closed and the code is returned.
 fn receive_authorization_parameters() -> Result<HashMap<String, String>, CliError> {
     let (auth_params_tx, auth_params_rx) = mpsc::channel::<HashMap<String, String>>();
@@ -283,8 +283,8 @@ pub struct OAuthResponse {
 
 /// This function requests the access token from the Identity Provider.
 ///
-/// This function wa rewritten because Google returns the JWT token in the `id_token` field,
-/// not the `access_token` field.
+/// This function was rewritten because Google returns the JWT token in the `id_token` field,
+/// not in the `access_token` field.
 ///
 /// For Google see: <https://developers.google.com/identity/openid-connect/openid-connect#obtainuserinfo>
 pub async fn request_token(
