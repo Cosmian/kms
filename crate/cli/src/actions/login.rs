@@ -56,7 +56,7 @@ impl LoginAction {
         };
 
         let state = actions::login::login_initialize(login_config).await?;
-        println!("Browse to: {}", state.auth_url());
+        println!("Browse to: {}", state.auth_url);
         let access_token = actions::login::login_finalize(state).await?;
 
         // update the configuration and save it
@@ -106,16 +106,9 @@ pub struct Oauth2LoginConfig {
 pub struct LoginState {
     login_config: Oauth2LoginConfig,
     redirect_url: Url,
-    auth_url: Url,
+    pub(crate) auth_url: Url,
     pkce_verifier: PkceCodeVerifier,
     csrf_token: CsrfToken,
-}
-
-impl LoginState {
-    #[must_use]
-    pub fn auth_url(&self) -> &Url {
-        &self.auth_url
-    }
 }
 
 /// This function initializes the login process.
