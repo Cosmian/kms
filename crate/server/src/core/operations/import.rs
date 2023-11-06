@@ -335,14 +335,18 @@ pub async fn import(
     // recover user tags
     let mut request_attributes = request.attributes;
     let mut tags = remove_tags(&mut request_attributes);
-    check_user_tags(&tags)?;
+    if let Some(tags) = tags.as_ref() {
+        check_user_tags(&tags)?;
+    }
 
     let object_type = request.object.object_type();
     let object = match object_type {
         ObjectType::SymmetricKey => {
             let mut object = request.object;
-            // insert the tag corresponding to the object type
-            tags.insert("_kk".to_string());
+            // insert the tag corresponding to the object type if tags should be updated
+            if let Some(tags) = tags.as_mut() {
+                tags.insert("_sk".to_string());
+            }
             // unwrap key block if required
             let object_key_block = object.key_block_mut()?;
             // unwrap before storing if requested
@@ -354,8 +358,10 @@ pub async fn import(
             object
         }
         ObjectType::PublicKey => {
-            // insert the tag corresponding to the object type
-            tags.insert("_pk".to_string());
+            // insert the tag corresponding to the object type if tags should be updated
+            if let Some(tags) = tags.as_mut() {
+                tags.insert("_pk".to_string());
+            }
 
             // unwrap key block if required
             let object = if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
@@ -399,8 +405,10 @@ pub async fn import(
             object
         }
         ObjectType::PrivateKey => {
-            // insert the tag corresponding to the object type
-            tags.insert("_sk".to_string());
+            // insert the tag corresponding to the object type if tags should be updated
+            if let Some(tags) = tags.as_mut() {
+                tags.insert("_sk".to_string());
+            }
 
             // unwrap key block if required
             let object = if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
@@ -447,8 +455,11 @@ pub async fn import(
 
         ObjectType::Certificate => {
             debug!("Import with _cert system tag");
-            tags.insert("_cert".to_string());
-            let certificate_der_bytes = match &request.object {
+            // insert the tag corresponding to the object type if tags should be updated
+            if let Some(tags) = tags.as_mut() {
+                tags.insert("_cert".to_string());
+            }
+            let certificate_pem_bytes = match &request.object {
                 Object::Certificate {
                     certificate_value, ..
                 } => Ok(certificate_value),
@@ -484,7 +495,7 @@ pub async fn import(
                 &request.unique_identifier,
                 owner,
                 &object,
-                &tags,
+                tags.as_ref(),
                 StateEnumeration::Active,
                 params,
             )
@@ -498,7 +509,9 @@ pub async fn import(
             Some(request.unique_identifier)
         };
 
-        kms.db.create(id, owner, &object, &tags, params).await?
+        kms.db
+            .create(id, owner, &object, &(tags.unwrap_or_default()), params)
+            .await?
     };
     Ok(ImportResponse {
         unique_identifier: uid,

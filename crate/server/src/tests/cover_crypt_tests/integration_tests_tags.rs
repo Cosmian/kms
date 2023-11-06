@@ -27,7 +27,7 @@ use crate::{
 };
 
 #[tokio::test]
-async fn test_rekey_with_tags() -> KResult<()> {
+async fn test_re_key_with_tags() -> KResult<()> {
     let app = test_utils::test_app().await;
 
     let policy = policy()?;
@@ -44,7 +44,7 @@ async fn test_rekey_with_tags() -> KResult<()> {
     let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
     //
-    // Rekey all key pairs with matching ABE attributes
+    // Re_key all key pairs with matching ABE attributes
     let abe_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
 
     let request = build_rekey_keypair_request(&mkp_json_tag, abe_policy_attributes)?;

@@ -18,6 +18,7 @@ use sqlx::{
 };
 use tracing::{debug, trace};
 use uuid::Uuid;
+use cosmian_kmip::kmip::kmip_objects::Object;
 
 use super::object_with_metadata::ObjectWithMetadata;
 use crate::{
@@ -180,10 +181,10 @@ impl Database for SqlitePool {
         &self,
         uid: &UniqueIdentifier,
         user: &str,
-        object: &kmip_objects::Object,
-        tags: &HashSet<String>,
+        object: &Object,
+        tags: Option<&HashSet<String>>,
         state: StateEnumeration,
-        _params: Option<&ExtraDatabaseParams>,
+        params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         let mut tx = self.pool.begin().await?;
         match upsert_(uid, user, object, tags, state, &mut tx).await {
@@ -556,8 +557,8 @@ pub(crate) async fn delete_(
 pub(crate) async fn upsert_(
     uid: &UniqueIdentifier,
     owner: &str,
-    object: &kmip_objects::Object,
-    tags: &HashSet<String>,
+    object: &Object,
+    tags: Option<&HashSet<String>>,
     state: StateEnumeration,
     executor: &mut Transaction<'_, Sqlite>,
 ) -> KResult<()> {
@@ -590,17 +591,19 @@ pub(crate) async fn upsert_(
     .execute(&mut **executor)
     .await?;
 
-    // Insert the new tags
-    for tag in tags {
-        sqlx::query(
-            SQLITE_QUERIES
-                .get("insert-tags")
-                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-        )
-        .bind(uid)
-        .bind(tag)
-        .execute(&mut **executor)
-        .await?;
+    // Insert the new tags if present
+    if let Some(tags)=tags {
+        for tag in tags {
+            sqlx::query(
+                SQLITE_QUERIES
+                    .get("insert-tags")
+                    .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+            )
+                .bind(uid)
+                .bind(tag)
+                .execute(&mut **executor)
+                .await?;
+        }
     }
 
     trace!("Upserted in DB: {uid}");

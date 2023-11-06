@@ -58,7 +58,7 @@ pub(crate) struct RedisDbObject {
     #[serde(rename = "s")]
     pub(crate) state: StateEnumeration,
     #[serde(rename = "l")]
-    pub(crate) tags: HashSet<String>,
+    pub(crate) tags: Option<HashSet<String>>,
 }
 
 impl RedisDbObject {
@@ -66,7 +66,7 @@ impl RedisDbObject {
         object: Object,
         owner: String,
         state: StateEnumeration,
-        tags: HashSet<String>,
+        tags: Option<HashSet<String>>,
     ) -> Self {
         let object_type = object.object_type();
         Self {
@@ -81,9 +81,12 @@ impl RedisDbObject {
     pub fn keywords(&self) -> HashSet<Keyword> {
         let mut keywords = self
             .tags
-            .iter()
-            .map(|tag| Keyword::from(tag.as_bytes()))
-            .collect::<HashSet<Keyword>>();
+            .map(|tags| {
+                tags.iter()
+                    .map(|tag| Keyword::from(tag.as_bytes()))
+                    .collect::<HashSet<Keyword>>()
+            })
+            .unwrap_or_default();
         // index some of the attributes
         if let Ok(attributes) = self.object.attributes() {
             keywords.extend(keywords_from_attributes(attributes));
