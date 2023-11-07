@@ -163,7 +163,16 @@ pub async fn retrieve_object_with_metadata(
     // retrieve from tags or use passed identifier
     let mut owm_s = kms
         .db
-        .retrieve(&uid_or_tags, user, ObjectOperationType::Export, params)
+        .retrieve(
+            &uid_or_tags,
+            user,
+            if allow_full_export {
+                ObjectOperationType::Export
+            } else {
+                ObjectOperationType::Get
+            },
+            params,
+        )
         .await?
         .into_values()
         .filter(|owm| owm.state == StateEnumeration::Active || allow_full_export)
