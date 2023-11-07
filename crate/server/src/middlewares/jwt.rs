@@ -1,12 +1,13 @@
+use std::sync::RwLock;
+
 use alcoholic_jwt::{token_kid, JWKS};
 use serde::{Deserialize, Serialize};
 
 use crate::{error::KmsError, kms_ensure, result::KResult};
 
-#[derive(Clone)]
 pub struct JwtConfig {
     pub jwt_issuer_uri: String,
-    pub jwks: JWKS,
+    pub jwks: RwLock<JWKS>,
     pub jwt_audience: Option<String>,
 }
 
@@ -86,13 +87,15 @@ pub fn decode_jwt_authentication_token(jwt_config: &JwtConfig, token: &str) -> K
         .map_err(|e| KmsError::Unauthorized(format!("Failed to decode kid: {e}")))?
         .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_string()))?;
 
-    let jwk = jwt_config
-        .jwks
-        .find(&kid)
-        .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_string()))?;
+    let valid_jwt = {
+        let jwks = jwt_config.jwks.read().expect("cannot lock jwks for read");
+        let jwk = jwks
+            .find(&kid)
+            .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_string()))?;
 
-    let valid_jwt = alcoholic_jwt::validate(token, jwk, validations)
-        .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;
+        alcoholic_jwt::validate(token, jwk, validations)
+            .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?
+    };
 
     let payload = serde_json::from_value(valid_jwt.claims)
         .map_err(|err| KmsError::Unauthorized(format!("JWT claims is malformed: {err:?}")))?;

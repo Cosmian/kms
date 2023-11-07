@@ -216,13 +216,15 @@ fn prepare_bootstrap_server(
     builder: SslAcceptorBuilder,
 ) -> KResult<actix_web::dev::Server> {
     // Determine if JWT Auth should be used for authentication.
-    let (use_jwt_auth, jwt_config) =
-        if let Some(jwt_issuer_uri) = &bootstrap_server.server_params.jwt_issuer_uri {
-            (
-                true,
-                Some(JwtConfig {
-                    jwt_issuer_uri: jwt_issuer_uri.clone(),
-                    jwks: bootstrap_server
+    let (use_jwt_auth, jwt_config) = if let Some(jwt_issuer_uri) =
+        &bootstrap_server.server_params.jwt_issuer_uri
+    {
+        (
+            true,
+            Some(Arc::new(JwtConfig {
+                jwt_issuer_uri: jwt_issuer_uri.clone(),
+                jwks: RwLock::new(
+                    bootstrap_server
                         .server_params
                         .jwks
                         .as_ref()
@@ -230,12 +232,13 @@ fn prepare_bootstrap_server(
                             kms_error!("The JWKS must be provided when using JWT authentication")
                         })?
                         .clone(),
-                    jwt_audience: bootstrap_server.server_params.jwt_audience.clone(),
-                }),
-            )
-        } else {
-            (false, None)
-        };
+                ),
+                jwt_audience: bootstrap_server.server_params.jwt_audience.clone(),
+            })),
+        )
+    } else {
+        (false, None)
+    };
     // Determine if Client Cert Auth should be used for authentication.
     let use_cert_auth = bootstrap_server.server_params.verify_cert.is_some();
 

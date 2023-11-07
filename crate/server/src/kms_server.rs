@@ -1,7 +1,7 @@
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex,
+        mpsc, Arc, Mutex, RwLock,
     },
     time::Duration,
 };
@@ -383,18 +383,20 @@ pub async fn prepare_kms_server(
     {
         (
             true,
-            Some(JwtConfig {
+            Some(Arc::new(JwtConfig {
                 jwt_issuer_uri: jwt_issuer_uri.clone(),
-                jwks: kms_server
-                    .params
-                    .jwks
-                    .as_ref()
-                    .ok_or_else(|| {
-                        kms_error!("The JWKS must be provided when using JWT authentication")
-                    })?
-                    .clone(),
+                jwks: RwLock::new(
+                    kms_server
+                        .params
+                        .jwks
+                        .as_ref()
+                        .ok_or_else(|| {
+                            kms_error!("The JWKS must be provided when using JWT authentication")
+                        })?
+                        .clone(),
+                ),
                 jwt_audience: kms_server.params.jwt_audience.clone(),
-            }),
+            })),
         )
     } else {
         (false, None)
