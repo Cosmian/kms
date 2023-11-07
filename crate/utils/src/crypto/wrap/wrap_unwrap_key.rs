@@ -171,16 +171,10 @@ mod tests {
             CryptographicAlgorithm::AES,
         );
 
-        let wrapping_key_pair = create_x25519_key_pair(
-            &mut rng,
-            "wrapping_private_key_uid",
-            "wrapping_public_key_uid",
-        )?;
-        let mut key_pair_to_wrap = create_x25519_key_pair(
-            &mut rng,
-            "private_key_to_wrap_uid",
-            "public_key_to_wrap_uid",
-        )?;
+        let wrapping_key_pair =
+            create_x25519_key_pair("wrapping_private_key_uid", "wrapping_public_key_uid")?;
+        let mut key_pair_to_wrap =
+            create_x25519_key_pair("private_key_to_wrap_uid", "public_key_to_wrap_uid")?;
 
         // wrap the symmetric key with a symmetric key
         wrap_test(

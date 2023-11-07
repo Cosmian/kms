@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn test_encrypt_decrypt_rfc_ecies() {
         let mut rng = CsRng::from_entropy();
-        let wrap_key_pair = create_x25519_key_pair(&mut rng, "sk_uid", "pk_uid").unwrap();
+        let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid").unwrap();
         let plaintext = b"plaintext";
         let ciphertext =
             super::encrypt_bytes(&mut rng, wrap_key_pair.public_key(), plaintext).unwrap();

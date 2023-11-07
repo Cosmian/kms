@@ -394,8 +394,7 @@ impl KMS {
                     .unwrap_or_default();
                 match dp.recommended_curve.unwrap_or_default() {
                     RecommendedCurve::CURVE25519 => {
-                        let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                        create_x25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                        create_x25519_key_pair(private_key_uid, public_key_uid)
                     }
                     RecommendedCurve::CURVEED25519 => {
                         warn!(
@@ -411,8 +410,7 @@ impl KMS {
                 }
             }
             CryptographicAlgorithm::Ed25519 => {
-                let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                create_ed25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                create_ed25519_key_pair(private_key_uid, public_key_uid)
             }
             CryptographicAlgorithm::CoverCrypt => {
                 cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(

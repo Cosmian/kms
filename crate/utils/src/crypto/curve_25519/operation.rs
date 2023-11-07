@@ -1,7 +1,3 @@
-use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::CryptoRngCore, Ed25519PrivateKey, Ed25519PublicKey, X25519PrivateKey,
-    X25519PublicKey, CURVE_25519_SECRET_LENGTH,
-};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -15,10 +11,10 @@ use cosmian_kmip::{
     },
 };
 use num_bigint_dig::BigUint;
+use openssl::pkey::PKey;
 
 use crate::KeyPair;
 
-pub const SECRET_KEY_LENGTH: usize = CURVE_25519_SECRET_LENGTH;
 pub const Q_LENGTH_BITS: i32 = 253;
 
 /// convert to a X25519 256 bits KMIP Public Key
@@ -110,42 +106,31 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Obj
 }
 
 /// Generate a X25519 Key Pair
-pub fn create_x25519_key_pair<R>(
-    rng: &mut R,
+pub fn create_x25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
-) -> Result<KeyPair, KmipError>
-where
-    R: CryptoRngCore,
-{
-    let private_key = X25519PrivateKey::new(rng);
-    let public_key = X25519PublicKey::from(&private_key);
+) -> Result<KeyPair, KmipError> {
+    let keypair = PKey::generate_x25519()?;
 
-    let private_key = to_curve_25519_256_private_key(private_key.as_bytes(), public_key_uid);
-    let public_key = to_curve_25519_256_public_key(public_key.as_bytes(), private_key_uid);
+    let public_key = to_curve_25519_256_public_key(&keypair.raw_public_key()?, private_key_uid);
+    let private_key = to_curve_25519_256_private_key(&keypair.raw_private_key()?, public_key_uid);
     Ok(KeyPair::new(private_key, public_key))
 }
 
 /// Generate a key CURVE Ed25519 Key Pair
-pub fn create_ed25519_key_pair<R>(
-    rng: &mut R,
+pub fn create_ed25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
-) -> Result<KeyPair, KmipError>
-where
-    R: CryptoRngCore,
-{
-    let private_key = Ed25519PrivateKey::new(rng);
-    let public_key = Ed25519PublicKey::from(&private_key);
+) -> Result<KeyPair, KmipError> {
+    let keypair = PKey::generate_ed25519()?;
 
-    let private_key = to_curve_25519_256_private_key(private_key.as_bytes(), public_key_uid);
-    let public_key = to_curve_25519_256_public_key(public_key.as_bytes(), private_key_uid);
+    let public_key = to_curve_25519_256_public_key(&keypair.raw_public_key()?, private_key_uid);
+    let private_key = to_curve_25519_256_private_key(&keypair.raw_private_key()?, public_key_uid);
     Ok(KeyPair::new(private_key, public_key))
 }
 
 #[cfg(test)]
 mod tests {
-    use cloudproof::reexport::crypto_core::{reexport::rand_core::SeedableRng, CsRng};
     use cosmian_kmip::kmip::kmip_data_structures::KeyMaterial;
     use openssl::pkey::{Id, PKey};
 
@@ -153,12 +138,10 @@ mod tests {
 
     #[test]
     fn test_x25519_conversions() {
-        let mut rng = CsRng::from_entropy();
-
         // Create a Key pair
         // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
         // - the public key is a TransparentEcPublicKey where the key value is the bytes of the Montgomery point
-        let wrap_key_pair = create_x25519_key_pair(&mut rng, "sk_uid", "pk_uid").unwrap();
+        let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid").unwrap();
 
         //
         // public key
