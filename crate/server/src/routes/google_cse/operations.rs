@@ -66,7 +66,7 @@ pub struct WrapResponse {
 pub async fn wrap(
     req_http: HttpRequest,
     wrap_request: WrapRequest,
-    cse_config: &Option<GoogleCseConfig>,
+    cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<WrapResponse> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
@@ -86,7 +86,8 @@ pub async fn wrap(
         cse_config,
         application,
         roles,
-    )?;
+    )
+    .await?;
 
     // decode the DEK and create a KMIP object from the key bytes
     let mut dek = create_symmetric_key(
@@ -142,7 +143,7 @@ pub struct UnwrapResponse {
 pub async fn unwrap(
     req_http: HttpRequest,
     unwrap_request: UnwrapRequest,
-    cse_config: &Option<GoogleCseConfig>,
+    cse_config: &Arc<Option<GoogleCseConfig>>,
     kms: &Arc<KMSServer>,
 ) -> KResult<UnwrapResponse> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
@@ -162,7 +163,8 @@ pub async fn unwrap(
         cse_config,
         application,
         roles,
-    )?;
+    )
+    .await?;
 
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
     let mut wrapped_dek = create_symmetric_key(

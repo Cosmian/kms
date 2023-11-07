@@ -1,5 +1,6 @@
 use std::{
     pin::Pin,
+    sync::Arc,
     task::{Context, Poll},
 };
 
@@ -20,12 +21,12 @@ use crate::middlewares::jwt::{decode_jwt_bearer_header, JwtConfig};
 
 #[derive(Clone)]
 pub struct JwtAuth {
-    jwt_config: Option<JwtConfig>,
+    jwt_config: Option<Arc<JwtConfig>>,
 }
 
 impl JwtAuth {
     #[must_use]
-    pub fn new(jwt_config: Option<JwtConfig>) -> Self {
+    pub fn new(jwt_config: Option<Arc<JwtConfig>>) -> Self {
         Self { jwt_config }
     }
 }
@@ -52,7 +53,7 @@ where
 
 pub struct JwtAuthMiddleware<S> {
     service: S,
-    jwt_config: Option<JwtConfig>,
+    jwt_config: Option<Arc<JwtConfig>>,
 }
 
 impl<S, B> Service<ServiceRequest> for JwtAuthMiddleware<S>

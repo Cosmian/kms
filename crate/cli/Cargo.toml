@@ -42,7 +42,7 @@ uuid = { workspace = true }
 x509-parser = { workspace = true }
 
 [dev-dependencies]
-actix-rt = { version = "2.0", default-features = false }
+actix-rt = { workspace = true }
 actix-server = { version = "2.0", default-features = false }
 assert_cmd = "2.0"
 cosmian_kms_client = { path = "../client", default-features = false }

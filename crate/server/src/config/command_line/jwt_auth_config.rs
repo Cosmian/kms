@@ -1,7 +1,9 @@
+use actix_rt::task;
 use alcoholic_jwt::JWKS;
 use clap::Args;
 
 use crate::{
+    error::KmsError,
     kms_error,
     result::{KResult, KResultHelper},
 };
@@ -26,7 +28,7 @@ pub struct JwtAuthConfig {
     ///
     /// For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
     ///
-    /// Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` is not set
+    /// Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
     #[clap(long, env = "KMS_JWKS_URI")]
     pub jwks_uri: Option<String>,
 
@@ -38,22 +40,36 @@ pub struct JwtAuthConfig {
 }
 
 impl JwtAuthConfig {
+    /// Request JWKS using the `jwks_uri`
+    ///
+    /// Implementation details:
+    ///
+    /// this request is blocking because it may be called from
+    /// within an Actix service, which is not async.
+    /// Managing `Box::pin` around doesn't help much as it needs
+    /// the service's `call` method to have an extended
+    /// lifetime (on `self`), which is not very easy to handle.
+    pub fn request_jwks(jwks_uri: &str) -> KResult<JWKS> {
+        reqwest::blocking::get(jwks_uri)
+            .context("Unable to connect to retrieve JWKS")?
+            .json::<JWKS>()
+            .map_err(|e| kms_error!(format!("Unable to get JWKS as a JSON: {e}")))
+    }
+
     pub async fn fetch_jwks(&self) -> KResult<Option<JWKS>> {
         match &self.jwt_issuer_uri {
             None => Ok(None),
             Some(jwt_issuer_uri) => {
                 let jwt_issuer_uri = jwt_issuer_uri.trim_end_matches('/');
-                let jwks_uri = match &self.jwks_uri {
-                    None => format!("{jwt_issuer_uri}/.well-known/jwks.json"),
-                    Some(jwks_uri) => jwks_uri.to_string(),
-                };
-                reqwest::get(jwks_uri)
-                    .await
-                    .context("Unable to connect to retrieve JWKS")?
-                    .json::<JWKS>()
-                    .await
-                    .map_err(|e| kms_error!(format!("Unable to get JWKS as a JSON: {e}")))
-                    .map(Option::Some)
+                let jwks_uri = self.jwks_uri.as_ref().map_or(
+                    format!("{jwt_issuer_uri}/.well-known/jwks.json"),
+                    |jwks_uri| jwks_uri.to_string(),
+                );
+                task::spawn_blocking(move || {
+                    JwtAuthConfig::request_jwks(&jwks_uri).map(Option::Some)
+                })
+                .await
+                .map_err(|e| KmsError::Unauthorized(format!("cannot request JWKS: {e}")))?
             }
         }
     }
