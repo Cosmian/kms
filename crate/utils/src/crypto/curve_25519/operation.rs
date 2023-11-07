@@ -105,7 +105,8 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Obj
     }
 }
 
-/// Generate a X25519 Key Pair
+#[cfg(not(feature = "fips"))]
+/// Generate a X25519 Key Pair. Not FIPS 140-3 compliant.
 pub fn create_x25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -117,7 +118,7 @@ pub fn create_x25519_key_pair(
     Ok(KeyPair::new(private_key, public_key))
 }
 
-/// Generate a key CURVE Ed25519 Key Pair
+/// Generate a key CURVE Ed25519 Key Pair. FIPS 140-3 compliant.
 pub fn create_ed25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,

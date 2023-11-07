@@ -8,14 +8,16 @@ use cosmian_kmip::kmip::{
 };
 
 use crate::{
-    crypto::symmetric::{create_symmetric_key, AesGcmSystem, KEY_LENGTH, NONCE_LENGTH},
+    crypto::symmetric::{
+        create_symmetric_key, AesGcmSystem, AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH,
+    },
     DecryptionSystem, EncryptionSystem,
 };
 
 #[test]
 pub fn test_aes() {
     let mut rng = CsRng::from_entropy();
-    let mut symmetric_key = vec![0; KEY_LENGTH];
+    let mut symmetric_key = vec![0; AES_256_GCM_KEY_LENGTH];
     rng.fill_bytes(&mut symmetric_key);
     let key = create_symmetric_key(&symmetric_key, CryptographicAlgorithm::AES);
     let aes = AesGcmSystem::instantiate("blah", &key).unwrap();
@@ -23,7 +25,7 @@ pub fn test_aes() {
     rng.fill_bytes(&mut data);
     let mut uid = vec![0_u8; 32];
     rng.fill_bytes(&mut uid);
-    let nonce: Nonce<NONCE_LENGTH> = Nonce::new(&mut rng);
+    let nonce: Nonce<AES_256_GCM_IV_LENGTH> = Nonce::new(&mut rng);
     // encrypt
     let enc_res = aes
         .encrypt(&Encrypt {
