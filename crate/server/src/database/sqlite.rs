@@ -7,6 +7,7 @@ use std::{
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
     kmip_objects,
+    kmip_objects::Object,
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
@@ -18,7 +19,6 @@ use sqlx::{
 };
 use tracing::{debug, trace};
 use uuid::Uuid;
-use cosmian_kmip::kmip::kmip_objects::Object;
 
 use super::object_with_metadata::ObjectWithMetadata;
 use crate::{
@@ -184,7 +184,7 @@ impl Database for SqlitePool {
         object: &Object,
         tags: Option<&HashSet<String>>,
         state: StateEnumeration,
-        params: Option<&ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         let mut tx = self.pool.begin().await?;
         match upsert_(uid, user, object, tags, state, &mut tx).await {
@@ -384,7 +384,7 @@ where
             .replace("@LEN", &format!("${}", tags.len() + 1))
             .replace("@USER", &format!("${}", tags.len() + 2));
 
-        trace!("raw_sql = {raw_sql}");
+        trace!("retrieve: tags: {tags:?}, user: {user}, raw_sql = {raw_sql},");
 
         // Bind the tags params
         let mut query = sqlx::query::<Sqlite>(&raw_sql);
@@ -581,28 +581,28 @@ pub(crate) async fn upsert_(
     .execute(&mut **executor)
     .await?;
 
-    // delete the existing tags
-    sqlx::query(
-        SQLITE_QUERIES
-            .get("delete-tags")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .execute(&mut **executor)
-    .await?;
-
     // Insert the new tags if present
-    if let Some(tags)=tags {
+    if let Some(tags) = tags {
+        // delete the existing tags
+        sqlx::query(
+            SQLITE_QUERIES
+                .get("delete-tags")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(uid)
+        .execute(&mut **executor)
+        .await?;
+        // insert new ones
         for tag in tags {
             sqlx::query(
                 SQLITE_QUERIES
                     .get("insert-tags")
                     .ok_or_else(|| kms_error!("SQL query can't be found"))?,
             )
-                .bind(uid)
-                .bind(tag)
-                .execute(&mut **executor)
-                .await?;
+            .bind(uid)
+            .bind(tag)
+            .execute(&mut **executor)
+            .await?;
         }
     }
 

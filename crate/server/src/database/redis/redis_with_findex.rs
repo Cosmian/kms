@@ -350,7 +350,7 @@ impl Database for RedisWithFindex {
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        //replace the esiting tags (if any) with the new ones (if provided)
+        //replace the existing tags (if any) with the new ones (if provided)
         let tags = if let Some(tags) = tags {
             tags.clone()
         } else {

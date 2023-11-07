@@ -74,7 +74,7 @@ pub async fn test_objects_db() -> KResult<()> {
             object.clone(),
             "owner".to_string(),
             StateEnumeration::Active,
-            HashSet::new(),
+            Some(HashSet::new()),
         ),
     )
     .await?;

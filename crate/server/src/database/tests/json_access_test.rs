@@ -44,7 +44,7 @@ pub async fn json_access<DB: Database>(
         &uid,
         owner,
         &symmetric_key,
-        &HashSet::new(),
+        Some(&HashSet::new()),
         StateEnumeration::Active,
         db_params,
     )

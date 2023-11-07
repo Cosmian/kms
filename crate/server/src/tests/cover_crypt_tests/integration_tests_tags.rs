@@ -44,9 +44,8 @@ async fn test_re_key_with_tags() -> KResult<()> {
     let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
     //
-    // Re_key all key pairs with matching ABE attributes
+    // Re_key all key pairs with matching policy attributes
     let abe_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
-
     let request = build_rekey_keypair_request(&mkp_json_tag, abe_policy_attributes)?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
@@ -58,7 +57,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
         public_key_unique_identifier
     );
 
-    // Encrypt with the rekeyed keypair
+    // Encrypt with the re-keyed public key
     let authentication_data = b"cc the uid".to_vec();
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";

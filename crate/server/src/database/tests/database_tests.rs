@@ -137,7 +137,7 @@ pub async fn upsert<DB: Database>(
         &uid,
         owner,
         &symmetric_key,
-        &HashSet::new(),
+        Some(&HashSet::new()),
         StateEnumeration::Active,
         db_params,
     )
@@ -166,7 +166,7 @@ pub async fn upsert<DB: Database>(
         &uid,
         owner,
         &symmetric_key,
-        &HashSet::new(),
+        Some(&HashSet::new()),
         StateEnumeration::PreActive,
         db_params,
     )
