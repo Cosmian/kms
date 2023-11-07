@@ -6,7 +6,7 @@ use std::{
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
-    kmip_objects::{self},
+    kmip_objects::{self, Object},
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
@@ -18,7 +18,6 @@ use sqlx::{
 };
 use tracing::{debug, trace};
 use uuid::Uuid;
-use cosmian_kmip::kmip::kmip_objects::Object;
 
 use super::{
     object_with_metadata::ObjectWithMetadata, query_from_attributes, state_from_string, DBObject,
@@ -568,18 +567,18 @@ pub(crate) async fn upsert_(
     .execute(&mut **executor)
     .await?;
 
-    // delete the existing tags
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("delete-tags")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .execute(&mut **executor)
-    .await?;
-
     // Insert the new tags
     if let Some(tags) = tags {
+        // delete the existing tags
+        sqlx::query(
+            MYSQL_QUERIES
+                .get("delete-tags")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(uid)
+        .execute(&mut **executor)
+        .await?;
+        // insert the new ones
         for tag in tags {
             sqlx::query(
                 MYSQL_QUERIES

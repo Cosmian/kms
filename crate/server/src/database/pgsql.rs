@@ -7,6 +7,7 @@ use std::{
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
     kmip_objects,
+    kmip_objects::Object,
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
@@ -18,7 +19,6 @@ use sqlx::{
 };
 use tracing::{debug, trace};
 use uuid::Uuid;
-use cosmian_kmip::kmip::kmip_objects::Object;
 
 use crate::{
     database::{
@@ -180,7 +180,7 @@ impl Database for PgPool {
         object: &Object,
         tags: Option<&HashSet<String>>,
         state: StateEnumeration,
-        params: Option<&ExtraDatabaseParams>,
+        _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         let mut tx = self.pool.begin().await?;
         match upsert_(uid, user, object, tags, state, &mut tx).await {
@@ -569,18 +569,18 @@ pub(crate) async fn upsert_(
     .execute(&mut **executor)
     .await?;
 
-    // delete the existing tags
-    sqlx::query(
-        PGSQL_QUERIES
-            .get("delete-tags")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .execute(&mut **executor)
-    .await?;
-
     // Insert the new tags if present
     if let Some(tags) = tags {
+        // delete the existing tags
+        sqlx::query(
+            PGSQL_QUERIES
+                .get("delete-tags")
+                .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+        )
+        .bind(uid)
+        .execute(&mut **executor)
+        .await?;
+        // insert the new ones
         for tag in tags {
             sqlx::query(
                 PGSQL_QUERIES

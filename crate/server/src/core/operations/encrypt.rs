@@ -52,7 +52,7 @@ pub async fn encrypt(
         )))
     }
 
-    debug!("kms.get_encryption_system");
+    debug!("Encrypting for {}", uid_or_tags);
     kms.get_encryption_system(owm, params)
         .await?
         .encrypt(&request)

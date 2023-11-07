@@ -392,7 +392,7 @@ impl KMS {
         let mut common_attributes = request.common_attributes.unwrap_or_default();
 
         // recover tags and clean them up from the common attributes
-        let tags = remove_tags(&mut common_attributes);
+        let tags = remove_tags(&mut common_attributes).unwrap_or_default();
         check_user_tags(&tags)?;
         //update the tags for the private key and the public key
         let mut sk_tags = tags.clone();

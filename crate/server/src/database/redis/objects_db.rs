@@ -81,6 +81,7 @@ impl RedisDbObject {
     pub fn keywords(&self) -> HashSet<Keyword> {
         let mut keywords = self
             .tags
+            .as_ref()
             .map(|tags| {
                 tags.iter()
                     .map(|tag| Keyword::from(tag.as_bytes()))

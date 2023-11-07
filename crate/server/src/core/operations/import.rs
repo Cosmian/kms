@@ -167,7 +167,10 @@ fn get_rsa_private_key_object(
     Ok(object)
 }
 
-fn create_ec_spki_tag(tags: &mut HashSet<String>, private_key: &EcKey<Private>) -> KResult<String> {
+fn create_ec_spki_tag(
+    tags: &mut Option<HashSet<String>>,
+    private_key: &EcKey<Private>,
+) -> KResult<String> {
     debug!("create_spki_tag: entering");
     let mut ctx = openssl::bn::BigNumContext::new().unwrap();
     let group = private_key.group();
@@ -179,7 +182,7 @@ fn create_ec_spki_tag(tags: &mut HashSet<String>, private_key: &EcKey<Private>) 
     create_spki_tag(tags, &public_key_bytes)
 }
 
-fn create_spki_tag(tags: &mut HashSet<String>, public_key_bytes: &[u8]) -> KResult<String> {
+fn create_spki_tag(tags: &mut Option<HashSet<String>>, public_key_bytes: &[u8]) -> KResult<String> {
     // Compute SPKI as described in <https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.2>: implementing first method
     debug!(
         "create_spki_tag: public_key_bytes:{}",
@@ -188,10 +191,12 @@ fn create_spki_tag(tags: &mut HashSet<String>, public_key_bytes: &[u8]) -> KResu
     let mut sha1 = Sha1::default();
     sha1.update(public_key_bytes);
     let spki = hex::encode(sha1.finish());
-    let spki_tag = format!("_cert_spki={spki}");
 
-    debug!("create_spki_tag: add spki system tag: {spki_tag}");
-    tags.insert(spki_tag);
+    if let Some(tags) = tags.as_mut() {
+        let spki_tag = format!("_cert_spki={spki}");
+        debug!("create_spki_tag: add spki system tag: {spki_tag}");
+        tags.insert(spki_tag);
+    }
     Ok(spki)
 }
 
@@ -223,8 +228,8 @@ async fn create_certificate_link(
 ///
 /// Arguments:
 ///
-/// * `tags`: A mutable `HashSet` of strings used to store tags associated with the
-/// imported object.
+/// * `tags`: If provided, the mutable `HashSet` of strings that will store store
+/// tags associated with the imported object.
 /// * `pem_value`: The `pem_value` parameter is a byte slice that contains the
 /// PEM-encoded data. PEM stands for Privacy-Enhanced Mail and is a format for
 /// storing and transmitting cryptographic keys, certificates, and other data.
@@ -245,7 +250,7 @@ async fn create_certificate_link(
 ///
 /// The imported PEM certificate as a KMIP `Object`
 async fn import_pem(
-    tags: &mut HashSet<String>,
+    tags: &mut Option<HashSet<String>>,
     pem_value: &[u8],
     kms: &KMS,
     owner: &str,
@@ -255,7 +260,9 @@ async fn import_pem(
 
     let object = if pem.label == "CERTIFICATE" {
         debug!("import_pem: parsing certificate: {}", pem.label);
-        parse_certificate_and_create_tags(tags, pem_value)?;
+        if let Some(tags) = tags.as_mut() {
+            parse_certificate_and_create_tags(tags, pem_value)?;
+        }
         Object::Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: pem_value.to_vec(),
@@ -479,11 +486,7 @@ pub async fn import(
     };
 
     // check if the object will be replaced if it already exists
-    let replace_existing = if let Some(v) = request.replace_existing {
-        v
-    } else {
-        false
-    };
+    let replace_existing = request.replace_existing.unwrap_or(false);
 
     // insert or update the object
     let uid = if replace_existing {
