@@ -232,6 +232,9 @@ async fn process_private_key(
         .await
     }
 
+    //make a copy of the existing attributes
+    let attributes = key_block.key_value.attributes.clone().unwrap_or_default();
+
     // parse the key to an openssl object
     let openssl_key = kmip_private_key_to_openssl(&object_with_metadata.object)
         .context("export: unable to parse the private key to openssl")?;
@@ -246,15 +249,11 @@ async fn process_private_key(
         } else {
             // generate a KMIP PrivateKey in the default format
             let mut object = openssl_private_key_to_kmip_default_format(&openssl_key)?;
+            // add the attributes back
+            let key_block = object.key_block_mut()?;
+            key_block.key_value.attributes = Some(attributes);
             // wrap the key
-            wrap_key(
-                object.key_block_mut()?,
-                key_wrapping_specification,
-                kms,
-                user,
-                params,
-            )
-            .await?;
+            wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
             // reassign the wrapped key
             object_with_metadata.object = object;
             return Ok(())
@@ -280,6 +279,10 @@ async fn process_private_key(
             object_with_metadata.object = object;
         }
     }
+    // add the attributes back
+    let key_block = object_with_metadata.object.key_block_mut()?;
+    key_block.key_value.attributes = Some(attributes);
+
     Ok(())
 }
 
@@ -325,6 +328,9 @@ async fn process_public_key(
         .await
     }
 
+    //make a copy of the existing attributes
+    let attributes = key_block.key_value.attributes.clone().unwrap_or_default();
+
     // parse the key to an openssl object
     let openssl_key = kmip_public_key_to_openssl(&object_with_metadata.object)
         .context("export: unable to parse the private key to openssl")?;
@@ -339,6 +345,10 @@ async fn process_public_key(
         } else {
             // generate a KMIP PrivateKey in the default format
             let mut object = openssl_public_key_to_kmip_default_format(&openssl_key)?;
+            // add the attributes back
+            let key_block = object.key_block_mut()?;
+            key_block.key_value.attributes = Some(attributes);
+
             // wrap the key
             wrap_key(
                 object.key_block_mut()?,
@@ -372,6 +382,11 @@ async fn process_public_key(
             object_with_metadata.object = object;
         }
     }
+
+    // add the attributes back
+    let key_block = object_with_metadata.object.key_block_mut()?;
+    key_block.key_value.attributes = Some(attributes);
+
     Ok(())
 }
 
