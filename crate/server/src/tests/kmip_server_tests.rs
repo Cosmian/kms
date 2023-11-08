@@ -23,7 +23,7 @@ use crate::{
     KMSServer,
 };
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let clap_config = https_clap_config();
 
@@ -158,7 +158,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     // log_init("info");
 
@@ -214,7 +214,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_database_user_tenant() -> KResult<()> {
     log_init("info");
 

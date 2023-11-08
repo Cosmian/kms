@@ -100,7 +100,7 @@ async fn get_redis_with_findex() -> KResult<(RedisWithFindex, Option<ExtraDataba
     Ok((redis_findex, None))
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_redis_with_findex() -> KResult<()> {
     test_objects_db().await?;
     test_permissions_db().await?;
@@ -116,7 +116,7 @@ pub async fn test_redis_with_findex() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_sql_cipher() -> KResult<()> {
     json_access(&get_sql_cipher().await?).await?;
     find_attributes(&get_sql_cipher().await?).await?;
@@ -129,7 +129,7 @@ pub async fn test_sql_cipher() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_sqlite() -> KResult<()> {
     find_attributes(&get_sqlite().await?).await?;
     json_access(&get_sqlite().await?).await?;
@@ -142,7 +142,7 @@ pub async fn test_sqlite() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_pgsql() -> KResult<()> {
     json_access(&get_pgsql().await?).await?;
     find_attributes(&get_pgsql().await?).await?;
@@ -155,7 +155,7 @@ pub async fn test_pgsql() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_mysql() -> KResult<()> {
     crud(&get_mysql().await?).await?;
     upsert(&get_mysql().await?).await?;
