@@ -1,4 +1,3 @@
-use cloudproof::reexport::crypto_core::{key_unwrap, key_wrap, reexport::rand_core::CryptoRngCore};
 use cosmian_kmip::{
     kmip::{
         kmip_objects::Object,
@@ -11,20 +10,16 @@ use openssl::pkey::{PKey, Private, Public};
 use tracing::debug;
 
 use crate::{
-    crypto::hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
+    crypto::{
+        hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
+        wrap::rfc5649::{key_unwrap, key_wrap},
+    },
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail, DecryptionSystem, EncryptionSystem,
 };
 
 /// Encrypt bytes using the wrapping key
-pub fn encrypt_bytes<R>(
-    _rng: &mut R,
-    wrapping_key: &Object,
-    plaintext: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError>
-where
-    R: CryptoRngCore,
-{
+pub fn encrypt_bytes(wrapping_key: &Object, plaintext: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
     debug!(
         "encrypt_bytes: with object: {:?}",
         wrapping_key.object_type()
@@ -207,17 +202,15 @@ mod tests {
         let wrap_key = create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
         let plaintext = b"plaintext";
-        let ciphertext = super::encrypt_bytes(&mut rng, &wrap_key, plaintext).unwrap();
+        let ciphertext = super::encrypt_bytes(&wrap_key, plaintext).unwrap();
         let decrypted_plaintext = super::decrypt_bytes(&wrap_key, &ciphertext).unwrap();
         assert_eq!(plaintext, &decrypted_plaintext[..]);
     }
     #[test]
     fn test_encrypt_decrypt_rfc_ecies() {
-        let mut rng = CsRng::from_entropy();
         let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid").unwrap();
         let plaintext = b"plaintext";
-        let ciphertext =
-            super::encrypt_bytes(&mut rng, wrap_key_pair.public_key(), plaintext).unwrap();
+        let ciphertext = super::encrypt_bytes(wrap_key_pair.public_key(), plaintext).unwrap();
         let decrypted_plaintext =
             super::decrypt_bytes(wrap_key_pair.private_key(), &ciphertext).unwrap();
         assert_eq!(plaintext, &decrypted_plaintext[..]);

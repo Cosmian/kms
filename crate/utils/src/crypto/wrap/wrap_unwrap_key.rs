@@ -1,4 +1,3 @@
-use cloudproof::reexport::crypto_core::reexport::rand_core::CryptoRngCore;
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
     kmip_objects::Object,
@@ -22,15 +21,11 @@ use crate::{
 /// * `key_wrapping_data` - the key wrapping data
 /// # Returns
 /// * `KResult<()>` - the result of the operation
-pub fn wrap_key_block<R>(
-    rng: &mut R,
+pub fn wrap_key_block(
     object_key_block: &mut KeyBlock,
     wrapping_key: &Object,
     key_wrapping_data: Option<KeyWrappingData>,
-) -> Result<(), KmipUtilsError>
-where
-    R: CryptoRngCore,
-{
+) -> Result<(), KmipUtilsError> {
     let mut key_wrapping_data = key_wrapping_data.unwrap_or_default();
 
     if WrappingMethod::Encrypt != key_wrapping_data.wrapping_method {
@@ -47,7 +42,7 @@ where
     match encoding {
         EncodingOption::TTLVEncoding => {
             let plaintext = serde_json::to_vec(&object_key_block.key_value)?;
-            let ciphertext = encrypt_bytes(&mut *rng, wrapping_key, &plaintext)?;
+            let ciphertext = encrypt_bytes(wrapping_key, &plaintext)?;
             object_key_block.key_value = KeyValue {
                 key_material: KeyMaterial::ByteString(ciphertext),
                 // not clear whether this should be filled or not
@@ -63,7 +58,7 @@ where
                      TTLVEncoding instead."
                 ),
             };
-            let ciphertext = encrypt_bytes(&mut *rng, wrapping_key, &plaintext)?;
+            let ciphertext = encrypt_bytes(wrapping_key, &plaintext)?;
             object_key_block.key_value.key_material = KeyMaterial::ByteString(ciphertext);
         }
     };
@@ -177,29 +172,21 @@ mod tests {
             create_x25519_key_pair("private_key_to_wrap_uid", "public_key_to_wrap_uid")?;
 
         // wrap the symmetric key with a symmetric key
-        wrap_test(
-            &mut rng,
-            &sym_wrapping_key,
-            &sym_wrapping_key,
-            &mut sym_key_to_wrap,
-        )?;
+        wrap_test(&sym_wrapping_key, &sym_wrapping_key, &mut sym_key_to_wrap)?;
         // wrap the asymmetric key with a symmetric key
         wrap_test(
-            &mut rng,
             &sym_wrapping_key,
             &sym_wrapping_key,
             key_pair_to_wrap.private_key_mut(),
         )?;
         // wrap the symmetric key with an asymmetric key
         wrap_test(
-            &mut rng,
             wrapping_key_pair.public_key(),
             wrapping_key_pair.private_key(),
             &mut sym_key_to_wrap,
         )?;
         // wrap the asymmetric key with an asymmetric key
         wrap_test(
-            &mut rng,
             wrapping_key_pair.public_key(),
             wrapping_key_pair.private_key(),
             key_pair_to_wrap.private_key_mut(),
@@ -208,7 +195,6 @@ mod tests {
     }
 
     fn wrap_test(
-        rng: &mut CsRng,
         wrapping_key: &Object,
         unwrapping_key: &Object,
         key_to_wrap: &mut Object,
@@ -218,7 +204,7 @@ mod tests {
         // no encoding
         {
             // wrap
-            wrap_key_block(rng, key_to_wrap.key_block_mut()?, wrapping_key, None)?;
+            wrap_key_block(key_to_wrap.key_block_mut()?, wrapping_key, None)?;
             assert_ne!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
             assert_eq!(
                 key_to_wrap.key_block()?.key_wrapping_data,
@@ -238,7 +224,6 @@ mod tests {
             };
             // wrap
             wrap_key_block(
-                rng,
                 key_to_wrap.key_block_mut()?,
                 wrapping_key,
                 Some(key_wrapping_data),
