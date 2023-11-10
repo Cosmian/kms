@@ -134,6 +134,7 @@ pub enum Operation {
 }
 
 impl Operation {
+    #[must_use]
     pub fn direction(&self) -> Direction {
         match self {
             Operation::Import(_)
@@ -166,6 +167,7 @@ impl Operation {
         }
     }
 
+    #[must_use]
     pub fn operation_enum(&self) -> OperationEnumeration {
         match self {
             Operation::Import(_) | Operation::ImportResponse(_) => OperationEnumeration::Import,
@@ -197,6 +199,7 @@ impl Operation {
     ///
     /// The check is enforced only if a upper version than the default one
     /// is detected when receiving an operation.
+    #[must_use]
     pub fn protocol_version(&self) -> ProtocolVersion {
         ProtocolVersion::default()
     }

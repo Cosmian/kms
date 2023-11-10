@@ -1,4 +1,4 @@
-use cloudproof::reexport::cover_crypt::abe_policy::{EncryptionHint, Policy, PolicyAxis};
+use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
 use cosmian_kmip::kmip::{
     kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
     kmip_operations::Operation,
@@ -16,8 +16,8 @@ async fn integration_tests_bulk() -> KResult<()> {
 
     let app = test_utils::test_app().await;
 
-    let mut policy = Policy::new(10);
-    policy.add_axis(PolicyAxis::new(
+    let mut policy = Policy::new();
+    policy.add_dimension(DimensionBuilder::new(
         "Department",
         vec![
             ("MKG", EncryptionHint::Classic),
@@ -26,7 +26,7 @@ async fn integration_tests_bulk() -> KResult<()> {
         ],
         false,
     ))?;
-    policy.add_axis(PolicyAxis::new(
+    policy.add_dimension(DimensionBuilder::new(
         "Level",
         vec![
             ("Confidential", EncryptionHint::Classic),

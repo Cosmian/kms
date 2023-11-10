@@ -744,7 +744,7 @@ pub fn test_message_request() {
             }]),
             batch_error_continuation_option: Some(BatchErrorContinuationOption::Undo),
             batch_order_option: Some(true),
-            timestamp: Some(1950940403),
+            timestamp: Some(1_950_940_403),
         },
         items: vec![MessageBatchItem {
             operation: OperationEnumeration::Encrypt,
@@ -788,7 +788,7 @@ pub fn test_message_response() {
             client_correlation_value: Some("client_123".to_string()),
             server_correlation_value: Some("server_234".to_string()),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            timestamp: 1697201574,
+            timestamp: 1_697_201_574,
             nonce: Some(Nonce {
                 nonce_id: vec![5, 6, 7],
                 nonce_value: vec![8, 9, 0],
@@ -954,7 +954,7 @@ pub fn test_message_enforce_enum() {
                 protocol_version_minor: 0,
             },
             batch_count: 1,
-            timestamp: 1697201574,
+            timestamp: 1_697_201_574,
             ..Default::default()
         },
         items: vec![MessageResponseBatchItem {
@@ -983,7 +983,7 @@ pub fn test_message_enforce_enum() {
                 protocol_version_minor: 0,
             },
             batch_count: 1,
-            timestamp: 1697201574,
+            timestamp: 1_697_201_574,
             ..Default::default()
         },
         items: vec![MessageResponseBatchItem {
@@ -1011,7 +1011,7 @@ pub fn test_message_enforce_enum() {
             },
             // mismatch number of items
             batch_count: 22,
-            timestamp: 1697201574,
+            timestamp: 1_697_201_574,
             ..Default::default()
         },
         items: vec![MessageResponseBatchItem::new(
@@ -1030,7 +1030,7 @@ pub fn test_message_enforce_enum() {
                 protocol_version_minor: 128,
             },
             batch_count: 1,
-            timestamp: 1697201574,
+            timestamp: 1_697_201_574,
             ..Default::default()
         },
         items: vec![MessageResponseBatchItem::new_with_response(
@@ -1054,7 +1054,7 @@ pub fn test_message_enforce_enum() {
             client_correlation_value: Some("client_123".to_string()),
             server_correlation_value: Some("server_234".to_string()),
             attestation_type: Some(vec![AttestationType::TPM_Quote]),
-            timestamp: 1697201574,
+            timestamp: 1_697_201_574,
             nonce: Some(Nonce {
                 nonce_id: vec![5, 6, 7],
                 nonce_value: vec![8, 9, 0],
