@@ -10,7 +10,8 @@ use cosmian_kmip::kmip::{
 };
 
 use super::attributes::{
-    access_policy_as_vendor_attribute, attributes_as_vendor_attribute, policy_as_vendor_attribute,
+    access_policy_as_vendor_attribute, edit_policy_action_as_vendor_attribute,
+    policy_as_vendor_attribute, EditPolicyAction,
 };
 use crate::{error::KmipUtilsError, kmip_utils::wrap_key_bytes, tagging::set_tags};
 
@@ -280,10 +281,11 @@ pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, Kmi
 /// To rekey an attribute of a user decryption key, we first need:
 /// - the master private key uid
 /// - the `CoverCrypt` attributes to revoke
+/// - the `ReKeyKeyPairAction` to perform
 /// The routine will then locate and renew all user decryption keys with those `CoverCrypt` attributes
 pub fn build_rekey_keypair_request(
     master_private_key_unique_identifier: &str,
-    cover_crypt_policy_attributes: Vec<cloudproof::reexport::cover_crypt::abe_policy::Attribute>,
+    action: EditPolicyAction,
 ) -> Result<ReKeyKeyPair, KmipUtilsError> {
     Ok(ReKeyKeyPair {
         private_key_unique_identifier: Some(master_private_key_unique_identifier.to_string()),
@@ -291,9 +293,7 @@ pub fn build_rekey_keypair_request(
             object_type: Some(ObjectType::PrivateKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
-            vendor_attributes: Some(vec![attributes_as_vendor_attribute(
-                cover_crypt_policy_attributes,
-            )?]),
+            vendor_attributes: Some(vec![edit_policy_action_as_vendor_attribute(action)?]),
             ..Attributes::default()
         }),
         ..ReKeyKeyPair::default()

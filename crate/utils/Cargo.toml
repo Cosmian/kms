@@ -11,7 +11,6 @@ curve25519 = []
 [dependencies]
 argon2 = "0.5.0"
 cloudproof = { workspace = true }
-cosmian_crypto_core = "9.3.0"         # Must use `crypto_core` from `cloudproof_rust` reexport
 cosmian_kmip = { path = "../kmip" }
 num-bigint-dig = { workspace = true }
 openssl = { workspace = true }

@@ -457,6 +457,7 @@ impl<'de> Deserialize<'de> for TTLV {
 ///
 /// This conversion is done manually, as `num-bigint-dig`
 /// doesn't provide such conversion.
+#[must_use]
 pub fn to_u32_digits(big_int: &BigUint) -> Vec<u32> {
     big_int
         .to_bytes_be()
@@ -464,7 +465,7 @@ pub fn to_u32_digits(big_int: &BigUint) -> Vec<u32> {
         .map(|group_of_4_bytes| {
             group_of_4_bytes
                 .iter()
-                .fold(0, |acc, byte| (acc << 8) + (*byte as u32))
+                .fold(0, |acc, byte| (acc << 8) + u32::from(*byte))
         })
         .collect::<Vec<_>>()
 }
