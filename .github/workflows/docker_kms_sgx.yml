@@ -17,7 +17,6 @@ jobs:
     container: docker:19.03.15
 
     steps:
-
       - uses: actions/checkout@v1
 
       - name: Login to GitHub Packages
@@ -59,9 +58,9 @@ jobs:
       image-tag: ${{ steps.meta.outputs.version }}
 
   tests:
-        needs:
-          - build-and-push-image
-        uses: ./.github/workflows/docker_kms_sgx_tests.yml
-        secrets: inherit
-        with:
-          kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
+    needs:
+      - build-and-push-image
+    uses: ./.github/workflows/docker_kms_sgx_tests.yml
+    secrets: inherit
+    with:
+      kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
