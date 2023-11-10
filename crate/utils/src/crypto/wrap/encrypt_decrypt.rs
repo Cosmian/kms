@@ -182,12 +182,8 @@ fn decrypt_with_private_key(
 
 #[cfg(test)]
 mod tests {
-
-    use cloudproof::reexport::crypto_core::{
-        reexport::rand_core::{RngCore, SeedableRng},
-        CsRng,
-    };
     use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
+    use openssl::rand::rand_bytes;
 
     use crate::crypto::{
         curve_25519::operation::create_x25519_key_pair, symmetric::create_symmetric_key,
@@ -195,10 +191,8 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_rfc_5649() {
-        let mut rng = CsRng::from_entropy();
-
         let mut symmetric_key = vec![0; 32];
-        rng.fill_bytes(&mut symmetric_key);
+        rand_bytes(&mut symmetric_key).unwrap();
         let wrap_key = create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
         let plaintext = b"plaintext";

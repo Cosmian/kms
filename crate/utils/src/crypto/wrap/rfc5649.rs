@@ -2,18 +2,20 @@ use openssl::symm::{encrypt, Cipher, Crypter, Mode};
 
 use crate::error::KmipUtilsError;
 
-const DEFAULT_IV: u64 = 0xA6A6_A6A6_A6A6_A6A6;
 const DEFAULT_RFC5649_CONST: u32 = 0xA659_59A6_u32;
+const DEFAULT_IV: u64 = 0xA6A6_A6A6_A6A6_A6A6;
+const AES_WRAP_PAD_BLOCK_SIZE: usize = 0x8;
 const AES_BLOCK_SIZE: usize = 0x10;
 
-/// Build the iv according to the RFC 5649
+/// Build the iv according to the RFC 5649.
 ///
-/// `data_size` is the size of the key to wrap
-fn build_iv(data_size: usize) -> u64 {
-    u64::from(DEFAULT_RFC5649_CONST) << 32 | u64::from((data_size as u32).to_le())
+/// `wrapped_key_size` is the size of the key to wrap.
+fn build_iv(wrapped_key_size: usize) -> u64 {
+    u64::from(DEFAULT_RFC5649_CONST) << 32 | u64::from((wrapped_key_size as u32).to_le())
 }
 
-/// Check if `iv` value is appropriate according to the RFC 5649
+/// Check if the `iv` value obtained after decryption is appropriate according
+/// to the RFC 5649.
 fn check_iv(iv: u64, data: &[u8]) -> bool {
     let data_size: usize = data.len();
     if (iv >> 32) as u32 != DEFAULT_RFC5649_CONST {
@@ -28,19 +30,18 @@ fn check_iv(iv: u64, data: &[u8]) -> bool {
     data[real_data_size..].iter().all(|&x| x == 0)
 }
 
-/// Wrap a plain text of variable length
+/// Wrap a plain text of variable length following RFC 5649.
 ///
-/// Follows RFC 5649
 /// KEK stands for `Key-Encryption Key`
 /// The function name matches the one used in the RFC and has no link to the
-/// unwrap function in Rust
+/// unwrap function in Rust.
 pub fn key_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
     let n = plain.len();
-    let m = n % 8;
+    let n_bytes_key = n % 8;
 
-    let padded_plain = if m != 0 {
-        // Pad the plaintext octet string on the right with zeros
-        let missing_bytes = 8 - m;
+    // Pad the plaintext with null bytes.
+    let padded_plain = if n_bytes_key != 0 {
+        let missing_bytes = 8 - n_bytes_key;
         [plain.to_vec(), vec![0u8; missing_bytes]].concat()
     } else {
         plain.to_vec()
@@ -48,17 +49,20 @@ pub fn key_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
 
     if n <= 8 {
         // (C[0] | C[1]) = ENC(K, A | P[1]).
-        let x = [&build_iv(n).to_be_bytes(), &padded_plain[0..8]].concat();
-        let big_c = x.as_slice();
+        let iv_and_key = [
+            &build_iv(n).to_be_bytes(),
+            &padded_plain[0..AES_WRAP_PAD_BLOCK_SIZE],
+        ]
+        .concat();
 
         /*
          * Encrypt block using AES with ECB mode i.e. raw AES as specified in
          * RFC5649.
          */
         let ciphertext = match kek.len() {
-            16 => encrypt(Cipher::aes_128_ecb(), kek, None, big_c)?,
-            24 => encrypt(Cipher::aes_192_ecb(), kek, None, big_c)?,
-            32 => encrypt(Cipher::aes_256_ecb(), kek, None, big_c)?,
+            16 => encrypt(Cipher::aes_128_ecb(), kek, None, &iv_and_key)?,
+            24 => encrypt(Cipher::aes_192_ecb(), kek, None, &iv_and_key)?,
+            32 => encrypt(Cipher::aes_256_ecb(), kek, None, &iv_and_key)?,
             _ => {
                 return Err(KmipUtilsError::InvalidSize(
                     "The kek size should be 16, 24 or 32".to_string(),
@@ -72,23 +76,23 @@ pub fn key_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
     }
 }
 
-/// Unwrap to a plain text of variable length
+/// Unwrap to a plain text of variable length according to RFC 5649.
 ///
-/// Follows RFC 5649
 /// The function name matches the one used in the RFC and has no link to the
-/// unwrap function in Rust
+/// unwrap function in Rust.
 pub fn key_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
     let n = ciphertext.len();
 
-    if n % 8 != 0 || n < 16 {
+    if n % AES_WRAP_PAD_BLOCK_SIZE != 0 || n < AES_BLOCK_SIZE {
         return Err(KmipUtilsError::InvalidSize(
-            "The ciphertext size should be >= 16 and a multiple of 8".to_string(),
+            "The ciphertext size should be >= 16 and a multiple of ".to_string(),
         ))
     }
 
     if n > 16 {
         let (iv, padded_plain) = _unwrap_64(ciphertext, kek)?;
 
+        // Verify integrity check register as described in RFC 5649.
         if !check_iv(iv, &padded_plain) {
             return Err(KmipUtilsError::InvalidSize(
                 "The ciphertext is invalid. Decrypted IV is not appropriate".to_string(),
@@ -98,9 +102,6 @@ pub fn key_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsErr
         let unpadded_size = u32::from_le(iv as u32) as usize;
         Ok(padded_plain[0..unpadded_size].to_vec())
     } else {
-        let big_c = ciphertext.to_owned();
-        let ct = big_c.as_slice();
-
         /*
          * Encrypt block using AES with ECB mode i.e. raw AES as specified in
          * RFC5649.
@@ -113,19 +114,22 @@ pub fn key_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsErr
             32 => Crypter::new(Cipher::aes_256_ecb(), Mode::Decrypt, kek, None)?,
             _ => {
                 return Err(KmipUtilsError::InvalidSize(
-                    "The kek size should be 16, 24 or 32".to_string(),
+                    "The kek size should be 16, 24 or 32 bytes".to_string(),
                 ))
             }
         };
         decrypt_cipher.pad(false);
 
         //// A | P[1] = DEC(K, C[0] | C[1])
-        let mut plaintext = vec![0; ct.len() + AES_BLOCK_SIZE];
-        decrypt_cipher.update(ct, &mut plaintext)?;
+        let mut plaintext = vec![0; ciphertext.len() + AES_BLOCK_SIZE];
+        let mut dec_len = decrypt_cipher.update(ciphertext, &mut plaintext)?;
+        dec_len += decrypt_cipher.finalize(&mut plaintext)?;
+        plaintext.truncate(dec_len);
 
+        // Verify integrity check register as described in RFC 5649.
         if !check_iv(
-            u64::from_be_bytes(plaintext[0..8].try_into()?),
-            &plaintext[8..16],
+            u64::from_be_bytes(plaintext[0..AES_WRAP_PAD_BLOCK_SIZE].try_into()?),
+            &plaintext[AES_WRAP_PAD_BLOCK_SIZE..16],
         ) {
             return Err(KmipUtilsError::InvalidSize(
                 "The ciphertext is invalid. Decrypted IV is not appropriate".to_string(),
@@ -134,102 +138,76 @@ pub fn key_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsErr
 
         let unpadded_size = u32::from_be_bytes(plaintext[4..8].try_into()?) as usize;
 
-        Ok(plaintext[8..(8 + unpadded_size)].to_vec())
+        Ok(plaintext[AES_WRAP_PAD_BLOCK_SIZE..(AES_WRAP_PAD_BLOCK_SIZE + unpadded_size)].to_vec())
     }
 }
 
-/// Wrap a plain text of a 64-bits modulo size
+/// Wrap a plain text of a 64-bits modulo size according to RFC 3394.
 ///
-/// Follows RFC 3394
 /// The function name matches the one used in the RFC and has no link to the
-/// unwrap function in Rust
-pub fn key_wrap_64(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
-    _wrap_64(plain, kek, None)
-}
-
-/// Wrap a plain text of a 64-bits modulo size
-///
-/// Follows RFC 3394
-/// The function name matches the one used in the RFC and has no link to the
-/// unwrap function in Rust
+/// unwrap function in Rust.
 fn _wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, KmipUtilsError> {
     let n = plain.len();
 
-    if n % 8 != 0 {
+    if n % AES_WRAP_PAD_BLOCK_SIZE != 0 {
         return Err(KmipUtilsError::InvalidSize(
             "The plaintext size should be a multiple of 8".to_string(),
         ))
     }
 
-    // Number of 64-bit blocks
-    let n = n / 8;
+    // Number of 64-bit blocks (block size for RFC 5649).
+    let n = n / AES_WRAP_PAD_BLOCK_SIZE;
 
-    let mut big_a = iv.unwrap_or(DEFAULT_IV);
-    let mut big_r = Vec::with_capacity(n);
+    // ICR stands for Integrity Check Register initially containing the IV.
+    let mut icr = iv.unwrap_or(DEFAULT_IV);
+    let mut blocks = Vec::with_capacity(n);
 
-    for chunk in plain.chunks(8) {
-        big_r.push(u64::from_be_bytes(chunk.try_into()?));
+    for chunk in plain.chunks(AES_WRAP_PAD_BLOCK_SIZE) {
+        blocks.push(u64::from_be_bytes(chunk.try_into()?));
     }
+    let cipher = match kek.len() {
+        16 => Cipher::aes_128_ecb(),
+        24 => Cipher::aes_192_ecb(),
+        32 => Cipher::aes_256_ecb(),
+        _ => {
+            return Err(KmipUtilsError::InvalidSize(
+                "The kek size should be 16, 24 or 32".to_string(),
+            ))
+        }
+    };
 
     for j in 0..6 {
-        for (i, r) in big_r.iter_mut().enumerate().take(n) {
+        for (i, block) in blocks.iter_mut().enumerate().take(n) {
             // B = AES(K, A | R[i])
-            let big_i = (u128::from(big_a) << 64 | u128::from(*r)).to_be_bytes();
-            let big_b = big_i.as_slice();
+            let plaintext_block = (u128::from(icr) << 64 | u128::from(*block)).to_be_bytes();
 
             /*
              * Encrypt block using AES with ECB mode i.e. raw AES as specified in
              * RFC5649.
              */
-            let ciphertext = match kek.len() {
-                16 => encrypt(Cipher::aes_128_ecb(), kek, None, big_b)?,
-                24 => encrypt(Cipher::aes_192_ecb(), kek, None, big_b)?,
-                32 => encrypt(Cipher::aes_256_ecb(), kek, None, big_b)?,
-                _ => {
-                    return Err(KmipUtilsError::InvalidSize(
-                        "The kek size should be 16, 24 or 32".to_string(),
-                    ))
-                }
-            };
+            let ciphertext = encrypt(cipher, kek, None, &plaintext_block)?;
 
             // A = MSB(64, B) ^ t where t = (n*j)+i
             let t = ((n * j) + (i + 1)) as u64;
 
-            big_a = u64::from_be_bytes(ciphertext[0..8].try_into()?) ^ t;
-            *r = u64::from_be_bytes(ciphertext[8..16].try_into()?);
+            icr = u64::from_be_bytes(ciphertext[0..8].try_into()?) ^ t;
+            *block = u64::from_be_bytes(ciphertext[8..16].try_into()?);
         }
     }
 
-    let mut big_c = Vec::with_capacity(8 * (big_r.len() + 1));
-    big_c.extend(big_a.to_be_bytes());
-    for r in big_r {
-        big_c.extend(r.to_be_bytes());
+    let mut wrapped_key = Vec::with_capacity(8 * (blocks.len() + 1));
+    wrapped_key.extend(icr.to_be_bytes());
+    for block in blocks {
+        wrapped_key.extend(block.to_be_bytes());
     }
 
-    Ok(big_c)
-}
-
-/// Unwrap to a plain text of a 64-bits modulo size
-///
-/// Follows RFC 3394
-/// The function name matches the one used in the RFC and has no link to the
-/// unwrap function in Rust
-pub fn key_unwrap_64(cipher: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
-    let (iv, plain) = _unwrap_64(cipher, kek)?;
-
-    if iv != DEFAULT_IV {
-        return Err(KmipUtilsError::InvalidSize(
-            "The ciphertext is invalid. Decrypted IV is not appropriate".to_string(),
-        ))
-    }
-
-    Ok(plain)
+    Ok(wrapped_key)
 }
 
 fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Vec<u8>), KmipUtilsError> {
     let n = ciphertext.len();
 
-    if n % 8 != 0 || n < 16 {
+    if n % AES_WRAP_PAD_BLOCK_SIZE != 0 || n < AES_BLOCK_SIZE {
         return Err(KmipUtilsError::InvalidSize(
             "The ciphertext size should be >= 16 and a multiple of 8".to_string(),
         ))
@@ -238,11 +216,13 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Vec<u8>), KmipUtils
     // Number of 64-bit blocks minus 1
     let n = n / 8 - 1;
 
-    let mut big_r = Vec::with_capacity(n + 1);
-    for chunk in ciphertext.chunks(8) {
-        big_r.push(u64::from_be_bytes(chunk.try_into()?));
+    let mut blocks = Vec::with_capacity(n + 1);
+    for chunk in ciphertext.chunks(AES_WRAP_PAD_BLOCK_SIZE) {
+        blocks.push(u64::from_be_bytes(chunk.try_into()?));
     }
-    let mut big_a = big_r[0];
+
+    // ICR stands for Integrity Check Register initially containing the IV.
+    let mut icr = blocks[0];
 
     /*
      * Encrypt block using AES with ECB mode i.e. raw AES as specified in
@@ -263,35 +243,39 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Vec<u8>), KmipUtils
     decrypt_cipher.pad(false);
 
     for j in (0..6).rev() {
-        for (i, r) in big_r[1..].iter_mut().rev().enumerate().take(n) {
+        for (i, block) in blocks[1..].iter_mut().rev().enumerate().take(n) {
             let t = ((n * j) + (n - i)) as u64;
 
             // B = AES-1(K, (A ^ t) | R[i]) where t = n*j+i
-            let big_i = (u128::from(big_a ^ t) << 64 | u128::from(*r)).to_be_bytes();
+            let big_i = (u128::from(icr ^ t) << 64 | u128::from(*block)).to_be_bytes();
             let big_b = big_i.as_slice();
 
             let mut plaintext = vec![0; big_b.len() + AES_BLOCK_SIZE];
-            decrypt_cipher.update(big_b, &mut plaintext)?;
+            let mut dec_len = decrypt_cipher.update(big_b, &mut plaintext)?;
+            dec_len += decrypt_cipher.finalize(&mut plaintext)?;
+            plaintext.truncate(dec_len);
 
             // A = MSB(64, B)
-            big_a = u64::from_be_bytes(plaintext[0..8].try_into()?);
+            icr = u64::from_be_bytes(plaintext[0..AES_WRAP_PAD_BLOCK_SIZE].try_into()?);
 
             // R[i] = LSB(64, B)
-            *r = u64::from_be_bytes(plaintext[8..16].try_into()?);
+            *block = u64::from_be_bytes(
+                plaintext[AES_WRAP_PAD_BLOCK_SIZE..AES_WRAP_PAD_BLOCK_SIZE * 2].try_into()?,
+            );
         }
     }
 
-    let mut big_p = Vec::with_capacity(big_r.len() - 1);
-    for r in &big_r[1..] {
-        big_p.extend(r.to_be_bytes());
+    let mut unwrapped_key = Vec::with_capacity(blocks.len() - 1);
+    for block in &blocks[1..] {
+        unwrapped_key.extend(block.to_be_bytes());
     }
 
-    Ok((big_a, big_p))
+    Ok((icr, unwrapped_key))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::crypto::wrap::rfc5649::{key_unwrap, key_unwrap_64, key_wrap, key_wrap_64};
+    use crate::crypto::wrap::rfc5649::{key_unwrap, key_wrap};
 
     #[test]
     pub fn test_wrap1() {
@@ -322,65 +306,6 @@ mod tests {
                 key_to_wrap
             );
         }
-    }
-
-    #[test]
-    pub fn test_wrap64() {
-        let kek = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F";
-        let key_to_wrap = b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xAA\xBB\xCC\xDD\xEE\xFF";
-        let wrapped_key = [
-            0x64, 0xe8, 0xc3, 0xf9, 0xce, 0x0f, 0x5b, 0xa2, 0x63, 0xe9, 0x77, 0x79, 0x5, 0x81,
-            0x8a, 0x2a, 0x93, 0xc8, 0x19, 0x1e, 0x7d, 0x6e, 0x8a, 0xe7,
-        ];
-
-        assert_eq!(
-            key_wrap_64(key_to_wrap, kek).expect("Fail to wrap"),
-            wrapped_key
-        );
-
-        assert_eq!(
-            key_unwrap_64(&wrapped_key, kek).expect("Fail to unwrap"),
-            key_to_wrap
-        );
-    }
-
-    #[test]
-    pub fn test_wrap64_bad_key_size() {
-        let kek = b"\x00";
-        let key_to_wrap = b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xAA\xBB\xCC\xDD\xEE\xFF";
-        let wrapped_key = [
-            0x64, 0xe8, 0xc3, 0xf9, 0xce, 0x0f, 0x5b, 0xa2, 0x63, 0xe9, 0x77, 0x79, 0x5, 0x81,
-            0x8a, 0x2a, 0x93, 0xc8, 0x19, 0x1e, 0x7d, 0x6e, 0x8a, 0xe7,
-        ];
-
-        assert!(key_wrap_64(key_to_wrap, kek).is_err());
-
-        assert!(key_unwrap_64(&wrapped_key, kek).is_err());
-    }
-
-    #[test]
-    pub fn test_wrap64_bad_input_size() {
-        let kek = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F";
-        let key_to_wrap = b"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xAA\xBB\xCC\xDD\xEE";
-        let wrapped_key = [
-            0x64, 0xe8, 0xc3, 0xf9, 0xce, 0x0f, 0x5b, 0xa2, 0x63, 0xe9, 0x77, 0x79, 0x5, 0x81,
-            0x8a, 0x2a, 0x93, 0xc8, 0x19, 0x1e, 0x7d, 0x6e, 0x8a,
-        ];
-
-        assert!(key_wrap_64(key_to_wrap, kek).is_err());
-
-        assert!(key_unwrap_64(&wrapped_key, kek).is_err());
-    }
-
-    #[test]
-    pub fn test_wrap64_bad_input_content() {
-        let kek = b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1A\x1B\x1C\x1D\x1E\x1F";
-        let wrapped_key = [
-            0x64, 0xe8, 0xc3, 0xf9, 0xce, 0x0f, 0x5b, 0xa2, 0x63, 0xe9, 0x77, 0x79, 0x5, 0x81,
-            0x8a, 0x2a, 0x93, 0xc8, 0x19, 0x1e, 0x7d, 0x6e, 0x8a, 0xe8,
-        ];
-
-        assert!(key_unwrap_64(&wrapped_key, kek).is_err());
     }
 
     #[test]
