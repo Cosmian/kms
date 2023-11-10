@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.9.0] - 2023-11-10
+
+### Bug Fixes
+
+- fix: migrate to num-bigint-dig for bigint (#85)
+
+### Ci
+
+- Test KMS inside a SGX machine
+
+### Features
+
+- Update Covercrypt version to support Policy V2 ([#63])
+- Generalize bulk operations using KMIP `Messages` structure
+
 ## [4.8.2] - 2023-10-31
 
 ### Bug Fixes
@@ -12,7 +27,7 @@ All notable changes to this project will be documented in this file.
 
 ### Bug Fixes
 
-Fix for [#64](https://github.com/Cosmian/kms/issues/64)
+- Fix for [#64](https://github.com/Cosmian/kms/issues/64)
 
 ## [4.8.0] - 2023-10-07
 
