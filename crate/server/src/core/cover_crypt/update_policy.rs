@@ -1,16 +1,13 @@
-use cloudproof::reexport::cover_crypt::{
-    abe_policy::{Attribute, Policy},
-    Covercrypt,
-};
+use cloudproof::reexport::cover_crypt::{abe_policy::Policy, Covercrypt};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
-    kmip_types::{Attributes, KeyFormatType, LinkType, StateEnumeration},
+    kmip_types::{LinkType, StateEnumeration},
 };
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::cover_crypt::{
-        attributes::{attributes_from_attributes, policy_from_attributes},
+        attributes::{policy_from_attributes, EditPolicyAction},
         master_keys::update_master_keys,
         user_key::UserDecryptionKeysHandler,
     },
@@ -28,30 +25,11 @@ pub async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     master_private_key_uid: &str,
-    attributes: &Attributes,
     owner: &str,
+    action: EditPolicyAction,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair CoverCrypt");
-
-    // Verify the operation is performed for a CoverCrypt Master Key
-    let key_format_type = attributes.key_format_type.as_ref().ok_or_else(|| {
-        KmsError::InvalidRequest(
-            "Unable to rekey a CoverCrypt key, the format type is not specified".to_owned(),
-        )
-    })?;
-    if key_format_type != &KeyFormatType::CoverCryptSecretKey {
-        kms_bail!(KmsError::NotSupported(
-            "ReKey: the format of the key must be a CoverCrypt master key".to_string()
-        ))
-    }
-
-    // Determine the list of policy attributes which will be revoked (i.e. their value increased)
-    let cover_crypt_policy_attributes_to_revoke = attributes_from_attributes(attributes)?;
-    trace!(
-        "Revoking attributes: {:?}",
-        &cover_crypt_policy_attributes_to_revoke
-    );
 
     // Recover the master private key
     let master_private_key = kmip_server
@@ -65,11 +43,10 @@ pub async fn rekey_keypair_cover_crypt(
         ));
     }
 
-    // Rotate the policy
-    let policy = rotate_policy(
-        &master_private_key,
-        &cover_crypt_policy_attributes_to_revoke,
-    )?;
+    // Edit the policy according to the requested action
+    let private_key_attributes = master_private_key.attributes()?;
+    let mut policy = policy_from_attributes(private_key_attributes)?;
+    update_policy(&action, &mut policy)?;
 
     // Rekey the master keys
     let master_public_key_uid = rekey_master_keys(
@@ -83,31 +60,16 @@ pub async fn rekey_keypair_cover_crypt(
     )
     .await?;
 
-    // Search the user decryption keys that need to be refreshed
-    let locate_response = locate_user_decryption_keys(
+    // Rekey the user secret keys if needed
+    locate_update_user_secret_keys(
+        action,
         kmip_server,
+        cover_crypt,
         master_private_key_uid,
-        Some(cover_crypt_policy_attributes_to_revoke),
-        Some(StateEnumeration::Active),
         owner,
         params,
     )
     .await?;
-
-    // Refresh the User Decryption Key that were found
-    if let Some(unique_identifiers) = &locate_response {
-        // refresh the user keys
-        refresh_all_user_decryption_keys(
-            kmip_server,
-            cover_crypt,
-            master_private_key_uid,
-            unique_identifiers,
-            true, //TODO: do we want to conserve this or make it a parameter ?
-            owner,
-            params,
-        )
-        .await?;
-    }
 
     Ok(ReKeyKeyPairResponse {
         private_key_unique_identifier: master_private_key_uid.to_string(),
@@ -115,27 +77,47 @@ pub async fn rekey_keypair_cover_crypt(
     })
 }
 
-/// Rotate the policy of the given Master Private Key
-/// and return it
-fn rotate_policy(
-    private_key: &Object,
-    cover_crypt_policy_attributes_to_revoke: &[Attribute],
-) -> KResult<Policy> {
-    // Recover the current policy
-    let private_key_attributes = private_key.attributes()?;
-    let mut policy = policy_from_attributes(private_key_attributes)?;
-
-    // Rotate the Attributes values in the Policy
-    for attr in cover_crypt_policy_attributes_to_revoke {
-        policy.rotate(attr).map_err(|e| {
-            KmsError::KmipError(
-                ErrorReason::Unsupported_Cryptographic_Parameters,
-                e.to_string(),
-            )
-        })?;
+/// Update a Covercrypt policy based on the specified action.
+///
+/// # Parameters
+///
+/// - `action`: An `EditPolicyAction` enum.
+/// - `policy`: the master private key Policy.
+fn update_policy(action: &EditPolicyAction, policy: &mut Policy) -> KResult<()> {
+    match action {
+        EditPolicyAction::RotateAttributes(attrs) => {
+            attrs.iter().try_for_each(|attr| policy.rotate(attr))
+        }
+        EditPolicyAction::ClearOldAttributeValues(attrs) => attrs
+            .iter()
+            .try_for_each(|attr| policy.clear_old_attribute_values(attr)),
+        EditPolicyAction::RemoveAttribute(attrs) => attrs
+            .iter()
+            .try_for_each(|attr| policy.remove_attribute(attr)), // TODO: revoke existing keys with deleted attribute?)
+        EditPolicyAction::DisableAttribute(attrs) => attrs
+            .iter()
+            .try_for_each(|attr| policy.disable_attribute(attr)),
+        EditPolicyAction::RenameAttribute(pairs_attr_name) => pairs_attr_name
+            .iter()
+            .try_for_each(|(attr, new_name)| policy.rename_attribute(attr, new_name)), // TODO: rename attributes in existing AccessPolicy
+        EditPolicyAction::AddAttribute(attrs_properties) => {
+            attrs_properties
+                .iter()
+                .try_for_each(|(attr, encryption_hint)| {
+                    policy.add_attribute(attr.clone(), *encryption_hint)
+                })
+        }
     }
+    .map_err(|e| {
+        KmsError::KmipError(
+            ErrorReason::Unsupported_Cryptographic_Parameters,
+            e.to_string(),
+        )
+    })?;
+
     trace!("The new policy is : {policy:#?}");
-    Ok(policy)
+    //Ok(attributes_to_update)
+    Ok(())
 }
 
 /// Rekey the Master keys given the provided Private Master Key and Policy
@@ -210,7 +192,54 @@ async fn rekey_master_keys(
     Ok(master_public_key_uid)
 }
 
-async fn refresh_all_user_decryption_keys(
+/// Updates user secret keys if the action requires it. For actions like attribute rotation or
+/// clearing old attribute values, it identifies which attributes need updates and locates
+/// the corresponding user decryption keys to refresh them accordingly.
+async fn locate_update_user_secret_keys(
+    action: EditPolicyAction,
+    kmip_server: &KMS,
+    cover_crypt: Covercrypt,
+    master_private_key_uid: &str,
+    owner: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<()> {
+    // Get attributes to update in existing usk
+    let attributes_usk_to_update = match action {
+        EditPolicyAction::RotateAttributes(attrs) => Some(attrs),
+        EditPolicyAction::ClearOldAttributeValues(attrs) => Some(attrs),
+        _ => None, // no need to update existing usk
+    };
+    if let Some(attrs) = attributes_usk_to_update {
+        // Search the user decryption keys that need to be refreshed
+        let locate_response = locate_user_decryption_keys(
+            kmip_server,
+            master_private_key_uid,
+            Some(attrs),
+            Some(StateEnumeration::Active),
+            owner,
+            params,
+        )
+        .await?;
+
+        // Refresh the User Decryption Key that were found
+        if let Some(unique_identifiers) = &locate_response {
+            // refresh the user keys
+            refresh_user_decryption_keys(
+                kmip_server,
+                cover_crypt,
+                master_private_key_uid,
+                unique_identifiers,
+                true, // new keys will get access to previous rotations, TODO: do we want make this a parameter ?
+                owner,
+                params,
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+async fn refresh_user_decryption_keys(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     master_private_key_uid: &str,

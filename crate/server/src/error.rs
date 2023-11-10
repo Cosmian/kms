@@ -40,7 +40,7 @@ pub enum KmsError {
     #[error("This KMIP server does not yet support protection masks")]
     UnsupportedProtectionMasks,
 
-    // When a user requests an id which does not exist
+    // // When a user requests an item which does not exist
     #[error("Item not found: {0}")]
     ItemNotFound(String),
 

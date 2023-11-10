@@ -2,10 +2,10 @@
 import unittest
 
 from cloudproof_cover_crypt import (
+    MasterPublicKey,
     MasterSecretKey,
     Policy,
     PolicyAxis,
-    MasterPublicKey,
     UserSecretKey,
 )
 from cosmian_kms import KmsClient
@@ -22,8 +22,8 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
                 'Security Level',
                 [
                     ('Protected', False),
-                    ('Confidential', False),
-                    ('Top Secret', False),
+                    ('Confidential', True),
+                    ('Top Secret', True),
                 ],
                 hierarchical=True,
             )
@@ -233,6 +233,107 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
             user_key_uid,
         )
         self.assertEqual(bytes(plaintext), new_message)
+
+        # Clear old rotations
+        (
+            new_pub_key_uid,
+            new_priv_key_uid,
+        ) = await self.client.clear_cover_crypt_attributes_rotations(
+            ['Department::HR'],
+            self.priv_key_uid,
+        )
+
+        # Old message decryption should fail
+        with self.assertRaises(Exception):
+            plaintext, _ = await self.client.cover_crypt_decryption(
+                old_ciphertext,
+                user_key_uid,
+            )
+
+        # New message can still be decrypted
+        plaintext, _ = await self.client.cover_crypt_decryption(
+            new_ciphertext,
+            user_key_uid,
+        )
+        self.assertEqual(bytes(plaintext), new_message)
+
+    async def test_policy_edit_encryption_decryption(self) -> None:
+        # Encryption
+        message = b'My secret data part 1'
+        ciphertext = await self.client.cover_crypt_encryption(
+            'Department::HR && Security Level::Confidential',
+            message,
+            self.pub_key_uid,
+        )
+
+        # Generate user key
+        user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
+            'Department::HR && Security Level::Top Secret',
+            self.priv_key_uid,
+        )
+
+        # Disable attribute "Confidential"
+        (
+            new_pub_key_uid,
+            new_priv_key_uid,
+        ) = await self.client.disable_cover_crypt_attribute(
+            'Security Level::Confidential',
+            self.priv_key_uid,
+        )
+
+        # Confidential message can still be decrypted
+        plaintext, _ = await self.client.cover_crypt_decryption(
+            ciphertext,
+            user_key_uid,
+        )
+        self.assertEqual(bytes(plaintext), message)
+
+        # New encryption with disabled attribute will fail
+        with self.assertRaises(Exception):
+            await self.client.cover_crypt_encryption(
+                'Department::MKG && Security Level::Confidential',
+                b'will fail',
+                self.pub_key_uid,
+            )
+
+        
+        # Rename attribute "FIN"
+        # await self.client.rename_cover_crypt_attribute(
+        #     'Department::FIN',
+        #     'Finance',
+        #     self.priv_key_uid,
+        # )
+
+        # Add attribute "R&D"
+        (
+            new_pub_key_uid,
+            new_priv_key_uid,
+        ) = await self.client.add_cover_crypt_attribute(
+            'Department::R&D',
+            False,
+            self.priv_key_uid,
+        )
+
+        # Encrypt for new and renamed attribute
+        message = b'My secret data part 2'
+        ciphertext = await self.client.cover_crypt_encryption(
+            '(Department::FIN || Department::R&D) && Security Level::Protected',
+            message,
+            self.pub_key_uid,
+        )
+
+        # Generate user key
+        user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
+            'Department::R&D && Security Level::Protected',
+            self.priv_key_uid,
+        )
+
+        # Decryption as usual
+        plaintext, _ = await self.client.cover_crypt_decryption(
+            ciphertext,
+            user_key_uid,
+        )
+        self.assertEqual(bytes(plaintext), message)
 
 
 if __name__ == '__main__':

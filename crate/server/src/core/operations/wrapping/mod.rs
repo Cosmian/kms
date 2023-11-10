@@ -1,4 +1,6 @@
-use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::StateEnumeration};
+use cosmian_kmip::kmip::{
+    kmip_objects::Object, kmip_operations::ErrorReason, kmip_types::StateEnumeration,
+};
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 pub(crate) use unwrap::unwrap_key;
 pub(crate) use wrap::wrap_key;
@@ -22,9 +24,10 @@ async fn get_key(
         .await?
         .remove(key_uid)
         .ok_or_else(|| {
-            KmsError::ItemNotFound(format!(
-                "unable to fetch the key with uid: {key_uid:} not found"
-            ))
+            KmsError::KmipError(
+                ErrorReason::Item_Not_Found,
+                format!("unable to fetch the key with uid: {key_uid:} not found"),
+            )
         })?;
     // check if unwrapping key is active
     match owm.state {

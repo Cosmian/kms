@@ -1,0 +1,63 @@
+---
+name: KMS SGX tests
+
+env:
+  KMS_USE_BOOTSTRAP_SERVER: true
+  KMS_USE_CERTBOT: true
+  KMS_CERTBOT_HOSTNAME: kms.sgx.ci.cosmian.dev
+  KMS_CERTBOT_EMAIL: tech@cosmian.com
+  KMS_CERTBOT_USE_TEE_KEY: abcdef0123456789    
+
+on:
+  workflow_call:
+    inputs:
+      kms-version:
+        required: true
+        type: string
+
+jobs:
+
+  run_and_test:
+
+    services:
+      kms:
+        image: ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
+
+    runs-on: [self-hosted, sgx]
+    steps:
+      - name: Docker start container
+        run: |
+          docker run \
+            --device /dev/sgx_enclave \
+            --device /dev/sgx_provision \
+            -e KMS_USE_BOOTSTRAP_SERVER="${{ env.KMS_USE_BOOTSTRAP_SERVER }}" \
+            -e KMS_USE_CERTBOT="${{ env.KMS_USE_CERTBOT }}" \
+            -e KMS_CERTBOT_HOSTNAME="${{ env.KMS_CERTBOT_HOSTNAME }}" \
+            -e KMS_CERTBOT_EMAIL="${{ env.KMS_CERTBOT_EMAIL }}" \
+            -e KMS_CERTBOT_USE_TEE_KEY="${{ env.KMS_CERTBOT_USE_TEE_KEY }}" \
+            -v /var/run/aesmd:/var/run/aesmd/ \
+            -v /opt/cosmian-internal:/opt/cosmian-internal \
+            -p 80:80 \
+            -p 9998:9998 \
+            -d --rm --name enclave-kms-insecure ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
+          
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+
+      - name: Install ckms
+        run: cargo install --locked --path crate/cli
+
+      - name: Bootstrap
+        run: |
+          KMS_CLI_CONF=ci/sgx/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
+          sleep 20
+      
+      - name: Verify
+        run: KMS_CLI_CONF=ci/sgx/kms-test-ci.json ckms verify
+            
+      - name: Symmetric key create
+        run: KMS_CLI_CONF=ci/sgx/kms-test-ci.json ckms sym keys create
+
+      - name: Docker stop container
+        if: success() || failure()
+        run: docker stop enclave-kms-insecure

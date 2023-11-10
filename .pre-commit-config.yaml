@@ -132,7 +132,7 @@ repos:
         entry: bash -c 'cd documentation && mkdocs build --strict'
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.16
+    rev: v1.0.20
     hooks:
       - id: cargo-format
       # - id: cargo-upgrade
@@ -148,3 +148,4 @@ repos:
       - id: clippy-autofix-others
       - id: clippy-all-targets-all-features
       - id: cargo-format # in last du to clippy fixes
+      - id: docker-compose-down

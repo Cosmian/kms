@@ -7,7 +7,7 @@ use serde::{
 use time::format_description::well_known::Rfc3339;
 use tracing::trace;
 
-use crate::kmip::ttlv::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV};
+use crate::kmip::ttlv::{error::TtlvError, to_u32_digits, TTLVEnumeration, TTLValue, TTLV};
 
 type Result<T> = std::result::Result<T, TtlvError>;
 
@@ -27,6 +27,7 @@ enum Inputs<'de> {
     BigInt(Vec<u32>),
 }
 
+#[derive(Debug)]
 pub struct TtlvDeserializer<'de> {
     /// whether a tag or a value is being deserialized with this serializer
     deserializing: Deserializing,
@@ -101,7 +102,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
             "deserialize_any  {:?}:  {:?} -> {:?}",
             self.deserializing,
             self.index,
-            &self.inputs
+            self.inputs
         );
         if self.deserializing == Deserializing::ByteString {
             return visitor.visit_u8(self.get_bytes()?[self.index - 1])
@@ -116,25 +117,22 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         let child = &self.get_structure()?[self.index - 1];
         let child_tag = &child.tag;
         let child_value = &child.value;
-        trace!("deserialize_any child value {:?}", child_value);
+        trace!("deserialize_any child value {child_value:?}");
         match child_value {
             TTLValue::Structure(elements) => {
+                trace!("deserialize_any self {self:?}");
+                let ttlv_de = TtlvDeserializer {
+                    deserializing: Deserializing::StructureValue,
+                    inputs: Inputs::Structure(elements.iter().collect::<Vec<&TTLV>>()), // can probably do better
+                    // start at 0 because the Visit Map is going to increment first
+                    index: 0,
+                };
                 if elements.is_empty() || child_tag == &elements[0].tag {
                     // in TTLV when the elements tags are identical to the parent tag,
                     // it is a sequence
-                    visitor.visit_seq(TtlvDeserializer {
-                        deserializing: Deserializing::StructureValue,
-                        inputs: Inputs::Structure(elements.iter().collect::<Vec<&TTLV>>()), // can probably do better
-                        // start at 0 because the Visit Map is going to increment first
-                        index: 0,
-                    })
+                    visitor.visit_seq(ttlv_de)
                 } else {
-                    visitor.visit_map(TtlvDeserializer {
-                        deserializing: Deserializing::StructureValue,
-                        inputs: Inputs::Structure(elements.iter().collect::<Vec<&TTLV>>()), // can probably do better
-                        // start at 0 because the Visit Map is going to increment first
-                        index: 0,
-                    })
+                    visitor.visit_map(ttlv_de)
                 }
             }
             TTLValue::Integer(i) => visitor.visit_i32(*i),
@@ -152,7 +150,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
             }),
             TTLValue::BigInteger(e) => visitor.visit_seq(TtlvDeserializer {
                 deserializing: Deserializing::BigInt,
-                inputs: Inputs::BigInt(e.to_u32_digits()),
+                inputs: Inputs::BigInt(to_u32_digits(e)),
                 // start at 0 because the Visit Map is going to increment first
                 index: 0,
             }),
@@ -214,7 +212,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
         let child = &self.get_structure()?[self.index - 1].value;
         visitor.visit_i32(match child {
             TTLValue::Integer(v) => *v,
-            x => return Err(TtlvError::custom(format!("Invalid type for i32: {x:?}",))),
+            x => return Err(TtlvError::custom(format!("Invalid type for i32: {x:?}"))),
         })
     }
 
@@ -240,6 +238,16 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
             Deserializing::ByteString => {
                 let u = &self.get_bytes()?[self.index - 1];
                 visitor.visit_u8(*u)
+            }
+            Deserializing::StructureValue => {
+                let child = &self.get_structure()?[self.index - 1];
+                trace!("deserialize_u8 child {child:?}");
+                match &child.value {
+                    TTLValue::Integer(i) => visitor.visit_i32(*i),
+                    x => Err(TtlvError::custom(format!(
+                        "deserialize_u8. Invalid type for value: {x:?}"
+                    ))),
+                }
             }
             x => Err(TtlvError::custom(format!(
                 "deserialize_u8. Unexpected {x:?}"
@@ -467,7 +475,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                     {
                         visitor.visit_seq(TtlvDeserializer {
                             deserializing: Deserializing::BigInt,
-                            inputs: Inputs::BigInt(big_int.to_u32_digits()),
+                            inputs: Inputs::BigInt(to_u32_digits(big_int)),
                             index: 0,
                         })
                     }
@@ -681,8 +689,8 @@ impl<'de> MapAccess<'de> for TtlvDeserializer<'de> {
                     &self.get_structure()?[self.index - 1].tag
                 );
 
-                // tell the deserializer that it now going to deserialize the `tag` value
-                // of the next key
+                // tell the deserializer that it is now going
+                // to deserialize the `tag` value of the next key
                 self.deserializing = Deserializing::StructureTag;
 
                 // Deserialize a map key.

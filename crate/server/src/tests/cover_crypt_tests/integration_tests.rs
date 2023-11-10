@@ -1,5 +1,5 @@
 use cloudproof::reexport::cover_crypt::abe_policy::{
-    Attribute, EncryptionHint, Policy, PolicyAxis,
+    Attribute, DimensionBuilder, EncryptionHint, Policy,
 };
 use cosmian_kmip::kmip::{
     kmip_operations::{
@@ -10,9 +10,13 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::{
     crypto::{
-        cover_crypt::kmip_requests::{
-            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
-            build_destroy_key_request, build_rekey_keypair_request,
+        cover_crypt::{
+            attributes::EditPolicyAction,
+            kmip_requests::{
+                build_create_master_keypair_request,
+                build_create_user_decryption_private_key_request, build_destroy_key_request,
+                build_rekey_keypair_request,
+            },
         },
         generic::kmip_requests::{build_decryption_request, build_encryption_request},
     },
@@ -30,8 +34,8 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     let app = test_utils::test_app().await;
 
-    let mut policy = Policy::new(10);
-    policy.add_axis(PolicyAxis::new(
+    let mut policy = Policy::new();
+    policy.add_dimension(DimensionBuilder::new(
         "Department",
         vec![
             ("MKG", EncryptionHint::Classic),
@@ -40,7 +44,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         ],
         false,
     ))?;
-    policy.add_axis(PolicyAxis::new(
+    policy.add_dimension(DimensionBuilder::new(
         "Level",
         vec![
             ("Confidential", EncryptionHint::Classic),
@@ -178,7 +182,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let request = build_decryption_request(
         user_decryption_key_identifier_2,
         None,
-        encrypted_data,
+        encrypted_data.clone(),
         None,
         Some(authentication_data.clone()),
         None,
@@ -211,8 +215,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Rekey all key pairs with matching ABE attributes
     let abe_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
 
-    let request =
-        build_rekey_keypair_request(private_key_unique_identifier, abe_policy_attributes)?;
+    let request = build_rekey_keypair_request(
+        private_key_unique_identifier,
+        EditPolicyAction::RotateAttributes(abe_policy_attributes.clone()),
+    )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
         &rekey_keypair_response.private_key_unique_identifier,
@@ -237,7 +243,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(CryptographicAlgorithm::CoverCrypt),
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
-    let encrypted_data = encrypt_response
+    let new_encrypted_data = encrypt_response
         .data
         .expect("There should be encrypted data");
 
@@ -245,7 +251,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let request = build_decryption_request(
         user_decryption_key_identifier_1,
         None,
-        encrypted_data.clone(),
+        new_encrypted_data.clone(),
         None,
         Some(authentication_data.clone()),
         None,
@@ -257,7 +263,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let request = build_decryption_request(
         user_decryption_key_identifier_2,
         None,
-        encrypted_data,
+        new_encrypted_data,
         None,
         Some(authentication_data.clone()),
         None,
@@ -272,6 +278,144 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     assert_eq!(&data, &decrypted_data.plaintext);
     assert!(decrypted_data.metadata.is_empty());
+
+    //
+    // Clear old rotations for ABE Attribute
+    let request = build_rekey_keypair_request(
+        private_key_unique_identifier,
+        EditPolicyAction::ClearOldAttributeValues(abe_policy_attributes.clone()),
+    )?;
+    let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
+        test_utils::post(&app, &request).await;
+    assert!(rekey_keypair_response.is_ok());
+
+    // test user2 can no longer decrypt old message
+    let request = build_decryption_request(
+        user_decryption_key_identifier_2,
+        None,
+        encrypted_data,
+        None,
+        Some(authentication_data.clone()),
+        None,
+    );
+    let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
+    assert!(post_ttlv_decrypt.is_err());
+
+    //
+    // Add new Attributes
+    let new_policy_attributes = vec![
+        (
+            Attribute::from(("Department", "IT")),
+            EncryptionHint::Classic,
+        ),
+        (
+            Attribute::from(("Department", "R&D")),
+            EncryptionHint::Hybridized,
+        ),
+    ];
+    let request = build_rekey_keypair_request(
+        private_key_unique_identifier,
+        EditPolicyAction::AddAttribute(new_policy_attributes),
+    )?;
+    let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
+        test_utils::post(&app, &request).await;
+    assert!(rekey_keypair_response.is_ok());
+
+    // Encrypt for new attribute
+    let data = "New tech research data".as_bytes();
+    let encryption_policy = "Level::Confidential && (Department::IT || Department::R&D)";
+
+    let request = build_encryption_request(
+        public_key_unique_identifier,
+        Some(encryption_policy.to_string()),
+        data.to_vec(),
+        None,
+        Some(authentication_data.clone()),
+        Some(CryptographicAlgorithm::CoverCrypt),
+    )?;
+    let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
+    assert!(encrypt_response.is_ok());
+
+    //
+    // Rename Attributes
+    let rename_policy_attributes_pair = vec![(
+        Attribute::from(("Department", "HR")),
+        "HumanResources".to_string(),
+    )];
+    let request = build_rekey_keypair_request(
+        private_key_unique_identifier,
+        EditPolicyAction::RenameAttribute(rename_policy_attributes_pair),
+    )?;
+    let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
+        test_utils::post(&app, &request).await;
+    assert!(rekey_keypair_response.is_ok());
+
+    // Encrypt for renamed attribute
+    let data = "hr data".as_bytes();
+    let encryption_policy = "Level::Confidential && Department::HumanResources";
+
+    let request = build_encryption_request(
+        public_key_unique_identifier,
+        Some(encryption_policy.to_string()),
+        data.to_vec(),
+        None,
+        Some(authentication_data.clone()),
+        Some(CryptographicAlgorithm::CoverCrypt),
+    )?;
+    let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
+    assert!(encrypt_response.is_ok());
+
+    //
+    // Disable ABE Attribute
+    let request = build_rekey_keypair_request(
+        private_key_unique_identifier,
+        EditPolicyAction::DisableAttribute(abe_policy_attributes.clone()),
+    )?;
+    let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
+        test_utils::post(&app, &request).await;
+    assert!(rekey_keypair_response.is_ok());
+
+    // Encrypt with disabled ABE attribute will fail
+    let authentication_data = b"cc the uid".to_vec();
+    let data = "Will fail".as_bytes();
+    let encryption_policy = "Level::Confidential && Department::MKG";
+
+    let request = build_encryption_request(
+        public_key_unique_identifier,
+        Some(encryption_policy.to_string()),
+        data.to_vec(),
+        None,
+        Some(authentication_data.clone()),
+        Some(CryptographicAlgorithm::CoverCrypt),
+    )?;
+    let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
+    assert!(encrypt_response.is_err());
+
+    //
+    // Delete attribute
+    let remove_policy_attributes_pair = vec![Attribute::from(("Department", "HumanResources"))];
+    let request = build_rekey_keypair_request(
+        private_key_unique_identifier,
+        EditPolicyAction::RemoveAttribute(remove_policy_attributes_pair),
+    )?;
+    let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
+        test_utils::post(&app, &request).await;
+    assert!(rekey_keypair_response.is_ok());
+
+    // Encrypt for removed attribute will fail
+    let data = "New hr data".as_bytes();
+    let encryption_policy = "Level::Confidential && Department::HumanResources";
+
+    let request = build_encryption_request(
+        public_key_unique_identifier,
+        Some(encryption_policy.to_string()),
+        data.to_vec(),
+        None,
+        Some(authentication_data.clone()),
+        Some(CryptographicAlgorithm::CoverCrypt),
+    )?;
+    let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
+    assert!(encrypt_response.is_err());
 
     //
     // Destroy user decryption key

@@ -1,15 +1,18 @@
 use cloudproof::reexport::{
-    cover_crypt::abe_policy::{AccessPolicy, Attribute, Policy},
+    cover_crypt::abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy},
     crypto_core::bytes_ser_de::Deserializer,
 };
 use cosmian_kmip::kmip::{kmip_operations::Get, kmip_types::RevocationReason};
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::{
-    cover_crypt::kmip_requests::{
-        build_create_master_keypair_request, build_create_user_decryption_private_key_request,
-        build_destroy_key_request, build_import_decryption_private_key_request,
-        build_import_private_key_request, build_import_public_key_request,
-        build_rekey_keypair_request,
+    cover_crypt::{
+        attributes::EditPolicyAction,
+        kmip_requests::{
+            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
+            build_destroy_key_request, build_import_decryption_private_key_request,
+            build_import_private_key_request, build_import_public_key_request,
+            build_rekey_keypair_request,
+        },
     },
     generic::kmip_requests::{
         build_decryption_request, build_encryption_request, build_revoke_key_request,
@@ -23,6 +26,54 @@ use pyo3::{
 use rustls::Certificate;
 
 use crate::py_kms_object::KmsObject;
+
+/// Create a Rekey Keypair request from `PyO3` arguments
+/// Returns a `PyO3` Future
+macro_rules! rekey_keypair {
+    (
+        $self:ident,
+        $attributes:expr,
+        $master_secret_key_identifier:expr,
+        $tags:expr,
+        $policy_attributes:ident,
+        $action:expr,
+        $py:ident
+    ) => {{
+        // TODO: use key_id over tags if both specified?
+        let id = match ($master_secret_key_identifier, $tags) {
+            (Some(key_id), None) => key_id,
+            (None, Some(tags)) => serde_json::to_string(&tags)
+                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?,
+            (Some(_), Some(_)) => {
+                return Err(PyException::new_err(
+                    "both key id and tags were specified, please use only one",
+                ))
+            }
+            _ => return Err(PyException::new_err("please specify a key id or tags")),
+        };
+
+        let $policy_attributes = $attributes
+            .into_iter()
+            .map(Attribute::try_from)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| PyTypeError::new_err(e.to_string()))?;
+
+        let request = build_rekey_keypair_request(&id, $action)
+            .map_err(|e| PyException::new_err(e.to_string()))?;
+
+        let client = $self.0.clone();
+        pyo3_asyncio::tokio::future_into_py($py, async move {
+            let response = client
+                .rekey_keypair(request)
+                .await
+                .map_err(|e| PyException::new_err(e.to_string()))?;
+            Ok((
+                response.public_key_unique_identifier,
+                response.private_key_unique_identifier,
+            ))
+        })
+    }};
+}
 
 #[pyclass(subclass)]
 pub struct KmsClient(KmsRestClient);
@@ -264,35 +315,169 @@ impl KmsClient {
         tags: Option<Vec<&str>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let policy_attributes = attributes
-            .into_iter()
-            .map(Attribute::try_from)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        rekey_keypair!(
+            self,
+            attributes,
+            master_secret_key_identifier,
+            tags,
+            policy_attributes,
+            EditPolicyAction::RotateAttributes(policy_attributes),
+            py
+        )
+    }
 
-        let id = if let Some(key_id) = master_secret_key_identifier {
-            key_id
-        } else if let Some(tags) = tags {
-            serde_json::to_string(&tags)
-                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
-        } else {
-            return Err(PyException::new_err("please specify a key id or tags"))
-        };
+    /// Remove old rotations from the specified policy attributes.
+    /// This will rekey in the KMS:
+    /// - the Master Keys
+    /// - any user key which associated access policy covers one of these attributes
+    ///
+    /// Args:
+    ///     - `attributes` (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
+    ///     - `master_secret_key_identifier` (str): master secret key UID
+    ///     - `tags` to use when the `master_secret_key_identifier` is not provided
+    ///
+    /// Returns:
+    ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
+    pub fn clear_cover_crypt_attributes_rotations<'p>(
+        &'p self,
+        attributes: Vec<&str>,
+        master_secret_key_identifier: Option<String>,
+        tags: Option<Vec<&str>>,
+        py: Python<'p>,
+    ) -> PyResult<&PyAny> {
+        rekey_keypair!(
+            self,
+            attributes,
+            master_secret_key_identifier,
+            tags,
+            policy_attributes,
+            EditPolicyAction::ClearOldAttributeValues(policy_attributes),
+            py
+        )
+    }
 
-        let request = build_rekey_keypair_request(&id, policy_attributes)
-            .map_err(|e| PyException::new_err(e.to_string()))?;
+    /// Remove a specific attribute from a keypair's policy.
+    ///
+    /// Args:
+    ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
+    ///     - `master_secret_key_identifier` (str): master secret key UID
+    ///     - `tags` to use when the `master_secret_key_identifier` is not provided
+    ///
+    /// Returns:
+    ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
+    pub fn remove_cover_crypt_attribute<'p>(
+        &'p self,
+        _attribute: &str,
+        _master_secret_key_identifier: Option<String>,
+        _tags: Option<Vec<&str>>,
+        _py: Python<'p>,
+    ) -> PyResult<&PyAny> {
+        /*rekey_keypair!(
+            self,
+            vec![attribute],
+            master_secret_key_identifier,
+            tags,
+            policy_attributes,
+            EditPolicyAction::RemoveAttribute(policy_attributes),
+            py
+        )*/
+        Err(PyException::new_err("Not supported yet"))
+    }
 
-        let client = self.0.clone();
-        pyo3_asyncio::tokio::future_into_py(py, async move {
-            let response = client
-                .rekey_keypair(request)
-                .await
-                .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok((
-                response.public_key_unique_identifier,
-                response.private_key_unique_identifier,
-            ))
-        })
+    /// Disable a specific attribute for a keypair.
+    ///
+    /// Args:
+    ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
+    ///     - `master_secret_key_identifier` (str): master secret key UID
+    ///     - `tags` to use when the `master_secret_key_identifier` is not provided
+    ///
+    /// Returns:
+    ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
+    pub fn disable_cover_crypt_attribute<'p>(
+        &'p self,
+        attribute: &str,
+        master_secret_key_identifier: Option<String>,
+        tags: Option<Vec<&str>>,
+        py: Python<'p>,
+    ) -> PyResult<&PyAny> {
+        rekey_keypair!(
+            self,
+            vec![attribute],
+            master_secret_key_identifier,
+            tags,
+            policy_attributes,
+            EditPolicyAction::DisableAttribute(policy_attributes),
+            py
+        )
+    }
+
+    /// Add a specific attribute to a keypair's policy.
+    ///
+    /// Args:
+    ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
+    ///     - `is_hybridized` (bool): hint for encryption
+    ///     - `master_secret_key_identifier` (str): master secret key UID
+    ///     - `tags` to use when the `master_secret_key_identifier` is not provided
+    ///
+    /// Returns:
+    ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
+    pub fn add_cover_crypt_attribute<'p>(
+        &'p self,
+        attribute: &str,
+        is_hybridized: bool,
+        master_secret_key_identifier: Option<String>,
+        tags: Option<Vec<&str>>,
+        py: Python<'p>,
+    ) -> PyResult<&PyAny> {
+        rekey_keypair!(
+            self,
+            vec![attribute],
+            master_secret_key_identifier,
+            tags,
+            policy_attributes,
+            EditPolicyAction::AddAttribute(
+                policy_attributes
+                    .into_iter()
+                    .map(|attr| (attr, EncryptionHint::new(is_hybridized)))
+                    .collect()
+            ),
+            py
+        )
+    }
+
+    /// Rename a specific attribute in a keypair's policy.
+    ///
+    /// Args:
+    ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
+    ///     - `new_name` (str): the new name for the attribute
+    ///     - `master_secret_key_identifier` (str): master secret key UID
+    ///     - `tags` to use when the `master_secret_key_identifier` is not provided
+    ///
+    /// Returns:
+    ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
+    pub fn rename_cover_crypt_attribute<'p>(
+        &'p self,
+        _attribute: &str,
+        _new_name: &str,
+        _master_secret_key_identifier: Option<String>,
+        _tags: Option<Vec<&str>>,
+        _py: Python<'p>,
+    ) -> PyResult<&PyAny> {
+        /*rekey_keypair!(
+            self,
+            vec![attribute],
+            master_secret_key_identifier,
+            tags,
+            policy_attributes,
+            EditPolicyAction::RenameAttribute(
+                policy_attributes
+                    .into_iter()
+                    .map(|attr| (attr, new_name.to_string()))
+                    .collect()
+            ),
+            py
+        )*/
+        Err(PyException::new_err("Not supported yet"))
     }
 
     /// Generate a user secret key.

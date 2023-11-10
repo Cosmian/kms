@@ -105,7 +105,7 @@ class KmsClient:
         self,
         attributes: List[Union[Attribute, str]],
         master_secret_key_identifier: Optional[str],
-        tags: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None
     ) -> Future[Tuple[str, str]]:
         """Rotate the given policy attributes. This will rekey in the KMS:
             - the Master Keys
@@ -114,10 +114,119 @@ class KmsClient:
         Args:
             attributes (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
             master_secret_key_identifier (Optional[str]): master secret key UID. Tags should be supplied if the ID is not given.
-            tags: (Optional[List[str][]) tags to retrieve the master secret key if it the id is not satisfied
+            tags (Optional[List[str]]): tags to retrieve the master secret key if it the id is not satisfied
 
         Returns:
             Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
+        """
+    async def clear_cover_crypt_attributes_rotations(
+        self,
+        attributes: List[Union[Attribute, str]],
+        master_secret_key_identifier: str,
+        tags: Optional[List[str]] = None
+    ) -> Tuple[str, str]:
+        """
+        Remove old rotations from the specified policy attributes.
+        
+        This will rekey in the KMS:
+        - the Master Keys
+        - all User Decryption Keys that contain one of these attributes in their policy.
+
+        Args:
+            - attributes (List[Union[Attribute, str]): Attributes to rotate e.g. ["Department::HR"]
+            - master_secret_key_identifier (str): Master secret key UID
+            - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
+        
+        Returns:
+            Tuple[str, str]: (Public key UID, Master secret key UID)
+        """
+    async def remove_cover_crypt_attribute(
+        self,
+        attribute: Union[Attribute, str],
+        master_secret_key_identifier: str,
+        tags: Optional[List[str]] = None
+    ) -> Tuple[str, str]:
+        """
+        Remove a specific attribute from a keypair's policy.
+        
+        This will rekey in the KMS:
+        - the Master Keys
+        - all User Decryption Keys that contain one of these attributes in their policy.
+
+        Args:
+            - attributes (List[Union[Attribute, str]): Attributes to remove e.g. "Department::HR"
+            - master_secret_key_identifier (str): Master secret key UID
+            - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
+        
+        Returns:
+            Tuple[str, str]: (Public key UID, Master secret key UID)
+        """
+    async def disable_cover_crypt_attribute(
+        self,
+        attribute: Union[Attribute, str],
+        master_secret_key_identifier: str,
+        tags: Optional[List[str]] = None
+    ) -> Tuple[str, str]:
+        """
+        Disable a specific attribute from a keypair's policy.
+        
+        This will rekey in the KMS:
+        - the Master Keys
+        - all User Decryption Keys that contain one of these attributes in their policy.
+
+        Args:
+            - attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
+            - master_secret_key_identifier (str): Master secret key UID
+            - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
+        
+        Returns:
+            Tuple[str, str]: (Public key UID, Master secret key UID)
+        """
+    async def add_cover_crypt_attribute(
+        self,
+        attribute: Union[Attribute, str],
+        is_hybridized: bool,
+        master_secret_key_identifier: str,
+        tags: Optional[List[str]] = None
+    ) -> Tuple[str, str]:
+        """
+        Add a specific attribute to a keypair's policy.
+        
+        This will rekey in the KMS:
+        - the Master Keys
+        - all User Decryption Keys that contain one of these attributes in their policy.
+
+        Args:
+            - attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
+            - is_hybridized (bool): hint for encryption
+            - master_secret_key_identifier (str): Master secret key UID
+            - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
+        
+        Returns:
+            Tuple[str, str]: (Public key UID, Master secret key UID)
+        """
+    async def rename_cover_crypt_attribute(
+        self,
+        attribute: Union[Attribute, str],
+        new_name: str,
+        master_secret_key_identifier: str,
+        tags: Optional[List[str]] = None
+    ) -> Tuple[str, str]:
+        """
+        Add a specific attribute to a keypair's policy.
+        
+        This will rekey in the KMS:
+        - the Master Keys
+        - all User Decryption Keys that contain one of these attributes in their policy.
+
+        Args:
+            - attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
+            - new_name (str): the new name for the attribute
+            - master_secret_key_identifier (str): Master secret key UID
+            - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
+        
+        Returns:
+            Tuple[str, str]: (Public key UID, Master secret key UID)
         """
     def create_cover_crypt_user_decryption_key(
         self, access_policy_str: str, master_secret_key_identifier: str

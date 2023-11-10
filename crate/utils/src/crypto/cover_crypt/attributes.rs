@@ -1,4 +1,4 @@
-use cloudproof::reexport::cover_crypt::abe_policy::{self, Policy};
+use cloudproof::reexport::cover_crypt::abe_policy::{self, EncryptionHint, Policy};
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
@@ -6,6 +6,7 @@ use cosmian_kmip::{
         kmip_types::{Attributes, VendorAttribute},
     },
 };
+use serde::{Deserialize, Serialize};
 
 use crate::kmip_utils::VENDOR_ID_COSMIAN;
 
@@ -15,6 +16,7 @@ pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_poli
 pub const VENDOR_ATTR_COVER_CRYPT_HEADER_UID: &str = "cover_crypt_header_uid";
 pub const VENDOR_ATTR_COVER_CRYPT_MASTER_PRIV_KEY_ID: &str = "cover_crypt_master_private_key_id";
 pub const VENDOR_ATTR_COVER_CRYPT_MASTER_PUB_KEY_ID: &str = "cover_crypt_master_public_key_id";
+pub const VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION: &str = "cover_crypt_policy_edit_action";
 
 /// Convert an policy to a vendor attribute
 pub fn policy_as_vendor_attribute(policy: &Policy) -> Result<VendorAttribute, KmipError> {
@@ -236,6 +238,57 @@ pub fn header_uid_from_attributes(attributes: &Attributes) -> Result<&[u8], Kmip
         Err(KmipError::InvalidKmipValue(
             ErrorReason::Invalid_Attribute_Value,
             "the attributes do not contain an CoverCrypt Header UID".to_string(),
+        ))
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum EditPolicyAction {
+    RotateAttributes(Vec<abe_policy::Attribute>),
+    ClearOldAttributeValues(Vec<abe_policy::Attribute>),
+    RemoveAttribute(Vec<abe_policy::Attribute>),
+    DisableAttribute(Vec<abe_policy::Attribute>),
+    AddAttribute(Vec<(abe_policy::Attribute, EncryptionHint)>),
+    RenameAttribute(Vec<(abe_policy::Attribute, String)>),
+}
+
+/// Convert an edit policy action to a vendor attribute
+pub fn edit_policy_action_as_vendor_attribute(
+    action: EditPolicyAction,
+) -> Result<VendorAttribute, KmipError> {
+    Ok(VendorAttribute {
+        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+        attribute_name: VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION.to_owned(),
+        attribute_value: serde_json::to_vec(&action).map_err(|e| {
+            KmipError::InvalidKmipValue(
+                ErrorReason::Invalid_Attribute_Value,
+                format!("failed serializing the CoverCrypt action: {e}"),
+            )
+        })?,
+    })
+}
+
+/// Extract an edit `CoverCrypt` policy action from attributes.
+///
+/// If Covercrypt attributes are specified without an `EditPolicyAction`,
+/// a `RotateAttributes` action is returned by default to keep backward compatibility.
+pub fn edit_policy_action_from_attributes(
+    attributes: &Attributes,
+) -> Result<EditPolicyAction, KmipError> {
+    if let Some(bytes) = attributes.get_vendor_attribute_value(
+        VENDOR_ID_COSMIAN,
+        VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION,
+    ) {
+        serde_json::from_slice::<EditPolicyAction>(bytes).map_err(|e| {
+            KmipError::InvalidKmipValue(
+                ErrorReason::Invalid_Attribute_Value,
+                format!("failed reading the CoverCrypt action from the attribute bytes: {e}"),
+            )
+        })
+    } else {
+        // Backward compatibility
+        Ok(EditPolicyAction::RotateAttributes(
+            attributes_from_attributes(attributes)?,
         ))
     }
 }

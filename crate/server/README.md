@@ -139,7 +139,7 @@ At _Cosmian_, for production, the architecture and the security rely on secure e
 
 ![Production](./resources/production.drawio.svg)
 
-To set up the enclave to run the kms server, please refer to the dedicated [Readme](../../enclave/server/README.md)
+To set up the SGX enclave to run the KMS server, please refer to the dedicated [Readme](../../sgx/README.md)
 
 **Mandatory**: all KMS source codes are fully open source.
 

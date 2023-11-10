@@ -454,9 +454,7 @@ impl KmsRestClient {
     pub async fn version(&self) -> Result<String, RestClientError> {
         self.get_no_ttlv("/version", None::<&()>).await
     }
-}
 
-impl KmsRestClient {
     /// Instantiate a new KMIP REST Client
     #[allow(clippy::too_many_arguments)]
     #[allow(dead_code)]

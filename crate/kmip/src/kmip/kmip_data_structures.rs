@@ -1,6 +1,6 @@
 use std::clone::Clone;
 
-use num_bigint::BigUint;
+use num_bigint_dig::BigUint;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};
@@ -408,7 +408,7 @@ pub enum KeyMaterial {
 }
 
 // Unfortunately, default serialization does not play well
-// for ByteString, so we have to do it by had. Deserialization is OK though
+// for ByteString, so we have to do it by hand. Deserialization is OK though
 impl Serialize for KeyMaterial {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

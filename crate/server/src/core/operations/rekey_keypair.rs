@@ -1,12 +1,12 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
-    kmip_operations::{ReKeyKeyPair, ReKeyKeyPairResponse},
+    kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
     kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
 };
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
-    crypto::cover_crypt::attributes::policy_from_attributes,
+    crypto::cover_crypt::attributes::{edit_policy_action_from_attributes, policy_from_attributes},
 };
 use tracing::trace;
 
@@ -67,7 +67,7 @@ pub async fn rekey_keypair(
     // there can only be one private key
     let owm = owm_s
         .pop()
-        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.clone()))?;
+        .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, uid_or_tags.clone()))?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(
@@ -75,25 +75,18 @@ pub async fn rekey_keypair(
         )))
     }
 
-    match &attributes.cryptographic_algorithm {
-        Some(CryptographicAlgorithm::CoverCrypt) => {
-            rekey_keypair_cover_crypt(
-                kms,
-                Covercrypt::default(),
-                &owm.id,
-                attributes,
-                user,
-                params,
-            )
-            .await
-        }
-        Some(other) => kms_bail!(KmsError::NotSupported(format!(
+    if Some(CryptographicAlgorithm::CoverCrypt) == attributes.cryptographic_algorithm {
+        let action = edit_policy_action_from_attributes(attributes)?;
+        rekey_keypair_cover_crypt(kms, Covercrypt::default(), &owm.id, user, action, params).await
+    } else if let Some(other) = attributes.cryptographic_algorithm {
+        kms_bail!(KmsError::NotSupported(format!(
             "The rekey of a key pair for algorithm: {other:?} is not yet supported"
-        ))),
-        None => kms_bail!(KmsError::InvalidRequest(
+        )))
+    } else {
+        kms_bail!(KmsError::InvalidRequest(
             "The cryptographic algorithm must be specified in the private key attributes for key \
              pair creation"
                 .to_string()
-        )),
+        ))
     }
 }

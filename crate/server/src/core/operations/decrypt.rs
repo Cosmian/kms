@@ -1,7 +1,7 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
-    kmip_operations::{Decrypt, DecryptResponse},
+    kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
     kmip_types::{KeyFormatType, StateEnumeration},
 };
 use cosmian_kms_utils::{
@@ -61,7 +61,7 @@ pub async fn decrypt(
     // there can only be one key
     let owm = owm_s
         .pop()
-        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.to_string()))?;
+        .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, uid_or_tags.to_string()))?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(
