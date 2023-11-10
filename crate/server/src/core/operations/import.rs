@@ -15,6 +15,7 @@ use cosmian_kms_utils::{
     crypto::curve_25519::operation::Q_LENGTH_BITS,
     tagging::{check_user_tags, get_tags},
 };
+use num_bigint_dig::BigUint;
 use openssl::{
     ec::{EcKey, PointConversionForm},
     nid::Nid,
@@ -22,7 +23,7 @@ use openssl::{
     sha::Sha1,
 };
 use tracing::{debug, trace, warn};
-use x509_parser::{num_bigint::BigUint, parse_x509_certificate, prelude::parse_x509_pem};
+use x509_parser::{parse_x509_certificate, prelude::parse_x509_pem};
 
 use super::wrapping::unwrap_key;
 use crate::{

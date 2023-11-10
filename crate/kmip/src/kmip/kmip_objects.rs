@@ -1,6 +1,6 @@
 use std::convert::{TryFrom, TryInto};
 
-use num_bigint::BigUint;
+use num_bigint_dig::BigUint;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 

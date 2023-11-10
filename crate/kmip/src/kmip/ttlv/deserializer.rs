@@ -7,7 +7,7 @@ use serde::{
 use time::format_description::well_known::Rfc3339;
 use tracing::trace;
 
-use crate::kmip::ttlv::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV};
+use crate::kmip::ttlv::{error::TtlvError, to_u32_digits, TTLVEnumeration, TTLValue, TTLV};
 
 type Result<T> = std::result::Result<T, TtlvError>;
 
@@ -150,7 +150,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
             }),
             TTLValue::BigInteger(e) => visitor.visit_seq(TtlvDeserializer {
                 deserializing: Deserializing::BigInt,
-                inputs: Inputs::BigInt(e.to_u32_digits()),
+                inputs: Inputs::BigInt(to_u32_digits(e)),
                 // start at 0 because the Visit Map is going to increment first
                 index: 0,
             }),
@@ -475,7 +475,7 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
                     {
                         visitor.visit_seq(TtlvDeserializer {
                             deserializing: Deserializing::BigInt,
-                            inputs: Inputs::BigInt(big_int.to_u32_digits()),
+                            inputs: Inputs::BigInt(to_u32_digits(big_int)),
                             index: 0,
                         })
                     }

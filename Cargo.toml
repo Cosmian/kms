@@ -49,7 +49,11 @@ hex = "0.4"
 http = "0.2"
 josekit = "0.8.3"
 native-tls = "0.2"
-num-bigint = { version = "0.4", features = ["rand", "serde"] }
+num-bigint-dig = { version = "0.8", default-features = false, features = [
+  "std",
+  "rand",
+  "serde",
+] }
 openssl = { version = "0.10", features = ["vendored"] }
 ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
 redis = { version = "0.23", features = [
