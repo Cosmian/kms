@@ -56,6 +56,7 @@ jobs:
       - cargo-doc
       - cargo-tests
       - python_and_docker
+      - sgx_docker
     runs-on: [self-hosted, not-sgx]
     strategy:
       fail-fast: false
