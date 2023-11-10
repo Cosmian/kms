@@ -67,7 +67,7 @@ jobs:
     secrets: inherit
     with:
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
-      branch: feat/edit_policy
+      branch: develop
 
   cloudproof_js:
     needs:
@@ -75,7 +75,7 @@ jobs:
       - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_js.yml@develop
     with:
-      branch: feat/edit_policy
+      branch: develop
       target: wasm32-unknown-unknown
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       findex-cloud-version: 0.3.1
@@ -87,7 +87,7 @@ jobs:
       - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_java_in_docker.yml@develop
     with:
-      branch: feat/edit_policy
+      branch: develop
       target: x86_64-unknown-linux-gnu
       extension: so
       destination: linux-x86-64
@@ -102,7 +102,7 @@ jobs:
       - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@develop
     with:
-      branch: feat/edit_policy
+      branch: develop
       target: x86_64-unknown-linux-gnu
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       copy_fresh_build: true
