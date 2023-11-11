@@ -81,6 +81,15 @@ jobs:
       findex-cloud-version: 0.3.1
       copy_fresh_build: false
 
+  cloudproof_kms_js:
+    needs:
+      - build-and-push-image
+      - pyo3
+    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_kms_js.yml@develop
+    with:
+      branch: test/kms_4_9
+      kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
+
   cloudproof_java:
     needs:
       - build-and-push-image
