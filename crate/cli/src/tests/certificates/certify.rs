@@ -351,7 +351,7 @@ pub async fn test_certify_with_csr() -> Result<(), CliError> {
             &ctx.owner_cli_conf_path,
             "certificates",
             "test_data/certificates/csr/intermediate.p12",
-            CertificateInputFormat::PKCS12,
+            CertificateInputFormat::Pkcs12,
             None,
             Some("intermediate".to_string()),
             Some(&["import_pkcs12"]),

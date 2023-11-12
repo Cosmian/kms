@@ -162,7 +162,10 @@ fn read_key_from_pem(bytes: &[u8]) -> Result<Object, CliError> {
     }
 }
 
-fn build_private_key_from_der_bytes(key_format_type: KeyFormatType, bytes: Vec<u8>) -> Object {
+pub(crate) fn build_private_key_from_der_bytes(
+    key_format_type: KeyFormatType,
+    bytes: Vec<u8>,
+) -> Object {
     Object::PrivateKey {
         key_block: KeyBlock {
             key_format_type,

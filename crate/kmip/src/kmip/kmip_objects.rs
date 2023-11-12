@@ -35,6 +35,8 @@ use crate::{
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum Object {
+    /// A Managed Cryptographic Object that is a digital certificate.
+    /// It is a DER-encoded X.509 public key certificate.
     #[serde(rename_all = "PascalCase")]
     Certificate {
         certificate_type: CertificateType,
@@ -42,6 +44,7 @@ pub enum Object {
         /// It is a DER-encoded X.509 public key certificate.
         certificate_value: Vec<u8>,
     },
+    /// A Managed Cryptographic Object containing the Certificate Request.
     #[serde(rename_all = "PascalCase")]
     CertificateRequest {
         certificate_request_type: CertificateRequestType,
@@ -75,6 +78,10 @@ pub enum Object {
         #[serde(rename = "KeyBlock")]
         key_block: KeyBlock,
     },
+    ///A Managed Cryptographic Object containing a shared secret value that is not
+    /// a key or certificate (e.g., a password).
+    /// The Key Block of the Secret Data object contains a Key Value of the Secret Data Type.
+    /// The Key Value MAY be wrapped.
     #[serde(rename_all = "PascalCase")]
     SecretData {
         secret_data_type: SecretDataType,
@@ -103,14 +110,18 @@ pub enum Object {
         prime_field_size: Option<BigUint>,
         key_block: KeyBlock,
     },
+    /// A Managed Cryptographic Object that is the private portion of an asymmetric key pair.
     PrivateKey {
         #[serde(rename = "KeyBlock")]
         key_block: KeyBlock,
     },
+    /// A Managed Cryptographic Object that is the public portion of an asymmetric key pair.
+    /// This is only a public key, not a certificate.
     PublicKey {
         #[serde(rename = "KeyBlock")]
         key_block: KeyBlock,
     },
+    /// A Managed Cryptographic Object that is a symmetric key.
     SymmetricKey {
         #[serde(rename = "KeyBlock")]
         key_block: KeyBlock,

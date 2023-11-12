@@ -26,9 +26,7 @@ der = { workspace = true }
 hex = { workspace = true }
 ## openssl is only used to parse PKCS#12 files because native support is not yet available in Rust yet.
 ## It should not be used for anything else and will be removed once native support is available.
-## When this crate is ready, remove the use of openssl and use this instead
-# pkcs12 = { version = "0" }
-openssl = { workspace = true }
+openssl = { version = "0.10", features = ["vendored"] }
 oauth2 = { version = "4.4" }
 rand = "0.8"
 ratls = { workspace = true }

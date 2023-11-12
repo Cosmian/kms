@@ -5,7 +5,7 @@ use cosmian_kmip::kmip::{
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::certificate::attributes::ca_subject_common_names_from_attributes,
-    tagging::{check_user_tags, get_tags},
+    tagging::{check_user_tags, remove_tags},
 };
 use openssl::{
     pkey::PKey,
@@ -27,13 +27,15 @@ pub async fn sign_certificate_request(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<CertifyResponse> {
-    let attributes = request.attributes.as_ref().ok_or(KmsError::InvalidRequest(
+    let mut attributes = request.attributes.clone().ok_or(KmsError::InvalidRequest(
         "Attributes specifying the chain of certification are mandatory".to_string(),
     ))?;
 
     // Retrieve and update tags
-    let tags = get_tags(attributes);
-    check_user_tags(&tags)?;
+    let tags = remove_tags(&mut attributes);
+    if let Some(tags) = &tags {
+        check_user_tags(tags)?;
+    }
 
     // Get the full CA chain Subject Common Names separated by slashes.
     // If no CA/SubCA certificate exists, the KMS server will create them.
@@ -41,8 +43,8 @@ pub async fn sign_certificate_request(
     // - "CA Root/Sub CA"
     // -> "CA Root" is the Subject Common Name of the root CA
     // -> "Sub CA" is the Subject Common Name of the intermediate CA
-    let ca_subject_common_names =
-        ca_subject_common_names_from_attributes(attributes)?.ok_or_else(|| {
+    let ca_subject_common_names = ca_subject_common_names_from_attributes(&attributes)?
+        .ok_or_else(|| {
             KmsError::InvalidRequest(
                 "The full chain of CA Subject Common Names are not found in the attributes"
                     .to_string(),
@@ -55,8 +57,14 @@ pub async fn sign_certificate_request(
 
     // Create the chain: CA and all subCAs (public key + certificate)
     trace!("Create the CA chain is missing: {ca_subject_common_names:?}");
-    let last_ca_signing_key =
-        create_ca_chain(&ca_subject_common_names, &tags, kms, user, params).await?;
+    let last_ca_signing_key = create_ca_chain(
+        &ca_subject_common_names,
+        &tags.unwrap_or_default(),
+        kms,
+        user,
+        params,
+    )
+    .await?;
 
     // Get the private key of the last CA in the chain
     let ca_private_key = retrieve_object_for_operation(

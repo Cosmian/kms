@@ -43,12 +43,12 @@ pub fn import(
     // Format arg
     args.push("-f".to_owned());
     match format {
-        CertificateInputFormat::TTLV => args.push("ttlv".to_owned()),
-        CertificateInputFormat::PEM => args.push("pem".to_owned()),
-        CertificateInputFormat::DER => args.push("der".to_owned()),
-        CertificateInputFormat::CHAIN => args.push("chain".to_owned()),
+        CertificateInputFormat::JsonTtlv => args.push("json-ttlv".to_owned()),
+        CertificateInputFormat::Pem => args.push("pem".to_owned()),
+        CertificateInputFormat::Der => args.push("der".to_owned()),
+        CertificateInputFormat::Chain => args.push("chain".to_owned()),
         CertificateInputFormat::CCADB => args.push("ccadb".to_owned()),
-        CertificateInputFormat::PKCS12 => {
+        CertificateInputFormat::Pkcs12 => {
             args.push("pkcs12".to_owned());
             args.push("--pkcs12-password".to_owned());
             args.push(pkcs12_password.unwrap_or("").to_owned());
@@ -84,7 +84,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         &ctx.owner_cli_conf_path,
         "certificates",
         "test_data/certificates/exported_certificate_ttlv.json",
-        CertificateInputFormat::TTLV,
+        CertificateInputFormat::JsonTtlv,
         None,
         None,
         None,
@@ -97,8 +97,8 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
     import(
         &ctx.owner_cli_conf_path,
         "certificates",
-        "test_data/certificates/exported_certificate_ttlv.json",
-        CertificateInputFormat::TTLV,
+        "test_data/certificates/ca.crt",
+        CertificateInputFormat::Pem,
         None,
         None,
         Some(&["import_cert"]),
@@ -111,7 +111,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         &ctx.owner_cli_conf_path,
         "certificates",
         "test_data/certificates/mozilla_IncludedRootsPEM.txt",
-        CertificateInputFormat::CHAIN,
+        CertificateInputFormat::Chain,
         None,
         None,
         Some(&["import_chain"]),
@@ -124,7 +124,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         &ctx.owner_cli_conf_path,
         "certificates",
         "test_data/certificates/kms/output.p12",
-        CertificateInputFormat::PKCS12,
+        CertificateInputFormat::Pkcs12,
         Some("secret"),
         None,
         Some(&["import_pkcs12"]),

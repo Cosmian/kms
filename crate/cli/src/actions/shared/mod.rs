@@ -1,5 +1,5 @@
 mod export_key;
-mod import_key;
+pub(crate) mod import_key;
 mod locate;
 mod unwrap_key;
 pub(crate) mod utils;

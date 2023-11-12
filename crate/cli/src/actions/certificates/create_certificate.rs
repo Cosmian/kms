@@ -20,8 +20,11 @@ use crate::{actions::shared::utils::read_bytes_from_file, error::CliError};
 /// Create a new X509 certificate from parameters or a Certificate Signing Request (CSR).
 ///
 /// When a CSR is provided, the KMS server will sign it with the CA private key.
-/// When a CSR is not provided, the KMS server will generate a new X25519 keypair,
-/// create a certificate with the provided Subject Common Name and sign it with the CA private key.
+///
+/// When a CSR is not provided, the KMS server will
+///  - generate a new X25519 keypair,
+///  - create a certificate with the provided Subject Common Name
+///  - sign it with the CA private key.
 ///
 /// If the Certificate Authority certificates chain does not exist,
 /// the corresponding certificates will be also created.

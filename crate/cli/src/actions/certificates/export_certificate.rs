@@ -31,7 +31,7 @@ pub enum CertificateExportFormat {
 /// Export a certificate from the KMS
 ///
 /// The certificate is exported either:
-/// - in PEM format
+/// - in X509 PEM format
 /// - in PKCS12 format including private key and certificate file
 /// - in TTLV JSON KMIP format
 ///
