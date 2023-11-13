@@ -107,17 +107,17 @@ pub fn export(
     };
     args.push(certificate_file);
     match output_format {
-        CertificateExportFormat::PEM => {
+        CertificateExportFormat::Pem => {
             args.push("--format");
             args.push("pem");
         }
-        CertificateExportFormat::PKCS12 => {
+        CertificateExportFormat::Pkcs12 => {
             args.push("--format");
             args.push("pkcs12");
             args.push("--pkcs12_password");
             args.push("secret");
         }
-        CertificateExportFormat::TTLV => {
+        CertificateExportFormat::JsonTtlv => {
             args.push("--format");
             args.push("ttlv");
         }
@@ -249,7 +249,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
             None,
             &certificate_id,
             &export_filename,
-            CertificateExportFormat::PKCS12,
+            CertificateExportFormat::Pkcs12,
             None,
             false,
         )?;
@@ -267,7 +267,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
             None,
             &certificate_id,
             &export_filename,
-            CertificateExportFormat::PEM,
+            CertificateExportFormat::Pem,
             None,
             false,
         )?;
@@ -284,7 +284,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
             None,
             &certificate_id,
             &export_filename,
-            CertificateExportFormat::TTLV,
+            CertificateExportFormat::JsonTtlv,
             None,
             false,
         )?;
@@ -297,7 +297,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
             Some(&["_cert", "_cert_ca=RootCA"]),
             &certificate_id,
             &export_filename,
-            CertificateExportFormat::PEM,
+            CertificateExportFormat::Pem,
             None,
             false,
         )?;
@@ -313,7 +313,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
             Some(&["_cert", "_cert_ca=SubCA"]),
             &certificate_id,
             &export_filename,
-            CertificateExportFormat::PEM,
+            CertificateExportFormat::Pem,
             None,
             false,
         )?;

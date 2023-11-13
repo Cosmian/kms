@@ -319,7 +319,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         None,
         &private_key_id,
         &private_key_wrapped,
-        CertificateExportFormat::TTLV,
+        CertificateExportFormat::JsonTtlv,
         Some(certificate_id),
         false,
     )?;
@@ -362,7 +362,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         None,
         &wrapped_private_key_uid,
         &private_key_wrapped_as_is,
-        CertificateExportFormat::TTLV,
+        CertificateExportFormat::JsonTtlv,
         None,
         false,
     )?;

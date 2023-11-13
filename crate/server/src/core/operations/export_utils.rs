@@ -4,7 +4,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Export, ExportResponse},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, StateEnumeration,
+            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType,
+            StateEnumeration,
         },
     },
     openssl::{
@@ -14,7 +15,11 @@ use cosmian_kmip::{
     result::KmipResultHelper,
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
-use openssl::pkey::{Id, PKey, Private, Public};
+use openssl::{
+    pkey::{Id, PKey, Private, Public},
+    stack::Stack,
+    x509::X509,
+};
 use tracing::{debug, trace};
 
 use crate::{
@@ -49,6 +54,8 @@ pub async fn export_get(
     // export based on the Object type
     match object_type {
         ObjectType::PrivateKey => {
+            // determine if the user wants a PKCS#12
+            let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
             // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
             if allow_full_export
                 && (owm.state == StateEnumeration::Destroyed
@@ -64,12 +71,23 @@ pub async fn export_get(
                     &mut owm,
                     &request.key_format_type,
                     &request.key_wrap_type,
-                    &request.key_wrapping_specification,
+                    if is_pkcs12 {
+                        // the key wrapping specifications supplied are to encrypt the PKCS#12,
+                        // not the private key
+                        &None
+                    } else {
+                        &request.key_wrapping_specification
+                    },
                     kms,
                     user,
                     params,
                 )
                 .await?;
+            }
+            //in the case of a PKCS#12, the private key must be packaged with the certificate
+            if is_pkcs12 {
+                post_process_pkcs12(kms, allow_full_export, user, params, &request, &mut owm)
+                    .await?;
             }
         }
         ObjectType::PublicKey => {
@@ -547,5 +565,103 @@ async fn process_symmetric_key(
         ),
     }
 
+    Ok(())
+}
+
+async fn post_process_pkcs12(
+    kms: &KMS,
+    allow_full_export: bool,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+    request: &Export,
+    owm: &mut ObjectWithMetadata,
+) -> Result<(), KmsError> {
+    // recover the Certificate Link inside the Private Key
+    let attributes = owm.object.attributes().map_err(|_| {
+        KmsError::InvalidRequest(
+            "PKCS#12 export: no attributes found in the Private Key".to_string(),
+        )
+    })?;
+    let certificate_id = attributes
+        .get_link(LinkType::CertificateLink)
+        .ok_or_else(|| {
+            KmsError::InvalidRequest(format!(
+                "PKCS#12 export: no certificate link found for key {}",
+                &owm.id
+            ))
+        })?;
+
+    // retrieve the certificate
+    let cert_owm = retrieve_object_with_metadata(
+        kms,
+        allow_full_export,
+        user,
+        params,
+        &Export {
+            unique_identifier: Some(certificate_id),
+            key_format_type: Some(KeyFormatType::X509),
+            key_wrap_type: None,
+            key_compression_type: None,
+            key_wrapping_specification: None,
+        },
+    )
+    .await?;
+
+    // convert the Private Key to openssl
+    let private_key = kmip_private_key_to_openssl(&owm.object)
+        .context("export: unable to parse the private key to openssl")?;
+    // convert the certificate to openssl X509
+    let certificate = X509::from_der(match &cert_owm.object {
+        Object::Certificate {
+            certificate_value, ..
+        } => certificate_value,
+        _ => kms_bail!("export: expected a certificate behind the private key certificate link"),
+    })?;
+    // build the intermediate certs
+    //TODO: should we add the chain to the PKCS#12 export?
+    let cas = Stack::<X509>::new()?;
+    // for ca_issuer_name in cert.issuer_name().entries() {
+    //     let pem = locate_ca_cert(
+    //         client_connector,
+    //         ca_issuer_name.data().as_utf8()?.as_ref(),
+    //         &Attributes {
+    //             object_type: Some(ObjectType::Certificate),
+    //             ..Attributes::default()
+    //         },
+    //     )
+    //         .await?;
+    //     let cert = X509::from_pem(&pem)?;
+    //     cas.push(cert)?;
+    // }
+    // recover the password
+    let password = match &request.key_wrapping_specification {
+        Some(kws) => match &kws.encryption_key_information {
+            Some(eki) => eki.unique_identifier.clone(),
+            None => "".to_string(),
+        },
+        None => "".to_string(),
+    };
+    // Create the PKCS12
+    let pkcs12 = openssl::pkcs12::Pkcs12::builder()
+        .pkey(&private_key)
+        .cert(&certificate)
+        .ca(cas)
+        .build2(&password)?;
+
+    // add the certificate to the private key
+    owm.object = Object::PrivateKey {
+        key_block: KeyBlock {
+            key_format_type: KeyFormatType::PKCS12,
+            key_compression_type: None,
+            key_value: KeyValue {
+                key_material: KeyMaterial::ByteString(pkcs12.to_der()?),
+                // attributes are added later
+                attributes: None,
+            },
+            cryptographic_algorithm: None,
+            cryptographic_length: None,
+            key_wrapping_data: None,
+        },
+    };
     Ok(())
 }
