@@ -6,6 +6,7 @@ edition = "2021"
 license-file = "../../LICENSE.md"
 
 [features]
+fips = []
 curve25519 = []
 
 [dependencies]

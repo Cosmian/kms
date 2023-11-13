@@ -125,6 +125,7 @@ pub fn unwrap_key_block(
 }
 
 #[cfg(test)]
+// TODO: create FIPS tests.
 mod tests {
 
     use cloudproof::reexport::crypto_core::{

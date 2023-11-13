@@ -1,4 +1,3 @@
-#[cfg(not(feature = "fips"))]
 use cloudproof::reexport::crypto_core::{
     reexport::{pkcs8::DecodePrivateKey, zeroize::Zeroizing},
     Ecies, EciesP192Aes128, EciesP224Aes128, EciesP256Aes128, EciesP384Aes128, EciesSalsaSealBox,
