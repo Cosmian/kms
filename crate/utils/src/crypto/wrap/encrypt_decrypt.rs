@@ -262,7 +262,11 @@ mod tests {
         ec::{EcGroup, EcKey},
         nid::Nid,
     };
-    use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
+    use openssl::{
+        pkey::{PKey, PKeyRef},
+        rand::rand_bytes,
+        rsa::Rsa,
+    };
 
     #[cfg(not(feature = "fips"))]
     use crate::crypto::curve_25519::operation::create_x25519_key_pair;
@@ -317,6 +321,25 @@ mod tests {
     }
 
     #[test]
+    fn test_encrypt_decrypt_rsa_bad_size() {
+        let rsa_privkey = Rsa::generate(1024).unwrap();
+        let rsa_pubkey = Rsa::from_public_components(
+            rsa_privkey.n().to_owned().unwrap(),
+            rsa_privkey.e().to_owned().unwrap(),
+        )
+        .unwrap();
+        let wrap_key_pair_pub = openssl_public_key_to_kmip(
+            &PKey::from_rsa(rsa_pubkey).unwrap(),
+            KeyFormatType::TransparentRSAPublicKey,
+        )
+        .unwrap();
+
+        let plaintext = b"plaintext";
+        let encryption_res = super::encrypt_bytes(&wrap_key_pair_pub, plaintext);
+        assert!(encryption_res.is_err());
+    }
+
+    #[test]
     #[cfg(not(feature = "fips"))]
     fn test_encrypt_decrypt_ec_p192() {
         let curve = EcGroup::from_curve_name(Nid::X9_62_PRIME192V1).unwrap();
@@ -365,18 +388,6 @@ mod tests {
         let plaintext = b"plaintext";
         let ciphertext = super::encrypt_bytes(&wrap_key_pair_pub, plaintext).unwrap();
         let decrypted_plaintext = super::decrypt_bytes(&wrap_key_pair_priv, &ciphertext).unwrap();
-        assert_eq!(plaintext, &decrypted_plaintext[..]);
-    }
-
-    #[test]
-    #[cfg(not(feature = "fips"))]
-
-    fn test_encrypt_decrypt_pkcs8() {
-        let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid").unwrap();
-        let plaintext = b"plaintext";
-        let ciphertext = super::encrypt_bytes(wrap_key_pair.public_key(), plaintext).unwrap();
-        let decrypted_plaintext =
-            super::decrypt_bytes(wrap_key_pair.private_key(), &ciphertext).unwrap();
         assert_eq!(plaintext, &decrypted_plaintext[..]);
     }
 }

@@ -106,7 +106,7 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Obj
 }
 
 /// Generate a X25519 Key Pair. Not FIPS 140-3 compliant.
-// TODO: #[cfg(not(feature = "fips"))]
+//#[cfg(not(feature = "fips"))]
 pub fn create_x25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -131,6 +131,8 @@ pub fn create_ed25519_key_pair(
 }
 
 #[cfg(test)]
+//#[cfg(not(feature = "fips"))]
+// TODO: add FIPS tests.
 mod tests {
     use cosmian_kmip::kmip::kmip_data_structures::KeyMaterial;
     use openssl::pkey::{Id, PKey};
