@@ -262,11 +262,7 @@ mod tests {
         ec::{EcGroup, EcKey},
         nid::Nid,
     };
-    use openssl::{
-        pkey::{PKey, PKeyRef},
-        rand::rand_bytes,
-        rsa::Rsa,
-    };
+    use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 
     #[cfg(not(feature = "fips"))]
     use crate::crypto::curve_25519::operation::create_x25519_key_pair;
