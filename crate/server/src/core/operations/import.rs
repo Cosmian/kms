@@ -265,34 +265,70 @@ async fn pre_process_pkcs12(
     )?;
 
     //import the leaf certificate
-    // Recover the PKCS12 X509 certificate
-    let openssl_cert = pkcs12.cert.ok_or_else(|| {
-        KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_string())
-    })?;
-    let leaf_certificate = Certificate {
-        certificate_type: CertificateType::X509,
-        certificate_value: openssl_cert.to_der()?,
+    let leaf_certificate = {
+        // Recover the PKCS12 X509 certificate
+        let openssl_cert = pkcs12.cert.ok_or_else(|| {
+            KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_string())
+        })?;
+        let leaf_certificate = Certificate {
+            certificate_type: CertificateType::X509,
+            certificate_value: openssl_cert.to_der()?,
+        };
+        // first set the Link to the private key on the attributes
+        let mut request_attributes = request_attributes.clone();
+        request_attributes.add_link(
+            LinkType::PrivateKeyLink,
+            LinkedObjectIdentifier::TextString(private_key_id.to_string()),
+        );
+        // set tags
+        let mut tags = tags.to_owned().unwrap_or_default();
+        add_certificate_tags(&request_attributes, &openssl_cert, &mut tags)?;
+        //upsert
+        kms.db
+            .create_objects()
+            .upsert(
+                &format!("{}-cert", private_key_id),
+                owner,
+                &leaf_certificate,
+                Some(&tags),
+                StateEnumeration::Active,
+                params,
+            )
+            .await?;
+        leaf_certificate
     };
-    // first set the Link to the private key on the attributes
-    let mut request_attributes = request_attributes.clone();
-    request_attributes.add_link(
-        LinkType::PrivateKeyLink,
-        LinkedObjectIdentifier::TextString(private_key_id.to_string()),
-    );
-    // set tags
-    let mut tags = tags.to_owned().unwrap_or_default();
-    add_tags_to_certificate(&request_attributes, &openssl_cert, &mut tags)?;
-    //upsert
-    kms.db
-        .upsert(
-            &format!("{}-cert", private_key_id),
-            owner,
-            &leaf_certificate,
-            Some(&tags),
-            StateEnumeration::Active,
-            params,
-        )
-        .await?;
+
+    // import the chain if any  (the chain is optional)
+    let mut child_certificate = leaf_certificate;
+    if let Some(chain) = pkcs12.ca {
+        // import the chain
+        for cert in chain.into_iter() {
+            let chain_certificate = Certificate {
+                certificate_type: CertificateType::X509,
+                certificate_value: cert.to_der()?,
+            };
+            // first set the Link to the private key on the attributes
+            let mut request_attributes = request_attributes.clone();
+            request_attributes.add_link(
+                LinkType::ChildLink,
+                LinkedObjectIdentifier::TextString(private_key_id.to_string()),
+            );
+            // set tags
+            let mut tags = tags.to_owned().unwrap_or_default();
+            add_certificate_tags(&request_attributes, &cert, &mut tags)?;
+            //upsert
+            kms.db
+                .upsert(
+                    &format!("{}-cert", private_key_id),
+                    owner,
+                    &chain_certificate,
+                    Some(&tags),
+                    StateEnumeration::Active,
+                    params,
+                )
+                .await?;
+        }
+    }
 
     //return the private key
     Ok(private_key)
@@ -319,7 +355,7 @@ fn pre_process_certificate(
 
     // insert the tag corresponding to the object type if tags should be updated
     if let Some(tags) = tags.as_mut() {
-        add_tags_to_certificate(request_attributes, &certificate, tags)?;
+        add_certificate_tags(request_attributes, &certificate, tags)?;
     }
     Ok(Certificate {
         certificate_type: CertificateType::X509,
@@ -327,7 +363,7 @@ fn pre_process_certificate(
     })
 }
 
-fn add_tags_to_certificate(
+fn add_certificate_tags(
     request_attributes: &Attributes,
     certificate: &X509,
     tags: &mut HashSet<String>,

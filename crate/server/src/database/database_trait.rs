@@ -34,7 +34,12 @@ pub trait Database {
 
     /// Insert the provided Objects in the database in a transaction
     ///
-    /// A new UUID will be created if none is supplier.
+    /// Object is a triplet:
+    /// - optional uid
+    /// - KMIP object
+    /// - tags
+    ///
+    /// A new uid will be created if none is supplied.
     /// This method will fail if a `uid` is supplied
     /// and an object with the same id already exists
     async fn create_objects(
