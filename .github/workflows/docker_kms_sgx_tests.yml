@@ -19,7 +19,7 @@ jobs:
   run_and_test:
 
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+      group: sgx_concurrency_group
 
     services:
       kms:
