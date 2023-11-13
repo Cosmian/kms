@@ -77,18 +77,6 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
     // Create a test server
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
-    // import as TTLV JSON
-    import(
-        &ctx.owner_cli_conf_path,
-        "certificates",
-        "test_data/certificates/exported_certificate_ttlv.json",
-        CertificateInputFormat::TTLV,
-        None,
-        None,
-        false,
-        false,
-    )?;
-
     // import as PEM
     import(
         &ctx.owner_cli_conf_path,
@@ -97,6 +85,18 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         CertificateInputFormat::PEM,
         None,
         Some(&["import_cert"]),
+        false,
+        false,
+    )?;
+
+    // import as TTLV JSON
+    import(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        "test_data/certificates/exported_certificate_ttlv.json",
+        CertificateInputFormat::TTLV,
+        None,
+        None,
         false,
         false,
     )?;
