@@ -17,6 +17,10 @@ on:
 
 jobs:
   run_and_test:
+
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+
     services:
       kms:
         image: ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
