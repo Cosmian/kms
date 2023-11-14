@@ -30,7 +30,11 @@ use super::{
     permissions::PermissionsDB,
 };
 use crate::{
-    database::{object_with_metadata::ObjectWithMetadata, Database},
+    database::{
+        database_trait::AtomicOperation, object_with_metadata::ObjectWithMetadata,
+        redis::objects_db::RedisOperation, Database,
+    },
+    error::KmsError,
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
@@ -99,6 +103,121 @@ impl RedisWithFindex {
         )?;
         Ok(master_secret_key)
     }
+
+    /// Prepare an object for upsert
+    /// Note: Findex indexes are upserted even if the object is not upserted later on
+    async fn prepare_object_for_upsert(
+        &self,
+        uid: &UniqueIdentifier,
+        owner: &str,
+        object: &Object,
+        tags: Option<&HashSet<String>>,
+        state: StateEnumeration,
+        params: Option<&ExtraDatabaseParams>,
+    ) -> Result<RedisDbObject, KmsError> {
+        // additions to the index
+        let mut index_additions = HashMap::new();
+
+        //replace the existing tags (if any) with the new ones (if provided)
+        let tags = if let Some(tags) = tags {
+            tags.clone()
+        } else {
+            self.retrieve_tags(uid, params).await?
+        };
+        // the database object to index and store
+        let db_object =
+            RedisDbObject::new(object.clone(), owner.to_string(), state, Some(tags.clone()));
+        // extract the keywords
+        index_additions.insert(
+            IndexedValue::Location(Location::from(uid.as_bytes())),
+            db_object.keywords(),
+        );
+
+        // upsert the index
+        self.findex
+            .upsert(
+                &self.findex_key.to_bytes(),
+                &self.label,
+                index_additions,
+                HashMap::new(),
+            )
+            .await?;
+        Ok(db_object)
+    }
+
+    async fn prepare_object_for_create(
+        &self,
+        uid: Option<String>,
+        owner: &str,
+        object: &Object,
+        tags: &HashSet<String>,
+    ) -> Result<(String, RedisDbObject), KmsError> {
+        // If the uid is not provided, generate a new one
+        let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
+        let db_object = self
+            .prepare_object_for_upsert(
+                &uid,
+                owner,
+                object,
+                Some(tags),
+                StateEnumeration::Active,
+                None,
+            )
+            .await?;
+        Ok((uid, db_object))
+    }
+
+    async fn prepare_object_for_update(
+        &self,
+        uid: &UniqueIdentifier,
+        object: &Object,
+        tags: Option<&HashSet<String>>,
+    ) -> Result<RedisDbObject, KmsError> {
+        let mut db_object = self
+            .objects_db
+            .object_get(uid)
+            .await?
+            .ok_or_else(|| KmsError::ItemNotFound(uid.to_string()))?;
+        db_object.object = object.clone();
+        if tags.is_some() {
+            db_object.tags = tags.cloned();
+        }
+
+        // updates to the index;
+        // note: these are additions so some entries will be doubled but shat should not break the index
+        // and will be removed during compaction
+        let mut index_additions = HashMap::new();
+        // extract the keywords
+        index_additions.insert(
+            IndexedValue::Location(Location::from(uid.as_bytes())),
+            db_object.keywords(),
+        );
+        // upsert the index
+        self.findex
+            .upsert(
+                &self.findex_key.to_bytes(),
+                &self.label,
+                index_additions,
+                HashMap::new(),
+            )
+            .await?;
+        Ok(db_object)
+    }
+
+    async fn prepare_object_for_state_update(
+        &self,
+        uid: &UniqueIdentifier,
+        state: StateEnumeration,
+    ) -> Result<RedisDbObject, KmsError> {
+        let mut db_object = self
+            .objects_db
+            .object_get(uid)
+            .await?
+            .ok_or_else(|| KmsError::ItemNotFound(uid.to_string()))?;
+        db_object.state = state;
+        // The state is not indexed, so no updates there
+        Ok(db_object)
+    }
 }
 
 #[async_trait(?Send)]
@@ -120,47 +239,12 @@ impl Database for RedisWithFindex {
         tags: &HashSet<String>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier> {
-        // If the uid is not provided, generate a new one
-        let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
-        let indexed_value = IndexedValue::Location(Location::from(uid.as_bytes()));
-
-        // the database object to index and store
-        let db_object = RedisDbObject::new(
-            object.clone(),
-            owner.to_string(),
-            StateEnumeration::Active,
-            Some(tags.clone()),
-        );
-
-        // extract the keywords
-        let keywords = db_object.keywords();
-
-        // additions to the index
-        let mut additions = HashMap::new();
-        additions.insert(indexed_value, keywords);
-
-        // upsert the index
-        self.findex
-            .upsert(
-                &self.findex_key.to_bytes(),
-                &self.label,
-                additions,
-                HashMap::new(),
-            )
+        let (uid, db_object) = self
+            .prepare_object_for_create(uid, owner, object, tags)
             .await?;
 
-        // upsert the object
-        self.objects_db
-            .object_upsert(
-                &uid,
-                &RedisDbObject::new(
-                    object.clone(),
-                    owner.to_string(),
-                    StateEnumeration::Active,
-                    Some(tags.clone()),
-                ),
-            )
-            .await?;
+        // create the object
+        self.objects_db.object_create(&uid, &db_object).await?;
 
         Ok(uid)
     }
@@ -305,8 +389,12 @@ impl Database for RedisWithFindex {
         uid: &UniqueIdentifier,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
-        let redis_db_object = self.objects_db.object_get(uid).await?;
-        Ok(redis_db_object.tags.unwrap_or_default())
+        Ok(self
+            .objects_db
+            .object_get(uid)
+            .await?
+            .map(|o| o.tags.unwrap_or_default())
+            .unwrap_or_default())
     }
 
     /// Update an object in the database.
@@ -319,9 +407,7 @@ impl Database for RedisWithFindex {
         tags: Option<&HashSet<String>>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        let mut db_object = self.objects_db.object_get(uid).await?;
-        db_object.object = object.clone();
-        db_object.tags = tags.cloned();
+        let db_object = self.prepare_object_for_update(uid, object, tags).await?;
         self.objects_db.object_upsert(uid, &db_object).await?;
         Ok(())
     }
@@ -332,8 +418,7 @@ impl Database for RedisWithFindex {
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        let mut db_object = self.objects_db.object_get(uid).await?;
-        db_object.state = state;
+        let db_object = self.prepare_object_for_state_update(uid, state).await?;
         self.objects_db.object_upsert(uid, &db_object).await?;
         Ok(())
     }
@@ -344,23 +429,19 @@ impl Database for RedisWithFindex {
     async fn upsert(
         &self,
         uid: &UniqueIdentifier,
-        user: &str,
+        owner: &str,
         object: &Object,
         tags: Option<&HashSet<String>>,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        //replace the existing tags (if any) with the new ones (if provided)
-        let tags = if let Some(tags) = tags {
-            tags.clone()
-        } else {
-            self.retrieve_tags(uid, params).await?
-        };
-        self.create(Some(uid.clone()), user, object, &tags, params)
+        let db_object = self
+            .prepare_object_for_upsert(uid, owner, object, tags, state, params)
             .await?;
-        if state != StateEnumeration::Active {
-            self.update_state(uid, state, params).await?;
-        }
+
+        // upsert the object
+        self.objects_db.object_upsert(&uid, &db_object).await?;
+
         Ok(())
     }
 
@@ -370,11 +451,12 @@ impl Database for RedisWithFindex {
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        let db_object = self.objects_db.object_get(uid).await?;
-        if db_object.owner != user {
-            kms_bail!("User is not the owner of the object");
+        if let Some(db_object) = self.objects_db.object_get(uid).await? {
+            if db_object.owner != user {
+                kms_bail!("User is not the owner of the object");
+            }
+            self.objects_db.object_delete(uid).await?;
         }
-        self.objects_db.object_delete(uid).await?;
         Ok(())
     }
 
@@ -464,10 +546,12 @@ impl Database for RedisWithFindex {
         owner: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
-        self.objects_db
+        let object = self
+            .objects_db
             .object_get(uid)
-            .await
-            .map(|object| object.owner == owner)
+            .await?
+            .ok_or_else(|| KmsError::ItemNotFound(uid.to_string()))?;
+        Ok(object.owner == owner)
     }
 
     /// Return uid, state and attributes of the object identified by its owner,
@@ -575,6 +659,55 @@ impl Database for RedisWithFindex {
             .unwrap_or_default()
             .into_iter()
             .collect())
+    }
+
+    async fn atomic(
+        &self,
+        owner: &str,
+        operations: &[AtomicOperation],
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<()> {
+        let mut redis_operations: Vec<RedisOperation> = Vec::with_capacity(operations.len());
+        for operation in operations {
+            match operation {
+                AtomicOperation::Upsert((uid, object, tags, state)) => {
+                    //TODO: this operation contains a non atomic retrieve_tags. It will be hard to make this whole method atomic
+                    let db_object = self
+                        .prepare_object_for_upsert(
+                            uid,
+                            owner,
+                            object,
+                            tags.as_ref(),
+                            *state,
+                            params,
+                        )
+                        .await?;
+                    redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
+                }
+                AtomicOperation::Create((uid, object, tags)) => {
+                    let (uid, db_object) = self
+                        .prepare_object_for_create(Some(uid.clone()), owner, object, tags)
+                        .await?;
+                    redis_operations.push(RedisOperation::Create(uid, db_object));
+                }
+                AtomicOperation::Delete(uid) => {
+                    redis_operations.push(RedisOperation::Delete(uid.clone()));
+                }
+                AtomicOperation::UpdateObject((uid, object, tags)) => {
+                    //TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
+                    let db_object = self
+                        .prepare_object_for_update(uid, object, tags.as_ref())
+                        .await?;
+                    redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
+                }
+                AtomicOperation::UpdateState((uid, state)) => {
+                    //TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
+                    let db_object = self.prepare_object_for_state_update(uid, *state).await?;
+                    redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
+                }
+            }
+        }
+        self.objects_db.atomic(&redis_operations).await
     }
 }
 

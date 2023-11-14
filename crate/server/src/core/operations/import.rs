@@ -285,7 +285,6 @@ async fn pre_process_pkcs12(
         add_certificate_tags(&request_attributes, &openssl_cert, &mut tags)?;
         //upsert
         kms.db
-            .create_objects()
             .upsert(
                 &format!("{}-cert", private_key_id),
                 owner,

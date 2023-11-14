@@ -2,7 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
-## [X.Y.Z] - 2023-XX-YY
+
+## [4.9.0]
+
+### Features
+
+- Database: support for more elaborate atomic transactions
+- 
+### Bug Fixes
+
+- Redis-Findex: `create` now checks for pre-existence of the object
+- Better KMIP compliance:
+  - for KeyBlock [#76](https://github.com/Cosmian/kms/issues/76)
+  - default export formats [#78](https://github.com/Cosmian/kms/issues/78)
+
+
+## [4.8.0] - 2023-10-07
+
+### Bug Fixes
+
+- Clarified CLI documentation for certificates sub command
+- TODO: Re-used existing import facility
 
 ### Features
 
@@ -57,7 +77,7 @@ All notable changes to this project will be documented in this file.
   - force checking the leaf TLS certificate when querying a KMS running inside a TEE
   - verify RA-TLS certificate before querying the bootstrap server
   - review the TLS certificate generation using the key tied to the TEE
-  - remove libsgx and create a new dependance to tee_attestation crate
+  - remove libsgx and create a new dependence to tee_attestation crate
   - update KMS server argument regarding the TEE and certbot
   - review documentation regarding the KMS usage inside a TEE
 - Activate tracing in CLI tests when binary is instrumented ([#56])

@@ -21,7 +21,7 @@ use cosmian_kmip::kmip::{
 use redis::{aio::ConnectionManager, pipe, AsyncCommands};
 use serde::{Deserialize, Serialize};
 
-use crate::{error::KmsError, result::KResult};
+use crate::{error::KmsError, kms_bail, result::KResult};
 
 /// Extract the keywords from the attributes
 pub(crate) fn keywords_from_attributes(attributes: &Attributes) -> HashSet<Keyword> {
@@ -151,6 +151,22 @@ impl ObjectsDB {
         Ok(redis_db_object)
     }
 
+    pub async fn object_create(&self, uid: &str, redis_db_object: &RedisDbObject) -> KResult<()> {
+        let res: usize = self
+            .mgr
+            .clone()
+            .set_nx(
+                ObjectsDB::object_key(uid),
+                self.encrypt_object(uid, redis_db_object)?,
+            )
+            .await?;
+        if res == 1 {
+            Ok(())
+        } else {
+            kms_bail!("object {uid} already exists")
+        }
+    }
+
     pub async fn object_upsert(&self, uid: &str, redis_db_object: &RedisDbObject) -> KResult<()> {
         self.mgr
             .clone()
@@ -162,14 +178,14 @@ impl ObjectsDB {
         Ok(())
     }
 
-    pub async fn object_get(&self, uid: &str) -> KResult<RedisDbObject> {
+    pub async fn object_get(&self, uid: &str) -> KResult<Option<RedisDbObject>> {
         let ciphertext: Vec<u8> = self.mgr.clone().get(ObjectsDB::object_key(uid)).await?;
         if ciphertext.is_empty() {
-            return Err(KmsError::ItemNotFound(uid.to_string()))
+            return Ok(None)
         }
         let mut dbo: RedisDbObject = self.decrypt_object(uid, &ciphertext)?;
         dbo.object = Object::post_fix(dbo.object_type, dbo.object);
-        Ok(dbo)
+        Ok(Some(dbo))
     }
 
     pub async fn object_delete(&self, uid: &str) -> KResult<()> {
@@ -210,6 +226,58 @@ impl ObjectsDB {
         Ok(results)
     }
 
+    pub async fn atomic(&self, operations: &[RedisOperation]) -> KResult<()> {
+        // first check if all created objects do not already exist
+        // watching them, will lock them until the end of the transaction
+        let mut pipeline = pipe();
+        pipeline.atomic();
+        for operation in operations {
+            match operation {
+                RedisOperation::Create(uid, _) => {
+                    let key = ObjectsDB::object_key(uid);
+                    pipeline.cmd("WATCH").arg(&key).ignore();
+                    pipeline.exists(ObjectsDB::object_key(&key));
+                }
+                _ => {}
+            }
+        }
+        let res: Vec<usize> = pipeline.query_async(&mut self.mgr.clone()).await?;
+        // if any exists, abort
+        if res.iter().any(|exists| *exists == 1) {
+            // unwatch all keys
+            pipe()
+                .cmd("UNWATCH")
+                .ignore()
+                .query_async(&mut self.mgr.clone())
+                .await?;
+            kms_bail!("one or more objects already exist")
+        }
+
+        let mut pipeline = pipe();
+        pipeline.atomic();
+        for operation in operations {
+            match operation {
+                RedisOperation::Upsert(uid, redis_db_object) => {
+                    pipeline.set(
+                        ObjectsDB::object_key(uid),
+                        self.encrypt_object(uid, redis_db_object)?,
+                    );
+                }
+                RedisOperation::Delete(uid) => {
+                    pipeline.del(ObjectsDB::object_key(uid));
+                }
+                RedisOperation::Create(uid, redis_dn_object) => {
+                    pipeline.set(
+                        ObjectsDB::object_key(uid),
+                        self.encrypt_object(uid, redis_dn_object)?,
+                    );
+                }
+            }
+        }
+        pipeline.query_async(&mut self.mgr.clone()).await?;
+        Ok(())
+    }
+
     /// Clear all data
     ///
     /// # Warning
@@ -232,4 +300,10 @@ impl RemovedLocationsFinder for ObjectsDB {
         // Objects and permissions are never removed from the DB
         Ok(HashSet::new())
     }
+}
+
+pub(crate) enum RedisOperation {
+    Create(String, RedisDbObject),
+    Upsert(String, RedisDbObject),
+    Delete(String),
 }

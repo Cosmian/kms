@@ -11,7 +11,10 @@ use cloudproof::reexport::{
         Location,
     },
 };
-use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration};
+use cosmian_kmip::{
+    kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration},
+    result::KmipResultHelper,
+};
 use cosmian_kms_utils::{access::ObjectOperationType, crypto::symmetric::create_symmetric_key};
 use cosmian_logger::log_utils::log_init;
 use redis::aio::ConnectionManager;
@@ -66,7 +69,7 @@ pub async fn test_objects_db() -> KResult<()> {
     o_db.clear_all().await?;
 
     // check that the object is not there
-    assert!(o_db.object_get(uid).await.is_err());
+    assert!(o_db.object_get(uid).await?.is_none());
 
     o_db.object_upsert(
         uid,
@@ -78,7 +81,7 @@ pub async fn test_objects_db() -> KResult<()> {
         ),
     )
     .await?;
-    let redis_db_object = o_db.object_get(uid).await?;
+    let redis_db_object = o_db.object_get(uid).await?.context("object not found")?;
     assert_eq!(
         object.key_block()?.key_bytes()?,
         redis_db_object.object.key_block()?.key_bytes()?
@@ -87,7 +90,7 @@ pub async fn test_objects_db() -> KResult<()> {
     assert_eq!(redis_db_object.state, StateEnumeration::Active);
 
     o_db.object_delete(uid).await?;
-    assert!(o_db.object_get(uid).await.is_err());
+    assert!(o_db.object_get(uid).await?.is_none());
 
     Ok(())
 }

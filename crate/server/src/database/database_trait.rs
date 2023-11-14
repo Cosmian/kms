@@ -180,4 +180,28 @@ pub trait Database {
         no_inherited_access: bool,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<ObjectOperationType>>;
+
+    /// Perform an atomic set of operation on the database
+    /// (typically in a transaction)
+    async fn atomic(
+        &self,
+        owner: &str,
+        operations: &[AtomicOperation],
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<()>;
+}
+
+/// An atomic operation on the database
+#[derive(Debug)]
+pub enum AtomicOperation {
+    /// Create (uid, object, tags) - the state will be active
+    Create((String, Object, HashSet<String>)),
+    /// Update the object (uid, object, tags, state) - the state will be not be updated
+    UpdateObject((String, Object, Option<HashSet<String>>)),
+    /// Update the state (uid, state)
+    UpdateState((String, StateEnumeration)),
+    /// Upsert (uid, object, tags, state) - the state be updated
+    Upsert((String, Object, Option<HashSet<String>>, StateEnumeration)),
+    /// Delete (uid)
+    Delete(String),
 }

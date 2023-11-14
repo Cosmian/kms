@@ -8,7 +8,7 @@ use std::{
 use async_trait::async_trait;
 use cloudproof::reexport::crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
-    kmip_objects,
+    kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
@@ -17,7 +17,6 @@ use sqlx::{
     ConnectOptions, Pool, Sqlite,
 };
 use tracing::trace;
-use cosmian_kmip::kmip::kmip_objects::Object;
 
 use super::{
     cached_sqlite_struct::KMSSqliteCache,
@@ -29,10 +28,15 @@ use super::{
     },
 };
 use crate::{
-    database::{sqlite::retrieve_tags_, Database, SQLITE_QUERIES},
+    database::{
+        database_trait::AtomicOperation,
+        sqlite::{atomic_, retrieve_tags_},
+        Database, SQLITE_QUERIES,
+    },
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
+
 pub struct CachedSqlCipher {
     path: PathBuf,
     cache: KMSSqliteCache,
@@ -140,7 +144,7 @@ impl Database for CachedSqlCipher {
         &self,
         uid: Option<String>,
         owner: &str,
-        object: &kmip_objects::Object,
+        object: &Object,
         tags: &HashSet<String>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier> {
@@ -167,7 +171,7 @@ impl Database for CachedSqlCipher {
     async fn create_objects(
         &self,
         owner: &str,
-        objects: &[(Option<String>, kmip_objects::Object, &HashSet<String>)],
+        objects: &[(Option<String>, Object, &HashSet<String>)],
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         if let Some(params) = params {
@@ -229,7 +233,7 @@ impl Database for CachedSqlCipher {
     async fn update_object(
         &self,
         uid: &UniqueIdentifier,
-        object: &kmip_objects::Object,
+        object: &Object,
         tags: Option<&HashSet<String>>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -261,9 +265,19 @@ impl Database for CachedSqlCipher {
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = update_state_(uid, state, &*pool).await;
-            self.post_query(params.group_id)?;
-            return ret
+            let mut tx = pool.begin().await?;
+            match update_state_(uid, state, &mut tx).await {
+                Ok(()) => {
+                    tx.commit().await?;
+                    self.post_query(params.group_id)?;
+                    return Ok(())
+                }
+                Err(e) => {
+                    tx.rollback().await.context("transaction failed")?;
+                    self.post_query(params.group_id)?;
+                    kms_bail!("update of state of object {uid} failed: {e}")
+                }
+            }
         }
 
         kms_bail!("Missing group_id/key for opening SQLCipher")
@@ -447,6 +461,32 @@ impl Database for CachedSqlCipher {
                 list_user_access_rights_on_object_(uid, userid, no_inherited_access, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
+        }
+
+        kms_bail!("Missing group_id/key for opening SQLCipher")
+    }
+
+    async fn atomic(
+        &self,
+        owner: &str,
+        operations: &[AtomicOperation],
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<()> {
+        if let Some(params) = params {
+            let pool = self.pre_query(params.group_id, &params.key).await?;
+            let mut tx = pool.begin().await?;
+            return match atomic_(owner, operations, &mut tx).await {
+                Ok(()) => {
+                    tx.commit().await?;
+                    self.post_query(params.group_id)?;
+                    Ok(())
+                }
+                Err(e) => {
+                    tx.rollback().await.context("transaction failed")?;
+                    self.post_query(params.group_id)?;
+                    Err(e)
+                }
+            }
         }
 
         kms_bail!("Missing group_id/key for opening SQLCipher")

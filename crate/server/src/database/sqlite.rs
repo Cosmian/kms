@@ -6,7 +6,6 @@ use std::{
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
-    kmip_objects,
     kmip_objects::Object,
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
@@ -23,8 +22,8 @@ use uuid::Uuid;
 use super::object_with_metadata::ObjectWithMetadata;
 use crate::{
     database::{
-        query_from_attributes, state_from_string, DBObject, Database, SqlitePlaceholder,
-        SQLITE_QUERIES,
+        database_trait::AtomicOperation, query_from_attributes, state_from_string, DBObject,
+        Database, SqlitePlaceholder, SQLITE_QUERIES,
     },
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
@@ -93,7 +92,7 @@ impl Database for SqlitePool {
         &self,
         uid: Option<UniqueIdentifier>,
         user: &str,
-        object: &kmip_objects::Object,
+        object: &Object,
         tags: &HashSet<String>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<UniqueIdentifier> {
@@ -112,7 +111,7 @@ impl Database for SqlitePool {
     async fn create_objects(
         &self,
         user: &str,
-        objects: &[(Option<String>, kmip_objects::Object, &HashSet<String>)],
+        objects: &[(Option<String>, Object, &HashSet<String>)],
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         let mut res = vec![];
@@ -122,7 +121,7 @@ impl Database for SqlitePool {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
-                    kms_bail!("creation of objects failed: {}", e);
+                    kms_bail!("creation of object {uid:?} failed: {e}");
                 }
             };
         }
@@ -151,7 +150,7 @@ impl Database for SqlitePool {
     async fn update_object(
         &self,
         uid: &UniqueIdentifier,
-        object: &kmip_objects::Object,
+        object: &Object,
         tags: Option<&HashSet<String>>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -174,7 +173,17 @@ impl Database for SqlitePool {
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        update_state_(uid, state, &self.pool).await
+        let mut tx = self.pool.begin().await?;
+        match update_state_(uid, state, &mut tx).await {
+            Ok(()) => {
+                tx.commit().await?;
+                Ok(())
+            }
+            Err(e) => {
+                tx.rollback().await.context("transaction failed")?;
+                kms_bail!("update of the state of object failed: {}", e);
+            }
+        }
     }
 
     async fn upsert(
@@ -292,12 +301,31 @@ impl Database for SqlitePool {
     ) -> KResult<HashSet<ObjectOperationType>> {
         list_user_access_rights_on_object_(uid, user, no_inherited_access, &self.pool).await
     }
+
+    async fn atomic(
+        &self,
+        owner: &str,
+        operations: &[AtomicOperation],
+        _params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<()> {
+        let mut tx = self.pool.begin().await?;
+        match atomic_(owner, operations, &mut tx).await {
+            Ok(()) => {
+                tx.commit().await?;
+                Ok(())
+            }
+            Err(e) => {
+                tx.rollback().await.context("transaction failed")?;
+                Err(e)
+            }
+        }
+    }
 }
 
 pub(crate) async fn create_(
     uid: Option<String>,
     owner: &str,
-    object: &kmip_objects::Object,
+    object: &Object,
     tags: &HashSet<String>,
     executor: &mut Transaction<'_, Sqlite>,
 ) -> KResult<UniqueIdentifier> {
@@ -453,7 +481,7 @@ where
 
 pub(crate) async fn update_object_(
     uid: &UniqueIdentifier,
-    object: &kmip_objects::Object,
+    object: &Object,
     tags: Option<&HashSet<String>>,
     executor: &mut Transaction<'_, Sqlite>,
 ) -> KResult<()> {
@@ -503,14 +531,11 @@ pub(crate) async fn update_object_(
     Ok(())
 }
 
-pub(crate) async fn update_state_<'e, E>(
+pub(crate) async fn update_state_(
     uid: &UniqueIdentifier,
     state: StateEnumeration,
-    executor: E,
-) -> KResult<()>
-where
-    E: Executor<'e, Database = Sqlite> + Copy,
-{
+    executor: &mut Transaction<'_, Sqlite>,
+) -> KResult<()> {
     sqlx::query(
         SQLITE_QUERIES
             .get("update-object-with-state")
@@ -518,7 +543,7 @@ where
     )
     .bind(state.to_string())
     .bind(uid)
-    .execute(executor)
+    .execute(&mut **executor)
     .await?;
     trace!("Updated in DB: {uid}");
     Ok(())
@@ -894,5 +919,42 @@ where
     )
     .execute(executor)
     .await?;
+    Ok(())
+}
+
+pub(crate) async fn atomic_(
+    owner: &str,
+    operations: &[AtomicOperation],
+    mut tx: &mut Transaction<'_, Sqlite>,
+) -> KResult<()> {
+    for operation in operations {
+        match operation {
+            AtomicOperation::Create((uid, object, tags)) => {
+                if let Err(e) = create_(Some(uid.to_owned()), owner, object, tags, &mut tx).await {
+                    kms_bail!("creation of object {uid} failed: {e}");
+                }
+            }
+            AtomicOperation::UpdateObject((uid, object, tags)) => {
+                if let Err(e) = update_object_(uid, object, tags.as_ref(), &mut tx).await {
+                    kms_bail!("update of object {uid} failed: {e}");
+                }
+            }
+            AtomicOperation::UpdateState((uid, state)) => {
+                if let Err(e) = update_state_(uid, *state, &mut tx).await {
+                    kms_bail!("update of the state of object {uid} failed: {e}");
+                }
+            }
+            AtomicOperation::Upsert((uid, object, tags, state)) => {
+                if let Err(e) = upsert_(uid, owner, object, tags.as_ref(), *state, &mut tx).await {
+                    kms_bail!("upsert of object {uid} failed: {e}");
+                }
+            }
+            AtomicOperation::Delete(uid) => {
+                if let Err(e) = delete_(uid, owner, &mut tx).await {
+                    kms_bail!("deletion of object {uid} failed: {e}");
+                }
+            }
+        }
+    }
     Ok(())
 }
