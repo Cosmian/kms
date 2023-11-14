@@ -6,22 +6,18 @@ use cosmian_kmip::{
     },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
-use openssl::{
-    pkey::{PKey, Private, Public},
-    rsa::Padding,
-};
+use openssl::pkey::{PKey, Private, Public};
 use tracing::debug;
 
+use super::{
+    rfc5649::{key_unwrap, key_wrap},
+    rfc5990::{rfc5990_decrypt, rfc5990_encrypt},
+};
 use crate::{
-    crypto::{
-        hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
-        wrap::rfc5649::{key_unwrap, key_wrap},
-    },
+    crypto::hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail, DecryptionSystem, EncryptionSystem,
 };
-
-const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 2048;
 
 /// Encrypt bytes using the wrapping key
 pub fn encrypt_bytes(wrapping_key: &Object, plaintext: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
@@ -119,36 +115,7 @@ fn encrypt_with_public_key(
         );
         Ok(ciphertext)
     } else {
-        // Wrap symmetric key using RSA.
-        if pubkey.rsa().is_err() {
-            kmip_utils_bail!(
-                "With FIPS feature enabled, only RSA keypairs are allowed for key wrapping."
-            )
-        }
-
-        let rsa_pubkey = pubkey.rsa()?;
-        // XXX - Can be same bit size but plaintext can be greater than pubkey.
-        if plaintext.len() * 8 > pubkey.bits() as usize {
-            kmip_utils_bail!(
-                "Attempt to de-encapsulate encapsulated key of size > {} bits.",
-                pubkey.bits()
-            )
-        }
-
-        if pubkey.bits() < FIPS_MIN_RSA_MODULUS_LENGTH {
-            kmip_utils_bail!(
-                "RSA key has insufficient size: expected >= {} and got {}",
-                FIPS_MIN_RSA_MODULUS_LENGTH,
-                pubkey.bits()
-            )
-        }
-
-        let mut ciphertext = vec![0u8; rsa_pubkey.size() as usize];
-        let encrypted_len =
-            rsa_pubkey.public_encrypt(plaintext, &mut ciphertext, Padding::PKCS1_OAEP)?;
-        ciphertext.truncate(encrypted_len);
-
-        Ok(ciphertext)
+        rfc5990_encrypt(pubkey, plaintext)
     }
 }
 
@@ -202,6 +169,7 @@ fn decrypt_with_private_key(
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     if cfg!(not(feature = "fips")) {
+        // If not in FIPS mode, perform Hybrid Encryption.
         let decrypt_system = HybridDecryptionSystem::new(None, p_key);
         let request = Decrypt {
             data: Some(ciphertext.to_vec()),
@@ -218,36 +186,7 @@ fn decrypt_with_private_key(
         let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
         Ok(decrypted_data.plaintext)
     } else {
-        if p_key.rsa().is_err() {
-            kmip_utils_bail!(
-                "With FIPS feature enabled, only RSA keypairs are allowed for key wrapping."
-            )
-        }
-
-        let rsa_privkey = p_key.rsa()?;
-        // Wrap symmetric key using RSA.
-        // XXX - Can be same bit size but plaintext can be greater than pubkey.
-        if ciphertext.len() * 8 > p_key.bits() as usize {
-            kmip_utils_bail!(
-                "Attempt to encapsulate key of size > {} bits.",
-                p_key.bits()
-            )
-        }
-
-        if p_key.bits() < FIPS_MIN_RSA_MODULUS_LENGTH {
-            kmip_utils_bail!(
-                "RSA key has insufficient size: expected >= {} and got {}",
-                FIPS_MIN_RSA_MODULUS_LENGTH,
-                p_key.bits()
-            )
-        }
-
-        let mut plaintext = vec![0u8; rsa_privkey.size() as usize];
-        let decrypted_len =
-            rsa_privkey.private_decrypt(ciphertext, &mut plaintext, Padding::PKCS1_OAEP)?;
-        plaintext.truncate(decrypted_len);
-
-        Ok(plaintext)
+        rfc5990_decrypt(p_key, ciphertext)
     }
 }
 
