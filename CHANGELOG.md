@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.9.1] - 2023-11-14
+
+### Bug Fixes
+
+- KMIP server operations only support DER format for certificates (#89)
+
 ## [4.9.0] - 2023-11-10
 
 ### Bug Fixes
