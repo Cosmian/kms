@@ -23,7 +23,7 @@ use openssl::{
     sha::Sha1,
 };
 use tracing::{debug, trace, warn};
-use x509_parser::{parse_x509_certificate, prelude::parse_x509_pem};
+use x509_parser::parse_x509_certificate;
 
 use super::wrapping::unwrap_key;
 use crate::{
@@ -46,8 +46,7 @@ fn parse_certificate_and_create_tags(
     debug!("Import with _cert system tag");
     tags.insert("_cert".to_string());
 
-    let (_, pem) = parse_x509_pem(certificate_value)?;
-    let (_, x509) = parse_x509_certificate(&pem.contents)?;
+    let (_, x509) = parse_x509_certificate(certificate_value)?;
 
     if !x509.validity().is_valid() {
         warn!(
@@ -201,7 +200,7 @@ async fn create_certificate_link(
 ) -> Option<Vec<Link>> {
     match locate_certificate_by_spki(spki, kms, owner, params).await {
         Ok(certificate_id) => {
-            debug!("import_pem: add Link with certificate_id: {certificate_id:?}");
+            debug!("import_der: add Link with certificate_id: {certificate_id:?}");
             let link = Link {
                 link_type: LinkType::CertificateLink,
                 linked_object_identifier: LinkedObjectIdentifier::TextString(certificate_id),
@@ -216,22 +215,21 @@ async fn create_certificate_link(
     }
 }
 
-/// The function `import_pem` takes in a PEM value, parses it, and creates an object
-/// based on the type of PEM (certificate or private key).
+/// The function `import_der` takes in a DER value, parses it, and creates an object
+/// based on the type of DER (certificate or private key).
 ///
 /// Arguments:
 ///
 /// * `tags`: A mutable `HashSet` of strings used to store tags associated with the
 /// imported object.
-/// * `pem_value`: The `pem_value` parameter is a byte slice that contains the
-/// PEM-encoded data. PEM stands for Privacy-Enhanced Mail and is a format for
-/// storing and transmitting cryptographic keys, certificates, and other data.
+/// * `der_value`: The `der_value` parameter is a byte slice that contains the
+/// DER-encoded data.
 /// * `kms`: The `kms` parameter is of type `KMS`, which is likely an abbreviation
 /// for Key Management Service. It is used for cryptographic operations such as
 /// creating certificate links and retrieving private key objects. The specific
 /// implementation and functionality of the `KMS` type would depend on the context
 /// and the code
-/// * `owner`: The `owner` parameter in the `import_pem` function is a string that
+/// * `owner`: The `owner` parameter in the `import_der` function is a string that
 /// represents the owner of the imported object. It is used in the
 /// `create_certificate_link` function to associate the imported object with the
 /// owner.
@@ -241,31 +239,32 @@ async fn create_certificate_link(
 ///
 /// Returns:
 ///
-/// The imported PEM certificate as a KMIP `Object`
-async fn import_pem(
+/// The imported DER certificate as a KMIP `Object`
+async fn import_der(
     tags: &mut HashSet<String>,
-    pem_value: &[u8],
+    der_value: &[u8],
     kms: &KMS,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object> {
-    let (_, pem) = parse_x509_pem(pem_value)?;
+    let der_is_a_cert = parse_x509_certificate(der_value).is_ok();
 
-    let object = if pem.label == "CERTIFICATE" {
-        debug!("import_pem: parsing certificate: {}", pem.label);
-        parse_certificate_and_create_tags(tags, pem_value)?;
+    let object = if der_is_a_cert {
+        debug!("import_der: parsing certificate");
+        parse_certificate_and_create_tags(tags, der_value)?;
+
         Object::Certificate {
             certificate_type: CertificateType::X509,
-            certificate_value: pem.contents,
+            certificate_value: der_value.into(),
         }
-    } else if pem.label.contains("PRIVATE KEY") {
-        debug!("import_pem: parsing private key: {}", pem.label);
-        let pkey = PKey::private_key_from_pem(pem_value)?;
+    } else {
+        debug!("import_der: parsing private key");
+        let pkey = PKey::private_key_from_der(der_value)?;
         match pkey.id() {
             Id::EC => {
-                debug!("import_pem: parsing private key with PKey: {:?}", pkey);
-                let private_key = EcKey::private_key_from_der(&pem.contents)?;
-                debug!("import_pem: convert private key to EcKey");
+                debug!("import_der: parsing private key with PKey: {:?}", pkey);
+                let private_key = EcKey::private_key_from_der(der_value)?;
+                debug!("import_der: convert private key to EcKey");
 
                 // Create tag from public key sha1 digest
                 let spki = create_ec_spki_tag(tags, &private_key)?;
@@ -285,7 +284,7 @@ async fn import_pem(
                 };
                 let private_key_bytes = private_key.private_key().to_vec();
                 debug!(
-                    "import_pem: private_key_bytes len: {}",
+                    "import_der: private_key_bytes len: {}",
                     private_key_bytes.len()
                 );
                 get_ec_private_key_object(private_key_bytes, recommended_curve, links)
@@ -309,8 +308,6 @@ async fn import_pem(
             }
             _ => kms_bail!("Private key id not supported: {:?}", pkey.id()),
         }
-    } else {
-        kms_bail!("Unsupported PEM format: found {}", pem.label);
     };
 
     Ok(object)
@@ -368,7 +365,7 @@ pub async fn import(
         ObjectType::Certificate => {
             debug!("Import with _cert system tag");
             tags.insert("_cert".to_string());
-            let certificate_pem_bytes = match &request.object {
+            let certificate_der_bytes = match &request.object {
                 Object::Certificate {
                     certificate_value, ..
                 } => Ok(certificate_value),
@@ -376,7 +373,7 @@ pub async fn import(
                     "Invalid object type {object_type:?} when importing a certificate"
                 ))),
             }?;
-            import_pem(&mut tags, certificate_pem_bytes, kms, owner, params).await?
+            import_der(&mut tags, certificate_der_bytes, kms, owner, params).await?
         }
         x => {
             return Err(KmsError::InvalidRequest(format!(
