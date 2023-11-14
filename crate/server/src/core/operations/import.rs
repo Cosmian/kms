@@ -247,9 +247,9 @@ async fn import_der(
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object> {
-    let result = parse_x509_certificate(der_value);
+    let der_is_a_cert = parse_x509_certificate(der_value).is_ok();
 
-    let object = if result.is_ok() {
+    let object = if der_is_a_cert {
         debug!("import_der: parsing certificate");
         parse_certificate_and_create_tags(tags, der_value)?;
 
