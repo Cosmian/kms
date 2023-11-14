@@ -42,6 +42,7 @@ pub trait Database {
     /// A new uid will be created if none is supplied.
     /// This method will fail if a `uid` is supplied
     /// and an object with the same id already exists
+    /// //TODO: this should be deprecated in favor of atomic()
     async fn create_objects(
         &self,
         owner: &str,

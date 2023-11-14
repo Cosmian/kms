@@ -1,4 +1,5 @@
 use std::{
+    clone,
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::Arc,
@@ -21,6 +22,7 @@ use cosmian_kms_utils::{
     crypto::password_derivation::derive_key_from_password,
     tagging::get_tags,
 };
+use futures::StreamExt;
 use redis::aio::ConnectionManager;
 use tracing::trace;
 use uuid::Uuid;
@@ -261,45 +263,17 @@ impl Database for RedisWithFindex {
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         let mut uids = Vec::with_capacity(objects.len());
-        let mut additions = HashMap::new();
-        let mut db_objects = HashMap::new();
-        for (uid, object, tags) in objects {
+        let mut operations = Vec::with_capacity(objects.len());
+
+        for (uid, object, tags) in objects.to_vec().into_iter() {
             // If the uid is not provided, generate a new one
             let uid = uid.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
-            let indexed_value = IndexedValue::Location(Location::from(uid.as_bytes()));
-
-            // the database object to index and store
-            let db_object = RedisDbObject::new(
-                object.clone(),
-                owner.to_string(),
-                StateEnumeration::Active,
-                Some((*tags).clone()),
-            );
-
-            // extract the keywords
-            let keywords = db_object.keywords();
-
-            // additions to the index
-            additions.insert(indexed_value, keywords);
-
-            // upsert the object
-            db_objects.insert(uid.clone(), db_object);
-            uids.push(uid);
+            uids.push(uid.clone());
+            operations.push(AtomicOperation::Create((uid.clone(), object, tags.clone())));
         }
-
-        // upsert the indexes
-        self.findex
-            .upsert(
-                &self.findex_key.to_bytes(),
-                &self.label,
-                additions,
-                HashMap::new(),
-            )
-            .await?;
-
-        // upsert the objects
-        self.objects_db.objects_upsert(&db_objects).await?;
-
+        if !operations.is_empty() {
+            self.atomic(owner, &operations, None).await?;
+        }
         Ok(uids.into_iter().map(UniqueIdentifier::from).collect())
     }
 
