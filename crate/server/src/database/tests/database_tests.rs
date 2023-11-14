@@ -15,7 +15,9 @@ use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
 
 use crate::{
-    database::{object_with_metadata::ObjectWithMetadata, Database},
+    database::{
+        database_trait::AtomicOperation, object_with_metadata::ObjectWithMetadata, Database,
+    },
     error::KmsError,
     kms_bail,
     result::KResult,
@@ -111,6 +113,105 @@ pub async fn tx_and_list<DB: Database>(
         kms_bail!("The object 2 should have been deleted");
     }
 
+    Ok(())
+}
+
+pub async fn atomic<DB: Database>(
+    db_and_params: &(DB, Option<ExtraDatabaseParams>),
+) -> KResult<()> {
+    log_init("debug");
+    let db = &db_and_params.0;
+    let db_params = db_and_params.1.as_ref();
+
+    let mut rng = CsRng::from_entropy();
+    let owner = "eyJhbGciOiJSUzI1Ni";
+
+    // Create key
+
+    let mut symmetric_key = vec![0; 32];
+    rng.fill_bytes(&mut symmetric_key);
+    let symmetric_key_1 =
+        create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
+    let uid_1 = Uuid::new_v4().to_string();
+
+    let mut symmetric_key = vec![0; 32];
+    rng.fill_bytes(&mut symmetric_key);
+    let symmetric_key_2 =
+        create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+
+    let uid_2 = Uuid::new_v4().to_string();
+
+    db.atomic(
+        owner,
+        &[
+            AtomicOperation::Create((uid_1.clone(), symmetric_key_1.clone(), HashSet::new())),
+            AtomicOperation::Create((uid_2.clone(), symmetric_key_2.clone(), HashSet::new())),
+        ],
+        db_params,
+    )
+    .await?;
+    assert!(
+        !db.retrieve(&uid_1, owner, ObjectOperationType::Get, db_params)
+            .await?
+            .is_empty()
+    );
+    assert!(
+        !db.retrieve(&uid_2, owner, ObjectOperationType::Get, db_params)
+            .await?
+            .is_empty()
+    );
+
+    // create the uid 1 twice. This should fail
+    let atomic = db
+        .atomic(
+            owner,
+            &[
+                AtomicOperation::Create((uid_1.clone(), symmetric_key_1.clone(), HashSet::new())),
+                AtomicOperation::Create((uid_2.clone(), symmetric_key_2.clone(), HashSet::new())),
+            ],
+            db_params,
+        )
+        .await;
+    assert!(atomic.is_err());
+
+    // this however should work
+    db.atomic(
+        owner,
+        &[
+            AtomicOperation::Upsert((
+                uid_1.clone(),
+                symmetric_key_1.clone(),
+                Some(HashSet::new()),
+                StateEnumeration::Deactivated,
+            )),
+            AtomicOperation::Upsert((
+                uid_2.clone(),
+                symmetric_key_2.clone(),
+                Some(HashSet::new()),
+                StateEnumeration::Deactivated,
+            )),
+        ],
+        db_params,
+    )
+    .await?;
+
+    assert_eq!(
+        db.retrieve(&uid_1, owner, ObjectOperationType::Get, db_params)
+            .await?
+            .get(&uid_1)
+            .expect("uid_1 should be in the db")
+            .state,
+        StateEnumeration::Deactivated
+    );
+    assert_eq!(
+        db.retrieve(&uid_2, owner, ObjectOperationType::Get, db_params)
+            .await?
+            .get(&uid_2)
+            .expect("uid_1 should be in the db")
+            .state,
+        StateEnumeration::Deactivated
+    );
     Ok(())
 }
 
