@@ -53,7 +53,7 @@ async fn import(
         ObjectType::SymmetricKey => process_symmetric_key(kms, request, owner, params).await?,
         ObjectType::Certificate => process_certificate(request)?,
         ObjectType::PublicKey => process_public_key(kms, request, owner, params).await?,
-        ObjectType::PrivateKey => process_private_key(kms, request, owner, params).await?,∆
+        ObjectType::PrivateKey => process_private_key(kms, request, owner, params).await?,
         x => {
             return Err(KmsError::InvalidRequest(format!(
                 "Import is not yet supported for objects of type : {x}"
@@ -309,6 +309,37 @@ async fn process_private_key(
             single_operation(pk_tags, replace_existing, pk, pk_uid),
         ],
     ))
+}
+
+fn private_key_from_openssl(
+    sk: PKey<Private>,
+    user_tags: Option<HashSet<String>>,
+    request_attributes: Attributes,
+) -> KResult<(String, Object, Option<HashSet<String>>)> {
+    // convert the private key to PKCS#8
+    let mut sk = openssl_private_key_to_kmip(&sk, KeyFormatType::PKCS8)?;
+    // generate the unique identifiers
+    let sk_uid = sk.key_block()?.key_bytes()?.to_base58();
+
+    // Update the private key attributes and link it to the public key
+    let mut sk_attributes = request_attributes.clone();
+    sk_attributes.add_link(
+        LinkType::PublicKeyLink,
+        LinkedObjectIdentifier::TextString(pk_uid.clone()),
+    );
+    //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
+    let mut sk_key_block = sk.key_block_mut()?;
+    sk_key_block.key_value.attributes = Some(sk_attributes);
+
+    //update the private key and public key tags
+    let sk_tags = if let Some(user_tags) = user_tags {
+        let mut sk_tags = user_tags.clone();
+        sk_tags.insert("_sk".to_string());
+        Some(sk_tags)
+    } else {
+        None
+    };
+    Ok((sk_uid, sk, sk_tags))
 }
 
 fn generate_key_pair(
