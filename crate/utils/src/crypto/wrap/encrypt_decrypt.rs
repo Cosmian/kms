@@ -11,7 +11,7 @@ use tracing::debug;
 
 use super::{
     rfc5649::{key_unwrap, key_wrap},
-    rfc5990::{rfc5990_decrypt, rfc5990_encrypt},
+    rsa_oaep_aes_kw::{ckm_rsa_aes_key_unwrap, ckm_rsa_aes_key_wrap},
 };
 use crate::{
     crypto::hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
@@ -115,7 +115,7 @@ fn encrypt_with_public_key(
         );
         Ok(ciphertext)
     } else {
-        rfc5990_encrypt(pubkey, plaintext)
+        ckm_rsa_aes_key_wrap(pubkey, plaintext)
     }
 }
 
@@ -186,7 +186,7 @@ fn decrypt_with_private_key(
         let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
         Ok(decrypted_data.plaintext)
     } else {
-        rfc5990_decrypt(p_key, ciphertext)
+        ckm_rsa_aes_key_unwrap(p_key, ciphertext)
     }
 }
 
