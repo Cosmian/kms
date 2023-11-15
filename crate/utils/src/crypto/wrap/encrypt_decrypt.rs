@@ -98,13 +98,13 @@ fn encrypt_with_public_key(
     pubkey: PKey<Public>,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
+    let request = Encrypt {
+        data: Some(plaintext.to_vec()),
+        ..Encrypt::default()
+    };
     if cfg!(not(feature = "fips")) {
-        // Wrap symmetric key using ECIES/RSA.
+        // Wrap symmetric key using ECIES.
         let encrypt_system = HybridEncryptionSystem::new("public_key_uid", pubkey);
-        let request = Encrypt {
-            data: Some(plaintext.to_vec()),
-            ..Encrypt::default()
-        };
         let encrypt_response = encrypt_system.encrypt(&request)?;
         let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
             "Encrypt response does not contain ciphertext".to_string(),
@@ -115,6 +115,9 @@ fn encrypt_with_public_key(
         );
         Ok(ciphertext)
     } else {
+        // Wrap symmetric key using RSA.
+        // XXX - ECIES approved by fips ? not clear, only supporting RSA for
+        // now.
         ckm_rsa_aes_key_wrap(pubkey, plaintext)
     }
 }
@@ -186,6 +189,9 @@ fn decrypt_with_private_key(
         let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
         Ok(decrypted_data.plaintext)
     } else {
+        // Unwrap symmetric key using RSA.
+        // XXX - ECIES approved by fips ? not clear, only supporting RSA for
+        // now.
         ckm_rsa_aes_key_unwrap(p_key, ciphertext)
     }
 }
