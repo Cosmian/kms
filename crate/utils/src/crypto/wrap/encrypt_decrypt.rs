@@ -11,7 +11,7 @@ use tracing::debug;
 
 use super::{
     rfc5649::{key_unwrap, key_wrap},
-    rsa_oaep_aes_kw::{ckm_rsa_aes_key_unwrap, ckm_rsa_aes_key_wrap},
+    rsa_oaep_aes_kwp::{ckm_rsa_aes_key_unwrap, ckm_rsa_aes_key_wrap},
 };
 use crate::{
     crypto::hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
@@ -64,8 +64,7 @@ pub fn encrypt_bytes(wrapping_key: &Object, plaintext: &[u8]) -> Result<Vec<u8>,
                 KeyFormatType::TransparentSymmetricKey => {
                     // wrap using rfc_5649
                     let wrap_secret = key_block.key_bytes()?;
-                    let ciphertext = key_wrap(plaintext, &wrap_secret)?;
-                    Ok(ciphertext)
+                    key_wrap(plaintext, &wrap_secret)
                 }
                 KeyFormatType::TransparentECPublicKey | KeyFormatType::TransparentRSAPublicKey => {
                     //convert to transparent key and wrap
@@ -98,12 +97,12 @@ fn encrypt_with_public_key(
     pubkey: PKey<Public>,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
-    let request = Encrypt {
-        data: Some(plaintext.to_vec()),
-        ..Encrypt::default()
-    };
     if cfg!(not(feature = "fips")) {
         // Wrap symmetric key using ECIES.
+        let request = Encrypt {
+            data: Some(plaintext.to_vec()),
+            ..Encrypt::default()
+        };
         let encrypt_system = HybridEncryptionSystem::new("public_key_uid", pubkey);
         let encrypt_response = encrypt_system.encrypt(&request)?;
         let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
@@ -118,6 +117,7 @@ fn encrypt_with_public_key(
         // Wrap symmetric key using RSA.
         // XXX - ECIES approved by fips ? not clear, only supporting RSA for
         // now.
+        // XXX - build kmip request ?
         ckm_rsa_aes_key_wrap(pubkey, plaintext)
     }
 }
@@ -146,8 +146,7 @@ pub fn decrypt_bytes(
         KeyFormatType::TransparentSymmetricKey => {
             // unwrap using rfc_5649
             let unwrap_secret = unwrapping_key_block.key_bytes()?;
-            let plaintext = key_unwrap(ciphertext, &unwrap_secret)?;
-            Ok(plaintext)
+            key_unwrap(ciphertext, &unwrap_secret)
         }
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {
             // convert to an openssl private key

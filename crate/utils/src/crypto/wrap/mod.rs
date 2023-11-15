@@ -1,5 +1,5 @@
 mod rfc5649;
-mod rsa_oaep_aes_kw;
+mod rsa_oaep_aes_kwp;
 mod wrap_unwrap_key;
 pub use wrap_unwrap_key::{unwrap_key_block, wrap_key_block};
 pub mod encrypt_decrypt;
