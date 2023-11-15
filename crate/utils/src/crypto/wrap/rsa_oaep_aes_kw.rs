@@ -5,8 +5,8 @@ use openssl::{
     rsa::Padding,
 };
 
-use super::rfc5649::{key_unwrap, key_wrap};
-use crate::{crypto::symmetric::AES_256_GCM_KEY_LENGTH, error::KmipUtilsError, kmip_utils_bail};
+use super::rfc5649::{key_unwrap, key_wrap, AES_KWP_KEY_SIZE};
+use crate::{error::KmipUtilsError, kmip_utils_bail};
 
 const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
 
@@ -22,7 +22,7 @@ const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
 /// key `kek`. Encrypt it using RSA-OAEP; `c` is the encrypted key.
 ///
 /// Encrypt they key/message `m` such as`c' = enc(kek, m)` using the key `kek`
-/// with AES-KW as specified in RFC5649.
+/// with AES-KWP as specified in RFC5649.
 ///
 /// Send `c|wk` where `|` is the concatenation operator.
 pub fn ckm_rsa_aes_key_wrap(
@@ -41,7 +41,7 @@ pub fn ckm_rsa_aes_key_wrap(
     let encapsulation_bytes_len = rsa_pubkey.size() as usize;
 
     // Generate temporary AES key.
-    let mut kek = Zeroizing::from(vec![0u8; AES_256_GCM_KEY_LENGTH]);
+    let mut kek = Zeroizing::from(vec![0u8; AES_KWP_KEY_SIZE]);
     rand_bytes(&mut kek)?;
 
     let mut c = vec![0u8; encapsulation_bytes_len];
@@ -67,7 +67,7 @@ pub fn ckm_rsa_aes_key_wrap(
 /// key.
 ///
 /// First decrypt the key-encryption-key `kek` using RSA-OAEP. then proceed to
-/// unwrap the key by decrypting `m = dec(c, kek)` using AES-KW as specified in
+/// unwrap the key by decrypting `m = dec(c, kek)` using AES-KWP as specified in
 /// RFC5649.
 pub fn ckm_rsa_aes_key_unwrap(
     p_key: PKey<Private>,
@@ -96,7 +96,7 @@ pub fn ckm_rsa_aes_key_unwrap(
     let mut kek = Zeroizing::from(vec![0u8; encapsulation_bytes_len]);
     let decrypted_len = rsa_privkey.private_decrypt(c, &mut kek, Padding::PKCS1_OAEP)?;
     kek.truncate(decrypted_len);
-    if kek.len() != AES_256_GCM_KEY_LENGTH {
+    if kek.len() != AES_KWP_KEY_SIZE {
         kmip_utils_bail!(
             "CKM_RSA_OAEP decryption error: size mismatch, ciphertext may have been tweaked."
         )
