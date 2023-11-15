@@ -18,7 +18,7 @@ pub(crate) mod object_with_metadata;
 pub(crate) mod pgsql;
 pub(crate) mod redis;
 pub(crate) mod sqlite;
-pub(crate) use database_trait::Database;
+pub(crate) use database_trait::{AtomicOperation, Database};
 mod locate_query;
 mod retrieve_object_utils;
 pub(crate) use locate_query::{

@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 ### Features
 
 - Database: support for more elaborate atomic transactions
-- 
+
 ### Bug Fixes
 
 - Redis-Findex: `create` now checks for pre-existence of the object
@@ -29,6 +29,9 @@ All notable changes to this project will be documented in this file.
 - adds support for Google Workspace Client Side Encryption. Single key for now.
   Compatibility with Google Drive and Google Meet.
 - ckms: adds support for login to the Identity Provider and get an access token
+
+- KMS running inside TEE (SGX or SEV)
+  - review the `verify` subcommand
 
 ## [4.9.1] - 2023-11-14
 
