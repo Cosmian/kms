@@ -18,9 +18,6 @@ on:
 jobs:
   run_and_test:
 
-    concurrency:
-      group: sgx_concurrency_group
-
     services:
       kms:
         image: ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
@@ -51,6 +48,7 @@ jobs:
 
       - name: Bootstrap
         run: |
+          sleep 60
           KMS_CLI_CONF=ci/sgx/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
           sleep 20
 
@@ -62,4 +60,6 @@ jobs:
 
       - name: Docker stop container
         if: success() || failure()
-        run: docker stop enclave-kms-insecure
+        run: |
+          docker logs --tail 20 enclave-kms-insecure
+          docker stop enclave-kms-insecure
