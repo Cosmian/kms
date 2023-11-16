@@ -17,7 +17,7 @@ use futures::{
 };
 use tracing::{debug, error, trace};
 
-use crate::middlewares::jwt::{decode_jwt_bearer_header, JwtConfig};
+use crate::middlewares::jwt::JwtConfig;
 
 #[derive(Clone)]
 pub struct JwtAuth {
@@ -72,20 +72,17 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         // get the JWT config
-        let jwt_config = match &self.jwt_config {
-            Some(c) => c,
-            None => {
-                return Box::pin(async move {
-                    error!(
-                        "{:?} {} 401 unauthorized: JWT not properly configured on KMS server ",
-                        req.method(),
-                        req.path(),
-                    );
-                    Ok(req
-                        .into_response(HttpResponse::Unauthorized().finish())
-                        .map_into_right_body())
-                })
-            }
+        let Some(jwt_config) = &self.jwt_config else {
+            return Box::pin(async move {
+                error!(
+                    "{:?} {} 401 unauthorized: JWT not properly configured on KMS server",
+                    req.method(),
+                    req.path(),
+                );
+                Ok(req
+                    .into_response(HttpResponse::Unauthorized().finish())
+                    .map_into_right_body())
+            })
         };
 
         trace!("JWT Authentication...");
@@ -101,8 +98,9 @@ where
         trace!("Checking JWT identity: {identity:?}");
 
         // decode the JWT
-        let private_claim =
-            decode_jwt_bearer_header(jwt_config, &identity).map(|claim| claim.email);
+        let private_claim = jwt_config
+            .decode_bearer_header(&identity)
+            .map(|claim| claim.email);
         match private_claim {
             Err(e) => Box::pin(async move {
                 error!(
