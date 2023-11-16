@@ -123,7 +123,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
     import(
         &ctx.owner_cli_conf_path,
         "certificates",
-        "test_data/certificates/kms/output.p12",
+        "test_data/certificates/p12/output.p12",
         CertificateInputFormat::Pkcs12,
         Some("secret"),
         None,

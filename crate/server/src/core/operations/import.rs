@@ -19,7 +19,6 @@ use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     tagging::{check_user_tags, remove_tags},
 };
-use futures::FutureExt;
 use openssl::{
     pkey::{PKey, Private},
     sha::Sha1,
@@ -131,6 +130,11 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
     // parse the certificate as an openssl object to convert it to the pivot
     let certificate = X509::from_der(&certificate_der_bytes)?;
     let der_bytes = certificate.to_der()?;
+    let uid = if request.unique_identifier.is_empty() {
+        der_bytes.to_base58()
+    } else {
+        request.unique_identifier.to_string()
+    };
     let object = Certificate {
         certificate_type: CertificateType::X509,
         certificate_value: der_bytes,
@@ -140,12 +144,6 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
     if let Some(tags) = user_tags.as_mut() {
         add_certificate_tags(tags, &certificate)?;
     }
-
-    let uid = if request.unique_identifier.is_empty() {
-        der_bytes.to_base58()
-    } else {
-        request.unique_identifier.to_string()
-    };
 
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -284,9 +282,6 @@ async fn process_private_key(
     if key_block.key_format_type == KeyFormatType::PKCS12 {
         //PKCS#12 contain more than just a private key, perform specific processing
         return process_pkcs12(
-            kms,
-            owner,
-            params,
             &request.unique_identifier,
             object,
             request_attributes,
@@ -302,7 +297,7 @@ async fn process_private_key(
     // generate a KMIP private key
     let (sk_uid, sk, sk_tags) = private_key_from_openssl(
         openssl_sk,
-        &tags,
+        tags,
         request_attributes,
         &request.unique_identifier,
     )?;
@@ -314,7 +309,7 @@ async fn process_private_key(
 
 fn private_key_from_openssl(
     sk: PKey<Private>,
-    user_tags: &Option<HashSet<String>>,
+    user_tags: Option<HashSet<String>>,
     request_attributes: Attributes,
     request_uid: &str,
 ) -> KResult<(String, Object, Option<HashSet<String>>)> {
@@ -330,7 +325,7 @@ fn private_key_from_openssl(
     };
 
     //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
-    let mut sk_key_block = sk.key_block_mut()?;
+    let sk_key_block = sk.key_block_mut()?;
     sk_key_block.key_value.attributes = Some(request_attributes);
 
     let sk_tags = user_tags.map(|mut tags| {
@@ -339,60 +334,6 @@ fn private_key_from_openssl(
     });
     Ok((sk_uid, sk, sk_tags))
 }
-
-// fn generate_key_pair(
-//     sk: PKey<Private>,
-//     user_tags: Option<HashSet<String>>,
-//     request_attributes: Attributes,
-// ) -> KResult<(
-//     (String, Object, Option<HashSet<String>>),
-//     (String, Object, Option<HashSet<String>>),
-// )> {
-//     // generate the public key (note: having to fo through DER is strange)
-//     let pk_der = sk.public_key_to_der()?;
-//     let pk = PKey::public_key_from_der(&pk_der)?;
-//     // convert the private key to PKCS#8
-//     let mut sk = openssl_private_key_to_kmip(&sk, KeyFormatType::PKCS8)?;
-//     // convert the public key to PKCS#8 (SPKI really)
-//     let mut pk = openssl_public_key_to_kmip(&pk, KeyFormatType::PKCS8)?;
-//     // generate the unique identifiers
-//     let sk_uid = sk.key_block()?.key_bytes()?.to_base58();
-//     let pk_uid = pk.key_block()?.key_bytes()?.to_base58();
-//
-//     // Update the private key attributes and link it to the public key
-//     let mut sk_attributes = request_attributes.clone();
-//     sk_attributes.add_link(
-//         LinkType::PublicKeyLink,
-//         LinkedObjectIdentifier::TextString(pk_uid.clone()),
-//     );
-//     //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
-//     let mut sk_key_block = sk.key_block_mut()?;
-//     sk_key_block.key_value.attributes = Some(sk_attributes);
-//
-//     // Update the public key attributes and link it to the private key
-//     let mut pk_attributes = request_attributes;
-//     pk_attributes.add_link(
-//         LinkType::PrivateKeyLink,
-//         LinkedObjectIdentifier::TextString(sk_uid.clone()),
-//     );
-//     //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
-//     let mut pk_key_block = pk.key_block_mut()?;
-//     pk_key_block.key_value.attributes = Some(pk_attributes);
-//
-//     //update the private key and public key tags
-//     let (sk_tags, pk_tags) = if let Some(user_tags) = user_tags {
-//         let mut sk_tags = user_tags.clone();
-//         sk_tags.insert("_sk".to_string());
-//         let mut pk_tags = user_tags.clone();
-//         pk_tags.insert("_pk".to_string());
-//         (Some(sk_tags), Some(pk_tags))
-//     } else {
-//         (None, None)
-//     };
-//
-//     // return the key pair
-//     Ok(((sk_uid, sk, sk_tags), (pk_uid, pk, pk_tags)))
-// }
 
 fn single_operation(
     tags: Option<HashSet<String>>,
@@ -408,16 +349,12 @@ fn single_operation(
 }
 
 async fn process_pkcs12(
-    kms: &KMS,
-    owner: &str,
-    params: Option<&ExtraDatabaseParams>,
     private_key_id: &str,
     object: Object,
     request_attributes: Attributes,
     user_tags: Option<HashSet<String>>,
     replace_existing: bool,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
-    let mut operations: Vec<AtomicOperation> = Vec::new();
     // recover the PKCS#12 bytes from the object
     let pkcs12_bytes = match object {
         Object::PrivateKey { key_block } => key_block.key_bytes()?,
@@ -433,37 +370,31 @@ async fn process_pkcs12(
     // First build the tuples (id,Object) for the private key, the leaf certificate
     // and the chain certificates
 
+    // build the private key
     let (private_key_id, mut private_key, private_key_tags) = {
         let openssl_sk = pkcs12.pkey.ok_or_else(|| {
             KmsError::InvalidRequest("Private key not found in PKCS12".to_string())
         })?;
-
-        private_key_from_openssl(openssl_sk, &user_tags, request_attributes, &private_key_id)?
-
-        // // replace attributes
-        // //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
-        // object_key_block.key_value.attributes = Some(request_attributes.clone());
-
-        // // first set the Link to the private key on the attributes
-        // let mut request_attributes = request_attributes.clone();
-        // request_attributes.add_link(
-        //     LinkType::CertificateLink,
-        //     LinkedObjectIdentifier::TextString(format!("{}-cert", uid)),
-        // );
+        private_key_from_openssl(
+            openssl_sk,
+            user_tags.clone(),
+            request_attributes,
+            &private_key_id,
+        )?
     };
 
-    //import the leaf certificate
-    let (leaf_certificate_uid, mut leaf_certificate, mut leaf_certificate_tags) = {
+    //build the leaf certificate
+    let (leaf_certificate_uid, leaf_certificate, mut leaf_certificate_tags) = {
         // Recover the PKCS12 X509 certificate
         let openssl_cert = pkcs12.cert.ok_or_else(|| {
             KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_string())
         })?;
         let der_bytes = openssl_cert.to_der()?;
+        let leaf_certificate_uid = der_bytes.to_base58();
         let leaf_certificate = Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: der_bytes,
         };
-        let leaf_certificate_uid = der_bytes.to_base58();
         // insert the tag corresponding to the object type if tags should be updated
         let mut leaf_certificate_tags = user_tags.clone();
         if let Some(tags) = leaf_certificate_tags.as_mut() {
@@ -477,17 +408,17 @@ async fn process_pkcs12(
         )
     };
 
-    // import the chain if any  (the chain is optional)
+    // build the chain if any  (the chain is optional)
     let mut chain: Vec<(String, Object, Option<HashSet<String>>)> = Vec::new();
     if let Some(cas) = pkcs12.ca {
         // import the cas
         for openssl_cert in cas.into_iter() {
             let der_bytes = openssl_cert.to_der()?;
+            let chain_certificate_uid = der_bytes.to_base58();
             let chain_certificate = Certificate {
                 certificate_type: CertificateType::X509,
                 certificate_value: der_bytes,
             };
-            let chain_certificate_uid = der_bytes.to_base58();
             // insert the tag corresponding to the object type if tags should be updated
             let mut chain_certificate_tags = user_tags.clone();
             if let Some(tags) = chain_certificate_tags.as_mut() {
@@ -498,18 +429,6 @@ async fn process_pkcs12(
                 chain_certificate,
                 chain_certificate_tags,
             ));
-            // // first set the Link to the private key on the attributes
-            // let mut request_attributes = request_attributes.clone();
-            // request_attributes.add_link(
-            //     LinkType::ChildLink,
-            //     LinkedObjectIdentifier::TextString(private_key_id.to_string()),
-            // );
-            // // set tags
-            // let mut tags = tags.to_owned().unwrap_or_default();
-            // add_certificate_tags(&request_attributes, &cert, &mut tags)?;
-            // //upsert
-            // let cert_uid = format!("{}-cert", uid);
-            // single_operation(Some(tags), replace_existing, leaf_certificate, cert_uid)?
         }
     }
 
@@ -517,6 +436,7 @@ async fn process_pkcs12(
     // Stage 2 update the attributes and tags
     // and create the corresponding operations
     //
+    let mut operations = Vec::with_capacity(2 + chain.len());
 
     //add link to certificate in the private key attributes
     private_key
@@ -527,25 +447,66 @@ async fn process_pkcs12(
         .map(|a| {
             a.add_link(
                 //Note: it is unclear what link type should be used here according to KMIP
-                // CertificateLink seems to be for public key only and there is not descritpion
+                // CertificateLink seems to be for public key only and there is not description
                 // for PKCS12CertificateLink
                 LinkType::PKCS12CertificateLink,
-                LinkedObjectIdentifier::TextString(private_key_id.to_string()),
+                LinkedObjectIdentifier::TextString(private_key_id.clone()),
             )
         });
+    operations.push(single_operation(
+        private_key_tags,
+        replace_existing,
+        private_key,
+        private_key_id.clone(),
+    ));
 
-    // first set the Link to the private key on the attributes
-    let mut request_attributes = request_attributes.clone();
-    request_attributes.add_link(
-        LinkType::PrivateKeyLink,
-        LinkedObjectIdentifier::TextString(uid.to_string()),
-    );
-    // set tags
-    let mut tags = user_tags.clone().unwrap_or_default();
-    add_certificate_tags(&mut tags, &openssl_cert)?;
+    // Add links to the leaf certificate
+    //TODO: attributes not supported until https://github.com/Cosmian/kms/issues/88 is fixed; using tags instead
+    if let Some(tags) = leaf_certificate_tags.as_mut() {
+        // add private key link to certificate
+        // (the KMIP spec is unclear whether there should be a LinkType::PrivateKeyLink)
+        let sk_tag = format!("_cert_sk={private_key_id}");
+        tags.insert(sk_tag);
+        // add parent link to certificate
+        // (according to the KMIP spec, this would be LinkType::CertificateLink)
+        if let Some((parent_id, _, _)) = chain.first() {
+            let parent_tag = format!("_cert_parent={parent_id}");
+            tags.insert(parent_tag);
+        }
+    }
+    operations.push(single_operation(
+        leaf_certificate_tags,
+        replace_existing,
+        leaf_certificate,
+        leaf_certificate_uid.clone(),
+    ));
+
+    // Add links to the chain certificate
+    //TODO: attributes not supported until https://github.com/Cosmian/kms/issues/88 is fixed; using tags instead
+    let mut parent_certificate_id = None;
+    for (chain_certificate_uid, chain_certificate, mut chain_certificate_tags) in
+        chain.into_iter().rev()
+    // reverse the chain to have the root first
+    {
+        if let Some(tags) = chain_certificate_tags.as_mut() {
+            if let Some(parent_certificate_id) = parent_certificate_id {
+                // add parent link to certificate
+                // (according to the KMIP spec, this would be LinkType::CertificateLink)
+                let parent_tag = format!("_cert_parent={parent_certificate_id}");
+                tags.insert(parent_tag);
+            }
+        }
+        operations.push(single_operation(
+            chain_certificate_tags,
+            true,
+            chain_certificate,
+            chain_certificate_uid.clone(),
+        ));
+        parent_certificate_id = Some(chain_certificate_uid);
+    }
 
     //return the private key
-    Ok((uid, operations))
+    Ok((private_key_id, operations))
 }
 
 fn add_certificate_tags(tags: &mut HashSet<String>, certificate: &X509) -> Result<(), KmsError> {
