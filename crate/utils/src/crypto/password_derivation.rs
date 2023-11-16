@@ -6,7 +6,7 @@ use openssl::{hash::MessageDigest, pkcs5::pbkdf2_hmac, rand::rand_bytes};
 use crate::{error::KmipUtilsError, kmip_utils_bail};
 
 /// The salt to use when deriving passwords in the KMS crate with Argon2.
-pub const KMS_ARGON2_SALT: &[u8] = b"Default salt used in KMS crates";
+const KMS_ARGON2_SALT: &[u8] = b"Default salt used in KMS crates";
 
 const FIPS_MIN_KLEN: usize = 14;
 const FIPS_MIN_SALT_SIZE: usize = 16;
