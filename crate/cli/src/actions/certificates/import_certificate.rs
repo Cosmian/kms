@@ -228,11 +228,7 @@ impl ImportCertificateAction {
         replace_existing: bool,
     ) -> Result<String, CliError> {
         let mut previous_identifier: Option<String> = None;
-        loop {
-            let object = match objects.pop() {
-                Some(o) => o,
-                None => break,
-            };
+        while let Some(object) = objects.pop() {
             //TODO: This link will not used by the server until https://github.com/Cosmian/kms/issues/88 is fixed
             let import_attributes = previous_identifier.map(|id| {
                 let mut attributes = Attributes::default();
@@ -256,9 +252,9 @@ impl ImportCertificateAction {
             previous_identifier = Some(unique_identifier);
         }
         // return the identifier of the leaf certificate
-        Ok(previous_identifier.ok_or_else(|| {
+        previous_identifier.ok_or_else(|| {
             CliError::Default("The certificate chain does not contain any certificate".to_owned())
-        })?)
+        })
     }
 }
 

@@ -146,7 +146,7 @@ impl DecryptionSystem for HybridDecryptionSystem {
         // Note: All conversions below will go once we move to full openssl
         let id = self.private_key.id();
         let plaintext = match id {
-            Id::EC => decrypt_with_nist_curve(&self.private_key, &ciphertext)?,
+            Id::EC => decrypt_with_nist_curve(&self.private_key, ciphertext)?,
             Id::ED25519 => {
                 kmip_utils_bail!("Hybrid encryption system does not support Ed25519")
             }
@@ -156,15 +156,13 @@ impl DecryptionSystem for HybridDecryptionSystem {
                 let raw_bytes = self.private_key.raw_private_key()?;
                 let private_key_bytes: [u8; CURVE_25519_SECRET_LENGTH] = raw_bytes.try_into()?;
                 let private_key = X25519PrivateKey::try_from_bytes(private_key_bytes)?;
-                let plaintext =
-                    Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, &ciphertext, None)?);
-                plaintext
+                Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
             }
             Id::RSA => {
                 trace!("encrypt: RSA");
                 let der_bytes = self.private_key.private_key_to_pkcs8()?;
                 let private_key = RsaPrivateKey::from_pkcs8_der(&der_bytes)?;
-                private_key.unwrap_key(RsaKeyWrappingAlgorithm::Aes256Sha256, &ciphertext)?
+                private_key.unwrap_key(RsaKeyWrappingAlgorithm::Aes256Sha256, ciphertext)?
             }
             _ => {
                 trace!("Not supported");

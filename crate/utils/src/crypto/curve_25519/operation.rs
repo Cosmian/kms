@@ -169,8 +169,7 @@ mod tests {
             _ => panic!("Not a transparent public key"),
         };
         // try to convert to openssl
-        let p_key =
-            PKey::public_key_from_raw_bytes(&original_public_key_bytes, Id::X25519).unwrap();
+        let p_key = PKey::public_key_from_raw_bytes(original_public_key_bytes, Id::X25519).unwrap();
         // convert back to bytes
         let raw_bytes = p_key.raw_public_key().unwrap();
         assert_eq!(&raw_bytes, original_public_key_bytes);

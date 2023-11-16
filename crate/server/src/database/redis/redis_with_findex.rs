@@ -1,5 +1,4 @@
 use std::{
-    clone,
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::Arc,
@@ -22,7 +21,6 @@ use cosmian_kms_utils::{
     crypto::password_derivation::derive_key_from_password,
     tagging::get_tags,
 };
-use futures::StreamExt;
 use redis::aio::ConnectionManager;
 use tracing::trace;
 use uuid::Uuid;
