@@ -65,7 +65,7 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashMap<String, ObjectWithMetadata>>;
 
-    /// Retrieve the ags of the object with the given `uid`
+    /// Retrieve the tags of the object with the given `uid`
     async fn retrieve_tags(
         &self,
         uid: &UniqueIdentifier,

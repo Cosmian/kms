@@ -492,7 +492,7 @@ async fn process_pkcs12(
             if let Some(parent_certificate_id) = parent_certificate_id {
                 // add parent link to certificate
                 // (according to the KMIP spec, this would be LinkType::CertificateLink)
-                let parent_tag = format!("_cert_parent={parent_certificate_id}");
+                let parent_tag = format!("_cert_issuer={parent_certificate_id}");
                 tags.insert(parent_tag);
             }
         }

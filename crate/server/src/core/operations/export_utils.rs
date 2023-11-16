@@ -12,7 +12,6 @@ use cosmian_kmip::{
         kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_private_key_to_kmip,
         openssl_public_key_to_kmip,
     },
-    result::KmipResultHelper,
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use openssl::{
@@ -30,7 +29,7 @@ use crate::{
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
     kms_bail,
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
 /// Export an object
@@ -576,6 +575,10 @@ async fn post_process_pkcs12(
     request: &Export,
     owm: &mut ObjectWithMetadata,
 ) -> Result<(), KmsError> {
+    // convert the Private Key to openssl
+    let private_key = kmip_private_key_to_openssl(&owm.object)
+        .context("export: unable to parse the private key to openssl")?;
+
     // recover the Certificate Link inside the Private Key
     let attributes = owm.object.attributes().map_err(|_| {
         KmsError::InvalidRequest(
@@ -583,7 +586,8 @@ async fn post_process_pkcs12(
         )
     })?;
     let certificate_id = attributes
-        .get_link(LinkType::CertificateLink)
+        .get_link(LinkType::PKCS12CertificateLink)
+        .or(attributes.get_link(LinkType::CertificateLink))
         .ok_or_else(|| {
             KmsError::InvalidRequest(format!(
                 "PKCS#12 export: no certificate link found for key {}",
@@ -598,18 +602,17 @@ async fn post_process_pkcs12(
         user,
         params,
         &Export {
-            unique_identifier: Some(certificate_id),
+            unique_identifier: Some(certificate_id.clone()),
             key_format_type: Some(KeyFormatType::X509),
             key_wrap_type: None,
             key_compression_type: None,
             key_wrapping_specification: None,
         },
     )
-    .await?;
-
-    // convert the Private Key to openssl
-    let private_key = kmip_private_key_to_openssl(&owm.object)
-        .context("export: unable to parse the private key to openssl")?;
+    .await
+    .with_context(|| {
+        format!("could not retrieve the certificate: {certificate_id}, attached to the private key")
+    })?;
     // convert the certificate to openssl X509
     let certificate = X509::from_der(match &cert_owm.object {
         Object::Certificate {
@@ -617,22 +620,49 @@ async fn post_process_pkcs12(
         } => certificate_value,
         _ => kms_bail!("export: expected a certificate behind the private key certificate link"),
     })?;
-    // build the intermediate certs
-    //TODO: should we add the chain to the PKCS#12 export?
-    let cas = Stack::<X509>::new()?;
-    // for ca_issuer_name in cert.issuer_name().entries() {
-    //     let pem = locate_ca_cert(
-    //         client_connector,
-    //         ca_issuer_name.data().as_utf8()?.as_ref(),
-    //         &Attributes {
-    //             object_type: Some(ObjectType::Certificate),
-    //             ..Attributes::default()
-    //         },
-    //     )
-    //         .await?;
-    //     let cert = X509::from_pem(&pem)?;
-    //     cas.push(cert)?;
-    // }
+
+    // retrieve the certificate chain
+    let mut child_certificate_id = cert_owm.id.clone();
+    let mut chain: Stack<X509> = Stack::new()?;
+    loop {
+        let certificate_tags = kms.db.retrieve_tags(&child_certificate_id, params).await?;
+        let parent_id = match certificate_tags
+            .iter()
+            .find(|tag| tag.starts_with("_cert_issuer="))
+            .map(|tag| tag.replace("_cert_issuer=", ""))
+        {
+            Some(parent_id) => parent_id,
+            None => break,
+        };
+        // retrieve the parent certificate
+        let cert_owm = retrieve_object_with_metadata(
+            kms,
+            allow_full_export,
+            user,
+            params,
+            &Export {
+                unique_identifier: Some(parent_id.clone()),
+                key_format_type: Some(KeyFormatType::X509),
+                key_wrap_type: None,
+                key_compression_type: None,
+                key_wrapping_specification: None,
+            },
+        )
+        .await?;
+        let certificate = X509::from_der(match &cert_owm.object {
+            Object::Certificate {
+                certificate_value, ..
+            } => certificate_value,
+            _ => {
+                kms_bail!(
+                    "export: expected a certificate behind the certificate `certificate link`"
+                )
+            }
+        })?;
+        chain.push(certificate)?;
+        child_certificate_id = parent_id;
+    }
+
     // recover the password
     let password = match &request.key_wrapping_specification {
         Some(kws) => match &kws.encryption_key_information {
@@ -645,7 +675,7 @@ async fn post_process_pkcs12(
     let pkcs12 = openssl::pkcs12::Pkcs12::builder()
         .pkey(&private_key)
         .cert(&certificate)
-        .ca(cas)
+        .ca(chain)
         .build2(&password)?;
 
     // add the certificate to the private key
