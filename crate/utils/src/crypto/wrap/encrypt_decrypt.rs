@@ -188,9 +188,12 @@ fn decrypt_with_private_key(
         let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
         Ok(decrypted_data.plaintext)
     } else {
-        // Unwrap symmetric key using RSA.
-        // XXX - ECIES approved by fips ? not clear, only supporting RSA for
-        // now.
+        // XXX - Unwrap symmetric key using RSA. FIPS does not specify RSA for
+        // asymmetric key wrapping.
+        // XXX - ECIES approved by fips ? not stated, only supporting RSA for
+        // now:
+        // > An RSA decryption operation using an exponentiation for key
+        // > encapsulation, as specified in the section 7.1.2.1 of SP 800-56Br2
         ckm_rsa_aes_key_unwrap(p_key, ciphertext)
     }
 }
