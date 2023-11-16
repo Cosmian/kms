@@ -8,6 +8,7 @@ use openssl::{
 use super::rfc5649::{key_unwrap, key_wrap, AES_KWP_KEY_SIZE};
 use crate::{error::KmipUtilsError, kmip_utils_bail};
 
+#[cfg(feature = "fips")]
 const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
 
 /// Asymmetrically wrap keys refering to PKCS#11 available at
@@ -21,7 +22,7 @@ const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
 /// Let `m` be the key/message to wrap, first generate a temporary random AES
 /// key `kek`. Encrypt it using RSA-OAEP; `c` is the encrypted key.
 ///
-/// Encrypt they key/message `m` such as`c' = enc(kek, m)` using the key `kek`
+/// Encrypt they key/message `m` such as`wk = enc(kek, m)` using the key `kek`
 /// with AES-KWP as specified in RFC5649.
 ///
 /// Send `c|wk` where `|` is the concatenation operator.
@@ -32,6 +33,7 @@ pub fn ckm_rsa_aes_key_wrap(
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let rsa_pubkey = pubkey.rsa()?;
+    #[cfg(feature = "fips")]
     if rsa_pubkey.size() < FIPS_MIN_RSA_MODULUS_LENGTH {
         kmip_utils_bail!(
             "RSA key has insufficient size: expected >= {} bytes and got {} bytes",
@@ -69,7 +71,7 @@ pub fn ckm_rsa_aes_key_wrap(
 /// key.
 ///
 /// First decrypt the key-encryption-key `kek` using RSA-OAEP. then proceed to
-/// unwrap the key by decrypting `m = dec(c, kek)` using AES-KWP as specified in
+/// unwrap the key by decrypting `m = dec(wk, kek)` using AES-KWP as specified in
 /// RFC5649.
 ///
 /// TODO - support OAEP for different hashes.
@@ -78,6 +80,8 @@ pub fn ckm_rsa_aes_key_unwrap(
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let rsa_privkey = p_key.rsa()?;
+
+    #[cfg(feature = "fips")]
     if rsa_privkey.size() < FIPS_MIN_RSA_MODULUS_LENGTH {
         kmip_utils_bail!(
             "RSA key has insufficient size: expected >= {} bytes and got {} bytes",
