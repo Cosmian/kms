@@ -1,22 +1,21 @@
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::kmip::kmip_operations::{Decrypt, DecryptedData};
 use cosmian_kmip::{
-    kmip::{
-        kmip_objects::Object,
-        kmip_operations::{Decrypt, DecryptedData, Encrypt},
-        kmip_types::KeyFormatType,
-    },
+    kmip::{kmip_objects::Object, kmip_operations::Encrypt, kmip_types::KeyFormatType},
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 use openssl::pkey::{PKey, Private, Public};
 use tracing::debug;
 
-use super::{
-    rfc5649::{key_unwrap, key_wrap},
-    rsa_oaep_aes_kwp::{ckm_rsa_aes_key_unwrap, ckm_rsa_aes_key_wrap},
-};
+use super::rfc5649::{key_unwrap, key_wrap};
+#[cfg(feature = "fips")]
+use super::rsa_oaep_aes_kwp::{ckm_rsa_aes_key_unwrap, ckm_rsa_aes_key_wrap};
+#[cfg(not(feature = "fips"))]
+use crate::{crypto::hybrid_encryption::HybridDecryptionSystem, DecryptionSystem};
 use crate::{
-    crypto::hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
+    crypto::hybrid_encryption::HybridEncryptionSystem,
     error::{result::CryptoResultHelper, KmipUtilsError},
-    kmip_utils_bail, DecryptionSystem, EncryptionSystem,
+    kmip_utils_bail, EncryptionSystem,
 };
 
 /// Encrypt bytes using the wrapping key
@@ -93,33 +92,42 @@ pub fn encrypt_bytes(wrapping_key: &Object, plaintext: &[u8]) -> Result<Vec<u8>,
     }
 }
 
+#[cfg(feature = "fips")]
 fn encrypt_with_public_key(
     pubkey: PKey<Public>,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
-    if cfg!(not(feature = "fips")) {
-        // Wrap symmetric key using ECIES.
-        let request = Encrypt {
-            data: Some(plaintext.to_vec()),
-            ..Encrypt::default()
-        };
-        let encrypt_system = HybridEncryptionSystem::new("public_key_uid", pubkey);
-        let encrypt_response = encrypt_system.encrypt(&request)?;
-        let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
-            "Encrypt response does not contain ciphertext".to_string(),
-        ))?;
-        debug!(
-            "encrypt_bytes: succeeded: ciphertext length: {}",
-            ciphertext.len()
-        );
-        Ok(ciphertext)
-    } else {
-        // Wrap symmetric key using RSA.
-        // XXX - ECIES approved by fips ? not clear, only supporting RSA for
-        // now.
-        // XXX - build kmip request ?
-        ckm_rsa_aes_key_wrap(pubkey, plaintext)
+    // Wrap symmetric key using RSA.
+    // XXX - ECIES approved by fips ? not clear, only supporting RSA for
+    // now.
+    // XXX - build kmip request ?
+    if pubkey.rsa().is_err() {
+        kmip_utils_bail!("Encryption Error: Only RSA KEM supported in FIPS mode.")
     }
+
+    ckm_rsa_aes_key_wrap(pubkey, plaintext)
+}
+
+#[cfg(not(feature = "fips"))]
+fn encrypt_with_public_key(
+    pubkey: PKey<Public>,
+    plaintext: &[u8],
+) -> Result<Vec<u8>, KmipUtilsError> {
+    // Wrap symmetric key using ECIES.
+    let request = Encrypt {
+        data: Some(plaintext.to_vec()),
+        ..Encrypt::default()
+    };
+    let encrypt_system = HybridEncryptionSystem::new("public_key_uid", pubkey);
+    let encrypt_response = encrypt_system.encrypt(&request)?;
+    let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
+        "Encrypt response does not contain ciphertext".to_string(),
+    ))?;
+    debug!(
+        "encrypt_bytes: succeeded: ciphertext length: {}",
+        ciphertext.len()
+    );
+    Ok(ciphertext)
 }
 
 /// Decrypt bytes using the unwrapping key
@@ -166,36 +174,48 @@ pub fn decrypt_bytes(
     Ok(plaintext)
 }
 
+#[cfg(feature = "fips")]
 fn decrypt_with_private_key(
     p_key: PKey<Private>,
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
-    if cfg!(not(feature = "fips")) {
-        // If not in FIPS mode, perform Hybrid Encryption.
-        let decrypt_system = HybridDecryptionSystem::new(None, p_key);
-        let request = Decrypt {
-            data: Some(ciphertext.to_vec()),
-            ..Decrypt::default()
-        };
-        let decrypt_response = decrypt_system.decrypt(&request)?;
-        let plaintext = decrypt_response.data.ok_or(KmipUtilsError::Default(
-            "Decrypt response does not contain plaintext".to_string(),
-        ))?;
-        debug!(
-            "decrypt_bytes: succeeded: plaintext length: {}",
-            plaintext.len()
-        );
-        let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
-        Ok(decrypted_data.plaintext)
-    } else {
-        // XXX - Unwrap symmetric key using RSA. FIPS does not specify RSA for
-        // asymmetric key wrapping.
-        // XXX - ECIES approved by fips ? not stated, only supporting RSA for
-        // now:
-        // > An RSA decryption operation using an exponentiation for key
-        // > encapsulation, as specified in the section 7.1.2.1 of SP 800-56Br2
-        ckm_rsa_aes_key_unwrap(p_key, ciphertext)
+    // Unwrap symmetric key using RSA.
+
+    if p_key.rsa().is_err() {
+        kmip_utils_bail!("Decryption Error: Only RSA KEM supported in FIPS mode.")
     }
+
+    // XXX - ECIES approved by fips ? not stated, only supporting RSA for
+    // now:
+    // XXX - Unwrap symmetric key using RSA. FIPS does not specify RSA for
+    // asymmetric key wrapping:
+    // > An RSA decryption operation using an exponentiation for key
+    // > encapsulation, as specified in the section 7.1.2.1 of SP 800-56Br2
+
+    ckm_rsa_aes_key_unwrap(p_key, ciphertext)
+}
+
+#[cfg(not(feature = "fips"))]
+fn decrypt_with_private_key(
+    p_key: PKey<Private>,
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, KmipUtilsError> {
+    // If not in FIPS mode, perform Hybrid Encryption.
+    let decrypt_system = HybridDecryptionSystem::new(None, p_key);
+    let request = Decrypt {
+        data: Some(ciphertext.to_vec()),
+        ..Decrypt::default()
+    };
+    let decrypt_response = decrypt_system.decrypt(&request)?;
+    let plaintext = decrypt_response.data.ok_or(KmipUtilsError::Default(
+        "Decrypt response does not contain plaintext".to_string(),
+    ))?;
+    debug!(
+        "decrypt_bytes: succeeded: plaintext length: {}",
+        plaintext.len()
+    );
+    let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
+    Ok(decrypted_data.plaintext)
 }
 
 #[cfg(test)]

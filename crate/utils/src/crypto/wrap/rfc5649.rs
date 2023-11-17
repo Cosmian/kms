@@ -13,6 +13,7 @@ use openssl::symm::{encrypt, Cipher, Crypter, Mode};
 
 use crate::error::KmipUtilsError;
 
+#[cfg(feature = "fips")]
 pub const AES_KWP_KEY_SIZE: usize = 0x20;
 const DEFAULT_RFC5649_CONST: u32 = 0xA659_59A6_u32;
 const DEFAULT_IV: u64 = 0xA6A6_A6A6_A6A6_A6A6;

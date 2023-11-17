@@ -15,6 +15,8 @@ use openssl::pkey::PKey;
 
 use crate::KeyPair;
 
+pub const ED25519_SECRET_LENGTH: usize = 0x20;
+pub const ED25519_PUBLIC_KEY_LENGTH: usize = 0x20;
 pub const Q_LENGTH_BITS: i32 = 253;
 
 /// convert to a X25519 256 bits KMIP Public Key
