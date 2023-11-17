@@ -20,7 +20,7 @@ use crate::{
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve,
-        shared::{export::export, import::import},
+        shared::{export::export_key, import::import_key},
         symmetric,
         utils::{start_default_test_kms_server, ONCE},
     },
@@ -43,10 +43,11 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
 
     // import the wrapping key
     println!("importing wrapping key");
-    let wrap_key_uid = import(
+    let wrap_key_uid = import_key(
         &ctx.owner_cli_conf_path,
         "sym",
         wrap_key_path.to_str().unwrap(),
+        None,
         None,
         &[],
         false,
@@ -117,10 +118,11 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     // Write the private key to a file and import it
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
     write_kmip_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;
-    import(
+    import_key(
         &ctx.owner_cli_conf_path,
         "ec",
         wrap_private_key_path.to_str().unwrap(),
+        None,
         Some(wrap_private_key_uid.to_string()),
         &[],
         false,
@@ -129,10 +131,11 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     // Write the public key to a file and import it
     let wrap_public_key_path = tmp_path.join("wrap.public.key");
     write_kmip_object_to_file(wrap_key_pair.public_key(), &wrap_public_key_path)?;
-    import(
+    import_key(
         &ctx.owner_cli_conf_path,
         "ec",
         wrap_public_key_path.to_str().unwrap(),
+        None,
         Some(wrap_public_key_uid.to_string()),
         &[],
         false,
@@ -196,7 +199,7 @@ fn test_import_export_wrap_private_key(
 
     // Export the private key without wrapping
     let private_key_file = tmp_path.join("master_private.key");
-    export(
+    export_key(
         cli_conf_path,
         sub_command,
         private_key_id,
@@ -210,7 +213,7 @@ fn test_import_export_wrap_private_key(
 
     // Export the private key with wrapping
     let wrapped_private_key_file = tmp_path.join("wrapped_master_private.key");
-    export(
+    export_key(
         cli_conf_path,
         sub_command,
         private_key_id,
@@ -257,10 +260,11 @@ fn test_import_export_wrap_private_key(
     // test the unwrapping on import
     {
         // import the wrapped key, un wrapping it on import
-        let unwrapped_key_id = import(
+        let unwrapped_key_id = import_key(
             cli_conf_path,
             sub_command,
             wrapped_private_key_file.to_str().unwrap(),
+            None,
             None,
             &[],
             true,
@@ -268,7 +272,7 @@ fn test_import_export_wrap_private_key(
         )?;
         // re-export it as registered and check it was correctly unwrapped
         let re_exported_key_file = tmp_path.join("re_exported_master_private.key");
-        export(
+        export_key(
             cli_conf_path,
             sub_command,
             &unwrapped_key_id,
@@ -289,10 +293,11 @@ fn test_import_export_wrap_private_key(
     // test the unwrapping on export
     {
         // import the wrapped key, un wrapping it on import
-        let wrapped_key_id = import(
+        let wrapped_key_id = import_key(
             cli_conf_path,
             sub_command,
             wrapped_private_key_file.to_str().unwrap(),
+            None,
             None,
             &[],
             false,
@@ -300,7 +305,7 @@ fn test_import_export_wrap_private_key(
         )?;
         // re-export it as registered and check it was correctly unwrapped
         let exported_unwrapped_key_file = tmp_path.join("exported_unwrapped_master_private.key");
-        export(
+        export_key(
             cli_conf_path,
             sub_command,
             &wrapped_key_id,

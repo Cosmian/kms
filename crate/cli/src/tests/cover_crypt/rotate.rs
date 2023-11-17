@@ -13,7 +13,7 @@ use crate::{
             user_decryption_keys::create_user_decryption_key,
             SUB_COMMAND,
         },
-        shared::{export, import},
+        shared::{export_key, import_key},
         symmetric::create_key::create_symmetric_key,
         utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
@@ -121,7 +121,7 @@ async fn test_rotate_error() -> Result<(), CliError> {
     let symmetric_key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     // export a wrapped key
     let exported_wrapped_key_file = tmp_path.join("exported_wrapped_master_private.key");
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         SUB_COMMAND,
         &master_private_key_id,
@@ -132,10 +132,11 @@ async fn test_rotate_error() -> Result<(), CliError> {
         false,
     )?;
     // import it wrapped
-    let wrapped_key_id = import(
+    let wrapped_key_id = import_key(
         &ctx.owner_cli_conf_path,
         SUB_COMMAND,
         &exported_wrapped_key_file.to_string_lossy(),
+        None,
         None,
         &[],
         false,
@@ -201,7 +202,7 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
 
     // export the user_decryption_key
     let exported_user_decryption_key_file = tmp_path.join("exported_user_decryption.key");
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         SUB_COMMAND,
         &user_decryption_key,
@@ -248,10 +249,11 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     )?;
 
     // import the non rotated user_decryption_key
-    let old_user_decryption_key = import(
+    let old_user_decryption_key = import_key(
         &ctx.owner_cli_conf_path,
         SUB_COMMAND,
         &exported_user_decryption_key_file.to_string_lossy(),
+        None,
         None,
         &[],
         false,

@@ -193,18 +193,6 @@ impl ObjectsDB {
         Ok(())
     }
 
-    pub async fn objects_upsert(&self, objects: &HashMap<String, RedisDbObject>) -> KResult<()> {
-        let mut pipeline = pipe();
-        for (uid, redis_db_object) in objects {
-            pipeline.set(
-                ObjectsDB::object_key(uid),
-                self.encrypt_object(uid, redis_db_object)?,
-            );
-        }
-        pipeline.query_async(&mut self.mgr.clone()).await?;
-        Ok(())
-    }
-
     pub async fn objects_get(
         &self,
         uids: &HashSet<String>,

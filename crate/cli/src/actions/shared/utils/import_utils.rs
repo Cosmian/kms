@@ -6,7 +6,6 @@ use cosmian_kmip::kmip::{
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::tagging::set_tags;
 use tracing::trace;
-use uuid::Uuid;
 
 use crate::error::CliError;
 
@@ -24,10 +23,8 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
 ) -> Result<String, CliError> {
     trace!("Entering import_object");
-    // generate a unique id if not specified
-    let unique_identifier = object_id
-        .clone()
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    // an empty uid will have the server generate if for us
+    let unique_identifier = object_id.clone().unwrap_or_default();
 
     trace!("import_object: unique_identifier");
     // cache the object type

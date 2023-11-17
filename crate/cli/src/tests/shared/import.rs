@@ -5,13 +5,13 @@ use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_logger::log_utils::log_init;
 
 use crate::{
-    actions::shared::utils::read_object_from_json_ttlv_file,
+    actions::shared::{utils::read_object_from_json_ttlv_file, KeyFormat},
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        shared::export::export,
+        shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
         utils::{
             extract_uids::extract_imported_key_id, recover_cmd_logs, start_default_test_kms_server,
@@ -21,10 +21,11 @@ use crate::{
     },
 };
 
-pub fn import(
+pub fn import_key(
     cli_conf_path: &str,
     sub_command: &str,
     key_file: &str,
+    key_format: Option<KeyFormat>,
     key_id: Option<String>,
     tags: &[String],
     unwrap: bool,
@@ -40,6 +41,22 @@ pub fn import(
     for tag in tags {
         args.push("--tag".to_owned());
         args.push(tag.to_owned());
+    }
+    if let Some(key_format) = key_format {
+        args.push("--key-format".to_owned());
+        let kfs = match key_format {
+            KeyFormat::JsonTtlv => "json-ttlv",
+            KeyFormat::Sec1Pem => "sec1-pem",
+            KeyFormat::Sec1Der => "sec1-der",
+            KeyFormat::Pkcs1Pem => "pkcs1-pem",
+            KeyFormat::Pkcs1Der => "pkcs1-der",
+            KeyFormat::Pkcs8Pem => "pkcs8-pem",
+            KeyFormat::Pkcs8Der => "pkcs8-der",
+            KeyFormat::SpkiPem => "spki-pem",
+            KeyFormat::SpkiDer => "spki-der",
+            KeyFormat::Raw => "raw",
+        };
+        args.push(kfs.to_string());
     }
     if unwrap {
         args.push("-u".to_owned());
@@ -65,23 +82,25 @@ pub fn import(
 pub async fn test_import_cover_crypt() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
-    let uid: String = import(
+    let uid: String = import_key(
         &ctx.owner_cli_conf_path,
         "cc",
         "test_data/ttlv_public_key.json",
+        None,
         None,
         &[],
         false,
         false,
     )?;
-    assert_eq!(uid.len(), 36);
+    assert_eq!(uid.len(), 44);
 
     // reimporting the same key  with the same id should fail
     assert!(
-        import(
+        import_key(
             &ctx.owner_cli_conf_path,
             "cc",
             "test_data/ttlv_public_key.json",
+            None,
             Some(uid.clone()),
             &[],
             false,
@@ -91,10 +110,11 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
     );
 
     //...unless we force it with replace_existing
-    let uid_: String = import(
+    let uid_: String = import_key(
         &ctx.owner_cli_conf_path,
         "cc",
         "test_data/ttlv_public_key.json",
+        None,
         Some(uid.clone()),
         &[],
         false,
@@ -152,7 +172,7 @@ pub fn export_import_test(
     algorithm: CryptographicAlgorithm,
 ) -> Result<(), CliError> {
     // Export
-    export(
+    export_key(
         cli_conf_path,
         sub_command,
         private_key_id,
@@ -166,16 +186,17 @@ pub fn export_import_test(
     let key_bytes = object.key_block()?.key_bytes()?;
 
     // import and re-export
-    let uid: String = import(
+    let uid: String = import_key(
         cli_conf_path,
         sub_command,
         "/tmp/output.export",
+        None,
         None,
         &[],
         false,
         false,
     )?;
-    export(
+    export_key(
         cli_conf_path,
         sub_command,
         &uid,

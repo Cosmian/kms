@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[allow(clippy::too_many_arguments)]
-pub fn import(
+pub fn import_certificate(
     cli_conf_path: &str,
     sub_command: &str,
     key_file: &str,
@@ -79,8 +79,8 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
     // Create a test server
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
-    // import as PEM
-    import(
+    // import as TTLV JSON
+    import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         "test_data/certificates/exported_certificate_ttlv.json",
@@ -93,8 +93,8 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         false,
     )?;
 
-    // import as TTLV JSON
-    import(
+    // import as PEM
+    import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         "test_data/certificates/ca.crt",
@@ -107,7 +107,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
     )?;
 
     // import a chain
-    import(
+    import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         "test_data/certificates/mozilla_IncludedRootsPEM.txt",
@@ -120,7 +120,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
     )?;
 
     // import a PKCS12
-    import(
+    import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         "test_data/certificates/p12/output.p12",
@@ -129,7 +129,7 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         None,
         Some(&["import_pkcs12"]),
         false,
-        false,
+        true,
     )?;
 
     Ok(())

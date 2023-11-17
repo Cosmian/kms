@@ -141,7 +141,7 @@ pub(crate) async fn locate_ca_certificate_by_spki(
     locate_by_tags(
         ObjectType::Certificate,
         &[
-            &format!("_cert_ca={ca_subject_common_name}"),
+            &format!("_cert_cn={ca_subject_common_name}"),
             &format!("_cert_spki={ca_spki}"),
         ],
         kms,

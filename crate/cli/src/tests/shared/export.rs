@@ -28,7 +28,7 @@ use crate::{
 };
 
 #[allow(clippy::too_many_arguments)]
-pub fn export(
+pub fn export_key(
     cli_conf_path: &str,
     sub_command: &str,
     key_id: &str,
@@ -93,7 +93,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
     let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
 
     // Export as default (JsonTTLV with Raw Key Format Type)
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
@@ -111,7 +111,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
     let key_bytes = key_block.key_bytes()?;
 
     // Export the bytes only
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
@@ -126,7 +126,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
 
     // wrong export format
     assert!(
-        export(
+        export_key(
             &ctx.owner_cli_conf_path,
             "sym",
             &key_id,
@@ -153,7 +153,7 @@ pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
     // generate a symmetric key
     let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     // Export
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
@@ -216,7 +216,7 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
         ctx: &TestsContext,
     ) -> Result<(), CliError> {
         // Export the key
-        export(
+        export_key(
             &ctx.owner_cli_conf_path,
             "cc",
             &key_id,
@@ -234,7 +234,7 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
         let key_bytes = key_block.key_bytes()?;
 
         // Export the key bytes only
-        export(
+        export_key(
             &ctx.owner_cli_conf_path,
             "cc",
             &key_id,
@@ -261,7 +261,7 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // key does not exist
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "cc",
         "does_not_exist",
@@ -283,7 +283,7 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
     )?;
 
     // Export to non existing dir
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "cc",
         &master_private_key_id,
@@ -313,7 +313,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
     //
     // Private Key
     //
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "ec",
         &private_key_id,
@@ -347,7 +347,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
     let pkey_1 = PKey::private_key_from_raw_bytes(&d.to_bytes_be(), Id::X25519)?;
 
     // Export the bytes only
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "ec",
         &private_key_id,
@@ -368,7 +368,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
     //
     // Public Key
     //
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "ec",
         &public_key_id,
@@ -402,7 +402,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
     let pkey_1 = PKey::public_key_from_raw_bytes(&q_string, Id::X25519)?;
 
     // Export the bytes only
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "ec",
         &public_key_id,

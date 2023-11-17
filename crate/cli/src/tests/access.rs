@@ -7,7 +7,7 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        shared::{destroy, export, revoke},
+        shared::{destroy, export_key, revoke},
         symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
         utils::{start_default_test_kms_server, ONCE},
         PROG_NAME,
@@ -123,7 +123,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
     let key_id = gen_key(&ctx.owner_cli_conf_path)?;
 
     // the owner should have access
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
@@ -139,7 +139,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
 
     // the user should not be able to export
     assert!(
-        export(
+        export_key(
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
@@ -176,7 +176,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
     // switch to user
     // the user should still not be able to export
     assert!(
-        export(
+        export_key(
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
@@ -207,7 +207,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
 
     // switch to user
     // the user should now be able to export
-    export(
+    export_key(
         &ctx.user_cli_conf_path,
         "sym",
         &key_id,
@@ -324,7 +324,7 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
 
     // switch to user
     // the user should now be able to export
-    export(
+    export_key(
         &ctx.user_cli_conf_path,
         "sym",
         &key_id,
@@ -346,7 +346,7 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
 
     // the user should not be able to export anymore
     assert!(
-        export(
+        export_key(
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
@@ -494,7 +494,7 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
     let key_id = gen_key(&ctx.owner_cli_conf_path)?;
 
     // the owner should have access
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
@@ -510,7 +510,7 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
 
     // the user should not be able to export
     assert!(
-        export(
+        export_key(
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
@@ -537,7 +537,7 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
     // switch to user
     // the user should still not be able to export
     assert!(
-        export(
+        export_key(
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
@@ -563,7 +563,7 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
 
     // switch to user
     // the user should now be able to export
-    export(
+    export_key(
         &ctx.user_cli_conf_path,
         "sym",
         &key_id,

@@ -1137,6 +1137,7 @@ dependencies = [
 name = "cosmian_kmip"
 version = "4.9.1"
 dependencies = [
+ "base58",
  "bitflags 2.4.1",
  "chrono",
  "cloudproof",
@@ -1146,6 +1147,7 @@ dependencies = [
  "openssl",
  "serde",
  "serde_json",
+ "sha3",
  "strum",
  "thiserror",
  "time 0.3.30",
@@ -1190,7 +1192,6 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
- "uuid",
  "x509-cert",
  "zeroize",
 ]

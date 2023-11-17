@@ -194,15 +194,16 @@ pub trait Database {
 
 /// An atomic operation on the database
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum AtomicOperation {
     /// Create (uid, object, tags) - the state will be active
     Create((String, Object, HashSet<String>)),
+    /// Upsert (uid, object, tags, state) - the state be updated
+    Upsert((String, Object, Option<HashSet<String>>, StateEnumeration)),
     /// Update the object (uid, object, tags, state) - the state will be not be updated
     UpdateObject((String, Object, Option<HashSet<String>>)),
     /// Update the state (uid, state)
     UpdateState((String, StateEnumeration)),
-    /// Upsert (uid, object, tags, state) - the state be updated
-    Upsert((String, Object, Option<HashSet<String>>, StateEnumeration)),
     /// Delete (uid)
     Delete(String),
 }

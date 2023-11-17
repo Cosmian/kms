@@ -5,16 +5,18 @@ edition = "2021"
 license-file = "../../LICENSE.md"
 
 [features]
-default = []
+default = ["sha3"]
 openssl = ["dep:openssl"]
 
 [dependencies]
+base58 = "0.2"
 bitflags = { workspace = true }
 chrono = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }
 num-bigint = { workspace = true }
 openssl = { workspace = true, optional = true }
+sha3 = { version = "0.10", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }

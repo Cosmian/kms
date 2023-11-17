@@ -134,8 +134,7 @@ impl ImportCertificateAction {
                 debug!("CLI: import certificate as PKCS12 file");
                 let private_key_id = self.import_pkcs12(kms_rest_client).await?;
                 println!(
-                    "The private key in the PKCS12 file was imported with id: {private_key_id}, \
-                     the certificate has id: {private_key_id}-cert"
+                    "The private key in the PKCS12 file was imported with id: {private_key_id}"
                 );
             }
             CertificateInputFormat::Chain => {
@@ -148,7 +147,7 @@ impl ImportCertificateAction {
                     .await?;
                 println!(
                     "The certificate chain in the PEM file was imported with id: \
-                     {leaf_certificate_id}, the public key with id: {leaf_certificate_id}-pk"
+                     {leaf_certificate_id}"
                 );
             }
             CertificateInputFormat::CCADB => {

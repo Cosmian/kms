@@ -19,7 +19,7 @@ use crate::{
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        shared::export::export,
+        shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
         utils::{recover_cmd_logs, start_default_test_kms_server, TestsContext, ONCE},
         PROG_NAME,
@@ -151,7 +151,7 @@ pub fn password_wrap_import_test(
 
     // Export
     let key_file = temp_dir.path().join("master_private.key");
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         sub_command,
         private_key_id,

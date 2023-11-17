@@ -10,7 +10,7 @@ use crate::{
     error::CliError,
     tests::{
         cover_crypt::SUB_COMMAND,
-        shared::export,
+        shared::export_key,
         symmetric::create_key::create_symmetric_key,
         utils::{
             create_new_database, generate_invalid_conf, recover_cmd_logs,
@@ -123,7 +123,7 @@ async fn test_multiple_databases() -> Result<(), CliError> {
     let key_1 = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     // export the key 1
     // Export
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_1,
@@ -147,7 +147,7 @@ async fn test_multiple_databases() -> Result<(), CliError> {
     let key_2 = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     // export the key 1
     // Export
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_2,
@@ -162,7 +162,7 @@ async fn test_multiple_databases() -> Result<(), CliError> {
     write_json_object_to_file(&ctx.owner_cli_conf, &ctx.owner_cli_conf_path)
         .expect("Can't rewrite the original conf");
     // we should be able to export key_1 again
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_1,
@@ -177,7 +177,7 @@ async fn test_multiple_databases() -> Result<(), CliError> {
     write_json_object_to_file(&new_conf, &ctx.owner_cli_conf_path)
         .expect("Can't rewrite the new conf");
     // we should be able to export key_2 again
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_2,

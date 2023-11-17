@@ -290,8 +290,8 @@ pub fn openssl_private_key_to_kmip(
                 key_compression_type: Some(KeyCompressionType::ECPublicKeyTypeUncompressed),
             }
         }
-        KeyFormatType::PKCS8 => KeyBlock {
-            key_format_type,
+        KeyFormatType::PKCS8 | KeyFormatType::PKCS12 => KeyBlock {
+            key_format_type: KeyFormatType::PKCS8,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(private_key.private_key_to_pkcs8()?),
                 attributes: None,

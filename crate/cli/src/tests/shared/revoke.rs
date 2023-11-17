@@ -12,7 +12,7 @@ use crate::{
             user_decryption_keys::create_user_decryption_key,
         },
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        shared::export::export,
+        shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
         utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
@@ -48,7 +48,7 @@ fn assert_revoker(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
     let tmp_path = tmp_dir.path();
     // should not be able to Get....
     assert!(
-        export(
+        export_key(
             cli_conf_path,
             "cc",
             key_id,
@@ -63,7 +63,7 @@ fn assert_revoker(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
 
     // but should be able to Export....
     assert!(
-        export(
+        export_key(
             cli_conf_path,
             "cc",
             key_id,
@@ -256,7 +256,7 @@ async fn test_revoke_cover_crypt() -> Result<(), CliError> {
         let tmp_path = tmp_dir.path();
         // should able to Get the Master Keys and user key 2
         assert!(
-            export(
+            export_key(
                 &ctx.owner_cli_conf_path,
                 "cc",
                 &master_private_key_id,
@@ -269,7 +269,7 @@ async fn test_revoke_cover_crypt() -> Result<(), CliError> {
             .is_ok()
         );
         assert!(
-            export(
+            export_key(
                 &ctx.owner_cli_conf_path,
                 "cc",
                 &master_public_key_id,
@@ -282,7 +282,7 @@ async fn test_revoke_cover_crypt() -> Result<(), CliError> {
             .is_ok()
         );
         assert!(
-            export(
+            export_key(
                 &ctx.owner_cli_conf_path,
                 "cc",
                 &user_key_id_2,

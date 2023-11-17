@@ -98,7 +98,9 @@ impl UnwrapKeyAction {
                     .to_vec();
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.unwrap_key_id {
-            export_object(kms_rest_client, key_id, false, None, false, None).await?
+            export_object(kms_rest_client, key_id, false, None, false, None)
+                .await?
+                .0
         } else if let Some(key_file) = &self.unwrap_key_file {
             read_object_from_json_ttlv_file(key_file)?
         } else {

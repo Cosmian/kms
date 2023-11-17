@@ -40,7 +40,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-uuid = { workspace = true }
+#uuid = { workspace = true }
 x509-cert = { workspace = true }
 zeroize = { workspace = true }
 

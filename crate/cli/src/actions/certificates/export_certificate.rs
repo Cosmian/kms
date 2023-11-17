@@ -1,12 +1,16 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::KeyFormatType};
+use cosmian_kmip::kmip::{
+    kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv,
+};
 use cosmian_kms_client::KmsRestClient;
 use tracing::trace;
 
 use crate::{
-    actions::shared::utils::{export_object, write_bytes_to_file, write_kmip_object_to_file},
+    actions::shared::utils::{
+        export_object, write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file,
+    },
     cli_bail,
     error::CliError,
 };
@@ -38,7 +42,12 @@ pub struct ExportCertificateAction {
 
     /// The certificate unique identifier stored in the KMS; for PKCS#12, provide the private key id
     /// If not specified, tags should be specified
-    #[clap(long = "certificate-id", short = 'k', group = "certificate-tags")]
+    #[clap(
+        long = "certificate-id",
+        short = 'k',
+        group = "certificate-tags",
+        verbatim_doc_comment
+    )]
     unique_id: Option<String>,
 
     /// Tag to use to retrieve the certificate/private key when no unique id is specified.
@@ -47,7 +56,8 @@ pub struct ExportCertificateAction {
         long = "tag",
         short = 't',
         value_name = "TAG",
-        group = "certificate-tags"
+        group = "certificate-tags",
+        verbatim_doc_comment
     )]
     tags: Option<Vec<String>>,
 
@@ -56,13 +66,18 @@ pub struct ExportCertificateAction {
     output_format: CertificateExportFormat,
 
     /// Password to use to protect the PKCS#12 file
-    #[clap(long = "pkcs12_password", short = 'p')]
+    #[clap(long = "pkcs12-password", short = 'p')]
     pkcs12_password: Option<String>,
 
     /// Allow exporting revoked and destroyed certificates or private key (for PKCS#12).
     /// The user must be the owner of the certificate.
     /// Destroyed objects have their key material removed.
-    #[clap(long = "allow-revoked", short = 'i', default_value = "false")]
+    #[clap(
+        long = "allow-revoked",
+        short = 'i',
+        default_value = "false",
+        verbatim_doc_comment
+    )]
     allow_revoked: bool,
 }
 
@@ -89,7 +104,7 @@ impl ExportCertificateAction {
         };
 
         // export the object
-        let object = export_object(
+        let (object, export_attributes) = export_object(
             client_connector,
             &object_id,
             false,
@@ -138,6 +153,16 @@ impl ExportCertificateAction {
             object.object_type(),
             &self.certificate_file
         );
+
+        // write attributes to a file
+        if let Some(export_attributes) = export_attributes {
+            let attributes_file = self.certificate_file.with_extension("attributes.json");
+            write_json_object_to_file(&to_ttlv(&export_attributes)?, &attributes_file)?;
+            println!(
+                "The attributes of the certificate {} were exported to {:?}",
+                &object_id, &attributes_file
+            );
+        }
         Ok(())
     }
 }

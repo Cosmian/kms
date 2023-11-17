@@ -15,7 +15,7 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        certificates::{import::import, openssl::check_certificate},
+        certificates::{import::import_certificate, openssl::check_certificate},
         shared::locate,
         utils::{extract_uids::extract_uid, recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
@@ -347,7 +347,7 @@ pub async fn test_certify_with_csr() -> Result<(), CliError> {
 
     // import the intermediate certificate
     {
-        import(
+        import_certificate(
             &ctx.owner_cli_conf_path,
             "certificates",
             "test_data/certificates/csr/intermediate.p12",

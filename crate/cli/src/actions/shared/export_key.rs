@@ -134,7 +134,7 @@ impl ExportKeyAction {
         };
 
         // export the object
-        let object = export_object(
+        let (object, _) = export_object(
             kms_rest_client,
             &id,
             self.unwrap,

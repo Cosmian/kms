@@ -15,7 +15,7 @@ use crate::{
     tests::{
         certificates::{
             certify::{certify, export},
-            import::import,
+            import::import_certificate,
         },
         shared::locate,
         utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
@@ -167,7 +167,7 @@ async fn test_certificate_import_encrypt(
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
-    let _root_certificate_id = import(
+    let _root_certificate_id = import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         &format!("test_data/certificates/{ca_path}"),
@@ -179,7 +179,7 @@ async fn test_certificate_import_encrypt(
         false,
     )?;
 
-    let _subca_certificate_id = import(
+    let _subca_certificate_id = import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         &format!("test_data/certificates/{subca_path}"),
@@ -191,7 +191,7 @@ async fn test_certificate_import_encrypt(
         false,
     )?;
 
-    let certificate_id = import(
+    let certificate_id = import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         &format!("test_data/certificates/{cert_path}"),
@@ -213,7 +213,7 @@ async fn test_certificate_import_encrypt(
     )?;
 
     debug!("\n\nImport Key");
-    let private_key_id = import(
+    let private_key_id = import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         &format!("test_data/certificates/{key_path}"),
@@ -273,7 +273,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
     assert!(!output_file.exists());
 
     debug!("\n\nImport Certificate");
-    let certificate_id = import(
+    let certificate_id = import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
@@ -295,7 +295,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
     )?;
 
     debug!("\n\nImport Private key");
-    let private_key_id = import(
+    let private_key_id = import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         &format!("test_data/certificates/openssl/{curve_name}-private-key.pem"),
@@ -325,7 +325,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
     )?;
 
     debug!("\n\nImport a wrapped Private key but unwrap it into server");
-    import(
+    import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         &private_key_wrapped,
@@ -338,7 +338,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
     )?;
 
     debug!("\n\nImport a wrapped Private key but let is save it `as registered` into server");
-    let wrapped_private_key_uid = import(
+    let wrapped_private_key_uid = import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         &private_key_wrapped,
@@ -436,7 +436,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
     // assert!(!output_file.exists());
 
     debug!("\n\nImport Certificate");
-    let _root_certificate_id = import(
+    let _root_certificate_id = import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
@@ -445,11 +445,11 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
         None,
         Some(tags),
         false,
-        false,
+        true,
     )?;
 
     debug!("\n\nImport Certificate");
-    let certificate_id = import(
+    let certificate_id = import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         &format!("test_data/certificates/openssl/{curve_name}-revoked.crt"),
@@ -458,7 +458,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
         None,
         Some(tags),
         false,
-        false,
+        true,
     )?;
 
     debug!("\n\nEncrypt with certificate");

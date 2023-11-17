@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-use base58::ToBase58;
 use cosmian_kmip::{
+    id,
     kmip::{
         kmip_data_structures::{KeyMaterial, KeyValue},
         kmip_objects::{Object, Object::Certificate, ObjectType},
@@ -90,7 +90,7 @@ async fn process_symmetric_key(
     object_key_block.key_value.attributes = Some(request_attributes);
 
     let uid = if request.unique_identifier.is_empty() {
-        object_key_block.key_bytes()?.to_base58()
+        id(&object_key_block.key_bytes()?)?
     } else {
         request.unique_identifier.to_string()
     };
@@ -131,7 +131,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
     let certificate = X509::from_der(&certificate_der_bytes)?;
     let der_bytes = certificate.to_der()?;
     let uid = if request.unique_identifier.is_empty() {
-        der_bytes.to_base58()
+        id(&der_bytes)?
     } else {
         request.unique_identifier.to_string()
     };
@@ -213,7 +213,7 @@ async fn process_public_key(
     }
 
     let uid = if request.unique_identifier.is_empty() {
-        object_key_block.key_bytes()?.to_base58()
+        id(&object_key_block.key_bytes()?)?
     } else {
         request.unique_identifier.to_string()
     };
@@ -268,7 +268,7 @@ async fn process_private_key(
         object_key_block.key_value.attributes = Some(request_attributes);
         // build ui if needed
         let uid = if request.unique_identifier.is_empty() {
-            object_key_block.key_bytes()?.to_base58()
+            id(&object_key_block.key_bytes()?)?
         } else {
             request.unique_identifier.to_string()
         };
@@ -319,7 +319,7 @@ fn private_key_from_openssl(
     let der_bytes = sk.key_block()?.key_bytes()?;
 
     let sk_uid = if request_uid.is_empty() {
-        der_bytes.to_base58()
+        id(&der_bytes)?
     } else {
         request_uid.to_string()
     };
@@ -390,7 +390,7 @@ async fn process_pkcs12(
             KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_string())
         })?;
         let der_bytes = openssl_cert.to_der()?;
-        let leaf_certificate_uid = der_bytes.to_base58();
+        let leaf_certificate_uid = id(&der_bytes)?;
         let leaf_certificate = Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: der_bytes,
@@ -414,7 +414,7 @@ async fn process_pkcs12(
         // import the cas
         for openssl_cert in cas.into_iter() {
             let der_bytes = openssl_cert.to_der()?;
-            let chain_certificate_uid = der_bytes.to_base58();
+            let chain_certificate_uid = id(&der_bytes)?;
             let chain_certificate = Certificate {
                 certificate_type: CertificateType::X509,
                 certificate_value: der_bytes,
@@ -450,7 +450,7 @@ async fn process_pkcs12(
                 // CertificateLink seems to be for public key only and there is not description
                 // for PKCS12CertificateLink
                 LinkType::PKCS12CertificateLink,
-                LinkedObjectIdentifier::TextString(private_key_id.clone()),
+                LinkedObjectIdentifier::TextString(leaf_certificate_uid.clone()),
             )
         });
     operations.push(single_operation(
@@ -470,7 +470,7 @@ async fn process_pkcs12(
         // add parent link to certificate
         // (according to the KMIP spec, this would be LinkType::CertificateLink)
         if let Some((parent_id, _, _)) = chain.first() {
-            let parent_tag = format!("_cert_parent={parent_id}");
+            let parent_tag = format!("_cert_issuer={parent_id}");
             tags.insert(parent_tag);
         }
     }
