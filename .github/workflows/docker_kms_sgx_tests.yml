@@ -41,7 +41,7 @@ jobs:
             -d --rm --name enclave-kms-insecure ghcr.io/cosmian/enclave-kms-insecure:${{ inputs.kms-version }}
 
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install ckms
         run: cargo install --locked --path crate/cli

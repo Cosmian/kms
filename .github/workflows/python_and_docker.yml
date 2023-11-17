@@ -22,7 +22,7 @@ jobs:
       - name: Display cpuinfo
         run: cat /proc/cpuinfo
 
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3
 
       - name: Login to GitHub Packages
         uses: docker/login-action@v2
