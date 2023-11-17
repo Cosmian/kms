@@ -66,9 +66,9 @@ jobs:
 
       - uses: actions/checkout@v3
 
-      # `curl` in Centos 7 is too old (1.29) regarding
+      # `curl` in Centos 7 is too old (7.29) regarding
       # what `dtolnay/rust-toolchain` needs  because it is
-      # using `--retry-connrefused` option (curl 1.52).
+      # using `--retry-connrefused` option (curl 7.52).
       # Drop this when moving to Centos 8
       - name: Update curl for Centos 7
         run: |
@@ -125,9 +125,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      # `curl` in Centos 7 is too old (1.29) regarding
+      # `curl` in Centos 7 is too old (7.29) regarding
       # what `dtolnay/rust-toolchain` needs  because it is
-      # using `--retry-connrefused` option (curl 1.52).
+      # using `--retry-connrefused` option (curl 7.52).
       # Drop this when moving to Centos 8
       - name: Update curl for Centos 7
         run: |

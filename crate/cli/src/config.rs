@@ -255,11 +255,13 @@ impl CliConf {
         let conf_path = CliConf::location()?;
 
         fs::write(
-            conf_path,
+            &conf_path,
             serde_json::to_string_pretty(&self)
                 .with_context(|| format!("Unable to serialize default configuration {self:?}"))?,
         )
-        .with_context(|| format!("Unable to write default configuration to file {self:?}"))?;
+        .with_context(|| {
+            format!("Unable to write default configuration to file {conf_path:?}\n{self:?}")
+        })?;
 
         Ok(())
     }
