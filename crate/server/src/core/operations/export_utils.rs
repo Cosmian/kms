@@ -267,7 +267,7 @@ async fn process_private_key(
     }
 
     //make a copy of the existing attributes
-    let attributes = key_block.key_value.attributes.clone().unwrap_or_default();
+    let attributes = key_block.key_value.attributes.clone();
 
     // parse the key to an openssl object
     let openssl_key = kmip_private_key_to_openssl(&object_with_metadata.object)
@@ -285,7 +285,7 @@ async fn process_private_key(
             let mut object = openssl_private_key_to_kmip_default_format(&openssl_key)?;
             // add the attributes back
             let key_block = object.key_block_mut()?;
-            key_block.key_value.attributes = Some(attributes);
+            key_block.key_value.attributes = attributes;
             // wrap the key
             wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
             // reassign the wrapped key
@@ -316,7 +316,7 @@ async fn process_private_key(
     }
     // add the attributes back
     let key_block = object_with_metadata.object.key_block_mut()?;
-    key_block.key_value.attributes = Some(attributes.clone());
+    key_block.key_value.attributes = attributes;
     Ok(())
 }
 

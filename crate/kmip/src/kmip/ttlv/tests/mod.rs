@@ -3,6 +3,18 @@ use num_bigint_dig::BigUint;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
+use crate::{
+    error::KmipError,
+    kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Create, Import, ImportResponse},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
+            LinkedObjectIdentifier,
+        },
+        ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
+    },
 use crate::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_messages::{
@@ -714,6 +726,54 @@ pub fn test_create() {
         LinkedObjectIdentifier::TextString("SK".to_string()),
         create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
     );
+}
+
+//TODO: Issue https://github.com/Cosmian/kms/issues/92
+#[test]
+fn test_issue_deserialize_object_with_empty_attributes() {
+    log_init("info,hyper=info,reqwest=info");
+
+    // this works
+    let _: KeyBlock = serialize_deserialize(get_key_block()).unwrap();
+    println!("KeyBlock serialize/deserialize OK");
+
+    // this should work too but does not deserialize
+    // because of the empty Attributes in the KeyValue
+    let object = Object::SymmetricKey {
+        key_block: get_key_block(),
+    };
+    let res: Result<Object, KmipError> = serialize_deserialize(object);
+    assert!(res.is_err());
+}
+
+fn serialize_deserialize<T: DeserializeOwned + Serialize>(object: T) -> Result<T, KmipError> {
+    // serialize
+    let object_ttlv = to_ttlv(&object)?;
+    let json = serde_json::to_string_pretty(&object_ttlv)?;
+    // deserialize
+    let ttlv: TTLV = serde_json::from_str(&json)?;
+    let t: T = from_ttlv(&ttlv)?;
+    Ok(t)
+}
+
+fn get_key_block() -> KeyBlock {
+    KeyBlock {
+        key_format_type: KeyFormatType::TransparentSymmetricKey,
+        key_compression_type: None,
+        key_value: KeyValue {
+            key_material: KeyMaterial::TransparentSymmetricKey {
+                key: hex::decode(
+                    b"EC189A82797F0AED1E5AEF9EB0D232E6079A1D3E5C00526DDEE59BCA16242604",
+                )
+                .unwrap(),
+            },
+            //TODO:: Empty attributes causes a deserialization issue for `Object`; `None` works
+            attributes: Some(Attributes::default()),
+        },
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        cryptographic_length: Some(256),
+        key_wrapping_data: None,
+    }
 }
 
 #[test]

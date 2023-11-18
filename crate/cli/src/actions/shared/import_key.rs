@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[derive(clap::ValueEnum, Debug, Clone)]
-pub enum KeyFormat {
+pub enum ImportKeyFormat {
     JsonTtlv,
     Pem,
     Sec1,
@@ -62,7 +62,7 @@ pub struct ImportKeyAction {
 
     /// The format of the key
     #[clap(long = "key-format", short = 'f', default_value = "json-ttlv")]
-    key_format: KeyFormat,
+    key_format: ImportKeyFormat,
 
     /// In the case of a JSON TTLV key,
     /// unwrap the key if it is wrapped before storing it
@@ -94,15 +94,23 @@ impl ImportKeyAction {
         // read the key file
         let bytes = read_bytes_from_file(&self.key_file)?;
         let object = match &self.key_format {
-            KeyFormat::JsonTtlv => read_object_from_json_ttlv_bytes(&bytes)?,
-            KeyFormat::Pem => read_key_from_pem(&bytes)?,
-            KeyFormat::Sec1 => build_private_key_from_der_bytes(KeyFormatType::ECPrivateKey, bytes),
-            KeyFormat::Pkcs1Priv => build_private_key_from_der_bytes(KeyFormatType::PKCS1, bytes),
-            KeyFormat::Pkcs1Pub => build_public_key_from_der_bytes(KeyFormatType::PKCS1, bytes),
-            KeyFormat::Pkcs8 => build_private_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
-            KeyFormat::Spki => build_public_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
-            KeyFormat::Aes => build_symmetric_key_from_bytes(CryptographicAlgorithm::AES, bytes),
-            KeyFormat::Chacha20 => {
+            ImportKeyFormat::JsonTtlv => read_object_from_json_ttlv_bytes(&bytes)?,
+            ImportKeyFormat::Pem => read_key_from_pem(&bytes)?,
+            ImportKeyFormat::Sec1 => {
+                build_private_key_from_der_bytes(KeyFormatType::ECPrivateKey, bytes)
+            }
+            ImportKeyFormat::Pkcs1Priv => {
+                build_private_key_from_der_bytes(KeyFormatType::PKCS1, bytes)
+            }
+            ImportKeyFormat::Pkcs1Pub => {
+                build_public_key_from_der_bytes(KeyFormatType::PKCS1, bytes)
+            }
+            ImportKeyFormat::Pkcs8 => build_private_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
+            ImportKeyFormat::Spki => build_public_key_from_der_bytes(KeyFormatType::PKCS8, bytes),
+            ImportKeyFormat::Aes => {
+                build_symmetric_key_from_bytes(CryptographicAlgorithm::AES, bytes)
+            }
+            ImportKeyFormat::Chacha20 => {
                 build_symmetric_key_from_bytes(CryptographicAlgorithm::ChaCha20, bytes)
             }
         };
@@ -122,8 +130,8 @@ impl ImportKeyAction {
 
         // print the response
         println!(
-            "The key of type {:?} in file {:?} was imported with id: {}",
-            &self.key_file, object_type, unique_identifier,
+            "The {:?} in file {:?} was imported with id: {}",
+            object_type, &self.key_file, unique_identifier,
         );
         if !self.tags.is_empty() {
             println!("Tags:");

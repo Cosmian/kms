@@ -12,7 +12,7 @@ use crate::{
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::Object,
-        kmip_types::{CryptographicAlgorithm, KeyCompressionType, KeyFormatType, RecommendedCurve},
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
     },
     kmip_bail,
     result::KmipResultHelper,
@@ -287,7 +287,7 @@ pub fn openssl_private_key_to_kmip(
                 cryptographic_algorithm: Some(cryptographic_algorithm),
                 cryptographic_length: Some(private_key.bits() as i32),
                 key_wrapping_data: None,
-                key_compression_type: Some(KeyCompressionType::ECPublicKeyTypeUncompressed),
+                key_compression_type: None,
             }
         }
         KeyFormatType::PKCS8 | KeyFormatType::PKCS12 => KeyBlock {

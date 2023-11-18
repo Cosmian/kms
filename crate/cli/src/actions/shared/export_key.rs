@@ -13,7 +13,7 @@ use crate::{
 };
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq)]
-pub enum KeyFormat {
+pub enum ExportKeyFormat {
     JsonTtlv,
     Sec1Pem,
     Sec1Der,
@@ -76,7 +76,7 @@ pub struct ExportKeyAction {
         default_value = "json-ttlv",
         verbatim_doc_comment
     )]
-    key_format: KeyFormat,
+    key_format: ExportKeyFormat,
 
     /// Unwrap the key if it is wrapped before export
     #[clap(
@@ -120,17 +120,17 @@ impl ExportKeyAction {
         };
 
         let (key_format_type, encode_to_pem) = match self.key_format {
-            KeyFormat::JsonTtlv => (None, false),
-            KeyFormat::Sec1Pem => (Some(KeyFormatType::ECPrivateKey), true),
-            KeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
-            KeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
-            KeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
-            KeyFormat::Pkcs8Pem => (Some(KeyFormatType::PKCS8), true),
-            KeyFormat::Pkcs8Der => (Some(KeyFormatType::PKCS8), false),
-            KeyFormat::SpkiPem => (Some(KeyFormatType::PKCS8), true),
-            KeyFormat::SpkiDer => (Some(KeyFormatType::PKCS8), false),
+            ExportKeyFormat::JsonTtlv => (None, false),
+            ExportKeyFormat::Sec1Pem => (Some(KeyFormatType::ECPrivateKey), true),
+            ExportKeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
+            ExportKeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
+            ExportKeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
+            ExportKeyFormat::Pkcs8Pem => (Some(KeyFormatType::PKCS8), true),
+            ExportKeyFormat::Pkcs8Der => (Some(KeyFormatType::PKCS8), false),
+            ExportKeyFormat::SpkiPem => (Some(KeyFormatType::PKCS8), true),
+            ExportKeyFormat::SpkiDer => (Some(KeyFormatType::PKCS8), false),
             // For Raw: use the default format then do the local extraction of the bytes
-            KeyFormat::Raw => (None, false),
+            ExportKeyFormat::Raw => (None, false),
         };
 
         // export the object
@@ -145,7 +145,7 @@ impl ExportKeyAction {
         .await?;
 
         // write the object to a file
-        if self.key_format != KeyFormat::JsonTtlv {
+        if self.key_format != ExportKeyFormat::JsonTtlv {
             // export the bytes only
             let bytes = {
                 let mut bytes = object.key_block()?.key_bytes()?;

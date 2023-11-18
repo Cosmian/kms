@@ -11,7 +11,7 @@ use tempfile::TempDir;
 use crate::{
     actions::shared::{
         utils::{read_bytes_from_file, read_object_from_json_ttlv_file},
-        KeyFormat,
+        ExportKeyFormat,
     },
     config::KMS_CLI_CONF_ENV,
     error::CliError,
@@ -33,7 +33,7 @@ pub fn export_key(
     sub_command: &str,
     key_id: &str,
     key_file: &str,
-    key_format: Option<KeyFormat>,
+    key_format: Option<ExportKeyFormat>,
     unwrap: bool,
     wrap_key_id: Option<String>,
     allow_revoked: bool,
@@ -45,16 +45,16 @@ pub fn export_key(
     if let Some(key_format) = key_format {
         args.push("--key-format".to_owned());
         let arg_value = match key_format {
-            KeyFormat::JsonTtlv => "json-ttlv",
-            KeyFormat::Sec1Pem => "sec1-pem",
-            KeyFormat::Sec1Der => "sec1-der",
-            KeyFormat::Pkcs1Pem => "pkcs1-pem",
-            KeyFormat::Pkcs1Der => "pkcs1-der",
-            KeyFormat::Pkcs8Pem => "pkcs8-pem",
-            KeyFormat::Pkcs8Der => "pkcs8-der",
-            KeyFormat::SpkiPem => "spki-pem",
-            KeyFormat::SpkiDer => "spki-der",
-            KeyFormat::Raw => "raw",
+            ExportKeyFormat::JsonTtlv => "json-ttlv",
+            ExportKeyFormat::Sec1Pem => "sec1-pem",
+            ExportKeyFormat::Sec1Der => "sec1-der",
+            ExportKeyFormat::Pkcs1Pem => "pkcs1-pem",
+            ExportKeyFormat::Pkcs1Der => "pkcs1-der",
+            ExportKeyFormat::Pkcs8Pem => "pkcs8-pem",
+            ExportKeyFormat::Pkcs8Der => "pkcs8-der",
+            ExportKeyFormat::SpkiPem => "spki-pem",
+            ExportKeyFormat::SpkiDer => "spki-der",
+            ExportKeyFormat::Raw => "raw",
         };
         args.push(arg_value.to_owned());
     }
@@ -70,7 +70,7 @@ pub fn export_key(
     }
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -116,7 +116,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
         "sym",
         &key_id,
         tmp_path.join("output.export.bytes").to_str().unwrap(),
-        Some(KeyFormat::Raw),
+        Some(ExportKeyFormat::Raw),
         false,
         None,
         false,
@@ -131,7 +131,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
             "sym",
             &key_id,
             tmp_path.join("output.export.bytes").to_str().unwrap(),
-            Some(KeyFormat::Pkcs1Pem),
+            Some(ExportKeyFormat::Pkcs1Pem),
             false,
             None,
             false,
@@ -239,7 +239,7 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
             "cc",
             &key_id,
             tmp_path.join("output.export.bytes").to_str().unwrap(),
-            Some(KeyFormat::Raw),
+            Some(ExportKeyFormat::Raw),
             false,
             None,
             false,
@@ -352,7 +352,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         "ec",
         &private_key_id,
         tmp_path.join("output.export.bytes").to_str().unwrap(),
-        Some(KeyFormat::Pkcs8Der),
+        Some(ExportKeyFormat::Pkcs8Der),
         false,
         None,
         false,
@@ -407,7 +407,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         "ec",
         &public_key_id,
         tmp_path.join("output.export.bytes").to_str().unwrap(),
-        Some(KeyFormat::SpkiDer),
+        Some(ExportKeyFormat::SpkiDer),
         false,
         None,
         false,

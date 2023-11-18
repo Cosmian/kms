@@ -57,7 +57,7 @@ pub async fn export_object(
                 key_format_type,
             ))
             .await
-            .with_context(|| "export")?;
+            .with_context(|| "Export")?;
         (
             export_response.object,
             export_response.object_type,
@@ -73,7 +73,7 @@ pub async fn export_object(
                 key_format_type,
             ))
             .await
-            .with_context(|| "export")?;
+            .with_context(|| "Get")?;
         (get_response.object, get_response.object_type, None)
     };
     // Return the object after post fixing the object type

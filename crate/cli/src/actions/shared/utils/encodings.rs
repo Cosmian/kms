@@ -3,6 +3,7 @@ use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_types::{CertificateType, KeyFormatType},
 };
+use pem::{EncodeConfig, LineEnding};
 use zeroize::Zeroizing;
 
 use crate::{cli_bail, error::CliError};
@@ -168,5 +169,7 @@ pub(crate) fn der_to_pem(
             cli_bail!("Key format type {key_format_type:?} not supported for PEM conversion")
         }
     };
-    Ok(Zeroizing::new(pem::encode(&pem).into_bytes()))
+    Ok(Zeroizing::new(
+        pem::encode_config(&pem, EncodeConfig::new().set_line_ending(LineEnding::LF)).into_bytes(),
+    ))
 }

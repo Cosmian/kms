@@ -178,8 +178,16 @@ impl KeyBlock {
 #[allow(clippy::large_enum_variant)]
 pub struct KeyValue {
     pub key_material: KeyMaterial,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "attributes_is_default_or_none")]
     pub attributes: Option<Attributes>,
+}
+
+// Attributes is default is a fix for https://github.com/Cosmian/kms/issues/92
+fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Option<T>) -> bool {
+    match val {
+        Some(v) => *v == T::default(),
+        None => true,
+    }
 }
 
 impl KeyValue {

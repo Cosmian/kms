@@ -13,7 +13,7 @@ use crate::{
         certificates::{CertificateExportFormat, CertificateInputFormat},
         shared::{
             utils::{read_from_json_file, read_object_from_json_ttlv_file},
-            KeyFormat::JsonTtlv,
+            ExportKeyFormat::JsonTtlv,
         },
     },
     config::KMS_CLI_CONF_ENV,

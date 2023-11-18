@@ -5,7 +5,7 @@ use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_logger::log_utils::log_init;
 
 use crate::{
-    actions::shared::{utils::read_object_from_json_ttlv_file, KeyFormat},
+    actions::shared::{import_key::ImportKeyFormat, utils::read_object_from_json_ttlv_file},
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
@@ -25,7 +25,7 @@ pub fn import_key(
     cli_conf_path: &str,
     sub_command: &str,
     key_file: &str,
-    key_format: Option<KeyFormat>,
+    key_format: Option<ImportKeyFormat>,
     key_id: Option<String>,
     tags: &[String],
     unwrap: bool,
@@ -45,16 +45,15 @@ pub fn import_key(
     if let Some(key_format) = key_format {
         args.push("--key-format".to_owned());
         let kfs = match key_format {
-            KeyFormat::JsonTtlv => "json-ttlv",
-            KeyFormat::Sec1Pem => "sec1-pem",
-            KeyFormat::Sec1Der => "sec1-der",
-            KeyFormat::Pkcs1Pem => "pkcs1-pem",
-            KeyFormat::Pkcs1Der => "pkcs1-der",
-            KeyFormat::Pkcs8Pem => "pkcs8-pem",
-            KeyFormat::Pkcs8Der => "pkcs8-der",
-            KeyFormat::SpkiPem => "spki-pem",
-            KeyFormat::SpkiDer => "spki-der",
-            KeyFormat::Raw => "raw",
+            ImportKeyFormat::JsonTtlv => "json-ttlv",
+            ImportKeyFormat::Pem => "pem",
+            ImportKeyFormat::Sec1 => "sec1",
+            ImportKeyFormat::Pkcs1Priv => "pkcs1-priv",
+            ImportKeyFormat::Pkcs1Pub => "pkcs1-pub",
+            ImportKeyFormat::Pkcs8 => "pkcs8",
+            ImportKeyFormat::Spki => "spki",
+            ImportKeyFormat::Aes => "aes",
+            ImportKeyFormat::Chacha20 => "chacha20",
         };
         args.push(kfs.to_string());
     }

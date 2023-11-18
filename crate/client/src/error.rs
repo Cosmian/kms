@@ -15,7 +15,7 @@ pub enum RestClientError {
     #[error("REST Request Failed: {0}")]
     RequestFailed(String),
 
-    #[error("REST Response Failed: {0}")]
+    #[error("REST Response Conversion Failed: {0}")]
     ResponseFailed(String),
 
     #[error("Unexpected Error: {0}")]
