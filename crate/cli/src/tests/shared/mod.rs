@@ -1,7 +1,7 @@
 mod destroy;
 mod export;
 mod import;
-mod import_export_formats;
+mod import_export_encodings;
 mod import_export_wrapping;
 mod jwe;
 mod locate;
