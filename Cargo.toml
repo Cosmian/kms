@@ -46,7 +46,6 @@ clap = { version = "4.4", default-features = false, features = [
   "cargo",
 ] }
 cloudproof = { version = "2.3.0", features = ["findex-redis"] }
-env_logger = "0.10"
 hex = "0.4"
 http = "0.2"
 josekit = "0.8.3"
@@ -86,9 +85,6 @@ time = "0.3"
 tokio = { version = "1.32", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tracing = "0.1"
-# Uncomment and remove `env-logger` dep when `env_logger` is
-# finally updated in `tracing-log` crate.
-# tracing-log = { version = "0.1", features = ["env_logger"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-tree = "0.2"
 url = "2.2"

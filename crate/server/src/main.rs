@@ -38,9 +38,6 @@ async fn main() -> KResult<()> {
     // Load variable from a .env file
     dotenv().ok();
 
-    // Uncomment and remove `env-logger` dep when `env_logger` is
-    // finally updated in tracing-log crate.
-    // cosmian_logger::reexport::tracing_log::env_logger::init();
     env_logger::init();
 
     // Instantiate a config object using the env variables and the args of the binary
