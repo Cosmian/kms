@@ -187,13 +187,13 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
         KeyFormatType::CoverCryptSecretKey,
         &master_private_key_id,
         tmp_path,
-        &ctx,
+        ctx,
     )?;
     _export_cc_test(
         KeyFormatType::CoverCryptPublicKey,
         &_master_public_key_id,
         tmp_path,
-        &ctx,
+        ctx,
     )?;
 
     let user_key_id = create_user_decryption_key(
@@ -206,7 +206,7 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
         KeyFormatType::CoverCryptSecretKey,
         &user_key_id,
         tmp_path,
-        &ctx,
+        ctx,
     )?;
 
     fn _export_cc_test(
@@ -219,7 +219,7 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
         export_key(
             &ctx.owner_cli_conf_path,
             "cc",
-            &key_id,
+            key_id,
             tmp_path.join("output.export").to_str().unwrap(),
             None,
             false,
@@ -237,7 +237,7 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
         export_key(
             &ctx.owner_cli_conf_path,
             "cc",
-            &key_id,
+            key_id,
             tmp_path.join("output.export.bytes").to_str().unwrap(),
             Some(ExportKeyFormat::Raw),
             false,
@@ -399,7 +399,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         _ => panic!("Invalid key value type"),
     };
     assert_eq!(recommended_curve, &RecommendedCurve::CURVE25519);
-    let pkey_1 = PKey::public_key_from_raw_bytes(&q_string, Id::X25519)?;
+    let pkey_1 = PKey::public_key_from_raw_bytes(q_string, Id::X25519)?;
 
     // Export the bytes only
     export_key(

@@ -2,7 +2,10 @@ use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::StateEnumeration};
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::trace;
 
-use crate::{core::KMS, kms_bail, result::KResult};
+use crate::{
+    core::KMS, database::object_with_metadata::ObjectWithMetadata, error::KmsError, kms_bail,
+    result::KResult,
+};
 
 /// Retrieve a single object for a given operation type
 /// or the Get operation if not found.
@@ -17,6 +20,7 @@ pub async fn retrieve_object_for_operation(
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Object> {
     //TODO: we could improve the retrieve() DB calls to support a list of Any(operation..)
+    // https://github.com/Cosmian/kms/issues/93
     Ok(
         match _retrieve_object(uid_or_tags, operation_type, kms, user, params).await {
             Ok(key) => key,
@@ -56,4 +60,47 @@ async fn _retrieve_object(
              passed tags"
         ),
     }
+}
+
+/// Retrieve a single object from the database
+///
+/// The object is retrieved from the database based on the unique identifier or the tags
+/// The object is returned only if it is active or if the `allow_full_export` flag is set
+/// If the object is not found or if there are more than one object, an error is returned
+//TODO: this should alo return attributes when https://github.com/Cosmian/kms/issues/88 is fixed
+pub async fn retrieve_object_with_metadata(
+    object_uid_or_tags: &str,
+    kms: &KMS,
+    allow_full_export: bool,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<ObjectWithMetadata> {
+    // retrieve from tags or use passed identifier
+    let mut owm_s = kms
+        .db
+        .retrieve(
+            object_uid_or_tags,
+            user,
+            if allow_full_export {
+                ObjectOperationType::Export
+            } else {
+                ObjectOperationType::Get
+            },
+            params,
+        )
+        .await?
+        .into_values()
+        .filter(|owm| owm.state == StateEnumeration::Active || allow_full_export)
+        .collect::<Vec<ObjectWithMetadata>>();
+
+    // there can only be one object
+    let owm = owm_s
+        .pop()
+        .ok_or_else(|| KmsError::ItemNotFound(object_uid_or_tags.to_string()))?;
+    if !owm_s.is_empty() {
+        return Err(KmsError::InvalidRequest(format!(
+            "get: too many objects for {object_uid_or_tags}",
+        )))
+    }
+    Ok(owm)
 }

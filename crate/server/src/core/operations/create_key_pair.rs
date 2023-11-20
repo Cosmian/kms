@@ -28,7 +28,7 @@ pub async fn create_key_pair(
     kms.db
         .create_objects(
             owner,
-            &[
+            vec![
                 (
                     Some(sk_uid.clone()),
                     key_pair.private_key().clone(),

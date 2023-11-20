@@ -38,11 +38,6 @@ pub struct CreateCertificateAction {
     #[clap(long = "certificate-id", short = 'k')]
     certificate_id: Option<String>,
 
-    /// The Subject Common Names of the full Certificate Authority chain, separated by slashes (for example: CA/SubCA).
-    /// If the certificates chain does not exist, the KMS server will create it.
-    #[clap(required = true, name = "CA_SUBJECT_COMMON_NAMES")]
-    ca_subject_common_names: String,
-
     /// The path to a certificate signing request..
     #[clap(long = "certificate-signing-request", short = 'c', group = "csr_or_cn")]
     certificate_signing_request: Option<PathBuf>,
@@ -55,6 +50,11 @@ pub struct CreateCertificateAction {
     /// A certificate will be created after generating a X25519 keypair
     #[clap(long = "subject-common-name", short = 's', group = "csr_or_cn")]
     subject_common_name: Option<String>,
+
+    /// The Subject Common Names of the full Certificate Authority chain, separated by slashes (for example: CA/SubCA).
+    /// If the certificates chain does not exist, the KMS server will create it.
+    #[clap(required = true, name = "CA_SUBJECT_COMMON_NAMES")]
+    ca_subject_common_names: String,
 
     /// The tag to associate to the certificate.
     /// To specify multiple tags, use the option multiple times.

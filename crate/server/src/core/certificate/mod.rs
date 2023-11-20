@@ -5,20 +5,24 @@ use cloudproof::reexport::crypto_core::{
     reexport::{pkcs8::EncodePublicKey, x509_cert::builder::Profile},
     FixedSizeCBytes,
 };
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_operations::{CertifyResponse, CreateKeyPairResponse, Get},
-    kmip_types::{CertificateType, Link, LinkType, LinkedObjectIdentifier, RecommendedCurve},
+use cosmian_kmip::{
+    kmip::{
+        kmip_objects::Object,
+        kmip_operations::{CertifyResponse, CreateKeyPairResponse, Get},
+        kmip_types::{CertificateType, Link, LinkType, LinkedObjectIdentifier, RecommendedCurve},
+    },
+    result::KmipResultHelper,
 };
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams, crypto::curve_25519::kmip_requests::ec_create_key_pair_request,
 };
+use openssl::x509::X509;
 use tracing::{debug, trace};
 use x509_parser::prelude::parse_x509_pem;
 
 use self::ca_signing_key::CASigningKey;
 use super::KMS;
-use crate::{error::KmsError, result::KResult};
+use crate::{error::KmsError, kms_bail, result::KResult};
 
 pub const DEFAULT_EXPIRATION_TIME: u64 = 6;
 
@@ -27,8 +31,59 @@ pub(crate) mod create_ca_certificate;
 pub(crate) mod create_leaf_certificate;
 pub(crate) mod locate;
 pub(crate) mod parsing;
-pub(crate) mod sign_csr;
+mod tags;
 pub(crate) mod verify;
+
+pub(crate) use tags::add_certificate_tags;
+
+use crate::database::{object_with_metadata::ObjectWithMetadata, retrieve_object_with_metadata};
+
+/// Retrieve the certificate associated to the given private key
+pub(crate) async fn retrieve_certificate_for_private_key(
+    private_key: &Object,
+    kms: &KMS,
+    allow_full_export: bool,
+    user: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> Result<(ObjectWithMetadata, X509), KmsError> {
+    // recover the Certificate Link inside the Private Key
+    let attributes = private_key.attributes().map_err(|_| {
+        KmsError::InvalidRequest(
+            "PKCS#12 export: no attributes found in the Private Key".to_string(),
+        )
+    })?;
+    let certificate_id = attributes
+        .get_link(LinkType::PKCS12CertificateLink)
+        .or(attributes.get_link(LinkType::CertificateLink))
+        .ok_or_else(|| {
+            KmsError::InvalidRequest("No certificate link found for the private key".to_string())
+        })?;
+
+    // retrieve the certificate
+    let cert_owm =
+        retrieve_object_with_metadata(&certificate_id, kms, allow_full_export, user, params)
+            .await
+            .with_context(|| {
+                format!(
+                    "could not retrieve the certificate: {certificate_id}, attached to the \
+                     private key"
+                )
+            })?;
+    // convert the certificate to openssl X509
+    let certificate = X509::from_der(match &cert_owm.object {
+        Object::Certificate {
+            certificate_value, ..
+        } => certificate_value,
+        _ => kms_bail!("export: expected a certificate behind the private key certificate link"),
+    })?;
+    Ok((cert_owm, certificate))
+}
+
+//
+//
+// TODO: Anything below here needs revisiting
+//
+//
 
 async fn get_fixed_size_key_bytes<const LENGTH: usize>(
     unique_identifier: &str,

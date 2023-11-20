@@ -52,7 +52,7 @@ pub async fn tx_and_list<DB: Database>(
     let ids = db
         .create_objects(
             owner,
-            &[
+            vec![
                 (
                     Some(uid_1.clone()),
                     symmetric_key_1.clone(),

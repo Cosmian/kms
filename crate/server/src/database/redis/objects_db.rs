@@ -218,15 +218,11 @@ impl ObjectsDB {
         // first check if all created objects do not already exist
         // watching them, will lock them until the end of the transaction
         let mut pipeline = pipe();
-        // pipeline.atomic();
         for operation in operations {
-            match operation {
-                RedisOperation::Create(uid, _) => {
-                    let key = ObjectsDB::object_key(uid);
-                    pipeline.cmd("WATCH").arg(&key).ignore();
-                    pipeline.exists(&key);
-                }
-                _ => {}
+            if let RedisOperation::Create(uid, _) = operation {
+                let key = ObjectsDB::object_key(uid);
+                pipeline.cmd("WATCH").arg(&key).ignore();
+                pipeline.exists(&key);
             }
         }
         let res: Vec<bool> = pipeline.query_async(&mut self.mgr.clone()).await?;

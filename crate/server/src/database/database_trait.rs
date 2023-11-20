@@ -46,7 +46,7 @@ pub trait Database {
     async fn create_objects(
         &self,
         owner: &str,
-        objects: &[(Option<String>, Object, &HashSet<String>)],
+        objects: Vec<(Option<String>, Object, &HashSet<String>)>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>>;
 

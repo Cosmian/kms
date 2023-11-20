@@ -171,7 +171,7 @@ impl Database for CachedSqlCipher {
     async fn create_objects(
         &self,
         owner: &str,
-        objects: &[(Option<String>, Object, &HashSet<String>)],
+        objects: Vec<(Option<String>, Object, &HashSet<String>)>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         if let Some(params) = params {
@@ -180,7 +180,7 @@ impl Database for CachedSqlCipher {
             let mut res = vec![];
             let mut tx = pool.begin().await?;
             for (uid, object, tags) in objects {
-                match create_(uid.clone(), owner, object, tags, &mut tx).await {
+                match create_(uid.clone(), owner, &object, tags, &mut tx).await {
                     Ok(uid) => res.push(uid),
                     Err(e) => {
                         tx.rollback().await.context("transaction failed")?;

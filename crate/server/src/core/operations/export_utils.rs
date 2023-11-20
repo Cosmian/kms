@@ -13,7 +13,7 @@ use cosmian_kmip::{
         openssl_public_key_to_kmip,
     },
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use openssl::{
     pkey::{Id, PKey, Private, Public},
     stack::Stack,
@@ -23,10 +23,11 @@ use tracing::{debug, trace};
 
 use crate::{
     core::{
+        certificate::retrieve_certificate_for_private_key,
         operations::{unwrap_key, wrapping::wrap_key},
         KMS,
     },
-    database::object_with_metadata::ObjectWithMetadata,
+    database::{object_with_metadata::ObjectWithMetadata, retrieve_object_with_metadata},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -45,8 +46,17 @@ pub async fn export_get(
     let request: Export = request.into();
     trace!("Export: {}", serde_json::to_string(&request)?);
 
-    let mut owm =
-        retrieve_object_with_metadata(kms, allow_full_export, user, params, &request).await?;
+    let mut owm = retrieve_object_with_metadata(
+        request
+            .unique_identifier
+            .as_ref()
+            .ok_or_else(|| KmsError::InvalidRequest("unique_identifier is missing".to_string()))?,
+        kms,
+        allow_full_export,
+        user,
+        params,
+    )
+    .await?;
     let object_type = owm.object.object_type();
 
     // export based on the Object type
@@ -157,7 +167,7 @@ pub async fn export_get(
                     )
                 }
             }
-            process_certificate(&mut owm, kms, params).await?
+            process_certificate(&owm, kms, params).await?
         }
         _ => {
             kms_bail!(
@@ -173,55 +183,6 @@ pub async fn export_get(
         attributes: export_attributes,
         object: owm.object,
     })
-}
-
-/// Retrieve a single object from the database
-///
-/// The object is retrieved from the database based on the unique identifier or the tags
-/// The object is returned only if it is active or if the `allow_full_export` flag is set
-/// If the object is not found or if there are more than one object, an error is returned
-//TODO: this should alo return attributes when https://github.com/Cosmian/kms/issues/88 is fixed
-pub async fn retrieve_object_with_metadata(
-    kms: &KMS,
-    allow_full_export: bool,
-    user: &str,
-    params: Option<&ExtraDatabaseParams>,
-    request: &Export,
-) -> KResult<ObjectWithMetadata> {
-    // there must be an identifier
-    let uid_or_tags = request
-        .unique_identifier
-        .clone()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
-
-    // retrieve from tags or use passed identifier
-    let mut owm_s = kms
-        .db
-        .retrieve(
-            &uid_or_tags,
-            user,
-            if allow_full_export {
-                ObjectOperationType::Export
-            } else {
-                ObjectOperationType::Get
-            },
-            params,
-        )
-        .await?
-        .into_values()
-        .filter(|owm| owm.state == StateEnumeration::Active || allow_full_export)
-        .collect::<Vec<ObjectWithMetadata>>();
-
-    // there can only be one object
-    let owm = owm_s
-        .pop()
-        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.clone()))?;
-    if !owm_s.is_empty() {
-        return Err(KmsError::InvalidRequest(format!(
-            "get: too many objects for {uid_or_tags}",
-        )))
-    }
-    Ok(owm)
 }
 
 async fn process_private_key(
@@ -596,47 +557,9 @@ async fn post_process_pkcs12(
     let private_key = kmip_private_key_to_openssl(&owm.object)
         .context("export: unable to parse the private key to openssl")?;
 
-    // recover the Certificate Link inside the Private Key
-    let attributes = owm.object.attributes().map_err(|_| {
-        KmsError::InvalidRequest(
-            "PKCS#12 export: no attributes found in the Private Key".to_string(),
-        )
-    })?;
-    let certificate_id = attributes
-        .get_link(LinkType::PKCS12CertificateLink)
-        .or(attributes.get_link(LinkType::CertificateLink))
-        .ok_or_else(|| {
-            KmsError::InvalidRequest(format!(
-                "PKCS#12 export: no certificate link found for key {}",
-                &owm.id
-            ))
-        })?;
-
-    // retrieve the certificate
-    let cert_owm = retrieve_object_with_metadata(
-        kms,
-        allow_full_export,
-        user,
-        params,
-        &Export {
-            unique_identifier: Some(certificate_id.clone()),
-            key_format_type: Some(KeyFormatType::X509),
-            key_wrap_type: None,
-            key_compression_type: None,
-            key_wrapping_specification: None,
-        },
-    )
-    .await
-    .with_context(|| {
-        format!("could not retrieve the certificate: {certificate_id}, attached to the private key")
-    })?;
-    // convert the certificate to openssl X509
-    let certificate = X509::from_der(match &cert_owm.object {
-        Object::Certificate {
-            certificate_value, ..
-        } => certificate_value,
-        _ => kms_bail!("export: expected a certificate behind the private key certificate link"),
-    })?;
+    let (cert_owm, certificate) =
+        retrieve_certificate_for_private_key(&owm.object, kms, allow_full_export, user, params)
+            .await?;
 
     // retrieve the certificate chain
     let mut child_certificate_id = cert_owm.id.clone();
@@ -652,20 +575,8 @@ async fn post_process_pkcs12(
             None => break,
         };
         // retrieve the parent certificate
-        let cert_owm = retrieve_object_with_metadata(
-            kms,
-            allow_full_export,
-            user,
-            params,
-            &Export {
-                unique_identifier: Some(parent_id.clone()),
-                key_format_type: Some(KeyFormatType::X509),
-                key_wrap_type: None,
-                key_compression_type: None,
-                key_wrapping_specification: None,
-            },
-        )
-        .await?;
+        let cert_owm =
+            retrieve_object_with_metadata(&parent_id, kms, allow_full_export, user, params).await?;
         let certificate = X509::from_der(match &cert_owm.object {
             Object::Certificate {
                 certificate_value, ..
@@ -714,7 +625,7 @@ async fn post_process_pkcs12(
 }
 
 async fn process_certificate(
-    owm: &mut ObjectWithMetadata,
+    owm: &ObjectWithMetadata,
     kms: &KMS,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Attributes> {
@@ -722,25 +633,27 @@ async fn process_certificate(
     //TODO: create attributes from tags until https://github.com/Cosmian/kms/issues/88 is fixed
     let tags = kms.db.retrieve_tags(&owm.id, params).await?;
     let mut attributes = Attributes::default();
-    // add link to private key
-    tags.iter()
+    // add link to the private key
+    if let Some(id) = tags
+        .iter()
         .find(|tag| tag.starts_with("_cert_sk="))
         .map(|tag| tag.replace("_cert_sk=", ""))
-        .map(|id| {
-            attributes.add_link(
-                LinkType::PrivateKeyLink,
-                LinkedObjectIdentifier::TextString(id),
-            )
-        });
+    {
+        attributes.add_link(
+            LinkType::PrivateKeyLink,
+            LinkedObjectIdentifier::TextString(id),
+        )
+    }
     // add link to issuer certificate
-    tags.iter()
+    if let Some(id) = tags
+        .iter()
         .find(|tag| tag.starts_with("_cert_issuer="))
         .map(|tag| tag.replace("_cert_issuer=", ""))
-        .map(|id| {
-            attributes.add_link(
-                LinkType::CertificateLink,
-                LinkedObjectIdentifier::TextString(id),
-            )
-        });
+    {
+        attributes.add_link(
+            LinkType::CertificateLink,
+            LinkedObjectIdentifier::TextString(id),
+        )
+    }
     Ok(attributes)
 }

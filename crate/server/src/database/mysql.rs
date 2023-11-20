@@ -108,13 +108,13 @@ impl Database for MySqlPool {
     async fn create_objects(
         &self,
         user: &str,
-        objects: &[(Option<String>, Object, &HashSet<String>)],
+        objects: Vec<(Option<String>, Object, &HashSet<String>)>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         let mut res = vec![];
         let mut tx = self.pool.begin().await?;
         for (uid, object, tags) in objects {
-            match create_(uid.clone(), user, object, tags, &mut tx).await {
+            match create_(uid.clone(), user, &object, tags, &mut tx).await {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
@@ -915,32 +915,32 @@ where
 pub(crate) async fn atomic_(
     owner: &str,
     operations: &[AtomicOperation],
-    mut tx: &mut Transaction<'_, MySql>,
+    tx: &mut Transaction<'_, MySql>,
 ) -> KResult<()> {
     for operation in operations {
         match operation {
             AtomicOperation::Create((uid, object, tags)) => {
-                if let Err(e) = create_(Some(uid.to_owned()), owner, object, tags, &mut tx).await {
+                if let Err(e) = create_(Some(uid.to_owned()), owner, object, tags, tx).await {
                     kms_bail!("creation of object {uid} failed: {e}");
                 }
             }
             AtomicOperation::UpdateObject((uid, object, tags)) => {
-                if let Err(e) = update_object_(uid, object, tags.as_ref(), &mut tx).await {
+                if let Err(e) = update_object_(uid, object, tags.as_ref(), tx).await {
                     kms_bail!("update of object {uid} failed: {e}");
                 }
             }
             AtomicOperation::UpdateState((uid, state)) => {
-                if let Err(e) = update_state_(uid, *state, &mut tx).await {
+                if let Err(e) = update_state_(uid, *state, tx).await {
                     kms_bail!("update of the state of object {uid} failed: {e}");
                 }
             }
             AtomicOperation::Upsert((uid, object, tags, state)) => {
-                if let Err(e) = upsert_(uid, owner, object, tags.as_ref(), *state, &mut tx).await {
+                if let Err(e) = upsert_(uid, owner, object, tags.as_ref(), *state, tx).await {
                     kms_bail!("upsert of object {uid} failed: {e}");
                 }
             }
             AtomicOperation::Delete(uid) => {
-                if let Err(e) = delete_(uid, owner, &mut tx).await {
+                if let Err(e) = delete_(uid, owner, tx).await {
                     kms_bail!("deletion of object {uid} failed: {e}");
                 }
             }

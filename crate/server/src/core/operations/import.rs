@@ -7,12 +7,13 @@ use cosmian_kmip::{
         kmip_objects::{Object, Object::Certificate, ObjectType},
         kmip_operations::{Import, ImportResponse},
         kmip_types::{
-            Attributes, CertificateType, CryptographicAlgorithm, KeyFormatType, KeyWrapType,
-            LinkType, LinkedObjectIdentifier, StateEnumeration,
+            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType,
+            LinkedObjectIdentifier, StateEnumeration,
         },
     },
     openssl::{
-        kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_private_key_to_kmip,
+        kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_certificate_to_kmip,
+        openssl_private_key_to_kmip,
     },
 };
 use cosmian_kms_utils::{
@@ -21,12 +22,12 @@ use cosmian_kms_utils::{
 };
 use openssl::{
     pkey::{PKey, Private},
-    sha::Sha1,
     x509::X509,
 };
 use tracing::{debug, trace};
 
 use super::wrapping::unwrap_key;
+use crate::core::certificate::add_certificate_tags;
 /// Import a new object
 use crate::{core::KMS, database::AtomicOperation, error::KmsError, kms_bail, result::KResult};
 
@@ -113,7 +114,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
     let mut request_attributes = request.attributes;
     let mut user_tags = remove_tags(&mut request_attributes);
     if let Some(tags) = user_tags.as_ref() {
-        check_user_tags(&tags)?;
+        check_user_tags(tags)?;
     }
 
     // The specification says that this should be DER bytes
@@ -129,21 +130,19 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
 
     // parse the certificate as an openssl object to convert it to the pivot
     let certificate = X509::from_der(&certificate_der_bytes)?;
-    let der_bytes = certificate.to_der()?;
-    let uid = if request.unique_identifier.is_empty() {
-        id(&der_bytes)?
-    } else {
-        request.unique_identifier.to_string()
-    };
-    let object = Certificate {
-        certificate_type: CertificateType::X509,
-        certificate_value: der_bytes,
-    };
 
     // insert the tag corresponding to the object type if tags should be updated
     if let Some(tags) = user_tags.as_mut() {
         add_certificate_tags(tags, &certificate)?;
     }
+
+    // convert the certificate to a KMIP object
+    let (unique_id, object) = openssl_certificate_to_kmip(certificate)?;
+    let uid = if request.unique_identifier.is_empty() {
+        unique_id
+    } else {
+        request.unique_identifier.to_string()
+    };
 
     // check if the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -163,7 +162,7 @@ async fn process_public_key(
     let mut request_attributes = request.attributes;
     let mut tags = remove_tags(&mut request_attributes);
     if let Some(tags) = tags.as_ref() {
-        check_user_tags(&tags)?;
+        check_user_tags(tags)?;
     }
 
     // unwrap key block if required
@@ -237,7 +236,7 @@ async fn process_private_key(
     let tags = remove_tags(&mut request_attributes);
     // insert the tag corresponding to the object type if tags should be updated
     if let Some(tags) = tags.as_ref() {
-        check_user_tags(&tags)?;
+        check_user_tags(tags)?;
     }
     // whether the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);
@@ -301,7 +300,7 @@ async fn process_private_key(
         request_attributes,
         &request.unique_identifier,
     )?;
-    return Ok((
+    Ok((
         sk_uid.clone(),
         vec![single_operation(sk_tags, replace_existing, sk, sk_uid)],
     ))
@@ -379,7 +378,7 @@ async fn process_pkcs12(
             openssl_sk,
             user_tags.clone(),
             request_attributes,
-            &private_key_id,
+            private_key_id,
         )?
     };
 
@@ -389,17 +388,15 @@ async fn process_pkcs12(
         let openssl_cert = pkcs12.cert.ok_or_else(|| {
             KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_string())
         })?;
-        let der_bytes = openssl_cert.to_der()?;
-        let leaf_certificate_uid = id(&der_bytes)?;
-        let leaf_certificate = Certificate {
-            certificate_type: CertificateType::X509,
-            certificate_value: der_bytes,
-        };
+
         // insert the tag corresponding to the object type if tags should be updated
         let mut leaf_certificate_tags = user_tags.clone();
         if let Some(tags) = leaf_certificate_tags.as_mut() {
             add_certificate_tags(tags, &openssl_cert)?;
         }
+
+        // convert to KMIP
+        let (leaf_certificate_uid, leaf_certificate) = openssl_certificate_to_kmip(openssl_cert)?;
 
         (
             leaf_certificate_uid,
@@ -413,17 +410,16 @@ async fn process_pkcs12(
     if let Some(cas) = pkcs12.ca {
         // import the cas
         for openssl_cert in cas.into_iter() {
-            let der_bytes = openssl_cert.to_der()?;
-            let chain_certificate_uid = id(&der_bytes)?;
-            let chain_certificate = Certificate {
-                certificate_type: CertificateType::X509,
-                certificate_value: der_bytes,
-            };
             // insert the tag corresponding to the object type if tags should be updated
             let mut chain_certificate_tags = user_tags.clone();
             if let Some(tags) = chain_certificate_tags.as_mut() {
                 add_certificate_tags(tags, &openssl_cert)?;
             }
+
+            // convert to KMIP
+            let (chain_certificate_uid, chain_certificate) =
+                openssl_certificate_to_kmip(openssl_cert)?;
+
             chain.push((
                 chain_certificate_uid,
                 chain_certificate,
@@ -439,20 +435,15 @@ async fn process_pkcs12(
     let mut operations = Vec::with_capacity(2 + chain.len());
 
     //add link to certificate in the private key attributes
-    private_key
-        .key_block_mut()?
-        .key_value
-        .attributes
-        .as_mut()
-        .map(|a| {
-            a.add_link(
-                //Note: it is unclear what link type should be used here according to KMIP
-                // CertificateLink seems to be for public key only and there is not description
-                // for PKCS12CertificateLink
-                LinkType::PKCS12CertificateLink,
-                LinkedObjectIdentifier::TextString(leaf_certificate_uid.clone()),
-            )
-        });
+    if let Some(a) = private_key.key_block_mut()?.key_value.attributes.as_mut() {
+        a.add_link(
+            //Note: it is unclear what link type should be used here according to KMIP
+            // CertificateLink seems to be for public key only and there is not description
+            // for PKCS12CertificateLink
+            LinkType::PKCS12CertificateLink,
+            LinkedObjectIdentifier::TextString(leaf_certificate_uid.clone()),
+        )
+    }
     operations.push(single_operation(
         private_key_tags,
         replace_existing,
@@ -507,44 +498,4 @@ async fn process_pkcs12(
 
     //return the private key
     Ok((private_key_id, operations))
-}
-
-fn add_certificate_tags(tags: &mut HashSet<String>, certificate: &X509) -> Result<(), KmsError> {
-    tags.insert("_cert".to_string());
-
-    // Create tags from links passed in attributes
-    //TODO: there is no way of keeping the CA signer in the tags
-    //TODO: tagging and associated problems will go when fixing: https://github.com/Cosmian/kms/issues/88
-
-    // add the SPKI tag corresponding to the `SubjectKeyIdentifier` X509 extension
-    let hash_value = hex::encode(get_or_create_subject_key_identifier_value(&certificate)?);
-    let spki_tag = format!("_cert_spki={hash_value}");
-    tags.insert(spki_tag);
-
-    // add a tag with Subject Common Name
-    let subject_name = certificate.subject_name();
-    if let Some(subject_common_name) = subject_name
-        .entries_by_nid(openssl::nid::Nid::COMMONNAME)
-        .next()
-        .and_then(|cn| cn.data().as_utf8().ok())
-    {
-        let cn_tag = format!("_cert_cn={subject_common_name}");
-        tags.insert(cn_tag);
-    }
-    Ok(())
-}
-
-/// Get the `SubjectKeyIdentifier` X509 extension value
-/// If it not available, it is
-/// calculated according to RFC 5280 section 4.2.1.2
-fn get_or_create_subject_key_identifier_value(certificate: &X509) -> Result<Vec<u8>, KmsError> {
-    Ok(if let Some(ski) = certificate.subject_key_id() {
-        ski.as_slice().to_vec()
-    } else {
-        let pk = certificate.public_key()?;
-        let spki_der = pk.public_key_to_der()?;
-        let mut sha1 = Sha1::default();
-        sha1.update(&spki_der);
-        sha1.finish().to_vec()
-    })
 }

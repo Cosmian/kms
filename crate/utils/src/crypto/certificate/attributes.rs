@@ -7,7 +7,16 @@ use cosmian_kmip::{
 };
 
 use crate::kmip_utils::VENDOR_ID_COSMIAN;
+
+/// An attribute holding the certificate signer private key uid
+pub const VENDOR_ATTR_CERTIFICATE_ISSUER_SK_ID: &str = "certificate_issuer_sk_id";
+
+/// An attribute holding the requested certificate id when certifying a CSR
 pub const VENDOR_ATTR_CERTIFICATE_ID: &str = "certificate_id";
+
+/// An attribute holding the number of requested validity days when certifying a CSR
+pub const VENDOR_ATTR_CERTIFICATE_VALIDITY_DAYS: &str = "certificate_validity_days";
+
 pub const VENDOR_ATTR_CERTIFICATE_SUBJECT: &str = "certificate_subject";
 pub const VENDOR_ATTR_CERTIFICATE_CA: &str = "certificate_ca";
 pub const VENDOR_ATTR_CERTIFICATE_VALIDITY: &str = "certificate_validity";
@@ -26,11 +35,28 @@ fn _as_vendor_attribute(key: &str, value: &str) -> Result<VendorAttribute, KmipE
     })
 }
 
+/// Convert the issuer private key id to a vendor attribute
+pub fn issuer_private_key_id_as_vendor_attribute(
+    issuer_private_key_id: &str,
+) -> Result<VendorAttribute, KmipError> {
+    _as_vendor_attribute(VENDOR_ATTR_CERTIFICATE_ISSUER_SK_ID, issuer_private_key_id)
+}
+
 /// Convert certificate_id to a vendor attribute
 pub fn certificate_id_as_vendor_attribute(
     certificate_id: &str,
 ) -> Result<VendorAttribute, KmipError> {
     _as_vendor_attribute(VENDOR_ATTR_CERTIFICATE_ID, certificate_id)
+}
+
+/// Convert number_of_days to a vendor attribute
+pub fn number_of_days_as_vendor_attribute(
+    number_of_days: usize,
+) -> Result<VendorAttribute, KmipError> {
+    _as_vendor_attribute(
+        VENDOR_ATTR_CERTIFICATE_VALIDITY_DAYS,
+        &number_of_days.to_string(),
+    )
 }
 
 /// Convert subject to a vendor attribute
@@ -66,11 +92,32 @@ fn _from_attributes<'a>(
     }
 }
 
+/// Extract issuer private key id from attributes
+pub fn issuer_private_key_id_from_attributes(
+    attributes: &Attributes,
+) -> Result<Option<String>, KmipError> {
+    _from_attributes(VENDOR_ATTR_CERTIFICATE_ISSUER_SK_ID, attributes)
+}
+
 /// Extract certificate_id from Attributes
 pub fn certificate_id_from_attributes(
     attributes: &Attributes,
 ) -> Result<Option<String>, KmipError> {
     _from_attributes(VENDOR_ATTR_CERTIFICATE_ID, attributes)
+}
+
+/// Extract number_of_days from attributes
+pub fn number_of_days_from_attributes(attributes: &Attributes) -> Result<Option<usize>, KmipError> {
+    _from_attributes(VENDOR_ATTR_CERTIFICATE_VALIDITY_DAYS, attributes)?
+        .map(|s| {
+            s.parse().map_err(|e| {
+                KmipError::InvalidKmipValue(
+                    ErrorReason::Invalid_Attribute_Value,
+                    format!("failed deserializing the number of days from the attributes: {e}"),
+                )
+            })
+        })
+        .transpose()
 }
 
 /// Extract subject common name from attributes

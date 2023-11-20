@@ -257,17 +257,17 @@ impl Database for RedisWithFindex {
     async fn create_objects(
         &self,
         owner: &str,
-        objects: &[(Option<String>, Object, &HashSet<String>)],
+        objects: Vec<(Option<String>, Object, &HashSet<String>)>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UniqueIdentifier>> {
         let mut uids = Vec::with_capacity(objects.len());
         let mut operations = Vec::with_capacity(objects.len());
 
-        for (uid, object, tags) in objects.to_vec().into_iter() {
+        for (uid, object, tags) in objects {
             // If the uid is not provided, generate a new one
             let uid = uid.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
             uids.push(uid.clone());
-            operations.push(AtomicOperation::Create((uid.clone(), object, tags.clone())));
+            operations.push(AtomicOperation::Create((uid, object, tags.clone())));
         }
         if !operations.is_empty() {
             self.atomic(owner, &operations, None).await?;
@@ -412,7 +412,7 @@ impl Database for RedisWithFindex {
             .await?;
 
         // upsert the object
-        self.objects_db.object_upsert(&uid, &db_object).await?;
+        self.objects_db.object_upsert(uid, &db_object).await?;
 
         Ok(())
     }

@@ -21,6 +21,7 @@ use crate::{
     },
 };
 
+#[allow(clippy::too_many_arguments)]
 pub fn import_key(
     cli_conf_path: &str,
     sub_command: &str,
