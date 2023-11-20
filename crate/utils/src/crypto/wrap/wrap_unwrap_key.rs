@@ -125,36 +125,24 @@ pub fn unwrap_key_block(
 }
 
 #[cfg(test)]
+#[cfg(not(feature = "fips"))]
 //#[cfg(not(feature = "fips"))]
 // TODO: create FIPS tests
 mod tests {
-
-    use cloudproof::reexport::crypto_core::{
-        reexport::rand_core::{RngCore, SeedableRng},
-        CsRng,
-    };
     use cosmian_kmip::kmip::{
-        kmip_data_structures::KeyWrappingData,
-        kmip_objects::Object,
-        kmip_types::{CryptographicAlgorithm, EncodingOption},
+        kmip_data_structures::KeyWrappingData, kmip_objects::Object, kmip_types::EncodingOption,
     };
 
     use crate::{
-        crypto::{
-            curve_25519::operation::create_x25519_key_pair,
-            symmetric::create_symmetric_key,
-            wrap::{unwrap_key_block, wrap_key_block},
-        },
+        crypto::wrap::{unwrap_key_block, wrap_key_block},
         error::KmipUtilsError,
     };
 
     #[test]
     fn test_wrap_unwrap() -> Result<(), KmipUtilsError> {
-        let mut rng = CsRng::from_entropy();
-
         // the symmetric wrapping key
         let mut sym_wrapping_key_bytes = vec![0; 32];
-        rng.fill_bytes(&mut sym_wrapping_key_bytes);
+        openssl::rand::rand_bytes(&mut sym_wrapping_key_bytes).unwrap();
         let sym_wrapping_key = create_symmetric_key(
             sym_wrapping_key_bytes.as_slice(),
             CryptographicAlgorithm::AES,
@@ -162,7 +150,7 @@ mod tests {
 
         // the key to wrap
         let mut sym_key_to_wrap_bytes = vec![0; 32];
-        rng.fill_bytes(&mut sym_key_to_wrap_bytes);
+        openssl::rand::rand_bytes(&mut sym_key_to_wrap_bytes).unwrap();
         let mut sym_key_to_wrap = create_symmetric_key(
             sym_key_to_wrap_bytes.as_slice(),
             CryptographicAlgorithm::AES,

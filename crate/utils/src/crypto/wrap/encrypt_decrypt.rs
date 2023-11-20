@@ -237,6 +237,10 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_rfc_5649() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
         let mut symmetric_key = vec![0; 32];
         rand_bytes(&mut symmetric_key).unwrap();
         let wrap_key = create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
@@ -259,6 +263,10 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_rsa() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
         let rsa_privkey = Rsa::generate(2048).unwrap();
         let rsa_pubkey = Rsa::from_public_components(
             rsa_privkey.n().to_owned().unwrap(),
@@ -285,6 +293,10 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_rsa_bad_size() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
         let rsa_privkey = Rsa::generate(1024).unwrap();
         let rsa_pubkey = Rsa::from_public_components(
             rsa_privkey.n().to_owned().unwrap(),

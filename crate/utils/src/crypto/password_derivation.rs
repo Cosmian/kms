@@ -76,6 +76,10 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 
 #[test]
 fn test_password_derivation() {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    openssl::provider::Provider::load(None, "fips").unwrap();
+
     let my_weak_password = "doglover1234".as_bytes().to_vec();
     let secure_mk = derive_key_from_password::<32>(&my_weak_password).unwrap();
 
@@ -85,6 +89,10 @@ fn test_password_derivation() {
 #[cfg(feature = "fips")]
 #[test]
 fn test_password_derivation_bad_size() {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    openssl::provider::Provider::load(None, "fips").unwrap();
+
     let my_weak_password = "splintorage".as_bytes().to_vec();
     let secure_mk = derive_key_from_password::<13>(&my_weak_password);
 

@@ -117,3 +117,24 @@ pub fn ckm_rsa_aes_key_unwrap(
 
     Ok(plaintext)
 }
+
+#[test]
+#[cfg(feature = "fips")]
+fn test_rsa_kem_wrap_unwrap() -> Result<(), KmipUtilsError> {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    openssl::provider::Provider::load(None, "fips").unwrap();
+
+    let privkey = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
+    let pubkey = PKey::public_key_from_pem(&privkey.public_key_to_pem()?)?;
+
+    let privkey_to_wrap = openssl::rsa::Rsa::generate(2048)?.private_key_to_pem()?;
+
+    let wrapped_key = ckm_rsa_aes_key_wrap(pubkey, &privkey_to_wrap)?;
+
+    let unwrapped_key = ckm_rsa_aes_key_unwrap(privkey, &wrapped_key)?;
+
+    assert_eq!(unwrapped_key, privkey_to_wrap);
+
+    Ok(())
+}

@@ -16,6 +16,10 @@ use crate::{
 
 #[test]
 pub fn test_aes() {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    openssl::provider::Provider::load(None, "fips").unwrap();
+
     let mut rng = CsRng::from_entropy();
     let mut symmetric_key = vec![0; AES_256_GCM_KEY_LENGTH];
     rng.fill_bytes(&mut symmetric_key);
