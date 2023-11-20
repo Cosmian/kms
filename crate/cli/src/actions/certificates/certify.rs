@@ -94,7 +94,7 @@ impl CertifyAction {
             .expect("failed creating certificate")
             .unique_identifier;
 
-        println!("The certificate was created with id: {certificate_unique_identifier}.");
+        println!("The certificate was issued with id: {certificate_unique_identifier}.");
         Ok(())
     }
 }

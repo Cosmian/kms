@@ -1,11 +1,11 @@
-use std::cmp::{max, min};
+use std::cmp::min;
 
 use cosmian_kmip::{
     kmip::{
         kmip_operations::{Certify, CertifyResponse},
-        kmip_types::CertificateRequestType,
+        kmip_types::{CertificateRequestType, StateEnumeration},
     },
-    openssl::openssl_certificate_to_kmip,
+    openssl::{kmip_private_key_to_openssl, openssl_certificate_to_kmip},
     result::KmipResultHelper,
 };
 use cosmian_kms_utils::{
@@ -17,13 +17,17 @@ use cosmian_kms_utils::{
 };
 use openssl::{
     asn1::Asn1Time,
-    pkey::PKey,
+    hash::MessageDigest,
+    pkey::{Id, PKey, Private},
     x509::{X509Req, X509},
 };
-use tracing::trace;
+use tracing::{info, trace};
 
 use crate::{
-    core::{certificate::retrieve_certificate_for_private_key, KMS},
+    core::{
+        certificate::{add_certificate_tags, retrieve_certificate_for_private_key},
+        KMS,
+    },
     database::retrieve_object_for_operation,
     error::KmsError,
     kms_bail,
@@ -51,9 +55,9 @@ pub async fn certify(
     ))?;
 
     // Retrieve and update tags
-    let tags = remove_tags(&mut attributes);
-    if let Some(tags) = &tags {
-        check_user_tags(tags)?;
+    let mut tags = remove_tags(&mut attributes).unwrap_or_default();
+    if !tags.is_empty() {
+        check_user_tags(&tags)?;
     }
 
     // Get the issuer private key
@@ -63,7 +67,7 @@ pub async fn certify(
                 "The private key of the issuer is not found in the attributes".to_string(),
             )
         })?;
-    let ca_private_key = retrieve_object_for_operation(
+    let issuer_private_key = retrieve_object_for_operation(
         &issuer_private_key_id,
         ObjectOperationType::Certify,
         kms,
@@ -71,14 +75,12 @@ pub async fn certify(
         params,
     )
     .await?;
-    // Expect the bytes to in PKCS#8 format
-    let ca_private_key_bytes = ca_private_key.key_block()?.key_bytes()?;
     // Convert to an openssl PrivateKey
-    let private_pkey = PKey::private_key_from_pem(&ca_private_key_bytes)?;
+    let issuer_pkey: PKey<Private> = kmip_private_key_to_openssl(&issuer_private_key)?;
 
     //retrieve the certificate associated with the private key
-    let (_issuer_certificate_owm, issuer_certificate) =
-        retrieve_certificate_for_private_key(&ca_private_key, kms, false, user, params).await?;
+    let (issuer_certificate_owm, issuer_certificate) =
+        retrieve_certificate_for_private_key(&issuer_private_key, kms, false, user, params).await?;
 
     // Create a new Asn1Time object for the current time
     let now = Asn1Time::days_from_now(0).context("could not get a date in ASN.1")?;
@@ -86,7 +88,7 @@ pub async fn certify(
     // retrieve the number of days for the validity of the certificate
     // the number of days cannot exceed that of the issuer certificate
     let number_of_days = min(
-        issuer_certificate.not_after().diff(&now).num_days() as usize,
+        issuer_certificate.not_after().diff(&now)?.days as usize,
         number_of_days_from_attributes(&attributes)?.unwrap_or(3650),
     );
 
@@ -107,7 +109,7 @@ pub async fn certify(
 
     // Create an X509 struct with the desired certificate information.
     let mut x509_builder = X509::builder().unwrap();
-    x509_builder.set_version(2)?;
+    x509_builder.set_version(3)?;
     x509_builder.set_subject_name(csr.subject_name())?;
     x509_builder.set_pubkey(csr.public_key()?.as_ref())?;
     x509_builder.set_not_before(now.as_ref())?;
@@ -118,13 +120,32 @@ pub async fn certify(
             .as_ref(),
     )?;
     x509_builder.set_issuer_name(issuer_certificate.subject_name())?;
-    x509_builder.sign(&private_pkey, openssl::hash::MessageDigest::sha256())?;
-
+    x509_builder.sign(&issuer_pkey, MessageDigest::sha256())?;
     let x509 = x509_builder.build();
-    // // Encode the X509 struct to a PEM-encoded certificate.
-    // let pem_certificate = x509.to_pem().unwrap();
+
+    // add the tags
+    add_certificate_tags(&mut tags, &x509)?;
+
+    let (issued_certificate_id, issued_certificate) = openssl_certificate_to_kmip(x509)?;
+
+    // Add link to the issuer certificate
+    //TODO: attributes not supported until https://github.com/Cosmian/kms/issues/88 is fixed; using tags instead
+    let issuer_tag = format!("_cert_issuer={}", issuer_certificate_owm.id);
+    tags.insert(issuer_tag);
+
+    // save the generated certificate
+    kms.db
+        .upsert(
+            &issued_certificate_id,
+            user,
+            &issued_certificate,
+            Some(&tags),
+            StateEnumeration::Active,
+            params,
+        )
+        .await?;
 
     Ok(CertifyResponse {
-        unique_identifier: "BLAH".to_string(),
+        unique_identifier: issued_certificate_id,
     })
 }

@@ -3,7 +3,7 @@ use std::{path::PathBuf, process::Command};
 use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
-    kmip_types::{Attributes, LinkType},
+    kmip_types::{Attributes, KeyFormatType, LinkType},
     ttlv::{deserializer::from_ttlv, TTLV},
 };
 use openssl::pkcs12::Pkcs12;
@@ -27,7 +27,7 @@ use crate::{
 };
 
 #[tokio::test]
-async fn test_import_export_p12() {
+async fn test_import_export_p12_25519() {
     //load the PKCS#12 file
     let p12_bytes = include_bytes!("../../../test_data/certificates/p12/output.p12");
     // Create a test server
@@ -190,6 +190,60 @@ async fn test_import_export_p12() {
             .get(0)
             .unwrap()
             .to_der()
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn test_import_p12_rsa() {
+    //load the PKCS#12 file
+    let p12_bytes = include_bytes!("../../../test_data/certificates/csr/intermediate.p12");
+    // Create a test server
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+
+    //parse the PKCS#12 with openssl
+    let p12 = Pkcs12::from_der(p12_bytes).unwrap();
+    let parsed_p12 = p12.parse2("secret").unwrap();
+    //import the certificate
+    let imported_p12_sk = import_certificate(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        "test_data/certificates/csr/intermediate.p12",
+        CertificateInputFormat::Pkcs12,
+        Some("secret"),
+        None,
+        Some(&["import_pkcs12"]),
+        false,
+        false,
+    )
+    .unwrap();
+
+    // export the private key
+    export_key(
+        &ctx.owner_cli_conf_path,
+        "ec",
+        &imported_p12_sk,
+        "/tmp/exported_p12_sk.json",
+        Some(JsonTtlv),
+        false,
+        None,
+        false,
+    )
+    .unwrap();
+    // export object by object
+    let sk = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_p12_sk.json")).unwrap();
+    assert_eq!(
+        sk.key_block().unwrap().key_format_type,
+        KeyFormatType::PKCS1
+    );
+    assert_eq!(
+        sk.key_block().unwrap().key_bytes().unwrap().to_vec(),
+        parsed_p12
+            .pkey
+            .unwrap()
+            .rsa()
+            .unwrap()
+            .private_key_to_der()
             .unwrap()
     );
 }
