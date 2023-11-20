@@ -1,23 +1,24 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
-use cosmian_kmip::kmip::kmip_objects::Object;
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_types::{Attributes, LinkType},
+    ttlv::{deserializer::from_ttlv, TTLV},
+};
 use cosmian_logger::log_utils::log_init;
+use openssl::{nid::Nid, x509::X509};
 
 use crate::{
     actions::{
         certificates::{CertificateExportFormat, CertificateInputFormat},
-        shared::utils::read_object_from_json_ttlv_file,
+        shared::utils::{read_from_json_file, read_object_from_json_ttlv_file},
     },
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         certificates::{export::export_certificate, import::import_certificate},
-        shared::export_key,
-        utils::{
-            extract_uids::{extract_imported_key_id, extract_uid},
-            recover_cmd_logs, start_default_test_kms_server, ONCE,
-        },
+        utils::{extract_uids::extract_uid, recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -130,6 +131,42 @@ async fn csr_test() -> Result<(), CliError> {
         } => certificate_value,
         _ => panic!("wrong object type"),
     };
-
+    // check that the certificate is valid by parsing it using openssl
+    let cert_x509 = X509::from_der(cert_x509_der).unwrap();
+    // print the subject name
+    assert_eq!(
+        "Test Leaf",
+        cert_x509
+            .subject_name()
+            .entries_by_nid(Nid::COMMONNAME)
+            .next()
+            .unwrap()
+            .data()
+            .as_utf8()
+            .unwrap()
+            .to_string()
+    );
+    let ttlv: TTLV =
+        read_from_json_file(&PathBuf::from("/tmp/exported_cert.attributes.json")).unwrap();
+    let attributes: Attributes = from_ttlv(&ttlv).unwrap();
+    // check that the attributes contain a certificate link to the intermediate
+    let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
+    // export the intermediate certificate
+    export_certificate(
+        &ctx.owner_cli_conf_path,
+        &certificate_link,
+        "/tmp/exported_intermediate_cert.json",
+        Some(CertificateExportFormat::Pem),
+        None,
+        true,
+    )?;
+    // check that the attributes contain a certificate link to the CA
+    let ttlv: TTLV = read_from_json_file(&PathBuf::from(
+        "/tmp/exported_intermediate_cert.attributes.json",
+    ))
+    .unwrap();
+    let attributes: Attributes = from_ttlv(&ttlv).unwrap();
+    let private_key_link = attributes.get_link(LinkType::PrivateKeyLink).unwrap();
+    assert_eq!(private_key_link, issuer_private_key_id);
     Ok(())
 }
