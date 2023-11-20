@@ -8,4 +8,3 @@ license-file = "../../LICENSE.md"
 [dependencies]
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tracing-tree = { workspace = true }
