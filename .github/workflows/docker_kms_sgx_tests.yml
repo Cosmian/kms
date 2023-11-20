@@ -49,14 +49,14 @@ jobs:
       - name: Bootstrap
         run: |
           sleep 60
-          KMS_CLI_CONF=ci/sgx/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
+          KMS_CLI_CONF=$PWD/ci/sgx/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
           sleep 20
 
       - name: Verify
-        run: KMS_CLI_CONF=ci/sgx/kms-test-ci.json ckms verify
+        run: KMS_CLI_CONF=$PWD/ci/sgx/kms-test-ci.json ckms verify
 
       - name: Symmetric key create
-        run: KMS_CLI_CONF=ci/sgx/kms-test-ci.json ckms sym keys create
+        run: KMS_CLI_CONF=$PWD/ci/sgx/kms-test-ci.json ckms sym keys create
 
       - name: Docker stop container
         if: success() || failure()
