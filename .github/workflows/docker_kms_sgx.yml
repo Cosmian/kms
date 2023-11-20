@@ -19,6 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      # Following job from `docker_kms_sgx_tests.yml` will overwrite
+      # this file, but for unknown reason sometimes permissions are denied to do so.
+      - name: Fix permissions on JSON file
+        run: chmod o+w ./kms-test-ci.json
+
       - name: Login to GitHub Packages
         uses: docker/login-action@v2
         with:
