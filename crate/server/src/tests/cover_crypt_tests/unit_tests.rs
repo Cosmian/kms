@@ -33,7 +33,7 @@ use crate::{
     KMSServer,
 };
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_cover_crypt_keys() -> KResult<()> {
     let clap_config = https_clap_config();
 
@@ -214,7 +214,7 @@ pub fn access_policy_serialization() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let clap_config = https_clap_config();
 
@@ -432,7 +432,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_abe_json_access() -> KResult<()> {
     let clap_config = https_clap_config();
 
@@ -529,7 +529,7 @@ async fn test_abe_json_access() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_import_decrypt() -> KResult<()> {
     let clap_config = https_clap_config();
 
@@ -615,7 +615,7 @@ async fn test_import_decrypt() -> KResult<()> {
     assert_eq!(ObjectType::PrivateKey, gr_sk.object_type);
 
     // ...and reimport it under custom uid (won't work)
-    let custom_sk_uid = uuid::Uuid::new_v4().to_string();
+    let custom_sk_uid = Uuid::new_v4().to_string();
     let request = Import {
         unique_identifier: custom_sk_uid.clone(),
         object_type: ObjectType::PrivateKey,
@@ -646,11 +646,17 @@ async fn test_import_decrypt() -> KResult<()> {
             owner,
             None,
         )
-        .await;
-    // Decryption fails: it cannot find the key.
-    // When importing the key, attributes are not set correctly
-    // in the import request
-    assert!(dr.is_err());
+        .await?;
+    // Decryption used to fails: import attributes were incorrect;
+    // this seems fixed since #71. Leaving the test in case this pops-up again
+    let decrypted_data: DecryptedData = dr
+        .data
+        .context("There should be decrypted data")?
+        .as_slice()
+        .try_into()
+        .unwrap();
+    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext[..]);
+    assert!(decrypted_data.metadata.is_empty());
 
     // ...and reimport it under custom uid (will work)
     let custom_sk_uid = uuid::Uuid::new_v4().to_string();

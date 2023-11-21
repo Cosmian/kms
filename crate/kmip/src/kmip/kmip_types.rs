@@ -285,6 +285,7 @@ pub enum RecommendedCurve {
     CURVE25519 = 0x0000_0045,
     CURVE448 = 0x0000_0046,
     CURVEED25519 = 0x8000_0001,
+    CURVEED448 = 0x8000_0002,
     // Extensions 8XXXXXXX
 }
 
@@ -965,6 +966,16 @@ impl Attributes {
         }
     }
 
+    /// Remove the link from the attributes
+    pub fn remove_link(&mut self, link_type: LinkType) {
+        if let Some(links) = self.link.as_mut() {
+            links.retain(|l| l.link_type != link_type);
+            if links.is_empty() {
+                self.link = None;
+            }
+        }
+    }
+
     /// Get the parent id of the object.
     #[must_use]
     pub fn get_parent_id(&self) -> Option<String> {
@@ -1052,6 +1063,7 @@ pub struct VendorAttributeReference {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(untagged)]
 pub enum AttributeReference {
     Vendor(VendorAttributeReference),
     Standard(Tag),

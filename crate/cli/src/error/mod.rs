@@ -138,7 +138,7 @@ impl From<std::io::Error> for CliError {
 
 impl From<serde_json::Error> for CliError {
     fn from(e: serde_json::Error) -> Self {
-        Self::InvalidRequest(e.to_string())
+        Self::Conversion(e.to_string())
     }
 }
 

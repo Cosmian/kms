@@ -43,10 +43,10 @@ async fn test_import_export_p12_25519() {
         "test_data/certificates/p12/output.p12",
         CertificateInputFormat::Pkcs12,
         Some("secret"),
-        None,
+        Some("test_import_export_p12_25519_sk_id".to_owned()),
         Some(&["import_pkcs12"]),
         false,
-        false,
+        true,
     )
     .unwrap();
 
@@ -214,7 +214,7 @@ async fn test_import_p12_rsa() {
         None,
         Some(&["import_pkcs12"]),
         false,
-        false,
+        true,
     )
     .unwrap();
 

@@ -5,7 +5,7 @@ use cloudproof::reexport::crypto_core::{
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyValue,
     kmip_objects::Object,
-    kmip_types::{CryptographicAlgorithm, WrappingMethod},
+    kmip_types::{CryptographicAlgorithm, LinkType, WrappingMethod},
 };
 use cosmian_kms_utils::crypto::{
     curve_25519::operation::create_x25519_key_pair, symmetric::create_symmetric_key,
@@ -284,8 +284,18 @@ fn test_import_export_wrap_private_key(
         )?;
         let re_exported_key = read_object_from_json_ttlv_file(&re_exported_key_file)?;
         assert_eq!(
-            re_exported_key.key_block()?.key_value,
-            private_key.key_block()?.key_value
+            re_exported_key.key_block()?.key_value.key_material,
+            private_key.key_block()?.key_value.key_material
+        );
+        assert_eq!(
+            re_exported_key
+                .key_block()?
+                .attributes()?
+                .get_link(LinkType::PublicKeyLink),
+            private_key
+                .key_block()?
+                .attributes()?
+                .get_link(LinkType::PublicKeyLink)
         );
         assert!(re_exported_key.key_wrapping_data().is_none());
     }

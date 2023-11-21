@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use cosmian_kmip::{
     id,
     kmip::{
-        kmip_data_structures::{KeyMaterial, KeyValue},
         kmip_objects::{Object, Object::Certificate, ObjectType},
         kmip_operations::{Import, ImportResponse},
         kmip_types::{
@@ -13,7 +12,7 @@ use cosmian_kmip::{
     },
     openssl::{
         kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_certificate_to_kmip,
-        openssl_private_key_to_kmip,
+        openssl_private_key_to_kmip, openssl_public_key_to_kmip,
     },
 };
 use cosmian_kms_utils::{
@@ -27,7 +26,7 @@ use openssl::{
 use tracing::{debug, trace};
 
 use super::wrapping::unwrap_key;
-use crate::core::certificate::add_certificate_tags;
+use crate::core::certificate::{add_attributes_to_certificate_tags, add_certificate_system_tags};
 /// Import a new object
 use crate::{core::KMS, database::AtomicOperation, error::KmsError, kms_bail, result::KResult};
 
@@ -73,8 +72,8 @@ async fn process_symmetric_key(
     params: Option<&ExtraDatabaseParams>,
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
-    let mut request_attributes = request.attributes;
-    let mut tags = remove_tags(&mut request_attributes);
+    let mut attributes = request.attributes;
+    let mut tags = remove_tags(&mut attributes);
     if let Some(tags) = tags.as_ref() {
         check_user_tags(tags)?;
     }
@@ -87,8 +86,9 @@ async fn process_symmetric_key(
         unwrap_key(object_key_block, kms, owner, params).await?;
     }
     // replace attributes
+    attributes.object_type = Some(ObjectType::SymmetricKey);
     //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
-    object_key_block.key_value.attributes = Some(request_attributes);
+    object_key_block.key_value.attributes = Some(attributes);
 
     let uid = if request.unique_identifier.is_empty() {
         id(&object_key_block.key_bytes()?)?
@@ -133,7 +133,8 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
 
     // insert the tag corresponding to the object type if tags should be updated
     if let Some(tags) = user_tags.as_mut() {
-        add_certificate_tags(tags, &certificate)?;
+        add_attributes_to_certificate_tags(tags, &request_attributes)?;
+        add_certificate_system_tags(tags, &certificate)?;
     }
 
     // convert the certificate to a KMIP object
@@ -187,25 +188,21 @@ async fn process_public_key(
         {
             // first, see if the public key can be parsed as an openssl object
             let openssl_pk = kmip_public_key_to_openssl(&(object.clone()))?;
-
-            let mut object = object;
-            let object_key_block = object.key_block_mut()?;
-            // The Key Format Type should really be SPKI, but it does not exist
-            object_key_block.key_format_type = KeyFormatType::PKCS8;
-            object_key_block.key_value = KeyValue {
-                key_material: KeyMaterial::ByteString(openssl_pk.public_key_to_der()?),
-                attributes: None,
-            };
-            object
+            // convert back to KMIP Object
+            openssl_public_key_to_kmip(&openssl_pk, KeyFormatType::PKCS8)?
         } else {
             object
         }
     };
-
-    // replace attributes
-    //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
     let object_key_block = object.key_block_mut()?;
-    object_key_block.key_value.attributes = Some(request_attributes);
+
+    // add imported links to attributes
+    //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
+    if let Ok(attributes) = object_key_block.attributes_mut() {
+        request_attributes
+            .link
+            .map(|links| attributes.link.get_or_insert(links));
+    }
 
     if let Some(tags) = tags.as_mut() {
         tags.insert("_pk".to_string());
@@ -261,10 +258,14 @@ async fn process_private_key(
     if key_block.key_wrapping_data.is_some()
         || key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt)
     {
-        // replace attributes
-        //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
         let object_key_block = object.key_block_mut()?;
-        object_key_block.key_value.attributes = Some(request_attributes);
+        // add imported links to attributes
+        //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
+        if let Ok(attributes) = object_key_block.attributes_mut() {
+            request_attributes
+                .link
+                .map(|links| attributes.link.get_or_insert(links));
+        }
         // build ui if needed
         let uid = if request.unique_identifier.is_empty() {
             id(&object_key_block.key_bytes()?)?
@@ -325,7 +326,13 @@ fn private_key_from_openssl(
 
     //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
     let sk_key_block = sk.key_block_mut()?;
-    sk_key_block.key_value.attributes = Some(request_attributes);
+    // add imported links to attributes
+    //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
+    if let Ok(attributes) = sk_key_block.attributes_mut() {
+        request_attributes
+            .link
+            .map(|links| attributes.link.get_or_insert(links));
+    }
 
     let sk_tags = user_tags.map(|mut tags| {
         tags.insert("_sk".to_string());
@@ -359,10 +366,16 @@ async fn process_pkcs12(
         Object::PrivateKey { key_block } => key_block.key_bytes()?,
         _ => kms_bail!("The PKCS12 object is not correctly formatted"),
     };
+
     // recover the password from the attributes
     let password = request_attributes
         .get_link(LinkType::PKCS12PasswordLink)
         .unwrap_or_default();
+    // remove the password from the attributes
+    let mut request_attributes = request_attributes;
+    request_attributes.remove_link(LinkType::PKCS12PasswordLink);
+
+    // parse the PKCS12
     let pkcs12_parser = openssl::pkcs12::Pkcs12::from_der(&pkcs12_bytes)?;
     let pkcs12 = pkcs12_parser.parse2(&password)?;
 
@@ -392,7 +405,7 @@ async fn process_pkcs12(
         // insert the tag corresponding to the object type if tags should be updated
         let mut leaf_certificate_tags = user_tags.clone();
         if let Some(tags) = leaf_certificate_tags.as_mut() {
-            add_certificate_tags(tags, &openssl_cert)?;
+            add_certificate_system_tags(tags, &openssl_cert)?;
         }
 
         // convert to KMIP
@@ -413,7 +426,7 @@ async fn process_pkcs12(
             // insert the tag corresponding to the object type if tags should be updated
             let mut chain_certificate_tags = user_tags.clone();
             if let Some(tags) = chain_certificate_tags.as_mut() {
-                add_certificate_tags(tags, &openssl_cert)?;
+                add_certificate_system_tags(tags, &openssl_cert)?;
             }
 
             // convert to KMIP

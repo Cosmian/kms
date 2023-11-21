@@ -176,7 +176,7 @@ async fn test_certificate_import_encrypt(
         None,
         Some(tags),
         false,
-        false,
+        true,
     )?;
 
     let _subca_certificate_id = import_certificate(
@@ -188,7 +188,7 @@ async fn test_certificate_import_encrypt(
         None,
         Some(tags),
         false,
-        false,
+        true,
     )?;
 
     let certificate_id = import_certificate(
@@ -200,7 +200,7 @@ async fn test_certificate_import_encrypt(
         None,
         Some(tags),
         false,
-        false,
+        true,
     )?;
 
     debug!("\n\nEncrypt Certificate");
@@ -222,7 +222,7 @@ async fn test_certificate_import_encrypt(
         None,
         Some(tags),
         false,
-        false,
+        true,
     )?;
 
     debug!("\n\nDecrypt");
@@ -246,10 +246,10 @@ async fn test_certificate_import_encrypt(
 #[tokio::test]
 async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), CliError> {
     test_certificate_import_encrypt(
-        "kms/root.pem",
-        "kms/subca.pem",
-        "kms/cert.pem",
-        "kms/cert.key",
+        "p12/root.pem",
+        "p12/subca.pem",
+        "p12/cert.pem",
+        "p12/cert.key",
         &["external_certificate"],
     )
     .await

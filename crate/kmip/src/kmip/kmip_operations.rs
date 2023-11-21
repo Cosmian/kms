@@ -750,7 +750,7 @@ pub struct GetAttributes {
     pub unique_identifier: Option<UniqueIdentifier>,
     /// Specifies an attribute associated with
     /// the object.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", rename = "AttributeReference")]
     pub attribute_references: Option<Vec<AttributeReference>>,
 }
 impl From<String> for GetAttributes {

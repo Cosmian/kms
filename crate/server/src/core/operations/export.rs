@@ -1,5 +1,5 @@
 use cosmian_kmip::kmip::kmip_operations::{Export, ExportResponse};
-use cosmian_kms_utils::access::ExtraDatabaseParams;
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::trace;
 
 use crate::{
@@ -20,5 +20,5 @@ pub async fn export(
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ExportResponse> {
     trace!("Export: {}", serde_json::to_string(&request)?);
-    export_get(kms, request, true, user, params).await
+    export_get(kms, request, ObjectOperationType::Export, user, params).await
 }

@@ -1,18 +1,23 @@
 use std::collections::HashSet;
 
+use cosmian_kmip::kmip::kmip_types::{
+    Attributes, LinkType, LinkedObjectIdentifier, UniqueIdentifier,
+};
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use openssl::{sha::Sha1, x509::X509};
 
-use crate::{error::KmsError, result::KResult};
+use crate::{core::KMS, error::KmsError, result::KResult};
 
 /// Add system tags to the certificate user tags
 ///
 /// The additional tags are added to compensate the lack of support for attributes
 /// TODO see https://github.com/Cosmian/kms/issues/88
-pub fn add_certificate_tags(user_tags: &mut HashSet<String>, certificate: &X509) -> KResult<()> {
+pub fn add_certificate_system_tags(
+    user_tags: &mut HashSet<String>,
+    certificate: &X509,
+) -> KResult<()> {
     // The certificate "system" tag
     user_tags.insert("_cert".to_string());
-
-    // Create tags from links passed in attributes
 
     // add the SPKI tag corresponding to the `SubjectKeyIdentifier` X509 extension
     let hash_value = hex::encode(get_or_create_subject_key_identifier_value(certificate)?);
@@ -45,4 +50,53 @@ fn get_or_create_subject_key_identifier_value(certificate: &X509) -> Result<Vec<
         sha1.update(&spki_der);
         sha1.finish().to_vec()
     })
+}
+
+/// Retrieve certificate Attributes from Tags
+///TODO: retrieve attributes from tags until https://github.com/Cosmian/kms/issues/88 is fixed
+pub async fn add_certificate_tags_to_attributes(
+    attributes: &mut Attributes,
+    certificate_id: &UniqueIdentifier,
+    kms: &KMS,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<()> {
+    let tags = kms.db.retrieve_tags(certificate_id, params).await?;
+    // add link to the private key
+    if let Some(id) = tags
+        .iter()
+        .find(|tag| tag.starts_with("_cert_sk="))
+        .map(|tag| tag.replace("_cert_sk=", ""))
+    {
+        attributes.add_link(
+            LinkType::PrivateKeyLink,
+            LinkedObjectIdentifier::TextString(id),
+        )
+    }
+    // add link to issuer certificate
+    if let Some(id) = tags
+        .iter()
+        .find(|tag| tag.starts_with("_cert_issuer="))
+        .map(|tag| tag.replace("_cert_issuer=", ""))
+    {
+        attributes.add_link(
+            LinkType::CertificateLink,
+            LinkedObjectIdentifier::TextString(id),
+        )
+    }
+    Ok(())
+}
+
+/// Convert certificate attributes to tags
+/// TODO: remove when https://github.com/Cosmian/kms/issues/88 is fixed
+pub fn add_attributes_to_certificate_tags(
+    tags: &mut HashSet<String>,
+    attributes: &Attributes,
+) -> KResult<()> {
+    attributes.get_link(LinkType::PrivateKeyLink).map(|link| {
+        tags.insert(format!("_cert_sk={}", link));
+    });
+    attributes.get_link(LinkType::CertificateLink).map(|link| {
+        tags.insert(format!("_cert_issuer={}", link));
+    });
+    Ok(())
 }

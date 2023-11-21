@@ -10,7 +10,7 @@ use self::{
     encrypt_certificate::EncryptCertificateAction, export_certificate::ExportCertificateAction,
     import_certificate::ImportCertificateAction, revoke_certificate::RevokeCertificateAction,
 };
-use crate::error::CliError;
+use crate::{actions::shared::GetAttributesAction, error::CliError};
 
 mod certify;
 mod create_certificate;
@@ -33,6 +33,7 @@ pub enum CertificatesCommands {
     Import(ImportCertificateAction),
     Revoke(RevokeCertificateAction),
     Destroy(DestroyCertificateAction),
+    GetAttributes(GetAttributesAction),
 }
 
 impl CertificatesCommands {
@@ -46,6 +47,7 @@ impl CertificatesCommands {
             Self::Import(action) => action.run(client_connector).await,
             Self::Revoke(action) => action.run(client_connector).await,
             Self::Destroy(action) => action.run(client_connector).await,
+            Self::GetAttributes(action) => action.run(client_connector).await,
         }
     }
 }

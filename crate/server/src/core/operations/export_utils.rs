@@ -4,8 +4,7 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Export, ExportResponse},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType,
-            LinkedObjectIdentifier, StateEnumeration,
+            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, StateEnumeration,
         },
     },
     openssl::{
@@ -13,7 +12,7 @@ use cosmian_kmip::{
         openssl_public_key_to_kmip,
     },
 };
-use cosmian_kms_utils::access::ExtraDatabaseParams;
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use openssl::{
     pkey::{Id, PKey, Private, Public},
     stack::Stack,
@@ -23,11 +22,11 @@ use tracing::{debug, trace};
 
 use crate::{
     core::{
-        certificate::retrieve_certificate_for_private_key,
+        certificate::{add_certificate_tags_to_attributes, retrieve_certificate_for_private_key},
         operations::{unwrap_key, wrapping::wrap_key},
         KMS,
     },
-    database::{object_with_metadata::ObjectWithMetadata, retrieve_object_with_metadata},
+    database::{object_with_metadata::ObjectWithMetadata, retrieve_object_for_operation},
     error::KmsError,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -39,25 +38,26 @@ use crate::{
 pub async fn export_get(
     kms: &KMS,
     request: impl Into<Export>,
-    allow_full_export: bool,
+    operation_type: ObjectOperationType,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ExportResponse> {
     let request: Export = request.into();
     trace!("Export: {}", serde_json::to_string(&request)?);
 
-    let mut owm = retrieve_object_with_metadata(
+    let mut owm = retrieve_object_for_operation(
         request
             .unique_identifier
             .as_ref()
             .ok_or_else(|| KmsError::InvalidRequest("unique_identifier is missing".to_string()))?,
+        operation_type,
         kms,
-        allow_full_export,
         user,
         params,
     )
     .await?;
     let object_type = owm.object.object_type();
+    let export = operation_type == ObjectOperationType::Export;
 
     // export based on the Object type
     let export_attributes = match object_type {
@@ -65,7 +65,7 @@ pub async fn export_get(
             // determine if the user wants a PKCS#12
             let is_pkcs12 = request.key_format_type == Some(KeyFormatType::PKCS12);
             // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
-            if allow_full_export
+            if export
                 && (owm.state == StateEnumeration::Destroyed
                     || owm.state == StateEnumeration::Destroyed_Compromised)
             {
@@ -95,8 +95,7 @@ pub async fn export_get(
             }
             //in the case of a PKCS#12, the private key must be packaged with the certificate
             if is_pkcs12 {
-                post_process_pkcs12(kms, allow_full_export, user, params, &request, &mut owm)
-                    .await?;
+                post_process_pkcs12(kms, operation_type, user, params, &request, &mut owm).await?;
             }
             owm.object
                 .attributes()
@@ -104,7 +103,7 @@ pub async fn export_get(
         }
         ObjectType::PublicKey => {
             // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
-            if allow_full_export
+            if export
                 && (owm.state == StateEnumeration::Destroyed
                     || owm.state == StateEnumeration::Destroyed_Compromised)
             {
@@ -132,7 +131,7 @@ pub async fn export_get(
         }
         ObjectType::SymmetricKey => {
             // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
-            if allow_full_export
+            if export
                 && (owm.state == StateEnumeration::Destroyed
                     || owm.state == StateEnumeration::Destroyed_Compromised)
             {
@@ -547,7 +546,7 @@ async fn process_symmetric_key(
 
 async fn post_process_pkcs12(
     kms: &KMS,
-    allow_full_export: bool,
+    operation_type: ObjectOperationType,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
     request: &Export,
@@ -558,7 +557,7 @@ async fn post_process_pkcs12(
         .context("export: unable to parse the private key to openssl")?;
 
     let (cert_owm, certificate) =
-        retrieve_certificate_for_private_key(&owm.object, kms, allow_full_export, user, params)
+        retrieve_certificate_for_private_key(&owm.object, kms, operation_type, user, params)
             .await?;
 
     // retrieve the certificate chain
@@ -576,7 +575,7 @@ async fn post_process_pkcs12(
         };
         // retrieve the parent certificate
         let cert_owm =
-            retrieve_object_with_metadata(&parent_id, kms, allow_full_export, user, params).await?;
+            retrieve_object_for_operation(&parent_id, operation_type, kms, user, params).await?;
         let certificate = X509::from_der(match &cert_owm.object {
             Object::Certificate {
                 certificate_value, ..
@@ -629,31 +628,8 @@ async fn process_certificate(
     kms: &KMS,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<Attributes> {
-    // retrieve certificate tags
     //TODO: create attributes from tags until https://github.com/Cosmian/kms/issues/88 is fixed
-    let tags = kms.db.retrieve_tags(&owm.id, params).await?;
     let mut attributes = Attributes::default();
-    // add link to the private key
-    if let Some(id) = tags
-        .iter()
-        .find(|tag| tag.starts_with("_cert_sk="))
-        .map(|tag| tag.replace("_cert_sk=", ""))
-    {
-        attributes.add_link(
-            LinkType::PrivateKeyLink,
-            LinkedObjectIdentifier::TextString(id),
-        )
-    }
-    // add link to issuer certificate
-    if let Some(id) = tags
-        .iter()
-        .find(|tag| tag.starts_with("_cert_issuer="))
-        .map(|tag| tag.replace("_cert_issuer=", ""))
-    {
-        attributes.add_link(
-            LinkType::CertificateLink,
-            LinkedObjectIdentifier::TextString(id),
-        )
-    }
+    add_certificate_tags_to_attributes(&mut attributes, &owm.id, kms, params).await?;
     Ok(attributes)
 }

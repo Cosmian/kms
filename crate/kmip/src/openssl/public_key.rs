@@ -11,8 +11,8 @@ use crate::{
     error::KmipError,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::Object,
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+        kmip_objects::{Object, ObjectType},
+        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
     },
     kmip_bail, kmip_error,
     result::KmipResultHelper,
@@ -163,24 +163,45 @@ pub fn openssl_public_key_to_kmip(
                     key_material: KeyMaterial::ByteString(
                         rsa_public_key.public_key_to_der_pkcs1()?,
                     ),
-                    attributes: None,
+                    attributes: Some(Attributes {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                        cryptographic_length: Some(rsa_public_key.size() as i32),
+                        key_format_type: Some(KeyFormatType::PKCS1),
+                        object_type: Some(ObjectType::PublicKey),
+                        ..Attributes::default()
+                    }),
                 },
-                cryptographic_algorithm: None,
-                cryptographic_length: None,
+                cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                cryptographic_length: Some(rsa_public_key.size() as i32),
                 key_wrapping_data: None,
                 key_compression_type: None,
             }
         }
         KeyFormatType::PKCS8 => {
             let spki_der = public_key.public_key_to_der()?;
+            let cryptographic_algorithm = match public_key.id() {
+                Id::RSA => Some(CryptographicAlgorithm::RSA),
+                Id::EC => Some(CryptographicAlgorithm::ECDH),
+                Id::X25519 => Some(CryptographicAlgorithm::ECDH),
+                Id::ED25519 => Some(CryptographicAlgorithm::Ed25519),
+                Id::X448 => Some(CryptographicAlgorithm::ECDH),
+                Id::ED448 => Some(CryptographicAlgorithm::Ed448),
+                _ => None,
+            };
             KeyBlock {
                 key_format_type,
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(spki_der),
-                    attributes: None,
+                    attributes: Some(Attributes {
+                        cryptographic_algorithm: cryptographic_algorithm.clone(),
+                        cryptographic_length: Some(public_key.bits() as i32),
+                        key_format_type: Some(KeyFormatType::PKCS8),
+                        object_type: Some(ObjectType::PublicKey),
+                        ..Attributes::default()
+                    }),
                 },
-                cryptographic_algorithm: None,
-                cryptographic_length: None,
+                cryptographic_algorithm: cryptographic_algorithm.clone(),
+                cryptographic_length: Some(public_key.bits() as i32),
                 key_wrapping_data: None,
                 key_compression_type: None,
             }
@@ -196,7 +217,13 @@ pub fn openssl_public_key_to_kmip(
                         modulus: BigUint::from_bytes_be(&rsa_public_key.n().to_vec()),
                         public_exponent: BigUint::from_bytes_be(&rsa_public_key.e().to_vec()),
                     },
-                    attributes: None,
+                    attributes: Some(Attributes {
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+                        cryptographic_length: Some(public_key.bits() as i32),
+                        key_format_type: Some(KeyFormatType::TransparentRSAPublicKey),
+                        object_type: Some(ObjectType::PublicKey),
+                        ..Attributes::default()
+                    }),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length: Some(public_key.bits() as i32),
@@ -241,7 +268,13 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve,
                                 q_string: point_encoding,
                             },
-                            attributes: None,
+                            attributes: Some(Attributes {
+                                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                                cryptographic_length: Some(public_key.bits() as i32),
+                                key_format_type: Some(KeyFormatType::TransparentECPublicKey),
+                                object_type: Some(ObjectType::PublicKey),
+                                ..Attributes::default()
+                            }),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length: Some(public_key.bits() as i32),
@@ -258,7 +291,13 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve: RecommendedCurve::CURVE25519,
                                 q_string,
                             },
-                            attributes: None,
+                            attributes: Some(Attributes {
+                                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                                cryptographic_length: Some(public_key.bits() as i32),
+                                key_format_type: Some(KeyFormatType::TransparentECPublicKey),
+                                object_type: Some(ObjectType::PublicKey),
+                                ..Attributes::default()
+                            }),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length: Some(public_key.bits() as i32),
@@ -275,7 +314,13 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve: RecommendedCurve::CURVEED25519,
                                 q_string,
                             },
-                            attributes: None,
+                            attributes: Some(Attributes {
+                                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                                cryptographic_length: Some(public_key.bits() as i32),
+                                key_format_type: Some(KeyFormatType::TransparentECPublicKey),
+                                object_type: Some(ObjectType::PublicKey),
+                                ..Attributes::default()
+                            }),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
                         cryptographic_length: Some(public_key.bits() as i32),
@@ -292,7 +337,36 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve: RecommendedCurve::CURVE448,
                                 q_string,
                             },
-                            attributes: None,
+                            attributes: Some(Attributes {
+                                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                                cryptographic_length: Some(public_key.bits() as i32),
+                                key_format_type: Some(KeyFormatType::TransparentECPublicKey),
+                                object_type: Some(ObjectType::PublicKey),
+                                ..Attributes::default()
+                            }),
+                        },
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                        cryptographic_length: Some(public_key.bits() as i32),
+                        key_wrapping_data: None,
+                        key_compression_type: None,
+                    }
+                }
+                Id::ED448 => {
+                    let q_string = public_key.raw_public_key()?;
+                    KeyBlock {
+                        key_format_type,
+                        key_value: KeyValue {
+                            key_material: KeyMaterial::TransparentECPublicKey {
+                                recommended_curve: RecommendedCurve::CURVEED448,
+                                q_string,
+                            },
+                            attributes: Some(Attributes {
+                                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                                cryptographic_length: Some(public_key.bits() as i32),
+                                key_format_type: Some(KeyFormatType::TransparentECPublicKey),
+                                object_type: Some(ObjectType::PublicKey),
+                                ..Attributes::default()
+                            }),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length: Some(public_key.bits() as i32),

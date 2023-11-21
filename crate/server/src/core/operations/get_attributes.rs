@@ -1,12 +1,18 @@
 use cosmian_kmip::kmip::{
+    kmip_objects::{Object, ObjectType},
     kmip_operations::{GetAttributes, GetAttributesResponse},
-    kmip_types::{AttributeReference, Attributes, StateEnumeration, Tag},
+    kmip_types::{
+        AttributeReference, Attributes, KeyFormatType, LinkType, LinkedObjectIdentifier, Tag,
+    },
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::{debug, trace};
 
 use crate::{
-    core::KMS, database::object_with_metadata::ObjectWithMetadata, error::KmsError, result::KResult,
+    core::{certificate::add_certificate_tags_to_attributes, KMS},
+    database::retrieve_object_for_operation,
+    error::KmsError,
+    result::KResult,
 };
 
 pub async fn get_attributes(
@@ -23,15 +29,49 @@ pub async fn get_attributes(
         .clone()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    // recover an active object
-    let owm = get_active_object(kms, &uid_or_tags, user, params).await?;
+    let owm = retrieve_object_for_operation(
+        &uid_or_tags,
+        ObjectOperationType::GetAttributes,
+        kms,
+        user,
+        params,
+    )
+    .await?;
     let object_type = owm.object.object_type();
-    let attributes = owm.object.attributes()?;
+
+    let attributes = match &owm.object {
+        Object::Certificate { .. } => {
+            let mut attributes = Attributes::default();
+            add_certificate_tags_to_attributes(&mut attributes, &owm.id, kms, params).await?;
+            attributes.key_format_type = Some(KeyFormatType::X509);
+            attributes.object_type = Some(ObjectType::Certificate);
+            attributes
+        }
+        Object::CertificateRequest { .. }
+        | Object::OpaqueObject { .. }
+        | Object::PGPKey { .. }
+        | Object::SecretData { .. }
+        | Object::SplitKey { .. } => {
+            return Err(KmsError::InvalidRequest(format!(
+                "get: unsupported object type for {uid_or_tags}",
+            )))
+        }
+        Object::PrivateKey { key_block }
+        | Object::PublicKey { key_block }
+        | Object::SymmetricKey { key_block } => {
+            let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
+            attributes.object_type = Some(ObjectType::SplitKey);
+            attributes
+        }
+    };
+
+    // recover an active object
+    // let owm = get_active_object(kms, &uid_or_tags, user, params).await?;
 
     let req_attributes = match &request.attribute_references {
         None => {
             return Ok(GetAttributesResponse {
-                unique_identifier: owm.id.clone(),
+                unique_identifier: owm.id,
                 attributes: attributes.clone(),
             })
         }
@@ -82,6 +122,38 @@ pub async fn get_attributes(
                 Tag::KeyFormatType => {
                     res.key_format_type = attributes.key_format_type;
                 }
+                Tag::PrivateKey => {
+                    attributes.get_link(LinkType::PrivateKeyLink).map(|link| {
+                        res.add_link(
+                            LinkType::PrivateKeyLink,
+                            LinkedObjectIdentifier::TextString(link.clone()),
+                        );
+                    });
+                }
+                Tag::PublicKey => {
+                    attributes.get_link(LinkType::PublicKeyLink).map(|link| {
+                        res.add_link(
+                            LinkType::PublicKeyLink,
+                            LinkedObjectIdentifier::TextString(link.clone()),
+                        );
+                    });
+                }
+                Tag::Certificate => {
+                    attributes
+                        .get_link(LinkType::PKCS12CertificateLink)
+                        .map(|link| {
+                            res.add_link(
+                                LinkType::PKCS12CertificateLink,
+                                LinkedObjectIdentifier::TextString(link.clone()),
+                            );
+                        });
+                    attributes.get_link(LinkType::CertificateLink).map(|link| {
+                        res.add_link(
+                            LinkType::CertificateLink,
+                            LinkedObjectIdentifier::TextString(link.clone()),
+                        );
+                    });
+                }
                 _ => {}
             },
         }
@@ -91,33 +163,4 @@ pub async fn get_attributes(
         unique_identifier: owm.id,
         attributes: res,
     })
-}
-
-pub(crate) async fn get_active_object(
-    kms: &KMS,
-    uid_or_tags: &str,
-    user: &str,
-    params: Option<&ExtraDatabaseParams>,
-) -> KResult<ObjectWithMetadata> {
-    // retrieve from tags or use passed identifier
-    let mut owm_s = kms
-        .db
-        .retrieve(uid_or_tags, user, ObjectOperationType::Get, params)
-        .await?
-        .into_values()
-        .filter(|owm| owm.state == StateEnumeration::Active)
-        .collect::<Vec<ObjectWithMetadata>>();
-
-    // there can only be one object
-    let owm = owm_s
-        .pop()
-        .ok_or_else(|| KmsError::ItemNotFound(uid_or_tags.to_owned()))?;
-
-    if !owm_s.is_empty() {
-        return Err(KmsError::InvalidRequest(format!(
-            "get: too many active objects for {uid_or_tags}",
-        )))
-    }
-
-    Ok(owm)
 }

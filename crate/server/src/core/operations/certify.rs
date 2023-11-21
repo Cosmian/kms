@@ -18,14 +18,14 @@ use cosmian_kms_utils::{
 use openssl::{
     asn1::Asn1Time,
     hash::MessageDigest,
-    pkey::{Id, PKey, Private},
+    pkey::{PKey, Private},
     x509::{X509Req, X509},
 };
-use tracing::{info, trace};
+use tracing::trace;
 
 use crate::{
     core::{
-        certificate::{add_certificate_tags, retrieve_certificate_for_private_key},
+        certificate::{add_certificate_system_tags, retrieve_certificate_for_private_key},
         KMS,
     },
     database::retrieve_object_for_operation,
@@ -76,11 +76,17 @@ pub async fn certify(
     )
     .await?;
     // Convert to an openssl PrivateKey
-    let issuer_pkey: PKey<Private> = kmip_private_key_to_openssl(&issuer_private_key)?;
+    let issuer_pkey: PKey<Private> = kmip_private_key_to_openssl(&issuer_private_key.object)?;
 
     //retrieve the certificate associated with the private key
-    let (issuer_certificate_owm, issuer_certificate) =
-        retrieve_certificate_for_private_key(&issuer_private_key, kms, false, user, params).await?;
+    let (issuer_certificate_owm, issuer_certificate) = retrieve_certificate_for_private_key(
+        &issuer_private_key.object,
+        kms,
+        ObjectOperationType::Get,
+        user,
+        params,
+    )
+    .await?;
 
     // Create a new Asn1Time object for the current time
     let now = Asn1Time::days_from_now(0).context("could not get a date in ASN.1")?;
@@ -124,7 +130,7 @@ pub async fn certify(
     let x509 = x509_builder.build();
 
     // add the tags
-    add_certificate_tags(&mut tags, &x509)?;
+    add_certificate_system_tags(&mut tags, &x509)?;
 
     let (issued_certificate_id, issued_certificate) = openssl_certificate_to_kmip(x509)?;
 

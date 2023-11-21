@@ -14,7 +14,8 @@ use cosmian_kmip::{
     result::KmipResultHelper,
 };
 use cosmian_kms_utils::{
-    access::ExtraDatabaseParams, crypto::curve_25519::kmip_requests::ec_create_key_pair_request,
+    access::{ExtraDatabaseParams, ObjectOperationType},
+    crypto::curve_25519::kmip_requests::ec_create_key_pair_request,
 };
 use openssl::x509::X509;
 use tracing::{debug, trace};
@@ -34,15 +35,18 @@ pub(crate) mod parsing;
 mod tags;
 pub(crate) mod verify;
 
-pub(crate) use tags::add_certificate_tags;
+pub(crate) use tags::{
+    add_attributes_to_certificate_tags, add_certificate_system_tags,
+    add_certificate_tags_to_attributes,
+};
 
-use crate::database::{object_with_metadata::ObjectWithMetadata, retrieve_object_with_metadata};
+use crate::database::{object_with_metadata::ObjectWithMetadata, retrieve_object_for_operation};
 
 /// Retrieve the certificate associated to the given private key
 pub(crate) async fn retrieve_certificate_for_private_key(
     private_key: &Object,
     kms: &KMS,
-    allow_full_export: bool,
+    operation_type: ObjectOperationType,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> Result<(ObjectWithMetadata, X509), KmsError> {
@@ -61,7 +65,7 @@ pub(crate) async fn retrieve_certificate_for_private_key(
 
     // retrieve the certificate
     let cert_owm =
-        retrieve_object_with_metadata(&certificate_id, kms, allow_full_export, user, params)
+        retrieve_object_for_operation(&certificate_id, operation_type, kms, user, params)
             .await
             .with_context(|| {
                 format!(

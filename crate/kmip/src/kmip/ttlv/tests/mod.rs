@@ -728,7 +728,8 @@ pub fn test_create() {
     );
 }
 
-//TODO: Issue https://github.com/Cosmian/kms/issues/92
+//Verify that issue https://github.com/Cosmian/kms/issues/92
+// is actually fixed
 #[test]
 fn test_issue_deserialize_object_with_empty_attributes() {
     log_init("info,hyper=info,reqwest=info");
@@ -742,8 +743,16 @@ fn test_issue_deserialize_object_with_empty_attributes() {
     let object = Object::SymmetricKey {
         key_block: get_key_block(),
     };
-    let res: Result<Object, KmipError> = serialize_deserialize(object);
-    assert!(res.is_err());
+    let object_: Object = serialize_deserialize(object).unwrap();
+    match object_ {
+        Object::SymmetricKey { key_block } => {
+            assert_eq!(
+                get_key_block().key_value.key_material,
+                key_block.key_value.key_material
+            )
+        }
+        _ => panic!("wrong object type"),
+    }
 }
 
 fn serialize_deserialize<T: DeserializeOwned + Serialize>(object: T) -> Result<T, KmipError> {
@@ -767,7 +776,7 @@ fn get_key_block() -> KeyBlock {
                 )
                 .unwrap(),
             },
-            //TODO:: Empty attributes causes a deserialization issue for `Object`; `None` works
+            //TODO:: Empty attributes used to cause a deserialization issue for `Object`; `None` works
             attributes: Some(Attributes::default()),
         },
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
