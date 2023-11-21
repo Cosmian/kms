@@ -75,7 +75,7 @@ jobs:
       - name: Centos 7 prerequisites
         run: |
           yum -y groupinstall "Development Tools"
-          yum -y install openssl openssl-devel
+          yum -y install openssl openssl-devel perl-IPC-Cmd
 
       - name: Tests in debug
         run: |
@@ -119,7 +119,7 @@ jobs:
       - name: Centos 7 prerequisites
         run: |
           yum -y groupinstall "Development Tools"
-          yum -y install openssl openssl-devel
+          yum -y install openssl openssl-devel perl-IPC-Cmd
 
       - name: Build with Auth0 feature
         run: |
