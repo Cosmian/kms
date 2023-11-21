@@ -55,15 +55,25 @@ pub struct ImportCertificateAction {
     )]
     certificate_file: Option<PathBuf>,
 
-    /// The unique id of the leaf certificate; a random UUID v4 is generated if not specified.
-    /// When importing a PKCS12, the unique id will be that of the private key,
-    /// the certificate will have the same id with `-cert` appended.
+    /// The unique id of the leaf certificate; a Bas58 id from a Sha256
+    /// of the DER content is generated if not specified.
+    /// When importing a PKCS12, the unique id will be that of the private key.
     #[clap(required = false, verbatim_doc_comment)]
     certificate_id: Option<String>,
 
     /// Import the certificate in the selected format.
     #[clap(long = "format", short = 'f', default_value = "json-ttlv")]
     input_format: CertificateInputFormat,
+
+    /// The corresponding private key id if any.
+    /// Ignored for PKCS12 and CCADB formats.
+    #[clap(long = "private-key-id", short = 'k')]
+    private_key_id: Option<String>,
+
+    /// The issuer certificate id if any.
+    /// Ignored for PKCS12 and CCADB formats.
+    #[clap(long = "issuer-certificate-id", short = 'i')]
+    issuer_certificate_id: Option<String>,
 
     /// PKCS12 password: only available for PKCS12 format.
     #[clap(long = "pkcs12-password", short = 'p')]
@@ -88,13 +98,35 @@ impl ImportCertificateAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         debug!("CLI: entering import certificate");
 
+        //generate the leaf certificate attributes if links are specified
+        let mut leaf_certificate_attributes = None;
+        if let Some(issuer_certificate_id) = &self.issuer_certificate_id {
+            let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
+            attributes.add_link(
+                LinkType::CertificateLink,
+                LinkedObjectIdentifier::TextString(issuer_certificate_id.to_owned()),
+            )
+        };
+        if let Some(private_key_id) = &self.private_key_id {
+            let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
+            attributes.add_link(
+                LinkType::PrivateKeyLink,
+                LinkedObjectIdentifier::TextString(private_key_id.to_owned()),
+            )
+        };
+
         match self.input_format {
             CertificateInputFormat::JsonTtlv => {
                 trace!("CLI: import certificate as TTLV JSON file");
                 // read the certificate file
                 let object = read_object_from_json_ttlv_file(self.get_certificate_file()?)?;
                 let certificate_id = self
-                    .import_chain(kms_rest_client, vec![object], self.replace_existing)
+                    .import_chain(
+                        kms_rest_client,
+                        vec![object],
+                        self.replace_existing,
+                        leaf_certificate_attributes,
+                    )
                     .await?;
                 println!("The certificate in the JSON TTLV was imported with id: {certificate_id}",);
             }
@@ -110,7 +142,12 @@ impl ImportCertificateAction {
                     certificate_value: certificate.to_der()?,
                 };
                 let certificate_id = self
-                    .import_chain(kms_rest_client, vec![object], self.replace_existing)
+                    .import_chain(
+                        kms_rest_client,
+                        vec![object],
+                        self.replace_existing,
+                        leaf_certificate_attributes,
+                    )
                     .await?;
                 println!("The certificate in the PEM file was imported with id: {certificate_id}");
             }
@@ -126,7 +163,12 @@ impl ImportCertificateAction {
                     certificate_value: certificate.to_der()?,
                 };
                 let certificate_id = self
-                    .import_chain(kms_rest_client, vec![object], self.replace_existing)
+                    .import_chain(
+                        kms_rest_client,
+                        vec![object],
+                        self.replace_existing,
+                        leaf_certificate_attributes,
+                    )
                     .await?;
                 println!("The certificate in the DER file was imported with id: {certificate_id}");
             }
@@ -143,7 +185,12 @@ impl ImportCertificateAction {
                 let objects = build_chain_from_stack(&pem_stack)?;
                 // import the full chain
                 let leaf_certificate_id = self
-                    .import_chain(kms_rest_client, objects, self.replace_existing)
+                    .import_chain(
+                        kms_rest_client,
+                        objects,
+                        self.replace_existing,
+                        leaf_certificate_attributes,
+                    )
                     .await?;
                 println!(
                     "The certificate chain in the PEM file was imported with id: \
@@ -167,7 +214,7 @@ impl ImportCertificateAction {
                     })?;
                 // import the certificates
                 let objects = build_chain_from_stack(&ccadb_bytes)?;
-                self.import_chain(kms_rest_client, objects, self.replace_existing)
+                self.import_chain(kms_rest_client, objects, self.replace_existing, None)
                     .await?;
                 println!("The list of Mozilla CCADB certificates was imported");
             }
@@ -225,18 +272,24 @@ impl ImportCertificateAction {
         kms_rest_client: &KmsRestClient,
         mut objects: Vec<Object>,
         replace_existing: bool,
+        leaf_certificate_attributes: Option<Attributes>,
     ) -> Result<String, CliError> {
         let mut previous_identifier: Option<String> = None;
         while let Some(object) = objects.pop() {
-            //TODO: This link will not used by the server until https://github.com/Cosmian/kms/issues/88 is fixed
-            let import_attributes = previous_identifier.map(|id| {
-                let mut attributes = Attributes::default();
+            let mut import_attributes = if objects.is_empty() {
+                // this is the leaf certificate
+                leaf_certificate_attributes.clone()
+            } else {
+                None
+            };
+            // add link to issuer/parent certificate if any
+            if let Some(id) = previous_identifier {
+                let attributes = import_attributes.get_or_insert(Attributes::default());
                 attributes.add_link(
                     LinkType::CertificateLink,
                     LinkedObjectIdentifier::TextString(id.to_owned()),
                 );
-                attributes
-            });
+            }
             // import the certificate
             let unique_identifier = import_object(
                 kms_rest_client,

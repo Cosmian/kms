@@ -20,6 +20,8 @@ async fn test_get_attributes_p12() {
         CertificateInputFormat::Pkcs12,
         Some("secret"),
         Some("get_attributes_test_p12_cert".to_string()),
+        None,
+        None,
         Some(&["import_pkcs12"]),
         false,
         true,

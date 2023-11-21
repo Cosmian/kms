@@ -23,7 +23,7 @@ use crate::{
 /// The supported `KeyFormatType` are:
 /// * PKCS1
 /// * ECPrivateKey (SEC1)
-/// * PKCS8: actually a SPKI DER (RFC 5480)
+/// * PKCS8 (not encrypted only)
 /// * TransparentRSAPrivateKey
 ///
 /// Note: `TransparentECPrivateKey` is not supported: the current openssl implementation

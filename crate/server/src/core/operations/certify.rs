@@ -81,8 +81,8 @@ pub async fn certify(
     //retrieve the certificate associated with the private key
     let (issuer_certificate_owm, issuer_certificate) = retrieve_certificate_for_private_key(
         &issuer_private_key.object,
-        kms,
         ObjectOperationType::Get,
+        kms,
         user,
         params,
     )

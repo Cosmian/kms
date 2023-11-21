@@ -1,52 +1,38 @@
-use std::collections::HashSet;
-
-use cloudproof::reexport::crypto_core::{
-    build_certificate,
-    reexport::{pkcs8::EncodePublicKey, x509_cert::builder::Profile},
-    FixedSizeCBytes,
-};
+use cloudproof::reexport::crypto_core::{reexport::pkcs8::EncodePublicKey, FixedSizeCBytes};
 use cosmian_kmip::{
-    kmip::{
-        kmip_objects::Object,
-        kmip_operations::{CertifyResponse, CreateKeyPairResponse, Get},
-        kmip_types::{CertificateType, Link, LinkType, LinkedObjectIdentifier, RecommendedCurve},
-    },
+    kmip::{kmip_objects::Object, kmip_types::LinkType},
     result::KmipResultHelper,
 };
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
-    crypto::curve_25519::kmip_requests::ec_create_key_pair_request,
-};
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use openssl::x509::X509;
-use tracing::{debug, trace};
-use x509_parser::prelude::parse_x509_pem;
-
-use self::ca_signing_key::CASigningKey;
-use super::KMS;
-use crate::{error::KmsError, kms_bail, result::KResult};
-
-pub const DEFAULT_EXPIRATION_TIME: u64 = 6;
-
-pub(crate) mod ca_signing_key;
-pub(crate) mod create_ca_certificate;
-pub(crate) mod create_leaf_certificate;
-pub(crate) mod locate;
-pub(crate) mod parsing;
-mod tags;
-pub(crate) mod verify;
-
 pub(crate) use tags::{
     add_attributes_to_certificate_tags, add_certificate_system_tags,
     add_certificate_tags_to_attributes,
 };
 
-use crate::database::{object_with_metadata::ObjectWithMetadata, retrieve_object_for_operation};
+// use self::ca_signing_key::CASigningKey;
+use super::KMS;
+use crate::{
+    database::{object_with_metadata::ObjectWithMetadata, retrieve_object_for_operation},
+    error::KmsError,
+    kms_bail,
+};
+
+pub const DEFAULT_EXPIRATION_TIME: u64 = 6;
+
+//pub(crate) mod ca_signing_key;
+//pub(crate) mod create_ca_certificate;
+//pub(crate) mod create_leaf_certificate;
+//pub(crate) mod locate;
+//pub(crate) mod parsing;
+mod tags;
+// pub(crate) mod verify;
 
 /// Retrieve the certificate associated to the given private key
 pub(crate) async fn retrieve_certificate_for_private_key(
     private_key: &Object,
-    kms: &KMS,
     operation_type: ObjectOperationType,
+    kms: &KMS,
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> Result<(ObjectWithMetadata, X509), KmsError> {
@@ -58,7 +44,7 @@ pub(crate) async fn retrieve_certificate_for_private_key(
     })?;
     let certificate_id = attributes
         .get_link(LinkType::PKCS12CertificateLink)
-        .or(attributes.get_link(LinkType::CertificateLink))
+        .or_else(|| attributes.get_link(LinkType::CertificateLink))
         .ok_or_else(|| {
             KmsError::InvalidRequest("No certificate link found for the private key".to_string())
         })?;
@@ -88,6 +74,9 @@ pub(crate) async fn retrieve_certificate_for_private_key(
 // TODO: Anything below here needs revisiting
 //
 //
+
+/*
+
 
 async fn get_fixed_size_key_bytes<const LENGTH: usize>(
     unique_identifier: &str,
@@ -405,3 +394,4 @@ where
         },
     ))
 }
+*/

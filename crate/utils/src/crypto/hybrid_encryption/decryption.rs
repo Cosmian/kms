@@ -1,8 +1,8 @@
 use cloudproof::reexport::crypto_core::{
     reexport::{pkcs8::DecodePrivateKey, zeroize::Zeroizing},
     Ecies, EciesP192Aes128, EciesP224Aes128, EciesP256Aes128, EciesP384Aes128, EciesSalsaSealBox,
-    P192PrivateKey, P224PrivateKey, P256PrivateKey, P384PrivateKey, RsaKeyWrappingAlgorithm,
-    RsaPrivateKey, X25519PrivateKey, CURVE_25519_SECRET_LENGTH,
+    Ed25519PrivateKey, P192PrivateKey, P224PrivateKey, P256PrivateKey, P384PrivateKey,
+    RsaKeyWrappingAlgorithm, RsaPrivateKey, X25519PrivateKey, CURVE_25519_SECRET_LENGTH,
 };
 use cosmian_kmip::{
     kmip::kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
@@ -148,7 +148,12 @@ impl DecryptionSystem for HybridDecryptionSystem {
         let plaintext = match id {
             Id::EC => decrypt_with_nist_curve(&self.private_key, ciphertext)?,
             Id::ED25519 => {
-                kmip_utils_bail!("Hybrid encryption system does not support Ed25519")
+                debug!("decrypt: match CURVEED25519");
+                let raw_bytes = self.private_key.raw_private_key()?;
+                let private_key_bytes: [u8; CURVE_25519_SECRET_LENGTH] = raw_bytes.try_into()?;
+                let private_key = Ed25519PrivateKey::try_from_bytes(private_key_bytes)?;
+                let private_key = X25519PrivateKey::from_ed25519_private_key(&private_key);
+                Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
             }
             Id::X25519 => {
                 trace!("encrypt: X25519");
@@ -224,7 +229,7 @@ fn decrypt_with_nist_curve(
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     trace!("decrypt: NIST curve");
-    let pkcs8_der = private_key.private_key_to_der()?;
+    let pkcs8_der = private_key.private_key_to_pkcs8()?;
     // determine the curve
     let ec_key = private_key
         .ec_key()

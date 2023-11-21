@@ -3,8 +3,9 @@ use std::sync::{Arc, Mutex};
 use cloudproof::reexport::crypto_core::{
     reexport::{pkcs8::DecodePublicKey, rand_core::SeedableRng, zeroize::Zeroizing},
     CsRng, Ecies, EciesP192Aes128, EciesP224Aes128, EciesP256Aes128, EciesP384Aes128,
-    EciesSalsaSealBox, P192PublicKey, P224PublicKey, P256PublicKey, P384PublicKey,
-    RsaKeyWrappingAlgorithm, RsaPublicKey, X25519PublicKey, X25519_PUBLIC_KEY_LENGTH,
+    EciesSalsaSealBox, Ed25519PublicKey, P192PublicKey, P224PublicKey, P256PublicKey,
+    P384PublicKey, RsaKeyWrappingAlgorithm, RsaPublicKey, X25519PublicKey,
+    ED25519_PUBLIC_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH,
 };
 use cosmian_kmip::kmip::kmip_operations::{Encrypt, EncryptResponse};
 use openssl::{
@@ -48,8 +49,8 @@ impl HybridEncryptionSystem {
         let rng = CsRng::from_entropy();
 
         debug!("instantiate_with_certificate: parsing");
-        let cert = X509::from_pem(certificate_value)
-            .map_err(|e| KmipUtilsError::ConversionError(format!("invalid PEM: {e:?}")))?;
+        let cert = X509::from_der(certificate_value)
+            .map_err(|e| KmipUtilsError::ConversionError(format!("invalid X509 DER: {e:?}")))?;
 
         debug!("instantiate_with_certificate: get the public key of the certificate");
         let public_key = cert.public_key().map_err(|e| {
@@ -84,7 +85,14 @@ impl EncryptionSystem for HybridEncryptionSystem {
         let ciphertext: Vec<u8> = match id {
             Id::EC => encrypt_with_nist_curve(&mut rng, &self.public_key, &plaintext)?,
             Id::ED25519 => {
-                kmip_utils_bail!("Hybrid encryption system does not support Ed25519")
+                trace!("encrypt: Ed25519");
+                // The raw public key happens to be the (compressed) value of the Montgomery point
+                let raw_bytes = self.public_key.raw_public_key()?;
+                let public_key_bytes: [u8; ED25519_PUBLIC_KEY_LENGTH] = raw_bytes.try_into()?;
+                let public_key = X25519PublicKey::from_ed25519_public_key(
+                    &Ed25519PublicKey::try_from_bytes(public_key_bytes)?,
+                );
+                EciesSalsaSealBox::encrypt(&mut *rng, &public_key, &plaintext, None)?
             }
             Id::X25519 => {
                 trace!("encrypt: X25519");

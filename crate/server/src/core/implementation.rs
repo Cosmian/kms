@@ -35,7 +35,7 @@ use zeroize::Zeroize;
 use super::{cover_crypt::create_user_decryption_key, KMS};
 use crate::{
     config::{DbParams, ServerParams},
-    core::{certificate::verify::verify_certificate, operations::unwrap_key},
+    core::operations::unwrap_key,
     database::{
         cached_sqlcipher::CachedSqlCipher,
         mysql::MySqlPool,
@@ -130,7 +130,7 @@ impl KMS {
         trace!("get_encryption_system: unwrap done (if required)");
         match &owm.object {
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {
-                KeyFormatType::TransparentSymmetricKey => {
+                KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
                     match &key_block.cryptographic_algorithm {
                         Some(CryptographicAlgorithm::AES) => {
                             Ok(Box::new(AesGcmSystem::instantiate(&owm.id, &owm.object)?)
@@ -153,37 +153,23 @@ impl KMS {
                     CoverCryptEncryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?,
                 )
                     as Box<dyn EncryptionSystem>),
-                KeyFormatType::TransparentECPublicKey => match key_block.cryptographic_algorithm {
-                    Some(CryptographicAlgorithm::ECDH) => {
-                        let p_key = kmip_public_key_to_openssl(&owm.object)?;
-                        Ok(Box::new(HybridEncryptionSystem::new(&owm.id, p_key))
-                            as Box<dyn EncryptionSystem>)
-                    }
-                    x => kms_not_supported!(
-                        "EC public key with cryptographic algorithm {} not supported",
-                        x.map(|alg| alg.to_string()).unwrap_or("[N/A]".to_string())
-                    ),
-                },
-                KeyFormatType::TransparentRSAPublicKey => match key_block.cryptographic_algorithm {
-                    Some(CryptographicAlgorithm::RSA) => {
-                        let p_key = kmip_public_key_to_openssl(&owm.object)?;
-                        Ok(Box::new(HybridEncryptionSystem::new(&owm.id, p_key))
-                            as Box<dyn EncryptionSystem>)
-                    }
-                    x => kms_not_supported!(
-                        "RSA public key with cryptographic algorithm {} not supported",
-                        x.map(|alg| alg.to_string()).unwrap_or("[N/A]".to_string())
-                    ),
-                },
+                KeyFormatType::TransparentECPublicKey
+                | KeyFormatType::TransparentRSAPublicKey
+                | KeyFormatType::PKCS1
+                | KeyFormatType::PKCS8 => {
+                    let p_key = kmip_public_key_to_openssl(&owm.object)?;
+                    Ok(Box::new(HybridEncryptionSystem::new(&owm.id, p_key))
+                        as Box<dyn EncryptionSystem>)
+                }
                 other => kms_not_supported!("encryption with public keys of format: {other}"),
             },
             Object::Certificate {
                 certificate_value, ..
             } => {
-                debug!("Encryption with certificate: verifying certificate");
-
-                // Check certificate validity
-                verify_certificate(certificate_value, None, self, &owm.owner, params).await?;
+                // debug!("Encryption with certificate: verifying certificate");
+                //
+                // // Check certificate validity
+                // verify_certificate(certificate_value, None, self, &owm.owner, params).await?;
 
                 Ok(
                     Box::new(HybridEncryptionSystem::instantiate_with_certificate(
@@ -219,34 +205,18 @@ impl KMS {
                 KeyFormatType::CoverCryptSecretKey => Ok(Box::new(
                     CovercryptDecryption::instantiate(cover_crypt, &owm.id, &owm.object)?,
                 )),
-                KeyFormatType::TransparentECPrivateKey => match key_block.cryptographic_algorithm {
-                    Some(CryptographicAlgorithm::ECDH) => {
-                        let p_key = kmip_private_key_to_openssl(&owm.object)?;
-                        Ok(Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key))
-                            as Box<dyn DecryptionSystem>)
-                    }
-                    x => kms_not_supported!(
-                        "EC public keys with cryptographic algorithm {} not supported",
-                        x.map(|alg| alg.to_string()).unwrap_or("[N/A]".to_string())
-                    ),
-                },
-                KeyFormatType::TransparentRSAPrivateKey => {
-                    match key_block.cryptographic_algorithm {
-                        Some(CryptographicAlgorithm::RSA) => {
-                            let p_key = kmip_private_key_to_openssl(&owm.object)?;
-                            Ok(Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key))
-                                as Box<dyn DecryptionSystem>)
-                        }
-                        x => kms_not_supported!(
-                            "RSA public keys with cryptographic algorithm {} not supported",
-                            x.map(|alg| alg.to_string()).unwrap_or("[N/A]".to_string())
-                        ),
-                    }
+                KeyFormatType::PKCS8
+                | KeyFormatType::PKCS1
+                | KeyFormatType::TransparentRSAPrivateKey
+                | KeyFormatType::TransparentECPrivateKey => {
+                    let p_key = kmip_private_key_to_openssl(&owm.object)?;
+                    Ok(Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key))
+                        as Box<dyn DecryptionSystem>)
                 }
                 other => kms_not_supported!("decryption with keys of format: {other}"),
             },
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {
-                KeyFormatType::TransparentSymmetricKey => {
+                KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
                     match &key_block.cryptographic_algorithm {
                         Some(CryptographicAlgorithm::AES) => {
                             Ok(Box::new(AesGcmSystem::instantiate(&owm.id, &owm.object)?))

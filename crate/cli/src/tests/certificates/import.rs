@@ -22,7 +22,9 @@ pub fn import_certificate(
     key_file: &str,
     format: CertificateInputFormat,
     pkcs12_password: Option<&str>,
-    key_id: Option<String>,
+    certificate_id: Option<String>,
+    private_key_id: Option<String>,
+    issuer_certificate_id: Option<String>,
     tags: Option<&[&str]>,
     unwrap: bool,
     replace_existing: bool,
@@ -31,7 +33,7 @@ pub fn import_certificate(
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
     let mut args: Vec<String> = vec!["import".to_owned(), key_file.to_owned()];
-    if let Some(key_id) = key_id {
+    if let Some(key_id) = certificate_id {
         args.push(key_id);
     }
     if unwrap {
@@ -59,6 +61,14 @@ pub fn import_certificate(
             args.push("--tag".to_owned());
             args.push((*tag).to_string());
         }
+    }
+    if let Some(key_id) = private_key_id {
+        args.push("--private-key-id".to_owned());
+        args.push(key_id);
+    }
+    if let Some(certificate_id) = issuer_certificate_id {
+        args.push("--issuer-certificate-id".to_owned());
+        args.push(certificate_id);
     }
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
@@ -88,9 +98,10 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         None,
         Some("ttlv_cert".to_string()),
         None,
-        Some(&["import_cert"]),
+        None,
+        None,
         false,
-        false,
+        true,
     )?;
 
     // import as PEM
@@ -101,9 +112,11 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         CertificateInputFormat::Pem,
         None,
         Some("pem_cert".to_string()),
+        None,
+        None,
         Some(&["import_cert"]),
         false,
-        false,
+        true,
     )?;
 
     // import a chain
@@ -114,9 +127,11 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         CertificateInputFormat::Chain,
         None,
         Some("chain_cert".to_string()),
+        None,
+        None,
         Some(&["import_chain"]),
         false,
-        false,
+        true,
     )?;
 
     // import a PKCS12
@@ -127,9 +142,11 @@ pub async fn test_certificate_import_different_format() -> Result<(), CliError> 
         CertificateInputFormat::Pkcs12,
         Some("secret"),
         Some("p12_cert".to_string()),
+        None,
+        None,
         Some(&["import_pkcs12"]),
         false,
-        false,
+        true,
     )?;
 
     Ok(())
