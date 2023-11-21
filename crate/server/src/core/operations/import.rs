@@ -166,7 +166,7 @@ fn get_rsa_private_key_object(
 
 fn create_ec_spki_tag(tags: &mut HashSet<String>, private_key: &EcKey<Private>) -> KResult<String> {
     debug!("create_spki_tag: entering");
-    let mut ctx = openssl::bn::BigNumContext::new().unwrap();
+    let mut ctx = openssl::bn::BigNumContext::new()?;
     let group = private_key.group();
     let public_key_bytes =
         private_key

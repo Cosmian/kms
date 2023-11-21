@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [X.Y.Z] - 2023-XX-YY
+
+### Features
+
+- adds support for Google Workspace Client Side Encryption. Single key for now.
+  Compatibility with Google Drive and Google Meet.
+- ckms: adds support for login to the Identity Provider and get an access token
+
 ## [4.9.1] - 2023-11-14
 
 ### Bug Fixes

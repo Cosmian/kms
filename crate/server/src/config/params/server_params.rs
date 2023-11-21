@@ -68,6 +68,13 @@ pub struct ServerParams {
     /// Ensure RA-TLS is available and used.
     /// The server will not start if this is not the case.
     pub ensure_ra_tls: bool,
+
+    /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
+    ///
+    /// It should contain the external URL of this server as configured in Google Workspace client side encryption settings
+    /// For instance, if this server is running on domain `cse.my_domain.com`,
+    /// the URL should be something like <https://cse.my_domain.com/google_cse>
+    pub google_cse_kacls_url: Option<String>,
 }
 
 impl ServerParams {
@@ -110,6 +117,7 @@ impl ServerParams {
             verify_cert,
             bootstrap_server_params: conf.bootstrap_server.clone(),
             ensure_ra_tls: conf.bootstrap_server.ensure_ra_tls,
+            google_cse_kacls_url: conf.google_cse_kacls_url.clone(),
         };
         Ok(server_conf)
     }
@@ -216,6 +224,7 @@ impl Clone for ServerParams {
             verify_cert: self.verify_cert.clone(),
             bootstrap_server_params: self.bootstrap_server_params.clone(),
             ensure_ra_tls: self.ensure_ra_tls,
+            google_cse_kacls_url: self.google_cse_kacls_url.clone(),
         }
     }
 }

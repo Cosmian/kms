@@ -30,4 +30,4 @@ pub(crate) use locate::locate;
 pub(crate) use message::message;
 pub(crate) use rekey_keypair::rekey_keypair;
 pub(crate) use revoke::{recursively_revoke_key, revoke_operation};
-pub(crate) use wrapping::unwrap_key;
+pub(crate) use wrapping::{unwrap_key, wrap_key};

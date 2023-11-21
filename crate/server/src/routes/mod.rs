@@ -12,6 +12,7 @@ use tracing::{error, info, warn};
 use crate::{database::KMSServer, error::KmsError, result::KResult};
 
 pub mod access;
+pub mod google_cse;
 pub mod kmip;
 pub mod tee;
 

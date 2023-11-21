@@ -24,10 +24,10 @@ use clap::Parser;
 #[actix_web::main]
 async fn main() -> KResult<()> {
     // Set up environment variables and logging options
-    if option_env!("RUST_BACKTRACE").is_none() {
+    if std::env::var("RUST_BACKTRACE").is_err() {
         std::env::set_var("RUST_BACKTRACE", "1");
     }
-    if option_env!("RUST_LOG").is_none() {
+    if std::env::var("RUST_LOG").is_err() {
         std::env::set_var(
             "RUST_LOG",
             "info,cosmian=info,cosmian_kms_server=info, \
