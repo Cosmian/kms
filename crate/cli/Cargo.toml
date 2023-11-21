@@ -47,6 +47,6 @@ cosmian_kms_client = { path = "../client", default-features = false }
 cosmian_kms_server = { path = "../server", features = [
     "insecure",
 ], default-features = false }
-predicates = "2.1"
+predicates = "3.0"
 regex = { version = "1.7", default-features = false }
 tempfile = "3.2"
