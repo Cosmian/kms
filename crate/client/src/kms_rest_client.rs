@@ -708,7 +708,7 @@ pub fn build_tls_client_tee(
             trust_anchor.name_constraints,
         )
     });
-    root_cert_store.add_server_trust_anchors(trust_anchors);
+    root_cert_store.add_trust_anchors(trust_anchors);
 
     let verifier = if !accept_invalid_certs {
         LeafCertificateVerifier::new(
