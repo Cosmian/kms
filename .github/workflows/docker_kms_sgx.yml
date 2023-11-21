@@ -7,22 +7,38 @@ on:
 env:
   REGISTRY: ghcr.io
   REGISTRY_IMAGE: ghcr.io/cosmian/enclave-kms-insecure
+  KMS_USE_BOOTSTRAP_SERVER: true
+  KMS_USE_CERTBOT: true
+  KMS_CERTBOT_HOSTNAME: kms.sgx.ci.cosmian.dev
+  KMS_CERTBOT_EMAIL: tech@cosmian.com
+  KMS_CERTBOT_USE_TEE_KEY: abcdef0123456789
+  TESTS_CONTAINER_NETWORK: # dynamic variable retrieved during the tests
 
 jobs:
-  build-and-push-image:
+  build-push-image-and-tests:
     runs-on: [self-hosted, sgx]
-    defaults:
-      run:
-        working-directory: ci/sgx/
-    container: docker:19.03.15
+    container:
+      image: ubuntu:22.04
+      ports:
+        - 4431:443
+        - 8081:80
 
     steps:
+      - name: Install tools
+        run: |
+          apt update
+          apt install --no-install-recommends -qq -y \
+            docker.io \
+            curl \
+            ca-certificates \
+            build-essential
+
       - uses: actions/checkout@v3
 
       # Following job from `docker_kms_sgx_tests.yml` will overwrite
       # this file, but for unknown reason sometimes permissions are denied to do so.
       - name: Fix permissions on JSON file
-        run: chmod o+w ./kms-test-ci.json
+        run: chmod o+w ./ci/sgx/kms-test-ci.json
 
       - name: Login to GitHub Packages
         uses: docker/login-action@v2
@@ -59,13 +75,48 @@ jobs:
           build-args: |
             FEATURES=--features staging
 
-    outputs:
-      image-tag: ${{ steps.meta.outputs.version }}
+      #########
+      # Tests #
+      #########
+      - name: Retrieve current Docker network
+        run: echo "TESTS_CONTAINER_NETWORK=$(docker network ls |grep github_network | head -n1 | cut -d' ' -f1)" >> $GITHUB_ENV
 
-  tests:
-    needs:
-      - build-and-push-image
-    uses: ./.github/workflows/docker_kms_sgx_tests.yml
-    secrets: inherit
-    with:
-      kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
+      - name: Docker start container
+        run: |
+          docker run \
+            --network "${{ env.TESTS_CONTAINER_NETWORK }}" \
+            --device /dev/sgx_enclave \
+            --device /dev/sgx_provision \
+            -e KMS_USE_BOOTSTRAP_SERVER="${{ env.KMS_USE_BOOTSTRAP_SERVER }}" \
+            -e KMS_USE_CERTBOT="${{ env.KMS_USE_CERTBOT }}" \
+            -e KMS_CERTBOT_HOSTNAME="${{ env.KMS_CERTBOT_HOSTNAME }}" \
+            -e KMS_CERTBOT_EMAIL="${{ env.KMS_CERTBOT_EMAIL }}" \
+            -e KMS_CERTBOT_USE_TEE_KEY="${{ env.KMS_CERTBOT_USE_TEE_KEY }}" \
+            -v /var/run/aesmd:/var/run/aesmd/ \
+            -v /opt/cosmian-internal:/opt/cosmian-internal \
+            -p 80:80 \
+            -p 9998:9998 \
+            -d --rm --name enclave-kms-insecure ghcr.io/cosmian/enclave-kms-insecure:${{ steps.meta.outputs.version }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install ckms
+        run: cargo install --locked --path crate/cli
+
+      - name: Bootstrap
+        run: |
+          KMS_CLI_CONF=$PWD/ci/sgx/kms-test-ci.json ckms bootstrap-start --sqlite-path private_data/  --database-type sqlite
+          sleep 20
+
+      - name: Verify
+        run: KMS_CLI_CONF=$PWD/ci/sgx/kms-test-ci.json ckms verify
+
+      - name: Symmetric key create
+        run: KMS_CLI_CONF=$PWD/ci/sgx/kms-test-ci.json ckms sym keys create
+
+      - name: Docker stop container
+        if: success() || failure()
+        run: |
+          docker logs --tail 20 enclave-kms-insecure
+          docker stop enclave-kms-insecure
