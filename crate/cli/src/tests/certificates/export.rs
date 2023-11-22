@@ -7,6 +7,7 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, TTLV},
 };
 use openssl::pkcs12::Pkcs12;
+use uuid::Uuid;
 
 use crate::{
     actions::{
@@ -29,7 +30,7 @@ use crate::{
 #[tokio::test]
 async fn test_import_export_p12_25519() {
     //load the PKCS#12 file
-    let p12_bytes = include_bytes!("../../../test_data/certificates/p12/output.p12");
+    let p12_bytes = include_bytes!("../../../test_data/certificates/another_p12/server.p12");
     // Create a test server
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
@@ -40,10 +41,10 @@ async fn test_import_export_p12_25519() {
     let imported_p12_sk = import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
-        "test_data/certificates/p12/output.p12",
+        "test_data/certificates/another_p12/server.p12",
         CertificateInputFormat::Pkcs12,
         Some("secret"),
-        Some("test_import_export_p12_25519_sk_id".to_owned()),
+        Some(Uuid::new_v4().to_string()),
         None,
         None,
         Some(&["import_pkcs12"]),
@@ -68,7 +69,6 @@ async fn test_import_export_p12_25519() {
         false,
     )
     .unwrap();
-    // export object by object
     let sk = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_p12_sk.json")).unwrap();
     assert_eq!(
         sk.key_block().unwrap().key_bytes().unwrap().to_vec(),
@@ -79,6 +79,7 @@ async fn test_import_export_p12_25519() {
         .unwrap()
         .get_link(LinkType::PKCS12CertificateLink)
         .unwrap();
+
     // export the certificate
     export_certificate(
         &ctx.owner_cli_conf_path,
@@ -105,6 +106,7 @@ async fn test_import_export_p12_25519() {
         read_from_json_file(&PathBuf::from("/tmp/exported_p12_cert.attributes.json")).unwrap();
     let cert_attributes: Attributes = from_ttlv(&cert_attributes_ttlv).unwrap();
     let issuer_id = cert_attributes.get_link(LinkType::CertificateLink).unwrap();
+
     // export the chain - there should be only one certificate in the chain
     export_certificate(
         &ctx.owner_cli_conf_path,
@@ -134,6 +136,8 @@ async fn test_import_export_p12_25519() {
             .to_der()
             .unwrap()
     );
+    // this test  is deactivated because another test imports this certificate with the same id
+    // and a link to its issuer which may make this test fail. This test passes when run alone.
     let issuer_cert_attributes_ttlv: TTLV =
         read_from_json_file(&PathBuf::from("/tmp/exported_p12_cert.attributes.json")).unwrap();
     let issuer_cert_attributes: Attributes = from_ttlv(&issuer_cert_attributes_ttlv).unwrap();

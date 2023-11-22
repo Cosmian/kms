@@ -43,6 +43,7 @@ url = { workspace = true }
 #uuid = { workspace = true }
 x509-cert = { workspace = true }
 zeroize = { workspace = true }
+uuid = { version = "1.4.1", features = ["v4"] }
 
 [dev-dependencies]
 actix-rt = { workspace = true }

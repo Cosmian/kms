@@ -198,11 +198,13 @@ async fn process_public_key(
 
     // add imported links to attributes
     //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
-    if let Ok(attributes) = object_key_block.attributes_mut() {
-        request_attributes
-            .link
-            .map(|links| attributes.link.get_or_insert(links));
-    }
+    add_imported_links_to_attributes(
+        object_key_block
+            .key_value
+            .attributes
+            .get_or_insert(Attributes::default()),
+        &request_attributes,
+    );
 
     if let Some(tags) = tags.as_mut() {
         tags.insert("_pk".to_string());
@@ -261,11 +263,13 @@ async fn process_private_key(
         let object_key_block = object.key_block_mut()?;
         // add imported links to attributes
         //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
-        if let Ok(attributes) = object_key_block.attributes_mut() {
-            request_attributes
-                .link
-                .map(|links| attributes.link.get_or_insert(links));
-        }
+        add_imported_links_to_attributes(
+            object_key_block
+                .key_value
+                .attributes
+                .get_or_insert(Attributes::default()),
+            &request_attributes,
+        );
         // build ui if needed
         let uid = if request.unique_identifier.is_empty() {
             id(&object_key_block.key_bytes()?)?
@@ -324,15 +328,17 @@ fn private_key_from_openssl(
         request_uid.to_string()
     };
 
-    //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
     let sk_key_block = sk.key_block_mut()?;
+
     // add imported links to attributes
     //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
-    if let Ok(attributes) = sk_key_block.attributes_mut() {
-        request_attributes
-            .link
-            .map(|links| attributes.link.get_or_insert(links));
-    }
+    add_imported_links_to_attributes(
+        sk_key_block
+            .key_value
+            .attributes
+            .get_or_insert(Attributes::default()),
+        &request_attributes,
+    );
 
     let sk_tags = user_tags.map(|mut tags| {
         tags.insert("_sk".to_string());
@@ -511,4 +517,21 @@ async fn process_pkcs12(
 
     //return the private key
     Ok((private_key_id, operations))
+}
+
+fn add_imported_links_to_attributes(attributes: &mut Attributes, links_to_add: &Attributes) {
+    if let Some(new_links) = links_to_add.link.as_ref() {
+        match attributes.link.as_mut() {
+            Some(existing_links) => {
+                for new_link in new_links.iter() {
+                    if !existing_links.contains(new_link) {
+                        existing_links.push(new_link.clone());
+                    }
+                }
+            }
+            None => {
+                attributes.link = Some(new_links.clone());
+            }
+        }
+    }
 }

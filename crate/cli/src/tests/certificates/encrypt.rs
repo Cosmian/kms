@@ -4,6 +4,7 @@ use assert_cmd::prelude::*;
 use cosmian_logger::log_utils::log_init;
 use tempfile::TempDir;
 use tracing::debug;
+use uuid::{uuid, Uuid};
 
 use super::SUB_COMMAND;
 use crate::{
@@ -285,7 +286,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         "ec",
         &format!("test_data/certificates/openssl/{curve_name}-private-key.pem"),
         Some(ImportKeyFormat::Pem),
-        None,
+        Some(Uuid::new_v4().to_string()),
         tags.into_iter()
             .map(|s| s.to_string())
             .collect::<Vec<String>>()
@@ -301,7 +302,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
         CertificateInputFormat::Pem,
         None,
-        None,
+        Some(Uuid::new_v4().to_string()),
         Some(private_key_id.clone()),
         None,
         Some(tags),
@@ -341,7 +342,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         "ec",
         &private_key_wrapped,
         Some(ImportKeyFormat::JsonTtlv),
-        None,
+        Some(Uuid::new_v4().to_string()),
         &[],
         true,
         true,
@@ -353,7 +354,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         "ec",
         &private_key_wrapped,
         Some(ImportKeyFormat::JsonTtlv),
-        None,
+        Some(Uuid::new_v4().to_string()),
         &[],
         false,
         true,
@@ -393,17 +394,15 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
     Ok(())
 }
 
-// The 2 following tests have been commented out because no support of signature verification is available in the crate `x509-parser`.
+#[tokio::test]
+async fn test_certificate_encrypt_using_prime192() -> Result<(), CliError> {
+    import_encrypt_decrypt("prime192v1").await
+}
 
-// #[tokio::test]
-// async fn test_certificate_encrypt_using_prime192() -> Result<(), CliError> {
-//     import_encrypt_decrypt("prime192v1").await
-// }
-
-// #[tokio::test]
-// async fn test_certificate_encrypt_using_prime224() -> Result<(), CliError> {
-//     import_encrypt_decrypt("secp224r1").await
-// }
+#[tokio::test]
+async fn test_certificate_encrypt_using_prime224() -> Result<(), CliError> {
+    import_encrypt_decrypt("secp224r1").await
+}
 
 #[tokio::test]
 async fn test_certificate_encrypt_using_ed25519() -> Result<(), CliError> {

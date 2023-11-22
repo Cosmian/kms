@@ -53,7 +53,7 @@ pub async fn unwrap_key(
     // in the case the key is a PublicKey or Certificate, we need to fetch the corresponding private key
     let object_type = unwrapping_key.object.object_type();
     let unwrapping_key = match object_type {
-        ObjectType::PrivateKey => unwrapping_key,
+        ObjectType::PrivateKey | ObjectType::SymmetricKey => unwrapping_key,
         ObjectType::PublicKey | ObjectType::Certificate => {
             let attributes = match object_type {
                 ObjectType::PublicKey => unwrapping_key

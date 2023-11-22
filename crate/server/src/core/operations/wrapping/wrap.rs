@@ -72,7 +72,7 @@ pub async fn wrap_key(
     // in the case the key is a Private Key, we need to fetch the corresponding private key or certificate
     let object_type = wrapping_key.object.object_type();
     let wrapping_key = match object_type {
-        ObjectType::PublicKey | ObjectType::Certificate => wrapping_key,
+        ObjectType::PublicKey | ObjectType::Certificate | ObjectType::SymmetricKey => wrapping_key,
         ObjectType::PrivateKey => {
             let attributes = wrapping_key.object.attributes()?;
             let public_key_uid = attributes
@@ -89,7 +89,7 @@ pub async fn wrap_key(
             )
             .await?
         }
-        _ => kms_bail!("unwrap_key: unsupported object type: {}", object_type),
+        _ => kms_bail!("wrap_key: unsupported object type: {}", object_type),
     };
 
     // wrap the key based on the encoding

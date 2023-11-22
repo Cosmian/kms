@@ -1,10 +1,8 @@
 use std::{fs::File, io::Read, path::Path};
 
-use tracing::debug;
 use x509_parser::{
     oid_registry::OID_X509_EXT_AUTHORITY_KEY_IDENTIFIER,
-    parse_x509_certificate,
-    prelude::{parse_x509_pem, ParsedExtension, X509Certificate},
+    prelude::{ParsedExtension, X509Certificate},
 };
 
 use crate::{error::KmsError, result::KResult};
