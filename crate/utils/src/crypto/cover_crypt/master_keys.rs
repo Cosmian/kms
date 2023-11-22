@@ -96,6 +96,7 @@ fn create_master_private_key_object(
 ) -> Result<Object, KmipError> {
     let mut attributes = attributes.cloned().unwrap_or_default();
     attributes.object_type = Some(ObjectType::PrivateKey);
+    attributes.key_format_type = Some(KeyFormatType::CoverCryptSecretKey);
     // add the policy to the attributes
     upsert_policy_in_attributes(&mut attributes, policy)?;
     // link the private key to the public key
@@ -132,6 +133,7 @@ fn create_master_public_key_object(
 ) -> Result<Object, KmipError> {
     let mut attributes = attributes.cloned().unwrap_or_default();
     attributes.object_type = Some(ObjectType::PublicKey);
+    attributes.key_format_type = Some(KeyFormatType::CoverCryptPublicKey);
     // add the policy to the attributes
     upsert_policy_in_attributes(&mut attributes, policy)?;
     // link the public key to the private key
