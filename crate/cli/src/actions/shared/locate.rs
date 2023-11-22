@@ -49,13 +49,36 @@ pub struct LocateObjectsAction {
     ///
     /// The list is the one specified by KMIP 2.1
     /// in addition to the two Covercrypt formats: "CoverCryptSecretKey" and "CoverCryptPublicKey"
-    /// Possible values also include: "TransparentECPrivateKey", "TransparentECPublicKey" and "TransparentSymmetricKey"
+    /// Possible values also include: "RAW" and "PKCS8"
+    /// Note: asymmetric keys are always stored in the "PKCS8" format; symmetric keys are always stored in the "Raw" format.
     ///
     /// Running the locate sub-command with a wrong value will list all the possible values.
     /// e.g. `ckms locate --key-format-type WRONG`
     #[clap(long = "key-format-type", short = 'f',
         value_parser = KeyFormatTypeParser,verbatim_doc_comment)]
     key_format_type: Option<KeyFormatType>,
+
+    /// Locate an object which has a link to this public key id.
+    #[clap(long = "public-key-id", short = 'p')]
+    public_key_id: Option<String>,
+
+    /// Locate an object which has a link to this private key id.
+    #[clap(long = "private-key-id", short = 'k')]
+    private_key_id: Option<String>,
+
+    /// Locate an object which has a link to this certificate key id.
+    #[clap(long = "certificate-id", short = 'c')]
+    certificate_id: Option<String>,
+
+    /// Locate a certificate which has this Common Name.
+    #[clap(long = "certificate-cn")]
+    certificate_cn: Option<String>,
+
+    /// Locate a certificate which has this Subject Public Key Info.
+    /// For example: AF:B0:19:F4:09:3E:2F:F4:52:07:54:7F:17:62:9D:74:76:E3:A4:F6
+    /// The value will be stripped from the colons and converted to lower case.
+    #[clap(long = "certificate-spki")]
+    certificate_spki: Option<String>,
 }
 
 impl LocateObjectsAction {

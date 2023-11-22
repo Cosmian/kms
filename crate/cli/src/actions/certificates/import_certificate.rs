@@ -72,7 +72,7 @@ pub struct ImportCertificateAction {
 
     /// The corresponding public key id if any.
     /// Ignored for PKCS12 and CCADB formats.
-    #[clap(long = "public-key-id", short = 'p')]
+    #[clap(long = "public-key-id", short = 'q')]
     public_key_id: Option<String>,
 
     /// The issuer certificate id if any.
