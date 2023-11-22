@@ -37,7 +37,7 @@ pub enum CertificateInputFormat {
 /// - a PKCS12 file containing a certificate, a private key and possibly a chain (pkcs12)
 /// - the Mozilla Common CA Database (CCADB - fetched by the CLI before import) (ccadb)
 ///
-/// When no certificate unique id is specified, a random UUID v4 is generated.
+/// When no unique id is specified, a unique id based on the key material is generated.
 ///
 /// Tags can later be used to retrieve the certificate. Tags are optional.
 #[derive(Parser, Debug)]
@@ -55,8 +55,8 @@ pub struct ImportCertificateAction {
     )]
     certificate_file: Option<PathBuf>,
 
-    /// The unique id of the leaf certificate; a Bas58 id from a Sha256
-    /// of the DER content is generated if not specified.
+    /// The unique id of the leaf certificate; a unique id
+    /// based on the key material is generated if not specified.
     /// When importing a PKCS12, the unique id will be that of the private key.
     #[clap(required = false, verbatim_doc_comment)]
     certificate_id: Option<String>,
@@ -69,6 +69,11 @@ pub struct ImportCertificateAction {
     /// Ignored for PKCS12 and CCADB formats.
     #[clap(long = "private-key-id", short = 'k')]
     private_key_id: Option<String>,
+
+    /// The corresponding public key id if any.
+    /// Ignored for PKCS12 and CCADB formats.
+    #[clap(long = "public-key-id", short = 'p')]
+    public_key_id: Option<String>,
 
     /// The issuer certificate id if any.
     /// Ignored for PKCS12 and CCADB formats.
@@ -112,6 +117,13 @@ impl ImportCertificateAction {
             attributes.add_link(
                 LinkType::PrivateKeyLink,
                 LinkedObjectIdentifier::TextString(private_key_id.to_owned()),
+            )
+        };
+        if let Some(public_key_id) = &self.public_key_id {
+            let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
+            attributes.add_link(
+                LinkType::PublicKeyLink,
+                LinkedObjectIdentifier::TextString(public_key_id.to_owned()),
             )
         };
 

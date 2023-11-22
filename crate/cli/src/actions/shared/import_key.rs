@@ -4,7 +4,9 @@ use clap::Parser;
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
-    kmip_types::{CryptographicAlgorithm, KeyFormatType},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+    },
 };
 use cosmian_kms_client::KmsRestClient;
 
@@ -31,7 +33,7 @@ pub enum ImportKeyFormat {
 
 /// Import a private or public key in the KMS.
 ///
-/// When no key unique id is specified, a random UUID v4 is generated.
+/// When no unique id is specified, a unique id based on the key material is generated.
 ///
 /// Import of a private key will automatically generate the corresponding public key
 /// with id `{private_key_id}-pub`.
@@ -52,20 +54,33 @@ pub enum ImportKeyFormat {
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct ImportKeyAction {
-    /// The KMIP JSON TTLV key file
+    /// The KMIP JSON TTLV key file.
     #[clap(required = true)]
     key_file: PathBuf,
 
-    /// The unique id of the key; a random UUID v4 is generated if not specified
+    /// The unique id of the key; a unique id based
+    /// on the key material is generated if not specified.
     #[clap(required = false)]
     key_id: Option<String>,
 
-    /// The format of the key
+    /// The format of the key.
     #[clap(long = "key-format", short = 'f', default_value = "json-ttlv")]
     key_format: ImportKeyFormat,
 
+    /// For a private key: the corresponding public key id if any.
+    #[clap(long = "public-key-id", short = 'p')]
+    public_key_id: Option<String>,
+
+    /// For a public key: the corresponding private key id if any.
+    #[clap(long = "private-key-id", short = 'k')]
+    private_key_id: Option<String>,
+
+    /// For a public or private key: the corresponding certificate id if any.
+    #[clap(long = "certificate-id", short = 'c')]
+    certificate_id: Option<String>,
+
     /// In the case of a JSON TTLV key,
-    /// unwrap the key if it is wrapped before storing it
+    /// unwrap the key if it is wrapped before storing it.
     #[clap(
         long = "unwrap",
         short = 'u',
@@ -74,7 +89,7 @@ pub struct ImportKeyAction {
     )]
     unwrap: bool,
 
-    /// Replace an existing key under the same id
+    /// Replace an existing key under the same id.
     #[clap(
         required = false,
         long = "replace",
@@ -116,12 +131,36 @@ impl ImportKeyAction {
         };
         let object_type = object.object_type();
 
+        //generate the import attributes if links are specified
+        let mut import_attributes = None;
+        if let Some(issuer_certificate_id) = &self.certificate_id {
+            let attributes = import_attributes.get_or_insert(Attributes::default());
+            attributes.add_link(
+                LinkType::CertificateLink,
+                LinkedObjectIdentifier::TextString(issuer_certificate_id.to_owned()),
+            )
+        };
+        if let Some(private_key_id) = &self.private_key_id {
+            let attributes = import_attributes.get_or_insert(Attributes::default());
+            attributes.add_link(
+                LinkType::PrivateKeyLink,
+                LinkedObjectIdentifier::TextString(private_key_id.to_owned()),
+            )
+        };
+        if let Some(public_key_id) = &self.public_key_id {
+            let attributes = import_attributes.get_or_insert(Attributes::default());
+            attributes.add_link(
+                LinkType::PublicKeyLink,
+                LinkedObjectIdentifier::TextString(public_key_id.to_owned()),
+            )
+        };
+
         // import the key
         let unique_identifier = import_object(
             kms_rest_client,
             self.key_id.clone(),
             object,
-            None,
+            import_attributes,
             self.unwrap,
             self.replace_existing,
             &self.tags,
