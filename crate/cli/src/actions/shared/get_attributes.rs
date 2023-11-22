@@ -3,9 +3,10 @@ use std::{collections::HashMap, path::PathBuf};
 use clap::Parser;
 use cosmian_kmip::kmip::{
     kmip_operations::{GetAttributes, GetAttributesResponse},
-    kmip_types::{AttributeReference, LinkType, Tag},
+    kmip_types::{AttributeReference, LinkType, Tag, VendorAttributeReference},
 };
 use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_utils::{kmip_utils::VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG};
 use serde_json::Value;
 use tracing::debug;
 
@@ -17,15 +18,32 @@ pub enum AttributeTag {
     CryptographicAlgorithm,
     CryptographicLength,
     CryptographicParameters,
+    CryptographicDomainParameters,
     CryptographicUsageMask,
     KeyFormatType,
     LinkedPrivateKeyId,
     LinkedPublicKeyId,
     LinkedIssuerCertificateId,
     LinkedCertificateId,
+    Tags,
 }
 
-/// Get the KMIP attributes.
+const ALL_ATTRIBUTE_TAGS: [AttributeTag; 12] = [
+    AttributeTag::ActivationDate,
+    AttributeTag::CryptographicAlgorithm,
+    AttributeTag::CryptographicLength,
+    AttributeTag::CryptographicParameters,
+    AttributeTag::CryptographicDomainParameters,
+    AttributeTag::CryptographicUsageMask,
+    AttributeTag::KeyFormatType,
+    AttributeTag::LinkedPrivateKeyId,
+    AttributeTag::LinkedPublicKeyId,
+    AttributeTag::LinkedIssuerCertificateId,
+    AttributeTag::LinkedCertificateId,
+    AttributeTag::Tags,
+];
+
+/// Get the KMIP attributes and tags.
 ///
 /// When using tags to retrieve the object, rather than the object id,
 /// an error is returned if multiple objects matching the tags are found.
@@ -42,7 +60,7 @@ pub struct GetAttributesAction {
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "id-tags")]
     tags: Option<Vec<String>>,
 
-    /// The attributes to retrieve.
+    /// The attributes or tags to retrieve.
     /// To specify multiple attributes, use the option multiple times.
     #[clap(
         long = "attribute",
@@ -83,6 +101,9 @@ impl GetAttributesAction {
                 AttributeTag::CryptographicParameters => {
                     references.push(AttributeReference::Standard(Tag::CryptographicParameters))
                 }
+                AttributeTag::CryptographicDomainParameters => references.push(
+                    AttributeReference::Standard(Tag::CryptographicDomainParameters),
+                ),
                 AttributeTag::CryptographicUsageMask => {
                     references.push(AttributeReference::Standard(Tag::CryptographicUsageMask))
                 }
@@ -101,21 +122,34 @@ impl GetAttributesAction {
                 AttributeTag::LinkedCertificateId => {
                     references.push(AttributeReference::Standard(Tag::Certificate))
                 }
+                AttributeTag::Tags => {
+                    references.push(AttributeReference::Vendor(VendorAttributeReference {
+                        vendor_identification: VENDOR_ID_COSMIAN.to_string(),
+                        attribute_name: VENDOR_ATTR_TAG.to_string(),
+                    }))
+                }
             }
         }
 
-        // perform the reauest
-        let get_attributes = GetAttributes {
-            unique_identifier: Some(id),
-            attribute_references: Some(references),
-        };
+        // perform the Get Attributes request
         let GetAttributesResponse {
             unique_identifier,
             attributes,
-        } = kms_rest_client.get_attributes(get_attributes).await?;
+        } = kms_rest_client
+            .get_attributes(GetAttributes {
+                unique_identifier: Some(id),
+                attribute_references: Some(references),
+            })
+            .await?;
 
+        // if no tag asked -> return values for all possible tags
+        let tags = if self.attribute_tags.is_empty() {
+            ALL_ATTRIBUTE_TAGS.to_vec()
+        } else {
+            self.attribute_tags.clone()
+        };
         let mut results: HashMap<String, Value> = HashMap::new();
-        for tag in &self.attribute_tags {
+        for tag in &tags {
             match tag {
                 AttributeTag::ActivationDate => {
                     attributes.activation_date.as_ref().map(|v| {
@@ -148,6 +182,17 @@ impl GetAttributesAction {
                             serde_json::to_value(v).unwrap_or_default(),
                         );
                     });
+                }
+                AttributeTag::CryptographicDomainParameters => {
+                    attributes
+                        .cryptographic_domain_parameters
+                        .as_ref()
+                        .map(|v| {
+                            results.insert(
+                                "cryptographic-domain-parameters".to_string(),
+                                serde_json::to_value(v).unwrap_or_default(),
+                            );
+                        });
                 }
                 AttributeTag::CryptographicUsageMask => {
                     attributes.cryptographic_usage_mask.as_ref().map(|v| {
@@ -196,6 +241,16 @@ impl GetAttributesAction {
                             results.insert(
                                 "linked-certificate-id".to_string(),
                                 serde_json::to_value(v).unwrap_or_default(),
+                            );
+                        });
+                }
+                AttributeTag::Tags => {
+                    attributes
+                        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
+                        .map(|v| {
+                            results.insert(
+                                "tags".to_string(),
+                                serde_json::from_slice::<Value>(v).unwrap_or_default(),
                             );
                         });
                 }

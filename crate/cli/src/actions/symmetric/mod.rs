@@ -8,7 +8,7 @@ use cosmian_kms_client::KmsRestClient;
 use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
 use crate::error::CliError;
 
-/// Manage symmetric keys and salts. Encrypt and decrypt data.
+/// Manage symmetric keys. Encrypt and decrypt data.
 #[derive(Parser)]
 pub enum SymmetricCommands {
     #[command(subcommand)]

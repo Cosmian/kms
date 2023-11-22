@@ -3,9 +3,14 @@ use cosmian_kmip::kmip::{
     kmip_operations::{GetAttributes, GetAttributesResponse},
     kmip_types::{
         AttributeReference, Attributes, KeyFormatType, LinkType, LinkedObjectIdentifier, Tag,
+        VendorAttribute, VendorAttributeReference,
     },
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use cosmian_kms_utils::{
+    access::{ExtraDatabaseParams, ObjectOperationType},
+    kmip_utils::VENDOR_ID_COSMIAN,
+    tagging::VENDOR_ATTR_TAG,
+};
 use tracing::{debug, trace};
 
 use crate::{
@@ -65,42 +70,51 @@ pub async fn get_attributes(
         }
     };
 
-    // recover an active object
-    // let owm = get_active_object(kms, &uid_or_tags, user, params).await?;
+    let req_attributes = request.attribute_references.unwrap_or_default();
 
-    let req_attributes = match &request.attribute_references {
-        None => {
-            return Ok(GetAttributesResponse {
-                unique_identifier: owm.id,
-                attributes: attributes.clone(),
-            })
-        }
-        Some(attrs) => attrs,
+    // request all attributes
+    if req_attributes.is_empty() {
+        let mut attributes = attributes.clone();
+        let tags = kms.db.retrieve_tags(&owm.id, params).await?;
+        attributes.add_vendor_attribute(VendorAttribute {
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: VENDOR_ATTR_TAG.to_owned(),
+            attribute_value: serde_json::to_vec(&tags)?,
+        });
+        return Ok(GetAttributesResponse {
+            unique_identifier: owm.id,
+            attributes,
+        })
     };
+
+    // request selected attributes
     let mut res = Attributes {
         object_type: Some(object_type),
         ..Attributes::default()
     };
     for requested in req_attributes {
         match requested {
-            AttributeReference::Vendor(req_vdr_attr) => {
-                if let Some(vdr_attrs) = attributes.vendor_attributes.as_ref() {
-                    let mut list = res
-                        .vendor_attributes
-                        .as_ref()
-                        .map_or(Vec::new(), std::clone::Clone::clone);
-                    vdr_attrs
-                        .iter()
-                        .filter(|attr| {
-                            attr.vendor_identification == req_vdr_attr.vendor_identification
-                                && attr.attribute_name == req_vdr_attr.attribute_name
-                        })
-                        .for_each(|vdr_attr| {
-                            list.push(vdr_attr.clone());
+            AttributeReference::Vendor(VendorAttributeReference {
+                vendor_identification,
+                attribute_name,
+            }) => {
+                if vendor_identification == VENDOR_ID_COSMIAN && attribute_name == VENDOR_ATTR_TAG {
+                    let tags = kms.db.retrieve_tags(&owm.id, params).await?;
+                    res.add_vendor_attribute(VendorAttribute {
+                        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+                        attribute_name: VENDOR_ATTR_TAG.to_owned(),
+                        attribute_value: serde_json::to_vec(&tags)?,
+                    });
+                } else {
+                    attributes
+                        .get_vendor_attribute_value(&vendor_identification, &attribute_name)
+                        .map(|value| {
+                            res.add_vendor_attribute(VendorAttribute {
+                                vendor_identification,
+                                attribute_name,
+                                attribute_value: value.to_owned(),
+                            });
                         });
-                    if !list.is_empty() {
-                        res.vendor_attributes = Some(list);
-                    }
                 }
             }
             AttributeReference::Standard(tag) => match tag {
@@ -115,6 +129,10 @@ pub async fn get_attributes(
                 }
                 Tag::CryptographicParameters => {
                     res.cryptographic_parameters = attributes.cryptographic_parameters.clone();
+                }
+                Tag::CryptographicDomainParameters => {
+                    res.cryptographic_domain_parameters =
+                        attributes.cryptographic_domain_parameters.clone();
                 }
                 Tag::CryptographicUsageMask => {
                     res.cryptographic_usage_mask = attributes.cryptographic_usage_mask.clone();
@@ -154,6 +172,7 @@ pub async fn get_attributes(
                         );
                     });
                 }
+
                 _ => {}
             },
         }
