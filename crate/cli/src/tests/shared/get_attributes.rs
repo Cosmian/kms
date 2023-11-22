@@ -44,6 +44,8 @@ pub fn get_attributes(
             AttributeTag::LinkedPublicKeyId => "linked-public-key-id",
             AttributeTag::LinkedIssuerCertificateId => "linked-issuer-certificate-id",
             AttributeTag::LinkedCertificateId => "linked-certificate-id",
+            AttributeTag::CryptographicDomainParameters => "cryptographic-domain-parameters",
+            AttributeTag::Tags => "tags",
         };
         args.push(arg_value.to_owned());
     }
@@ -69,6 +71,8 @@ pub fn get_attributes(
                 "linked-public-key-id" => AttributeTag::LinkedPublicKeyId,
                 "linked-issuer-certificate-id" => AttributeTag::LinkedIssuerCertificateId,
                 "linked-certificate-id" => AttributeTag::LinkedCertificateId,
+                "cryptographic-domain-parameters" => AttributeTag::CryptographicDomainParameters,
+                "tags" => AttributeTag::Tags,
                 _ => return Err(CliError::Default(format!("unknown attribute tag: {}", k))),
             };
             result.insert(tag, v);
