@@ -1,7 +1,7 @@
 #[cfg(not(feature = "fips"))]
-use cosmian_kmip::kmip::kmip_operations::{Decrypt, DecryptedData};
+use cosmian_kmip::kmip::kmip_operations::{Decrypt, DecryptedData, Encrypt};
 use cosmian_kmip::{
-    kmip::{kmip_objects::Object, kmip_operations::Encrypt, kmip_types::KeyFormatType},
+    kmip::{kmip_objects::Object, kmip_types::KeyFormatType},
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 use openssl::pkey::{PKey, Private, Public};
@@ -11,11 +11,13 @@ use super::rfc5649::{key_unwrap, key_wrap};
 #[cfg(feature = "fips")]
 use super::rsa_oaep_aes_kwp::{ckm_rsa_aes_key_unwrap, ckm_rsa_aes_key_wrap};
 #[cfg(not(feature = "fips"))]
-use crate::{crypto::hybrid_encryption::HybridDecryptionSystem, DecryptionSystem};
 use crate::{
-    crypto::hybrid_encryption::HybridEncryptionSystem,
+    crypto::hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
+    DecryptionSystem, EncryptionSystem,
+};
+use crate::{
     error::{result::CryptoResultHelper, KmipUtilsError},
-    kmip_utils_bail, EncryptionSystem,
+    kmip_utils_bail,
 };
 
 /// Encrypt bytes using the wrapping key
@@ -25,6 +27,7 @@ pub fn encrypt_bytes(wrapping_key: &Object, plaintext: &[u8]) -> Result<Vec<u8>,
         wrapping_key.object_type()
     );
     match wrapping_key {
+        #[cfg(not(feature = "fips"))]
         Object::Certificate {
             certificate_value, ..
         } => {
@@ -180,7 +183,6 @@ fn decrypt_with_private_key(
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     // Unwrap symmetric key using RSA.
-
     if p_key.rsa().is_err() {
         kmip_utils_bail!("Decryption Error: Only RSA KEM supported in FIPS mode.")
     }

@@ -24,14 +24,12 @@ const FIPS_HLEN_BITS: usize = 256;
 /// recommandations.
 const FIPS_MIN_ITER: usize = 210_000;
 
-/// Derive a key into a LENGTH bytes key using Argon 2 by default, and SHA512 in
-/// FIPS mode.
+/// Derive a key into a LENGTH bytes key using Argon 2 by default, and PBKDF2
+/// with SHA512 in FIPS mode.
 #[cfg(feature = "fips")]
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
 ) -> Result<SymmetricKey<LENGTH>, KmipUtilsError> {
-    let mut output_key_material = [0u8; LENGTH];
-
     if LENGTH < FIPS_MIN_KLEN || LENGTH * 8 > ((1 << 32) - 1) * FIPS_HLEN_BITS {
         kmip_utils_bail!(
             "Password derivation error: wrong output length argument, got {}",
@@ -39,6 +37,7 @@ pub fn derive_key_from_password<const LENGTH: usize>(
         )
     }
 
+    let mut output_key_material = [0u8; LENGTH];
     let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
     rand_bytes(&mut salt)?;
 
@@ -56,8 +55,8 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 }
 
 #[cfg(not(feature = "fips"))]
-/// Derive a key into a LENGTH bytes key using Argon 2 by default, and SHA512 in
-/// FIPS mode.
+/// Derive a key into a LENGTH bytes key using Argon 2 by default, and PBKDF2
+/// with SHA512 in FIPS mode.
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
 ) -> Result<SymmetricKey<LENGTH>, KmipUtilsError> {
