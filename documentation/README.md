@@ -1,8 +1,6 @@
 ## TL;DR
 
-The main documentation for the KMS is in [docs/index.md](./docs/index.md)
-
-The documentation is deployed automatically on `docs.cosmian.com` when a new commit is made on the `main` branch of the repository [public documentation](https://github.com/Cosmian/public_documentation) that will fetch the last tag of this KMS repository.
+The main documentation of the KMS is in [docs/index.md](./docs/index.md)
 
 ## TODO
 
@@ -33,7 +31,7 @@ cd documentation/
 mkdocs serve
 ```
 
-Open a browser window at <http://127.0.0.1:8003>
+Open a browser window at `http://127.0.0.1:8003`
 
 The doc is live rendered when editing the markdown files.
 

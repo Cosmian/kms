@@ -134,7 +134,7 @@ If the value is altered, it could mean that you are not using the *Cosmian* KMS 
 
 This value enables you to verify that the KMS code and libraries inside the enclave are the same as the code you can read on [*Cosmian* Github](https://github.com/Cosmian).
 
-This value is not compute by the CLI. You can get the open-sourced KMS docker, read the `mr_enclave` value from it and give it to the CLI to check it. See [README.md](../../enclave/README.md#emulate) for more details.
+This value is not compute by the CLI. You can get the open-sourced KMS docker, read the `mr_enclave` value from it and give it to the CLI to check it. See [README.md](../../sgx/README.md#emulate) for more details.
 
 If the value is altered, it could mean that you are not using the KMS from *Cosmian* but a modified one. You shouldn't proceed and you should report that incident to us.
 

@@ -1,6 +1,10 @@
 FROM ubuntu:22.04 as builder
 
+LABEL version="4.9.1"
+LABEL name="Cosmian KMS docker container"
+
 ARG FEATURES
+
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /root
 
@@ -13,6 +17,7 @@ RUN apt-get update \
     libclang-dev \
     libsodium-dev \
     pkg-config \
+    git \
     && apt-get -y -q upgrade \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -41,6 +46,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /root/kms/target/release/cosmian_kms_server /usr/bin/cosmian_kms_server
+COPY --from=builder /root/kms/target/release/ckms               /usr/bin/ckms
+
+#
+# Create working directory
+#
+RUN mkdir /data
+WORKDIR /data
 
 EXPOSE 9998
 

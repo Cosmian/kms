@@ -56,7 +56,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          file: delivery/Dockerfile.standalone
+          file: Dockerfile
           network: host
 
     outputs:
