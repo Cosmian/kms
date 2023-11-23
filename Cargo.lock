@@ -4,10 +4,11 @@ version = 3
 
 [[package]]
 name = "acme-lib"
-version = "0.8.2"
-source = "git+https://github.com/Cosmian/acme-lib#be70edd146b2fd2e0f42078ba5ff443539fc9dae"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55bc743cf5cc222f4fd09f636601d4b59aefebf3d929e3de4f017d7bc102bbaa"
 dependencies = [
- "base64 0.13.1",
+ "base64 0.21.5",
  "lazy_static",
  "log",
  "openssl",
@@ -84,7 +85,7 @@ dependencies = [
  "actix-tls",
  "actix-utils",
  "ahash 0.8.6",
- "base64 0.21.4",
+ "base64 0.21.5",
  "bitflags 2.3.2",
  "brotli",
  "bytes",
@@ -628,9 +629,9 @@ checksum = "0ea22880d78093b0cbe17c89f64a7d457941e65759157ec6cb31a31d652b05e5"
 
 [[package]]
 name = "base64"
-version = "0.21.4"
+version = "0.21.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ba43ea6f343b788c8764558649e08df62f86c6ef251fdaeb1ffd010a9ae50a2"
+checksum = "35636a1494ede3b646cc98f74f8e62c773a38a659ebc777a2cf26b9b74171df9"
 
 [[package]]
 name = "base64ct"
@@ -898,7 +899,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88244cacfa03bd4206df9b5c2058a3c46503e6e0e1414bac32f5dcaec59bb504"
 dependencies = [
  "argon2",
- "base64 0.21.4",
+ "base64 0.21.5",
  "chrono",
  "cosmian_crypto_core",
  "hex",
@@ -1086,7 +1087,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5cb51a6ded995165d6343c3b74d6f25191a02cbd6a2148a1403c0583a04e9e94"
 dependencies = [
  "async-trait",
- "base64 0.21.4",
+ "base64 0.21.5",
  "cosmian_crypto_core",
  "never",
  "rand",
@@ -1135,7 +1136,7 @@ dependencies = [
  "actix-server",
  "actix-web",
  "assert_cmd",
- "base64 0.21.4",
+ "base64 0.21.5",
  "clap",
  "cloudproof",
  "cosmian_kmip",
@@ -1170,7 +1171,7 @@ dependencies = [
 name = "cosmian_kms_client"
 version = "4.9.1"
 dependencies = [
- "base64 0.21.4",
+ "base64 0.21.5",
  "cosmian_kmip",
  "cosmian_kms_utils",
  "http",
@@ -1222,7 +1223,7 @@ dependencies = [
  "alcoholic_jwt",
  "async-recursion",
  "async-trait",
- "base64 0.21.4",
+ "base64 0.21.5",
  "chrono",
  "clap",
  "cloudproof",
@@ -2326,7 +2327,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33a96c4f2128a6f44ecf7c36df2b03dddf5a07b060a4d5ebc0a81e9821f7c60e"
 dependencies = [
  "anyhow",
- "base64 0.21.4",
+ "base64 0.21.5",
  "flate2",
  "once_cell",
  "openssl",
@@ -2882,7 +2883,7 @@ version = "3.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3163d2912b7c3b52d651a055f2c7eec9ba5cd22d26ef75b8dd3a59980b185923"
 dependencies = [
- "base64 0.21.4",
+ "base64 0.21.5",
  "serde",
 ]
 
@@ -3326,7 +3327,7 @@ version = "0.11.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "21eed90ec8570952d53b772ecf8f206aa1ec9a3d76b2521c56c42973f2d91ee9"
 dependencies = [
- "base64 0.21.4",
+ "base64 0.21.5",
  "bytes",
  "encoding_rs",
  "futures-core",
@@ -3494,7 +3495,7 @@ version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2d3987094b1d07b653b7dfdc3f70ce9a1da9c51ac18c1b06b662e4f9a0e9f4b2"
 dependencies = [
- "base64 0.21.4",
+ "base64 0.21.5",
 ]
 
 [[package]]
@@ -4022,7 +4023,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "864b869fdf56263f4c95c45483191ea0af340f9f3e3e7b4d57a61c7c87a970db"
 dependencies = [
  "atoi",
- "base64 0.21.4",
+ "base64 0.21.5",
  "bitflags 2.3.2",
  "byteorder",
  "bytes",
@@ -4064,7 +4065,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eb7ae0e6a97fb3ba33b23ac2671a5ce6e3cabe003f451abd5a56e7951d975624"
 dependencies = [
  "atoi",
- "base64 0.21.4",
+ "base64 0.21.5",
  "bitflags 2.3.2",
  "byteorder",
  "crc",
