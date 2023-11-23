@@ -106,3 +106,4 @@ jobs:
       target: x86_64-unknown-linux-gnu
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       copy_fresh_build: true
+      findex-cloud-version: 0.3.1
