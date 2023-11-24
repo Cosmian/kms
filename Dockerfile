@@ -51,7 +51,6 @@ COPY --from=builder /root/kms/target/release/ckms               /usr/bin/ckms
 #
 # Create working directory
 #
-RUN mkdir /data
 WORKDIR /data
 
 EXPOSE 9998
