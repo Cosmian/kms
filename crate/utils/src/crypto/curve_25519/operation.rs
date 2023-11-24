@@ -11,7 +11,12 @@ use cosmian_kmip::{
     },
 };
 use num_bigint_dig::BigUint;
-use openssl::pkey::PKey;
+use openssl::{
+    bn::BigNumContext,
+    ec::{EcGroup, EcKey, PointConversionForm},
+    nid::Nid,
+    pkey::PKey,
+};
 
 use crate::KeyPair;
 
@@ -22,7 +27,7 @@ pub const Q_LENGTH_BITS: i32 = 253;
 /// convert to a X25519 256 bits KMIP Public Key
 /// no check performed
 #[must_use]
-pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Object {
+pub fn to_ec_public_key(bytes: &[u8], private_key_uid: &str, curve: RecommendedCurve) -> Object {
     Object::PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
@@ -30,7 +35,7 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Obj
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentECPublicKey {
-                    recommended_curve: RecommendedCurve::CURVE25519,
+                    recommended_curve: curve,
                     q_string: bytes.to_vec(),
                 },
                 attributes: Some(Attributes {
@@ -46,7 +51,7 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Obj
                     }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
                         q_length: Some(Q_LENGTH_BITS),
-                        recommended_curve: Some(RecommendedCurve::CURVE25519),
+                        recommended_curve: Some(curve),
                     }),
                     link: Some(vec![Link {
                         link_type: LinkType::PrivateKeyLink,
@@ -66,7 +71,7 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Obj
 /// convert to a curve 25519 256 bits KMIP Private Key
 /// no check performed
 #[must_use]
-pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Object {
+pub fn to_ec_private_key(bytes: &[u8], public_key_uid: &str, curve: RecommendedCurve) -> Object {
     Object::PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
@@ -74,7 +79,7 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Obj
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentECPrivateKey {
-                    recommended_curve: RecommendedCurve::CURVE25519,
+                    recommended_curve: curve,
                     d: BigUint::from_bytes_be(bytes),
                 },
                 attributes: Some(Attributes {
@@ -90,7 +95,7 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Obj
                     }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
                         q_length: Some(Q_LENGTH_BITS),
-                        recommended_curve: Some(RecommendedCurve::CURVE25519),
+                        recommended_curve: Some(curve),
                     }),
                     link: Some(vec![Link {
                         link_type: LinkType::PublicKeyLink,
@@ -108,15 +113,23 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Obj
 }
 
 /// Generate a X25519 Key Pair. Not FIPS 140-3 compliant.
-// TODO - #[cfg(not(feature = "fips"))]
+#[cfg(not(feature = "fips"))]
 pub fn create_x25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
 ) -> Result<KeyPair, KmipError> {
     let keypair = PKey::generate_x25519()?;
 
-    let public_key = to_curve_25519_256_public_key(&keypair.raw_public_key()?, private_key_uid);
-    let private_key = to_curve_25519_256_private_key(&keypair.raw_private_key()?, public_key_uid);
+    let public_key = to_ec_public_key(
+        &keypair.raw_public_key()?,
+        private_key_uid,
+        RecommendedCurve::CURVE25519,
+    );
+    let private_key = to_ec_private_key(
+        &keypair.raw_private_key()?,
+        public_key_uid,
+        RecommendedCurve::CURVE25519,
+    );
     Ok(KeyPair::new(private_key, public_key))
 }
 
@@ -127,13 +140,103 @@ pub fn create_ed25519_key_pair(
 ) -> Result<KeyPair, KmipError> {
     let keypair = PKey::generate_ed25519()?;
 
-    let public_key = to_curve_25519_256_public_key(&keypair.raw_public_key()?, private_key_uid);
-    let private_key = to_curve_25519_256_private_key(&keypair.raw_private_key()?, public_key_uid);
+    let public_key = to_ec_public_key(
+        &keypair.raw_public_key()?,
+        private_key_uid,
+        RecommendedCurve::CURVEED25519,
+    );
+    let private_key = to_ec_private_key(
+        &keypair.raw_private_key()?,
+        public_key_uid,
+        RecommendedCurve::CURVEED25519,
+    );
     Ok(KeyPair::new(private_key, public_key))
 }
 
+fn create_p_curve_keypair(
+    private_key_uid: &str,
+    public_key_uid: &str,
+    curve: EcGroup,
+) -> Result<KeyPair, KmipError> {
+    let ec_privkey = EcKey::generate(&curve)?;
+    let ec_pubkey = EcKey::from_public_key(&curve, ec_privkey.public_key())?;
+
+    let private_key = to_ec_private_key(
+        &ec_privkey.private_key().to_vec(),
+        public_key_uid,
+        RecommendedCurve::SECP192K1,
+    );
+
+    let mut ctx = BigNumContext::new()?;
+
+    let public_key = to_ec_public_key(
+        &ec_pubkey
+            .public_key()
+            .to_bytes(&curve, PointConversionForm::UNCOMPRESSED, &mut ctx)?,
+        private_key_uid,
+        RecommendedCurve::SECP192K1,
+    );
+
+    Ok(KeyPair::new(private_key, public_key))
+}
+
+pub fn create_p192_key_pair(
+    private_key_uid: &str,
+    public_key_uid: &str,
+) -> Result<KeyPair, KmipError> {
+    create_p_curve_keypair(
+        private_key_uid,
+        public_key_uid,
+        EcGroup::from_curve_name(Nid::X9_62_PRIME192V1)?,
+    )
+}
+
+pub fn create_p224_key_pair(
+    private_key_uid: &str,
+    public_key_uid: &str,
+) -> Result<KeyPair, KmipError> {
+    create_p_curve_keypair(
+        private_key_uid,
+        public_key_uid,
+        EcGroup::from_curve_name(Nid::SECP224R1)?,
+    )
+}
+
+pub fn create_p256_key_pair(
+    private_key_uid: &str,
+    public_key_uid: &str,
+) -> Result<KeyPair, KmipError> {
+    create_p_curve_keypair(
+        private_key_uid,
+        public_key_uid,
+        EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?,
+    )
+}
+
+pub fn create_p384_key_pair(
+    private_key_uid: &str,
+    public_key_uid: &str,
+) -> Result<KeyPair, KmipError> {
+    create_p_curve_keypair(
+        private_key_uid,
+        public_key_uid,
+        EcGroup::from_curve_name(Nid::SECP384R1)?,
+    )
+}
+
+pub fn create_p521_key_pair(
+    private_key_uid: &str,
+    public_key_uid: &str,
+) -> Result<KeyPair, KmipError> {
+    create_p_curve_keypair(
+        private_key_uid,
+        public_key_uid,
+        EcGroup::from_curve_name(Nid::SECP521R1)?,
+    )
+}
+
 #[cfg(test)]
-//#[cfg(not(feature = "fips"))]
+#[cfg(not(feature = "fips"))]
 // TODO: add FIPS tests.
 mod tests {
     use cosmian_kmip::kmip::kmip_data_structures::KeyMaterial;

@@ -18,11 +18,16 @@ use cosmian_kmip::{
     },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_utils::crypto::curve_25519::operation::create_x25519_key_pair;
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
-        curve_25519::operation::{create_ed25519_key_pair, create_x25519_key_pair},
+        curve_25519::operation::{
+            create_ed25519_key_pair, create_p192_key_pair, create_p224_key_pair,
+            create_p256_key_pair, create_p384_key_pair, create_p521_key_pair,
+        },
         hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
         symmetric::{create_symmetric_key, AesGcmSystem},
     },
@@ -393,16 +398,18 @@ impl KMS {
                     .cryptographic_domain_parameters
                     .unwrap_or_default();
                 match dp.recommended_curve.unwrap_or_default() {
+                    #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVE25519 => {
                         create_x25519_key_pair(private_key_uid, public_key_uid)
                     }
-                    RecommendedCurve::CURVEED25519 => {
-                        warn!(
-                            "An Edwards Keypair on curve 25519 should not be requested to perform \
-                             ECDH. Creating anyway as it can be converted to Montgomery X25519"
-                        );
-                        create_ed25519_key_pair(private_key_uid, public_key_uid)
-                    }
+                    RecommendedCurve::P192 => create_p192_key_pair(private_key_uid, public_key_uid),
+                    RecommendedCurve::P224 => create_p224_key_pair(private_key_uid, public_key_uid),
+                    RecommendedCurve::P256 => create_p256_key_pair(private_key_uid, public_key_uid),
+                    RecommendedCurve::P384 => create_p384_key_pair(private_key_uid, public_key_uid),
+                    RecommendedCurve::P521 => create_p521_key_pair(private_key_uid, public_key_uid),
+                    RecommendedCurve::CURVEED25519 => kms_not_supported!(
+                        "An Edwards Keypair on curve 25519 should not be requested to perform ECDH"
+                    ),
                     other => kms_not_supported!(
                         "Generation of Key Pair for curve: {other:?}, is not supported"
                     ),
