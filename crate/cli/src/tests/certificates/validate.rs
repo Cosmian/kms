@@ -74,8 +74,8 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
     Ok(())
 }
 
-#[ignore]
 #[tokio::test]
+#[ignore]
 async fn test_import_revoked_certificate_encrypt_prime256() -> Result<(), CliError> {
     import_revoked_certificate_encrypt("prime256v1").await
 }

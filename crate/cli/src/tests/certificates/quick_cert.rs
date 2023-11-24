@@ -190,8 +190,8 @@ pub fn destroy(
     ))
 }
 
-#[ignore] //This feature will be completely refactored
 #[tokio::test]
+#[ignore] //This feature will be completely refactored
 pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -332,8 +332,8 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
     Ok(())
 }
 
-#[ignore] //This feature will be completely refactored
 #[tokio::test]
+#[ignore] //This feature will be completely refactored
 pub async fn test_certify_with_csr() -> Result<(), CliError> {
     // create a temp dir
     let tmp_dir = TempDir::new()?;

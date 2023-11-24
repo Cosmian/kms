@@ -3,15 +3,22 @@
 All notable changes to this project will be documented in this file.
 
 
-## [4.9.0]
+## [4.x.x] - 2023-11-15
 
 ### Features
 
-- Database: support for more elaborate atomic transactions
+- Support for certificate generation using the Certify KMIP operation and a PKCS#10
+- Support for most standardized encoding formats on import.export: PKCS#8, PKCS#1, SEC1, X509, PKCS#12
+- Improvements to the Locate functionality for attributes and tags
+- Support for the Get Attributes KMIP operation
+- Database: support for more elaborate atomic operations
+- Replaced part of Rust Crypto with openssl for more standardized module support
+- Deactivated automatic verification, which will be reallocated for the future Validate KMIP operation support
+- Deactivated certificate "quick create feature", which will be revisited to better fit in KMIP specs
 
 ### Bug Fixes
 
-- Redis-Findex: `create` now checks for pre-existence of the object
+- Redis-Findex: `create` now checks for the pre-existence of the object
 - Better KMIP compliance:
   - for KeyBlock [#76](https://github.com/Cosmian/kms/issues/76)
   - default export formats [#78](https://github.com/Cosmian/kms/issues/78)

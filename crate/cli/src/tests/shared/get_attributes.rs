@@ -12,13 +12,11 @@ use crate::{
 
 pub fn get_attributes(
     cli_conf_path: &str,
-    sub_command: &str,
     uid: &str,
     attribute_tags: &[AttributeTag],
 ) -> Result<HashMap<AttributeTag, Value>, CliError> {
     let temp_file = tempfile::NamedTempFile::new()?;
     let mut args: Vec<String> = [
-        "get-attributes",
         "--id",
         uid,
         "--output-file",
@@ -53,7 +51,7 @@ pub fn get_attributes(
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=debug,cosmian_kms_server=trace");
-    cmd.arg(sub_command).args(args);
+    cmd.arg("get-attributes").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
         let output = std::fs::read_to_string(temp_file.path())?;
