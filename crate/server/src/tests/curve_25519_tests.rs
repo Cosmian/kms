@@ -21,7 +21,7 @@ use crate::{
     KMSServer,
 };
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let clap_config = https_clap_config();
 
@@ -163,9 +163,9 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_curve_25519_multiple() -> KResult<()> {
-    log_init("info,hyper=info,reqwest=info");
+    log_init("debug,hyper=info,reqwest=info");
 
     let clap_config = https_clap_config();
 
@@ -192,15 +192,9 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             )),
         ],
     };
-    println!(
-        "{:#?}",
-        cosmian_kmip::kmip::ttlv::serializer::to_ttlv(&request)
-    );
+
     let response = kms.message(request, owner, None).await?;
-    println!(
-        "{:#?}",
-        cosmian_kmip::kmip::ttlv::serializer::to_ttlv(&response)
-    );
+    assert_eq!(response.header.batch_count, 2);
 
     let request = Message {
         header: MessageHeader {

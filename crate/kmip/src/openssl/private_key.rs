@@ -1,4 +1,4 @@
-use num_bigint::BigUint;
+use num_bigint_dig::BigUint;
 use openssl::{
     bn::{BigNum, BigNumContext},
     ec::{EcGroup, EcKey, EcPoint},

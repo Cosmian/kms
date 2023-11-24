@@ -1,38 +1,29 @@
 use cosmian_logger::log_utils::log_init;
 use num_bigint_dig::BigUint;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use time::OffsetDateTime;
 
 use crate::{
     error::KmipError,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_messages::{
+            Message, MessageBatchItem, MessageHeader, MessageResponse, MessageResponseBatchItem,
+            MessageResponseHeader,
+        },
         kmip_objects::{Object, ObjectType},
-        kmip_operations::{Create, Import, ImportResponse},
+        kmip_operations::{
+            Create, DecryptResponse, Encrypt, ErrorReason, Import, ImportResponse, Locate,
+            LocateResponse, Operation,
+        },
         kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
-            LinkedObjectIdentifier,
+            AsynchronousIndicator, AttestationType, Attributes, BatchErrorContinuationOption,
+            Credential, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
+            LinkedObjectIdentifier, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
+            ResultStatusEnumeration,
         },
         ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
     },
-use crate::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_messages::{
-        Message, MessageBatchItem, MessageHeader, MessageResponse, MessageResponseBatchItem,
-        MessageResponseHeader,
-    },
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{
-        Create, DecryptResponse, Encrypt, ErrorReason, Import, ImportResponse, Locate,
-        LocateResponse, Operation,
-    },
-    kmip_types::{
-        AsynchronousIndicator, AttestationType, Attributes, BatchErrorContinuationOption,
-        Credential, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
-        LinkedObjectIdentifier, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
-        ResultStatusEnumeration,
-    },
-    ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
 };
 
 pub fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
@@ -226,9 +217,9 @@ fn test_serialization_deserialization() {
     match rec.value {
         TTLValue::Structure(s) => match &s[0].value {
             TTLValue::Integer(i) => assert_eq!(42, *i),
-            x => panic!("unexpected 2nd level type : {x:?}"),
+            x => panic!("unexpected 2nd level type : {:?}", x),
         },
-        x => panic!("unexpected type : {x:?}"),
+        x => panic!("unexpected type : {:?}", x),
     };
 }
 
@@ -704,9 +695,7 @@ pub fn test_create() {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         link: Some(vec![Link {
             link_type: crate::kmip::kmip_types::LinkType::ParentLink,
-            linked_object_identifier: crate::kmip::kmip_types::LinkedObjectIdentifier::TextString(
-                "SK".to_string(),
-            ),
+            linked_object_identifier: LinkedObjectIdentifier::TextString("SK".to_string()),
         }]),
         ..Attributes::default()
     };

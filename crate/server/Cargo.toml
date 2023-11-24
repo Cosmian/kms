@@ -73,6 +73,7 @@ url = { workspace = true }
 uuid = { workspace = true }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
+chrono = "0.4.31"
 
 [dev-dependencies]
 actix-http = "3.4"

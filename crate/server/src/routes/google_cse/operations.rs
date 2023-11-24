@@ -5,7 +5,6 @@ use base64::{engine::general_purpose, Engine};
 use clap::crate_version;
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyWrappingData, KeyWrappingSpecification},
-    kmip_objects::ObjectType,
     kmip_types::{self, CryptographicAlgorithm, EncodingOption},
 };
 use cosmian_kms_utils::crypto::symmetric::create_symmetric_key;
@@ -96,7 +95,6 @@ pub async fn wrap(
     );
 
     wrap_key(
-        "Google CSE DEK",
         dek.key_block_mut()?,
         &KeyWrappingSpecification {
             wrapping_method: kmip_types::WrappingMethod::Encrypt,
@@ -183,7 +181,6 @@ pub async fn unwrap(
     });
 
     unwrap_key(
-        ObjectType::SymmetricKey,
         wrapped_dek.key_block_mut()?,
         kms,
         &user,

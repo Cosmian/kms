@@ -9,7 +9,7 @@ use tracing::trace;
 
 use crate::kmip::{
     kmip_objects::{Object, ObjectType},
-    ttlv::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV},
+    ttlv::{error::TtlvError, to_u32_digits, TTLVEnumeration, TTLValue, TTLV},
 };
 
 type Result<T> = std::result::Result<T, TtlvError>;

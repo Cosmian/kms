@@ -739,7 +739,7 @@ impl From<ExportResponse> for GetResponse {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "PascalCase")]
 pub struct GetAttributes {
     /// Determines the object whose attributes

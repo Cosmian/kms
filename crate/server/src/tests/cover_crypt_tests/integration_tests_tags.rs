@@ -46,7 +46,10 @@ async fn test_re_key_with_tags() -> KResult<()> {
     //
     // Re_key all key pairs with matching policy attributes
     let abe_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
-    let request = build_rekey_keypair_request(&mkp_json_tag, abe_policy_attributes)?;
+    let request = build_rekey_keypair_request(
+        &mkp_json_tag,
+        EditPolicyAction::RotateAttributes(abe_policy_attributes),
+    )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
         &rekey_keypair_response.private_key_unique_identifier,
@@ -78,8 +81,8 @@ async fn test_re_key_with_tags() -> KResult<()> {
 }
 
 fn policy() -> Result<Policy, KmsError> {
-    let mut policy = Policy::new(10);
-    policy.add_axis(PolicyAxis::new(
+    let mut policy = Policy::new();
+    policy.add_dimension(DimensionBuilder::new(
         "Department",
         vec![
             ("MKG", EncryptionHint::Classic),

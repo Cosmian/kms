@@ -29,7 +29,7 @@ use cosmian_kms_utils::{
     tagging::{check_user_tags, get_tags, remove_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
-use tracing::{debug, trace};
+use tracing::{debug, log::warn, trace};
 use zeroize::Zeroize;
 
 use super::{cover_crypt::create_user_decryption_key, KMS};
@@ -397,9 +397,14 @@ impl KMS {
                         let mut rng = self.rng.lock().expect("RNG lock poisoned");
                         create_x25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
                     }
-                    RecommendedCurve::CURVEED25519 => kms_not_supported!(
-                        "An Edwards Keypair on curve 25519 should not be requested to perform ECDH"
-                    ),
+                    RecommendedCurve::CURVEED25519 => {
+                        warn!(
+                            "An Edwards Keypair on curve 25519 should not be requested to perform \
+                             ECDH. Creating anyway as it can be converted to Montgomery X25519"
+                        );
+                        let mut rng = self.rng.lock().expect("RNG lock poisoned");
+                        create_ed25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                    }
                     other => kms_not_supported!(
                         "Generation of Key Pair for curve: {other:?}, is not supported"
                     ),

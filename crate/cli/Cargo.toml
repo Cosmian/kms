@@ -28,6 +28,7 @@ hex = { workspace = true }
 ## It should not be used for anything else and will be removed once native support is available.
 openssl = { version = "0.10", features = ["vendored"] }
 oauth2 = { version = "4.4" }
+pem = "3.0"
 rand = "0.8"
 ratls = { workspace = true }
 reqwest = { workspace = true }
@@ -40,10 +41,9 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-#uuid = { workspace = true }
+uuid = { workspace = true }
 x509-cert = { workspace = true }
 zeroize = { workspace = true }
-uuid = { version = "1.4.1", features = ["v4"] }
 
 [dev-dependencies]
 actix-rt = { workspace = true }

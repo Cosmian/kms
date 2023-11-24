@@ -14,7 +14,7 @@ bitflags = { workspace = true }
 chrono = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }
-num-bigint = { workspace = true }
+num-bigint-dig = { workspace = true }
 openssl = { workspace = true, optional = true }
 sha3 = { version = "0.10", optional = true }
 serde = { workspace = true }

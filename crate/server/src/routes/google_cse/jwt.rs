@@ -250,7 +250,7 @@ mod tests {
         },
     };
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn test_wrap_auth() {
         log_init("cosmian_kms_server=trace");
 

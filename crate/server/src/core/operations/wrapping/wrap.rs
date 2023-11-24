@@ -64,7 +64,7 @@ pub async fn wrap_key(
         wrapping_key_uid,
         ObjectOperationType::Encrypt,
         kms,
-        owner,
+        user,
         params,
     )
     .await?;
@@ -84,7 +84,7 @@ pub async fn wrap_key(
                 &public_key_uid,
                 ObjectOperationType::Decrypt,
                 kms,
-                owner,
+                user,
                 params,
             )
             .await?

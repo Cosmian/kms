@@ -10,9 +10,10 @@ curve25519 = []
 
 [dependencies]
 argon2 = "0.5"
+chrono = { workspace = true }
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip", features = ["openssl"] }
-num-bigint = { workspace = true }
+num-bigint-dig = { workspace = true }
 openssl = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
