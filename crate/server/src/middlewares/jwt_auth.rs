@@ -4,12 +4,12 @@ use std::{
     task::{Context, Poll},
 };
 
-use actix_identity::RequestIdentity;
+use actix_identity::Identity;
 use actix_service::{Service, Transform};
 use actix_web::{
     body::{BoxBody, EitherBody},
     dev::{ServiceRequest, ServiceResponse},
-    Error, HttpMessage, HttpResponse,
+    Error, FromRequest, HttpMessage, HttpResponse,
 };
 use futures::{
     future::{ok, Ready},
@@ -88,12 +88,16 @@ where
         trace!("JWT Authentication...");
 
         // get the identity from the authorization header
-        let identity = RequestIdentity::get_identity(&req)
-            .or_else(|| {
-                req.headers()
-                    .get("Authorization")
-                    .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
-            })
+        let identity = Identity::extract(req.request())
+            .into_inner()
+            .map_or_else(
+                |_| {
+                    req.headers()
+                        .get("Authorization")
+                        .and_then(|h| h.to_str().ok().map(std::string::ToString::to_string))
+                },
+                |identity| identity.id().ok(),
+            )
             .unwrap_or_default();
         trace!("Checking JWT identity: {identity:?}");
 
