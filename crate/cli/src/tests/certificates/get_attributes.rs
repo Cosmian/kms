@@ -55,7 +55,7 @@ async fn test_get_attributes_p12() {
     let attributes = get_attributes(
         &ctx.owner_cli_conf_path,
         "certificates",
-        &intermediate_certificate_id,
+        intermediate_certificate_id,
         &[
             AttributeTag::KeyFormatType,
             AttributeTag::LinkedPrivateKeyId,

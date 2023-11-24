@@ -7,7 +7,7 @@ use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::trace;
 
 use crate::{
-    core::{certificate::get_fixed_size_key_bytes, KMS},
+    core::{certificate::quick_cert::get_fixed_size_key_bytes, KMS},
     error::KmsError,
     result::KResult,
 };

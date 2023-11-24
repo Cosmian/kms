@@ -62,7 +62,7 @@ pub struct ExportCertificateAction {
     tags: Option<Vec<String>>,
 
     /// Export the certificate in the selected format
-    #[clap(long = "format", short = 'f')]
+    #[clap(long = "format", short = 'f', default_value = "json-ttlv")]
     output_format: CertificateExportFormat,
 
     /// Password to use to protect the PKCS#12 file

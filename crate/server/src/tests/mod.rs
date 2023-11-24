@@ -1,4 +1,3 @@
-mod certificate;
 mod cover_crypt_tests;
 mod curve_25519_tests;
 mod kmip_messages;

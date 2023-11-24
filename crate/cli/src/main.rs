@@ -3,10 +3,16 @@ use std::process;
 use clap::{Parser, Subcommand};
 use cosmian_kms_cli::{
     actions::{
-        access::AccessAction, bootstrap::BootstrapServerAction, certificates::CertificatesCommands,
-        cover_crypt::CovercryptCommands, elliptic_curves::EllipticCurveCommands,
-        login::LoginAction, logout::LogoutAction, new_database::NewDatabaseAction,
-        shared::LocateObjectsAction, symmetric::SymmetricCommands, verify::TeeAction,
+        access::AccessAction,
+        bootstrap::BootstrapServerAction,
+        certificates::CertificatesCommands,
+        cover_crypt::CovercryptCommands,
+        elliptic_curves::EllipticCurveCommands,
+        login::LoginAction, logout::LogoutAction,
+        new_database::NewDatabaseAction,
+        shared::{GetAttributesAction, LocateObjectsAction},
+        symmetric::SymmetricCommands,
+        verify::TeeAction,
         version::ServerVersionAction,
     },
     config::CliConf,
@@ -33,6 +39,7 @@ enum CliCommands {
     Certificates(CertificatesCommands),
     #[command(subcommand)]
     Ec(EllipticCurveCommands),
+    GetAttributes(GetAttributesAction),
     Locate(LocateObjectsAction),
     NewDatabase(NewDatabaseAction),
     ServerVersion(ServerVersionAction),
@@ -82,6 +89,7 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
         CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
         CliCommands::BootstrapStart(_) | CliCommands::Verify(_) => {}
+        CliCommands::GetAttributes(action) => action.process(&kms_rest_client).await?,
         CliCommands::Login(action) => action.process().await?,
         CliCommands::Logout(action) => action.process().await?,
     };

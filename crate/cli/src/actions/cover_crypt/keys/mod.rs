@@ -6,9 +6,7 @@ use self::{
     destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
 };
 use crate::{
-    actions::shared::{
-        ExportKeyAction, GetAttributesAction, ImportKeyAction, UnwrapKeyAction, WrapKeyAction,
-    },
+    actions::shared::{ExportKeyAction, ImportKeyAction, UnwrapKeyAction, WrapKeyAction},
     error::CliError,
 };
 
@@ -28,7 +26,6 @@ pub enum KeysCommands {
     Unwrap(UnwrapKeyAction),
     Revoke(RevokeKeyAction),
     Destroy(DestroyKeyAction),
-    GetAttributes(GetAttributesAction),
 }
 
 impl KeysCommands {
@@ -42,7 +39,6 @@ impl KeysCommands {
             Self::Unwrap(action) => action.run(kms_rest_client).await?,
             Self::Revoke(action) => action.run(kms_rest_client).await?,
             Self::Destroy(action) => action.run(kms_rest_client).await?,
-            Self::GetAttributes(action) => action.run(kms_rest_client).await?,
         };
 
         Ok(())

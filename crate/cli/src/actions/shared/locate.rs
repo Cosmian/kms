@@ -6,7 +6,9 @@ use clap::{
 };
 use cosmian_kmip::kmip::{
     kmip_operations::Locate,
-    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+    },
 };
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::tagging::set_tags;
@@ -98,7 +100,43 @@ impl LocateObjectsAction {
             attributes.key_format_type = Some(key_format_type);
         }
 
-        if let Some(tags) = &self.tags {
+        if let Some(public_key_id) = &self.public_key_id {
+            attributes.add_link(
+                LinkType::PublicKeyLink,
+                LinkedObjectIdentifier::TextString(public_key_id.to_string()),
+            );
+        }
+
+        if let Some(private_key_id) = &self.private_key_id {
+            attributes.add_link(
+                LinkType::PrivateKeyLink,
+                LinkedObjectIdentifier::TextString(private_key_id.to_string()),
+            );
+        }
+
+        if let Some(certificate_id) = &self.certificate_id {
+            attributes.add_link(
+                LinkType::CertificateLink,
+                LinkedObjectIdentifier::TextString(certificate_id.to_string()),
+            );
+        }
+
+        let mut opt_tags = self.tags.clone();
+
+        if let Some(certificate_cn) = &self.certificate_cn {
+            let tags = opt_tags.get_or_insert(Vec::new());
+            tags.push(format!("_cert_cn={}", certificate_cn));
+        }
+
+        if let Some(certificate_spki) = &self.certificate_spki {
+            let tags = opt_tags.get_or_insert(Vec::new());
+            tags.push(format!(
+                "_cert_spki={}",
+                certificate_spki.replace(':', "").to_lowercase()
+            ));
+        }
+
+        if let Some(tags) = opt_tags {
             set_tags(&mut attributes, tags)?;
         }
 

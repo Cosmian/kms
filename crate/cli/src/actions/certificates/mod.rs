@@ -2,7 +2,6 @@ use clap::Subcommand;
 use cosmian_kms_client::KmsRestClient;
 pub use export_certificate::CertificateExportFormat;
 pub use import_certificate::CertificateInputFormat;
-pub use locate::{locate_and_get_key_bytes, locate_key};
 
 use self::{
     certify::CertifyAction, create_certificate::CreateCertificateAction,
@@ -10,7 +9,7 @@ use self::{
     encrypt_certificate::EncryptCertificateAction, export_certificate::ExportCertificateAction,
     import_certificate::ImportCertificateAction, revoke_certificate::RevokeCertificateAction,
 };
-use crate::{actions::shared::GetAttributesAction, error::CliError};
+use crate::error::CliError;
 
 mod certify;
 mod create_certificate;
@@ -19,7 +18,6 @@ mod destroy_certificate;
 mod encrypt_certificate;
 mod export_certificate;
 mod import_certificate;
-mod locate;
 mod revoke_certificate;
 
 /// Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
@@ -33,7 +31,6 @@ pub enum CertificatesCommands {
     Import(ImportCertificateAction),
     Revoke(RevokeCertificateAction),
     Destroy(DestroyCertificateAction),
-    GetAttributes(GetAttributesAction),
 }
 
 impl CertificatesCommands {
@@ -47,7 +44,6 @@ impl CertificatesCommands {
             Self::Import(action) => action.run(client_connector).await,
             Self::Revoke(action) => action.run(client_connector).await,
             Self::Destroy(action) => action.run(client_connector).await,
-            Self::GetAttributes(action) => action.run(client_connector).await,
         }
     }
 }

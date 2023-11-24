@@ -6,8 +6,7 @@ use cosmian_kmip::kmip::{
 use cosmian_kms_utils::{access::ExtraDatabaseParams, tagging::set_tags};
 use tracing::debug;
 
-use super::KMS;
-use crate::{error::KmsError, result::KResult};
+use crate::{core::KMS, error::KmsError, result::KResult};
 
 async fn locate_by_tags(
     object_type: ObjectType,

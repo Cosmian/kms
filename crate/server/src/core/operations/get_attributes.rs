@@ -105,16 +105,14 @@ pub async fn get_attributes(
                         attribute_name: VENDOR_ATTR_TAG.to_owned(),
                         attribute_value: serde_json::to_vec(&tags)?,
                     });
-                } else {
-                    attributes
-                        .get_vendor_attribute_value(&vendor_identification, &attribute_name)
-                        .map(|value| {
-                            res.add_vendor_attribute(VendorAttribute {
-                                vendor_identification,
-                                attribute_name,
-                                attribute_value: value.to_owned(),
-                            });
-                        });
+                } else if let Some(value) =
+                    attributes.get_vendor_attribute_value(&vendor_identification, &attribute_name)
+                {
+                    res.add_vendor_attribute(VendorAttribute {
+                        vendor_identification,
+                        attribute_name,
+                        attribute_value: value.to_owned(),
+                    });
                 }
             }
             AttributeReference::Standard(tag) => match tag {
@@ -132,7 +130,7 @@ pub async fn get_attributes(
                 }
                 Tag::CryptographicDomainParameters => {
                     res.cryptographic_domain_parameters =
-                        attributes.cryptographic_domain_parameters.clone();
+                        attributes.cryptographic_domain_parameters;
                 }
                 Tag::CryptographicUsageMask => {
                     res.cryptographic_usage_mask = attributes.cryptographic_usage_mask.clone();
@@ -141,36 +139,34 @@ pub async fn get_attributes(
                     res.key_format_type = attributes.key_format_type;
                 }
                 Tag::PrivateKey => {
-                    attributes.get_link(LinkType::PrivateKeyLink).map(|link| {
+                    if let Some(link) = attributes.get_link(LinkType::PrivateKeyLink) {
                         res.add_link(
                             LinkType::PrivateKeyLink,
                             LinkedObjectIdentifier::TextString(link.clone()),
                         );
-                    });
+                    }
                 }
                 Tag::PublicKey => {
-                    attributes.get_link(LinkType::PublicKeyLink).map(|link| {
+                    if let Some(link) = attributes.get_link(LinkType::PublicKeyLink) {
                         res.add_link(
                             LinkType::PublicKeyLink,
                             LinkedObjectIdentifier::TextString(link.clone()),
                         );
-                    });
+                    }
                 }
                 Tag::Certificate => {
-                    attributes
-                        .get_link(LinkType::PKCS12CertificateLink)
-                        .map(|link| {
-                            res.add_link(
-                                LinkType::PKCS12CertificateLink,
-                                LinkedObjectIdentifier::TextString(link.clone()),
-                            );
-                        });
-                    attributes.get_link(LinkType::CertificateLink).map(|link| {
+                    if let Some(link) = attributes.get_link(LinkType::PKCS12CertificateLink) {
+                        res.add_link(
+                            LinkType::PKCS12CertificateLink,
+                            LinkedObjectIdentifier::TextString(link.clone()),
+                        );
+                    }
+                    if let Some(link) = attributes.get_link(LinkType::CertificateLink) {
                         res.add_link(
                             LinkType::CertificateLink,
                             LinkedObjectIdentifier::TextString(link.clone()),
                         );
-                    });
+                    }
                 }
 
                 _ => {}

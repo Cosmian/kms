@@ -92,11 +92,11 @@ pub fn add_attributes_to_certificate_tags(
     tags: &mut HashSet<String>,
     attributes: &Attributes,
 ) -> KResult<()> {
-    attributes.get_link(LinkType::PrivateKeyLink).map(|link| {
+    if let Some(link) = attributes.get_link(LinkType::PrivateKeyLink) {
         tags.insert(format!("_cert_sk={}", link));
-    });
-    attributes.get_link(LinkType::CertificateLink).map(|link| {
+    }
+    if let Some(link) = attributes.get_link(LinkType::CertificateLink) {
         tags.insert(format!("_cert_issuer={}", link));
-    });
+    }
     Ok(())
 }

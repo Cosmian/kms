@@ -16,7 +16,7 @@ use tracing::{debug, trace};
 
 use super::KMS;
 use crate::{
-    core::certificate::{
+    core::certificate::quick_cert::{
         ca_signing_key::CASigningKey, create_ca_certificate::create_ca_chain,
         create_key_pair_and_certificate,
     },

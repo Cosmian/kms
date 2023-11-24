@@ -10,7 +10,7 @@ use tracing::debug;
 
 use super::{ca_signing_key::CASigningKey, create_key_pair_and_certificate};
 use crate::{
-    core::{certificate::locate::locate_ca_private_key, KMS},
+    core::{certificate::validate::locate_ca_private_key, KMS},
     error::KmsError,
     result::KResult,
 };

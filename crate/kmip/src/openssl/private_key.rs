@@ -289,7 +289,7 @@ pub fn openssl_private_key_to_kmip(
                         d,
                     },
                     attributes: Some(Attributes {
-                        cryptographic_algorithm: Some(cryptographic_algorithm.clone()),
+                        cryptographic_algorithm: Some(cryptographic_algorithm),
                         cryptographic_length: Some(private_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
                         object_type: Some(ObjectType::PrivateKey),
@@ -318,7 +318,7 @@ pub fn openssl_private_key_to_kmip(
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(private_key.private_key_to_pkcs8()?),
                     attributes: Some(Attributes {
-                        cryptographic_algorithm: cryptographic_algorithm.clone(),
+                        cryptographic_algorithm,
                         cryptographic_length: Some(private_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::PKCS8),
                         object_type: Some(ObjectType::PrivateKey),

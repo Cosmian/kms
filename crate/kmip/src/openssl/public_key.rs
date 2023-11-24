@@ -193,14 +193,14 @@ pub fn openssl_public_key_to_kmip(
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(spki_der),
                     attributes: Some(Attributes {
-                        cryptographic_algorithm: cryptographic_algorithm.clone(),
+                        cryptographic_algorithm,
                         cryptographic_length: Some(public_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::PKCS8),
                         object_type: Some(ObjectType::PublicKey),
                         ..Attributes::default()
                     }),
                 },
-                cryptographic_algorithm: cryptographic_algorithm.clone(),
+                cryptographic_algorithm,
                 cryptographic_length: Some(public_key.bits() as i32),
                 key_wrapping_data: None,
                 key_compression_type: None,

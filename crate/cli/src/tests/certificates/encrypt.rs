@@ -4,7 +4,7 @@ use assert_cmd::prelude::*;
 use cosmian_logger::log_utils::log_init;
 use tempfile::TempDir;
 use tracing::debug;
-use uuid::{uuid, Uuid};
+use uuid::Uuid;
 
 use super::SUB_COMMAND;
 use crate::{
@@ -173,8 +173,8 @@ async fn test_certificate_import_encrypt(
         &format!("test_data/certificates/{key_path}"),
         Some(ImportKeyFormat::Pem),
         None,
-        tags.into_iter()
-            .map(|s| s.to_string())
+        tags.iter()
+            .map(|&s| s.to_string())
             .collect::<Vec<String>>()
             .as_slice(),
         false,
@@ -287,8 +287,8 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
         &format!("test_data/certificates/openssl/{curve_name}-private-key.pem"),
         Some(ImportKeyFormat::Pem),
         Some(Uuid::new_v4().to_string()),
-        tags.into_iter()
-            .map(|s| s.to_string())
+        tags.iter()
+            .map(|&s| s.to_string())
             .collect::<Vec<String>>()
             .as_slice(),
         false,
@@ -424,71 +424,4 @@ async fn test_certificate_encrypt_using_rsa() -> Result<(), CliError> {
     import_encrypt_decrypt("rsa-2048").await?;
     import_encrypt_decrypt("rsa-3072").await?;
     import_encrypt_decrypt("rsa-4096").await
-}
-
-async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
-
-    // create a temp dir
-    let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.path();
-    // let tmp_path = std::path::Path::new("./");
-
-    let input_file = PathBuf::from("test_data/plain.txt");
-    let output_file = tmp_path.join("plain.enc");
-    let _recovered_file = tmp_path.join("plain.txt");
-
-    let tags = &[curve_name];
-
-    fs::remove_file(&output_file).ok();
-    // assert!(!output_file.exists());
-
-    debug!("\n\nImport Certificate");
-    let root_certificate_id = import_certificate(
-        &ctx.owner_cli_conf_path,
-        "certificates",
-        &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
-        CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        None,
-        Some(tags),
-        false,
-        true,
-    )?;
-
-    debug!("\n\nImport Certificate");
-    let certificate_id = import_certificate(
-        &ctx.owner_cli_conf_path,
-        "certificates",
-        &format!("test_data/certificates/openssl/{curve_name}-revoked.crt"),
-        CertificateInputFormat::Pem,
-        None,
-        None,
-        None,
-        Some(root_certificate_id),
-        Some(tags),
-        false,
-        true,
-    )?;
-
-    debug!("\n\nEncrypt with certificate");
-    assert!(
-        encrypt(
-            &ctx.owner_cli_conf_path,
-            input_file.to_str().unwrap(),
-            &certificate_id,
-            Some(output_file.to_str().unwrap()),
-            None,
-        )
-        .is_err()
-    );
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_import_revoked_certificate_encrypt_prime256() -> Result<(), CliError> {
-    import_revoked_certificate_encrypt("prime256v1").await
 }

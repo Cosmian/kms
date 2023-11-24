@@ -43,7 +43,7 @@ const ALL_ATTRIBUTE_TAGS: [AttributeTag; 12] = [
     AttributeTag::Tags,
 ];
 
-/// Get the KMIP attributes and tags.
+/// Get the KMIP object attributes and tags.
 ///
 /// When using tags to retrieve the object, rather than the object id,
 /// an error is returned if multiple objects matching the tags are found.
@@ -77,7 +77,7 @@ pub struct GetAttributesAction {
 }
 
 impl GetAttributesAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         let id = if let Some(key_id) = &self.id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -152,107 +152,102 @@ impl GetAttributesAction {
         for tag in &tags {
             match tag {
                 AttributeTag::ActivationDate => {
-                    attributes.activation_date.as_ref().map(|v| {
+                    if let Some(v) = attributes.activation_date.as_ref() {
                         results.insert(
                             "activation-date".to_string(),
                             serde_json::to_value(v).unwrap_or_default(),
                         );
-                    });
+                    }
                 }
                 AttributeTag::CryptographicAlgorithm => {
-                    attributes.cryptographic_algorithm.as_ref().map(|v| {
+                    if let Some(v) = attributes.cryptographic_algorithm.as_ref() {
                         results.insert(
                             "cryptographic-algorithm".to_string(),
                             serde_json::to_value(v).unwrap_or_default(),
                         );
-                    });
+                    }
                 }
                 AttributeTag::CryptographicLength => {
-                    attributes.cryptographic_length.as_ref().map(|v| {
+                    if let Some(v) = attributes.cryptographic_length.as_ref() {
                         results.insert(
                             "cryptographic-length".to_string(),
                             serde_json::to_value(v).unwrap_or_default(),
                         );
-                    });
+                    }
                 }
                 AttributeTag::CryptographicParameters => {
-                    attributes.cryptographic_parameters.as_ref().map(|v| {
+                    if let Some(v) = attributes.cryptographic_parameters.as_ref() {
                         results.insert(
                             "cryptographic-parameters".to_string(),
                             serde_json::to_value(v).unwrap_or_default(),
                         );
-                    });
+                    }
                 }
                 AttributeTag::CryptographicDomainParameters => {
-                    attributes
-                        .cryptographic_domain_parameters
-                        .as_ref()
-                        .map(|v| {
-                            results.insert(
-                                "cryptographic-domain-parameters".to_string(),
-                                serde_json::to_value(v).unwrap_or_default(),
-                            );
-                        });
+                    if let Some(v) = attributes.cryptographic_domain_parameters.as_ref() {
+                        results.insert(
+                            "cryptographic-domain-parameters".to_string(),
+                            serde_json::to_value(v).unwrap_or_default(),
+                        );
+                    }
                 }
                 AttributeTag::CryptographicUsageMask => {
-                    attributes.cryptographic_usage_mask.as_ref().map(|v| {
+                    if let Some(v) = attributes.cryptographic_usage_mask.as_ref() {
                         results.insert(
                             "cryptographic-usage-mask".to_string(),
                             serde_json::to_value(v).unwrap_or_default(),
                         );
-                    });
+                    }
                 }
                 AttributeTag::KeyFormatType => {
-                    attributes.key_format_type.as_ref().map(|v| {
+                    if let Some(v) = attributes.key_format_type.as_ref() {
                         results.insert(
                             "key-format-type".to_string(),
                             serde_json::to_value(v).unwrap_or_default(),
                         );
-                    });
+                    }
                 }
                 AttributeTag::LinkedPrivateKeyId => {
-                    attributes.get_link(LinkType::PrivateKeyLink).map(|v| {
+                    if let Some(v) = attributes.get_link(LinkType::PrivateKeyLink) {
                         results.insert(
                             "linked-private-key-id".to_string(),
                             serde_json::to_value(v).unwrap_or_default(),
                         );
-                    });
+                    }
                 }
                 AttributeTag::LinkedPublicKeyId => {
-                    attributes.get_link(LinkType::PublicKeyLink).map(|v| {
+                    if let Some(v) = attributes.get_link(LinkType::PublicKeyLink) {
                         results.insert(
                             "linked-public-key-id".to_string(),
                             serde_json::to_value(v).unwrap_or_default(),
                         );
-                    });
+                    }
                 }
                 AttributeTag::LinkedIssuerCertificateId => {
-                    attributes.get_link(LinkType::CertificateLink).map(|v| {
+                    if let Some(v) = attributes.get_link(LinkType::CertificateLink) {
                         results.insert(
                             "linked-issuer-certificate-id".to_string(),
                             serde_json::to_value(v).unwrap_or_default(),
                         );
-                    });
+                    }
                 }
                 AttributeTag::LinkedCertificateId => {
-                    attributes
-                        .get_link(LinkType::PKCS12CertificateLink)
-                        .map(|v| {
-                            results.insert(
-                                "linked-certificate-id".to_string(),
-                                serde_json::to_value(v).unwrap_or_default(),
-                            );
-                        });
+                    if let Some(v) = attributes.get_link(LinkType::PKCS12CertificateLink) {
+                        results.insert(
+                            "linked-certificate-id".to_string(),
+                            serde_json::to_value(v).unwrap_or_default(),
+                        );
+                    }
                 }
                 AttributeTag::Tags => {
-                    attributes
-                        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
-                        .map(|v| {
-                            results.insert(
-                                "tags".to_string(),
-                                serde_json::from_slice::<Value>(v).unwrap_or_default(),
-                            );
-                        });
+                    if let Some(v) =
+                        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_TAG)
+                    {
+                        results.insert(
+                            "tags".to_string(),
+                            serde_json::from_slice::<Value>(v).unwrap_or_default(),
+                        );
+                    }
                 }
             }
         }
@@ -260,7 +255,7 @@ impl GetAttributesAction {
 
         if let Some(output_file) = &self.output_file {
             debug!("GetAttributes response for {unique_identifier}: {}", json);
-            write_bytes_to_file(&json.as_bytes(), output_file)?;
+            write_bytes_to_file(json.as_bytes(), output_file)?;
             println!(
                 "The attributes for {unique_identifier} were exported to {:?}",
                 &output_file

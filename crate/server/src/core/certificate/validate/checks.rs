@@ -14,7 +14,7 @@ use x509_parser::{
 
 use crate::{
     core::{
-        certificate::{
+        certificate::validate::{
             locate::{
                 locate_certificate_by_common_name_and_get_bytes,
                 locate_certificate_by_spki_and_get_bytes,
