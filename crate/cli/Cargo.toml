@@ -23,7 +23,7 @@ cosmian_kms_client = { path = "../client" }
 cosmian_kms_utils = { path = "../utils" }
 cosmian_logger = { path = "../logger" }
 hex = { workspace = true }
-oauth2 = { version = "4.4" }
+oauth2 = "4.4"
 openssl = { workspace = true }
 pem = "3.0"
 rand = "0.8"
@@ -43,12 +43,12 @@ x509-parser = { workspace = true }
 
 [dev-dependencies]
 actix-rt = { workspace = true }
-actix-server = { version = "2.0", default-features = false }
+actix-server = { version = "2.3", default-features = false }
 assert_cmd = "2.0"
 cosmian_kms_client = { path = "../client", default-features = false }
 cosmian_kms_server = { path = "../server", features = [
     "insecure",
 ], default-features = false }
-predicates = "2.1"
-regex = { version = "1.7", default-features = false }
-tempfile = "3.2"
+predicates = "3.0"
+regex = { version = "1.10", default-features = false }
+tempfile = "3.8"
