@@ -8,11 +8,11 @@ Cosmian KMS is an open-source implementation of a high-performance, massively sc
 - a JSON KMIP 2.1 compliant interface
 - support for object tagging to easily manage keys and secrets
 - a full-featured command line interface ([CLI](https://docs.cosmian.com/cosmian_key_management_system/cli/cli/))
-- Python, Javascript, Dart, Rust, C/C++ and Java clients (see the `cloudprooof` libraries on [Cosmian Github](https://github.com/Cosmian))
+- Python, Javascript, Dart, Rust, C/C++ and Java clients (see the `cloudproof` libraries on [Cosmian Github](https://github.com/Cosmian))
 
 It has extensive [documentation](https://docs.cosmian.com/cosmian_key_management_system/) and is also available packaged as docker images (`docker pull ghcr.io/cosmian/kms`) to get you started quickly.
 
- The KMS can manage keys and secrets used with a comprehensive list of common (AES, ECIES, ...) and Cosmian advanced cryptographic stacks such as [Covercrypt](https://github.com/Cosmian/cover_crypt). Keys can be wrapped and unwrapped using ECIES or RFC5649.
+The KMS can manage keys and secrets used with a comprehensive list of common (AES, ECIES, ...) and Cosmian advanced cryptographic stacks such as [Covercrypt](https://github.com/Cosmian/cover_crypt). Keys can be wrapped and unwrapped using ECIES or RFC5649.
 
 ## Repository content
 
@@ -31,7 +31,7 @@ And also some libraries:
 **Please refer to the README of the inner directories to have more
 information.**
 
-The `enclave` directory contains all the requirements to run the KMS inside an Intel SGX enclave.
+The `sgx` directory contains all the requirements to run the KMS inside an Intel SGX enclave.
 
 You can build a docker containing the KMS server as follow:
 

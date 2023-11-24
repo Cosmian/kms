@@ -46,6 +46,12 @@ repos:
       - id: dockerfile_lint
       - id: markdown-toc
 
+  - repo: https://github.com/tcort/markdown-link-check
+    rev: v3.11.2
+    hooks:
+      - id: markdown-link-check
+        args: [-q]
+
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.2
     hooks:
