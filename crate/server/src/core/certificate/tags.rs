@@ -1,8 +1,6 @@
 use std::collections::HashSet;
 
-use cosmian_kmip::kmip::kmip_types::{
-    Attributes, LinkType, LinkedObjectIdentifier, UniqueIdentifier,
-};
+use cosmian_kmip::kmip::kmip_types::{Attributes, LinkType, LinkedObjectIdentifier};
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 use openssl::{sha::Sha1, x509::X509};
 
@@ -56,7 +54,7 @@ fn get_or_create_subject_key_identifier_value(certificate: &X509) -> Result<Vec<
 ///TODO: retrieve attributes from tags until https://github.com/Cosmian/kms/issues/88 is fixed
 pub async fn add_certificate_tags_to_attributes(
     attributes: &mut Attributes,
-    certificate_id: &UniqueIdentifier,
+    certificate_id: &str,
     kms: &KMS,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()> {
@@ -69,6 +67,17 @@ pub async fn add_certificate_tags_to_attributes(
     {
         attributes.add_link(
             LinkType::PrivateKeyLink,
+            LinkedObjectIdentifier::TextString(id),
+        )
+    }
+    // add link to the public key
+    if let Some(id) = tags
+        .iter()
+        .find(|tag| tag.starts_with("_cert_pk="))
+        .map(|tag| tag.replace("_cert_pk=", ""))
+    {
+        attributes.add_link(
+            LinkType::PublicKeyLink,
             LinkedObjectIdentifier::TextString(id),
         )
     }
@@ -94,6 +103,9 @@ pub fn add_attributes_to_certificate_tags(
 ) -> KResult<()> {
     if let Some(link) = attributes.get_link(LinkType::PrivateKeyLink) {
         tags.insert(format!("_cert_sk={}", link));
+    }
+    if let Some(link) = attributes.get_link(LinkType::PublicKeyLink) {
+        tags.insert(format!("_cert_pk={}", link));
     }
     if let Some(link) = attributes.get_link(LinkType::CertificateLink) {
         tags.insert(format!("_cert_issuer={}", link));

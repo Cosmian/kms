@@ -53,10 +53,10 @@ pub async fn list_access_rights_obtained(
 #[get("/access/list/{object_id}")]
 pub async fn list_accesses(
     req: HttpRequest,
-    object_id: Path<(UniqueIdentifier,)>,
+    object_id: Path<(String,)>,
     kms: Data<Arc<KMSServer>>,
 ) -> KResult<Json<Vec<UserAccessResponse>>> {
-    let object_id = object_id.to_owned().0;
+    let object_id = UniqueIdentifier::TextString(object_id.to_owned().0);
     let database_params = kms.get_sqlite_enc_secrets(&req)?;
     let user = kms.get_user(req)?;
     info!("GET /accesses/{object_id} {user}");

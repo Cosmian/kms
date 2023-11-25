@@ -5,7 +5,7 @@ use cloudproof::reexport::crypto_core::{
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyValue,
     kmip_objects::Object,
-    kmip_types::{CryptographicAlgorithm, LinkType, WrappingMethod},
+    kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
 };
 use cosmian_kms_utils::crypto::{
     curve_25519::operation::create_x25519_key_pair, symmetric::create_symmetric_key,
@@ -238,7 +238,7 @@ fn test_import_export_wrap_private_key(
                 .clone()
                 .unwrap()
                 .unique_identifier,
-            wrapping_key_uid
+            UniqueIdentifier::TextString(wrapping_key_uid.to_owned())
         );
         assert!(
             wrapped_key_wrapping_data

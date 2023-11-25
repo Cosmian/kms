@@ -8,7 +8,9 @@ use cloudproof::reexport::crypto_core::{
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{CertifyResponse, CreateKeyPairResponse, Get},
-    kmip_types::{CertificateType, Link, LinkType, LinkedObjectIdentifier, RecommendedCurve},
+    kmip_types::{
+        CertificateType, Link, LinkType, LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier,
+    },
 };
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams, crypto::curve_25519::kmip_requests::ec_create_key_pair_request,
@@ -18,9 +20,10 @@ use tracing::{debug, log::trace};
 use crate::{
     core::{certificate::quick_cert::ca_signing_key::CASigningKey, KMS},
     error::KmsError,
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
+mod attributes;
 mod ca_signing_key;
 mod create_ca_certificate;
 mod create_leaf_certificate;
@@ -94,7 +97,12 @@ where
     debug!("Build key pair {create_response:?}");
 
     let public_key = get_public_key::<PublicKey, LENGTH>(
-        &create_response.public_key_unique_identifier,
+        create_response
+            .public_key_unique_identifier
+            .as_str()
+            .ok_or_else(|| {
+                KmsError::InvalidRequest("Public key unique identifier is mandatory".to_string())
+            })?,
         kms,
         owner,
         params,
@@ -107,8 +115,22 @@ where
         (
             CASigningKey::new(
                 subject_common_name,
-                &create_response.private_key_unique_identifier,
-                &create_response.public_key_unique_identifier,
+                create_response
+                    .private_key_unique_identifier
+                    .as_str()
+                    .ok_or_else(|| {
+                        KmsError::InvalidRequest(
+                            "Private key unique identifier is mandatory".to_string(),
+                        )
+                    })?,
+                create_response
+                    .public_key_unique_identifier
+                    .as_str()
+                    .ok_or_else(|| {
+                        KmsError::InvalidRequest(
+                            "Public key unique identifier is mandatory".to_string(),
+                        )
+                    })?,
             )
             .key_pair(kms, owner, params)
             .await?,
@@ -175,7 +197,7 @@ where
     Ok((
         create_response,
         CertifyResponse {
-            unique_identifier: certificate_uid,
+            unique_identifier: UniqueIdentifier::TextString(certificate_uid),
         },
     ))
 }
@@ -292,7 +314,10 @@ async fn link_key_pair_to_certificate(
     };
     kms.db
         .update_object(
-            &create_key_pair_response.private_key_unique_identifier,
+            &create_key_pair_response
+                .private_key_unique_identifier
+                .as_str()
+                .context("the create keypair should have returned string identifiers")?,
             &private_key_object,
             Some(&tags),
             params,
@@ -333,7 +358,10 @@ async fn link_key_pair_to_certificate(
     };
     kms.db
         .update_object(
-            &create_key_pair_response.public_key_unique_identifier,
+            &create_key_pair_response
+                .public_key_unique_identifier
+                .as_str()
+                .context("the create keypair should have returned string identifiers")?,
             &public_key_object,
             Some(&tags),
             params,

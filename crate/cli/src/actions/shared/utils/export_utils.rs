@@ -2,7 +2,9 @@ use cosmian_kmip::kmip::{
     kmip_data_structures::KeyWrappingSpecification,
     kmip_objects::Object,
     kmip_operations::{Export, Get},
-    kmip_types::{Attributes, EncryptionKeyInformation, KeyFormatType, WrappingMethod},
+    kmip_types::{
+        Attributes, EncryptionKeyInformation, KeyFormatType, UniqueIdentifier, WrappingMethod,
+    },
 };
 use cosmian_kms_client::KmsRestClient;
 
@@ -41,7 +43,7 @@ pub async fn export_object(
         wrapping_key_id.map(|id| KeyWrappingSpecification {
             wrapping_method: WrappingMethod::Encrypt,
             encryption_key_information: Some(EncryptionKeyInformation {
-                unique_identifier: id.to_string(),
+                unique_identifier: UniqueIdentifier::TextString(id.to_string()),
                 cryptographic_parameters: None,
             }),
             ..KeyWrappingSpecification::default()
@@ -67,7 +69,7 @@ pub async fn export_object(
         // Query the KMS with your kmip data and get the key pair ids
         let get_response = kms_rest_client
             .get(Get::new(
-                object_id,
+                UniqueIdentifier::TextString(object_id.to_string()),
                 unwrap,
                 key_wrapping_specification,
                 key_format_type,

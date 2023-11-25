@@ -1,14 +1,14 @@
 use cosmian_kmip::kmip::{
+    extra::VENDOR_ID_COSMIAN,
     kmip_objects::{Object, ObjectType},
     kmip_operations::{GetAttributes, GetAttributesResponse},
     kmip_types::{
         AttributeReference, Attributes, KeyFormatType, LinkType, LinkedObjectIdentifier, Tag,
-        VendorAttribute, VendorAttributeReference,
+        UniqueIdentifier, VendorAttribute, VendorAttributeReference,
     },
 };
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
-    kmip_utils::VENDOR_ID_COSMIAN,
     tagging::VENDOR_ATTR_TAG,
 };
 use tracing::{debug, trace};
@@ -17,7 +17,7 @@ use crate::{
     core::{certificate::add_certificate_tags_to_attributes, KMS},
     database::retrieve_object_for_operation,
     error::KmsError,
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
 pub async fn get_attributes(
@@ -31,8 +31,10 @@ pub async fn get_attributes(
     // there must be an identifier
     let uid_or_tags = request
         .unique_identifier
-        .clone()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
+        .as_ref()
+        .ok_or(KmsError::UnsupportedPlaceholder)?
+        .as_str()
+        .context("Get Attributes: the unique identifier must be a string")?;
 
     let owm = retrieve_object_for_operation(
         &uid_or_tags,
@@ -82,7 +84,7 @@ pub async fn get_attributes(
             attribute_value: serde_json::to_vec(&tags)?,
         });
         return Ok(GetAttributesResponse {
-            unique_identifier: owm.id,
+            unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
             attributes,
         })
     };
@@ -175,7 +177,7 @@ pub async fn get_attributes(
     }
     debug!("Retrieved Attributes for object {}: {:?}", owm.id, res);
     Ok(GetAttributesResponse {
-        unique_identifier: owm.id,
+        unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
         attributes: res,
     })
 }

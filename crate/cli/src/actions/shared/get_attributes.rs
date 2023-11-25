@@ -2,11 +2,12 @@ use std::{collections::HashMap, path::PathBuf};
 
 use clap::Parser;
 use cosmian_kmip::kmip::{
+    extra::VENDOR_ID_COSMIAN,
     kmip_operations::{GetAttributes, GetAttributesResponse},
-    kmip_types::{AttributeReference, LinkType, Tag, VendorAttributeReference},
+    kmip_types::{AttributeReference, LinkType, Tag, UniqueIdentifier, VendorAttributeReference},
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::{kmip_utils::VENDOR_ID_COSMIAN, tagging::VENDOR_ATTR_TAG};
+use cosmian_kms_utils::tagging::VENDOR_ATTR_TAG;
 use serde_json::Value;
 use tracing::debug;
 
@@ -137,7 +138,7 @@ impl GetAttributesAction {
             attributes,
         } = kms_rest_client
             .get_attributes(GetAttributes {
-                unique_identifier: Some(id),
+                unique_identifier: Some(UniqueIdentifier::TextString(id)),
                 attribute_references: Some(references),
             })
             .await?;

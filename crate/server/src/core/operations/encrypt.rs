@@ -7,7 +7,10 @@ use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::{debug, trace};
 
 use crate::{
-    core::KMS, database::object_with_metadata::ObjectWithMetadata, error::KmsError, result::KResult,
+    core::KMS,
+    database::object_with_metadata::ObjectWithMetadata,
+    error::KmsError,
+    result::{KResult, KResultHelper},
 };
 
 pub async fn encrypt(
@@ -21,8 +24,10 @@ pub async fn encrypt(
     // there must be an identifier
     let uid_or_tags = request
         .unique_identifier
-        .as_deref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
+        .as_ref()
+        .ok_or(KmsError::UnsupportedPlaceholder)?
+        .as_str()
+        .context("Encrypt: the unique identifier or tags must be a string")?;
     trace!("encrypt: uid_or_tags: {uid_or_tags}");
 
     // retrieve from tags or use passed identifier

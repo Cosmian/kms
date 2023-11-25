@@ -8,7 +8,7 @@ use cosmian_kmip::kmip::{
         ObjectType::{self, PrivateKey, PublicKey, SymmetricKey},
     },
     kmip_operations::{Destroy, DestroyResponse, ErrorReason},
-    kmip_types::{KeyFormatType, LinkType, StateEnumeration, UniqueIdentifier},
+    kmip_types::{KeyFormatType, LinkType, StateEnumeration},
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::{debug, trace};
@@ -18,7 +18,7 @@ use crate::{
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
     kms_bail,
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
 /// Destroy a KMIP Object
@@ -34,7 +34,16 @@ pub async fn destroy_operation(
         .as_ref()
         .ok_or(KmsError::UnsupportedPlaceholder)?;
 
-    recursively_destroy_key(uid_or_tags, kms, user, params, HashSet::new()).await?;
+    recursively_destroy_key(
+        uid_or_tags
+            .as_str()
+            .context("Destroy: unique_identifier must be a string")?,
+        kms,
+        user,
+        params,
+        HashSet::new(),
+    )
+    .await?;
     Ok(DestroyResponse {
         unique_identifier: uid_or_tags.clone(),
     })
@@ -142,7 +151,7 @@ pub(crate) async fn recursively_destroy_key<'a: 'async_recursion>(
 
 /// Destroy a key, knowing the object and state
 async fn destroy_key_core(
-    unique_identifier: &UniqueIdentifier,
+    unique_identifier: &str,
     object: &mut Object,
     state: StateEnumeration,
     kms: &KMS,

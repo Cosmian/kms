@@ -7,7 +7,7 @@ use cosmian_kmip::{
         kmip_operations::{Import, ImportResponse},
         kmip_types::{
             Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType,
-            LinkedObjectIdentifier, StateEnumeration,
+            LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
         },
     },
     openssl::{
@@ -41,7 +41,12 @@ pub async fn import(
     // see tagging
     // For instance, a request for unique identifier `[tag1]` will
     // attempt to find a valid single object tagged with `tag1`
-    if request.unique_identifier.starts_with('[') {
+    if request
+        .unique_identifier
+        .as_str()
+        .unwrap_or_default()
+        .starts_with('[')
+    {
         kms_bail!("Importing objects with unique identifiers starting with `[` is not supported");
     }
     // process the request based on the object type
@@ -61,7 +66,7 @@ pub async fn import(
     // return the uid
     debug!("Imported object with uid: {}", uid);
     Ok(ImportResponse {
-        unique_identifier: uid,
+        unique_identifier: UniqueIdentifier::TextString(uid),
     })
 }
 
@@ -90,10 +95,9 @@ async fn process_symmetric_key(
     //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
     object_key_block.key_value.attributes = Some(attributes);
 
-    let uid = if request.unique_identifier.is_empty() {
-        id(&object_key_block.key_bytes()?)?
-    } else {
-        request.unique_identifier.to_string()
+    let uid = match request.unique_identifier.to_string().unwrap_or_default() {
+        uid if uid.is_empty() => id(&object_key_block.key_bytes()?)?,
+        uid => uid,
     };
 
     // insert the tag corresponding to the object type if tags should be updated
@@ -139,10 +143,9 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
 
     // convert the certificate to a KMIP object
     let (unique_id, object) = openssl_certificate_to_kmip(certificate)?;
-    let uid = if request.unique_identifier.is_empty() {
-        unique_id
-    } else {
-        request.unique_identifier.to_string()
+    let uid = match request.unique_identifier.to_string().unwrap_or_default() {
+        uid if uid.is_empty() => unique_id,
+        uid => uid,
     };
 
     // check if the object will be replaced if it already exists
@@ -210,10 +213,9 @@ async fn process_public_key(
         tags.insert("_pk".to_string());
     }
 
-    let uid = if request.unique_identifier.is_empty() {
-        id(&object_key_block.key_bytes()?)?
-    } else {
-        request.unique_identifier.to_string()
+    let uid = match request.unique_identifier.to_string().unwrap_or_default() {
+        uid if uid.is_empty() => id(&object_key_block.key_bytes()?)?,
+        uid => uid,
     };
 
     // check if the object will be replaced if it already exists
@@ -271,11 +273,12 @@ async fn process_private_key(
             &request_attributes,
         );
         // build ui if needed
-        let uid = if request.unique_identifier.is_empty() {
-            id(&object_key_block.key_bytes()?)?
-        } else {
-            request.unique_identifier.to_string()
+
+        let uid = match request.unique_identifier.to_string().unwrap_or_default() {
+            uid if uid.is_empty() => id(&object_key_block.key_bytes()?)?,
+            uid => uid,
         };
+
         return Ok((
             uid.clone(),
             vec![single_operation(tags, replace_existing, object, uid)],
@@ -286,7 +289,7 @@ async fn process_private_key(
     if key_block.key_format_type == KeyFormatType::PKCS12 {
         //PKCS#12 contain more than just a private key, perform specific processing
         return process_pkcs12(
-            &request.unique_identifier,
+            request.unique_identifier.as_str().unwrap_or_default(),
             object,
             request_attributes,
             tags,
@@ -303,7 +306,7 @@ async fn process_private_key(
         openssl_sk,
         tags,
         request_attributes,
-        &request.unique_identifier,
+        request.unique_identifier.as_str().unwrap_or_default(),
     )?;
     Ok((
         sk_uid.clone(),

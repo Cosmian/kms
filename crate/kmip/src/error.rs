@@ -62,6 +62,19 @@ impl From<CryptoCoreError> for KmipError {
     }
 }
 
+#[cfg(feature = "pyo3")]
+impl From<pyo3::PyErr> for KmipError {
+    fn from(e: pyo3::PyErr) -> Self {
+        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+    }
+}
+#[cfg(feature = "pyo3")]
+impl From<KmipError> for pyo3::PyErr {
+    fn from(e: KmipError) -> Self {
+        pyo3::exceptions::PyException::new_err(e.to_string())
+    }
+}
+
 #[cfg(feature = "openssl")]
 impl From<openssl::error::ErrorStack> for KmipError {
     fn from(e: openssl::error::ErrorStack) -> Self {

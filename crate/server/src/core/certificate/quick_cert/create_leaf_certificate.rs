@@ -6,10 +6,6 @@ use cloudproof::reexport::crypto_core::{
 use cosmian_kmip::kmip::kmip_operations::{Certify, CertifyResponse};
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
-    crypto::certificate::attributes::{
-        ca_subject_common_names_from_attributes, certificate_id_from_attributes,
-        subject_common_name_from_attributes,
-    },
     tagging::{check_user_tags, get_tags},
 };
 use tracing::{debug, trace};
@@ -17,7 +13,12 @@ use tracing::{debug, trace};
 use super::KMS;
 use crate::{
     core::certificate::quick_cert::{
-        ca_signing_key::CASigningKey, create_ca_certificate::create_ca_chain,
+        attributes::{
+            ca_subject_common_names_from_attributes, certificate_id_from_attributes,
+            subject_common_name_from_attributes,
+        },
+        ca_signing_key::CASigningKey,
+        create_ca_certificate::create_ca_chain,
         create_key_pair_and_certificate,
     },
     error::KmsError,

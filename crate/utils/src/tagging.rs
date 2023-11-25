@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use cosmian_kmip::kmip::kmip_types::Attributes;
+use cosmian_kmip::kmip::{extra::VENDOR_ID_COSMIAN, kmip_types::Attributes};
 
-use crate::{error::KmipUtilsError, kmip_utils::VENDOR_ID_COSMIAN};
+use crate::error::KmipUtilsError;
 pub const VENDOR_ATTR_TAG: &str = "tag";
 
 /// Constant to use to express there are no tags

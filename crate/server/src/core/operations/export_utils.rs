@@ -5,6 +5,7 @@ use cosmian_kmip::{
         kmip_operations::{Export, ExportResponse},
         kmip_types::{
             Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, StateEnumeration,
+            UniqueIdentifier,
         },
     },
     openssl::{
@@ -45,17 +46,14 @@ pub async fn export_get(
     let request: Export = request.into();
     trace!("Export: {}", serde_json::to_string(&request)?);
 
-    let mut owm = retrieve_object_for_operation(
-        request
-            .unique_identifier
-            .as_ref()
-            .ok_or_else(|| KmsError::InvalidRequest("unique_identifier is missing".to_string()))?,
-        operation_type,
-        kms,
-        user,
-        params,
-    )
-    .await?;
+    let uid_or_tags = request
+        .unique_identifier
+        .as_ref()
+        .ok_or(KmsError::UnsupportedPlaceholder)?
+        .as_str()
+        .context("Export: unique_identifier or tags must be a string")?;
+    let mut owm =
+        retrieve_object_for_operation(uid_or_tags, operation_type, kms, user, params).await?;
     let object_type = owm.object.object_type();
     let export = operation_type == ObjectOperationType::Export;
 
@@ -178,7 +176,7 @@ pub async fn export_get(
 
     Ok(ExportResponse {
         object_type: owm.object.object_type(),
-        unique_identifier: owm.id,
+        unique_identifier: UniqueIdentifier::TextString(owm.id),
         attributes: export_attributes,
         object: owm.object,
     })
@@ -593,7 +591,7 @@ async fn post_process_pkcs12(
     // recover the password
     let password = match &request.key_wrapping_specification {
         Some(kws) => match &kws.encryption_key_information {
-            Some(eki) => eki.unique_identifier.clone(),
+            Some(eki) => eki.unique_identifier.to_string().unwrap_or_default(),
             None => "".to_string(),
         },
         None => "".to_string(),

@@ -14,7 +14,7 @@ use cloudproof::reexport::{
 };
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
-    kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
+    kmip_types::{Attributes, StateEnumeration},
 };
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType},
@@ -108,7 +108,7 @@ impl RedisWithFindex {
     /// Note: Findex indexes are upserted even if the object is not upserted later on
     async fn prepare_object_for_upsert(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         owner: &str,
         object: &Object,
         tags: Option<&HashSet<String>>,
@@ -169,7 +169,7 @@ impl RedisWithFindex {
 
     async fn prepare_object_for_update(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         object: &Object,
         tags: Option<&HashSet<String>>,
     ) -> Result<RedisDbObject, KmsError> {
@@ -206,7 +206,7 @@ impl RedisWithFindex {
 
     async fn prepare_object_for_state_update(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         state: StateEnumeration,
     ) -> Result<RedisDbObject, KmsError> {
         let mut db_object = self
@@ -238,7 +238,7 @@ impl Database for RedisWithFindex {
         object: &Object,
         tags: &HashSet<String>,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<UniqueIdentifier> {
+    ) -> KResult<String> {
         let (uid, db_object) = self
             .prepare_object_for_create(uid, owner, object, tags)
             .await?;
@@ -259,7 +259,7 @@ impl Database for RedisWithFindex {
         owner: &str,
         objects: Vec<(Option<String>, Object, &HashSet<String>)>,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<UniqueIdentifier>> {
+    ) -> KResult<Vec<String>> {
         let mut uids = Vec::with_capacity(objects.len());
         let mut operations = Vec::with_capacity(objects.len());
 
@@ -272,7 +272,7 @@ impl Database for RedisWithFindex {
         if !operations.is_empty() {
             self.atomic(owner, &operations, None).await?;
         }
-        Ok(uids.into_iter().map(UniqueIdentifier::from).collect())
+        Ok(uids.into_iter().map(String::from).collect())
     }
 
     /// Retrieve objects from the database.
@@ -358,7 +358,7 @@ impl Database for RedisWithFindex {
     /// Retrieve the ags of the object with the given `uid`
     async fn retrieve_tags(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
         Ok(self
@@ -374,7 +374,7 @@ impl Database for RedisWithFindex {
     /// If tags is `None`, the tags will not be updated.
     async fn update_object(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         object: &Object,
         tags: Option<&HashSet<String>>,
         _params: Option<&ExtraDatabaseParams>,
@@ -386,7 +386,7 @@ impl Database for RedisWithFindex {
 
     async fn update_state(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -400,7 +400,7 @@ impl Database for RedisWithFindex {
     /// If tags is `None`, the tags will not be updated.
     async fn upsert(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         owner: &str,
         object: &Object,
         tags: Option<&HashSet<String>>,
@@ -419,7 +419,7 @@ impl Database for RedisWithFindex {
 
     async fn delete(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -436,8 +436,7 @@ impl Database for RedisWithFindex {
         &self,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
-    {
+    ) -> KResult<HashMap<String, (String, StateEnumeration, HashSet<ObjectOperationType>)>> {
         let permissions = self
             .permissions_db
             .list_user_permissions(&self.findex_key, user)
@@ -473,7 +472,7 @@ impl Database for RedisWithFindex {
     /// This is called by the owner only
     async fn list_object_accesses_granted(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>> {
         self.permissions_db
@@ -485,7 +484,7 @@ impl Database for RedisWithFindex {
     /// on the object identified by its `uid`
     async fn grant_access(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         user: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
@@ -500,7 +499,7 @@ impl Database for RedisWithFindex {
     /// on the object identified by its `uid`
     async fn remove_access(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         user: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
@@ -514,7 +513,7 @@ impl Database for RedisWithFindex {
     /// Test if an object identified by its `uid` is currently owned by `owner`
     async fn is_object_owned_by(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         owner: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
@@ -535,7 +534,7 @@ impl Database for RedisWithFindex {
         user: &str,
         user_must_be_owner: bool,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
+    ) -> KResult<Vec<(String, StateEnumeration, Attributes, IsWrapped)>> {
         let mut keywords = {
             if let Some(attributes) = researched_attributes {
                 let tags = get_tags(attributes);
@@ -619,7 +618,7 @@ impl Database for RedisWithFindex {
 
     async fn list_user_access_rights_on_object(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         user: &str,
         no_inherited_access: bool,
         _params: Option<&ExtraDatabaseParams>,

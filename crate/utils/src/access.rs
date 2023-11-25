@@ -161,7 +161,7 @@ impl fmt::Display for ObjectOwnedResponse {
 impl From<(String, StateEnumeration, Attributes, IsWrapped)> for ObjectOwnedResponse {
     fn from(e: (String, StateEnumeration, Attributes, IsWrapped)) -> Self {
         Self {
-            object_id: e.0,
+            object_id: UniqueIdentifier::TextString(e.0),
             state: e.1,
             attributes: e.2,
             is_wrapped: e.3,
@@ -189,18 +189,18 @@ impl fmt::Display for AccessRightsObtainedResponse {
 
 impl
     From<(
-        UniqueIdentifier,
+        String,
         (String, StateEnumeration, HashSet<ObjectOperationType>),
     )> for AccessRightsObtainedResponse
 {
     fn from(
         e: (
-            UniqueIdentifier,
+            String,
             (String, StateEnumeration, HashSet<ObjectOperationType>),
         ),
     ) -> Self {
         Self {
-            object_id: e.0,
+            object_id: UniqueIdentifier::TextString(e.0),
             owner_id: e.1.0,
             state: e.1.1,
             operations: e.1.2,

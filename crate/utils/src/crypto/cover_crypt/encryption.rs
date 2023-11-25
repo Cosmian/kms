@@ -15,7 +15,7 @@ use cosmian_kmip::{
     kmip::{
         kmip_objects::Object,
         kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
 };
 use tracing::{debug, trace};
@@ -226,7 +226,7 @@ impl EncryptionSystem for CoverCryptEncryption {
         };
 
         Ok(EncryptResponse {
-            unique_identifier: self.public_key_uid.clone(),
+            unique_identifier: UniqueIdentifier::TextString(self.public_key_uid.clone()),
             data: Some(encrypted_data),
             iv_counter_nonce: None,
             correlation_value: None,

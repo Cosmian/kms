@@ -560,7 +560,7 @@ impl Export {
         };
 
         Self {
-            unique_identifier: Some(uid.to_string()),
+            unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
             key_format_type,
             key_wrap_type,
             key_compression_type: None,
@@ -673,12 +673,13 @@ impl Get {
     /// # Example
     /// ```
     /// use cosmian_kmip::kmip::kmip_operations::Get;
+    /// use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
     ///
-    /// let get_request = Get::new("1234", false, None, None);
+    /// let get_request = Get::new(UniqueIdentifier::TextString("1234".to_string()), false, None, None);
     /// ```
     #[must_use]
     pub fn new(
-        uid: &str,
+        unique_identifier: UniqueIdentifier,
         unwrap: bool,
         key_wrapping_specification: Option<KeyWrappingSpecification>,
         key_format_type: Option<KeyFormatType>,
@@ -693,7 +694,7 @@ impl Get {
         };
 
         Self {
-            unique_identifier: Some(uid.to_string()),
+            unique_identifier: Some(unique_identifier),
             key_format_type,
             key_wrap_type,
             key_compression_type: None,
@@ -702,22 +703,44 @@ impl Get {
     }
 }
 
+impl From<UniqueIdentifier> for Get {
+    // Create a GetRequest for an object to be returned "as registered"
+    fn from(uid: UniqueIdentifier) -> Self {
+        Self::new(uid, false, None, None)
+    }
+}
+impl From<&UniqueIdentifier> for Get {
+    // Create a GetRequest for an object to be returned "as registered"
+    fn from(uid: &UniqueIdentifier) -> Self {
+        Self::new(uid.to_owned(), false, None, None)
+    }
+}
 impl From<String> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: String) -> Self {
-        Self::new(&uid, false, None, None)
+        Self::new(UniqueIdentifier::TextString(uid), false, None, None)
     }
 }
 impl From<&String> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: &String) -> Self {
-        Self::new(uid, false, None, None)
+        Self::new(
+            UniqueIdentifier::TextString(uid.to_owned()),
+            false,
+            None,
+            None,
+        )
     }
 }
 impl From<&str> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: &str) -> Self {
-        Self::new(uid, false, None, None)
+        Self::new(
+            UniqueIdentifier::TextString(uid.to_string()),
+            false,
+            None,
+            None,
+        )
     }
 }
 
@@ -756,7 +779,7 @@ pub struct GetAttributes {
 impl From<String> for GetAttributes {
     fn from(uid: String) -> Self {
         Self {
-            unique_identifier: Some(uid),
+            unique_identifier: Some(UniqueIdentifier::TextString(uid)),
             attribute_references: None,
         }
     }

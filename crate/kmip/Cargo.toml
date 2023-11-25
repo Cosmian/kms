@@ -7,6 +7,7 @@ license-file = "../../LICENSE.md"
 [features]
 default = ["sha3"]
 openssl = ["dep:openssl"]
+pyo3 = ["dep:pyo3"]
 
 [dependencies]
 base58 = "0.2"
@@ -16,6 +17,7 @@ cloudproof = { workspace = true }
 hex = { workspace = true }
 num-bigint-dig = { workspace = true }
 openssl = { workspace = true, optional = true }
+pyo3 = { version = "0.20", optional = true }
 sha3 = { version = "0.10", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

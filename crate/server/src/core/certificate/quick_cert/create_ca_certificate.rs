@@ -12,7 +12,7 @@ use super::{ca_signing_key::CASigningKey, create_key_pair_and_certificate};
 use crate::{
     core::{certificate::validate::locate_ca_private_key, KMS},
     error::KmsError,
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
 async fn create_root_ca(
@@ -38,8 +38,18 @@ async fn create_root_ca(
 
     Ok(CASigningKey::new(
         ca_subject_common_name,
-        &create_key_pair_response.private_key_unique_identifier,
-        &create_key_pair_response.public_key_unique_identifier,
+        create_key_pair_response
+            .private_key_unique_identifier
+            .as_str()
+            .context(
+                "create_root_ca: the returned private_key_unique_identifier must be a string",
+            )?,
+        &create_key_pair_response
+            .public_key_unique_identifier
+            .as_str()
+            .context(
+                "create_root_ca: the returned private_key_unique_identifier must be a string",
+            )?,
     ))
 }
 
@@ -78,8 +88,18 @@ async fn create_sub_ca(
 
     Ok(CASigningKey::new(
         subca_subject_common_name,
-        &create_key_pair_response.private_key_unique_identifier,
-        &create_key_pair_response.public_key_unique_identifier,
+        &create_key_pair_response
+            .private_key_unique_identifier
+            .as_str()
+            .context(
+                "create_root_ca: the returned private_key_unique_identifier must be a string",
+            )?,
+        &create_key_pair_response
+            .public_key_unique_identifier
+            .as_str()
+            .context(
+                "create_root_ca: the returned private_key_unique_identifier must be a string",
+            )?,
     ))
 }
 

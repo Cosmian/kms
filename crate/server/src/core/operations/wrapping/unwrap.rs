@@ -34,7 +34,10 @@ pub async fn unwrap_key(
 ) -> KResult<()> {
     let unwrapping_key_uid = match &object_key_block.key_wrapping_data {
         Some(kwd) => match &kwd.encryption_key_information {
-            Some(eki) => &eki.unique_identifier,
+            Some(eki) => eki
+                .unique_identifier
+                .to_string()
+                .context("unwrap_key: unable to unwrap key: unwrapping key uid is not a string")?,
             None => kms_bail!("unwrap_key: unable to unwrap key: unwrapping key uid is missing"),
         },
         None => kms_bail!("unwrap_key: unable to unwrap key: key wrapping data is missing"),
@@ -42,7 +45,7 @@ pub async fn unwrap_key(
 
     // fetch the unwrapping key
     let unwrapping_key = retrieve_object_for_operation(
-        unwrapping_key_uid,
+        &unwrapping_key_uid,
         ObjectOperationType::Decrypt,
         kms,
         user,

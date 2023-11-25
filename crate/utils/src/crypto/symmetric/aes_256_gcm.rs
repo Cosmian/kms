@@ -7,6 +7,7 @@ use cloudproof::reexport::crypto_core::{
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
+    kmip_types::UniqueIdentifier,
 };
 
 use crate::{error::KmipUtilsError, DecryptionSystem, EncryptionSystem};
@@ -69,7 +70,7 @@ impl EncryptionSystem for AesGcmSystem {
         let mut data = match &request.data {
             None => {
                 return Ok(EncryptResponse {
-                    unique_identifier: self.key_uid.clone(),
+                    unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
                     data: None,
                     iv_counter_nonce: None,
                     correlation_value,
@@ -109,7 +110,7 @@ impl EncryptionSystem for AesGcmSystem {
             .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
 
         Ok(EncryptResponse {
-            unique_identifier: self.key_uid.clone(),
+            unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
             data: Some(data),
             iv_counter_nonce: Some(nonce.as_bytes().to_vec()),
             correlation_value,
@@ -134,7 +135,7 @@ impl DecryptionSystem for AesGcmSystem {
         let mut bytes = match &request.data {
             None => {
                 return Ok(DecryptResponse {
-                    unique_identifier: self.key_uid.clone(),
+                    unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
                     data: None,
                     correlation_value,
                 })
@@ -175,7 +176,7 @@ impl DecryptionSystem for AesGcmSystem {
             .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
 
         Ok(DecryptResponse {
-            unique_identifier: self.key_uid.clone(),
+            unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
             data: Some(bytes),
             correlation_value,
         })

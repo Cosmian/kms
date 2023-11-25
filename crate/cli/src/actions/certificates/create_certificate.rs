@@ -7,13 +7,7 @@ use cosmian_kmip::kmip::{
     kmip_types::{Attributes, CertificateRequestType},
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::{
-    crypto::certificate::attributes::{
-        ca_subject_common_names_as_vendor_attribute, certificate_id_as_vendor_attribute,
-        subject_common_name_as_vendor_attribute,
-    },
-    tagging::set_tags,
-};
+use cosmian_kms_utils::tagging::set_tags;
 
 use crate::{actions::shared::utils::read_bytes_from_file, error::CliError};
 

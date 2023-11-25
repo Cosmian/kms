@@ -5,7 +5,10 @@ use cloudproof::reexport::crypto_core::{
     RsaKeyWrappingAlgorithm, RsaPrivateKey, X25519PrivateKey, CURVE_25519_SECRET_LENGTH,
 };
 use cosmian_kmip::{
-    kmip::kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
+    kmip::{
+        kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
+        kmip_types::UniqueIdentifier,
+    },
     result::KmipResultHelper,
 };
 use openssl::{
@@ -217,7 +220,9 @@ impl DecryptionSystem for HybridDecryptionSystem {
         };
 
         Ok(DecryptResponse {
-            unique_identifier: self.private_key_uid.clone().unwrap_or_default(),
+            unique_identifier: UniqueIdentifier::TextString(
+                self.private_key_uid.clone().unwrap_or_default(),
+            ),
             data: Some(decrypted_data.try_into()?),
             correlation_value: None,
         })

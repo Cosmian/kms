@@ -1,4 +1,7 @@
-use cosmian_kmip::kmip::kmip_operations::{CreateKeyPair, CreateKeyPairResponse};
+use cosmian_kmip::kmip::{
+    kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
+    kmip_types::UniqueIdentifier,
+};
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, trace};
 use uuid::Uuid;
@@ -46,7 +49,7 @@ pub async fn create_key_pair(
 
     debug!("Created  key pair: {}/{}", &sk_uid, &pk_uid);
     Ok(CreateKeyPairResponse {
-        private_key_unique_identifier: sk_uid,
-        public_key_unique_identifier: pk_uid,
+        private_key_unique_identifier: UniqueIdentifier::TextString(sk_uid),
+        public_key_unique_identifier: UniqueIdentifier::TextString(pk_uid),
     })
 }

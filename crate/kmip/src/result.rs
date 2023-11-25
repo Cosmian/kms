@@ -13,7 +13,7 @@ pub trait KmipResultHelper<T> {
         O: FnOnce() -> D;
 }
 
-impl<T, E> KmipResultHelper<T> for std::result::Result<T, E>
+impl<T, E> KmipResultHelper<T> for Result<T, E>
 where
     E: std::error::Error,
 {

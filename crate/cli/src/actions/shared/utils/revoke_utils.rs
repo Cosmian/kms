@@ -24,7 +24,12 @@ pub async fn revoke(
         .await
         .with_context(|| format!("revocation of key {} failed", &key_id))?;
 
-    if key_id == revoke_response.unique_identifier {
+    if key_id
+        == revoke_response
+            .unique_identifier
+            .as_str()
+            .context("the server did not return a key id as a dtring")?
+    {
         println!("Successfully revoked the key: {}.", &key_id);
         Ok(())
     } else {

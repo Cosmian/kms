@@ -5,7 +5,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
     kmip_types::{
         Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, Link, LinkType,
-        LinkedObjectIdentifier, WrappingMethod,
+        LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
     },
 };
 
@@ -102,7 +102,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
     };
 
     Ok(Import {
-        unique_identifier: unique_identifier.unwrap_or_default(),
+        unique_identifier: UniqueIdentifier::TextString(unique_identifier.unwrap_or_default()),
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(replace_existing),
         // We don't deal with the case we need to unwrapped before storing
@@ -176,7 +176,7 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
     };
 
     Ok(Import {
-        unique_identifier: unique_identifier.unwrap_or_default(),
+        unique_identifier: UniqueIdentifier::TextString(unique_identifier.unwrap_or_default()),
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(replace_existing),
         key_wrap_type: if is_wrapped {
@@ -235,7 +235,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     set_tags(&mut attributes, tags)?;
 
     Ok(Import {
-        unique_identifier: unique_identifier.unwrap_or_default(),
+        unique_identifier: UniqueIdentifier::TextString(unique_identifier.unwrap_or_default()),
         object_type: ObjectType::PublicKey,
         replace_existing: Some(replace_existing),
         key_wrap_type: None,
@@ -273,7 +273,7 @@ pub fn build_locate_symmetric_key_request(access_policy: &str) -> Result<Locate,
 /// Build a `Revoke` request to locate an `CoverCrypt` User Decryption Key
 pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, KmipUtilsError> {
     Ok(Destroy {
-        unique_identifier: Some(unique_identifier.to_string()),
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_string())),
     })
 }
 
@@ -288,7 +288,9 @@ pub fn build_rekey_keypair_request(
     action: EditPolicyAction,
 ) -> Result<ReKeyKeyPair, KmipUtilsError> {
     Ok(ReKeyKeyPair {
-        private_key_unique_identifier: Some(master_private_key_unique_identifier.to_string()),
+        private_key_unique_identifier: Some(UniqueIdentifier::TextString(
+            master_private_key_unique_identifier.to_string(),
+        )),
         private_key_attributes: Some(Attributes {
             object_type: Some(ObjectType::PrivateKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),

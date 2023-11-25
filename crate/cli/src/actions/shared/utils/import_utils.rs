@@ -1,13 +1,13 @@
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::Import,
-    kmip_types::{Attributes, KeyWrapType},
+    kmip_types::{Attributes, KeyWrapType, UniqueIdentifier},
 };
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::tagging::set_tags;
 use tracing::trace;
 
-use crate::error::CliError;
+use crate::error::{result::CliResultHelper, CliError};
 
 /// Import an Object into the KMS
 ///
@@ -61,7 +61,7 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
 
     // if the key must be wrapped, wrap it
     let import = Import {
-        unique_identifier,
+        unique_identifier: UniqueIdentifier::TextString(unique_identifier),
         object_type,
         replace_existing: Some(replace_existing),
         key_wrap_type,
@@ -72,5 +72,8 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     // send the import request
     let response = kms_rest_client.import(import).await?;
 
-    Ok(response.unique_identifier)
+    Ok(response.unique_identifier.to_string().context(
+        "import_object: the server did not return a string unique identifier for the imported \
+         object",
+    )?)
 }

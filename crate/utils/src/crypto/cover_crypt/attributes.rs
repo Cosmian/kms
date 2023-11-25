@@ -2,13 +2,12 @@ use cloudproof::reexport::cover_crypt::abe_policy::{self, EncryptionHint, Policy
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
+        extra::VENDOR_ID_COSMIAN,
         kmip_operations::ErrorReason,
         kmip_types::{Attributes, VendorAttribute},
     },
 };
 use serde::{Deserialize, Serialize};
-
-use crate::kmip_utils::VENDOR_ID_COSMIAN;
 
 pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
 pub const VENDOR_ATTR_COVER_CRYPT_POLICY: &str = "cover_crypt_policy";

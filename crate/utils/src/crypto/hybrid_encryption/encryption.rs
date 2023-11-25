@@ -7,7 +7,10 @@ use cloudproof::reexport::crypto_core::{
     P384PublicKey, RsaKeyWrappingAlgorithm, RsaPublicKey, X25519PublicKey,
     ED25519_PUBLIC_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH,
 };
-use cosmian_kmip::kmip::kmip_operations::{Encrypt, EncryptResponse};
+use cosmian_kmip::kmip::{
+    kmip_operations::{Encrypt, EncryptResponse},
+    kmip_types::UniqueIdentifier,
+};
 use openssl::{
     nid::Nid,
     pkey::{Id, PKey, Public},
@@ -125,7 +128,7 @@ impl EncryptionSystem for HybridEncryptionSystem {
             ciphertext.len(),
         );
         Ok(EncryptResponse {
-            unique_identifier: self.public_key_uid.clone(),
+            unique_identifier: UniqueIdentifier::TextString(self.public_key_uid.clone()),
             data: Some(ciphertext),
             iv_counter_nonce: None,
             correlation_value: None,

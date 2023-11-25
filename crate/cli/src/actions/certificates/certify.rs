@@ -4,15 +4,13 @@ use clap::Parser;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::Certify,
-    kmip_types::{Attributes, CertificateAttributes, CertificateRequestType},
+    kmip_types::{
+        Attributes, CertificateAttributes, CertificateRequestType, LinkType,
+        LinkedObjectIdentifier, UniqueIdentifier,
+    },
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::{
-    crypto::certificate::attributes::{
-        certificate_id_as_vendor_attribute, issuer_private_key_id_as_vendor_attribute,
-    },
-    tagging::set_tags,
-};
+use cosmian_kms_utils::tagging::set_tags;
 
 use crate::{actions::shared::utils::read_bytes_from_file, error::CliError};
 
@@ -35,25 +33,25 @@ pub struct CertifyAction {
     #[clap(long ="certificate-signing-request-format", short = 'f', default_value="pem", value_parser(["pem", "der"]))]
     certificate_signing_request_format: String,
 
-    /// If not using a CSR, the public key to certify
+    /// If not using a CSR, the id of the public key to certify
     #[clap(
-        long = "public-key-to-certify",
+        long = "public-key-id-to-certify",
         short = 'p',
         group = "csr_pk",
         requires = "subject_name"
     )]
-    public_key_to_certify: Option<String>,
+    public_key_id_to_certify: Option<String>,
 
     /// When certifying a public key, the subject name to use
     ///
     /// For instance: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"
-    #[clap(long = "subject-name", short = 's', group = "csr_pk")]
+    #[clap(long = "subject-name", short = 's')]
     subject_name: Option<String>,
 
-    /// The unique identifier of the private key of the issuer.
-    /// A certificate must be linked to that private key
-    #[clap(required = true, value_name = "ISSUER_PRIVATE_KEY_ID")]
-    issuer_private_key_id: String,
+    /// The unique identifier of the certificate of the issuer.
+    /// A private key must be linked to that certificate
+    #[clap(required = true, value_name = "ISSUER_CERTIFICATE_ID")]
+    issuer_certificate_id: String,
 
     /// The requested number of validity days
     /// The server may grant a different value
@@ -68,16 +66,25 @@ pub struct CertifyAction {
 
 impl CertifyAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
-        // Providing a particular issuer is not provided by the KMIP protocol.
-        // We use a vendor attribute to provide it.
-        let mut vendor_attributes = vec![issuer_private_key_id_as_vendor_attribute(
-            &self.issuer_private_key_id,
-        )?];
+        let mut attributes = Attributes::default();
+        attributes.object_type = Some(ObjectType::Certificate);
+
+        // set the issuer certificate id
+        attributes.add_link(
+            LinkType::CertificateLink,
+            LinkedObjectIdentifier::TextString(self.issuer_certificate_id.clone()),
+        );
+
+        // set the number of requested days
+        attributes.set_requested_validity_days(self.number_of_days);
 
         // A certificate id has been provided
         if let Some(certificate_id) = &self.certificate_id {
-            vendor_attributes.push(certificate_id_as_vendor_attribute(certificate_id)?);
+            attributes.unique_identifier =
+                Some(UniqueIdentifier::TextString(certificate_id.clone()));
         }
+
+        set_tags(&mut attributes, &self.tags)?;
 
         // Using a CSR ?
         let (certificate_request_value, certificate_request_type) =
@@ -96,10 +103,8 @@ impl CertifyAction {
             };
 
         // Using a Public Key ?
-        let (unique_identifier, mut attributes) = if let Some(public_key_to_certify) =
-            &self.public_key_to_certify
+        let unique_identifier = if let Some(public_key_to_certify) = &self.public_key_id_to_certify
         {
-            let mut attributes = Attributes::default();
             attributes.certificate_attributes = Some(CertificateAttributes::parse_subject_line(
                 self.subject_name.as_ref().ok_or_else(|| {
                     CliError::Default(
@@ -107,15 +112,12 @@ impl CertifyAction {
                     )
                 })?,
             )?);
-            (Some(public_key_to_certify.to_string()), attributes)
+            Some(UniqueIdentifier::TextString(
+                public_key_to_certify.to_string(),
+            ))
         } else {
-            (None, Attributes::default())
+            None
         };
-
-        // Request attributes with tags
-        attributes.object_type = Some(ObjectType::Certificate);
-        attributes.vendor_attributes = Some(vendor_attributes);
-        set_tags(&mut attributes, &self.tags)?;
 
         let certify_request = Certify {
             unique_identifier,

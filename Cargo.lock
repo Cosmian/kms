@@ -1144,6 +1144,7 @@ dependencies = [
  "hex",
  "num-bigint-dig",
  "openssl",
+ "pyo3",
  "serde",
  "serde_json",
  "sha3",

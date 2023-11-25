@@ -55,7 +55,10 @@ pub async fn wrap_key(
         .unwrap_or(EncodingOption::TTLVEncoding);
 
     let wrapping_key_uid = match &key_wrapping_specification.encryption_key_information {
-        Some(eki) => &eki.unique_identifier,
+        Some(eki) => eki
+            .unique_identifier
+            .as_str()
+            .context("unable to unwrap key: unwrapping key uid is not a string")?,
         None => kms_bail!("unable to unwrap key: unwrapping key uid is missing"),
     };
 

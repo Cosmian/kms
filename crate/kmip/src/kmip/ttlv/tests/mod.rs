@@ -20,7 +20,7 @@ use crate::{
             AsynchronousIndicator, AttestationType, Attributes, BatchErrorContinuationOption,
             Credential, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
             LinkedObjectIdentifier, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
-            ResultStatusEnumeration,
+            ResultStatusEnumeration, UniqueIdentifier,
         },
         ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
     },
@@ -621,7 +621,7 @@ fn test_java_import_request() {
 fn test_java_import_response() {
     log_init("info");
     let ir = ImportResponse {
-        unique_identifier: "blah".to_string(),
+        unique_identifier: UniqueIdentifier::TextString("blah".to_string()),
     };
     let json = serde_json::to_string(&to_ttlv(&ir).unwrap()).unwrap();
     let ir_ = from_ttlv(&serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
@@ -859,7 +859,9 @@ pub fn test_message_response() {
                 unique_batch_item_id: Some(1234),
                 response_payload: Some(Operation::LocateResponse(LocateResponse {
                     located_items: Some(134),
-                    unique_identifiers: Some(vec!["some_id".to_string()]),
+                    unique_identifiers: Some(vec![UniqueIdentifier::TextString(
+                        "some_id".to_string(),
+                    )]),
                 })),
                 message_extension: Some(MessageExtension {
                     vendor_identification: "CosmianVendor".to_string(),
@@ -875,7 +877,7 @@ pub fn test_message_response() {
                 operation: Some(OperationEnumeration::Decrypt),
                 unique_batch_item_id: Some(1235),
                 response_payload: Some(Operation::DecryptResponse(DecryptResponse {
-                    unique_identifier: "id_12345".to_string(),
+                    unique_identifier: UniqueIdentifier::TextString("id_12345".to_string()),
                     data: Some(b"decrypted_data".to_vec()),
                     correlation_value: Some(vec![9_u8, 13]),
                 })),
@@ -909,7 +911,10 @@ pub fn test_message_response() {
         panic!("not a decrypt operation's response payload");
     };
     assert_eq!(decrypt.data, Some(b"decrypted_data".to_vec()));
-    assert_eq!(decrypt.unique_identifier, "id_12345".to_string());
+    assert_eq!(
+        decrypt.unique_identifier,
+        UniqueIdentifier::TextString("id_12345".to_string())
+    );
     assert_eq!(res, res_);
 }
 
@@ -992,7 +997,7 @@ pub fn test_message_enforce_enum() {
             unique_batch_item_id: None,
             // mismatch operation regarding the enum
             request_payload: Operation::DecryptResponse(DecryptResponse {
-                unique_identifier: "id_12345".to_string(),
+                unique_identifier: UniqueIdentifier::TextString("id_12345".to_string()),
                 data: Some(b"decrypted_data".to_vec()),
                 correlation_value: None,
             }),

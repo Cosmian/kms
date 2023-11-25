@@ -1,4 +1,4 @@
-use cosmian_kmip::kmip::kmip_operations::Destroy;
+use cosmian_kmip::kmip::{kmip_operations::Destroy, kmip_types::UniqueIdentifier};
 use cosmian_kms_client::KmsRestClient;
 
 use crate::{
@@ -9,7 +9,7 @@ use crate::{
 pub async fn destroy(kms_rest_client: &KmsRestClient, key_id: &str) -> Result<(), CliError> {
     // Create the kmip query
     let destroy_query = Destroy {
-        unique_identifier: Some(key_id.to_string()),
+        unique_identifier: Some(UniqueIdentifier::TextString(key_id.to_string())),
     };
 
     // Query the KMS with your kmip data
@@ -18,7 +18,12 @@ pub async fn destroy(kms_rest_client: &KmsRestClient, key_id: &str) -> Result<()
         .await
         .with_context(|| format!("destroying the key {} failed", &key_id))?;
 
-    if key_id == destroy_response.unique_identifier {
+    if key_id
+        == destroy_response
+            .unique_identifier
+            .as_str()
+            .context("The server did not return the key uid as a string")?
+    {
         println!("Successfully destroyed the key: {}.", &key_id);
         Ok(())
     } else {

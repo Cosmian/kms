@@ -1,6 +1,7 @@
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{Create, CreateResponse},
+    kmip_types::UniqueIdentifier,
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, trace};
@@ -41,6 +42,6 @@ pub async fn create(
     );
     Ok(CreateResponse {
         object_type: request.object_type,
-        unique_identifier: uid,
+        unique_identifier: UniqueIdentifier::TextString(uid),
     })
 }

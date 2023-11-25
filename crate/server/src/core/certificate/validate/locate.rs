@@ -6,7 +6,11 @@ use cosmian_kmip::kmip::{
 use cosmian_kms_utils::{access::ExtraDatabaseParams, tagging::set_tags};
 use tracing::debug;
 
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{
+    core::KMS,
+    error::KmsError,
+    result::{KResult, KResultHelper},
+};
 
 async fn locate_by_tags(
     object_type: ObjectType,
@@ -40,7 +44,9 @@ async fn locate_by_tags(
                     "locate_by_tags: Found {object_type:?} matching tags '{tags:?}' with unique \
                      identifier: {uid}",
                 );
-                Ok(uid)
+                Ok(uid
+                    .to_string()
+                    .context("locate_by_tags: the returned uid must be a string")?)
             }
             _ => Err(KmsError::InvalidRequest(format!(
                 "locate_by_tags: More than one object {object_type:?} found for tags '{tags:?}'"
@@ -103,7 +109,9 @@ pub(crate) async fn locate_by_spki(
                     "locate_by_spki: Found {object_type:?} matching tags '{tags:?}' with unique \
                      identifier: {uid}",
                 );
-                Ok(uid)
+                Ok(uid
+                    .to_string()
+                    .context("locate_by_spki: the returned uid must be a string")?)
             }
         },
 

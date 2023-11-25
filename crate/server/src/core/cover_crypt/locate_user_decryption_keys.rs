@@ -13,7 +13,7 @@ use cosmian_kms_utils::{
 
 use crate::{
     core::{operations, KMS},
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
 /// Locate all the user decryption keys associated with the master private key
@@ -51,5 +51,12 @@ pub(crate) async fn locate_user_decryption_keys(
     };
     let locate_response =
         operations::locate(kmip_server, locate_request, state, owner, params).await?;
-    Ok(locate_response.unique_identifiers)
+    locate_response
+        .unique_identifiers
+        .map(|ids| {
+            ids.into_iter()
+                .map(|id| id.to_string().context("locate_user_decryption_keys"))
+                .collect::<KResult<Vec<String>>>()
+        })
+        .transpose()
 }

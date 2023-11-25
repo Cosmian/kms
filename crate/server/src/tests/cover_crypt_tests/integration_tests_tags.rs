@@ -6,7 +6,7 @@ use cosmian_kmip::kmip::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
         EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
-    kmip_types::RevocationReason,
+    kmip_types::{RevocationReason, UniqueIdentifier},
 };
 use cosmian_kms_utils::crypto::{
     cover_crypt::{
@@ -254,7 +254,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let _revoke_response: RevokeResponse = test_utils::post(
         &app,
         &Revoke {
-            unique_identifier: Some(udk1_json_tag.clone()),
+            unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.to_string())),
             revocation_reason: RevocationReason::TextString("Revocation test".to_owned()),
             compromise_occurrence_date: None,
         },
@@ -332,7 +332,13 @@ async fn integration_tests_with_tags() -> KResult<()> {
     // Destroy user decryption key
     let request = build_destroy_key_request(&udk1_json_tag)?;
     let destroy_response: DestroyResponse = test_utils::post(&app, &request).await?;
-    assert_eq!(&udk1_json_tag, &destroy_response.unique_identifier);
+    assert_eq!(
+        &udk1_json_tag,
+        &destroy_response
+            .unique_identifier
+            .as_str()
+            .context("There should be a unique identifier in the destroy response")?
+    );
 
     Ok(())
 }
