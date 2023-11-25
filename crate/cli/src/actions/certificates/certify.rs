@@ -4,7 +4,7 @@ use clap::Parser;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::Certify,
-    kmip_types::{Attributes, CertificateRequestType},
+    kmip_types::{Attributes, CertificateAttributes, CertificateRequestType},
 };
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::{
@@ -16,7 +16,7 @@ use cosmian_kms_utils::{
 
 use crate::{actions::shared::utils::read_bytes_from_file, error::CliError};
 
-/// Certify a Certificate Signing Request to create a X509 certificate.
+/// Certify a Certificate Signing Request or a Public key to create a X509 certificate.
 ///
 /// Tags can be later used to retrieve the key. Tags are optional.
 #[derive(Parser)]
@@ -27,13 +27,28 @@ pub struct CertifyAction {
     #[clap(long = "certificate-id", short = 'k')]
     certificate_id: Option<String>,
 
-    /// The path to a certificate signing request..
-    #[clap(required = true, value_name = "CERTIFICATE_SIGNING_REQUEST")]
-    certificate_signing_request: PathBuf,
+    /// The path to a certificate signing request.
+    #[clap(long = "certificate-signing-request", short = 'c', group = "csr_pk")]
+    certificate_signing_request: Option<PathBuf>,
 
     /// The format of the certificate signing request.
     #[clap(long ="certificate-signing-request-format", short = 'f', default_value="pem", value_parser(["pem", "der"]))]
     certificate_signing_request_format: String,
+
+    /// If not using a CSR, the public key to certify
+    #[clap(
+        long = "public-key-to-certify",
+        short = 'p',
+        group = "csr_pk",
+        requires = "subject_name"
+    )]
+    public_key_to_certify: Option<String>,
+
+    /// When certifying a public key, the subject name to use
+    ///
+    /// For instance: "CN=John Doe,OU=Org Unit,O=Org Name,L=City,ST=State,C=US"
+    #[clap(long = "subject-name", short = 's', group = "csr_pk")]
+    subject_name: Option<String>,
 
     /// The unique identifier of the private key of the issuer.
     /// A certificate must be linked to that private key
@@ -64,24 +79,46 @@ impl CertifyAction {
             vendor_attributes.push(certificate_id_as_vendor_attribute(certificate_id)?);
         }
 
-        // The CSR
-        let certificate_request_value =
-            Some(read_bytes_from_file(&self.certificate_signing_request)?);
-        let certificate_request_type = match self.certificate_signing_request_format.as_str() {
-            "der" => Some(CertificateRequestType::PKCS10),
-            _ => Some(CertificateRequestType::PEM),
+        // Using a CSR ?
+        let (certificate_request_value, certificate_request_type) =
+            if let Some(certificate_signing_request) = &self.certificate_signing_request {
+                let certificate_request_value =
+                    Some(read_bytes_from_file(certificate_signing_request)?);
+
+                let certificate_request_type =
+                    match self.certificate_signing_request_format.as_str() {
+                        "der" => Some(CertificateRequestType::PKCS10),
+                        _ => Some(CertificateRequestType::PEM),
+                    };
+                (certificate_request_value, certificate_request_type)
+            } else {
+                (None, None)
+            };
+
+        // Using a Public Key ?
+        let (unique_identifier, mut attributes) = if let Some(public_key_to_certify) =
+            &self.public_key_to_certify
+        {
+            let mut attributes = Attributes::default();
+            attributes.certificate_attributes = Some(CertificateAttributes::parse_subject_line(
+                self.subject_name.as_ref().ok_or_else(|| {
+                    CliError::Default(
+                        "subject name is required when certifying a public key".to_string(),
+                    )
+                })?,
+            )?);
+            (Some(public_key_to_certify.to_string()), attributes)
+        } else {
+            (None, Attributes::default())
         };
 
         // Request attributes with tags
-        let mut attributes = Attributes {
-            object_type: Some(ObjectType::Certificate),
-            vendor_attributes: Some(vendor_attributes),
-            ..Attributes::default()
-        };
+        attributes.object_type = Some(ObjectType::Certificate);
+        attributes.vendor_attributes = Some(vendor_attributes);
         set_tags(&mut attributes, &self.tags)?;
 
         let certify_request = Certify {
-            unique_identifier: None, // not supported yet
+            unique_identifier,
             attributes: Some(attributes),
             certificate_request_value,
             certificate_request_type,

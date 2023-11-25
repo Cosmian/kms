@@ -58,6 +58,9 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
 ) -> Result<Create, KmipUtilsError> {
     let mut attributes = Attributes {
         activation_date: None,
+        certificate_attributes: None,
+        certificate_type: None,
+        certificate_length: None,
         cryptographic_algorithm: Some(cryptographic_algorithm),
         cryptographic_length: Some(key_len_in_bits as i32),
         cryptographic_parameters: None,

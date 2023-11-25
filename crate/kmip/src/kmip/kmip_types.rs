@@ -14,6 +14,7 @@ use serde::{
 use strum::{Display, EnumIter, EnumString};
 
 use super::kmip_objects::ObjectType;
+use crate::error::KmipError;
 
 /// 4.7
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).
@@ -783,6 +784,25 @@ pub struct Attributes {
     /// NOT be changed or deleted before the object is destroyed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub activation_date: Option<u64>, // epoch millis
+
+    ///The Certificate Attributes are the various items included in a certificate.
+    /// The following list is based on RFC2253.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_attributes: Option<CertificateAttributes>,
+
+    /// The Certificate Type attribute is a type of certificate (e.g., X.509).
+    /// The Certificate Type value SHALL be set by the server when the certificate
+    /// is created or registered and then SHALL NOT be changed or deleted
+    /// before the object is destroyed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_type: Option<CertificateType>,
+
+    /// The Certificate Length attribute is the length in bytes of the Certificate object.
+    /// The Certificate Length SHALL be set by the server when the object is created or registered,
+    /// and then SHALL NOT be changed or deleted before the object is destroyed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub certificate_length: Option<i32>,
+
     /// The Cryptographic Algorithm of an object. The Cryptographic Algorithm of
     /// a Certificate object identifies the algorithm for the public key
     /// contained within the Certificate. The digital signature algorithm used
@@ -792,6 +812,7 @@ pub struct Attributes {
     /// deleted before the object is destroyed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
+
     /// For keys, Cryptographic Length is the length in bits of the clear-text
     /// cryptographic key material of the Managed Cryptographic Object. For
     /// certificates, Cryptographic Length is the length in bits of the public
@@ -800,6 +821,7 @@ pub struct Attributes {
     /// be changed or deleted before the object is destroyed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_length: Option<i32>,
+
     /// The Cryptographic Domain Parameters attribute is a structure that
     /// contains fields that MAY need to be specified in the Create Key Pair
     /// Request Payload. Specific fields MAY only pertain to certain types
@@ -810,15 +832,18 @@ pub struct Attributes {
     /// [SP800-56A](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Ar3.pdf)).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_domain_parameters: Option<CryptographicDomainParameters>,
+
     /// See `CryptographicParameters`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_parameters: Option<CryptographicParameters>,
+
     /// The Cryptographic Usage Mask attribute defines the cryptographic usage
     /// of a key. This is a bit mask that indicates to the client which
     /// cryptographic functions MAY be performed using the key, and which ones
     /// SHALL NOT be performed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cryptographic_usage_mask: Option<CryptographicUsageMask>,
+
     /// 4.26 The Key Format Type attribute is a required attribute of a
     /// Cryptographic Object. It is set by the server, but a particular Key
     /// Format Type MAY be requested by the client if the cryptographic material
@@ -832,6 +857,7 @@ pub struct Attributes {
     /// non-default value is specified).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_format_type: Option<KeyFormatType>,
+
     /// The Link attribute is a structure used to create a link from one Managed
     /// Cryptographic Object to another, closely related target Managed
     /// Cryptographic Object. The link has a type, and the allowed types differ,
@@ -857,12 +883,14 @@ pub struct Attributes {
     /// corresponding private key is held in a different manner)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub link: Option<Vec<Link>>,
+
     /// The Object Typeof a Managed Object (e.g., public key, private key,
     /// symmetric key, etc.) SHALL be set by the server when the object is
     /// created or registered and then SHALL NOT be changed or deleted before
     /// the object is destroyed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub object_type: Option<ObjectType>,
+
     /// A vendor specific Attribute is a structure used for sending and
     /// receiving a Managed Object attribute. The Vendor Identification and
     /// Attribute Name are text-strings that are used to identify the attribute.
@@ -1002,7 +1030,7 @@ impl Attributes {
 }
 
 /// The Certificate Attributes are the various items included in a certificate. The following list is based on RFC2253.
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Default)]
 #[serde(rename_all = "PascalCase")]
 pub struct CertificateAttributes {
     // Certificate Subject CN
@@ -1053,6 +1081,51 @@ pub struct CertificateAttributes {
     pub certificate_issuer_dc: String,
     // Certificate Issuer DN Qualifier
     pub certificate_issuer_dn_qualifier: String,
+}
+
+impl CertificateAttributes {
+    pub fn parse_subject_line(subject_line: &str) -> Result<Self, KmipError> {
+        let mut certificate_attributes = CertificateAttributes::default();
+
+        for component in subject_line.split(',') {
+            let mut parts = component.splitn(2, '=');
+            let key = parts
+                .next()
+                .ok_or_else(|| KmipError::Default("subject name identifier missing".to_string()))?
+                .trim();
+            let value = parts
+                .next()
+                .ok_or_else(|| {
+                    KmipError::Default(format!("subject name value missing for identifier {}", key))
+                })?
+                .trim();
+            match key {
+                "CN" => certificate_attributes.certificate_subject_cn = value.to_owned(),
+                "O" => certificate_attributes.certificate_subject_o = value.to_owned(),
+                "OU" => certificate_attributes.certificate_subject_ou = value.to_owned(),
+                "Email" => certificate_attributes.certificate_subject_email = value.to_owned(),
+                "C" => certificate_attributes.certificate_subject_c = value.to_owned(),
+                "ST" => certificate_attributes.certificate_subject_st = value.to_owned(),
+                "L" => certificate_attributes.certificate_subject_l = value.to_owned(),
+                "UID" => certificate_attributes.certificate_subject_uid = value.to_owned(),
+                "Serial Number" => {
+                    certificate_attributes.certificate_subject_serial_number = value.to_owned()
+                }
+                "Title" => certificate_attributes.certificate_subject_title = value.to_owned(),
+                "DC" => certificate_attributes.certificate_subject_dc = value.to_owned(),
+                "DN Qualifier" => {
+                    certificate_attributes.certificate_subject_dn_qualifier = value.to_owned()
+                }
+                _ => {
+                    return Err(KmipError::Default(format!(
+                        "Invalid subject line identifier: {}",
+                        key
+                    )))
+                }
+            }
+        }
+        Ok(certificate_attributes)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]

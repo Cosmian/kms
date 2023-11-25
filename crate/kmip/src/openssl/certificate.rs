@@ -1,11 +1,14 @@
-use openssl::x509::X509;
+use openssl::{
+    nid::Nid,
+    x509::{X509Name, X509NameBuilder, X509},
+};
 
 use crate::{
     error::KmipError,
     id,
     kmip::{
         kmip_objects::{Object, Object::Certificate},
-        kmip_types::CertificateType,
+        kmip_types::{CertificateAttributes, CertificateType},
     },
 };
 
@@ -37,3 +40,24 @@ pub fn kmip_certificate_to_openssl(certificate: &Object) -> Result<X509, KmipErr
         )),
     }
 }
+
+impl CertificateAttributes {
+    pub fn build_subject_name(&self) -> Result<X509Name, KmipError> {
+        let mut builder = X509NameBuilder::new()?;
+        builder.append_entry_by_nid(Nid::COMMONNAME, &*self.certificate_subject_cn)?;
+        builder.append_entry_by_nid(Nid::ORGANIZATIONALUNITNAME, &*self.certificate_subject_ou)?;
+        builder.append_entry_by_nid(Nid::COUNTRYNAME, &*self.certificate_subject_c)?;
+        builder.append_entry_by_nid(Nid::STATEORPROVINCENAME, &*self.certificate_subject_st)?;
+        builder.append_entry_by_nid(Nid::LOCALITYNAME, &*self.certificate_subject_l)?;
+        builder.append_entry_by_nid(Nid::ORGANIZATIONNAME, &*self.certificate_subject_o)?;
+        builder.append_entry_by_nid(Nid::PKCS9_EMAILADDRESS, &*self.certificate_subject_email)?;
+        Ok(builder.build())
+    }
+}
+
+// builder.append_entry_by_nid(Nid::ORGANIZATIONALUNITNAME, "Dis")?;
+
+// builder.append_entry_by_nid(Nid::COUNTRYNAME, "US")?;
+// builder.append_entry_by_nid(Nid::STATEORPROVINCENAME, "Denial")?;
+// builder.append_entry_by_nid(Nid::LOCALITYNAME, "Springfield")?;
+// builder.append_entry_by_nid(Nid::ORGANIZATIONNAME, "Dis")?;

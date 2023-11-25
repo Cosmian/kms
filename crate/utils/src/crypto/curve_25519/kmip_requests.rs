@@ -18,6 +18,9 @@ pub fn ec_create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 ) -> Result<CreateKeyPair, KmipUtilsError> {
     let mut attributes = Attributes {
         activation_date: None,
+        certificate_attributes: None,
+        certificate_type: None,
+        certificate_length: None,
         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
         cryptographic_length: Some(Q_LENGTH_BITS),
         cryptographic_domain_parameters: Some(CryptographicDomainParameters {
