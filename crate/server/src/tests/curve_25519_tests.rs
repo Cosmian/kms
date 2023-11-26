@@ -39,7 +39,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let sk_response = kms
         .get(
             get_private_key_request(
-                &response
+                response
                     .private_key_unique_identifier
                     .as_str()
                     .context("no string for the private_key_unique_identifier")?,
@@ -102,7 +102,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let pk_response = kms
         .get(
             get_public_key_request(
-                &response
+                response
                     .public_key_unique_identifier
                     .as_str()
                     .context("no string for the public_key_unique_identifier")?,

@@ -196,6 +196,7 @@ pub async fn certify(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_certificate(
     tags: &mut HashSet<String>,
     attributes: &mut Attributes,
@@ -220,7 +221,7 @@ fn build_certificate(
             .as_ref(),
     )?;
     x509_builder.set_issuer_name(issuer_x509.subject_name())?;
-    x509_builder.sign(&issuer_pkey, MessageDigest::sha256())?;
+    x509_builder.sign(issuer_pkey, MessageDigest::sha256())?;
     let x509 = x509_builder.build();
 
     // link the certificate to the issuer certificate

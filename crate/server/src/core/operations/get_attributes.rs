@@ -37,7 +37,7 @@ pub async fn get_attributes(
         .context("Get Attributes: the unique identifier must be a string")?;
 
     let owm = retrieve_object_for_operation(
-        &uid_or_tags,
+        uid_or_tags,
         ObjectOperationType::GetAttributes,
         kms,
         user,

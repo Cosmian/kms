@@ -559,7 +559,7 @@ async fn test_abe_json_access() -> KResult<()> {
         .create(
             build_create_user_decryption_private_key_request(
                 secret_mkg_fin_access_policy,
-                &*master_private_key_uid,
+                &master_private_key_uid,
                 EMPTY_TAGS,
             )?,
             owner,

@@ -270,7 +270,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     // check public key
     kms.get(
         get_public_key_request(
-            &response
+            response
                 .public_key_unique_identifier
                 .as_str()
                 .context("no string for the public_key_unique_identifier")?,
@@ -300,7 +300,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     let pk_response = kms
         .get(
             get_public_key_request(
-                &response
+                response
                     .public_key_unique_identifier
                     .as_str()
                     .context("no string for the public_key_unique_identifier")?,

@@ -72,8 +72,8 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     // send the import request
     let response = kms_rest_client.import(import).await?;
 
-    Ok(response.unique_identifier.to_string().context(
+    response.unique_identifier.to_string().context(
         "import_object: the server did not return a string unique identifier for the imported \
          object",
-    )?)
+    )
 }

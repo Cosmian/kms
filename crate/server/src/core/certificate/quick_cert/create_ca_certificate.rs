@@ -44,7 +44,7 @@ async fn create_root_ca(
             .context(
                 "create_root_ca: the returned private_key_unique_identifier must be a string",
             )?,
-        &create_key_pair_response
+        create_key_pair_response
             .public_key_unique_identifier
             .as_str()
             .context(
@@ -88,13 +88,13 @@ async fn create_sub_ca(
 
     Ok(CASigningKey::new(
         subca_subject_common_name,
-        &create_key_pair_response
+        create_key_pair_response
             .private_key_unique_identifier
             .as_str()
             .context(
                 "create_root_ca: the returned private_key_unique_identifier must be a string",
             )?,
-        &create_key_pair_response
+        create_key_pair_response
             .public_key_unique_identifier
             .as_str()
             .context(

@@ -314,7 +314,7 @@ async fn link_key_pair_to_certificate(
     };
     kms.db
         .update_object(
-            &create_key_pair_response
+            create_key_pair_response
                 .private_key_unique_identifier
                 .as_str()
                 .context("the create keypair should have returned string identifiers")?,
@@ -358,7 +358,7 @@ async fn link_key_pair_to_certificate(
     };
     kms.db
         .update_object(
-            &create_key_pair_response
+            create_key_pair_response
                 .public_key_unique_identifier
                 .as_str()
                 .context("the create keypair should have returned string identifiers")?,

@@ -156,7 +156,7 @@ pub(crate) async fn retrieve_private_key_for_certificate(
     params: Option<&ExtraDatabaseParams>,
 ) -> Result<ObjectWithMetadata, KmsError> {
     let mut attributes = Attributes::default();
-    add_certificate_tags_to_attributes(&mut attributes, &certificate_id, kms, params).await?;
+    add_certificate_tags_to_attributes(&mut attributes, certificate_id, kms, params).await?;
 
     let private_key_id = attributes
         .get_link(LinkType::PKCS12CertificateLink)
@@ -193,7 +193,7 @@ pub(crate) async fn retrieve_private_key_for_certificate(
 
 async fn find_link_in_public_key(
     link_type: LinkType,
-    public_key_id: &String,
+    public_key_id: &str,
     operation_type: ObjectOperationType,
     kms: &KMS,
     user: &str,
@@ -201,7 +201,7 @@ async fn find_link_in_public_key(
 ) -> Result<String, KmsError> {
     // TODO: retrieve only the attributes when #88 is fixed
     let public_key_owm =
-        retrieve_object_for_operation(&public_key_id, operation_type, kms, user, params).await?;
+        retrieve_object_for_operation(public_key_id, operation_type, kms, user, params).await?;
     let public_key_attributes = public_key_owm.object.attributes().with_context(|| {
         format!("could not retrieve the public key attributes: {public_key_id}")
     })?;

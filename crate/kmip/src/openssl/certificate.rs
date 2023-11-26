@@ -48,37 +48,37 @@ impl CertificateAttributes {
         let mut builder = X509NameBuilder::new()?;
         if !self.certificate_subject_cn.is_empty() {
             builder
-                .append_entry_by_nid(Nid::COMMONNAME, &*self.certificate_subject_cn)
+                .append_entry_by_nid(Nid::COMMONNAME, &self.certificate_subject_cn)
                 .context("invalid common name")?;
         }
         if !self.certificate_subject_ou.is_empty() {
             builder
-                .append_entry_by_nid(Nid::ORGANIZATIONALUNITNAME, &*self.certificate_subject_ou)
+                .append_entry_by_nid(Nid::ORGANIZATIONALUNITNAME, &self.certificate_subject_ou)
                 .context("invalid organizational unit")?;
         }
         if !self.certificate_subject_c.is_empty() {
             builder
-                .append_entry_by_nid(Nid::COUNTRYNAME, &*self.certificate_subject_c)
+                .append_entry_by_nid(Nid::COUNTRYNAME, &self.certificate_subject_c)
                 .context("invalid country name")?;
         }
         if !self.certificate_subject_st.is_empty() {
             builder
-                .append_entry_by_nid(Nid::STATEORPROVINCENAME, &*self.certificate_subject_st)
+                .append_entry_by_nid(Nid::STATEORPROVINCENAME, &self.certificate_subject_st)
                 .context("invalid state or province")?;
         }
         if !self.certificate_subject_l.is_empty() {
             builder
-                .append_entry_by_nid(Nid::LOCALITYNAME, &*self.certificate_subject_l)
+                .append_entry_by_nid(Nid::LOCALITYNAME, &self.certificate_subject_l)
                 .context("invalid locality")?;
         }
         if !self.certificate_subject_o.is_empty() {
             builder
-                .append_entry_by_nid(Nid::ORGANIZATIONNAME, &*self.certificate_subject_o)
+                .append_entry_by_nid(Nid::ORGANIZATIONNAME, &self.certificate_subject_o)
                 .context("invalid organization")?;
         }
         if !self.certificate_subject_email.is_empty() {
             builder
-                .append_entry_by_nid(Nid::PKCS9_EMAILADDRESS, &*self.certificate_subject_email)
+                .append_entry_by_nid(Nid::PKCS9_EMAILADDRESS, &self.certificate_subject_email)
                 .context("invalid email")?;
         }
         Ok(builder.build())
