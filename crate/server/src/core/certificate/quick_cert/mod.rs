@@ -27,6 +27,7 @@ mod attributes;
 mod ca_signing_key;
 mod create_ca_certificate;
 mod create_leaf_certificate;
+mod locate;
 
 pub const DEFAULT_EXPIRATION_TIME: u64 = 6;
 

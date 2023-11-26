@@ -8,9 +8,11 @@ use cosmian_kmip::kmip::kmip_operations::ErrorReason;
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::debug;
 
-use super::{ca_signing_key::CASigningKey, create_key_pair_and_certificate};
+use super::{
+    ca_signing_key::CASigningKey, create_key_pair_and_certificate, locate::locate_ca_private_key,
+};
 use crate::{
-    core::{certificate::validate::locate_ca_private_key, KMS},
+    core::KMS,
     error::KmsError,
     result::{KResult, KResultHelper},
 };
