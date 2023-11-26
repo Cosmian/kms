@@ -13,7 +13,6 @@ use cosmian_kmip::{
         kmip_certificate_to_openssl, kmip_private_key_to_openssl, kmip_public_key_to_openssl,
         openssl_certificate_to_kmip,
     },
-    result::KmipResultHelper,
 };
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
@@ -31,14 +30,14 @@ use crate::{
     core::{
         certificate::{
             add_attributes_to_certificate_tags, add_certificate_system_tags,
-            retrieve_private_key_for_certificate,
+            retrieve_matching_private_key_and_certificate,
         },
         KMS,
     },
     database::{retrieve_object_for_operation, AtomicOperation},
     error::KmsError,
     kms_bail,
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
 pub async fn certify(
@@ -62,35 +61,24 @@ pub async fn certify(
         check_user_tags(&tags)?;
     }
 
-    // Retrieve the issuer certificate
-    let issuer_certificate_id =
-        attributes
-            .get_link(LinkType::CertificateLink)
-            .ok_or_else(|| {
-                KmsError::InvalidRequest(
-                    "Attributes do not specify the link to the certificate".to_string(),
-                )
-            })?;
-    let issuer_certificate = retrieve_object_for_operation(
-        &issuer_certificate_id,
-        ObjectOperationType::Certify,
-        kms,
-        user,
-        params,
-    )
-    .await?;
-    let issuer_x509 = kmip_certificate_to_openssl(&issuer_certificate.object)?;
+    // Retrieve the issuer certificate id if provided
+    let issuer_certificate_id = attributes.get_link(LinkType::CertificateLink);
+    // Retrieve the issuer private key id if provided
+    let issuer_private_key_id = attributes.get_link(LinkType::PrivateKeyLink);
 
-    // Retrieve the Private Key
-    let issuer_private_key = retrieve_private_key_for_certificate(
-        &issuer_certificate_id,
-        ObjectOperationType::Certify,
+    // Retrieve the issuer certificate and the issuer private key
+    let (issuer_private_key, issuer_certificate) = retrieve_matching_private_key_and_certificate(
+        issuer_private_key_id,
+        issuer_certificate_id,
         kms,
         user,
         params,
     )
     .await?;
+
+    // convert to openssl
     let issuer_pkey = kmip_private_key_to_openssl(&issuer_private_key.object)?;
+    let issuer_x509 = kmip_certificate_to_openssl(&issuer_certificate.object)?;
 
     // Create a new Asn1Time object for the current time
     let now = Asn1Time::days_from_now(0).context("could not get a date in ASN.1")?;
@@ -112,7 +100,7 @@ pub async fn certify(
         let (issued_certificate_id, issued_certificate) = build_certificate(
             &mut tags,
             &mut attributes,
-            &issuer_certificate_id,
+            &issuer_certificate.id,
             &issuer_pkey,
             &issuer_x509,
             now,
@@ -162,7 +150,7 @@ pub async fn certify(
         let (issued_certificate_id, issued_certificate) = build_certificate(
             &mut tags,
             &mut attributes,
-            &issuer_certificate_id,
+            &issuer_certificate.id,
             &issuer_pkey,
             &issuer_x509,
             now,

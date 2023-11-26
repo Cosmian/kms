@@ -22,11 +22,11 @@ use crate::{actions::shared::utils::read_bytes_from_file, error::CliError};
 pub struct CertifyAction {
     /// The certificate unique identifier.
     /// A random one will be generated if not provided.
-    #[clap(long = "certificate-id", short = 'k')]
+    #[clap(long = "certificate-id", short = 'i')]
     certificate_id: Option<String>,
 
     /// The path to a certificate signing request.
-    #[clap(long = "certificate-signing-request", short = 'c', group = "csr_pk")]
+    #[clap(long = "certificate-signing-request", short = 'r', group = "csr_pk")]
     certificate_signing_request: Option<PathBuf>,
 
     /// The format of the certificate signing request.
@@ -48,10 +48,17 @@ pub struct CertifyAction {
     #[clap(long = "subject-name", short = 's')]
     subject_name: Option<String>,
 
+    /// The unique identifier of the private key of the issuer.
+    /// A certificate must be linked to that private key
+    /// if no issuer certificate id is provided.
+    #[clap(long = "issuer-private-key-id", short = 'k')]
+    issuer_private_key_id: Option<String>,
+
     /// The unique identifier of the certificate of the issuer.
     /// A private key must be linked to that certificate
-    #[clap(required = true, value_name = "ISSUER_CERTIFICATE_ID")]
-    issuer_certificate_id: String,
+    /// if no issuer private key id is provided.
+    #[clap(long = "issuer-certificate-id", short = 'c')]
+    issuer_certificate_id: Option<String>,
 
     /// The requested number of validity days
     /// The server may grant a different value
@@ -66,14 +73,41 @@ pub struct CertifyAction {
 
 impl CertifyAction {
     pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
-        let mut attributes = Attributes::default();
-        attributes.object_type = Some(ObjectType::Certificate);
+        if self.certificate_signing_request.is_none() && self.public_key_id_to_certify.is_none() {
+            return Err(CliError::Default(
+                "Either a certificate signing request or a public key to certify must be provided"
+                    .to_string(),
+            ))
+        }
+
+        if self.issuer_certificate_id.is_none() && self.issuer_private_key_id.is_none() {
+            return Err(CliError::Default(
+                "Either an issuer certificate id or an issuer private key id or both must be \
+                 provided"
+                    .to_string(),
+            ))
+        }
+
+        let mut attributes = Attributes {
+            object_type: Some(ObjectType::Certificate),
+            ..Attributes::default()
+        };
 
         // set the issuer certificate id
-        attributes.add_link(
-            LinkType::CertificateLink,
-            LinkedObjectIdentifier::TextString(self.issuer_certificate_id.clone()),
-        );
+        if let Some(issuer_certificate_id) = &self.issuer_certificate_id {
+            attributes.add_link(
+                LinkType::CertificateLink,
+                LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
+            );
+        }
+
+        // set the issuer private key id
+        if let Some(issuer_private_key_id) = &self.issuer_private_key_id {
+            attributes.add_link(
+                LinkType::PrivateKeyLink,
+                LinkedObjectIdentifier::TextString(issuer_private_key_id.clone()),
+            );
+        }
 
         // set the number of requested days
         attributes.set_requested_validity_days(self.number_of_days);

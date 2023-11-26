@@ -32,7 +32,8 @@ pub fn certify(
     csr_file: Option<String>,
     public_key_id_to_certify: Option<String>,
     subject_name: Option<String>,
-    issuer_private_key_id: &str,
+    issuer_private_key_id: Option<String>,
+    issuer_certificate_key_id: Option<String>,
     certificate_id: Option<String>,
     days: Option<usize>,
     tags: Option<&[&str]>,
@@ -40,7 +41,15 @@ pub fn certify(
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
-    let mut args: Vec<String> = vec!["certify".to_owned(), issuer_private_key_id.to_owned()];
+    let mut args: Vec<String> = vec!["certify".to_owned()];
+    if let Some(issuer_certificate_key_id) = issuer_certificate_key_id {
+        args.push("--issuer-certificate-id".to_owned());
+        args.push(issuer_certificate_key_id);
+    }
+    if let Some(issuer_private_key_id) = issuer_private_key_id {
+        args.push("--issuer-private-key-id".to_owned());
+        args.push(issuer_private_key_id);
+    }
     if let Some(csr_file) = csr_file {
         args.push("--certificate-signing-request".to_owned());
         args.push(csr_file);
@@ -53,8 +62,8 @@ pub fn certify(
         args.push("--subject-name".to_owned());
         args.push(subject_name);
     }
-    if let Some(key_id) = certificate_id {
-        args.push(key_id);
+    if let Some(certificate_id) = certificate_id {
+        args.push(certificate_id);
     }
     if let Some(days) = days {
         args.push("--days".to_owned());
@@ -127,7 +136,8 @@ async fn certify_a_csr_test() -> Result<(), CliError> {
         Some("test_data/certificates/csr/leaf.csr".to_owned()),
         None,
         None,
-        &issuer_private_key_id,
+        Some(issuer_private_key_id.clone()),
+        None,
         None,
         None,
         None,
@@ -235,7 +245,8 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         None,
         Some(public_key_id),
         Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = kmserver.acme.com".to_string()),
-        &issuer_private_key_id,
+        Some(issuer_private_key_id.clone()),
+        None,
         None,
         None,
         None,
@@ -297,7 +308,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         .unwrap();
     export_key(
         &ctx.owner_cli_conf_path,
-        "keys",
+        "ec",
         &public_key_link,
         "/tmp/exported_public_key.json",
         None,
