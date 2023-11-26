@@ -13,9 +13,10 @@ All notable changes to this project will be documented in this file.
 - Support for the Get Attributes KMIP operation
 - Database: support for atomic operations
 - Replaced part of Rust Crypto with openssl for more standardized module support
-- Deactivated automatic certificate verification, which will be reallocated for the future `Validate` KMIP operation support
+- Deactivated automatic certificate verification, which will be reallocated 
+    for the future `Validate` KMIP operation support [#102](https://github.com/Cosmian/kms/issues/102)
 - Deactivated  the non KMIP compliant certificate "quick create feature", 
-     which will can now be achived using the `Certify` KMIP operation
+     which can now be achived using the `Certify` KMIP operation [#103](https://github.com/Cosmian/kms/issues/103)
 
 ### Bug Fixes
 
@@ -25,24 +26,7 @@ All notable changes to this project will be documented in this file.
   - enforced KMIP default export formats [#78](https://github.com/Cosmian/kms/issues/78)
   - aligned `Unique Identifier` to KMIP definition but only the `TextString` variant is supported.
   - Use od standards attributes instead of Vendor attributes wherever possible
-
-
-## [4.8.0] - 2023-10-07
-
-### Bug Fixes
-
-- Clarified CLI documentation for certificates sub command
-- TODO: Re-used existing import facility
-
-### Features
-
-- adds support for Google Workspace Client Side Encryption. Single key for now.
-  Compatibility with Google Drive and Google Meet.
-- ckms: adds support for login to the Identity Provider and get an access token
-
-- KMS running inside TEE (SGX or SEV)
-  - review the `verify` subcommand
-
+  
 ## [4.9.1] - 2023-11-14
 
 ### Bug Fixes
@@ -90,7 +74,7 @@ All notable changes to this project will be documented in this file.
   - force checking the leaf TLS certificate when querying a KMS running inside a TEE
   - verify RA-TLS certificate before querying the bootstrap server
   - review the TLS certificate generation using the key tied to the TEE
-  - remove libsgx and create a new dependence to tee_attestation crate
+  - remove libsgx and create a new dependance to tee_attestation crate
   - update KMS server argument regarding the TEE and certbot
   - review documentation regarding the KMS usage inside a TEE
 - Activate tracing in CLI tests when binary is instrumented ([#56])

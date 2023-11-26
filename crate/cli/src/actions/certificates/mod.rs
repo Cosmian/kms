@@ -13,7 +13,6 @@ use crate::error::CliError;
 
 mod certify;
 
-// mod create_certificate;
 mod decrypt_certificate;
 mod destroy_certificate;
 mod encrypt_certificate;

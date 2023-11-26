@@ -1,7 +1,4 @@
 mod find;
-#[allow(dead_code)]
-//TODO: the quick cert functionality needs to be completely revisited as it is not part of KMIP and converted to openssl
-mod quick_cert;
 mod tags;
 
 pub(crate) use find::{
