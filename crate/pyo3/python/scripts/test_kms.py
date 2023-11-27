@@ -296,7 +296,6 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
                 self.pub_key_uid,
             )
 
-        
         # Rename attribute "FIN"
         # await self.client.rename_cover_crypt_attribute(
         #     'Department::FIN',

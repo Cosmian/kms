@@ -105,7 +105,7 @@ pub async fn export_get(
             }
             owm.object
                 .attributes()
-                .map_or(Attributes::default(), |v| v.clone())
+                .map_or(Attributes::default(), std::clone::Clone::clone)
         }
         ObjectType::PublicKey => {
             // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
@@ -133,7 +133,7 @@ pub async fn export_get(
             }
             owm.object
                 .attributes()
-                .map_or(Attributes::default(), |v| v.clone())
+                .map_or(Attributes::default(), std::clone::Clone::clone)
         }
         ObjectType::SymmetricKey => {
             // according to the KMIP specs the KeyMaterial is not returned if the object is destroyed
@@ -161,7 +161,7 @@ pub async fn export_get(
             }
             owm.object
                 .attributes()
-                .map_or(Attributes::default(), |v| v.clone())
+                .map_or(Attributes::default(), std::clone::Clone::clone)
         }
         ObjectType::Certificate => {
             if let Some(key_format_type) = &request.key_format_type {
@@ -592,9 +592,9 @@ async fn post_process_pkcs12_for_private_key(
     let password = match &request.key_wrapping_specification {
         Some(kws) => match &kws.encryption_key_information {
             Some(eki) => eki.unique_identifier.to_string().unwrap_or_default(),
-            None => "".to_string(),
+            None => String::new(),
         },
-        None => "".to_string(),
+        None => String::new(),
     };
     // Create the PKCS12
     let pkcs12 = openssl::pkcs12::Pkcs12::builder()

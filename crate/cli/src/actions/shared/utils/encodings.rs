@@ -45,7 +45,7 @@ use crate::{cli_bail, error::CliError};
 pub(crate) fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, CliError> {
     let mut objects = Vec::<Object>::new();
     let pem_s = pem::parse_many(bytes)?;
-    for pem in pem_s.into_iter() {
+    for pem in pem_s {
         match pem.tag() {
             "RSA PRIVATE KEY" => objects.push(Object::PrivateKey {
                 key_block: key_block(KeyFormatType::PKCS1, pem.into_contents()),
@@ -96,8 +96,7 @@ pub(crate) fn objects_from_pem(bytes: &[u8]) -> Result<Vec<Object>, CliError> {
             }
             x => {
                 return Err(CliError::KmsClientError(format!(
-                    "PEM tag {} not supported",
-                    x
+                    "PEM tag {x} not supported"
                 )))
             }
         }

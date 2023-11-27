@@ -47,10 +47,10 @@ pub struct ImportCertificateAction {
     /// The input file in PEM, KMIP-JSON-TTLV or PKCS#12 format.
     #[clap(
         required_if_eq_any([
-            ("input_format", "json-ttlv"), 
+            ("input_format", "json-ttlv"),
             ("input_format", "pem"),
-            ("input_format", "der"), 
-            ("input_format", "chain"), 
+            ("input_format", "der"),
+            ("input_format", "chain"),
             ("input_format", "pkcs12")
             ])
     )]
@@ -110,22 +110,22 @@ impl ImportCertificateAction {
             let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
             attributes.add_link(
                 LinkType::CertificateLink,
-                LinkedObjectIdentifier::TextString(issuer_certificate_id.to_owned()),
-            )
+                LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
+            );
         };
         if let Some(private_key_id) = &self.private_key_id {
             let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
             attributes.add_link(
                 LinkType::PrivateKeyLink,
-                LinkedObjectIdentifier::TextString(private_key_id.to_owned()),
-            )
+                LinkedObjectIdentifier::TextString(private_key_id.clone()),
+            );
         };
         if let Some(public_key_id) = &self.public_key_id {
             let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
             attributes.add_link(
                 LinkType::PublicKeyLink,
-                LinkedObjectIdentifier::TextString(public_key_id.to_owned()),
-            )
+                LinkedObjectIdentifier::TextString(public_key_id.clone()),
+            );
         };
 
         match self.input_format {
@@ -252,13 +252,13 @@ impl ImportCertificateAction {
         if let Some(password) = &self.pkcs12_password {
             attributes.add_link(
                 LinkType::PKCS12PasswordLink,
-                LinkedObjectIdentifier::TextString(password.to_owned()),
+                LinkedObjectIdentifier::TextString(password.clone()),
             );
         }
 
         let private_key_id = import_object(
             kms_rest_client,
-            self.certificate_id.to_owned(),
+            self.certificate_id.clone(),
             private_key,
             Some(attributes),
             false,
@@ -300,7 +300,7 @@ impl ImportCertificateAction {
                 let attributes = import_attributes.get_or_insert(Attributes::default());
                 attributes.add_link(
                     LinkType::CertificateLink,
-                    LinkedObjectIdentifier::TextString(id.to_owned()),
+                    LinkedObjectIdentifier::TextString(id.clone()),
                 );
             }
             // import the certificate

@@ -357,9 +357,9 @@ fn single_operation(
     uid: String,
 ) -> AtomicOperation {
     if replace_existing {
-        AtomicOperation::Upsert((uid, object, tags.to_owned(), StateEnumeration::Active))
+        AtomicOperation::Upsert((uid, object, tags.clone(), StateEnumeration::Active))
     } else {
-        AtomicOperation::Create((uid.clone(), object, tags.to_owned().unwrap_or_default()))
+        AtomicOperation::Create((uid.clone(), object, tags.clone().unwrap_or_default()))
     }
 }
 
@@ -431,7 +431,7 @@ async fn process_pkcs12(
     let mut chain: Vec<(String, Object, Option<HashSet<String>>)> = Vec::new();
     if let Some(cas) = pkcs12.ca {
         // import the cas
-        for openssl_cert in cas.into_iter() {
+        for openssl_cert in cas {
             // insert the tag corresponding to the object type if tags should be updated
             let mut chain_certificate_tags = user_tags.clone();
             if let Some(tags) = chain_certificate_tags.as_mut() {
@@ -464,7 +464,7 @@ async fn process_pkcs12(
             // for PKCS12CertificateLink
             LinkType::PKCS12CertificateLink,
             LinkedObjectIdentifier::TextString(leaf_certificate_uid.clone()),
-        )
+        );
     }
     operations.push(single_operation(
         private_key_tags,
@@ -526,7 +526,7 @@ fn add_imported_links_to_attributes(attributes: &mut Attributes, links_to_add: &
     if let Some(new_links) = links_to_add.link.as_ref() {
         match attributes.link.as_mut() {
             Some(existing_links) => {
-                for new_link in new_links.iter() {
+                for new_link in new_links {
                     if !existing_links.contains(new_link) {
                         existing_links.push(new_link.clone());
                     }

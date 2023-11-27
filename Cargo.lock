@@ -1205,7 +1205,6 @@ dependencies = [
  "cosmian_kms_utils",
  "http",
  "josekit",
- "log",
  "openssl",
  "ratls",
  "reqwest",
@@ -1269,7 +1268,6 @@ dependencies = [
  "josekit",
  "lazy_static",
  "mime",
- "num-bigint-dig",
  "openssl",
  "ratls",
  "rawsql",
@@ -1294,7 +1292,6 @@ name = "cosmian_kms_utils"
 version = "4.9.1"
 dependencies = [
  "argon2",
- "chrono",
  "cloudproof",
  "cosmian_kmip",
  "num-bigint-dig",

@@ -36,7 +36,7 @@ python cse_cmd.py -h
       ```
 
 2. Create a directory for storing all certificates in p7 pem format.
-   
+
     Ex: $root/p7pem_certs
 
     a. The certificate file should contain the full chain to root CA and should
@@ -46,14 +46,14 @@ python cse_cmd.py -h
 
     b. If you have p7b file, you can use the following openssl command to convert
     it to a p7 pem format:
-    
+
     ```bash
     openssl pkcs7 -inform DER -in {old_name.p7b} -outform PEM -out {new_name.p7pem}
     ```
 
 3. Note that all commands require one argument
 
-  `--creds`: a json file contains credentials to the service account created 
+  `--creds`: a json file contains credentials to the service account created
   in your GCP project. After creating a service account, you can download
   the credentials to that account to a json file, which you will use here.
 
@@ -61,7 +61,8 @@ python cse_cmd.py -h
 
 4. Easiest is to run the `insert` command to insert key pairs and identities
 
-  Ex: 
+  Ex:
+
   ```bash
   python cse_cmd.py insert
       --creds $root/svc_acct_creds.json

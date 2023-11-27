@@ -85,8 +85,8 @@ pub enum SplitKeyMethod {
 ///  - SPKI DER (RFC 5480) for RSA and EC public keys
 ///  - X509 DER for certificates (RFC 5280)
 ///  - PKCS#10 DER for certificate requests (RFC 2986)
-///  - TransparentSymmetricKey for symmetric keys
-///  - Raw for opaque objects adn Secret Data
+///  - `TransparentSymmetricKey` for symmetric keys
+///  - Raw for opaque objects and Secret Data
 ///
 #[allow(clippy::enum_clike_unportable_variant)]
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display, EnumIter)]
@@ -975,7 +975,7 @@ impl Attributes {
     ) -> Option<Vec<u8>> {
         let value = self
             .get_vendor_attribute_value(vendor_identification, attribute_name)
-            .map(|v| v.to_vec());
+            .map(<[u8]>::to_vec);
         if value.is_some() {
             self.remove_vendor_attribute(vendor_identification, attribute_name);
         }
@@ -1141,7 +1141,7 @@ impl CertificateAttributes {
             let value = parts
                 .next()
                 .ok_or_else(|| {
-                    KmipError::Default(format!("subject name value missing for identifier {}", key))
+                    KmipError::Default(format!("subject name value missing for identifier {key}"))
                 })?
                 .trim();
             match key {
@@ -1154,17 +1154,16 @@ impl CertificateAttributes {
                 "L" => certificate_attributes.certificate_subject_l = value.to_owned(),
                 "UID" => certificate_attributes.certificate_subject_uid = value.to_owned(),
                 "Serial Number" => {
-                    certificate_attributes.certificate_subject_serial_number = value.to_owned()
+                    certificate_attributes.certificate_subject_serial_number = value.to_owned();
                 }
                 "Title" => certificate_attributes.certificate_subject_title = value.to_owned(),
                 "DC" => certificate_attributes.certificate_subject_dc = value.to_owned(),
                 "DN Qualifier" => {
-                    certificate_attributes.certificate_subject_dn_qualifier = value.to_owned()
+                    certificate_attributes.certificate_subject_dn_qualifier = value.to_owned();
                 }
                 _ => {
                     return Err(KmipError::Default(format!(
-                        "Invalid subject line identifier: {}",
-                        key
+                        "Invalid subject line identifier: {key}"
                     )))
                 }
             }
@@ -1840,15 +1839,16 @@ pub enum UniqueIdentifier {
 impl Display for UniqueIdentifier {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            UniqueIdentifier::TextString(s) => write!(f, "{}", s),
-            UniqueIdentifier::Enumeration(e) => write!(f, "{}", e),
-            UniqueIdentifier::Integer(i) => write!(f, "{}", i),
+            UniqueIdentifier::TextString(s) => write!(f, "{s}"),
+            UniqueIdentifier::Enumeration(e) => write!(f, "{e}"),
+            UniqueIdentifier::Integer(i) => write!(f, "{i}"),
         }
     }
 }
 
 impl UniqueIdentifier {
-    /// Returns the value as a string if it is a TextString
+    /// Returns the value as a string if it is a `TextString`
+    #[must_use]
     pub fn as_str(&self) -> Option<&str> {
         match self {
             UniqueIdentifier::TextString(s) => Some(s),
@@ -1856,7 +1856,8 @@ impl UniqueIdentifier {
         }
     }
 
-    /// Returns the value as a string if it is a TextString
+    /// Returns the value as a string if it is a `TextString`
+    #[must_use]
     pub fn to_string(&self) -> Option<String> {
         match self {
             UniqueIdentifier::TextString(s) => Some(s.clone()),

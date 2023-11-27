@@ -22,12 +22,12 @@ use crate::{
 ///
 /// The supported `KeyFormatType` are:
 /// * PKCS1
-/// * ECPrivateKey (SEC1)
+/// * `ECPrivateKey` (SEC1)
 /// * PKCS8 (not encrypted only)
-/// * TransparentRSAPrivateKey
+/// * `TransparentRSAPrivateKey`
 ///
 /// Note: `TransparentECPrivateKey` is not supported: the current openssl implementation
-/// does not allow constructing a private key without the public component.  
+/// does not allow constructing a private key without the public component.
 ///
 /// # Arguments
 ///
@@ -77,7 +77,7 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                     BigNum::from_slice(&modulus.to_bytes_be())?,
                     BigNum::from_slice(
                         &public_exponent
-                            .to_owned()
+                            .clone()
                             .context(
                                 "the public exponent is required for Transparent RSA Private Keys",
                             )?
@@ -85,7 +85,7 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                     )?,
                     BigNum::from_slice(
                         &private_exponent
-                            .to_owned()
+                            .clone()
                             .context(
                                 "the private exponent is required for Transparent RSA Private Keys",
                             )?
@@ -96,8 +96,8 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                     if let Some(q) = q {
                         rsa_private_key_builder = rsa_private_key_builder
                             .set_factors(
-                                BigNum::from_slice(&p.to_owned().to_bytes_be())?,
-                                BigNum::from_slice(&q.to_owned().to_bytes_be())?,
+                                BigNum::from_slice(&p.clone().to_bytes_be())?,
+                                BigNum::from_slice(&q.clone().to_bytes_be())?,
                             )
                             .context("Failed to set 'p' and 'q' on the RSA Private key")?;
                     }
@@ -107,9 +107,9 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                         if let Some(crt_coefficient) = crt_coefficient {
                             rsa_private_key_builder = rsa_private_key_builder
                                 .set_crt_params(
-                                    BigNum::from_slice(&prime_exponent_p.to_owned().to_bytes_be())?,
-                                    BigNum::from_slice(&prime_exponent_q.to_owned().to_bytes_be())?,
-                                    BigNum::from_slice(&crt_coefficient.to_owned().to_bytes_be())?,
+                                    BigNum::from_slice(&prime_exponent_p.clone().to_bytes_be())?,
+                                    BigNum::from_slice(&prime_exponent_q.clone().to_bytes_be())?,
+                                    BigNum::from_slice(&crt_coefficient.clone().to_bytes_be())?,
                                 )
                                 .context("Failed to set CRT parameters on the RSA Private key")?;
                         }

@@ -30,8 +30,8 @@ impl HybridDecryptionSystem {
     pub fn new(private_key_uid: Option<String>, private_key: PKey<Private>) -> Self {
         trace!("Instantiated hybrid decryption system for private key id: {private_key_uid:?}");
         Self {
-            private_key_uid,
             private_key,
+            private_key_uid,
         }
     }
 

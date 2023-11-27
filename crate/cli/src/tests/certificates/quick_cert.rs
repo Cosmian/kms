@@ -51,7 +51,7 @@ pub fn certify(
     // add tags
     for tag in tags {
         args.push("--tag".to_owned());
-        args.push(tag.to_string());
+        args.push((*tag).to_string());
     }
     args.push(ca.to_string());
     cmd.arg(SUB_COMMAND).args(args);

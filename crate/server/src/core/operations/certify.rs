@@ -252,7 +252,7 @@ fn parse_csr(
     }?;
 
     let subject_name = csr.subject_name().to_owned()?;
-    let public_key = csr.public_key()?.to_owned();
+    let public_key = csr.public_key()?.clone();
 
     Ok((subject_name, public_key))
 }

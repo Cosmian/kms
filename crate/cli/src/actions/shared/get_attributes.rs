@@ -91,43 +91,43 @@ impl GetAttributesAction {
         for tag in &self.attribute_tags {
             match tag {
                 AttributeTag::ActivationDate => {
-                    references.push(AttributeReference::Standard(Tag::ActivationDate))
+                    references.push(AttributeReference::Standard(Tag::ActivationDate));
                 }
                 AttributeTag::CryptographicAlgorithm => {
-                    references.push(AttributeReference::Standard(Tag::CryptographicAlgorithm))
+                    references.push(AttributeReference::Standard(Tag::CryptographicAlgorithm));
                 }
                 AttributeTag::CryptographicLength => {
-                    references.push(AttributeReference::Standard(Tag::CryptographicLength))
+                    references.push(AttributeReference::Standard(Tag::CryptographicLength));
                 }
                 AttributeTag::CryptographicParameters => {
-                    references.push(AttributeReference::Standard(Tag::CryptographicParameters))
+                    references.push(AttributeReference::Standard(Tag::CryptographicParameters));
                 }
                 AttributeTag::CryptographicDomainParameters => references.push(
                     AttributeReference::Standard(Tag::CryptographicDomainParameters),
                 ),
                 AttributeTag::CryptographicUsageMask => {
-                    references.push(AttributeReference::Standard(Tag::CryptographicUsageMask))
+                    references.push(AttributeReference::Standard(Tag::CryptographicUsageMask));
                 }
                 AttributeTag::KeyFormatType => {
-                    references.push(AttributeReference::Standard(Tag::KeyFormatType))
+                    references.push(AttributeReference::Standard(Tag::KeyFormatType));
                 }
                 AttributeTag::LinkedPrivateKeyId => {
-                    references.push(AttributeReference::Standard(Tag::PrivateKey))
+                    references.push(AttributeReference::Standard(Tag::PrivateKey));
                 }
                 AttributeTag::LinkedPublicKeyId => {
-                    references.push(AttributeReference::Standard(Tag::PublicKey))
+                    references.push(AttributeReference::Standard(Tag::PublicKey));
                 }
                 AttributeTag::LinkedIssuerCertificateId => {
-                    references.push(AttributeReference::Standard(Tag::Certificate))
+                    references.push(AttributeReference::Standard(Tag::Certificate));
                 }
                 AttributeTag::LinkedCertificateId => {
-                    references.push(AttributeReference::Standard(Tag::Certificate))
+                    references.push(AttributeReference::Standard(Tag::Certificate));
                 }
                 AttributeTag::Tags => {
                     references.push(AttributeReference::Vendor(VendorAttributeReference {
                         vendor_identification: VENDOR_ID_COSMIAN.to_string(),
                         attribute_name: VENDOR_ATTR_TAG.to_string(),
-                    }))
+                    }));
                 }
             }
         }
@@ -263,7 +263,7 @@ impl GetAttributesAction {
             );
         } else {
             println!("Attributes for {unique_identifier}:");
-            println!("{}", json);
+            println!("{json}");
         }
         Ok(())
     }

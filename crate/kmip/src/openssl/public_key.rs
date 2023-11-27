@@ -23,8 +23,8 @@ use crate::{
 /// The supported `KeyFormatType` are:
 /// * PKCS1
 /// * PKCS8: actually a SPKI DER (RFC 5480)
-/// * TransparentRSAPublicKey
-/// * TransparentECPublicKey: only the following curves are supported:
+/// * `TransparentRSAPublicKey`
+/// * `TransparentECPublicKey`: only the following curves are supported:
 ///    * P192
 ///    * P224
 ///    * P256
@@ -129,12 +129,12 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, K
     Ok(pk)
 }
 
-/// Instantiate an openssl Public Key from the point (EC_POINT) encoding on a standardized curve
+/// Instantiate an openssl Public Key from the point (`EC_POINT`) encoding on a standardized curve
 ///
-/// The encoding of the ECPoint structure is expected to be in the octet form  
+/// The encoding of the `ECPoint` structure is expected to be in the octet form
 /// (as defined in RFC5480 and used in certificates and TLS records):
 /// only the content octets are present, the OCTET STRING tag and length are not included.
-/// The encoding/decoding conforms with Sec. 2.3.3/2.3.4 of the SECG SEC 1 (“Elliptic Curve Cryptography”) standard.
+/// The encoding/decoding conforms with Sec. 2.3.3/2.3.4 of the SECG SEC 1 ("Elliptic Curve Cryptography") standard.
 fn ec_public_key_from_point_encoding(
     point_encoding: &[u8],
     curve_nid: Nid,

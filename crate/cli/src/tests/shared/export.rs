@@ -1,4 +1,4 @@
-use std::{ops::Deref, path::Path, process::Command};
+use std::{path::Path, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kmip::kmip::{
@@ -122,7 +122,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
         false,
     )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
-    assert_eq!(key_bytes.deref(), bytes.as_slice());
+    assert_eq!(&*key_bytes, bytes.as_slice());
 
     // wrong export format
     assert!(
@@ -245,7 +245,7 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
             false,
         )?;
         let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
-        assert_eq!(key_bytes.deref(), bytes.as_slice());
+        assert_eq!(&*key_bytes, bytes.as_slice());
         Ok(())
     }
 

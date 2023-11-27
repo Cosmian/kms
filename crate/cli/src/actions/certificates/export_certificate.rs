@@ -29,7 +29,7 @@ pub enum CertificateExportFormat {
 /// - in X509 PEM format (pem)
 /// - in PKCS12 format including private key and certificate file (pkcs12)
 ///
-/// For PKCS#12, the unique_id should be that of the private key, not the certificate.
+/// For PKCS#12, the `unique_id` should be that of the private key, not the certificate.
 ///
 /// When using tags to retrieve rather than the unique id,
 /// an error is returned if multiple objects match the tags.

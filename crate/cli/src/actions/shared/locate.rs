@@ -125,7 +125,7 @@ impl LocateObjectsAction {
 
         if let Some(certificate_cn) = &self.certificate_cn {
             let tags = opt_tags.get_or_insert(Vec::new());
-            tags.push(format!("_cert_cn={}", certificate_cn));
+            tags.push(format!("_cert_cn={certificate_cn}"));
         }
 
         if let Some(certificate_spki) = &self.certificate_spki {

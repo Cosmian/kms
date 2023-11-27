@@ -71,7 +71,7 @@ pub fn get_attributes(
                 "linked-certificate-id" => AttributeTag::LinkedCertificateId,
                 "cryptographic-domain-parameters" => AttributeTag::CryptographicDomainParameters,
                 "tags" => AttributeTag::Tags,
-                _ => return Err(CliError::Default(format!("unknown attribute tag: {}", k))),
+                _ => return Err(CliError::Default(format!("unknown attribute tag: {k}"))),
             };
             result.insert(tag, v);
         }

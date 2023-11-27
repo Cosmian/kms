@@ -23,4 +23,3 @@ tokio-util = { workspace = true }
 url = { workspace = true }
 rustls = { workspace = true }
 webpki-roots = { workspace = true }
-log = "0.4.17"

@@ -112,6 +112,7 @@ pub struct LoginState {
 }
 
 impl LoginState {
+    #[must_use]
     pub fn auth_url(&self) -> &Url {
         &self.auth_url
     }

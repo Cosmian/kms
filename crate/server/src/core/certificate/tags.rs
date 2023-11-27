@@ -68,7 +68,7 @@ pub async fn add_certificate_tags_to_attributes(
         attributes.add_link(
             LinkType::PrivateKeyLink,
             LinkedObjectIdentifier::TextString(id),
-        )
+        );
     }
     // add link to the public key
     if let Some(id) = tags
@@ -79,7 +79,7 @@ pub async fn add_certificate_tags_to_attributes(
         attributes.add_link(
             LinkType::PublicKeyLink,
             LinkedObjectIdentifier::TextString(id),
-        )
+        );
     }
     // add link to issuer certificate
     if let Some(id) = tags
@@ -90,7 +90,7 @@ pub async fn add_certificate_tags_to_attributes(
         attributes.add_link(
             LinkType::CertificateLink,
             LinkedObjectIdentifier::TextString(id),
-        )
+        );
     }
     Ok(())
 }
@@ -102,13 +102,13 @@ pub fn add_attributes_to_certificate_tags(
     attributes: &Attributes,
 ) -> KResult<()> {
     if let Some(link) = attributes.get_link(LinkType::PrivateKeyLink) {
-        tags.insert(format!("_cert_sk={}", link));
+        tags.insert(format!("_cert_sk={link}"));
     }
     if let Some(link) = attributes.get_link(LinkType::PublicKeyLink) {
-        tags.insert(format!("_cert_pk={}", link));
+        tags.insert(format!("_cert_pk={link}"));
     }
     if let Some(link) = attributes.get_link(LinkType::CertificateLink) {
-        tags.insert(format!("_cert_issuer={}", link));
+        tags.insert(format!("_cert_issuer={link}"));
     }
     Ok(())
 }

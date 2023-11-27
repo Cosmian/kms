@@ -99,7 +99,7 @@ async fn test_import_export_p12_25519() {
         _ => panic!("wrong object type"),
     };
     assert_eq!(
-        cert_x509_der.to_vec(),
+        cert_x509_der.clone(),
         parsed_p12.cert.as_ref().unwrap().to_der().unwrap()
     );
     let cert_attributes_ttlv: TTLV =
@@ -126,7 +126,7 @@ async fn test_import_export_p12_25519() {
         _ => panic!("wrong object type"),
     };
     assert_eq!(
-        issuer_cert_x509_der.to_vec(),
+        issuer_cert_x509_der.clone(),
         parsed_p12
             .ca
             .as_ref()

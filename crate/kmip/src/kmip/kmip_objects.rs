@@ -287,7 +287,7 @@ impl TryFrom<&str> for ObjectType {
             "CertificateRequest" => Ok(Self::CertificateRequest),
             _ => Err(KmipError::InvalidKmipObject(
                 ErrorReason::Invalid_Object_Type,
-                format!("{} is not a valid ObjectType", object_type),
+                format!("{object_type} is not a valid ObjectType"),
             )),
         }
     }
@@ -312,6 +312,6 @@ impl From<ObjectType> for String {
 impl std::fmt::Display for ObjectType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s: String = (*self).into();
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }

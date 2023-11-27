@@ -217,9 +217,9 @@ fn test_serialization_deserialization() {
     match rec.value {
         TTLValue::Structure(s) => match &s[0].value {
             TTLValue::Integer(i) => assert_eq!(42, *i),
-            x => panic!("unexpected 2nd level type : {:?}", x),
+            x => panic!("unexpected 2nd level type : {x:?}"),
         },
-        x => panic!("unexpected type : {:?}", x),
+        x => panic!("unexpected type : {x:?}"),
     };
 }
 
@@ -738,7 +738,7 @@ fn test_issue_deserialize_object_with_empty_attributes() {
             assert_eq!(
                 get_key_block().key_value.key_material,
                 key_block.key_value.key_material
-            )
+            );
         }
         _ => panic!("wrong object type"),
     }

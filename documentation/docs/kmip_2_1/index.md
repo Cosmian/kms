@@ -46,23 +46,24 @@ When requesting the export of an Object without specifying the Key Format Type, 
 | DSA Public Key | Transparent DSA Public Key |
 
 Notes:
+
 - SEC1 (called ECPrivateKey in KMIP) is only available for NIST curves (not for curve 25519 and curve 448) private keys.
 - The `D` field of the transparent EC Private Key is:
-    - the (absolute) value of the Big Integer of the scalar for NIST curves
-    - the Big Integer value of the private key raw bytes (as big endian) for Curve 25519 and Curve 448
+  - the (absolute) value of the Big Integer of the scalar for NIST curves
+  - the Big Integer value of the private key raw bytes (as big endian) for Curve 25519 and Curve 448
 - The `Q String` field of the transparent EC Public Key is:
-    - the uncompressed point octet form as defined in RFC5480 and used in certificates and TLS records for NIST curves.
-    - the raw bytes of the public key for Curve 25519 and Curve 448 
-
+  - the uncompressed point octet form as defined in RFC5480 and used in certificates and TLS records for NIST curves.
+  - the raw bytes of the public key for Curve 25519 and Curve 448
 
 Some of these formats are outdated, and the IETF now recommends using PKCS#8 and Subject Public Key Info.
 So, even though this server enforces KMIP 2.1 default export formats, the storage formats used are:
- - `PKCS#8 DER` for RSA and EC private Keys (RFC 5208 and 5958).
- - `SPKI DER` (RFC 5480) for RSA and EC public keys, using the Key Format Type PKCS#8, since SPKI is not listed.
- - `X509 DER` for certificates (RFC 5280).
- - `PKCS#10 DER` for certificate requests (RFC 2986).
- - `TransparentSymmetricKey` for symmetric keys
- - `Raw` for opaque objects and Secret Data
+
+- `PKCS#8 DER` for RSA and EC private Keys (RFC 5208 and 5958).
+- `SPKI DER` (RFC 5480) for RSA and EC public keys, using the Key Format Type PKCS#8, since SPKI is not listed.
+- `X509 DER` for certificates (RFC 5280).
+- `PKCS#10 DER` for certificate requests (RFC 2986).
+- `TransparentSymmetricKey` for symmetric keys
+- `Raw` for opaque objects and Secret Data
 
 Users requesting keys are encouraged to request them in the storage formats above to avoid conversions and match recent RFCs.
 

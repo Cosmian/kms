@@ -909,7 +909,7 @@ pub(crate) async fn atomic_(
     for operation in operations {
         match operation {
             AtomicOperation::Create((uid, object, tags)) => {
-                if let Err(e) = create_(Some(uid.to_owned()), owner, object, tags, tx).await {
+                if let Err(e) = create_(Some(uid.clone()), owner, object, tags, tx).await {
                     kms_bail!("creation of object {uid} failed: {e}");
                 }
             }

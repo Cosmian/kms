@@ -32,7 +32,7 @@ pub fn kmip_certificate_to_openssl(certificate: &Object) -> Result<X509, KmipErr
         } => X509::from_der(certificate_value).map_err(|e| {
             KmipError::InvalidKmipValue(
                 crate::kmip::kmip_operations::ErrorReason::Invalid_Attribute_Value,
-                format!("failed to parse certificate: {}", e),
+                format!("failed to parse certificate: {e}"),
             )
         }),
         _ => Err(KmipError::InvalidKmipValue(
@@ -43,7 +43,7 @@ pub fn kmip_certificate_to_openssl(certificate: &Object) -> Result<X509, KmipErr
 }
 
 impl CertificateAttributes {
-    /// Get the OpenSSL X509Name for the subject
+    /// Get the OpenSSL `X509Name` for the subject
     pub fn subject_name(&self) -> Result<X509Name, KmipError> {
         let mut builder = X509NameBuilder::new()?;
         if !self.certificate_subject_cn.is_empty() {

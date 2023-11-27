@@ -202,7 +202,7 @@ impl From<RestClientError> for CliError {
 
 impl From<PemError> for CliError {
     fn from(e: PemError) -> Self {
-        Self::Conversion(format!("PEM error: {}", e))
+        Self::Conversion(format!("PEM error: {e}"))
     }
 }
 

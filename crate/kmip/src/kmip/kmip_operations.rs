@@ -712,7 +712,7 @@ impl From<UniqueIdentifier> for Get {
 impl From<&UniqueIdentifier> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: &UniqueIdentifier) -> Self {
-        Self::new(uid.to_owned(), false, None, None)
+        Self::new(uid.clone(), false, None, None)
     }
 }
 impl From<String> for Get {
@@ -724,12 +724,7 @@ impl From<String> for Get {
 impl From<&String> for Get {
     // Create a GetRequest for an object to be returned "as registered"
     fn from(uid: &String) -> Self {
-        Self::new(
-            UniqueIdentifier::TextString(uid.to_owned()),
-            false,
-            None,
-            None,
-        )
+        Self::new(UniqueIdentifier::TextString(uid.clone()), false, None, None)
     }
 }
 impl From<&str> for Get {

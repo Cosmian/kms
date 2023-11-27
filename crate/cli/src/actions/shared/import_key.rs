@@ -48,7 +48,7 @@ pub enum ImportKeyFormat {
 ///   * pkcs8: an RSA or Elliptic Curve private key in PKCS#8 DER format (RFC 5208 and 5958)
 ///   * spki: an RSA or Elliptic Curve public key in Subject Public Key Info DER format (RFC 5480)
 ///   * aes: the bytes of an AES symmetric key
-///   * chacha20: the bytes of a ChaCha20 symmetric key
+///   * chacha20: the bytes of a `ChaCha20` symmetric key
 ///
 /// Tags can later be used to retrieve the key. Tags are optional.
 #[derive(Parser, Debug)]
@@ -137,22 +137,22 @@ impl ImportKeyAction {
             let attributes = import_attributes.get_or_insert(Attributes::default());
             attributes.add_link(
                 LinkType::CertificateLink,
-                LinkedObjectIdentifier::TextString(issuer_certificate_id.to_owned()),
-            )
+                LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
+            );
         };
         if let Some(private_key_id) = &self.private_key_id {
             let attributes = import_attributes.get_or_insert(Attributes::default());
             attributes.add_link(
                 LinkType::PrivateKeyLink,
-                LinkedObjectIdentifier::TextString(private_key_id.to_owned()),
-            )
+                LinkedObjectIdentifier::TextString(private_key_id.clone()),
+            );
         };
         if let Some(public_key_id) = &self.public_key_id {
             let attributes = import_attributes.get_or_insert(Attributes::default());
             attributes.add_link(
                 LinkType::PublicKeyLink,
-                LinkedObjectIdentifier::TextString(public_key_id.to_owned()),
-            )
+                LinkedObjectIdentifier::TextString(public_key_id.clone()),
+            );
         };
 
         // import the key

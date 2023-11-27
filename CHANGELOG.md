@@ -2,7 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-
 ## [4.x.x] - 2023-11-15
 
 ### Features
@@ -13,10 +12,10 @@ All notable changes to this project will be documented in this file.
 - Support for the Get Attributes KMIP operation
 - Database: support for atomic operations
 - Replaced part of Rust Crypto with openssl for more standardized module support
-- Deactivated automatic certificate verification, which will be reallocated 
+- Deactivated automatic certificate verification, which will be reallocated
     for the future `Validate` KMIP operation support [#102](https://github.com/Cosmian/kms/issues/102)
-- Deactivated  the non KMIP compliant certificate "quick create feature", 
-     which can now be achived using the `Certify` KMIP operation [#103](https://github.com/Cosmian/kms/issues/103)
+- Deactivated the non KMIP compliant certificate "quick create feature",
+     which can now be achieved using the `Certify` KMIP operation [#103](https://github.com/Cosmian/kms/issues/103)
 
 ### Bug Fixes
 
@@ -26,7 +25,7 @@ All notable changes to this project will be documented in this file.
   - enforced KMIP default export formats [#78](https://github.com/Cosmian/kms/issues/78)
   - aligned `Unique Identifier` to KMIP definition but only the `TextString` variant is supported.
   - Use od standards attributes instead of Vendor attributes wherever possible
-  
+
 ## [4.9.1] - 2023-11-14
 
 ### Bug Fixes

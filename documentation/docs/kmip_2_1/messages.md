@@ -2,7 +2,7 @@ In [chapter 8](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1
 
 One could insert multiple requests in a single Message query.
 These requests are processed sequentially and simultaneously by the server.
-The requests wrapped into the batch items are totally independant.
+The requests wrapped into the batch items are totally independent.
 
 For each message request sent, a message response is returned, yielding a result status of the requested operation, and potentially associated result data or error messages.
 

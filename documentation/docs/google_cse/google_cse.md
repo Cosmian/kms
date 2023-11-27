@@ -64,7 +64,7 @@ Finalize the configuration. The Client Side Encryption page should now show the 
 ## Configuring CSE for GMail
 
 
-[Generating a self-signed certificate and user certificates](./smime_self_signed_cert.pem.md)
+[Generating a self-signed certificate and user certificates](./smime_self_signed_cert.md)
 
 ```sh
 --jwt-issuer-uri=https://gsuitecse-tokenissuer-drive@system.gserviceaccount.com

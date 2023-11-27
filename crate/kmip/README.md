@@ -62,5 +62,3 @@ erDiagram
     WrappingMethod ||--o| TR31 : enum
 
 -->
-
-

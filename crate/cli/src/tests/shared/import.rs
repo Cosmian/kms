@@ -41,7 +41,7 @@ pub fn import_key(
     }
     for tag in tags {
         args.push("--tag".to_owned());
-        args.push(tag.to_owned());
+        args.push(tag.clone());
     }
     if let Some(key_format) = key_format {
         args.push("--key-format".to_owned());

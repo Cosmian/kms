@@ -34,7 +34,7 @@ where
         .with_context(|| "failed parsing the object from the json file")
 }
 
-/// Read an object from KMIP jSON TTLV bytes slice
+/// Read an object from KMIP JSON TTLV bytes slice
 pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, CliError> {
     // Read the object from the file
     let ttlv = serde_json::from_slice::<TTLV>(bytes)
@@ -44,7 +44,7 @@ pub fn read_object_from_json_ttlv_bytes(bytes: &[u8]) -> Result<Object, CliError
     Ok(object)
 }
 
-/// Read an  object from a KMIP jSON TTLV file
+/// Read an  object from a KMIP JSON TTLV file
 pub fn read_object_from_json_ttlv_file(object_file: &PathBuf) -> Result<Object, CliError> {
     let bytes = read_bytes_from_file(object_file)?;
     read_object_from_json_ttlv_bytes(&bytes)
