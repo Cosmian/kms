@@ -5,8 +5,7 @@ version = 3
 [[package]]
 name = "acme-lib"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55bc743cf5cc222f4fd09f636601d4b59aefebf3d929e3de4f017d7bc102bbaa"
+source = "git+https://github.com/Cosmian/acme-lib?branch=master#12e2831797394778ff1136216a459fb3a2f6087f"
 dependencies = [
  "base64 0.21.5",
  "lazy_static",
@@ -115,17 +114,18 @@ dependencies = [
 
 [[package]]
 name = "actix-identity"
-version = "0.4.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "171fe3ed055b2dd50c61967911d253d47e76e1d4308acfbf99fc7affe5ec42aa"
+checksum = "36e1cc6f95e245b2f3c6995df4e1c0c697704c48c28ec325d135a3ca039d4952"
 dependencies = [
  "actix-service",
+ "actix-session",
  "actix-utils",
  "actix-web",
- "futures-util",
+ "derive_more",
+ "futures-core",
  "serde",
- "serde_json",
- "time 0.3.30",
+ "tracing",
 ]
 
 [[package]]
@@ -226,6 +226,23 @@ dependencies = [
  "futures-core",
  "paste",
  "pin-project-lite",
+]
+
+[[package]]
+name = "actix-session"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e6a28f813a6671e1847d005cad0be36ae4d016287690f765c303379837c13d6"
+dependencies = [
+ "actix-service",
+ "actix-utils",
+ "actix-web",
+ "anyhow",
+ "async-trait",
+ "derive_more",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

@@ -7,6 +7,7 @@ use std::{
 };
 
 use actix_cors::Cors;
+use actix_identity::IdentityMiddleware;
 use actix_web::{
     dev::ServerHandle,
     middleware::Condition,
@@ -436,6 +437,7 @@ pub async fn prepare_kms_server(
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
         let mut app = App::new()
+            .wrap(IdentityMiddleware::default())
             .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
             .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.;

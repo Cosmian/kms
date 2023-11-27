@@ -21,10 +21,10 @@ default = []
 prod = []
 
 [dependencies]
-acme-lib = "0.9"
+acme-lib = { git = "https://github.com/Cosmian/acme-lib", branch = "master" }
 actix-cors = "0.6"
 actix-files = "0.6"
-actix-identity = "0.4"
+actix-identity = "0.6"
 actix-multipart = "0.6"
 actix-rt = { workspace = true }
 actix-service = "2.0"
