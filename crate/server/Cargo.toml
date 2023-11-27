@@ -34,12 +34,11 @@ alcoholic_jwt = "4091"
 async-recursion = "1.0"
 async-trait = { workspace = true }
 base64 = { workspace = true }
+chrono = { workspace = true }
 clap = { workspace = true }
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip", features = ["openssl"] }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
-ratls = { workspace = true }
-tee_attestation = { workspace = true }
 dirs = "5.0"
 dotenvy = "0.15"
 env_logger = "0.10"
@@ -50,6 +49,7 @@ josekit = { workspace = true }
 lazy_static = "1.4"
 mime = "0.3"
 openssl = { workspace = true }
+ratls = { workspace = true }
 rawsql = "0.1"
 redis = { workspace = true }
 reqwest = { workspace = true }
@@ -62,6 +62,7 @@ sqlx = { version = "0.7.3", default-features = false, features = [
     "postgres",
     "sqlite",
 ] }
+tee_attestation = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
 # this version of tokio should be the same as the one used in actix-web
@@ -72,7 +73,6 @@ url = { workspace = true }
 uuid = { workspace = true }
 x509-parser = { workspace = true }
 zeroize = { workspace = true }
-chrono = "0.4.31"
 
 [dev-dependencies]
 actix-http = "3.4"

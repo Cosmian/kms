@@ -18,9 +18,9 @@ hex = { workspace = true }
 num-bigint-dig = { workspace = true }
 openssl = { workspace = true, optional = true }
 pyo3 = { version = "0.20", optional = true }
-sha3 = { version = "0.10", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha3 = { version = "0.10", optional = true }
 strum = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }

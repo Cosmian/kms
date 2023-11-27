@@ -16,10 +16,10 @@ cosmian_kms_client = { path = "../client" }
 cosmian_kms_utils = { path = "../utils" }
 openssl = { workspace = true }
 pyo3 = { version = "0.20", features = [
-    "extension-module",
-    "abi3",
-    "abi3-py37",
-    "generate-import-lib",
+  "extension-module",
+  "abi3",
+  "abi3-py37",
+  "generate-import-lib",
 ] }
 pyo3-asyncio = { version = "0.20", features = ["tokio-runtime"] }
 rustls = { workspace = true }

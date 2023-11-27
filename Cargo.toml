@@ -1,12 +1,12 @@
 [workspace]
 members = [
-    "crate/cli",
-    "crate/client",
-    "crate/kmip",
-    "crate/server",
-    "crate/utils",
-    "crate/pyo3",
-    "crate/logger",
+  "crate/cli",
+  "crate/client",
+  "crate/kmip",
+  "crate/server",
+  "crate/utils",
+  "crate/pyo3",
+  "crate/logger",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli. For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
 resolver = "2"
@@ -37,13 +37,13 @@ base64 = "0.21"
 bitflags = "2.4"
 chrono = "0.4"
 clap = { version = "4.4", default-features = false, features = [
-    "help",
-    "env",
-    "std",
-    "usage",
-    "error-context",
-    "derive",
-    "cargo",
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
 ] }
 cloudproof = { version = "2.3", features = ["findex-redis"] }
 const-oid = { version = "0.9", features = ["db"] }
@@ -53,32 +53,31 @@ hex = "0.4"
 http = "0.2"
 josekit = "0.8.3"
 native-tls = "0.2"
-num-bigint = { version = "0.4", features = ["rand", "serde"] }
 num-bigint-dig = { version = "0.8", default-features = false, features = [
-    "std",
-    "rand",
-    "serde",
+  "std",
+  "rand",
+  "serde",
 ] }
 openssl = { version = "0.10" }
 ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
 redis = { version = "0.23", features = [
-    "aio",
-    "ahash",
-    "script",
-    "connection-manager",
-    "tokio-comp",
+  "aio",
+  "ahash",
+  "script",
+  "connection-manager",
+  "tokio-comp",
 ] }
 # Important: align the rustls version with reqwest rustls dependency
 # When using client certificate authentication, reqwest will use the
 # native-tls crate to create an Identity; this will be different backend
 # implementations depending on the operating system. On linux, it will
 # use a vendored version of openssl
-reqwest = { version = "0.11.14", features = [
-    "json",
-    "multipart",
-    "native-tls",
-    "rustls-tls",
-    "stream",
+reqwest = { version = "0.11.22", features = [
+  "json",
+  "multipart",
+  "native-tls",
+  "rustls-tls",
+  "stream",
 ] }
 rustls = { version = "0.21", features = ["dangerous_configuration"] }
 serde = { version = "1.0", features = ["derive"] }

@@ -141,6 +141,7 @@ repos:
     rev: v1.0.20
     hooks:
       - id: cargo-format
+      # - id: dprint-toml-fix
       # - id: cargo-upgrade
       # - id: cargo-update
       - id: cargo-machete
