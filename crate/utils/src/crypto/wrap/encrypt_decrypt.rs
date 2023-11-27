@@ -294,6 +294,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "fips")]
     fn test_encrypt_decrypt_rsa_bad_size() {
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.

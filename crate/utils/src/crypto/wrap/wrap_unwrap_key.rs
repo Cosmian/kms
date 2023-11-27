@@ -126,15 +126,20 @@ pub fn unwrap_key_block(
 
 #[cfg(test)]
 #[cfg(not(feature = "fips"))]
-//#[cfg(not(feature = "fips"))]
 // TODO: create FIPS tests
 mod tests {
     use cosmian_kmip::kmip::{
-        kmip_data_structures::KeyWrappingData, kmip_objects::Object, kmip_types::EncodingOption,
+        kmip_data_structures::KeyWrappingData,
+        kmip_objects::Object,
+        kmip_types::{CryptographicAlgorithm, EncodingOption},
     };
 
     use crate::{
-        crypto::wrap::{unwrap_key_block, wrap_key_block},
+        crypto::{
+            curve_25519::operation::create_x25519_key_pair,
+            symmetric::create_symmetric_key,
+            wrap::{unwrap_key_block, wrap_key_block},
+        },
         error::KmipUtilsError,
     };
 
