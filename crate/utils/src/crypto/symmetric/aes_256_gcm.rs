@@ -114,8 +114,8 @@ impl EncryptionSystem for AesGcmSystem {
 
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
-            data: Some(data),
-            iv_counter_nonce: Some(nonce.as_bytes().to_vec()),
+            data: Some(ciphertext),
+            iv_counter_nonce: Some(nonce.to_vec()),
             correlation_value,
             authenticated_encryption_tag: Some(tag),
         })
@@ -180,7 +180,7 @@ impl DecryptionSystem for AesGcmSystem {
 
         Ok(DecryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
-            data: Some(bytes),
+            data: Some(plaintext),
             correlation_value,
         })
     }

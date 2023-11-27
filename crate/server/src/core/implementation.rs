@@ -401,8 +401,7 @@ impl KMS {
                             "An Edwards Keypair on curve 25519 should not be requested to perform \
                              ECDH. Creating anyway as it can be converted to Montgomery X25519"
                         );
-                        let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                        create_ed25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                        create_ed25519_key_pair(private_key_uid, public_key_uid)
                     }
                     other => kms_not_supported!(
                         "Generation of Key Pair for curve: {other:?}, is not supported"
