@@ -27,6 +27,11 @@ body {
   color: white;
 }
 
+/* dark mode fixes */
+p:has(img:only-child) {
+  background-color: white !important;
+}
+
 /* ------- HEADER ------- */
 .md-header {
   background-color: #fff;
@@ -97,7 +102,6 @@ body {
   font-family: "Montserrat", "Open sans", Arial, Helvetica, sans-serif;
   font-style: normal;
   font-weight: 600;
-  margin-bottom: 1em;
   margin-bottom: 0.75em;
 }
 .md-typeset h1 {
@@ -146,11 +150,11 @@ code,
   font-size: 0.875rem !important;
 }
 
-.md-typeset
-  .tabbed-set
-  > input:first-child:checked
-  ~ .tabbed-labels
-  > :first-child {
+.md-typeset,
+.tabbed-set,
+> input:first-child:checked,
+~ .tabbed-labels,
+> :first-child {
   color: var(--md-primary-fg-color);
 }
 .js .md-typeset .tabbed-labels:before {
@@ -173,30 +177,30 @@ code,
 }
 @media (min-width: 1220px) {
   .md-main {
-    background: linear-gradient(90deg, var(--nav-bg-color) 50%, #fff 50%);
+    /* Fixes dark modes issues but loses grey shading on the left */
+    background: none !important;
+/*    background: linear-gradient(90deg, var(--nav-bg-color) 50%, #fff 50%);*/
   }
   .md-main__inner {
-    margin-top: 0px;
+    margin-top: 0;
   }
   .md-content,
   .md-sidebar .md-sidebar--secondary.md-sidebar__scrollwrap {
-    background-color: #fff;
+    background-color: #ffffff;
   }
 }
 
 /* Sidebar */
 @media screen and (max-width: 76.1875em) {
   .md-sidebar--primary {
-    /* width: 250px; */
   }
 }
 @media screen and (min-width: 76.25em) {
   .md-sidebar {
-    width: auto;
     padding-top: 50px;
   }
   .md-sidebar--primary {
-    min-width: 290px;
+    min-width: 200px;
   }
   .md-content:first-child {
     padding-top: 40px;
@@ -252,7 +256,7 @@ code,
 
 /* second sidebar */
 .md-sidebar--secondary {
-  width: 290px;
+  width: 200px;
   color: var(--grey-2);
 }
 .md-sidebar--secondary .md-nav__item {
@@ -280,9 +284,9 @@ code,
 .admonition {
   padding: 30px !important;
   background: #ffffff;
-  border-left-width: 0px !important;
+  /*border-left-width: 0px !important;*/
   border: 1px solid var(--grey-4);
-  box-shadow: 0px 2px 10px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
   border-radius: 4px;
 }
 .md-typeset
@@ -290,10 +294,9 @@ code,
   > :is(.admonition-title, summary) {
   background: none;
   border-bottom: 1px solid var(--dark);
-  padding: 0;
-  padding-bottom: 10px;
+  padding: 0 0 10px;
   margin: 0;
-  font-family: "Montserrat";
+  font-family: "Montserrat", serif;
   font-weight: 600;
   font-size: 1em;
   text-transform: uppercase;
@@ -361,7 +364,7 @@ footer,
 .md-typeset .md-button:hover {
   border: 1px solid var(--grey-4);
   background-color: #fff !important;
-  border-color: none !important;
+  border-color: transparent !important;
   color: initial !important;
   transform: translateX(6px);
 }

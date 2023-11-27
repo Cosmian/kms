@@ -73,11 +73,12 @@ nav:
       - Access rights: cli/access_rights.md
       - Enclaved KMS: cli/enclaves.md
   - KMIP 2.1 support:
-      - Specifications: kmip_2_1/index.md
+      - KMIP2.1 support: kmip_2_1/index.md
       - Objects: kmip_2_1/objects.md
       - Attributes: kmip_2_1/attributes.md
-      - Operations: kmip_2_1/operations.md
       - Messages: kmip_2_1/messages.md
+      - Operations: kmip_2_1/operations.md
+      - 6.1.25 Import: kmip_2_1/_import.md
   - Google workspace client-side encryption:
       - Getting started with Google Workspace CSE: google_cse/google_cse.md
       - Setting up a well-known file web server: google_cse/configuring-the-well-known-server.md

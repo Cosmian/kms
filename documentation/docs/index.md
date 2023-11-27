@@ -35,13 +35,16 @@ Check the enabling [TLS documentation](./tls.md) as well as the [authentication 
 
 #### High-availability and databases
 
-The Cosmian KMS may be deployed either in [single-server mode](./single_server_mode.md) or for [high availability](./high_availability_mode.md) using simple horizontal scaling of the servers.
+The Cosmian KMS may be deployed either in [single-server mode](./single_server_mode.md) or for [high availability](./high_availability_mode.md) 
+using simple horizontal scaling of the servers.
 
-For additional security, the server supports concurrent user encrypted databases in single-server mode and an application-level encrypted database on top of Redis in a high-availability scenario.
+For additional security, the server supports concurrent user encrypted databases in single-server mode 
+and an application-level encrypted database on top of Redis in a high-availability scenario.
 
-#### Designed for the Cloud and Zero-Trust environments
+#### Designed to securely run in the Cloud or other Zero-Trust environments
 
-Thanks to its "bootstrap" design, the use of confidential VMs, and a fully application-level encrypted database on top of Redis, the Cosmian KMS is able to securely operate in zero-trust environments, such as the public cloud.
+Thanks to its "bootstrap" design, running on top of Cosmian VMs with a fully application-level encrypted database on top of Redis, 
+the Cosmian KMS is able to securely operate in zero-trust environments, such as the public cloud.
 
 See the dedicated page for [running the KMS in a zero-trust environment](./zero_trust.md).
 
@@ -82,13 +85,17 @@ Raw binaries for multiple operating systems are also available on the [Cosmian p
 
 #### Integrated with Cloudproof libraries
 
-To build the next generation of privacy-by-design applications with end-to-end encryption, the KMS server is integrated with the [**Cloudproof**](https://docs.cosmian.com/cloudproof_encryption/how_it_works/) libraries to deliver keys and secrets to the client-side cryptographic stacks or perform delegated encryption and decryption.
+To build the next generation of privacy-by-design applications with end-to-end encryption, 
+the KMS server is integrated with the [**Cloudproof**](https://docs.cosmian.com/cloudproof_encryption/how_it_works/) libraries 
+to deliver keys and secrets to the client-side cryptographic stacks or perform delegated encryption and decryption.
 
-The libraries are available in many languages, including Javascript, Java, Dart, and Python. Check their [documentation](https://docs.cosmian.com/cloudproof_encryption/application_level_encryption/) for details.
+The libraries are available in many languages, including Javascript, Java, Dart, and Python. 
+Check their [documentation](https://docs.cosmian.com/cloudproof_encryption/application_level_encryption/) for details.
 
 #### Comprehensive inline help
 
-Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has a built-in help system that can be accessed using the `--help` command line option.
+Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has a built-in help system 
+that can be accessed using the `--help` command line option.
 
 ```sh
 docker run --rm ghcr.io/cosmian/kms:4.9.1 --help
