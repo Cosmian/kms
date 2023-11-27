@@ -84,6 +84,7 @@ jobs:
       - name: Docker start container
         run: |
           docker run \
+            --pull always \
             --network "${{ env.TESTS_CONTAINER_NETWORK }}" \
             --device /dev/sgx_enclave \
             --device /dev/sgx_provision \
