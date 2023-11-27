@@ -12,7 +12,7 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::crypto::curve_25519::{
     kmip_requests::{ec_create_key_pair_request, get_private_key_request, get_public_key_request},
-    operation::{to_curve_25519_256_public_key, Q_LENGTH_BITS},
+    operation::{to_ec_public_key, Q_LENGTH_BITS},
 };
 use cosmian_logger::log_utils::log_init;
 use tracing::trace;
@@ -153,7 +153,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // test import of public key
     let pk_bytes = pk_key_block.key_bytes()?;
     assert_eq!(pk_bytes.len(), X25519_PUBLIC_KEY_LENGTH);
-    let pk = to_curve_25519_256_public_key(&pk_bytes, sk_uid);
+    let pk = to_ec_public_key(&pk_bytes, sk_uid, RecommendedCurve::CURVE25519);
     let request = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
         object_type: ObjectType::PublicKey,

@@ -112,7 +112,7 @@ pub fn to_ec_private_key(bytes: &[u8], public_key_uid: &str, curve: RecommendedC
     }
 }
 
-/// Generate a X25519 Key Pair. Not FIPS 140-3 compliant.
+/// Generate an X25519 Key Pair. Not FIPS 140-3 compliant.
 #[cfg(not(feature = "fips"))]
 pub fn create_x25519_key_pair(
     private_key_uid: &str,
@@ -133,7 +133,12 @@ pub fn create_x25519_key_pair(
     Ok(KeyPair::new(private_key, public_key))
 }
 
-/// Generate a key CURVE Ed25519 Key Pair. FIPS 140-3 compliant.
+/// Generate an Ed25519 Key Pair. FIPS 140-3 compliant **for digital signature
+/// only**.
+///
+/// Sources:
+/// - NIST.SP.800-186 - Section 3.2.3
+/// - NIST.FIPS.186-5 - Section 3.2.3
 pub fn create_ed25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -153,7 +158,7 @@ pub fn create_ed25519_key_pair(
     Ok(KeyPair::new(private_key, public_key))
 }
 
-fn create_p_curve_keypair(
+fn create_p_curve_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
     curve: EcGroup,
@@ -180,55 +185,66 @@ fn create_p_curve_keypair(
     Ok(KeyPair::new(private_key, public_key))
 }
 
+/// Generate a P-192 Key Pair. Not FIPS-140-3 compliant. **This curve is for
+/// legacy-use only**.
+#[cfg(not(feature = "fips"))]
 pub fn create_p192_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
 ) -> Result<KeyPair, KmipError> {
-    create_p_curve_keypair(
+    create_p_curve_key_pair(
         private_key_uid,
         public_key_uid,
         EcGroup::from_curve_name(Nid::X9_62_PRIME192V1)?,
     )
 }
 
+/// Generate a P-224 Key Pair. FIPS-140-3 compliant for key agreement and
+/// digital signature.
 pub fn create_p224_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
 ) -> Result<KeyPair, KmipError> {
-    create_p_curve_keypair(
+    create_p_curve_key_pair(
         private_key_uid,
         public_key_uid,
         EcGroup::from_curve_name(Nid::SECP224R1)?,
     )
 }
 
+/// Generate a P-256 Key Pair. FIPS-140-3 compliant for key agreement and
+/// digital signature.
 pub fn create_p256_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
 ) -> Result<KeyPair, KmipError> {
-    create_p_curve_keypair(
+    create_p_curve_key_pair(
         private_key_uid,
         public_key_uid,
         EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?,
     )
 }
 
+/// Generate a P-384 Key Pair. FIPS-140-3 compliant for key agreement and
+/// digital signature.
 pub fn create_p384_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
 ) -> Result<KeyPair, KmipError> {
-    create_p_curve_keypair(
+    create_p_curve_key_pair(
         private_key_uid,
         public_key_uid,
         EcGroup::from_curve_name(Nid::SECP384R1)?,
     )
 }
 
+/// Generate a P-521 Key Pair. FIPS-140-3 compliant for key agreement and
+/// digital signature.
 pub fn create_p521_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
 ) -> Result<KeyPair, KmipError> {
-    create_p_curve_keypair(
+    create_p_curve_key_pair(
         private_key_uid,
         public_key_uid,
         EcGroup::from_curve_name(Nid::SECP521R1)?,
