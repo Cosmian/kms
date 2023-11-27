@@ -1,11 +1,8 @@
-use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::{RngCore, SeedableRng},
-    CsRng, Nonce, RandomFixedSizeCBytes,
-};
 use cosmian_kmip::kmip::{
     kmip_operations::{Decrypt, Encrypt},
     kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
 };
+use openssl::rand::rand_bytes;
 
 use crate::{
     crypto::symmetric::{
@@ -20,16 +17,18 @@ pub fn test_aes() {
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
-    let mut rng = CsRng::from_entropy();
     let mut symmetric_key = vec![0; AES_256_GCM_KEY_LENGTH];
-    rng.fill_bytes(&mut symmetric_key);
+    rand_bytes(&mut symmetric_key).unwrap();
     let key = create_symmetric_key(&symmetric_key, CryptographicAlgorithm::AES);
     let aes = AesGcmSystem::instantiate("blah", &key).unwrap();
     let mut data = vec![0_u8; 42];
-    rng.fill_bytes(&mut data);
+    rand_bytes(&mut data).unwrap();
     let mut uid = vec![0_u8; 32];
-    rng.fill_bytes(&mut uid);
-    let nonce: Nonce<AES_256_GCM_IV_LENGTH> = Nonce::new(&mut rng);
+    rand_bytes(&mut uid).unwrap();
+
+    let mut nonce = vec![0u8; AES_256_GCM_IV_LENGTH];
+    rand_bytes(&mut nonce).unwrap();
+
     // encrypt
     let enc_res = aes
         .encrypt(&Encrypt {
@@ -40,7 +39,7 @@ pub fn test_aes() {
                 ..Default::default()
             }),
             data: Some(data.clone()),
-            iv_counter_nonce: Some(nonce.as_bytes().to_vec()),
+            iv_counter_nonce: Some(nonce),
             correlation_value: None,
             init_indicator: None,
             final_indicator: None,
