@@ -140,7 +140,7 @@ async fn certify_a_csr_test() -> Result<(), CliError> {
         None,
         None,
         None,
-        None,
+        Some(&["certify_a_csr_test"]),
     )?;
 
     // export the certificate
