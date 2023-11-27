@@ -1,13 +1,10 @@
-use cosmian_kmip::{
-    error::KmipError,
-    kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-        kmip_objects::{Object, ObjectType},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicParameters, CryptographicUsageMask, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, RecommendedCurve,
-        },
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+    kmip_objects::{Object, ObjectType},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicDomainParameters, CryptographicParameters,
+        CryptographicUsageMask, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+        RecommendedCurve,
     },
 };
 use num_bigint_dig::BigUint;
@@ -18,7 +15,7 @@ use openssl::{
     pkey::PKey,
 };
 
-use crate::KeyPair;
+use crate::{error::KmipUtilsError, kmip_utils_bail, KeyPair};
 
 pub const ED25519_SECRET_LENGTH: usize = 0x20;
 pub const ED25519_PUBLIC_KEY_LENGTH: usize = 0x20;
@@ -117,7 +114,7 @@ pub fn to_ec_private_key(bytes: &[u8], public_key_uid: &str, curve: RecommendedC
 pub fn create_x25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
-) -> Result<KeyPair, KmipError> {
+) -> Result<KeyPair, KmipUtilsError> {
     let keypair = PKey::generate_x25519()?;
 
     let public_key = to_ec_public_key(
@@ -137,12 +134,12 @@ pub fn create_x25519_key_pair(
 /// only**.
 ///
 /// Sources:
-/// - NIST.SP.800-186 - Section 3.2.3
-/// - NIST.FIPS.186-5 - Section 3.2.3
+/// - NIST.SP.800-186 - Section 3.1.2 table 2.
+/// - NIST.FIPS.186-5
 pub fn create_ed25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
-) -> Result<KeyPair, KmipError> {
+) -> Result<KeyPair, KmipUtilsError> {
     let keypair = PKey::generate_ed25519()?;
 
     let public_key = to_ec_public_key(
@@ -161,15 +158,25 @@ pub fn create_ed25519_key_pair(
 fn create_p_curve_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
-    curve: EcGroup,
-) -> Result<KeyPair, KmipError> {
+    curve_nid: Nid,
+) -> Result<KeyPair, KmipUtilsError> {
+    let curve = EcGroup::from_curve_name(curve_nid)?;
+    let kmip_curve = match curve_nid {
+        Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
+        Nid::SECP224R1 => RecommendedCurve::P224,
+        Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,
+        Nid::SECP384R1 => RecommendedCurve::P384,
+        Nid::SECP521R1 => RecommendedCurve::P521,
+        other => kmip_utils_bail!("Curve Nid {:?} not supported by KMS.", other),
+    };
+
     let ec_privkey = EcKey::generate(&curve)?;
     let ec_pubkey = EcKey::from_public_key(&curve, ec_privkey.public_key())?;
 
     let private_key = to_ec_private_key(
         &ec_privkey.private_key().to_vec(),
         public_key_uid,
-        RecommendedCurve::SECP192K1,
+        kmip_curve,
     );
 
     let mut ctx = BigNumContext::new()?;
@@ -177,90 +184,249 @@ fn create_p_curve_key_pair(
     let public_key = to_ec_public_key(
         &ec_pubkey
             .public_key()
-            .to_bytes(&curve, PointConversionForm::UNCOMPRESSED, &mut ctx)?,
+            .to_bytes(&curve, PointConversionForm::HYBRID, &mut ctx)?,
         private_key_uid,
-        RecommendedCurve::SECP192K1,
+        kmip_curve,
     );
 
     Ok(KeyPair::new(private_key, public_key))
 }
 
 /// Generate a P-192 Key Pair. Not FIPS-140-3 compliant. **This curve is for
-/// legacy-use only**.
+/// legacy-use only** as it provides less than 112 bits of security.
+///
+/// Sources:
+/// - NIST.SP.800-186 - Section 3.2.1.1
 #[cfg(not(feature = "fips"))]
 pub fn create_p192_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
-) -> Result<KeyPair, KmipError> {
-    create_p_curve_key_pair(
-        private_key_uid,
-        public_key_uid,
-        EcGroup::from_curve_name(Nid::X9_62_PRIME192V1)?,
-    )
+) -> Result<KeyPair, KmipUtilsError> {
+    create_p_curve_key_pair(private_key_uid, public_key_uid, Nid::X9_62_PRIME192V1)
 }
 
 /// Generate a P-224 Key Pair. FIPS-140-3 compliant for key agreement and
 /// digital signature.
+///
+/// Sources:
+/// - NIST.SP.800-56Ar3 - Appendix D.
+/// - NIST.SP.800-186 - Section 3.1.2 table 2.
 pub fn create_p224_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
-) -> Result<KeyPair, KmipError> {
-    create_p_curve_key_pair(
-        private_key_uid,
-        public_key_uid,
-        EcGroup::from_curve_name(Nid::SECP224R1)?,
-    )
+) -> Result<KeyPair, KmipUtilsError> {
+    create_p_curve_key_pair(private_key_uid, public_key_uid, Nid::SECP224R1)
 }
 
 /// Generate a P-256 Key Pair. FIPS-140-3 compliant for key agreement and
 /// digital signature.
+///
+/// Sources:
+/// - NIST.SP.800-56Ar3 - Appendix D.
+/// - NIST.SP.800-186 - Section 3.1.2 table 2.
 pub fn create_p256_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
-) -> Result<KeyPair, KmipError> {
-    create_p_curve_key_pair(
-        private_key_uid,
-        public_key_uid,
-        EcGroup::from_curve_name(Nid::X9_62_PRIME256V1)?,
-    )
+) -> Result<KeyPair, KmipUtilsError> {
+    create_p_curve_key_pair(private_key_uid, public_key_uid, Nid::X9_62_PRIME256V1)
 }
 
 /// Generate a P-384 Key Pair. FIPS-140-3 compliant for key agreement and
 /// digital signature.
+///
+/// Sources:
+/// - NIST.SP.800-56Ar3 - Appendix D.
+/// - NIST.SP.800-186 - Section 3.1.2 table 2.
 pub fn create_p384_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
-) -> Result<KeyPair, KmipError> {
-    create_p_curve_key_pair(
-        private_key_uid,
-        public_key_uid,
-        EcGroup::from_curve_name(Nid::SECP384R1)?,
-    )
+) -> Result<KeyPair, KmipUtilsError> {
+    create_p_curve_key_pair(private_key_uid, public_key_uid, Nid::SECP384R1)
 }
 
 /// Generate a P-521 Key Pair. FIPS-140-3 compliant for key agreement and
 /// digital signature.
+///
+/// Sources:
+/// - NIST.SP.800-56Ar3 - Appendix D.
+/// - NIST.SP.800-186 - Section 3.1.2 table 2.
 pub fn create_p521_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
-) -> Result<KeyPair, KmipError> {
-    create_p_curve_key_pair(
-        private_key_uid,
-        public_key_uid,
-        EcGroup::from_curve_name(Nid::SECP521R1)?,
-    )
+) -> Result<KeyPair, KmipUtilsError> {
+    create_p_curve_key_pair(private_key_uid, public_key_uid, Nid::SECP521R1)
 }
 
 #[cfg(test)]
-#[cfg(not(feature = "fips"))]
-// TODO: add FIPS tests.
 mod tests {
+    #[cfg(not(feature = "fips"))]
     use cosmian_kmip::kmip::kmip_data_structures::KeyMaterial;
+    use cosmian_kmip::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
+    #[cfg(not(feature = "fips"))]
     use openssl::pkey::{Id, PKey};
 
-    use crate::crypto::curve_25519::operation::create_x25519_key_pair;
+    use super::{
+        create_ed25519_key_pair, create_p224_key_pair, create_p256_key_pair, create_p384_key_pair,
+        create_p521_key_pair,
+    };
+    #[cfg(not(feature = "fips"))]
+    use super::{create_p192_key_pair, create_x25519_key_pair};
 
     #[test]
+    fn test_ed25519_keypair_generation() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let keypair1 = create_ed25519_key_pair("sk_uid1", "pk_uid1").unwrap();
+        let keypair2 = create_ed25519_key_pair("sk_uid2", "pk_uid2").unwrap();
+
+        let privkey1 = kmip_private_key_to_openssl(keypair1.private_key()).unwrap();
+        let privkey2 = kmip_private_key_to_openssl(keypair2.private_key()).unwrap();
+
+        assert_ne!(
+            privkey1.private_key_to_der().unwrap(),
+            privkey2.private_key_to_der().unwrap()
+        );
+
+        let pubkey1 = kmip_public_key_to_openssl(keypair1.public_key()).unwrap();
+        let pubkey2 = kmip_public_key_to_openssl(keypair2.public_key()).unwrap();
+
+        assert_ne!(
+            pubkey1.public_key_to_der().unwrap(),
+            pubkey2.public_key_to_der().unwrap()
+        );
+    }
+
+    #[test]
+    #[cfg(not(feature = "fips"))]
+    fn test_p192_keypair_generation() {
+        let keypair1 = create_p192_key_pair("sk_uid1", "pk_uid1").unwrap();
+        let keypair2 = create_p192_key_pair("sk_uid2", "pk_uid2").unwrap();
+
+        let privkey1 = kmip_private_key_to_openssl(keypair1.private_key()).unwrap();
+        let privkey2 = kmip_private_key_to_openssl(keypair2.private_key()).unwrap();
+
+        assert_ne!(
+            privkey1.private_key_to_der().unwrap(),
+            privkey2.private_key_to_der().unwrap()
+        );
+
+        let pubkey1 = kmip_public_key_to_openssl(keypair1.public_key()).unwrap();
+        let pubkey2 = kmip_public_key_to_openssl(keypair2.public_key()).unwrap();
+
+        assert_ne!(
+            pubkey1.public_key_to_der().unwrap(),
+            pubkey2.public_key_to_der().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_p224_keypair_generation() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let keypair1 = create_p224_key_pair("sk_uid1", "pk_uid1").unwrap();
+        let keypair2 = create_p224_key_pair("sk_uid2", "pk_uid2").unwrap();
+
+        let privkey1 = kmip_private_key_to_openssl(keypair1.private_key()).unwrap();
+        let privkey2 = kmip_private_key_to_openssl(keypair2.private_key()).unwrap();
+
+        assert_ne!(
+            privkey1.private_key_to_der().unwrap(),
+            privkey2.private_key_to_der().unwrap()
+        );
+
+        let pubkey1 = kmip_public_key_to_openssl(keypair1.public_key()).unwrap();
+        let pubkey2 = kmip_public_key_to_openssl(keypair2.public_key()).unwrap();
+
+        assert_ne!(
+            pubkey1.public_key_to_der().unwrap(),
+            pubkey2.public_key_to_der().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_p256_keypair_generation() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let keypair1 = create_p256_key_pair("sk_uid1", "pk_uid1").unwrap();
+        let keypair2 = create_p256_key_pair("sk_uid2", "pk_uid2").unwrap();
+
+        let privkey1 = kmip_private_key_to_openssl(keypair1.private_key()).unwrap();
+        let privkey2 = kmip_private_key_to_openssl(keypair2.private_key()).unwrap();
+
+        assert_ne!(
+            privkey1.private_key_to_der().unwrap(),
+            privkey2.private_key_to_der().unwrap()
+        );
+
+        let pubkey1 = kmip_public_key_to_openssl(keypair1.public_key()).unwrap();
+        let pubkey2 = kmip_public_key_to_openssl(keypair2.public_key()).unwrap();
+
+        assert_ne!(
+            pubkey1.public_key_to_der().unwrap(),
+            pubkey2.public_key_to_der().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_p384_keypair_generation() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let keypair1 = create_p384_key_pair("sk_uid1", "pk_uid1").unwrap();
+        let keypair2 = create_p384_key_pair("sk_uid2", "pk_uid2").unwrap();
+
+        let privkey1 = kmip_private_key_to_openssl(keypair1.private_key()).unwrap();
+        let privkey2 = kmip_private_key_to_openssl(keypair2.private_key()).unwrap();
+
+        assert_ne!(
+            privkey1.private_key_to_der().unwrap(),
+            privkey2.private_key_to_der().unwrap()
+        );
+
+        let pubkey1 = kmip_public_key_to_openssl(keypair1.public_key()).unwrap();
+        let pubkey2 = kmip_public_key_to_openssl(keypair2.public_key()).unwrap();
+
+        assert_ne!(
+            pubkey1.public_key_to_der().unwrap(),
+            pubkey2.public_key_to_der().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_p521_keypair_generation() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let keypair1 = create_p521_key_pair("sk_uid1", "pk_uid1").unwrap();
+        let keypair2 = create_p521_key_pair("sk_uid2", "pk_uid2").unwrap();
+
+        let privkey1 = kmip_private_key_to_openssl(keypair1.private_key()).unwrap();
+        let privkey2 = kmip_private_key_to_openssl(keypair2.private_key()).unwrap();
+
+        assert_ne!(
+            privkey1.private_key_to_der().unwrap(),
+            privkey2.private_key_to_der().unwrap()
+        );
+
+        let pubkey1 = kmip_public_key_to_openssl(keypair1.public_key()).unwrap();
+        let pubkey2 = kmip_public_key_to_openssl(keypair2.public_key()).unwrap();
+
+        assert_ne!(
+            pubkey1.public_key_to_der().unwrap(),
+            pubkey2.public_key_to_der().unwrap()
+        );
+    }
+
+    #[test]
+    #[cfg(not(feature = "fips"))]
     fn test_x25519_conversions() {
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
