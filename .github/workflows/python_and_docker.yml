@@ -78,7 +78,7 @@ jobs:
       - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_kms_js.yml@develop
     with:
-      branch: v2.0.0
+      branch: feat/kms_5
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
 
   cloudproof_java:
