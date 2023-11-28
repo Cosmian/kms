@@ -36,7 +36,7 @@ use cosmian_kms_utils::{
     tagging::{check_user_tags, get_tags, remove_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
-use tracing::{debug, log::warn, trace};
+use tracing::{debug, trace};
 use zeroize::Zeroize;
 
 use super::{cover_crypt::create_user_decryption_key, KMS};

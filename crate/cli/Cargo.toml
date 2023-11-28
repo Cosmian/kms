@@ -28,8 +28,9 @@ hex = { workspace = true }
 oauth2 = "4.4"
 ## openssl is only used to parse PKCS#12 files because native support is not yet available in Rust yet.
 ## It should not be used for anything else and will be removed once native support is available.
-#openssl = { version = "0.10", features = ["vendored"] }
-openssl = { workspace = true }
+openssl = { version = "0.10", features = ["vendored"] }
+#openssl = { workspace = true }
+oauth2 = { version = "4.4" }
 pem = "3.0"
 rand = "0.8"
 ratls = { workspace = true }
