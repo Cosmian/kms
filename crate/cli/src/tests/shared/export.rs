@@ -308,7 +308,8 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new key pair
-    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+    let (private_key_id, public_key_id) =
+        create_ec_key_pair(&ctx.owner_cli_conf_path, &["test_export_x25519"])?;
 
     //
     // Private Key

@@ -352,7 +352,7 @@ pub async fn test_certify_with_csr() -> Result<(), CliError> {
             "test_data/certificates/csr/intermediate.p12",
             CertificateInputFormat::Pkcs12,
             None,
-            Some("intermediate".to_string()),
+            Some("intermediate.p12".to_string()),
             None,
             None,
             Some(&["import_pkcs12"]),

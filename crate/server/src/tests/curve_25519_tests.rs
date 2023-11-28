@@ -32,7 +32,8 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = ec_create_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
+    let request =
+        ec_create_key_pair_request(["test_curve_25519_key_pair"], RecommendedCurve::CURVE25519)?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key

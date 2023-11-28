@@ -435,7 +435,8 @@ mod tests {
         // Create a Key pair
         // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
         // - the public key is a TransparentEcPublicKey where the key value is the bytes of the Montgomery point
-        let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid").unwrap();
+        let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid")
+            .expect("failed to create x25519 key pair in test_x25519_conversions");
 
         //
         // public key
