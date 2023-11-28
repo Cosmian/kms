@@ -36,7 +36,7 @@ use cosmian_kms_utils::{
     tagging::{check_user_tags, get_tags, remove_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 use zeroize::Zeroize;
 
 use super::{cover_crypt::create_user_decryption_key, KMS};
@@ -393,7 +393,7 @@ impl KMS {
                 "the cryptographic algorithm must be specified for key pair creation".to_string(),
             )
         })?;
-
+        println!("ici {:?}", cryptographic_algorithm);
         let key_pair = match &cryptographic_algorithm {
             CryptographicAlgorithm::ECDH => {
                 let dp = any_attributes
@@ -410,9 +410,23 @@ impl KMS {
                     RecommendedCurve::P256 => create_p256_key_pair(private_key_uid, public_key_uid),
                     RecommendedCurve::P384 => create_p384_key_pair(private_key_uid, public_key_uid),
                     RecommendedCurve::P521 => create_p521_key_pair(private_key_uid, public_key_uid),
-                    RecommendedCurve::CURVEED25519 => kms_not_supported!(
-                        "An Edwards Keypair on curve 25519 should not be requested to perform ECDH"
-                    ),
+                    #[cfg(not(feature = "fips"))]
+                    RecommendedCurve::CURVEED25519 => {
+                        warn!(
+                            "An Edwards Keypair on curve 25519 should not be requested to perform \
+                             ECDH. Creating anyway."
+                        );
+                        create_ed25519_key_pair(private_key_uid, public_key_uid)
+                    }
+                    #[cfg(feature = "fips")]
+                    // Ed25519 not allowed for ECDH.
+                    // see NIST.SP.800-186 - Section 3.1.2 table 2.
+                    RecommendedCurve::CURVEED25519 => {
+                        kms_not_supported!(
+                            "An Edwards Keypair on curve 25519 should not be requested to perform \
+                             ECDH in FIPS mode."
+                        )
+                    }
                     other => kms_not_supported!(
                         "Generation of Key Pair for curve: {other:?}, is not supported"
                     ),
