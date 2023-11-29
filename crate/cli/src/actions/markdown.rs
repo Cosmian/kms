@@ -106,6 +106,7 @@ fn write_command(
                 }
                 write!(out, "`]")?;
             }
+            writeln!(out)?;
         }
         writeln!(out)?;
     }

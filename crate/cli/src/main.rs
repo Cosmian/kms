@@ -43,7 +43,6 @@ enum CliCommands {
     Ec(EllipticCurveCommands),
     GetAttributes(GetAttributesAction),
     Locate(LocateObjectsAction),
-    Markdown(MarkdownAction),
     NewDatabase(NewDatabaseAction),
     ServerVersion(ServerVersionAction),
     #[command(subcommand)]
@@ -51,6 +50,7 @@ enum CliCommands {
     Verify(TeeAction),
     Login(LoginAction),
     Logout(LogoutAction),
+    Markdown(MarkdownAction),
 }
 
 #[tokio::main]
