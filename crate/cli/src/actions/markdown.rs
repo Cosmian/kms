@@ -1,4 +1,4 @@
-use std::{fmt::Write, fs::File, io::Write as io_Write};
+use std::{fmt::Write, fs::File, io::Write as io_Write, path::PathBuf};
 
 use clap::{builder::StyledStr, Command, Parser};
 
@@ -6,18 +6,24 @@ use crate::error::CliError;
 
 /// Generate the CLI documentation as markdown
 #[derive(Parser, Debug)]
-pub struct MarkdownAction {}
+pub struct MarkdownAction {
+    /// The file to export the markdown to
+    #[clap(required = true)]
+    markdown_file: PathBuf,
+}
 
 impl MarkdownAction {
     pub async fn process(&self, cmd: &Command) -> Result<(), CliError> {
         let mut output = String::new();
-
+        writeln!(
+            output,
+            "*-- This file is auto-generated using the `ckms markdown` command. --*"
+        )?;
+        writeln!(output)?;
         write_command(&mut output, "", "", cmd)?;
-
-        println!("{}", output);
-        let mut f = File::create("/tmp/output.md")?;
+        let mut f = File::create(&self.markdown_file)?;
         f.write_all(output.as_bytes())?;
-
+        println!("Markdown generated to {:?}", &self.markdown_file);
         Ok(())
     }
 }
@@ -39,13 +45,12 @@ fn write_command(
     };
     writeln!(out, "## {index} {full_command}")?;
 
-    writeln!(
-        out,
-        "**{:?}**",
-        cmd.get_about()
-            .map(|about| about.to_string())
-            .unwrap_or_default()
-    )?;
+    if let Some(about) = cmd.get_about() {
+        writeln!(out)?;
+        to_md(out, about)?;
+        writeln!(out)?;
+    }
+
     writeln!(out, "### Usage")?;
     write!(out, "`{full_command}")?;
     if cmd.has_subcommands() {
