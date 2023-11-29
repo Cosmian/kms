@@ -1,6 +1,6 @@
 use std::process;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use cosmian_kms_cli::{
     actions::{
         access::AccessAction,
@@ -10,6 +10,7 @@ use cosmian_kms_cli::{
         elliptic_curves::EllipticCurveCommands,
         login::LoginAction,
         logout::LogoutAction,
+        markdown::MarkdownAction,
         new_database::NewDatabaseAction,
         shared::{GetAttributesAction, LocateObjectsAction},
         symmetric::SymmetricCommands,
@@ -42,6 +43,7 @@ enum CliCommands {
     Ec(EllipticCurveCommands),
     GetAttributes(GetAttributesAction),
     Locate(LocateObjectsAction),
+    Markdown(MarkdownAction),
     NewDatabase(NewDatabaseAction),
     ServerVersion(ServerVersionAction),
     #[command(subcommand)]
@@ -78,6 +80,12 @@ async fn main_() -> Result<(), CliError> {
         return Ok(())
     }
 
+    if let CliCommands::Markdown(action) = opts.command {
+        let command = <Cli as CommandFactory>::command();
+        action.process(&command).await?;
+        return Ok(())
+    }
+
     let kms_rest_client = conf.initialize_kms_client()?;
 
     match opts.command {
@@ -93,6 +101,9 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::GetAttributes(action) => action.process(&kms_rest_client).await?,
         CliCommands::Login(action) => action.process().await?,
         CliCommands::Logout(action) => action.process().await?,
+        _ => {
+            println!("Error");
+        }
     };
 
     Ok(())
