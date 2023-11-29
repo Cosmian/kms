@@ -7,7 +7,6 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, TTLV},
 };
 use openssl::pkcs12::Pkcs12;
-use uuid::Uuid;
 
 use crate::{
     actions::{

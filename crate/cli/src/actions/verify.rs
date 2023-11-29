@@ -5,7 +5,7 @@ use std::{
 
 use clap::Parser;
 use cosmian_kms_utils::tee::forge_report_data;
-use openssl::x509::X509;
+use der::{Decode, EncodePem};
 use rand::Rng;
 use ratls::verify::get_server_certificate;
 use tee_attestation::{verify_quote, TeeMeasurement};
@@ -42,10 +42,11 @@ impl TeeAction {
         )
         .map_err(|e| CliError::Default(format!("Can't get KMS server certificate: {e}")))?;
 
-        let certificate = X509::from_der(&certificate)
-            .map_err(|e| CliError::Default(format!("Can't convert certificate from DER: {e}")))?
-            .to_pem()
-            .map_err(|e| CliError::Default(format!("Can't convert certificate to PEM: {e}")))?;
+        let certificate = x509_cert::Certificate::from_der(&certificate)
+            .map_err(|e| {
+                CliError::Conversion(format!("Cannot read DER content to X509. Error: {e:?}"))
+            })?
+            .to_pem(der::pem::LineEnding::LF)?;
 
         let cert_path = self.export_path.join("cert.pem");
         fs::write(&cert_path, &certificate)?;
@@ -53,7 +54,7 @@ impl TeeAction {
 
         // Let's use this certificate when querying the KMS to get the quote
         let mut local_conf = conf.clone();
-        let verified_cert = Some(String::from_utf8_lossy(&certificate).to_string());
+        let verified_cert = Some(certificate.clone());
         if let Some(mut local_tee_conf) = local_conf.tee_conf {
             local_tee_conf.verified_cert = verified_cert;
             local_conf.tee_conf = Some(local_tee_conf);
@@ -84,7 +85,7 @@ impl TeeAction {
         println!("The raw quote has been saved at {quote_raw_path:?}");
 
         // Let's verify the quote
-        let report_data = forge_report_data(&nonce, &certificate)?;
+        let report_data = forge_report_data(&nonce, certificate.as_bytes())?;
 
         let tee_conf = if let Some(tee_conf) = conf.tee_conf.clone() {
             tee_conf.try_into()?

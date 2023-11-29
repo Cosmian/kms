@@ -58,6 +58,7 @@ num-bigint-dig = { version = "0.8", default-features = false, features = [
   "rand",
   "serde",
 ] }
+pem = "3.0"
 openssl = { version = "0.10" }
 ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
 redis = { version = "0.23", features = [
@@ -67,15 +68,9 @@ redis = { version = "0.23", features = [
   "connection-manager",
   "tokio-comp",
 ] }
-# Important: align the rustls version with reqwest rustls dependency
-# When using client certificate authentication, reqwest will use the
-# native-tls crate to create an Identity; this will be different backend
-# implementations depending on the operating system. On linux, it will
-# use a vendored version of openssl
-reqwest = { version = "0.11.22", features = [
+reqwest = { version = "0.11.22", no-default-features = "true", features = [
   "json",
   "multipart",
-  "native-tls",
   "rustls-tls",
   "stream",
 ] }
@@ -86,9 +81,9 @@ strum = { version = "0.25", features = ["std", "derive", "strum_macros"] }
 tee_attestation = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
 thiserror = "1.0"
 time = "0.3"
-# It is important to keep this version in sync with that of actix-web
-# use `cargo tree -i tokio` to check there is no other version of tokio
-tokio = { version = "1.34", features = ["full"] }
+tokio = { version = "1.34", features = [
+  "full",
+] } # It is important to keep this version in sync with that of actix-web: use `cargo tree -i tokio` to check there is no other version of
 tokio-util = { version = "0.7", features = ["codec"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

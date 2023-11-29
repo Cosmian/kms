@@ -6,8 +6,8 @@ use std::{
 };
 
 use cosmian_kms_client::{BootstrapRestClient, KmsRestClient};
+use der::{DecodePem, Encode};
 use hex::decode;
-use openssl::x509::X509;
 use rustls::Certificate;
 use serde::{Deserialize, Serialize};
 use tee_attestation::{SevMeasurement, SgxMeasurement, TeeMeasurement};
@@ -305,7 +305,7 @@ impl CliConf {
                 Some(tee_conf) => {
                     if let Some(certificate) = &tee_conf.verified_cert {
                         Some(Certificate(
-                            X509::from_pem(certificate.as_bytes())?.to_der()?,
+                            x509_cert::Certificate::from_pem(certificate.as_bytes())?.to_der()?,
                         ))
                     } else {
                         None

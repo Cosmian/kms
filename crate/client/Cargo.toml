@@ -12,6 +12,8 @@ cosmian_kms_utils = { path = "../utils" }
 http = { workspace = true }
 josekit = { workspace = true }
 openssl = { workspace = true }
+p12 = "0.6.3"
+pem = { workspace = true }
 ratls = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
@@ -23,3 +25,4 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 url = { workspace = true }
 webpki-roots = { workspace = true }
+yasna = "0.5.2"

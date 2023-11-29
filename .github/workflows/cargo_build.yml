@@ -20,6 +20,9 @@ on:
         required: true
         type: string
 
+env:
+  OPENSSL_DIR: /tmp/openssl_fips
+
 jobs:
   kms-build:
     name: Build ${{ inputs.archive-name }}
@@ -54,12 +57,19 @@ jobs:
           toolchain: ${{ inputs.toolchain }}
           components: rustfmt, clippy
 
+      - name: Local OpenSSL FIPS Install
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir ${{ env.OPENSSL_DIR }}
+          source ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
+
       - name: Build
         if: steps.cargo_cache.outputs.cache-hit != 'true'
         run: ${{ inputs.commands }}
         env:
           # Speeds up Ristretto 25519 multiplication x 2
           RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
+          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
 
       - name: Upload KMS for ${{ inputs.distribution }}
         if: steps.cargo_cache.outputs.cache-hit != 'true'

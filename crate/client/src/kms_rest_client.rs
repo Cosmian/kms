@@ -1,3 +1,5 @@
+// use x509_cert::der::EncodePem;
+// use x509_cert::der::Decode;
 use std::{
     fs::File,
     io::{BufReader, Read},
@@ -510,14 +512,7 @@ impl KmsRestClient {
         // If a PKCS12 file is provided, use it to build the client
         let builder = match ssl_client_pkcs12_path {
             Some(ssl_client_pkcs12) => {
-                let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
-                let mut pkcs12_bytes = vec![];
-                pkcs12.read_to_end(&mut pkcs12_bytes)?;
-                let pkcs12 = Identity::from_pkcs12_der(
-                    &pkcs12_bytes,
-                    ssl_client_pkcs12_password.unwrap_or(""),
-                )?;
-                builder.identity(pkcs12)
+                set_client_auth_cert(builder, ssl_client_pkcs12, ssl_client_pkcs12_password)?
             }
             None => builder,
         };
@@ -525,6 +520,7 @@ impl KmsRestClient {
         // Build the client
         Ok(Self {
             client: builder
+                .use_rustls_tls()
                 .connect_timeout(Duration::from_secs(5))
                 .tcp_keepalive(Duration::from_secs(30))
                 .default_headers(headers)
@@ -726,4 +722,42 @@ pub fn build_tls_client_tee(
 
     // Create a client builder
     Ok(Client::builder().use_preconfigured_tls(config))
+}
+
+pub fn set_client_auth_cert(
+    builder: ClientBuilder,
+    ssl_client_pkcs12: &str,
+    ssl_client_pkcs12_password: Option<&str>,
+) -> Result<ClientBuilder, RestClientError> {
+    let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
+    let mut pkcs12_bytes = vec![];
+    pkcs12.read_to_end(&mut pkcs12_bytes)?;
+
+    // Parse the PKCS12 bytes and extract the public certificate and private key
+    let parsed = p12::PFX::parse(&pkcs12_bytes)?;
+    let password = ssl_client_pkcs12_password.unwrap_or_default();
+    let certs = parsed.cert_bags(password)?;
+    let keys = parsed.key_bags(password)?;
+
+    // Make sure at least 1 certificate and 1 private key exist
+    if certs.is_empty() {
+        return Err(RestClientError::UnexpectedError(format!(
+            "PKCS12 file {ssl_client_pkcs12} does not contain X509 certificate"
+        )))
+    }
+    if keys.is_empty() {
+        return Err(RestClientError::UnexpectedError(format!(
+            "PKCS12 file {ssl_client_pkcs12} does not contain private key"
+        )))
+    }
+
+    // Concat X509 certificate and private key to same PEM file
+    let cert = pem::Pem::new("CERTIFICATE", certs[0].to_owned());
+    let key = pem::Pem::new("PRIVATE KEY", keys[0].to_owned());
+    let mut pem_file = String::new();
+    pem_file.push_str(&cert.to_string());
+    pem_file.push_str(&key.to_string());
+    // Let `Identity` consume this specific PEM file
+    let pem_identity = Identity::from_pem(pem_file.as_bytes())?;
+    Ok(builder.identity(pem_identity))
 }

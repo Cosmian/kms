@@ -1,8 +1,4 @@
-use std::{
-    io::{BufReader, Read},
-    path::PathBuf,
-    time::Duration,
-};
+use std::{path::PathBuf, time::Duration};
 
 // re-export the kmip module as kmip
 use cosmian_kms_utils::access::SuccessResponse;
@@ -11,14 +7,14 @@ use openssl::x509::X509;
 use ratls::verify::{get_server_certificate, verify_ratls};
 use reqwest::{
     multipart::{Form, Part},
-    Body, Certificate, Client, ClientBuilder, Identity, Response,
+    Body, Certificate, Client, ClientBuilder, Response,
 };
 use serde::{Deserialize, Serialize};
 use tee_attestation::TeeMeasurement;
 use tokio_util::codec::{BytesCodec, FramedRead};
 use url::Url;
 
-use crate::error::RestClientError;
+use crate::{error::RestClientError, kms_rest_client::set_client_auth_cert};
 
 /// A struct implementing some of the 50+ operations a KMIP client should implement:
 /// <https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip>
@@ -201,14 +197,7 @@ impl BootstrapRestClient {
         // If a PKCS12 file is provided, use it to build the client
         let builder = match ssl_client_pkcs12_path {
             Some(ssl_client_pkcs12) => {
-                let mut pkcs12 = BufReader::new(std::fs::File::open(ssl_client_pkcs12)?);
-                let mut pkcs12_bytes = vec![];
-                pkcs12.read_to_end(&mut pkcs12_bytes)?;
-                let pkcs12 = Identity::from_pkcs12_der(
-                    &pkcs12_bytes,
-                    ssl_client_pkcs12_password.unwrap_or(""),
-                )?;
-                builder.identity(pkcs12)
+                set_client_auth_cert(builder, ssl_client_pkcs12, ssl_client_pkcs12_password)?
             }
             None => builder,
         };

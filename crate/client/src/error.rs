@@ -73,6 +73,18 @@ impl From<io::Error> for RestClientError {
     }
 }
 
+impl From<rustls::Error> for RestClientError {
+    fn from(e: rustls::Error) -> Self {
+        Self::Default(e.to_string())
+    }
+}
+
+impl From<yasna::ASN1Error> for RestClientError {
+    fn from(e: yasna::ASN1Error) -> Self {
+        Self::Default(e.to_string())
+    }
+}
+
 impl From<KmipError> for RestClientError {
     fn from(e: KmipError) -> Self {
         match e {
