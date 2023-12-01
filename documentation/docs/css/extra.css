@@ -17,6 +17,7 @@ html {
     --nav-bg-color: #f8f8fb;
     --warning: #f2994a;
     --bg-color-dark-mode: #2a2b2c;
+    --bg-color-light-dark-mode: #4c4e4f;
     --body-bg-color-light-mode: #fff;
     --light: #c0c0c0;
     --md-code-bg-color-dark-mode: rgb(45, 47, 48);
@@ -36,156 +37,6 @@ body {
     color: var(--dark);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-}
-
-body.dark-mode {
-    background-color: var(--bg-color-dark-mode);
-    color: var(--light);
-    border-color: var(--border--grey-4-dark-mode) !important;
-}
-body.dark-mode  p:has(img:only-child) {
-    background-color: white;
-}
-body.dark-mode .md-typeset code {
-    background-color: var(--md-code-bg-color-dark-mode);
-    color: var(--md-code-fg-color-dark-mode);
-}
-body.dark-mode .md-typeset .admonition {
-    background-color: var(--bg-color-dark-mode);
-    color: var(--text-dark-mode);
-}
-body.dark-mode p,
-body.dark-mode h1,
-body.dark-mode h2,
-body.dark-mode h3,
-body.dark-mode h4,
-body.dark-mode h5,
-body.dark-mode h6,
-body.dark-mode label ,
-body.dark-mode .p{
-    color: var(--text-dark-mode);
-}
-body.dark-mode a,
-body.dark-mode .md-typeset .tabbed-labels>label {
-    color: var(--text--md-primary-fg-color-dark-mode);
-}
-body.dark-mode a:hover ,
-body.dark-mode .md-typeset .tabbed-set{
-    color: var(--text--active-dark-mode) !important;
-}
-body.dark-mode  .md-nav__title {
-    color: var(--md-default-fg-color--light-dark-mode);
-}
-body.dark-mode .md-nav__item .md-nav__link--active,
-body.dark-mode .md-nav__item .md-nav__link--active code {
-    color: var(--text--active-dark-mode);
-}
-body.dark-mode .highlight .c,
-body.dark-mode .highlight .c1,
-body.dark-mode .highlight .ch,
-body.dark-mode .highlight .cm,
-body.dark-mode .highlight .cs,
-body.dark-mode.highlight .sd {
-    color: var(--md-default-fg-color--light-dark-mode);
-}
-body.dark-mode .highlight .kc,
-body.dark-mode .highlight .n,
-body.dark-mode .highlight .na,
-body.dark-mode .highlight .nv,
-body.dark-mode .highlight .vc,
-body.dark-mode .highlight .vg,
-body.dark-mode .highlight .vi {
-    color: var(--md-default-fg-color--light-dark-mode);
-}
-.md-typeset h5, .md-typeset h6 {
-    color: var(--md-default-fg-color--light-dark-mode);
-}
-body.dark-mode .highlight .cpf,
-body.dark-mode .highlight .l,
-body.dark-mode .highlight .s,
-body.dark-mode .highlight .s1,
-body.dark-mode .highlight .s2,
-body.dark-mode .highlight .sb,
-body.dark-mode .highlight .sc,
-body.dark-mode .highlight .si,
-body.dark-mode .highlight .ss {
-    color: var(--md-code-hl-string-color-dark-mode);
-}
-body.dark-mode .md-header,
-body.dark-mode .md-header input{
-    background-color: var(--md-code-bg-color-dark-mode);
-    color: var(--text-dark-mode);
-}
-body.dark-mode .md-header .md-search__form .md-search__icon {
-    color: var(--text-dark-mode) !important;
-}
-body.dark-mode .md-search__scrollwrap {
-    background-color: var(--bg-color-dark-mode);
-}
-body.dark-mode .md-search-result,
-body.dark-mode .md-search-result__meta,
-body.dark-mode .md-search-result__icon{
-    color: var(--text-dark-mode);
-}
-body.dark-mode .md-search-result mark{
-    color: var(--text--active-dark-mode);
-}
-body.dark-mode .md-search-result h2{
-    color: var(--text-dark-mode);
-}
-body.dark-mode .md-search-result h1{
-    color: var(--text-dark-mode);
-}
-body.dark-mode .md-search-result__more>summary>div {
-    color: var(--text--md-primary-fg-color-dark-mode);
-}
-body.dark-mode .md-typeset table:not([class]) {
-    background-color: var(--bg-color-dark-mode);
-    border-top-color: var(--border--grey-4-dark-mode);
-    border-bottom-color: var(--border--grey-4-dark-mode);
-    border-right-color: var(--border--grey-4-dark-mode);
-    border-left-color: var(--border--grey-4-dark-mode);
-}
-body.dark-mode .md-typeset table:not([class]) td {
-    border-top-color: var(--border--grey-4-dark-mode);
-    border-bottom-color: var(--border--grey-4-dark-mode);
-    border-right-color: var(--border--grey-4-dark-mode);
-    border-left-color: var(--border--grey-4-dark-mode);
-}
-body.dark-mode .md-typeset table:not([class]) tr {
-    border-top-color: var(--border--grey-4-dark-mode);
-    border-bottom-color: var(--border--grey-4-dark-mode);
-    border-right-color: var(--border--grey-4-dark-mode);
-    border-left-color: var(--border--grey-4-dark-mode);
-}
-body.dark-mode .md-typeset .tabbed-set>input:first-child:checked~.tabbed-labels>:first-child,
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(10):checked~.tabbed-labels>:nth-child(10),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(11):checked~.tabbed-labels>:nth-child(11),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(12):checked~.tabbed-labels>:nth-child(12),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(13):checked~.tabbed-labels>:nth-child(13),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(14):checked~.tabbed-labels>:nth-child(14),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(15):checked~.tabbed-labels>:nth-child(15),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(16):checked~.tabbed-labels>:nth-child(16),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(17):checked~.tabbed-labels>:nth-child(17),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(18):checked~.tabbed-labels>:nth-child(18),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(19):checked~.tabbed-labels>:nth-child(19),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(2):checked~.tabbed-labels>:nth-child(2),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(20):checked~.tabbed-labels>:nth-child(20),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(3):checked~.tabbed-labels>:nth-child(3),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(4):checked~.tabbed-labels>:nth-child(4),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(5):checked~.tabbed-labels>:nth-child(5),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(6):checked~.tabbed-labels>:nth-child(6),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(7):checked~.tabbed-labels>:nth-child(7),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(8):checked~.tabbed-labels>:nth-child(8),
-body.dark-mode .md-typeset .tabbed-set>input:nth-child(9):checked~.tabbed-labels>:nth-child(9) {
-    color: var(--text--active-dark-mode);
-}
-
-
-
-*::selection {
-    background-color: var(--md-primary-fg-color);
-    color: white;
 }
 
 
@@ -493,8 +344,8 @@ code,
     border-radius: 4px;
 }
 
-.md-typeset
-:is(.tip, .hint, .important, .warning)
+.md-typeset,
+:is(.tip, .hint, .important, .warning),
 > :is(.admonition-title, summary) {
     background: none;
     border-bottom: 1px solid var(--dark);
@@ -516,8 +367,8 @@ code,
     border-bottom: 1px solid var(--warning);
 }
 
-.md-typeset
-:is(.tip, .hint, .important, .warning)
+.md-typeset,
+:is(.tip, .hint, .important, .warning),
 > :is(.admonition-title, summary):before {
     display: none;
 }
@@ -607,3 +458,175 @@ footer,
         content: "Version draft";
     }
 }
+
+
+/* ------- DARK MODE ------- */
+
+body.dark-mode {
+    background-color: var(--bg-color-dark-mode);
+    color: var(--light);
+    border-color: var(--border--grey-4-dark-mode) !important;
+}
+body.dark-mode  p:has(img:only-child) {
+    background-color: white;
+}
+body.dark-mode .md-typeset code {
+    background-color: var(--md-code-bg-color-dark-mode);
+    color: var(--md-code-fg-color-dark-mode);
+}
+body.dark-mode .md-typeset .admonition {
+    background-color: var(--bg-color-dark-mode);
+    color: var(--text-dark-mode);
+}
+body.dark-mode .md-typeset .md-button {
+    background: var(--bg-color-dark-mode) none;
+    color: var(--text-dark-mode);
+}
+body.dark-mode p,
+body.dark-mode h1,
+body.dark-mode h2,
+body.dark-mode h3,
+body.dark-mode h4,
+body.dark-mode h5,
+body.dark-mode h6,
+body.dark-mode label,
+body.dark-mode li,
+body.dark-mode .p{
+    color: var(--text-dark-mode);
+}
+body.dark-mode a,
+body.dark-mode .md-typeset .tabbed-labels>label {
+    color: var(--text--md-primary-fg-color-dark-mode);
+}
+body.dark-mode a:hover,
+body.dark-mode label:hover,
+body.dark-mode .md-typeset .tabbed-set{
+    color: var(--text--active-dark-mode) !important;
+}
+body.dark-mode  .md-nav__title {
+    color: var(--md-default-fg-color--light-dark-mode);
+}
+body.dark-mode .md-nav__item .md-nav__link--active,
+body.dark-mode .md-nav__item .md-nav__link--active code {
+    color: var(--text--active-dark-mode);
+}
+body.dark-mode .highlight .c,
+body.dark-mode .highlight .c1,
+body.dark-mode .highlight .ch,
+body.dark-mode .highlight .cm,
+body.dark-mode .highlight .cs,
+body.dark-mode.highlight .sd,
+body.dark-mode .highlight .kc,
+body.dark-mode .highlight .n,
+body.dark-mode .highlight .na,
+body.dark-mode .highlight .nv,
+body.dark-mode .highlight .o,
+body.dark-mode .highlight .ow,
+body.dark-mode .highlight .vc,
+body.dark-mode .highlight .vg,
+body.dark-mode .highlight .vi,
+body.dark-mode .highlight .cpf,
+body.dark-mode .highlight .l,
+body.dark-mode .highlight .s,
+body.dark-mode .highlight .s1,
+body.dark-mode .highlight .s2,
+body.dark-mode .highlight .sb,
+body.dark-mode .highlight .sc,
+body.dark-mode .highlight .si,
+body.dark-mode .highlight .ss {
+    color: var(--md-default-fg-color--light-dark-mode);
+}
+.md-typeset {
+    color: var(--text-dark-mode);
+}
+.md-typeset h5, .md-typeset h6 {
+    color: var(--md-default-fg-color--light-dark-mode);
+}
+body.dark-mode .md-header,
+body.dark-mode .md-header input{
+    background-color: var(--bg-color-light-dark-mode);
+    color: var(--text-dark-mode);
+}
+body.dark-mode .md-header .md-search__form .md-search__icon {
+    color: var(--text-dark-mode) !important;
+}
+body.dark-mode .md-search__scrollwrap {
+    background-color: var(--bg-color-dark-mode);
+}
+body.dark-mode .md-search-result,
+body.dark-mode .md-search-result__meta,
+body.dark-mode .md-search-result__icon{
+    color: var(--text-dark-mode);
+}
+body.dark-mode .md-search-result mark{
+    color: var(--text--active-dark-mode);
+}
+body.dark-mode .md-search-result h1,
+body.dark-mode .md-search-result h2{
+    color: var(--text-dark-mode);
+}
+body.dark-mode .md-search-result__more>summary>div {
+    color: var(--text--md-primary-fg-color-dark-mode);
+}
+body.dark-mode .md-typeset table:not([class]) {
+    background-color: var(--bg-color-dark-mode);
+    border-top-color: var(--border--grey-4-dark-mode);
+    border-bottom-color: var(--border--grey-4-dark-mode);
+    border-right-color: var(--border--grey-4-dark-mode);
+    border-left-color: var(--border--grey-4-dark-mode);
+}
+body.dark-mode .md-typeset table:not([class]) td {
+    border-top-color: var(--border--grey-4-dark-mode);
+    border-bottom-color: var(--border--grey-4-dark-mode);
+    border-right-color: var(--border--grey-4-dark-mode);
+    border-left-color: var(--border--grey-4-dark-mode);
+}
+body.dark-mode .md-typeset table:not([class]) tr {
+    border-top-color: var(--border--grey-4-dark-mode);
+    border-bottom-color: var(--border--grey-4-dark-mode);
+    border-right-color: var(--border--grey-4-dark-mode);
+    border-left-color: var(--border--grey-4-dark-mode);
+}
+body.dark-mode .md-typeset .tabbed-set>input:first-child:checked~.tabbed-labels>:first-child,
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(10):checked~.tabbed-labels>:nth-child(10),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(11):checked~.tabbed-labels>:nth-child(11),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(12):checked~.tabbed-labels>:nth-child(12),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(13):checked~.tabbed-labels>:nth-child(13),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(14):checked~.tabbed-labels>:nth-child(14),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(15):checked~.tabbed-labels>:nth-child(15),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(16):checked~.tabbed-labels>:nth-child(16),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(17):checked~.tabbed-labels>:nth-child(17),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(18):checked~.tabbed-labels>:nth-child(18),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(19):checked~.tabbed-labels>:nth-child(19),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(2):checked~.tabbed-labels>:nth-child(2),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(20):checked~.tabbed-labels>:nth-child(20),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(3):checked~.tabbed-labels>:nth-child(3),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(4):checked~.tabbed-labels>:nth-child(4),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(5):checked~.tabbed-labels>:nth-child(5),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(6):checked~.tabbed-labels>:nth-child(6),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(7):checked~.tabbed-labels>:nth-child(7),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(8):checked~.tabbed-labels>:nth-child(8),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(9):checked~.tabbed-labels>:nth-child(9) {
+    color: var(--text--active-dark-mode);
+}
+body.dark-mode .md-nav__title[for=__drawer],
+body.dark-mode .md-nav__title
+{
+    background-color: var(--bg-color-light-dark-mode);
+    box-shadow: var(--bg-color-dark-mode);
+}
+body.dark-mode .md-content,
+body.dark-mode .md-sidebar,
+body.dark-mode .md-sidebar--secondary.md-sidebar__scrollwrap,
+body.dark-mode .md-nav--primary,
+body.dark-mode .md-nav__title~.md-nav__list{
+    background-color: var(--bg-color-dark-mode);
+}
+
+
+*::selection {
+    background-color: var(--md-primary-fg-color);
+    color: white;
+}
+
+
