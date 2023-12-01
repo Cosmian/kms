@@ -301,7 +301,7 @@ async fn process_public_key(
     // First check is any unwrapping needs to be done
     maybe_unwrap(key_block, object_type, kms, key_wrap_type, user, params).await?;
 
-    // If the key is still wrapped the the export KeyFormatType must be the default (none)
+    // If the key is still wrapped then the exported `KeyFormatType` must be the default (`None`)
     if key_block.key_wrapping_data.is_some() {
         if key_format_type.is_some() {
             kms_bail!(
