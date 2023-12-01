@@ -36,7 +36,7 @@ pub fn add_certificate_system_tags(
 }
 
 /// Get the `SubjectKeyIdentifier` X509 extension value
-/// If it not available, it is
+/// If it is not available, it is
 /// calculated according to RFC 5280 section 4.2.1.2
 fn get_or_create_subject_key_identifier_value(certificate: &X509) -> Result<Vec<u8>, KmsError> {
     Ok(if let Some(ski) = certificate.subject_key_id() {
