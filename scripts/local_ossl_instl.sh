@@ -34,7 +34,7 @@ rm openssl-3.1.0.tar.gz
 
 cd openssl-3.1.0/
 ./Configure --prefix="${OPENSSL_DIR}" --openssldir=""${OPENSSL_DIR}"/ssl" enable-fips no-shared \
-&& make -s -j "$(nproc)" && make install -s -j "$(nproc)"
+&& make -s -j && make install -s -j
 
 # Hardcode config file changes for FIPS module.
 # sed replaces lines 45 to 61 with the following text. If changing OpenSSL
