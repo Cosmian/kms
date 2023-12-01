@@ -589,13 +589,12 @@ async fn post_process_pkcs12_for_private_key(
     }
 
     // recover the password
-    let password = match &request.key_wrapping_specification {
-        Some(kws) => match &kws.encryption_key_information {
-            Some(eki) => eki.unique_identifier.to_string().unwrap_or_default(),
-            None => String::new(),
-        },
-        None => String::new(),
-    };
+    let password = request
+        .key_wrapping_specification
+        .as_ref()
+        .and_then(|kws| kws.encryption_key_information.as_ref())
+        .and_then(|eki| eki.unique_identifier.to_string())
+        .unwrap_or_default();
     // Create the PKCS12
     let pkcs12 = openssl::pkcs12::Pkcs12::builder()
         .pkey(&private_key)
