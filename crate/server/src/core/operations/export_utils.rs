@@ -202,7 +202,7 @@ async fn process_private_key(
     let object_type = object_with_metadata.object.object_type();
     let key_block = object_with_metadata.object.key_block_mut()?;
 
-    // First check is any unwrapping needs to be done
+    // First check if any unwrapping needs to be done
     maybe_unwrap(key_block, object_type, kms, key_wrap_type, user, params).await?;
 
     // If the key is still wrapped then the exported `KeyFormatType` must be the default (`None`)
