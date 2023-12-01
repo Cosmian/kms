@@ -40,6 +40,8 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
+const X509_VERSION3: i32 = 2;
+
 pub async fn certify(
     kms: &KMS,
     request: Certify,
@@ -210,7 +212,7 @@ fn build_certificate(
 ) -> Result<(String, Object), KmsError> {
     // Create an X509 struct with the desired certificate information.
     let mut x509_builder = X509::builder().unwrap();
-    x509_builder.set_version(3)?;
+    x509_builder.set_version(X509_VERSION3)?;
     x509_builder.set_subject_name(subject_name.as_ref())?;
     x509_builder.set_pubkey(certificate_public_key.as_ref())?;
     x509_builder.set_not_before(now.as_ref())?;
