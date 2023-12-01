@@ -27,11 +27,10 @@ pub(crate) async fn retrieve_matching_private_key_and_certificate(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<(ObjectWithMetadata, ObjectWithMetadata)> {
-    if private_key_id.is_some() && certificate_id.is_some() {
+    if let (Some(private_key_id), Some(certificate_id)) = (&private_key_id, &certificate_id) {
         // Retrieve the certificate
         let certificate = retrieve_object_for_operation(
-            &certificate_id
-                .context("certify: certificate id is not empty: this should not happen")?,
+            certificate_id,
             ObjectOperationType::Certify,
             kms,
             user,
@@ -39,8 +38,7 @@ pub(crate) async fn retrieve_matching_private_key_and_certificate(
         )
         .await?;
         let private_key = retrieve_object_for_operation(
-            &private_key_id
-                .context("certify: private key id is not empty: this should not happen")?,
+            private_key_id,
             ObjectOperationType::Certify,
             kms,
             user,
@@ -49,6 +47,7 @@ pub(crate) async fn retrieve_matching_private_key_and_certificate(
         .await?;
         return Ok((private_key, certificate))
     }
+
     if let Some(private_key_id) = &private_key_id {
         let private_key = retrieve_object_for_operation(
             private_key_id,
