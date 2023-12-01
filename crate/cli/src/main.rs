@@ -50,6 +50,7 @@ enum CliCommands {
     Verify(TeeAction),
     Login(LoginAction),
     Logout(LogoutAction),
+    #[clap(hide = true)]
     Markdown(MarkdownAction),
 }
 
