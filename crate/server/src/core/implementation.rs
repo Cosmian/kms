@@ -224,9 +224,7 @@ impl KMS {
                         other => {
                             kms_not_supported!(
                                 "symmetric decryption with algorithm: {}",
-                                other
-                                    .map(|alg| alg.to_string())
-                                    .unwrap_or("[N/A]".to_string())
+                                other.map_or("[N/A]".to_string(), |alg| alg.to_string())
                             )
                         }
                     }
