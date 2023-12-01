@@ -4,29 +4,40 @@ Check this documentation for customizations: https://squidfunk.github.io/mkdocs-
 
 {% extends "base.html" %}
 
+{% block styles %}
+{{ super() }}
+<link rel="stylesheet" href="{{ 'assets/stylesheets/extra.css' | url }}" />
+{% endblock %}
+
+
 {% block libs %}
+{{ super() }}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script src="https://unpkg.com/mermaid@8.7.0/dist/mermaid.min.js"></script>
+{% endblock %}
+
+{% block header %}
 <script type="application/ecmascript">
 
+  // Having a script in the body prevents background flashing
+  // see https://dev.to/ayc0/light-dark-mode-avoid-flickering-on-reload-1567 for example
   const app = () => {
-
     const handleDarkmode = (e) => {
       const darkModeOn = e.matches; // true if dark mode is enabled
-      const favicon = document.querySelector('link[rel="icon"]'); // get favicon.ico element
-      if (!favicon) {
-        return; // where are our favicon elements???
-      }
       // replace icons with dark/light themes as appropriate
+      const favicon = document.querySelector('link[rel="icon"]'); // get favicon.ico element
       if (darkModeOn) {
-        favicon.href = "/images/favicon-white.png";
+        if (favicon) {
+          favicon.href = "/images/favicon-white.png";
+        }
         document.body.classList.add("dark-mode");
-        window.alert("This website is in dark mode.")
       } else {
-        favicon.href = "/images/favicon-black.png";
+        if (favicon) {
+          favicon.href = "/images/favicon-black.png";
+        }
         document.body.classList.remove("dark-mode");
-        window.alert("This website is in light mode.")
       }
     };
-
     const darkModeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     handleDarkmode(darkModeMediaQuery);
   };
@@ -34,11 +45,9 @@ Check this documentation for customizations: https://squidfunk.github.io/mkdocs-
 
 </script>
 {{ super() }}
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
-<script src=https://unpkg.com/mermaid@8.7.0/dist/mermaid.min.js"></script>
-
 {% endblock %}
+
+
 
 {% block content %}
 
