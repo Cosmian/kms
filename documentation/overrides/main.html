@@ -1,4 +1,46 @@
-{% extends "base.html" %} {% block content %}
+<!--
+Check this documentation for customizations: https://squidfunk.github.io/mkdocs-material/customization/
+-->
+
+{% extends "base.html" %}
+
+{% block libs %}
+<script type="application/ecmascript">
+
+  const app = () => {
+
+    const handleDarkmode = (e) => {
+      const darkModeOn = e.matches; // true if dark mode is enabled
+      const favicon = document.querySelector('link[rel="icon"]'); // get favicon.ico element
+      if (!favicon) {
+        return; // where are our favicon elements???
+      }
+      // replace icons with dark/light themes as appropriate
+      if (darkModeOn) {
+        favicon.href = "/images/favicon-white.png";
+        document.body.classList.add("dark-mode");
+        window.alert("This website is in dark mode.")
+      } else {
+        favicon.href = "/images/favicon-black.png";
+        document.body.classList.remove("dark-mode");
+        window.alert("This website is in light mode.")
+      }
+    };
+
+    const darkModeMediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    handleDarkmode(darkModeMediaQuery);
+  };
+  app();
+
+</script>
+{{ super() }}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+<script src=https://unpkg.com/mermaid@8.7.0/dist/mermaid.min.js"></script>
+
+{% endblock %}
+
+{% block content %}
 
 <div class="md-content" data-md-component="content">
   <article class="md-content__inner md-typeset">
@@ -76,4 +118,5 @@
     "partials/integrations/disqus.html"%} {% endblock %}
   </article>
 </div>
+
 

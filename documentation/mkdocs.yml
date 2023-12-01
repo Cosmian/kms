@@ -42,10 +42,10 @@ plugins:
   - meta-descriptions
 extra_css:
   - css/extra.css
-extra_javascript:
-  - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML
-  - https://unpkg.com/mermaid@8.7.0/dist/mermaid.min.js
-  - javascripts/extra.js
+#extra_javascript:
+#  - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS-MML_HTMLorMML
+#  - https://unpkg.com/mermaid@8.7.0/dist/mermaid.min.js
+#  - javascripts/extra.js
 nav:
   - Getting started with the Cosmian KMS: index.md
   - Enabling TLS: tls.md
