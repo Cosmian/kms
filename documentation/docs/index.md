@@ -105,7 +105,7 @@ The options are enabled on the docker command line or using the environment vari
 
 ##### Options help
 
-```sh
+```text
 Cosmian Key Management Service
 
 Usage: cosmian_kms_server [OPTIONS]

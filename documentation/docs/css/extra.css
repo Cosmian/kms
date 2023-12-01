@@ -16,15 +16,18 @@ html {
     --grey-4: #d9d9d9;
     --nav-bg-color: #f8f8fb;
     --warning: #f2994a;
-    --body-color-dark-mode: #2a2b2c;
+    --bg-color-dark-mode: #2a2b2c;
     --body-bg-color-light-mode: #fff;
     --light: #c0c0c0;
     --md-code-bg-color-dark-mode: rgb(45, 47, 48);
     --md-code-fg-color-dark-mode: #c5c0b8;
-    --text--md-primary-fg-color: #9e6eff;
-    --border--md-primary-fg-color: #5313d7;
-    --text-dark-mode: #bdb8af;
     --md-default-fg-color--light-dark-mode: rgba(236, 234, 231, 0.54);
+    --text--md-primary-fg-color-dark-mode: #9e6eff;
+    --text--active-dark-mode: #afafff;
+    --border--md-primary-fg-color-dark-mode: #5313d7;
+    --text-dark-mode: #bdb8af;
+    --md-code-hl-string-color-dark-mode: #89e6b8;
+    --border--grey-4-dark-mode: #4a4f51;
 }
 
 body {
@@ -36,8 +39,9 @@ body {
 }
 
 body.dark-mode {
-    background-color: var(--body-color-dark-mode);
+    background-color: var(--bg-color-dark-mode);
     color: var(--light);
+    border-color: var(--border--grey-4-dark-mode) !important;
 }
 body.dark-mode  p:has(img:only-child) {
     background-color: white;
@@ -47,14 +51,34 @@ body.dark-mode .md-typeset code {
     color: var(--md-code-fg-color-dark-mode);
 }
 body.dark-mode .md-typeset .admonition {
-    background-color: var(--md-code-bg-color-dark-mode);
+    background-color: var(--bg-color-dark-mode);
     color: var(--text-dark-mode);
 }
-body.dark-mode p, h1, h2, h3, h4, h5, h6 {
+body.dark-mode p,
+body.dark-mode h1,
+body.dark-mode h2,
+body.dark-mode h3,
+body.dark-mode h4,
+body.dark-mode h5,
+body.dark-mode h6,
+body.dark-mode label ,
+body.dark-mode .p{
     color: var(--text-dark-mode);
 }
-body.dark-mode a {
-    color: var(--text--md-primary-fg-color);
+body.dark-mode a,
+body.dark-mode .md-typeset .tabbed-labels>label {
+    color: var(--text--md-primary-fg-color-dark-mode);
+}
+body.dark-mode a:hover ,
+body.dark-mode .md-typeset .tabbed-set{
+    color: var(--text--active-dark-mode) !important;
+}
+body.dark-mode  .md-nav__title {
+    color: var(--md-default-fg-color--light-dark-mode);
+}
+body.dark-mode .md-nav__item .md-nav__link--active,
+body.dark-mode .md-nav__item .md-nav__link--active code {
+    color: var(--text--active-dark-mode);
 }
 body.dark-mode .highlight .c,
 body.dark-mode .highlight .c1,
@@ -64,6 +88,100 @@ body.dark-mode .highlight .cs,
 body.dark-mode.highlight .sd {
     color: var(--md-default-fg-color--light-dark-mode);
 }
+body.dark-mode .highlight .kc,
+body.dark-mode .highlight .n,
+body.dark-mode .highlight .na,
+body.dark-mode .highlight .nv,
+body.dark-mode .highlight .vc,
+body.dark-mode .highlight .vg,
+body.dark-mode .highlight .vi {
+    color: var(--md-default-fg-color--light-dark-mode);
+}
+.md-typeset h5, .md-typeset h6 {
+    color: var(--md-default-fg-color--light-dark-mode);
+}
+body.dark-mode .highlight .cpf,
+body.dark-mode .highlight .l,
+body.dark-mode .highlight .s,
+body.dark-mode .highlight .s1,
+body.dark-mode .highlight .s2,
+body.dark-mode .highlight .sb,
+body.dark-mode .highlight .sc,
+body.dark-mode .highlight .si,
+body.dark-mode .highlight .ss {
+    color: var(--md-code-hl-string-color-dark-mode);
+}
+body.dark-mode .md-header,
+body.dark-mode .md-header input{
+    background-color: var(--md-code-bg-color-dark-mode);
+    color: var(--text-dark-mode);
+}
+body.dark-mode .md-header .md-search__form .md-search__icon {
+    color: var(--text-dark-mode) !important;
+}
+body.dark-mode .md-search__scrollwrap {
+    background-color: var(--bg-color-dark-mode);
+}
+body.dark-mode .md-search-result,
+body.dark-mode .md-search-result__meta,
+body.dark-mode .md-search-result__icon{
+    color: var(--text-dark-mode);
+}
+body.dark-mode .md-search-result mark{
+    color: var(--text--active-dark-mode);
+}
+body.dark-mode .md-search-result h2{
+    color: var(--text-dark-mode);
+}
+body.dark-mode .md-search-result h1{
+    color: var(--text-dark-mode);
+}
+body.dark-mode .md-search-result__more>summary>div {
+    color: var(--text--md-primary-fg-color-dark-mode);
+}
+body.dark-mode .md-typeset table:not([class]) {
+    background-color: var(--bg-color-dark-mode);
+    border-top-color: var(--border--grey-4-dark-mode);
+    border-bottom-color: var(--border--grey-4-dark-mode);
+    border-right-color: var(--border--grey-4-dark-mode);
+    border-left-color: var(--border--grey-4-dark-mode);
+}
+body.dark-mode .md-typeset table:not([class]) td {
+    border-top-color: var(--border--grey-4-dark-mode);
+    border-bottom-color: var(--border--grey-4-dark-mode);
+    border-right-color: var(--border--grey-4-dark-mode);
+    border-left-color: var(--border--grey-4-dark-mode);
+}
+body.dark-mode .md-typeset table:not([class]) tr {
+    border-top-color: var(--border--grey-4-dark-mode);
+    border-bottom-color: var(--border--grey-4-dark-mode);
+    border-right-color: var(--border--grey-4-dark-mode);
+    border-left-color: var(--border--grey-4-dark-mode);
+}
+body.dark-mode .md-typeset .tabbed-set>input:first-child:checked~.tabbed-labels>:first-child,
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(10):checked~.tabbed-labels>:nth-child(10),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(11):checked~.tabbed-labels>:nth-child(11),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(12):checked~.tabbed-labels>:nth-child(12),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(13):checked~.tabbed-labels>:nth-child(13),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(14):checked~.tabbed-labels>:nth-child(14),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(15):checked~.tabbed-labels>:nth-child(15),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(16):checked~.tabbed-labels>:nth-child(16),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(17):checked~.tabbed-labels>:nth-child(17),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(18):checked~.tabbed-labels>:nth-child(18),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(19):checked~.tabbed-labels>:nth-child(19),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(2):checked~.tabbed-labels>:nth-child(2),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(20):checked~.tabbed-labels>:nth-child(20),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(3):checked~.tabbed-labels>:nth-child(3),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(4):checked~.tabbed-labels>:nth-child(4),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(5):checked~.tabbed-labels>:nth-child(5),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(6):checked~.tabbed-labels>:nth-child(6),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(7):checked~.tabbed-labels>:nth-child(7),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(8):checked~.tabbed-labels>:nth-child(8),
+body.dark-mode .md-typeset .tabbed-set>input:nth-child(9):checked~.tabbed-labels>:nth-child(9) {
+    color: var(--text--active-dark-mode);
+}
+
+
 
 *::selection {
     background-color: var(--md-primary-fg-color);
