@@ -55,22 +55,9 @@ nav:
   - Running in the cloud or any zero-trust environment: zero_trust.md
   - Authenticating to the server: authentication.md
   - Authorizing using access rights: authorization.md
-  - The ckms command line interface:
+  - The `ckms` command line interface:
       - Installing and configuring: cli/cli.md
-      - Using the CLI: cli/main_commands.md
-      - Covercrypt:
-          - Commands: cli/covercrypt/covercrypt.md
-          - Keys management: cli/covercrypt/keys.md
-          - Policy management: cli/covercrypt/policy.md
-      - Certificates:
-          - Commands: cli/certificates/certificates.md
-      - Elliptic curves:
-          - Commands: cli/ec/ec.md
-          - Keys management: cli/ec/keys.md
-      - Symmetric encryption:
-          - Commands: cli/sym/sym.md
-          - Keys management: cli/sym/keys.md
-      - Access rights: cli/access_rights.md
+      - User manual: cli/main_commands.md
       - Enclaved KMS: cli/enclaves.md
   - KMIP 2.1 support:
       - KMIP2.1 support: kmip_2_1/index.md
