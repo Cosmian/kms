@@ -178,35 +178,6 @@ impl DecryptionSystem for HybridDecryptionSystem {
             }
         };
 
-        /*        let plaintext = match key_format_type {
-            KeyFormatType::ECPrivateKey | KeyFormatType::TransparentECPrivateKey => {
-                let recommended_curve = self
-                    .private_key
-                    .attributes()?
-                    .cryptographic_domain_parameters
-                    .ok_or(KmipUtilsError::NotSupported(
-                        "Private key without cryptographic domain parameters is not supported"
-                            .to_string(),
-                    ))?
-                    .recommended_curve
-                    .ok_or(KmipUtilsError::NotSupported(
-                        "Private key without recommended_curve is not supported".to_string(),
-                    ))?;
-                debug!("decrypt: recommended_curve: {:?}", recommended_curve);
-                self.ecies_decrypt(recommended_curve, ciphertext)
-            }
-            KeyFormatType::TransparentRSAPrivateKey => {
-                let private_key =
-                    RsaPrivateKey::from_pkcs8_der(&self.private_key.key_block()?.key_bytes()?)?;
-                Ok(private_key
-                    .unwrap_key(RsaKeyWrappingAlgorithm::Aes256Sha256, ciphertext)?
-                    .to_vec())
-            }
-            _ => Err(KmipUtilsError::NotSupported(format!(
-                "Key format type is not supported: {key_format_type:?}",
-            ))),
-        }?;*/
-
         debug!(
             "Decrypted data with user key {:?} of len (plaintext/ciphertext): {}/{}",
             &self.private_key_uid,
