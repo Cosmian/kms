@@ -62,7 +62,7 @@ When requesting the export of an Object without specifying the Key Format Type, 
     - the uncompressed point octet form as defined in RFC5480 and used in certificates and TLS records for NIST curves.
     - the raw bytes of the public key for Curve 25519 and Curve 448 
 
-Some of these formats are outdated, and the IETF now recommends using PKCS#8 and Subject Public Key Info.
+The IETF now recommends using PKCS#8 and Subject Public Key Info.
 So, even though this server enforces KMIP 2.1 default export formats, the storage formats used are:
 
  - `PKCS#8 DER` for RSA and EC private Keys (RFC 5208 and 5958).
@@ -72,7 +72,7 @@ So, even though this server enforces KMIP 2.1 default export formats, the storag
  - `TransparentSymmetricKey` for symmetric keys
  - `Raw` for opaque objects and Secret Data
 
-Users requesting keys are encouraged to request them in the storage formats above to avoid conversions and match recent RFCs.
+**Note**: Users requesting keys are encouraged to request them in the storage formats above to avoid conversions and match recent RFCs.
 
 ### Example API calls with JSON TTLV
 
@@ -302,7 +302,7 @@ The following KMIP TTLV JSON examples are provided for reference.
 === "Locate"
 
     ```json
-    const locatePayload = {
+    {
     "tag": "Locate",
     "type": "Structure",
     "value": [

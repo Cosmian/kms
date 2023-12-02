@@ -12,9 +12,6 @@ use serde::{Deserialize, Serialize};
 pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
 pub const VENDOR_ATTR_COVER_CRYPT_POLICY: &str = "cover_crypt_policy";
 pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_policy";
-pub const VENDOR_ATTR_COVER_CRYPT_HEADER_UID: &str = "cover_crypt_header_uid";
-pub const VENDOR_ATTR_COVER_CRYPT_MASTER_PRIV_KEY_ID: &str = "cover_crypt_master_private_key_id";
-pub const VENDOR_ATTR_COVER_CRYPT_MASTER_PUB_KEY_ID: &str = "cover_crypt_master_public_key_id";
 pub const VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION: &str = "cover_crypt_policy_edit_action";
 
 /// Convert an policy to a vendor attribute
@@ -153,92 +150,6 @@ pub fn upsert_access_policy_in_attributes(
     attributes.remove_vendor_attribute(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY);
     attributes.add_vendor_attribute(va);
     Ok(())
-}
-
-/// Convert an `cover_crypt` master private key id to a vendor attribute
-#[must_use]
-pub fn master_private_key_id_as_vendor_attribute(
-    cover_crypt_master_private_key_id: &str,
-) -> VendorAttribute {
-    VendorAttribute {
-        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-        attribute_name: VENDOR_ATTR_COVER_CRYPT_MASTER_PRIV_KEY_ID.to_owned(),
-        attribute_value: cover_crypt_master_private_key_id.as_bytes().to_vec(),
-    }
-}
-
-pub fn master_private_key_id_from_attributes(attributes: &Attributes) -> Result<&str, KmipError> {
-    if let Some(bytes) = attributes.get_vendor_attribute_value(
-        VENDOR_ID_COSMIAN,
-        VENDOR_ATTR_COVER_CRYPT_MASTER_PRIV_KEY_ID,
-    ) {
-        std::str::from_utf8(bytes).map_err(|_| {
-            KmipError::InvalidKmipValue(
-                ErrorReason::Invalid_Attribute_Value,
-                "failed deserializing the CoverCrypt Master Private Key ID from the attributes"
-                    .to_string(),
-            )
-        })
-    } else {
-        Err(KmipError::InvalidKmipValue(
-            ErrorReason::Invalid_Attribute_Value,
-            "the attributes do not contain a Master Private Key ID".to_string(),
-        ))
-    }
-}
-
-/// Convert an `cover_crypt` master public key id to a vendor attribute
-#[must_use]
-pub fn master_public_key_id_to_vendor_attribute(
-    cover_crypt_master_public_key_id: &str,
-) -> VendorAttribute {
-    VendorAttribute {
-        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-        attribute_name: VENDOR_ATTR_COVER_CRYPT_MASTER_PUB_KEY_ID.to_owned(),
-        attribute_value: cover_crypt_master_public_key_id.as_bytes().to_vec(),
-    }
-}
-
-pub fn master_public_key_id_from_attributes(attributes: &Attributes) -> Result<&str, KmipError> {
-    if let Some(bytes) = attributes
-        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_MASTER_PUB_KEY_ID)
-    {
-        std::str::from_utf8(bytes).map_err(|_| {
-            KmipError::InvalidKmipValue(
-                ErrorReason::Invalid_Attribute_Value,
-                "failed deserializing the CoverCrypt Master Public Key ID from the attributes"
-                    .to_string(),
-            )
-        })
-    } else {
-        Err(KmipError::InvalidKmipValue(
-            ErrorReason::Invalid_Attribute_Value,
-            "the attributes do not contain a Master Public Key ID".to_string(),
-        ))
-    }
-}
-
-/// This UID is used to build the asymmetric `CoverCrypt` Header object
-#[must_use]
-pub fn header_uid_to_vendor_attribute(uid: &[u8]) -> VendorAttribute {
-    VendorAttribute {
-        vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-        attribute_name: VENDOR_ATTR_COVER_CRYPT_HEADER_UID.to_owned(),
-        attribute_value: uid.to_vec(),
-    }
-}
-
-pub fn header_uid_from_attributes(attributes: &Attributes) -> Result<&[u8], KmipError> {
-    if let Some(bytes) =
-        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_HEADER_UID)
-    {
-        Ok(bytes)
-    } else {
-        Err(KmipError::InvalidKmipValue(
-            ErrorReason::Invalid_Attribute_Value,
-            "the attributes do not contain an CoverCrypt Header UID".to_string(),
-        ))
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
