@@ -23,3 +23,4 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 url = { workspace = true }
 webpki-roots = { workspace = true }
+log = { version = "0.4.20", features = [] }

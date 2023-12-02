@@ -53,10 +53,11 @@ nav:
       - Installing and configuring: cli/cli.md
       - User manual: cli/main_commands.md
       - Enclaved KMS: cli/enclaves.md
+  - Calling the KMS API: api.md
   - KMIP 2.1 support:
       - KMIP2.1 support: kmip_2_1/index.md
       - Objects: kmip_2_1/objects.md
-      - Attributes: kmip_2_1/attributes.md
+      - Attributes Extensions: kmip_2_1/attributes.md
       - Messages: kmip_2_1/messages.md
       - Operations: kmip_2_1/operations.md
       - 6.1.25 Import: kmip_2_1/_import.md

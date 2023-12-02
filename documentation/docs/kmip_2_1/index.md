@@ -148,64 +148,206 @@ The following KMIP TTLV JSON examples are provided for reference.
 
 === "Create a key"
 
+    Create a symmetric key with tag "myKey"
     ```json
-
     {
-    "tag": "Create",
-    "type": "Structure",
-    "value": [
+      "tag": "Create",
+      "type": "Structure",
+      "value": [
         {
-        "tag": "ObjectType",
-        "type": "Enumeration",
-        "value": "SymmetricKey"
+          "tag": "ObjectType",
+          "type": "Enumeration",
+          "value": "SymmetricKey"
         },
         {
-        "tag": "Attributes",
-        "type": "Structure",
-        "value": [
+          "tag": "Attributes",
+          "type": "Structure",
+          "value": [
             {
-            "tag": "CryptographicAlgorithm",
-            "type": "Enumeration",
-            "value": "AES"
+              "tag": "CryptographicAlgorithm",
+              "type": "Enumeration",
+              "value": "AES"
             },
             {
-            "tag": "KeyFormatType",
-            "type": "Enumeration",
-            "value": "TransparentSymmetricKey"
+              "tag": "CryptographicLength",
+              "type": "Integer",
+              "value": 256
             },
             {
-            "tag": "Link",
-            "type": "Structure",
-            "value": []
+              "tag": "CryptographicUsageMask",
+              "type": "Integer",
+              "value": 2108
             },
             {
-            "tag": "ObjectType",
-            "type": "Enumeration",
-            "value": "SymmetricKey"
+              "tag": "KeyFormatType",
+              "type": "Enumeration",
+              "value": "TransparentSymmetricKey"
+            },
+            {
+              "tag": "ObjectType",
+              "type": "Enumeration",
+              "value": "SymmetricKey"
+            },
+            {
+              "tag": "VendorAttributes",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "VendorAttributes",
+                  "type": "Structure",
+                  "value": [
+                    {
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "tag"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "ByteString",
+                      "value": "5B226D794B6579225D" // ["myKey"]
+                    }
+                  ]
+                }
+              ]
             }
-        ]
+          ]
         }
-    ]
+      ]
     }
     ```
     Server response: the unique identifier of the created key
+    ```json
+    {
+      "tag": "CreateResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "ObjectType",
+          "type": "Enumeration",
+          "value": "SymmetricKey"
+        },
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "ebddca55-6027-4c86-ac1f-6b38dcfd6ead"
+        }
+      ]
+    }  
+    ```
 
 === "Get a key"
 
     ```json
     {
-    "tag": "Get",
-    "type": "Structure",
-    "value": [
+      "tag": "Get",
+      "type": "Structure",
+      "value": [
         {
-        "tag": "UniqueIdentifier",
-        "type": "TextString",
-        "value": "eb9c5a0d-afa3-4d06-8673-3dc51431268f"
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "5dc81bb2-648f-485f-b804-c6ea45467056"
+        },
+        {
+          "tag": "KeyWrapType",
+          "type": "Enumeration",
+          "value": "AsRegistered"
         }
-    ]
-    }
+      ]
+    }   
     ```
     Server response : The KMIP TTLV JSON of the exported key
+    ```json
+    {
+      "tag": "GetResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "ObjectType",
+          "type": "Enumeration",
+          "value": "SymmetricKey"
+        },
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "5dc81bb2-648f-485f-b804-c6ea45467056"
+        },
+        {
+          "tag": "Object",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "KeyBlock",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "KeyFormatType",
+                  "type": "Enumeration",
+                  "value": "Raw"
+                },
+                {
+                  "tag": "KeyValue",
+                  "type": "Structure",
+                  "value": [
+                    {
+                      "tag": "KeyMaterial",
+                      "type": "ByteString",
+                      "value": "59B33F36CD23AF36E85728097280B61FBF6388DDA7E93ACFC440773E148327BD"
+                    },
+                    {
+                      "tag": "Attributes",
+                      "type": "Structure",
+                      "value": [
+                        {
+                          "tag": "CryptographicAlgorithm",
+                          "type": "Enumeration",
+                          "value": "AES"
+                        },
+                        {
+                          "tag": "CryptographicLength",
+                          "type": "Integer",
+                          "value": 256
+                        },
+                        {
+                          "tag": "CryptographicUsageMask",
+                          "type": "Integer",
+                          "value": 2108
+                        },
+                        {
+                          "tag": "KeyFormatType",
+                          "type": "Enumeration",
+                          "value": "TransparentSymmetricKey"
+                        },
+                        {
+                          "tag": "ObjectType",
+                          "type": "Enumeration",
+                          "value": "SymmetricKey"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "tag": "CryptographicAlgorithm",
+                  "type": "Enumeration",
+                  "value": "AES"
+                },
+                {
+                  "tag": "CryptographicLength",
+                  "type": "Integer",
+                  "value": 256
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }    
+    ```
 
 === "Encrypt"
 

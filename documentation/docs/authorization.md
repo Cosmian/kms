@@ -15,8 +15,8 @@ An owner of an object grants an access right to a specific user for a given oper
 The supported KMIP operations are: `get`, `export`, `encrypt`, `decrypt`, `import`, `revoke`, `destroy`.
 
 === "ckms"
-      ```sh
-      ➜ ./ckms access grant --help
+      ```
+      ➜ ckms access grant --help
       Grant another user an access right to an object.
 
       This command can only be called by the owner of the object.
@@ -64,8 +64,8 @@ The supported KMIP operations are: `get`, `export`, `encrypt`, `decrypt`, `impor
 An owner of an object can revoke an access right to a specific user for a given operation on a given object at any time.
 
 === "ckms"
-      ```sh
-      ➜ ./ckms access revoke --help
+      ```
+      ➜ ckms access revoke --help
       Revoke another user access right to an object.
 
       This command can only be called by the owner of the object.
@@ -111,8 +111,8 @@ An owner of an object can revoke an access right to a specific user for a given 
 The owner of an object can list all the access rights that have been granted to another object.
 
 === "ckms"
-      ```sh
-      ➜ ./ckms access list --help
+      ```
+      ➜ ckms access list --help
       List the access rights granted on an object to other users.
 
       This command can only be called by the owner of the object. Returns a list of users and the operations they have been granted access to.
@@ -149,8 +149,8 @@ The owner of an object can list all the access rights that have been granted to 
 A user can list all the objects it owns (i.e. the objects it created using either the `Create`, `CreateKeyPair`, or `Import` KMIP operations).
 
 === "ckms"
-      ```sh
-      ➜ ./ckms access owned --help
+      ```
+      ➜ ckms access owned --help
       List the objects owned by the calling user.
 
       Owners of objects can perform any operation on these objects and can grant access rights on any of these operations to any other user.
@@ -189,8 +189,8 @@ A user can list all the objects it owns (i.e. the objects it created using eithe
 A user can list all the access rights that have been granted to it by object owners.
 
 === "ckms"
-      ```sh
-      ➜ ./ckms access obtained --help
+      ```
+      ➜ ckms access obtained --help
       List the access rights obtained by the calling user
 
       Returns a list of objects, their state, their owner and the accesses rights granted on the object

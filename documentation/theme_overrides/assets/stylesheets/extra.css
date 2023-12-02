@@ -538,15 +538,11 @@ body.dark-mode .md-nav__link:not(.md-nav__container):hover {
     color: var(--text--md-primary-fg-color-dark-mode);
 }
 
-body.dark-mode .highlight .c,
-body.dark-mode .highlight .c1,
 body.dark-mode .highlight .ch,
 body.dark-mode .highlight .cm,
 body.dark-mode .highlight .cs,
 body.dark-mode.highlight .sd,
 body.dark-mode .highlight .kc,
-body.dark-mode .highlight .n,
-body.dark-mode .highlight .na,
 body.dark-mode .highlight .nv,
 body.dark-mode .highlight .o,
 body.dark-mode .highlight .ow,
@@ -555,13 +551,20 @@ body.dark-mode .highlight .vg,
 body.dark-mode .highlight .vi,
 body.dark-mode .highlight .cpf,
 body.dark-mode .highlight .l,
-body.dark-mode .highlight .s,
 body.dark-mode .highlight .sb,
 body.dark-mode .highlight .sc,
 body.dark-mode .highlight .si,
 body.dark-mode .highlight .ss {
     color: var(--md-default-fg-color--light-dark-mode);
 }
+body.dark-mode .highlight .c,
+body.dark-mode .highlight .c1 {
+    color: grey;
+}
+body.dark-mode .highlight .n {
+    color: var(--lighter);
+}
+body.dark-mode .highlight .s,
 body.dark-mode .highlight .s1,
 body.dark-mode .highlight .s2 {
     color: goldenrod;
@@ -569,6 +572,7 @@ body.dark-mode .highlight .s2 {
 body.dark-mode .highlight .nt {
     color: cornflowerblue;
 }
+body.dark-mode .highlight .na,
 body.dark-mode .highlight .m {
     color: indianred;
 }
