@@ -490,6 +490,7 @@ body.dark-mode h5,
 body.dark-mode h6,
 body.dark-mode label,
 body.dark-mode li,
+body.dark-mode input,
 body.dark-mode .p {
     color: var(--text-dark-mode);
 }
@@ -501,10 +502,15 @@ body.dark-mode .md-typeset .tabbed-labels > label {
 
 body.dark-mode a:hover,
 body.dark-mode label:hover,
-body.dark-mode .md-typeset .tabbed-set {
+body.dark-mode .md-typeset .tabbed-set
+{
     color: var(--text--active-dark-mode) !important;
 }
 
+body.dark-mode select {
+    color: var(--text--md-primary-fg-color-dark-mode);
+    background-color: var(--bg-color-dark-mode);
+}
 
 body.dark-mode .md-content,
 body.dark-mode .md-sidebar,
@@ -524,6 +530,12 @@ body.dark-mode .md-nav__title {
 body.dark-mode .md-nav__item .md-nav__link--active,
 body.dark-mode .md-nav__item .md-nav__link--active code {
     color: var(--text--active-dark-mode);
+}
+
+body.dark-mode  .md-nav__link:not(.md-nav__link--active),
+body.dark-mode  .md-nav__link:not(.md-nav__container):focus,
+body.dark-mode .md-nav__link:not(.md-nav__container):hover {
+    color: var(--text--md-primary-fg-color-dark-mode);
 }
 
 body.dark-mode .highlight .c,
