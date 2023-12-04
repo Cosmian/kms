@@ -12,11 +12,12 @@ if [[ ! "$1" = /* ]]; then
 fi
 
 echo "Setup for OpenSSL version 3.1.0 with FIPS module"
-echo "Installing OpenSSL to ${1} ..."
+echo "Installing OpenSSL to ${1}..."
 
 OPENSSL_DIR="$1"
 
 # Creating ssl config files directory.
+rm -rf "${OPENSSL_DIR}/ssl"
 mkdir -p "${OPENSSL_DIR}/ssl"
 
 # Downloading and installing OpenSSL 3.1.0.
@@ -39,15 +40,15 @@ make clean
 # Build
 make depend
 make -j
-make install -j
+make -j install
 
 # Hardcode config file changes for FIPS module.
 # sed replaces enable fips config and disable the default provider
-sed -i.bu 's/# .include fipsmodule.cnf/.include fipsmodule.cnf/' "${OPENSSL_DIR}/ssl/openssl.cnf"
+# Careful: change sed delimiter to comma when dealing with filepaths
+sed -i.bu "s,# .include fipsmodule.cnf,.include ${OPENSSL_DIR}/fipsmodule.cnf," "${OPENSSL_DIR}/ssl/openssl.cnf"
 sed -i.bu 's/default = default_sect/# default = default_sect/' "${OPENSSL_DIR}/ssl/openssl.cnf"
 sed -i.bu 's/# fips = fips_sect/fips = fips_sect\nbase = base_sect\n\n[ base_sect ]\nactivate = 1\n/' "${OPENSSL_DIR}/ssl/openssl.cnf"
+rm -f "${OPENSSL_DIR}/ssl/openssl.cnf.bu" # remove backup file
 
 echo -e "\nOpenSSL successfully installed at ${OPENSSL_DIR}"
 echo -e "\nIf this program was not sourced, remember to export the absolute path of ${OPENSSL_DIR} as an environment variable."
-
-export OPENSSL_DIR

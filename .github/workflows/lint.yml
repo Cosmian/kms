@@ -34,7 +34,7 @@ jobs:
       - name: Local OpenSSL FIPS Install
         run: |
           mkdir ${{ env.OPENSSL_DIR }}
-          source ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
+          bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - uses: dtolnay/rust-toolchain@master
         with:

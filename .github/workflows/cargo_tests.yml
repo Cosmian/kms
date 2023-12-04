@@ -103,7 +103,7 @@ jobs:
       - name: Local OpenSSL FIPS Install
         run: |
           mkdir ${{ env.OPENSSL_DIR }}
-          source ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
+          bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Tests in debug
         run: |
@@ -178,7 +178,7 @@ jobs:
       - name: Local OpenSSL FIPS Install
         run: |
           mkdir ${{ env.OPENSSL_DIR }}
-          source ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
+          bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Build with Auth0 feature
         run: |
@@ -244,7 +244,7 @@ jobs:
 
         rm -rf /tmp/openssl_fips
         mkdir -p /tmp/openssl_fips
-        source ./scripts/local_ossl_instl.sh /tmp/openssl_fips cross-compile-windows
+        bash ./scripts/local_ossl_instl.sh /tmp/openssl_fips cross-compile-windows
 
         cargo build --release --bin ckms --target x86_64-pc-windows-gnu
         cargo build --release --bin cosmian_kms_server --target x86_64-pc-windows-gnu
