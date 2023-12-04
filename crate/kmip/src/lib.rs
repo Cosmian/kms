@@ -5,8 +5,6 @@
 #![feature(slice_take)]
 
 pub mod error;
-mod id;
-pub use id::id;
 pub mod kmip;
 pub mod result;
 

@@ -599,7 +599,7 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_access_right_obtained_using_wildcard() -> Result<(), CliError> {
-    std::env::set_var("RUST_LOG", "cosmian_kms_server=debug");
+    // std::env::set_var("RUST_LOG", "cosmian_kms_server=debug");
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     let key_id = gen_key(&ctx.owner_cli_conf_path)?;
 

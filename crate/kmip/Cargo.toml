@@ -10,7 +10,6 @@ openssl = ["dep:openssl"]
 pyo3 = ["dep:pyo3"]
 
 [dependencies]
-base58 = "0.2"
 bitflags = { workspace = true }
 chrono = { workspace = true }
 cloudproof = { workspace = true }
@@ -26,6 +25,7 @@ thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
 zeroize = { workspace = true }
+uuid = { version = "1.6.1", features = ["v4"] }
 
 [dev-dependencies]
 cosmian_logger = { path = "../logger" }

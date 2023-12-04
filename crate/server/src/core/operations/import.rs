@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use cosmian_kmip::{
-    id,
     kmip::{
         kmip_objects::{Object, Object::Certificate, ObjectType},
         kmip_operations::{Import, ImportResponse},
@@ -24,6 +23,7 @@ use openssl::{
     x509::X509,
 };
 use tracing::{debug, trace};
+use uuid::Uuid;
 
 use super::wrapping::unwrap_key;
 use crate::core::certificate::{add_attributes_to_certificate_tags, add_certificate_system_tags};
@@ -96,7 +96,7 @@ async fn process_symmetric_key(
     object_key_block.key_value.attributes = Some(attributes);
 
     let uid = match request.unique_identifier.to_string().unwrap_or_default() {
-        uid if uid.is_empty() => id(&object_key_block.key_bytes()?)?,
+        uid if uid.is_empty() => Uuid::new_v4().to_string(),
         uid => uid,
     };
 
@@ -214,7 +214,7 @@ async fn process_public_key(
     }
 
     let uid = match request.unique_identifier.to_string().unwrap_or_default() {
-        uid if uid.is_empty() => id(&object_key_block.key_bytes()?)?,
+        uid if uid.is_empty() => Uuid::new_v4().to_string(),
         uid => uid,
     };
 
@@ -275,7 +275,7 @@ async fn process_private_key(
         // build ui if needed
 
         let uid = match request.unique_identifier.to_string().unwrap_or_default() {
-            uid if uid.is_empty() => id(&object_key_block.key_bytes()?)?,
+            uid if uid.is_empty() => Uuid::new_v4().to_string(),
             uid => uid,
         };
 
@@ -322,11 +322,9 @@ fn private_key_from_openssl(
 ) -> KResult<(String, Object, Option<HashSet<String>>)> {
     // convert the private key to PKCS#8
     let mut sk = openssl_private_key_to_kmip(&sk, KeyFormatType::PKCS8)?;
-    // generate the unique identifiers
-    let der_bytes = sk.key_block()?.key_bytes()?;
 
     let sk_uid = if request_uid.is_empty() {
-        id(&der_bytes)?
+        Uuid::new_v4().to_string()
     } else {
         request_uid.to_string()
     };

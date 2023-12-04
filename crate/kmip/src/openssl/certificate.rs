@@ -2,10 +2,10 @@ use openssl::{
     nid::Nid,
     x509::{X509Name, X509NameBuilder, X509},
 };
+use uuid::Uuid;
 
 use crate::{
     error::KmipError,
-    id,
     kmip::{
         kmip_objects::{Object, Object::Certificate},
         kmip_types::{CertificateAttributes, CertificateType},
@@ -17,7 +17,7 @@ use crate::{
 pub fn openssl_certificate_to_kmip(certificate: X509) -> Result<(String, Object), KmipError> {
     let der_bytes = certificate.to_der()?;
     Ok((
-        id(&der_bytes)?,
+        Uuid::new_v4().to_string(),
         Certificate {
             certificate_type: CertificateType::X509,
             certificate_value: der_bytes,
