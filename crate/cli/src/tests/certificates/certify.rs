@@ -7,8 +7,8 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, TTLV},
 };
 use cosmian_logger::log_utils::log_init;
-use openssl::{nid::Nid, x509::X509};
 use uuid::Uuid;
+use x509_parser::{certificate::X509Certificate, oid_registry::asn1_rs::FromDer};
 
 use crate::{
     actions::{
@@ -160,21 +160,17 @@ async fn certify_a_csr_test() -> Result<(), CliError> {
         } => certificate_value,
         _ => panic!("wrong object type"),
     };
-    // check that the certificate is valid by parsing it using openssl
-    let cert_x509 = X509::from_der(cert_x509_der).unwrap();
-    // print the subject name
-    assert_eq!(
-        "Test Leaf",
-        cert_x509
-            .subject_name()
-            .entries_by_nid(Nid::COMMONNAME)
-            .next()
-            .unwrap()
-            .data()
-            .as_utf8()
-            .unwrap()
-            .to_string()
-    );
+
+    let res = X509Certificate::from_der(cert_x509_der).unwrap();
+    let subject_name = res
+        .1
+        .subject()
+        .iter_common_name()
+        .next()
+        .and_then(|cn| cn.as_str().ok())
+        .unwrap();
+    assert_eq!("Test Leaf", subject_name);
+
     let ttlv: TTLV =
         read_from_json_file(&PathBuf::from("/tmp/exported_cert.attributes.json")).unwrap();
     let attributes: Attributes = from_ttlv(&ttlv).unwrap();
@@ -269,21 +265,17 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         } => certificate_value,
         _ => panic!("wrong object type"),
     };
-    // check that the certificate is valid by parsing it using openssl
-    let cert_x509 = X509::from_der(cert_x509_der).unwrap();
-    // print the subject name
-    assert_eq!(
-        "kmserver.acme.com",
-        cert_x509
-            .subject_name()
-            .entries_by_nid(Nid::COMMONNAME)
-            .next()
-            .unwrap()
-            .data()
-            .as_utf8()
-            .unwrap()
-            .to_string()
-    );
+
+    let res = X509Certificate::from_der(cert_x509_der).unwrap();
+    let subject_name = res
+        .1
+        .subject()
+        .iter_common_name()
+        .next()
+        .and_then(|cn| cn.as_str().ok())
+        .unwrap();
+    assert_eq!("kmserver.acme.com", subject_name);
+
     let ttlv: TTLV =
         read_from_json_file(&PathBuf::from("/tmp/exported_cert.attributes.json")).unwrap();
     let certificate_attributes: Attributes = from_ttlv(&ttlv).unwrap();
