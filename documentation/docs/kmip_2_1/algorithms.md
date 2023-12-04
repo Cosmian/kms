@@ -2,7 +2,11 @@ The Cosmian server supports a growing list of cryptographic algorithms.
 
 ## Key-wrapping
 
-The Cosmian server supports key-wrapping via the `Import`and `Export` kmip operations. The supported key-wrapping algorithms are:
+The Cosmian server supports key-wrapping via the `Import`(unwrapping) and `Export` (wrapping) kmip operations.
+The (un)wrapping key identifier may be that of a key or a certificate. 
+In the latter case, the public key (or the associated private key for unwrapping, if any) will be retrieved and used.
+
+The supported key-wrapping algorithms are:
 
 | Algorithm            | Wrap Key Type               | Description                                                                                                                                                                 |
 |----------------------|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -19,14 +23,24 @@ The Cosmian server supports key-wrapping via the `Import`and `Export` kmip opera
 
 ## Encryption
 
+Encryption is supported via the `Encrypt` and `Decrypt` kmip operations.
+For bulk operations (i.e. encrypting/decrypting multiple data with the same key), 
+please refer to [KMIP Messages](./messages.md) that allow combining multiple operations in a single request.
+
+Encryption can be performed using a key or a certificate. Decryption can be performed using a key.
+
+
+
 | Algorithm            | Encryption Key Type         | Description                                                                                                                                                                 |
 |----------------------|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Covercrypt           | Covercrypt                  | A fast post-quantum attribute based scheme: [Covercrypt](https://github.com/Cosmian/cover_crypt)                                                                            |
+| AES GCM              | AES (128 or 256 bits)       | The NIST standardized symmetric encryption in [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf)                                                     |
 | CKM_RSA_AES_KEY_WRAP | RSA 2048, 3072 or 4096 bits | RSA OAEP with AES-256 GCM and Sha256 as defined in [RSA AES KEY WRAP](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908) |
 | Salsa Sealed Box     | X25519, Ed25519             | ECIES compatible with libsodium [Sealed Box](https://doc.libsodium.org/public-key_cryptography/sealed_boxes)                                                                | 
 | ECIES NIST AES-128   | P-192, P-224, P-256, P-384  | ECIES with a NIST curve and AES-128 GCM                                                                                                                                     |  
 
- - [Covercrypt](https://github.com/Cosmian/cover_crypt) is a new cryptographic algorithm, being standardized at [ETSI]](https://www.etsi.org/)
+ - [Covercrypt](https://github.com/Cosmian/cover_crypt) is a new post-quantum cryptographic algorithm, being standardized at [ETSI]](https://www.etsi.org/)
 that allows creating ciphertexts for a set of attributes and issuing user keys with access policies over these attributes. User keys
 are traceable with a unique fingerprint.
+
 
