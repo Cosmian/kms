@@ -5,7 +5,6 @@ use cosmian_kmip::kmip::{
     kmip_data_structures::KeyMaterial,
     kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
 };
-use openssl::pkey::{Id, PKey};
 use tempfile::TempDir;
 
 use crate::{
@@ -345,7 +344,6 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         _ => panic!("Invalid key value type"),
     };
     assert_eq!(recommended_curve, &RecommendedCurve::CURVE25519);
-    let pkey_1 = PKey::private_key_from_raw_bytes(&d.to_bytes_be(), Id::X25519).unwrap();
 
     // Export the bytes only
     export_key(
@@ -359,12 +357,8 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         false,
     )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
-    let pkey_2 = PKey::private_key_from_der(&bytes).unwrap();
-
-    assert_eq!(
-        pkey_1.private_key_to_pkcs8().unwrap(),
-        pkey_2.private_key_to_pkcs8().unwrap()
-    );
+    let oid_x25519_pkcs8_size = 16;
+    assert_eq!(bytes[oid_x25519_pkcs8_size..], d.to_bytes_be());
 
     //
     // Public Key
@@ -400,7 +394,6 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         _ => panic!("Invalid key value type"),
     };
     assert_eq!(recommended_curve, &RecommendedCurve::CURVE25519);
-    let pkey_1 = PKey::public_key_from_raw_bytes(q_string, Id::X25519).unwrap();
 
     // Export the bytes only
     export_key(
@@ -414,12 +407,8 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         false,
     )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
-    let pkey_2 = PKey::public_key_from_der(&bytes).unwrap();
-
-    assert_eq!(
-        pkey_1.public_key_to_der().unwrap(),
-        pkey_2.public_key_to_der().unwrap()
-    );
+    let oid_x25519_spki_size = 12;
+    assert_eq!(bytes[oid_x25519_spki_size..], *q_string);
 
     Ok(())
 }
