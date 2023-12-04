@@ -39,8 +39,8 @@ fi
 make clean
 # Build.
 make depend
-make -s -j
-make -s -j install
+make -j
+make -j install
 
 # Hardcode config file changes for FIPS module.
 # sed replaces enable fips config and disable the default provider.
