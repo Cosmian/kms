@@ -71,6 +71,7 @@ nav:
       - Encrypt: kmip_2_1/_encrypt.md
       - Export: kmip_2_1/_export.md
       - Get: kmip_2_1/_get.md
+      - Get Attributes: kmip_2_1/_get_attributes.md
       - Locate: kmip_2_1/_locate.md
       - Re-Key Key Pair : kmip_2_1/_re-key_key_pair.md
       - Revoke: kmip_2_1/_revoke.md
