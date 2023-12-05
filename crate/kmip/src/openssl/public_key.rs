@@ -12,7 +12,10 @@ use crate::{
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
-        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType,
+            RecommendedCurve,
+        },
     },
     kmip_bail, kmip_error,
     result::KmipResultHelper,
@@ -273,6 +276,12 @@ pub fn openssl_public_key_to_kmip(
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                                 object_type: Some(ObjectType::PublicKey),
+                                cryptographic_domain_parameters: Some(
+                                    CryptographicDomainParameters {
+                                        recommended_curve: Some(recommended_curve),
+                                        ..CryptographicDomainParameters::default()
+                                    },
+                                ),
                                 ..Attributes::default()
                             }),
                         },
@@ -296,6 +305,12 @@ pub fn openssl_public_key_to_kmip(
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                                 object_type: Some(ObjectType::PublicKey),
+                                cryptographic_domain_parameters: Some(
+                                    CryptographicDomainParameters {
+                                        recommended_curve: Some(RecommendedCurve::CURVE25519),
+                                        ..CryptographicDomainParameters::default()
+                                    },
+                                ),
                                 ..Attributes::default()
                             }),
                         },
@@ -319,6 +334,12 @@ pub fn openssl_public_key_to_kmip(
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                                 object_type: Some(ObjectType::PublicKey),
+                                cryptographic_domain_parameters: Some(
+                                    CryptographicDomainParameters {
+                                        recommended_curve: Some(RecommendedCurve::CURVEED25519),
+                                        ..CryptographicDomainParameters::default()
+                                    },
+                                ),
                                 ..Attributes::default()
                             }),
                         },
@@ -342,6 +363,12 @@ pub fn openssl_public_key_to_kmip(
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                                 object_type: Some(ObjectType::PublicKey),
+                                cryptographic_domain_parameters: Some(
+                                    CryptographicDomainParameters {
+                                        recommended_curve: Some(RecommendedCurve::CURVE448),
+                                        ..CryptographicDomainParameters::default()
+                                    },
+                                ),
                                 ..Attributes::default()
                             }),
                         },
@@ -365,6 +392,12 @@ pub fn openssl_public_key_to_kmip(
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                                 object_type: Some(ObjectType::PublicKey),
+                                cryptographic_domain_parameters: Some(
+                                    CryptographicDomainParameters {
+                                        recommended_curve: Some(RecommendedCurve::CURVEED448),
+                                        ..CryptographicDomainParameters::default()
+                                    },
+                                ),
                                 ..Attributes::default()
                             }),
                         },

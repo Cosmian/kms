@@ -1,11 +1,14 @@
-use cosmian_kmip::kmip::{
-    extra::VENDOR_ID_COSMIAN,
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{GetAttributes, GetAttributesResponse},
-    kmip_types::{
-        AttributeReference, Attributes, KeyFormatType, LinkType, LinkedObjectIdentifier, Tag,
-        UniqueIdentifier, VendorAttribute, VendorAttributeReference,
+use cosmian_kmip::{
+    kmip::{
+        extra::VENDOR_ID_COSMIAN,
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{GetAttributes, GetAttributesResponse},
+        kmip_types::{
+            AttributeReference, Attributes, KeyFormatType, LinkType, LinkedObjectIdentifier, Tag,
+            UniqueIdentifier, VendorAttribute, VendorAttributeReference,
+        },
     },
+    openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
@@ -14,7 +17,13 @@ use cosmian_kms_utils::{
 use tracing::{debug, trace};
 
 use crate::{
-    core::{certificate::add_certificate_tags_to_attributes, KMS},
+    core::{
+        certificate::add_certificate_tags_to_attributes,
+        operations::export_utils::{
+            openssl_private_key_to_kmip_default_format, openssl_public_key_to_kmip_default_format,
+        },
+        KMS,
+    },
     database::retrieve_object_for_operation,
     error::KmsError,
     result::{KResult, KResultHelper},
@@ -63,11 +72,25 @@ pub async fn get_attributes(
                 "get: unsupported object type for {uid_or_tags}",
             )))
         }
-        Object::PrivateKey { key_block }
-        | Object::PublicKey { key_block }
-        | Object::SymmetricKey { key_block } => {
+        Object::PrivateKey { .. } => {
+            // we want the default format which yields the most infos
+            let pkey = kmip_private_key_to_openssl(&owm.object)?;
+            let default_kmip = openssl_private_key_to_kmip_default_format(&pkey)?;
+            let mut attributes = default_kmip.attributes().cloned().unwrap_or_default();
+            attributes.object_type = Some(object_type);
+            attributes
+        }
+        Object::PublicKey { .. } => {
+            // we want the default format which yields the most infos
+            let pkey = kmip_public_key_to_openssl(&owm.object)?;
+            let default_kmip = openssl_public_key_to_kmip_default_format(&pkey)?;
+            let mut attributes = default_kmip.attributes().cloned().unwrap_or_default();
+            attributes.object_type = Some(object_type);
+            attributes
+        }
+        Object::SymmetricKey { key_block } => {
             let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
-            attributes.object_type = Some(ObjectType::SplitKey);
+            attributes.object_type = Some(object_type);
             attributes
         }
     };

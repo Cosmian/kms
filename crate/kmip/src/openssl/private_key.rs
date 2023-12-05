@@ -12,7 +12,10 @@ use crate::{
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
-        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicDomainParameters, KeyFormatType,
+            RecommendedCurve,
+        },
     },
     kmip_bail,
     result::KmipResultHelper,
@@ -279,6 +282,11 @@ pub fn openssl_private_key_to_kmip(
                     CryptographicAlgorithm::Ed25519,
                     BigUint::from_bytes_be(private_key.raw_private_key()?.as_slice()),
                 ),
+                Id::ED448 => (
+                    RecommendedCurve::CURVEED448,
+                    CryptographicAlgorithm::Ed448,
+                    BigUint::from_bytes_be(private_key.raw_private_key()?.as_slice()),
+                ),
                 x => kmip_bail!("Unsupported curve: {:?} in KMIP format", x),
             };
             KeyBlock {
@@ -289,10 +297,21 @@ pub fn openssl_private_key_to_kmip(
                         d,
                     },
                     attributes: Some(Attributes {
+                        activation_date: None,
+                        certificate_attributes: None,
+                        certificate_type: None,
+                        certificate_length: None,
                         cryptographic_algorithm: Some(cryptographic_algorithm),
                         cryptographic_length: Some(private_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
+                        link: None,
                         object_type: Some(ObjectType::PrivateKey),
+                        unique_identifier: None,
+                        cryptographic_domain_parameters: Some(CryptographicDomainParameters {
+                            recommended_curve: Some(recommended_curve),
+                            ..CryptographicDomainParameters::default()
+                        }),
+                        cryptographic_parameters: None,
                         ..Attributes::default()
                     }),
                 },

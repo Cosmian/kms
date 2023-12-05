@@ -436,7 +436,7 @@ async fn process_covercrypt_key(
     Ok(())
 }
 
-fn openssl_private_key_to_kmip_default_format(key: &PKey<Private>) -> KResult<Object> {
+pub(crate) fn openssl_private_key_to_kmip_default_format(key: &PKey<Private>) -> KResult<Object> {
     let key_type_id = key.id();
     let object = match key_type_id {
         Id::RSA => {
@@ -452,7 +452,7 @@ fn openssl_private_key_to_kmip_default_format(key: &PKey<Private>) -> KResult<Ob
     Ok(object)
 }
 
-fn openssl_public_key_to_kmip_default_format(key: &PKey<Public>) -> KResult<Object> {
+pub(crate) fn openssl_public_key_to_kmip_default_format(key: &PKey<Public>) -> KResult<Object> {
     let key_type_id = key.id();
     let object = match key_type_id {
         Id::RSA => {

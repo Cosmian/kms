@@ -12,11 +12,123 @@ If no Attribute Reference is provided, the server SHALL return all attributes.
 
 This operation can be applied to all [supported objects](./objects.md).
 
+### Example - A symmetric key
+
+Get the attributes of a symmetric key. The request has an empty `AttributeReference` structure, which means that all
+attributes are requested.
+
+The response contains all the system and user tags associated with the key. This is the hex encoded value of a JSON
+array with value
+
+```json
+[
+    "MySymmetricKey",
+    "_kk"
+]
+```
+
+=== "Request"
+    ```json
+    {
+      "tag": "GetAttributes",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
+        },
+        {
+          "tag": "AttributeReference",
+          "type": "Structure",
+          "value": []
+        }
+      ]
+    } 
+    ```
+
+=== "Response"
+    ```json
+    {
+      "tag": "GetAttributesResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
+        },
+        {
+          "tag": "Attributes",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "CryptographicAlgorithm",
+              "type": "Enumeration",
+              "value": "AES"
+            },
+            {
+              "tag": "CryptographicLength",
+              "type": "Integer",
+              "value": 256
+            },
+            {
+              "tag": "CryptographicUsageMask",
+              "type": "Integer",
+              "value": 2108
+            },
+            {
+              "tag": "KeyFormatType",
+              "type": "Enumeration",
+              "value": "TransparentSymmetricKey"
+            },
+            {
+              "tag": "ObjectType",
+              "type": "Enumeration",
+              "value": "SplitKey"
+            },
+            {
+              "tag": "VendorAttributes",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "VendorAttributes",
+                  "type": "Structure",
+                  "value": [
+                    {
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "tag"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "ByteString",
+                      // This is the hex value of a JSON array of system and user tags: ["MySymmetricKey","_kk"]
+                      "value": "5B224D7953796D6D65747269634B6579222C225F6B6B225D"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+    ```
+
+
 ### Example - A certificate imported as part of a PKCS#12 container
 
 Get the attributes of the certificate imported as part of a PKCS#12 container (see [Import](./_import.md) for 
 reference to the imported PKCS#12 container). The certificate is linked to a private key was signed by an 
 intermediate certificate imported as part of the same container.
+
+The request has an emopty `AttributeReference` structure, which means that all attributes are requested.
 
 Please note in the response:
 
