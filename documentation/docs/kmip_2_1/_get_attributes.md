@@ -121,6 +121,122 @@ array with value
     }
     ```
 
+### Example - A NIST P-256 private key
+
+Get the attributes of a NIST P-256 private key. The request has an empty `AttributeReference` structure, which means that
+all attributes are requested.
+
+In the response, please note:
+
+- the `RecommendedCurve` is `P256`, the KMIP name for NIST P-256
+- the `tag` is the hex encoded value of a JSON array with value `["_sk"]`, the system tag for a private key
+
+=== "Request"
+    ```json
+    {
+      "tag": "GetAttributes",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "927adccb-f59a-4cc9-a9e3-1eeb958c601f"
+        },
+        {
+          "tag": "AttributeReference",
+          "type": "Structure",
+          "value": []
+        }
+      ]
+    }  
+    ```
+
+=== "Response"
+    ```json
+    {
+      "tag": "GetAttributesResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "927adccb-f59a-4cc9-a9e3-1eeb958c601f"
+        },
+        {
+          "tag": "Attributes",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "CryptographicAlgorithm",
+              "type": "Enumeration",
+              "value": "ECDH"
+            },
+            {
+              "tag": "CryptographicLength",
+              "type": "Integer",
+              "value": 256
+            },
+            {
+              "tag": "CryptographicDomainParameters",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "QLength",
+                  "type": "Integer",
+                  "value": 256
+                },
+                {
+                  "tag": "RecommendedCurve",
+                  "type": "Enumeration",
+                  // the curve
+                  "value": "P256"
+                }
+              ]
+            },
+            {
+              "tag": "KeyFormatType",
+              "type": "Enumeration",
+              "value": "TransparentECPrivateKey"
+            },
+            {
+              "tag": "ObjectType",
+              "type": "Enumeration",
+              "value": "PrivateKey"
+            },
+            {
+              "tag": "VendorAttributes",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "VendorAttributes",
+                  "type": "Structure",
+                  "value": [
+                    {
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "tag"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "ByteString",
+                      // hex encoded value of a JSON array of system tag: ["_sk"]
+                      "value": "5B225F736B225D"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+    ```
+
 
 ### Example - A certificate imported as part of a PKCS#12 container
 
