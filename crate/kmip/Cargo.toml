@@ -15,6 +15,7 @@ bitflags = { workspace = true }
 chrono = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }
+rust-ini = "0.20"
 num-bigint-dig = { workspace = true }
 openssl = { workspace = true, optional = true }
 pyo3 = { version = "0.20", optional = true }
