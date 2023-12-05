@@ -2,7 +2,7 @@ In [chapter 4](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2
 
 Extensions in KMIP consist mostly in augmenting enumerations with new values and attributing a specific prefix values, usually `0x8880` to the new variants.
 
-To support Covercrypt, Cosmian is using a few extensions listed below.
+To support [Covercrypt](https://github.com/Cosmian/cover_crypt), Cosmian is using a few extensions listed below.
 
 #### Key Format Type
 
@@ -45,7 +45,7 @@ All keys managed by the Cosmian KMS server are primarily a `KeyMaterial` made of
 
 Typically a vendor attribute is made of 3 values: a `Vendor Identification` - always hardcoded to `cosmian` - and a tuple `Attribute Name`, `Attribute Value`.
 
-Covercrypt uses a few vendor attributes which names can be seen in the [crate/utils/src/crypto/cover_crypt/attributes.rs](crate/utils/src/crypto/cover_crypt/attributes.rs) file.
+Covercrypt uses a few vendor attributes which names can be seen in the code [attributes.rs](https://github.com/Cosmian/kms/blob/main/crate/utils/src/crypto/cover_crypt/attributes.rs) file.
 
 The attributes names and corresponding values used for a given `KeyFormatType` are as follows:
 

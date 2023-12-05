@@ -1,14 +1,18 @@
-In [chapter 8](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115738), the KMIP 2.1 specification defines Messages functionality, which is the proper way to send/receive multiple requests/responses at once in KMIP (also called bulk mode).
+In [chapter 8](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115738), the KMIP 2.1
+specification defines Messages functionality, which is the proper way to send/receive multiple requests/responses at
+once in KMIP (also called bulk mode).
 
-One could insert multiple requests in a single Message query.
+One can insert multiple requests in a single Message query.
 These requests are processed sequentially and simultaneously by the server.
 The requests wrapped into the batch items are totally independent.
 
-For each message request sent, a message response is returned, yielding a result status of the requested operation, and potentially associated result data or error messages.
+For each message request sent, a message response is returned, yielding a result status of the requested operation, and
+potentially associated result data or error messages.
 
 ### Request and response example
 
-Two operation requests and their responses are packed into a single Message, with one `CreateKeyPair` operation and one `Locate` operation.
+Two operation requests and their responses are packed into a single Message, with one `CreateKeyPair` operation and
+one `Locate` operation.
 
 === "Message Request"
 

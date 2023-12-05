@@ -1,13 +1,19 @@
 The authorization system in the Cosmian Key Management Service (KMS) operates based on two fundamental principles:
 
-1. **Ownership:** Every cryptographic object has an assigned owner. The ownership is established when an object is created using any of the following KMIP operations: `Create`, `CreateKeyPair`, or `Import`. As an owner, a user holds the privilege to carry out all supported KMIP operations on their objects.
+1. **Ownership:** Every cryptographic object has an assigned owner. The ownership is established when an object is
+   created using any of the following KMIP operations: `Create`, `CreateKeyPair`, or `Import`. As an owner, a user holds
+   the privilege to carry out all supported KMIP operations on their objects.
 
-2. **Access rights delegation:** owners can grant access rights, allowing one or more users to perform certain KMIP operations on an object. When granted such rights, a user can invoke the corresponding KMIP operation on the KMS for that particular object. The owner retains the authority to withdraw these access rights at any given time.
+2. **Access rights delegation:** owners can grant access rights, allowing one or more users to perform certain KMIP
+   operations on an object. When granted such rights, a user can invoke the corresponding KMIP operation on the KMS for
+   that particular object. The owner retains the authority to withdraw these access rights at any given time.
 
 !!!important  "The Wildcard User: *"
-    In addition to regular users, a special user called `*` (the wildcard user) can be used to grant access rights on objects to all users.
+    In addition to regular users, a special user called `*` (the wildcard user) can be used to grant access rights on
+objects to all users.
 
-To manage access rights, the user can call the following endpoints or use the `ckms` [command line interface](./cli/cli.md).
+To manage access rights, the user can call the following endpoints or use
+the `ckms` [command line interface](./cli/cli.md).
 
 ### Granting an access right
 
@@ -15,9 +21,9 @@ An owner of an object grants an access right to a specific user for a given oper
 The supported KMIP operations are: `get`, `export`, `encrypt`, `decrypt`, `import`, `revoke`, `destroy`.
 
 === "ckms"
-      ```
-      ➜ ckms access grant --help
-      Grant another user an access right to an object.
+```
+➜ ckms access grant --help
+Grant another user an access right to an object.
 
       This command can only be called by the owner of the object.
 
@@ -41,7 +47,7 @@ The supported KMIP operations are: `get`, `export`, `encrypt`, `decrypt`, `impor
       ```
 
 === "REST"
-      `POST` to the `/access/grant` endpoint with the JSON object:
+`POST` to the `/access/grant` endpoint with the JSON object:
 
       ```json
       {
@@ -64,9 +70,9 @@ The supported KMIP operations are: `get`, `export`, `encrypt`, `decrypt`, `impor
 An owner of an object can revoke an access right to a specific user for a given operation on a given object at any time.
 
 === "ckms"
-      ```
-      ➜ ckms access revoke --help
-      Revoke another user access right to an object.
+```
+➜ ckms access revoke --help
+Revoke another user access right to an object.
 
       This command can only be called by the owner of the object.
 
@@ -88,7 +94,7 @@ An owner of an object can revoke an access right to a specific user for a given 
       ```
 
 === "REST"
-      `POST` to the `/access/revoke` endpoint with the JSON object:
+`POST` to the `/access/revoke` endpoint with the JSON object:
 
       ```json
       {
@@ -111,9 +117,9 @@ An owner of an object can revoke an access right to a specific user for a given 
 The owner of an object can list all the access rights that have been granted to another object.
 
 === "ckms"
-      ```
-      ➜ ckms access list --help
-      List the access rights granted on an object to other users.
+```
+➜ ckms access list --help
+List the access rights granted on an object to other users.
 
       This command can only be called by the owner of the object. Returns a list of users and the operations they have been granted access to.
 
@@ -129,7 +135,7 @@ The owner of an object can list all the access rights that have been granted to 
       ```
 
 === "REST"
-      `GET` to the `/access/list/{object_unique_id}` endpoint:
+`GET` to the `/access/list/{object_unique_id}` endpoint:
 
       The response is a JSON array:
 
@@ -146,12 +152,13 @@ The owner of an object can list all the access rights that have been granted to 
 
 ### Listing the objects owned by a user
 
-A user can list all the objects it owns (i.e. the objects it created using either the `Create`, `CreateKeyPair`, or `Import` KMIP operations).
+A user can list all the objects it owns (i.e. the objects it created using either the `Create`, `CreateKeyPair`,
+or `Import` KMIP operations).
 
 === "ckms"
-      ```
-      ➜ ckms access owned --help
-      List the objects owned by the calling user.
+```
+➜ ckms access owned --help
+List the objects owned by the calling user.
 
       Owners of objects can perform any operation on these objects and can grant access rights on any of these operations to any other user.
 
@@ -163,7 +170,7 @@ A user can list all the objects it owns (i.e. the objects it created using eithe
       ```
 
 === "REST"
-      `GET` to the `/access/owned` endpoint:
+`GET` to the `/access/owned` endpoint:
 
       The response is a JSON array:
 
@@ -189,9 +196,9 @@ A user can list all the objects it owns (i.e. the objects it created using eithe
 A user can list all the access rights that have been granted to it by object owners.
 
 === "ckms"
-      ```
-      ➜ ckms access obtained --help
-      List the access rights obtained by the calling user
+```
+➜ ckms access obtained --help
+List the access rights obtained by the calling user
 
       Returns a list of objects, their state, their owner and the accesses rights granted on the object
 
@@ -203,7 +210,7 @@ A user can list all the access rights that have been granted to it by object own
       ```
 
 === "REST"
-      `GET` to the `/access/obtained` endpoint:
+`GET` to the `/access/obtained` endpoint:
 
       The response is a JSON array:
 

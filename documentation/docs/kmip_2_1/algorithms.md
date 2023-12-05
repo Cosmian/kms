@@ -45,10 +45,10 @@ Encryption can be performed using a key or a certificate. Decryption can be perf
 
 ## Signature
 
-Signature is only supported via the `Certify` operation, which is used to sign a certificate request, \
-or create a certificate from a public key.
+Signature is only supported via the `Certify` operation, which is used to create a certificate either by signing a certificate request, 
+or building it from an existing public key.
 
-| Algorithm | Signature Key Type         | Description |
-|-----------|----------------------------|-------------|
-| EcDSA     | P-192, P-224, P-256, P-384 |             |
-| EdDSA     | Ed25519                    |             |
+| Algorithm | Signature Key Type         | Description                                                                  |
+|-----------|----------------------------|------------------------------------------------------------------------------|
+| EcDSA     | P-192, P-224, P-256, P-384 | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) |
+| EdDSA     | Ed25519                    | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) |
