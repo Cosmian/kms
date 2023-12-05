@@ -6,6 +6,7 @@ use std::{
 };
 
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
+use tracing::trace;
 
 use crate::{
     config::{command_line::HttpsCertbotConfig, ClapConfig, WorkspaceConfig},
@@ -22,6 +23,8 @@ pub enum HttpParams {
 
 impl HttpParams {
     pub fn try_from(config: &ClapConfig, workspace: &WorkspaceConfig) -> KResult<Self> {
+        trace!("HttpParams(try_from): entering");
+
         // certbot is the priority is that is provided
         if config.certbot_https.use_certbot {
             let certbot = Arc::new(Mutex::new(HttpsCertbotConfig::init(
@@ -31,13 +34,20 @@ impl HttpParams {
             Ok(Self::Certbot(certbot))
         // else start in HTTPS mode if a PKCS#12 file is provided
         } else if let Some(p12_file) = &config.http.https_p12_file {
+            trace!(
+                "HttpParams(try_from): reading PKCS12 file: {p12_file:?}. Password: {:?}",
+                config.http.https_p12_password
+            );
             // Open and read the file into a byte vector
             let mut file = File::open(p12_file)?;
             let mut der_bytes = Vec::new();
             file.read_to_end(&mut der_bytes)?;
+            trace!("HttpParams(try_from): PKCS12 file saved in tmp buffer");
             // Parse the byte vector as a PKCS#12 object
             let sealed_p12 = Pkcs12::from_der(der_bytes.as_slice())?;
+            trace!("HttpParams(try_from): OpenSSL Pkcs12 instantiated");
             let p12 = sealed_p12.parse2(&config.http.https_p12_password)?;
+            trace!("HttpParams(try_from): OpenSSL PKCS12 parsed");
             Ok(Self::Https(p12))
         // else start in HTTP mode which is the default
         } else {

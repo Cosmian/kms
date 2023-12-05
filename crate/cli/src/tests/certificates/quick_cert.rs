@@ -6,6 +6,7 @@ use std::{
 };
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::parse_pkcs12;
 use tempfile::TempDir;
 use tracing::debug;
 
@@ -15,7 +16,7 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        certificates::{import::import_certificate, openssl::check_certificate},
+        certificates::import::import_certificate,
         shared::locate,
         utils::{extract_uids::extract_uid, recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
@@ -256,7 +257,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
         )?;
         // Read the bytes of the file and check them with openssl
         let certificate_bytes = get_file_as_byte_vec(&export_filename);
-        check_certificate(&certificate_bytes, "secret");
+        parse_pkcs12(&certificate_bytes, "secret").unwrap();
 
         // Export certificate as PEM only
         let export_filename = tmp_path.join("cert.pem").to_str().unwrap().to_owned();

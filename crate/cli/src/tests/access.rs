@@ -1,6 +1,7 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
+use cosmian_logger::log_utils::log_init;
 
 use super::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs};
 use crate::{
@@ -253,6 +254,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_grant_error() -> Result<(), CliError> {
+    log_init("cosmian_kms_cli=trace");
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     let key_id = gen_key(&ctx.owner_cli_conf_path)?;
 

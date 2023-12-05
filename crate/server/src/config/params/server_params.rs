@@ -8,6 +8,7 @@ use std::{
 use alcoholic_jwt::JWKS;
 use openssl::x509::X509;
 use tee_attestation::is_running_inside_tee;
+use tracing::trace;
 
 use super::{BootstrapServerParams, DbParams, HttpParams, TeeParams};
 use crate::{
@@ -79,11 +80,15 @@ pub struct ServerParams {
 
 impl ServerParams {
     pub async fn try_from(conf: &ClapConfig) -> KResult<Self> {
+        trace!("ServerParams(try_from): entering");
+
         // Initialize the workspace
         let workspace = conf.workspace.init()?;
+        trace!("ServerParams(try_from): workspace config initialized: {workspace:?}");
 
         // The HTTP/HTTPS parameters
         let http_params = HttpParams::try_from(conf, &workspace)?;
+        trace!("ServerParams(try_from): http_params converted");
 
         // Should we verify the client TLS certificates?
         let verify_cert = if let Some(authority_cert_file) = &conf.http.authority_cert_file {
@@ -98,6 +103,7 @@ impl ServerParams {
         } else {
             None
         };
+        trace!("ServerParams(try_from): verify_cert: {verify_cert:?}");
 
         let server_conf = Self {
             jwks: conf.auth.fetch_jwks().await?,
@@ -119,6 +125,8 @@ impl ServerParams {
             ensure_ra_tls: conf.bootstrap_server.ensure_ra_tls,
             google_cse_kacls_url: conf.google_cse_kacls_url.clone(),
         };
+        trace!("ServerParams(try_from): exiting: {server_conf:?}");
+
         Ok(server_conf)
     }
 

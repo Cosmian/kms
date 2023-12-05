@@ -22,7 +22,7 @@ use cosmian_kms_server::{
 use cosmian_kms_utils::access::ExtraDatabaseParams;
 use rand::SeedableRng;
 use tokio::sync::OnceCell;
-use tracing::trace;
+use tracing::{info, trace};
 
 use super::extract_uids::extract_database_secret;
 use crate::{
@@ -103,7 +103,7 @@ pub async fn start_test_server_with_options(
     use_jwe_encryption: bool,
     use_bootstrap_server: bool,
 ) -> TestsContext {
-    let server_params = genererate_server_params(
+    let server_params = generate_server_params(
         port,
         use_jwt_token,
         use_https,
@@ -183,6 +183,7 @@ pub async fn start_test_server_with_options(
 fn start_test_kms_server(
     server_params: ServerParams,
 ) -> Result<(ServerHandle, JoinHandle<Result<(), CliError>>), CliError> {
+    info!("start_test_kms_server");
     let (tx, rx) = mpsc::channel::<ServerHandle>();
     let tokio_handle = tokio::runtime::Handle::current();
     let thread_handle = thread::spawn(move || {
@@ -282,7 +283,7 @@ pub fn create_new_database(cli_conf_path: &str) -> Result<String, CliError> {
     Ok(database_secret.to_owned())
 }
 
-async fn genererate_server_params(
+async fn generate_server_params(
     port: u16,
     use_jwt_token: bool,
     use_https: bool,
@@ -290,6 +291,7 @@ async fn genererate_server_params(
     use_jwe_encryption: bool,
     use_bootstrap_server: bool,
 ) -> Result<ServerParams, CliError> {
+    trace!("generate_server_params: entering");
     let jwk_private_key: Option<Jwk> = if use_jwe_encryption {
         Some(JWE_PRIVATE_KEY_JSON.parse().expect("Wrong JWK private key"))
     } else {
@@ -314,6 +316,7 @@ async fn genererate_server_params(
         },
         http: if use_https {
             if use_client_cert {
+                trace!("generate_server_params: use_client_cert");
                 HttpConfig {
                     port,
                     https_p12_file: Some(PathBuf::from(
@@ -324,6 +327,7 @@ async fn genererate_server_params(
                     ..Default::default()
                 }
             } else {
+                trace!("generate_server_params: do not use_client_cert");
                 HttpConfig {
                     port,
                     https_p12_file: Some(PathBuf::from(
@@ -349,6 +353,8 @@ async fn genererate_server_params(
         },
         ..Default::default()
     };
+    trace!("generate_server_params: clap_config successfully created");
+
     ServerParams::try_from(&clap_config)
         .await
         .map_err(|e| CliError::Default(format!("failed initializing the server config: {e}")))

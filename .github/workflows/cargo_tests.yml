@@ -102,17 +102,18 @@ jobs:
 
       - name: Local OpenSSL FIPS Install
         run: |
-          mkdir ${{ env.OPENSSL_DIR }}
           bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Tests in debug
         run: |
           rm -rf /tmp/sqlite-data /tmp/tmp.json
           export RUST_BACKTRACE=1 CARGO_INCREMENTAL=0
-          cargo test  --no-default-features -- --nocapture
+          cargo test --no-default-features -- --nocapture
+          cargo test --no-default-features --features fips -- --nocapture
           cargo test --bins -- --nocapture
         env:
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
+          RUST_LOG: cosmian_kms_server=trace
 
           POSTGRES_USER: kms
           PGUSER: kms
@@ -177,7 +178,6 @@ jobs:
 
       - name: Local OpenSSL FIPS Install
         run: |
-          mkdir ${{ env.OPENSSL_DIR }}
           bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Build with Auth0 feature
@@ -210,7 +210,8 @@ jobs:
         cargo build --release --bin ckms
         cargo build --release --bin cosmian_kms_server
 
-        cargo test --release  --no-default-features -- --nocapture
+        cargo test --release --no-default-features -- --nocapture
+        cargo test --release --no-default-features --features fips -- --nocapture
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
@@ -226,7 +227,8 @@ jobs:
         cargo build --release --bin ckms
         cargo build --release --bin cosmian_kms_server
 
-        cargo test --release  --no-default-features -- --nocapture
+        cargo test --release --no-default-features -- --nocapture
+        cargo test --release --no-default-features --features fips -- --nocapture
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server

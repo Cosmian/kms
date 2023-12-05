@@ -72,6 +72,7 @@ pub fn export_key(
     cmd.env("RUST_LOG", "cosmian_kms_cli=trace");
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
+    println!("export_key output: {:?}", output);
     if output.status.success() {
         return Ok(())
     }

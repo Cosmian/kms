@@ -12,7 +12,7 @@ if [[ ! "${1}" = /* ]]; then
 fi
 
 echo "Setup for OpenSSL version 3.1.0 with FIPS module"
-echo "Installing OpenSSL to "${1}"..."
+echo "Installing OpenSSL to ${1}..."
 
 OPENSSL_DIR="${1}"
 
@@ -22,13 +22,17 @@ mkdir -p "${OPENSSL_DIR}/ssl"
 
 # Downloading and installing OpenSSL 3.1.0.
 cd "$(mktemp -d)"
-wget https://github.com/openssl/openssl/releases/download/openssl-3.1.0/openssl-3.1.0.tar.gz
+VERSION=openssl-3.2.0
+URL_PREFIX=${VERSION}
+# VERSION=openssl-1.1.1w
+# URL_PREFIX=OpenSSL_1_1_1w
+wget https://github.com/openssl/openssl/releases/download/${URL_PREFIX}/${VERSION}.tar.gz
 
 echo -n Extracting compressed archive...
-tar -xf openssl-3.1.0.tar.gz
-rm openssl-3.1.0.tar.gz
+tar -xf ${VERSION}.tar.gz
+rm ${VERSION}.tar.gz
 
-cd openssl-3.1.0/
+cd ${VERSION}/
 if [ "${2}" = "cross-compile-windows" ]; then
     ./Configure mingw64 --cross-compile-prefix=x86_64-w64-mingw32- --prefix="${OPENSSL_DIR}" --openssldir="${OPENSSL_DIR}/ssl" enable-fips no-shared
 else
@@ -46,7 +50,7 @@ make -j install
 # sed replaces enable fips config and disable the default provider.
 # Careful: change sed delimiter to comma when dealing with filepaths.
 sed -i.bu "s,# .include fipsmodule.cnf,.include ${OPENSSL_DIR}/ssl/fipsmodule.cnf," "${OPENSSL_DIR}/ssl/openssl.cnf"
-sed -i.bu 's/default = default_sect/# default = default_sect/' "${OPENSSL_DIR}/ssl/openssl.cnf"
+sed -i.bu 's/# activate = 1/activate = 1/' "${OPENSSL_DIR}/ssl/openssl.cnf"
 sed -i.bu 's/# fips = fips_sect/fips = fips_sect\nbase = base_sect\n\n[ base_sect ]\nactivate = 1\n/' "${OPENSSL_DIR}/ssl/openssl.cnf"
 # Remove backup file.
 rm -f "${OPENSSL_DIR}/ssl/openssl.cnf.bu"

@@ -106,7 +106,6 @@ jobs:
 
       - name: Local OpenSSL FIPS Install
         run: |
-          mkdir ${{ env.OPENSSL_DIR }}
           bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Install ckms

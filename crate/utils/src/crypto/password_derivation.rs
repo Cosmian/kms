@@ -21,7 +21,7 @@ const FIPS_MIN_SALT_SIZE: usize = 16;
 const FIPS_HLEN_BITS: usize = 256;
 #[cfg(feature = "fips")]
 /// OWASP recommended parameter for SHA-512 chosen following NIST.FIPS.800-132
-/// recommandations.
+/// recommendations.
 const FIPS_MIN_ITER: usize = 210_000;
 
 /// Derive a key into a LENGTH bytes key using Argon 2 by default, and PBKDF2

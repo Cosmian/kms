@@ -34,6 +34,7 @@ use josekit::{
 use reqwest::{Client, ClientBuilder, Identity, Response};
 use rustls::{client::WebPkiVerifier, Certificate};
 use serde::{Deserialize, Serialize};
+use tracing::trace;
 
 use crate::{
     certificate_verifier::{LeafCertificateVerifier, NoVerifier},
@@ -724,6 +725,40 @@ pub fn build_tls_client_tee(
     Ok(Client::builder().use_preconfigured_tls(config))
 }
 
+pub fn parse_pkcs12(
+    pkcs12_bytes: &[u8],
+    password: &str,
+) -> Result<(Vec<u8>, Vec<u8>, Vec<Vec<u8>>), RestClientError> {
+    trace!("parse_pkcs12: entering");
+    // Parse the PKCS12 bytes and extract the public certificate and private key
+    let parsed = p12::PFX::parse(pkcs12_bytes)?;
+    trace!("parse_pkcs12: PFX parsed");
+
+    let mut certs = parsed.cert_bags(password)?;
+    trace!("parse_pkcs12: certs parsed");
+
+    let keys = parsed.key_bags(password)?;
+    trace!("parse_pkcs12: private key parsed");
+
+    // Make sure at least 1 certificate and 1 private key exist
+    if certs.len() <= 1 {
+        return Err(RestClientError::UnexpectedError(
+            "PKCS12 file should contain at least 2 certificates (1 CA and 1 issued certificate)"
+                .to_string(),
+        ))
+    }
+    if keys.is_empty() {
+        return Err(RestClientError::UnexpectedError(
+            "PKCS12 file does not contain private key".to_string(),
+        ))
+    }
+
+    let cert = certs.pop().ok_or(RestClientError::Default(
+        "Could not pop the first certificate of the PKCS12 file".to_string(),
+    ))?;
+    Ok((cert.to_owned(), keys[0].to_owned(), certs))
+}
+
 pub fn set_client_auth_cert(
     builder: ClientBuilder,
     ssl_client_pkcs12: &str,
@@ -732,28 +767,13 @@ pub fn set_client_auth_cert(
     let mut pkcs12 = BufReader::new(File::open(ssl_client_pkcs12)?);
     let mut pkcs12_bytes = vec![];
     pkcs12.read_to_end(&mut pkcs12_bytes)?;
-
-    // Parse the PKCS12 bytes and extract the public certificate and private key
-    let parsed = p12::PFX::parse(&pkcs12_bytes)?;
     let password = ssl_client_pkcs12_password.unwrap_or_default();
-    let certs = parsed.cert_bags(password)?;
-    let keys = parsed.key_bags(password)?;
 
-    // Make sure at least 1 certificate and 1 private key exist
-    if certs.is_empty() {
-        return Err(RestClientError::UnexpectedError(format!(
-            "PKCS12 file {ssl_client_pkcs12} does not contain X509 certificate"
-        )))
-    }
-    if keys.is_empty() {
-        return Err(RestClientError::UnexpectedError(format!(
-            "PKCS12 file {ssl_client_pkcs12} does not contain private key"
-        )))
-    }
+    let (cert, private_key, _) = parse_pkcs12(&pkcs12_bytes, password)?;
 
     // Concat X509 certificate and private key to same PEM file
-    let cert = pem::Pem::new("CERTIFICATE", certs[0].to_owned());
-    let key = pem::Pem::new("PRIVATE KEY", keys[0].to_owned());
+    let cert = pem::Pem::new("CERTIFICATE", cert.to_owned());
+    let key = pem::Pem::new("PRIVATE KEY", private_key.to_owned());
     let mut pem_file = String::new();
     pem_file.push_str(&cert.to_string());
     pem_file.push_str(&key.to_string());
