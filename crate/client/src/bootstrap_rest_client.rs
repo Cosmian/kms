@@ -2,8 +2,8 @@ use std::{path::PathBuf, time::Duration};
 
 // re-export the kmip module as kmip
 use cosmian_kms_utils::access::SuccessResponse;
+use der::{Decode, EncodePem};
 use http::{HeaderMap, HeaderValue, StatusCode};
-use openssl::x509::X509;
 use ratls::verify::{get_server_certificate, verify_ratls};
 use reqwest::{
     multipart::{Form, Part},
@@ -215,19 +215,21 @@ impl BootstrapRestClient {
         )
         .map_err(|e| RestClientError::RatlsError(format!("Can't get RATLS certificate: {e}")))?;
 
-        let ratls_cert = X509::from_der(&ratls_cert)
+        let ratls_cert = x509_cert::Certificate::from_der(&ratls_cert)
             .map_err(|e| {
-                RestClientError::RatlsError(format!("Can't convert certificate to DER: {e}"))
+                RestClientError::RatlsError(format!(
+                    "Cannot read DER content to X509. Error: {e:?}"
+                ))
             })?
-            .to_pem()
+            .to_pem(der::pem::LineEnding::LF)
             .map_err(|e| {
                 RestClientError::RatlsError(format!("Can't convert certificate to PEM: {e}"))
             })?;
 
-        verify_ratls(&ratls_cert, measurement)
+        verify_ratls(ratls_cert.as_bytes(), measurement)
             .map_err(|e| RestClientError::RatlsError(e.to_string()))?;
 
-        let ratls_cert = Certificate::from_pem(&ratls_cert)?;
+        let ratls_cert = Certificate::from_pem(ratls_cert.as_bytes())?;
 
         // Build the client
         Ok(Self {

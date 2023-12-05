@@ -51,7 +51,7 @@ http = { workspace = true }
 josekit = { workspace = true }
 lazy_static = "1.4"
 mime = "0.3"
-openssl = { workspace = true }
+openssl = { workspace = true, features = ["vendored"] }
 ratls = { workspace = true }
 rawsql = "0.1"
 redis = { workspace = true }

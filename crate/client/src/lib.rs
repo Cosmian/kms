@@ -11,5 +11,5 @@ mod result;
 pub use bootstrap_rest_client::BootstrapRestClient;
 pub use cosmian_kmip::kmip;
 pub use error::RestClientError;
-pub use kms_rest_client::KmsRestClient;
+pub use kms_rest_client::{parse_pkcs12, KmsRestClient};
 pub use result::{RestClientResult, RestClientResultHelper};

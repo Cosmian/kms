@@ -20,7 +20,7 @@ use openssl::{
     x509::store::X509StoreBuilder,
 };
 use tee_attestation::is_running_inside_tee;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 use crate::{
     config::{self, HttpParams, ServerParams},
@@ -128,24 +128,36 @@ async fn start_https_kms_server(
     server_params: ServerParams,
     server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
 ) -> KResult<()> {
+    info!("start_https_kms_server: server_params: {server_params:?}");
     let p12 = match &server_params.http_params {
         config::HttpParams::Https(p12) => p12,
         _ => kms_bail!("http/s: a PKCS#12 file must be provided"),
     };
+    trace!("start_https_kms_server: p12 parsed");
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    openssl::provider::Provider::load(None, "fips").unwrap();
 
+    let a = SslMethod::tls();
     // Create and configure an SSL acceptor with the certificate and key
-    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
+    trace!("start_https_kms_server [prepare TLS]: create builder");
+    let mut builder = SslAcceptor::mozilla_intermediate(a)?;
+    trace!("start_https_kms_server [prepare TLS]: builder created");
     if let Some(pkey) = &p12.pkey {
+        trace!("start_https_kms_server [prepare TLS]: before set_private_key");
         builder.set_private_key(pkey)?;
     }
+    trace!("start_https_kms_server [prepare TLS]: set private key");
     if let Some(cert) = &p12.cert {
         builder.set_certificate(cert)?;
     }
+    trace!("start_https_kms_server [prepare TLS]: set cert");
     if let Some(chain) = &p12.ca {
         for x in chain {
             builder.add_extra_chain_cert(x.to_owned())?;
         }
     }
+    trace!("start_https_kms_server [prepare TLS]: set ca");
 
     if let Some(verify_cert) = &server_params.verify_cert {
         // This line sets the mode to verify peer (client) certificates
