@@ -263,7 +263,7 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), Cli
 }
 
 async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
-    log_init("cosmian_kms_cli=debug,cosmian_kms_server=debug");
+    log_init("cosmian_kms_cli=info,cosmian_kms_server=debug");
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // create a temp dir

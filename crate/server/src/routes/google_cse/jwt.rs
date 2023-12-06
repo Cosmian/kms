@@ -251,7 +251,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_wrap_auth() {
-        log_init("cosmian_kms_server=trace");
+        log_init("cosmian_kms_server=info");
 
         #[derive(Deserialize)]
         struct Token {

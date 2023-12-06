@@ -42,7 +42,7 @@ async fn test_get_attributes_p12() {
     assert!(attributes.get(&AttributeTag::LinkedPublicKeyId).is_none());
     assert_eq!(
         attributes.get(&AttributeTag::KeyFormatType).unwrap(),
-        &serde_json::json!("PKCS8")
+        &serde_json::json!("PKCS1")
     );
     let intermediate_certificate_id = attributes
         .get(&AttributeTag::LinkedCertificateId)
@@ -69,10 +69,9 @@ async fn test_get_attributes_p12() {
         attributes.get(&AttributeTag::LinkedPrivateKeyId).unwrap(),
         &serde_json::json!(imported_p12_sk)
     );
-    // this may have been set by another test - so deactivate for now
-    // assert!(
-    //     attributes
-    //         .get(&AttributeTag::LinkedIssuerCertificateId)
-    //         .is_none()
-    // );
+    assert!(
+        attributes
+            .get(&AttributeTag::LinkedIssuerCertificateId)
+            .is_none()
+    );
 }
