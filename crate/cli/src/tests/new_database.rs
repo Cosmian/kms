@@ -26,7 +26,7 @@ pub async fn test_new_database() -> Result<(), CliError> {
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg("new-database");
     recover_cmd_logs(&mut cmd);
     cmd.assert().success().stdout(predicate::str::contains(
@@ -44,7 +44,7 @@ pub async fn test_secrets_bad() -> Result<(), CliError> {
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, bad_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
 
     cmd.arg(SUB_COMMAND).args(vec![
         "keys",
@@ -66,7 +66,7 @@ pub async fn test_conf_does_not_exist() -> Result<(), CliError> {
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, "test_data/configs/kms_bad_group_id.bad");
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
 
     cmd.arg(SUB_COMMAND).args(vec![
         "keys",
@@ -96,7 +96,7 @@ pub async fn test_secrets_key_bad() -> Result<(), CliError> {
     let invalid_conf_path = generate_invalid_conf(&ctx.owner_cli_conf);
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, invalid_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
 
     cmd.arg(SUB_COMMAND).args(vec![
         "keys",

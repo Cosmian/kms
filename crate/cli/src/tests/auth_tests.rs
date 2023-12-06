@@ -12,7 +12,7 @@ use crate::{
 fn run_cli_command(owner_cli_conf_path: &str) {
     let mut cmd = Command::cargo_bin(PROG_NAME).expect(" cargo bin failed");
     cmd.env(KMS_CLI_CONF_ENV, owner_cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
     recover_cmd_logs(&mut cmd);
     cmd.assert().success();

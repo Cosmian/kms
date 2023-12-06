@@ -27,7 +27,7 @@ pub fn create_symmetric_key(
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let mut args = vec!["keys", "create"];
     let num_s;
     if let Some(number_of_bits) = number_of_bits {

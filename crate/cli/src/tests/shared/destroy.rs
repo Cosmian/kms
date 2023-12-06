@@ -28,7 +28,7 @@ pub fn destroy(cli_conf_path: &str, sub_command: &str, key_id: &str) -> Result<(
         .collect();
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {

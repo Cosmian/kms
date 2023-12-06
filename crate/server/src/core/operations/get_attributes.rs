@@ -14,7 +14,7 @@ use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
     tagging::VENDOR_ATTR_TAG,
 };
-use tracing::{debug, info, trace};
+use tracing::{debug, trace};
 
 use crate::{
     core::{
@@ -150,7 +150,6 @@ pub async fn get_attributes(
         ..Attributes::default()
     };
     for requested in req_attributes {
-        info!("requested: {:?}", requested);
         match requested {
             AttributeReference::Vendor(VendorAttributeReference {
                 vendor_identification,
@@ -213,7 +212,6 @@ pub async fn get_attributes(
                     }
                 }
                 Tag::Certificate => {
-                    info!("Certificate: {:?}", attributes);
                     if let Some(link) = attributes.get_link(LinkType::PKCS12CertificateLink) {
                         res.add_link(
                             LinkType::PKCS12CertificateLink,

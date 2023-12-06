@@ -29,7 +29,7 @@ pub async fn rotate(
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let mut args = vec!["rotate", "--key-id", master_private_key_id];
     args.extend_from_slice(attributes);
     cmd.arg(SUB_COMMAND).args(args);

@@ -30,7 +30,7 @@ pub(crate) fn grant_access(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND)
         .args(vec!["grant", user, object_id, operation]);
 
@@ -52,7 +52,7 @@ pub(crate) fn revoke_access(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND)
         .args(vec!["revoke", user, object_id, operation]);
 
@@ -69,7 +69,7 @@ pub(crate) fn revoke_access(
 fn list_access(cli_conf_path: &str, object_id: &str) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec!["list", object_id]);
 
     let output = recover_cmd_logs(&mut cmd);
@@ -86,7 +86,7 @@ fn list_access(cli_conf_path: &str, object_id: &str) -> Result<String, CliError>
 fn list_owned_objects(cli_conf_path: &str) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
 
     let output = recover_cmd_logs(&mut cmd);
@@ -103,7 +103,7 @@ fn list_owned_objects(cli_conf_path: &str) -> Result<String, CliError> {
 fn list_accesses_rights_obtained(cli_conf_path: &str) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec!["obtained"]);
 
     let output = recover_cmd_logs(&mut cmd);

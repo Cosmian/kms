@@ -29,7 +29,7 @@ pub fn encrypt(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
 
     let mut args = vec!["encrypt", "--key-id", public_key_id];
     args.append(&mut input_files.to_vec());
@@ -61,7 +61,7 @@ pub fn decrypt(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
 
     let mut args = vec!["decrypt", "--key-id", private_key_id];
     args.append(&mut input_files.to_vec());

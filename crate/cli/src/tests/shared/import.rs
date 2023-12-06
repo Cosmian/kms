@@ -34,7 +34,7 @@ pub fn import_key(
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let mut args: Vec<String> = vec!["keys".to_owned(), "import".to_owned(), key_file.to_owned()];
     if let Some(key_id) = key_id {
         args.push(key_id);
