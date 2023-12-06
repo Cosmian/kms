@@ -190,3 +190,80 @@ serialized to hex.
       ]
     }
     ```
+
+### Example - A certificate by Common Name
+
+All certificates are tagged with the system tag `_cert_cn=<CN>`. See [tagging](./tagging.md) for more 
+details.
+
+To search a certificate with CN `My server`,  set the `tag` value to the hex encoding of `["_cert_cn=My server"]`.
+
+=== "Request"
+    ```json
+    {
+      "tag": "Locate",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "Attributes",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "VendorAttributes",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "VendorAttributes",
+                  "type": "Structure",
+                  "value": [
+                    {
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "tag"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "ByteString",
+                      // hex encoding of ["_cert_cn=My server"]
+                      "value": "5B225F636572745F636E3D4D7920736572766572225D"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+    ```
+
+=== "Response"
+    ```json
+    {
+      "tag": "LocateResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "LocatedItems",
+          "type": "Integer",
+          "value": 1
+        },
+        {
+          "tag": "UniqueIdentifier",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "UniqueIdentifier",
+              "type": "TextString",
+              "value": "d2f4e937-dda9-4a86-bbe8-c866646a612f"
+            }
+          ]
+        }
+      ]
+    }    
+    ```

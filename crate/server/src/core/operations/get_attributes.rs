@@ -14,7 +14,7 @@ use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
     tagging::VENDOR_ATTR_TAG,
 };
-use tracing::{debug, trace};
+use tracing::{debug, info, trace};
 
 use crate::{
     core::{
@@ -28,6 +28,19 @@ use crate::{
     error::KmsError,
     result::{KResult, KResultHelper},
 };
+
+const ALL_TAGS: [Tag; 10] = [
+    Tag::ActivationDate,
+    Tag::CryptographicAlgorithm,
+    Tag::CryptographicLength,
+    Tag::CryptographicParameters,
+    Tag::CryptographicDomainParameters,
+    Tag::CryptographicUsageMask,
+    Tag::KeyFormatType,
+    Tag::Certificate,
+    Tag::PrivateKey,
+    Tag::PublicKey,
+];
 
 pub async fn get_attributes(
     kms: &KMS,
@@ -73,33 +86,41 @@ pub async fn get_attributes(
             )))
         }
         Object::PrivateKey { key_block } => {
+            let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
+            attributes.object_type = Some(object_type);
             // is it a Covercrypt key?
             if key_block.key_format_type == KeyFormatType::CoverCryptSecretKey {
-                let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
-                attributes.object_type = Some(object_type);
                 attributes
             } else {
                 // we want the default format which yields the most infos
                 let pkey = kmip_private_key_to_openssl(&owm.object)?;
                 let default_kmip = openssl_private_key_to_kmip_default_format(&pkey)?;
-                let mut attributes = default_kmip.attributes().cloned().unwrap_or_default();
-                attributes.object_type = Some(object_type);
-                attributes
+                let mut default_attributes = default_kmip.attributes().cloned().unwrap_or_default();
+                default_attributes.object_type = Some(object_type);
+                //re-add the vendor attributes
+                default_attributes.vendor_attributes = attributes.vendor_attributes.clone();
+                // re-add the links
+                default_attributes.link = attributes.link.clone();
+                default_attributes
             }
         }
         Object::PublicKey { key_block } => {
+            let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
+            attributes.object_type = Some(object_type);
             // is it a Covercrypt key?
             if key_block.key_format_type == KeyFormatType::CoverCryptPublicKey {
-                let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
-                attributes.object_type = Some(object_type);
                 attributes
             } else {
                 // we want the default format which yields the most infos
                 let pkey = kmip_public_key_to_openssl(&owm.object)?;
                 let default_kmip = openssl_public_key_to_kmip_default_format(&pkey)?;
-                let mut attributes = default_kmip.attributes().cloned().unwrap_or_default();
-                attributes.object_type = Some(object_type);
-                attributes
+                let mut default_attributes = default_kmip.attributes().cloned().unwrap_or_default();
+                default_attributes.object_type = Some(object_type);
+                //re-add the vendor attributes
+                default_attributes.vendor_attributes = attributes.vendor_attributes.clone();
+                // re-add the links
+                default_attributes.link = attributes.link.clone();
+                default_attributes
             }
         }
         Object::SymmetricKey { key_block } => {
@@ -109,21 +130,26 @@ pub async fn get_attributes(
         }
     };
 
-    let req_attributes = request.attribute_references.unwrap_or_default();
+    let mut req_attributes = request.attribute_references.unwrap_or_default();
 
     // request all attributes
     if req_attributes.is_empty() {
-        let mut attributes = attributes.clone();
-        let tags = kms.db.retrieve_tags(&owm.id, params).await?;
-        attributes.set_vendor_attribute(
-            VENDOR_ID_COSMIAN,
-            VENDOR_ATTR_TAG,
-            serde_json::to_vec(&tags)?,
-        );
-        return Ok(GetAttributesResponse {
-            unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
-            attributes,
-        })
+        // let mut attributes = attributes.clone();
+        // let tags = kms.db.retrieve_tags(&owm.id, params).await?;
+        // attributes.set_vendor_attribute(
+        //     VENDOR_ID_COSMIAN,
+        //     VENDOR_ATTR_TAG,
+        //     serde_json::to_vec(&tags)?,
+        // );
+        // return Ok(GetAttributesResponse {
+        //     unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
+        //     attributes,
+        // })
+        req_attributes.push(AttributeReference::Vendor(VendorAttributeReference {
+            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+            attribute_name: VENDOR_ATTR_TAG.to_owned(),
+        }));
+        req_attributes.extend(ALL_TAGS.iter().map(|t| AttributeReference::Standard(*t)));
     };
 
     // request selected attributes
@@ -132,6 +158,7 @@ pub async fn get_attributes(
         ..Attributes::default()
     };
     for requested in req_attributes {
+        info!("requested: {:?}", requested);
         match requested {
             AttributeReference::Vendor(VendorAttributeReference {
                 vendor_identification,
@@ -194,6 +221,7 @@ pub async fn get_attributes(
                     }
                 }
                 Tag::Certificate => {
+                    info!("Certificate: {:?}", attributes);
                     if let Some(link) = attributes.get_link(LinkType::PKCS12CertificateLink) {
                         res.add_link(
                             LinkType::PKCS12CertificateLink,

@@ -410,10 +410,8 @@ async fn process_pkcs12(
         })?;
 
         // insert the tag corresponding to the object type if tags should be updated
-        let mut leaf_certificate_tags = user_tags.clone();
-        if let Some(tags) = leaf_certificate_tags.as_mut() {
-            add_certificate_system_tags(tags, &openssl_cert)?;
-        }
+        let mut leaf_certificate_tags = user_tags.clone().unwrap_or_default();
+        add_certificate_system_tags(&mut leaf_certificate_tags, &openssl_cert)?;
 
         // convert to KMIP
         let (leaf_certificate_uid, leaf_certificate) = openssl_certificate_to_kmip(openssl_cert)?;
@@ -426,15 +424,13 @@ async fn process_pkcs12(
     };
 
     // build the chain if any  (the chain is optional)
-    let mut chain: Vec<(String, Object, Option<HashSet<String>>)> = Vec::new();
+    let mut chain: Vec<(String, Object, HashSet<String>)> = Vec::new();
     if let Some(cas) = pkcs12.ca {
         // import the cas
         for openssl_cert in cas {
             // insert the tag corresponding to the object type if tags should be updated
-            let mut chain_certificate_tags = user_tags.clone();
-            if let Some(tags) = chain_certificate_tags.as_mut() {
-                add_certificate_system_tags(tags, &openssl_cert)?;
-            }
+            let mut chain_certificate_tags = user_tags.clone().unwrap_or_default();
+            add_certificate_system_tags(&mut chain_certificate_tags, &openssl_cert)?;
 
             // convert to KMIP
             let (chain_certificate_uid, chain_certificate) =
@@ -455,15 +451,18 @@ async fn process_pkcs12(
     let mut operations = Vec::with_capacity(2 + chain.len());
 
     //add link to certificate in the private key attributes
-    if let Some(a) = private_key.key_block_mut()?.key_value.attributes.as_mut() {
-        a.add_link(
-            //Note: it is unclear what link type should be used here according to KMIP
-            // CertificateLink seems to be for public key only and there is not description
-            // for PKCS12CertificateLink
-            LinkType::PKCS12CertificateLink,
-            LinkedObjectIdentifier::TextString(leaf_certificate_uid.clone()),
-        );
-    }
+    let attributes = private_key
+        .key_block_mut()?
+        .key_value
+        .attributes
+        .get_or_insert(Attributes::default());
+    attributes.add_link(
+        //Note: it is unclear what link type should be used here according to KMIP
+        // CertificateLink seems to be for public key only and there is not description
+        // for PKCS12CertificateLink
+        LinkType::PKCS12CertificateLink,
+        LinkedObjectIdentifier::TextString(leaf_certificate_uid.clone()),
+    );
     operations.push(single_operation(
         private_key_tags,
         replace_existing,
@@ -473,20 +472,20 @@ async fn process_pkcs12(
 
     // Add links to the leaf certificate
     //TODO: attributes not supported until https://github.com/Cosmian/kms/issues/88 is fixed; using tags instead
-    if let Some(tags) = leaf_certificate_tags.as_mut() {
-        // add private key link to certificate
-        // (the KMIP spec is unclear whether there should be a LinkType::PrivateKeyLink)
-        let sk_tag = format!("_cert_sk={private_key_id}");
-        tags.insert(sk_tag);
-        // add parent link to certificate
-        // (according to the KMIP spec, this would be LinkType::CertificateLink)
-        if let Some((parent_id, _, _)) = chain.first() {
-            let parent_tag = format!("_cert_issuer={parent_id}");
-            tags.insert(parent_tag);
-        }
+
+    // add private key link to certificate
+    // (the KMIP spec is unclear whether there should be a LinkType::PrivateKeyLink)
+    let sk_tag = format!("_cert_sk={private_key_id}");
+    leaf_certificate_tags.insert(sk_tag);
+    // add parent link to certificate
+    // (according to the KMIP spec, this would be LinkType::CertificateLink)
+    if let Some((parent_id, _, _)) = chain.first() {
+        let parent_tag = format!("_cert_issuer={parent_id}");
+        leaf_certificate_tags.insert(parent_tag);
     }
+
     operations.push(single_operation(
-        leaf_certificate_tags,
+        Some(leaf_certificate_tags),
         replace_existing,
         leaf_certificate,
         leaf_certificate_uid.clone(),
@@ -499,16 +498,14 @@ async fn process_pkcs12(
         chain.into_iter().rev()
     // reverse the chain to have the root first
     {
-        if let Some(tags) = chain_certificate_tags.as_mut() {
-            if let Some(parent_certificate_id) = parent_certificate_id {
-                // add parent link to certificate
-                // (according to the KMIP spec, this would be LinkType::CertificateLink)
-                let parent_tag = format!("_cert_issuer={parent_certificate_id}");
-                tags.insert(parent_tag);
-            }
+        if let Some(parent_certificate_id) = parent_certificate_id {
+            // add parent link to certificate
+            // (according to the KMIP spec, this would be LinkType::CertificateLink)
+            let parent_tag = format!("_cert_issuer={parent_certificate_id}");
+            chain_certificate_tags.insert(parent_tag);
         }
         operations.push(single_operation(
-            chain_certificate_tags,
+            Some(chain_certificate_tags),
             true,
             chain_certificate,
             chain_certificate_uid.clone(),
