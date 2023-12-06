@@ -72,21 +72,35 @@ pub async fn get_attributes(
                 "get: unsupported object type for {uid_or_tags}",
             )))
         }
-        Object::PrivateKey { .. } => {
-            // we want the default format which yields the most infos
-            let pkey = kmip_private_key_to_openssl(&owm.object)?;
-            let default_kmip = openssl_private_key_to_kmip_default_format(&pkey)?;
-            let mut attributes = default_kmip.attributes().cloned().unwrap_or_default();
-            attributes.object_type = Some(object_type);
-            attributes
+        Object::PrivateKey { key_block } => {
+            // is it a Covercrypt key?
+            if key_block.key_format_type == KeyFormatType::CoverCryptSecretKey {
+                let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
+                attributes.object_type = Some(object_type);
+                attributes
+            } else {
+                // we want the default format which yields the most infos
+                let pkey = kmip_private_key_to_openssl(&owm.object)?;
+                let default_kmip = openssl_private_key_to_kmip_default_format(&pkey)?;
+                let mut attributes = default_kmip.attributes().cloned().unwrap_or_default();
+                attributes.object_type = Some(object_type);
+                attributes
+            }
         }
-        Object::PublicKey { .. } => {
-            // we want the default format which yields the most infos
-            let pkey = kmip_public_key_to_openssl(&owm.object)?;
-            let default_kmip = openssl_public_key_to_kmip_default_format(&pkey)?;
-            let mut attributes = default_kmip.attributes().cloned().unwrap_or_default();
-            attributes.object_type = Some(object_type);
-            attributes
+        Object::PublicKey { key_block } => {
+            // is it a Covercrypt key?
+            if key_block.key_format_type == KeyFormatType::CoverCryptPublicKey {
+                let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
+                attributes.object_type = Some(object_type);
+                attributes
+            } else {
+                // we want the default format which yields the most infos
+                let pkey = kmip_public_key_to_openssl(&owm.object)?;
+                let default_kmip = openssl_public_key_to_kmip_default_format(&pkey)?;
+                let mut attributes = default_kmip.attributes().cloned().unwrap_or_default();
+                attributes.object_type = Some(object_type);
+                attributes
+            }
         }
         Object::SymmetricKey { key_block } => {
             let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
@@ -101,11 +115,11 @@ pub async fn get_attributes(
     if req_attributes.is_empty() {
         let mut attributes = attributes.clone();
         let tags = kms.db.retrieve_tags(&owm.id, params).await?;
-        attributes.add_vendor_attribute(VendorAttribute {
-            vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-            attribute_name: VENDOR_ATTR_TAG.to_owned(),
-            attribute_value: serde_json::to_vec(&tags)?,
-        });
+        attributes.set_vendor_attribute(
+            VENDOR_ID_COSMIAN,
+            VENDOR_ATTR_TAG,
+            serde_json::to_vec(&tags)?,
+        );
         return Ok(GetAttributesResponse {
             unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
             attributes,

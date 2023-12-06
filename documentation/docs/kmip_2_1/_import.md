@@ -550,9 +550,9 @@ Please note:
     }  
     ```
 
-### Example - A PKCS#12 bundle
+### Example - A PKCS#12 container
 
-Importing a PKCS#12 bundle containing an EC private key, a certificate and an intermediate certificate.
+Importing a PKCS#12 container containing an EC private key, a certificate and an intermediate certificate.
 
 Please note:
 
@@ -580,6 +580,7 @@ Please note:
         {
           "tag": "ObjectType",
           "type": "Enumeration",
+          // PKCS#12 bundles are imported as private keys
           "value": "PrivateKey"
         },
         {
@@ -691,4 +692,107 @@ Please note:
         }
       ]
     }   
+    ```
+### Example - A X509 Certificate
+
+Importing a X509 certificate.  The certificate must be imported an X509, DER encoded.
+
+Please note:
+
+- the empty `UniqueIdentifier` which requests the server to generate a new `UniqueIdentifier` for the imported 
+  certificate.
+- the tag `["MyImportedCert"]` in hex.
+- the `ObjectType` set to `Certificate` which indicates to the server that the key is in X509 format.
+
+=== "Request"
+    ```json
+    {
+      "tag": "Import",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          // Ask the server to generate an identifier for the imported certificate
+          "value": ""
+        },
+        {
+          "tag": "ObjectType",
+          "type": "Enumeration",
+          // this is a certificate
+          "value": "Certificate"
+        },
+        {
+          "tag": "ReplaceExisting",
+          "type": "Boolean",
+          "value": false
+        },
+        {
+          "tag": "Attributes",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "VendorAttributes",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "VendorAttributes",
+                  "type": "Structure",
+                  "value": [
+                    {
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "tag"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "ByteString",
+                      // ["MyImportedCert"] in hex
+                      "value": "5B224D79496D706F7274656443657274225D"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "tag": "Object",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "CertificateType",
+              "type": "Enumeration",
+              "value": "X509"
+            },
+            {
+              "tag": "CertificateValue",
+              "type": "ByteString",
+              // X509 DER bytes in hex
+              "value": "3082033030820218020900C03CBFDC0BD87789300D06092A864886F70D01010B0500305A310B3009060355040613024652310C300A06035504080C03496446310E300C06035504070C0550617269733111300F060355040A0C0841636D6554657374311A301806035504030C1141636D65205465737420526F6F74204341301E170D3233303531393135323934355A170D3333303531363135323934355A305A310B3009060355040613024652310C300A06035504080C03496446310E300C06035504070C0550617269733111300F060355040A0C0841636D6554657374311A301806035504030C1141636D65205465737420526F6F7420434130820122300D06092A864886F70D01010105000382010F003082010A0282010100D61FF874D90172D96968F8DEA453A9D2ACD29886EAC934A18ED1172136FFE284EA702B14FA3BD2900782BCE489A6CF2FC8063F1C8BC13C52F92A3B72B44A343786B1A1DC7A3C49CA1EB24AAFF809F5AE3BB64120553B9B40E2E104966C9C8C0CF2DEBDA167FA804BDB1FBC66CDA82052F9918771FDE318D74E4894D51B808A06A10330C3E985EC2B0067C60F955AD74D64FD4667ABA76D9DC17F681B36391698BF2A3303665C19E2C20A9CADD174A49FD236E89E7541F3AACDC8453ECE094D1C886761A39CBBF809F5F27396E1C9CF431280C07670E87A3BCC9ED6C38037F53E5E006FE2D952D48D9B57D765061A5F8C2CA30CCE394DD2ED88EB6856623239190203010001300D06092A864886F70D01010B05000382010100C48C6AC67FD80062816E065637B64B17D8821299A8718CF04E7D3998C761E72C3030F27DD3C955754BFE25F3D750D15C6ABFFC887FD63B27A1C345B8F9C78BA886196866C49180C3BA37BF20D918B0EAD6051C1AEAB3C98798C43580AA10E7909F7F7F122E9349CC74FE6EFCF947C761945C3BABF68973773CC7B36FBF346D4D4286BB88BB45FA5388870F58BD192F6ED6B8541C269C7F4D77D62DE860E981CDB6D5E99579164C048C80898BF6B53E731AB97997FF48DA5FC8BB6357574CDB58BE6922ECA9CD644E7442177B66032665D186A9F6027ECF6295235922EF045285D9118182E12D608EAA21E5879B08B3BCA894D10E947625058B90796FC7FCDD57"
+            }
+          ]
+        }
+      ]
+    }
+    ```
+
+=== "Response"
+    ```json
+    {
+      "tag": "ImportResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "fc0a018d-5581-44e5-baae-052c2ac98757"
+        }
+      ]
+    }    
     ```

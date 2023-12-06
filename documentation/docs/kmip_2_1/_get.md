@@ -598,3 +598,122 @@ Please note:
       ]
     } 
     ```
+
+### Example - A PKCS#12 container
+
+Export a PKCS#12 container using the unique identifier of the private key.
+The Private Key must have a link to:
+
+ - either a certificate with a link of type `PKCS12CertificateLink` or `CertificateLink`
+ - or a link to a public key with a link of type `PublicKeyLink`, the public key having a link to a certificate with a
+   link of type `CertificateLink`.
+ - for intermediate certificates to be included, the certificate must have a link to a certificate with a link of type
+   `CertificateLink` to its issuer.
+
+Please note:
+
+- the presence of the `KeyFormatType` in the request set to `PKCS12`.
+- the presence of a `KeyWrappingSpecification` structure in the request with the the secret used to seal the PKCS#12 
+  container.
+- the `EncodingOption` is ignored in this case.
+
+=== "Request"
+    ```json
+    {
+      "tag": "Get",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          // The unique identifier of the private key
+          "value": "bf614d45-5a3e-49b9-95c0-5586d3c0d17b"
+        },
+        {
+          "tag": "KeyFormatType",
+          "type": "Enumeration",
+          // The format is PKCS#12
+          "value": "PKCS12"
+        },
+        {
+          "tag": "KeyWrappingSpecification",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "WrappingMethod",
+              "type": "Enumeration",
+              "value": "Encrypt"
+            },
+            {
+              "tag": "EncryptionKeyInformation",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "UniqueIdentifier",
+                  "type": "TextString",
+                  // The PKCS#12 secret
+                  "value": "secret"
+                }
+              ]
+            },
+            {
+              "tag": "EncodingOption",
+              "type": "Enumeration",
+              "value": "TTLVEncoding"
+            }
+          ]
+        }
+      ]
+    }
+    ```
+
+=== "Response"
+    ```json
+    {
+      "tag": "GetResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "ObjectType",
+          "type": "Enumeration",
+          "value": "PrivateKey"
+        },
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          // The unique identifier of the private key
+          "value": "bf614d45-5a3e-49b9-95c0-5586d3c0d17b"
+        },
+        {
+          "tag": "Object",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "KeyBlock",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "KeyFormatType",
+                  "type": "Enumeration",
+                  // The format is PKCS#12
+                  "value": "PKCS12"
+                },
+                {
+                  "tag": "KeyValue",
+                  "type": "Structure",
+                  "value": [
+                    {
+                      "tag": "KeyMaterial",
+                      "type": "ByteString",
+                      // The PKCS#12 container bytes protected with the secret
+                      "value": "308204660201033082042C06092A864886F70D010701A082041D04820419308204153082036706092A864886F70D010706A0820358308203540201003082034D06092A864886F70D010701301C060A2A864886F70D010C0106300E0408A1CE7477CB52D0FB02020800808203201250CC796DD733F83D1412EA850360420552BBD1D6086F55F14694F711BC1AA4940942B651FD196A33F157EA4642E8344C241751E439C3ECF5EFEDAE4602BCF0B624874F5F402F69C0C08BB241760017279B76EA3784CFF3C5CF8F69790D84DDB1702D345F19FBED027CDE104381D4F52CDE37AD8407D36428F371E6A0295006F80651D2A4394B2C7C468A1EDD0F500E51B1A3353CD3E4AB954AF1BE23A9203CEE4FE3D712A6191DAED8F9E391273A7EA1EF9549E9E48176FED98E6B2554A4871638DA1733443817012A5F80750203FDA0E6DED6C8DA27E151682362C184C53425547A60275A3638D2DCA0726FC87C46F4DA9418064E62F14D09085860DD1D13E096E0AB05BBE5CC2162E2973EC154E86819EDE3CCA8A4140EB003543BEDE901DB2F8A5FCBB2E80FEB2B2B2B22B2B4CB4D663D07178F4E93568261759DA834108EA7D1F8BF06947799EAED802436F3C2EAEE8D3218B98B1153B4926C052992C01EB75B3BC032C1A232FACFFC472403DC86C6DD8DF22D700A38DC86EB58B246BFDE3D737F1CEC218383DDDB986657E3AF57D4AC0299ED99D8468CED2D97F14375C4A9AA438086629AA8A651A01701894CF06AA28137A68A70977995E4CF9DBAC4373D483C7E2E1D889E2BEA47E92715F8D540A5C534C43E5E953532264DA581F3DD059E8974AE072C50368F44E93F29D8A34E56DD40338CC69271B14FA7E7CF68FB9D586A26337A449F7CC5222F2F4EFE411691B30E8E25532C1BB6EB9D28EE5EDAF6E54D5C29C38D678AE158425F7959F89B06B10010D7EC1B3BF67C340FE5621D679CA48F2B1AFCF603CAB6581883A32A8733BBE738A7A1F82CBEC590BF69475A3331EB5AC2684EAB6D737E3A1DFACA734A4AC96AEA0E883F9C7B720E68016EEABDC5C88C4B3F405F46B7290CE8BA5258B92BA14122A87624E172CECCF4766066E1AFAF8EF06D1896994265A27080BF3AAB7B73638482A8EF6527B8A8245E514238C8E80A5F9750A663D5468DC5D8460D4793AF77B1D39B1D2A0099114FA8FF8E2D80B10E9F91A295CED84AE3C30C73A27D1CA90CBED4582A7ED0015BAA58DA9850202D1903086802FC5705F5BE0C4FA9F1AD11B82A340ED3DC8A835D08396C3081A706092A864886F70D010701A08199048196308193308190060B2A864886F70D010C0A0102A05A3058301C060A2A864886F70D010C0103300E04089971B59CB1424F9502020800043818AC3DDA45F299AC2D5441F538E49BD14E2AF1DF51A28DC926616D4E16C3100C2B2D9111219688C5BD81F70DAB647B0C8A6F6844150F05033125302306092A864886F70D0109153116041460854FAEF5E61527293E6551F170EF7145957FC430313021300906052B0E03021A0500041459585C94B586A45D6D75323D09976AC88DBEE3CA0408B40773C6DA0DF8BD02020800"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+    ```
