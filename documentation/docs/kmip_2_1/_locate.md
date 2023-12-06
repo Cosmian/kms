@@ -191,12 +191,16 @@ serialized to hex.
     }
     ```
 
-### Example - A certificate by Common Name
+### Example - A certificate by Common Name or Private Key Link
 
 All certificates are tagged with the system tag `_cert_cn=<CN>`. See [tagging](./tagging.md) for more 
 details.
-
 To search a certificate with CN `My server`,  set the `tag` value to the hex encoding of `["_cert_cn=My server"]`.
+
+When a certificate is imported as part of a PKCS12 bundle, the certificate is tagged with the system tag ` _cert_sk=<UID>` 
+where `<UID>` is the unique identifier of the private key. 
+To search a certificate by linked to private key `9550c6f3-ac11-4db8-b54f-a0514b68c897`, set the `tag` value to 
+the hex encoding of `["_cert_sk=9550c6f3-ac11-4db8-b54f-a0514b68c897"]`.
 
 === "Request"
     ```json

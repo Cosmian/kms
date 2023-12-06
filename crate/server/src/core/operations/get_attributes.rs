@@ -29,6 +29,7 @@ use crate::{
     result::{KResult, KResultHelper},
 };
 
+/// All the tags that can be retrieved
 const ALL_TAGS: [Tag; 10] = [
     Tag::ActivationDate,
     Tag::CryptographicAlgorithm,
@@ -134,21 +135,12 @@ pub async fn get_attributes(
 
     // request all attributes
     if req_attributes.is_empty() {
-        // let mut attributes = attributes.clone();
-        // let tags = kms.db.retrieve_tags(&owm.id, params).await?;
-        // attributes.set_vendor_attribute(
-        //     VENDOR_ID_COSMIAN,
-        //     VENDOR_ATTR_TAG,
-        //     serde_json::to_vec(&tags)?,
-        // );
-        // return Ok(GetAttributesResponse {
-        //     unique_identifier: UniqueIdentifier::TextString(owm.id.clone()),
-        //     attributes,
-        // })
+        // tags
         req_attributes.push(AttributeReference::Vendor(VendorAttributeReference {
             vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
             attribute_name: VENDOR_ATTR_TAG.to_owned(),
         }));
+        // standard attributes
         req_attributes.extend(ALL_TAGS.iter().map(|t| AttributeReference::Standard(*t)));
     };
 
