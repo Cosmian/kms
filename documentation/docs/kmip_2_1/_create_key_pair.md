@@ -31,6 +31,12 @@ Please note:
  - The `CryptographicAlgorithm` is set to `ECDH`.
  - The `RecommendedCurve` is set to `CURVE25519`.
 
+Corresponding `ckms` CLI command:
+
+```shell
+ckms ec keys create
+```
+
 === "Request"
     ```json
     {
@@ -235,8 +241,10 @@ The policy to hex-encode to the call wil be:
 }
 ```
 
-
-
+Corresponding `ckms` CLI command:
+```shell
+ckms cc keys create-master-key-pair -s policy_specifications.json 
+```
 
 === "Request"
     ```json

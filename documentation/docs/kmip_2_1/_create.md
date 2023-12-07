@@ -17,9 +17,15 @@ This operation can be used to create a new symmetric key or a new Covercrypt use
 
 Creating a 256 bit AES Symmetric Key with the tag `MySymmetricKey`.
 
-The tags are assembled in a JSON array and encoded in hex. 
+The tags are assembled in a JSON array and encoded in hex.
 
 The `CryptographicUsageMask` is optional. 
+
+Corresponding `ckms` CLI command:
+
+```shell
+ckms sym keys create --tag MySymmetricKey 
+```
 
 === "Request"
     ```json

@@ -52,7 +52,6 @@ nav:
   - The `ckms` command line interface:
       - Installing and configuring: cli/cli.md
       - User manual: cli/main_commands.md
-      - Enclaved KMS: cli/enclaves.md
   - Calling the KMS API: api.md
   - KMIP 2.1:
       - Introduction: kmip_2_1/index.md

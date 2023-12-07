@@ -37,11 +37,14 @@ To certify a Certificate Signing Request or a Public Key, one must provide:
 Certify a PKCS#10 Certificate Signing Request (CSR) with the issuer private key unique identifier 
 `854d7914-3b1d-461a-a2dd-7aad27043b56`, and set the certificate requested validity to 365 days and the tag to `MyCert`.
 
-The equivalent `ckms` CLI command is
+The corresponding `ckms` CLI command is
 
 ```shell
-ckms -- certificates certify -r my_cert.csr -k 854d7914-3b1d-461a-a2dd-7aad27043b56 -d 365 -t "MyCert"
+ckms  certificates certify -r my_cert.csr -k 854d7914-3b1d-461a-a2dd-7aad27043b56 -d 365 -t "MyCert"
 ```
+
+Note: the `ckms` client converts the CSR from PEM TO DER before creating the JSON TTLV and sending it to the 
+server.
 
 === "Request"
     ```json
@@ -161,4 +164,290 @@ ckms -- certificates certify -r my_cert.csr -k 854d7914-3b1d-461a-a2dd-7aad27043
         }
       ]
     }
+    ```
+
+#### Example - Public key
+
+Certify a public key with unique id `45e56e67-d813-468f-9116-4d1e611a1828` using the issuer private key
+`45e56e67-d813-468f-9116-4d1e611a1828`. 
+Set the Subject Name of the certificate to `C=FR, ST=IdF, L=Paris, O=AcmeTest, CN=bob@acme.com`, the tag to `Bob` and
+the certificate requested validity to 365 days.
+
+The corresponding `ckms` CLI command is
+
+```shell
+ckms certificates certify -p 45e56e67-d813-468f-9116-4d1e611a1828 -k 854d7914-3b1d-461a-a2dd-7aad27043b56 \
+-d 365 -t "Bob" --subject-name "C=FR, ST=IdF, L=Paris, O=AcmeTest, CN=bob@acme.com"
+```
+
+Please note the following in the JSON TTLV of the reauest:
+
+ - the various Subject Name fields that are set for the certificate
+ - the Subject Name issuer fields are ignored: they will be copied from the certificate linked to the issuer private key
+
+
+=== "Request"
+    ```json
+    {
+      "tag": "Certify",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          // the public key unique identifier
+          "value": "45e56e67-d813-468f-9116-4d1e611a1828"
+        },
+        {
+          "tag": "Attributes",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "CertificateAttributes",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "CertificateSubjectCn",
+                  "type": "TextString",
+                  // the Common Name of the certificate
+                  "value": "bob@acme.com"
+                },
+                {
+                  "tag": "CertificateSubjectO",
+                  "type": "TextString",
+                  // the Organization of the certificate
+                  "value": "AcmeTest"
+                },
+                {
+                  "tag": "CertificateSubjectOu",
+                  "type": "TextString",
+                  // the Organizational Unit of the certificate
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateSubjectEmail",
+                  "type": "TextString",
+                  // the Email of the certificate
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateSubjectC",
+                  "type": "TextString",
+                  // the Country of the certificate
+                  "value": "FR"
+                },
+                {
+                  "tag": "CertificateSubjectSt",
+                  "type": "TextString",
+                  // the State of the certificate
+                  "value": "IdF"
+                },
+                {
+                  "tag": "CertificateSubjectL",
+                  "type": "TextString",
+                    // the Locality of the certificate
+                  "value": "Paris"
+                },
+                {
+                  "tag": "CertificateSubjectUid",
+                  "type": "TextString",
+                  // the Unique Identifier of the certificate: empty => assigned by the server
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateSubjectSerialNumber",
+                  "type": "TextString",
+                    // the Serial Number of the certificate
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateSubjectTitle",
+                  "type": "TextString",
+                  // the Title of the certificate
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateSubjectDc",
+                  "type": "TextString",
+                    // the Domain Component of the certificate
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateSubjectDnQualifier",
+                  "type": "TextString",
+                    // the Distinguished Name Qualifier of the certificate
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateIssuerCn",
+                  "type": "TextString",
+                    // Ignored
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateIssuerO",
+                  "type": "TextString",
+                  // Ignored
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateIssuerOu",
+                  "type": "TextString",
+                  // Ignored
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateIssuerEmail",
+                  "type": "TextString",
+                  // Ignored
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateIssuerC",
+                  "type": "TextString",
+                  // Ignored
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateIssuerSt",
+                  "type": "TextString",
+                  // Ignored
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateIssuerL",
+                  "type": "TextString",
+                  // Ignored
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateIssuerUid",
+                  "type": "TextString",
+                  // Ignored
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateIssuerSerialNumber",
+                  "type": "TextString",
+                  // Ignored
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateIssuerTitle",
+                  "type": "TextString",
+                  // Ignored
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateIssuerDc",
+                  "type": "TextString",
+                  // Ignored
+                  "value": ""
+                },
+                {
+                  "tag": "CertificateIssuerDnQualifier",
+                  "type": "TextString",
+                  // Ignored
+                  "value": ""
+                }
+              ]
+            },
+            {
+              "tag": "Link",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "Link",
+                  "type": "Structure",
+                  "value": [
+                    {
+                      "tag": "LinkType",
+                      "type": "Enumeration",
+                      // the unique identifier below is that of the issuer private key 
+                      "value": "PrivateKeyLink"
+                    },
+                    {
+                      "tag": "LinkedObjectIdentifier",
+                      "type": "TextString",
+                      // the issuer private key unique identifier
+                      "value": "854d7914-3b1d-461a-a2dd-7aad27043b56"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "tag": "ObjectType",
+              "type": "Enumeration",
+              "value": "Certificate"
+            },
+            {
+              "tag": "VendorAttributes",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "VendorAttributes",
+                  "type": "Structure",
+                  "value": [
+                    {
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "requested_validity_days"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "ByteString",
+                      // 365 as a string in UTF-8 bytes encoded in hex
+                      "value": "333635"
+                    }
+                  ]
+                },
+                {
+                  "tag": "VendorAttributes",
+                  "type": "Structure",
+                  "value": [
+                    {
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "tag"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "ByteString",
+                      // ["Bob"] as UTF-8 bytes encoded in hex
+                      "value": "5B22426F62225D"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+    ```
+
+=== "Response"
+    ```json
+    {
+      "tag": "CertifyResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "UniqueIdentifier",
+          "type": "TextString",
+          "value": "974b3a79-25a8-4ace-bdd9-70f5b07695c9"
+        }
+      ]
+    }   
     ```
