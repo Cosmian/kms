@@ -64,6 +64,7 @@ nav:
       - The JSON TTLV KMIP API: kmip_2_1/json_ttlv_api.md
       - Bulk mode with Messages: kmip_2_1/messages.md
       - Operations: kmip_2_1/operations.md
+      - Certify: kmip_2_1/_certify.md
       - Create: kmip_2_1/_create.md
       - Create Key Pair: kmip_2_1/_create_key_pair.md
       - Decrypt: kmip_2_1/_decrypt.md
