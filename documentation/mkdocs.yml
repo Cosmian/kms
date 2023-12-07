@@ -67,6 +67,7 @@ nav:
       - Create: kmip_2_1/_create.md
       - Create Key Pair: kmip_2_1/_create_key_pair.md
       - Decrypt: kmip_2_1/_decrypt.md
+      - Destroy: kmip_2_1/_destroy.md
       - Encrypt: kmip_2_1/_encrypt.md
       - Export: kmip_2_1/_export.md
       - Get: kmip_2_1/_get.md

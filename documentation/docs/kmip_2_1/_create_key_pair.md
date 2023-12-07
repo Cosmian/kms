@@ -19,7 +19,124 @@ Identifier of the Private Key.
 
 Please see the [supported objects](./objects.md) for the list of key pairs that can be created with this operation.
 
-#### Example
+#### Example - X25519 Key Pair
+
+Creating an X25519 key pair with the tag `MyECKeyPair`.
+
+Please note: 
+
+ - The tag is set in a JSON array and is hex-encoded before being added to the KMIP request.
+ - The `KeyFormatType` is set to `ECPrivateKey`.
+ - The `ObjectType` is set to `PrivateKey`.
+ - The `CryptographicAlgorithm` is set to `ECDH`.
+ - The `RecommendedCurve` is set to `CURVE25519`.
+
+=== "Request"
+    ```json
+    {
+      "tag": "CreateKeyPair",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "CommonAttributes",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "CryptographicAlgorithm",
+              "type": "Enumeration",
+              "value": "ECDH"
+            },
+            {
+              "tag": "CryptographicLength",
+              "type": "Integer",
+              "value": 253
+            },
+            {
+              "tag": "CryptographicDomainParameters",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "QLength",
+                  "type": "Integer",
+                  "value": 253
+                },
+                {
+                  "tag": "RecommendedCurve",
+                  "type": "Enumeration",
+                  "value": "CURVE25519"
+                }
+              ]
+            },
+            {
+              "tag": "CryptographicUsageMask",
+              "type": "Integer",
+              "value": 2108
+            },
+            {
+              "tag": "KeyFormatType",
+              "type": "Enumeration",
+              "value": "ECPrivateKey"
+            },
+            {
+              "tag": "ObjectType",
+              "type": "Enumeration",
+              "value": "PrivateKey"
+            },
+            {
+              "tag": "VendorAttributes",
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "VendorAttributes",
+                  "type": "Structure",
+                  "value": [
+                    {
+                      "tag": "VendorIdentification",
+                      "type": "TextString",
+                      "value": "cosmian"
+                    },
+                    {
+                      "tag": "AttributeName",
+                      "type": "TextString",
+                      "value": "tag"
+                    },
+                    {
+                      "tag": "AttributeValue",
+                      "type": "ByteString",
+                      //The hex encoded tag ["MyECKeyPair"]
+                      "value": "5B224D7945434B657950616972225D"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }    
+    ```
+
+=== "Response"
+    ```json
+    {
+      "tag": "CreateKeyPairResponse",
+      "type": "Structure",
+      "value": [
+        {
+          "tag": "PrivateKeyUniqueIdentifier",
+          "type": "TextString",
+          "value": "1ac18648-ab17-4755-97a3-7a24b8198b97"
+        },
+        {
+          "tag": "PublicKeyUniqueIdentifier",
+          "type": "TextString",
+          "value": "52573030-0fed-4c67-b311-ceac944b2afc"
+        }
+      ]
+    }   
+    ```
+
+#### Example -Covercrypt Master Key Pair
 
 Creating a Covercrypt master key pair with the following policy specifications which is hex-encoded before being 
 added to the KMIP request.
