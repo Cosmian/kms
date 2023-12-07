@@ -60,7 +60,7 @@ fn write_command(
         write!(out, " [options]")?;
     }
     for pos in cmd.get_positionals() {
-        writeln!(out, " {}", pos)?;
+        writeln!(out, " {pos}")?;
     }
     writeln!(out, "`")?;
 
@@ -70,14 +70,14 @@ fn write_command(
         }
         write!(out, "`")?;
         if let Some(long) = arg.get_long() {
-            write!(out, "--{}", long)?;
+            write!(out, "--{long}")?;
         }
         if let Some(short) = arg.get_short() {
-            write!(out, " [-{}]", short)?;
+            write!(out, " [-{short}]")?;
         }
         if let Some(n) = arg.get_value_names() {
-            if let Some(n) = n.get(0) {
-                write!(out, " <{}>", n)?;
+            if let Some(n) = n.first() {
+                write!(out, " <{n}>")?;
             }
         }
         write!(out, "`")?;
@@ -102,7 +102,7 @@ fn write_command(
                     if i > 0 {
                         write!(out, ", ")?;
                     }
-                    write!(out, "{:?}", default_value)?;
+                    write!(out, "{default_value:?}")?;
                 }
                 write!(out, "`]")?;
             }
@@ -171,21 +171,21 @@ fn to_md(out: &mut dyn Write, ss: &StyledStr) -> Result<(), CliError> {
         if in_list {
             if line.trim().starts_with('-') {
                 // still in list
-                writeln!(out, "{}", line)?;
+                writeln!(out, "{line}")?;
             } else {
                 // no more in list
                 in_list = false;
                 writeln!(out)?;
-                writeln!(out, "{}", line)?;
+                writeln!(out, "{line}")?;
             }
         } else if line.trim().starts_with('-') {
             // first line of list
             in_list = true;
             writeln!(out)?;
-            writeln!(out, "{}", line)?;
+            writeln!(out, "{line}")?;
         } else {
             // still not in list
-            writeln!(out, "{}", line)?;
+            writeln!(out, "{line}")?;
         }
     }
     Ok(())

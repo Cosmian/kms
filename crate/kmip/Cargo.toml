@@ -5,7 +5,7 @@ edition = "2021"
 license-file = "../../LICENSE.md"
 
 [features]
-default = ["sha3"]
+default = []
 openssl = ["dep:openssl"]
 pyo3 = ["dep:pyo3"]
 
@@ -19,7 +19,6 @@ openssl = { workspace = true, optional = true }
 pyo3 = { version = "0.20", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha3 = { version = "0.10", optional = true }
 strum = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
