@@ -125,9 +125,18 @@ ckms sym keys create --tag MySymmetricKey
 Creating a Covercrypt User Decryption Key with the tag `MyUserKey` and the access policy `Security Level::Confidential && (Department::FIN || Department::HR)`
 (see [Create Key Pair](./_create_key_pair.md) for the corresponding master key policy).
 
-The tags are assembled in a JSON array and encoded in hex.
+Corresponding `ckms` CLI command:
 
-The access policy is encoded in hex.
+```shell
+ckms cc keys create-user-key -t "MyUserKey"\
+ b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9 \
+ "Security Level::Confidential && (Department::FIN || Department::HR)"
+```
+
+Please note:
+
+ - The tag(s) is (are) assembled in a JSON array and encoded in hex.
+ - The access policy is encoded in hex.
 
 === "Request"
     ```json
@@ -170,6 +179,7 @@ The access policy is encoded in hex.
                     {
                       "tag": "LinkedObjectIdentifier",
                       "type": "TextString",
+                      // the master secret key unique identifier
                       "value": "b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9"
                     }
                   ]

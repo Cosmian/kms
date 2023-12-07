@@ -29,7 +29,15 @@ To see the list of supported cryptographic algorithms, please refer to [Supporte
 Encrypting the text `Hello, world!` with symmetric key `027cced1-ff2b-4bd3-a200-db1041583bd` (go to [Create](./_create.md)  
 to see how to create the symmetric key).
 
-The response contains:
+Corresponding `ckms` CLI command:
+
+```shell
+ckms sym encrypt -k 027cced1-ff2b-4bd3-a200-db1041583bd /tmp/hello_world.txt
+``` 
+*Note*: the file `/tmp/hello_world.txt` contains the text `Hello, world!`.
+
+
+Please note that the response contains:
 
  - the encrypted data 
  - the nounce: 12 bytes
@@ -91,7 +99,15 @@ The response contains:
 Encrypting the text `Hello, world!` with the Covercrypt master public key `0fd1f684-156c-4ca6-adc2-0a6f4b620463` 
 (go to  [Create Key Paire](./_create_key_pair.md) to see how to create the mater key pair) and attributes `Security Level::Confidential && Department::FIN`.
 
-The `Data` parameter contains:
+Corresponding `ckms` CLI command:
+
+```shell
+ckms cc encrypt -k 0fd1f684-156c-4ca6-adc2-0a6f4b620463 \
+ /tmp/hello_world.txt "Security Level::Confidential && Department::FIN"
+```
+*Note*: the file `/tmp/hello_world.txt` contains the text `Hello, world!`.
+
+In the request, please note that the `Data` parameter contains:
 
  - the length of the bytes of the attributes: `47 = 2F` in hexadecimal
  - the attributes as bytes: `Security Level::Confidential && Department::FIN`
