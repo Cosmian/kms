@@ -15,6 +15,8 @@ The Cosmian KMS is designed to [operate in **zero-trust** environments](./zero_t
     curl http://localhost:9998/version
     ```
 
+    Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.9.1/).
+
 #### Open source
 
 The server's code is open-sourced on [Github](https://github.com/Cosmian/kms) so that it can be audited and improved by anyone.

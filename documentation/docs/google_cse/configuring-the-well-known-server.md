@@ -8,9 +8,9 @@ Assuming your organization is on the domain `acme.com` (which should match that 
 
 #### 1. Configure a server running Ubuntu 23.04
 
- The server should be reachable using an external IP; configure your DNS so that a `A` record with value `cse.acme.com` points to that external IP address of the server.
+The server should be reachable using an external IP; configure your DNS so that a `A` record with value `cse.acme.com` points to that external IP address of the server.
 
- Make sure ports 80 and 443 are open to external traffic on this machine. Access to port 80 can be closed at the end of this procedure.
+Make sure ports 80 and 443 are open to external traffic on this machine. Access to port 80 can be closed at the end of this procedure.
 
 #### 2. Install `nginx` on the server
 
@@ -44,17 +44,17 @@ location /.well-known/ {
 }
 ```
 
-Verify that `nginx` is correctly serving the file by running
-    # Allow CORS calls: see https://support.google.com/a/answer/10743588?hl=en
-    add_header 'Access-Control-Allow-Origin' '*';
+Verify that `nginx` is correctly serving the file by running # Allow CORS calls: see https://support.google.com/a/answer/10743588?hl=en
+add_header 'Access-Control-Allow-Origin' '\*';
 }
-```
+
+````
 
 Then restart the `nginx` service
 
 ```sh
 sudo systemctl restart nginx
-```
+````
 
 Finally, verify that `nginx` is correctly serving the file by running
 
@@ -74,9 +74,6 @@ sudo ln -s /snap/bin/certbot /usr/bin/certbot
 
 General instructions on installing `certbot` are available at [this URL](https://certbot.eff.org/lets-encrypt/ubuntufocal-nginx).
 
-
-
-
 Get a certificate and configure `nginx`
 
 ```sh
@@ -88,21 +85,21 @@ The command will ask you to provide an email address and a domain name. The doma
 That's it, the empty well-known file should now be served using HTTPS. From another machine, verify that it is now available on the public address
 
 ```sh
-➜ curl https://cse.acme.com/.well-known/cse-configuration                                                   
+➜ curl https://cse.acme.com/.well-known/cse-configuration
 {}
 
 ```
 
 Port 80 can now be closed on the machine (or `nginx` configuration can be updated to redirect HTTP requests to HTTPS)
 
-#### 6. Enable CORS calls 
+#### 6. Enable CORS calls
 
 The well-known file is served from a different domain than the one used by Google client-side encryption. CORS calls need to be enabled on the server to allow the browser to fetch the well-known file.
 
 Edit the file `/etc/nginx/sites-available/default` and add the following at the top of the file (before the `server` block):
 
 ```nginx
-# Allow CORS calls: see https://apps.google.com/supportwidget/articlehome?hl=en&article_url=https%3A%2F%2Fsupport.google.com%2Fa%2Fanswer%2F10743588%3Fhl%3Den&assistant_id=generic-unu&product_context=10743588&product_name=UnuFlow&trigger_context=a 
+# Allow CORS calls: see https://apps.google.com/supportwidget/articlehome?hl=en&article_url=https%3A%2F%2Fsupport.google.com%2Fa%2Fanswer%2F10743588%3Fhl%3Den&assistant_id=generic-unu&product_context=10743588&product_name=UnuFlow&trigger_context=a
 add_header 'Access-Control-Allow-Origin' '*';
 ```
 
