@@ -17,13 +17,14 @@ The state of the object is kept as specified but the revocation reason is curren
 Once an Object is revoked, it can only be retrieved using the `Export` operation. The `Get` operation will return an
 error.
 
-A `Revoked` object can be destroyd using the `Destroy` operation.
+A `Revoked` object can be destroyed using the `Destroy` operation.
 
 #### Example - Symmetric key
 
 Revoking key `f54f14a3-5639-4054-8c23-54af891669db` with reason `key was compromised`.
 
 Corresponding `ckms` CLI command:
+
 ```bash
 ckms sym keys revoke -k f54f14a3-5639-4054-8c23-54af891669db "key was compromised"
 ```
@@ -45,8 +46,9 @@ ckms sym keys revoke -k f54f14a3-5639-4054-8c23-54af891669db "key was compromise
           "value": "key was compromised"
         }
       ]
-    }  
-    ```
+    }
+
+```
 
 === "Response"
     ```json
@@ -60,5 +62,5 @@ ckms sym keys revoke -k f54f14a3-5639-4054-8c23-54af891669db "key was compromise
           "value": "f54f14a3-5639-4054-8c23-54af891669db"
         }
       ]
-    }  
-    ```
+    }
+```

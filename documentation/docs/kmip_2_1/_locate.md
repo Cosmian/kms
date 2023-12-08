@@ -65,25 +65,25 @@ Archived Storage indicator.
 
 Locate allows finding objects:
 
- - by their tags (see [tagging](./tagging.md))
- - by their `Cryptographic Algorithm`. Some supported values are: `AES`, `RSA`, `ECDSA`, `ECDH`, `EC`, 
-   `ChaCha20`, `Poly1305`, 
-   `ChaCha20Poly1305`, `Ed25519`, `Ed448`, `CoverCrypt` 
- - by their `Key Format Type`. Some supported values are: `Raw`, `Opaque`, `PKCS1`, `PKCS8`, `X509`, `ECPrivateKey`, 
-   `TransparentSymmetricKey`, `TransparentRSAPrivateKey`, `TransparentRSAPublicKey`, `TransparentECPrivateKey`, 
-   `TransparentECPublicKey`, `PKCS12`, `CoverCryptSecretKey`, `CoverCryptPublicKey` 
- - by their links to other ojects:
-     - a public key (`Public Key Link`)
-     - a private key (`Private Key Link`)
-     - a certificate (`Certificate Link`)
- - for certificates:
-     - by subject common name
-     - by certificate spki
+- by their tags (see [tagging](./tagging.md))
+- by their `Cryptographic Algorithm`. Some supported values are: `AES`, `RSA`, `ECDSA`, `ECDH`, `EC`,
+   `ChaCha20`, `Poly1305`,
+   `ChaCha20Poly1305`, `Ed25519`, `Ed448`, `CoverCrypt`
+- by their `Key Format Type`. Some supported values are: `Raw`, `Opaque`, `PKCS1`, `PKCS8`, `X509`, `ECPrivateKey`,
+   `TransparentSymmetricKey`, `TransparentRSAPrivateKey`, `TransparentRSAPublicKey`, `TransparentECPrivateKey`,
+   `TransparentECPublicKey`, `PKCS12`, `CoverCryptSecretKey`, `CoverCryptPublicKey`
+- by their links to other objects:
+  - a public key (`Public Key Link`)
+  - a private key (`Private Key Link`)
+  - a certificate (`Certificate Link`)
+- for certificates:
+  - by subject common name
+  - by certificate spki
 
 ### Example - Symmetric Keys using the `_kk` tag
 
 All symmetric keys are tagged with the system tag `_kk`.
-Multiple tags can be used locate objects; a JSON array of tags is used to specify multiple tags which is then 
+Multiple tags can be used locate objects; a JSON array of tags is used to specify multiple tags which is then
 serialized to hex.
 
 === "Request"
@@ -128,7 +128,8 @@ serialized to hex.
         }
       ]
     }
-    ```
+
+```
 
 === "Response"
     ```json
@@ -189,14 +190,15 @@ serialized to hex.
         }
       ]
     }
-    ```
+```
 
 ### Example - A certificate by Common Name or Private Key Link
 
-All certificates are tagged with the system tag `_cert_cn=<CN>`. See [tagging](./tagging.md) for more 
+All certificates are tagged with the system tag `_cert_cn=<CN>`. See [tagging](./tagging.md) for more
 details.
 
 Corresponding `ckms` CLI command:
+
 ```bash
 ckms locate --certificate-cn "My server"
 ```
@@ -204,9 +206,9 @@ ckms locate --certificate-cn "My server"
 Using a JSON TTLV request, to search a certificate with CN `My server`,  set the `tag` value to the hex encoding of
 `["_cert_cn=My server"]`.
 
-When a certificate is imported as part of a PKCS12 bundle, the certificate is tagged with the system tag ` _cert_sk=<UID>` 
-where `<UID>` is the unique identifier of the private key. 
-To search a certificate by linked to private key `9550c6f3-ac11-4db8-b54f-a0514b68c897`, set the `tag` value to 
+When a certificate is imported as part of a PKCS12 bundle, the certificate is tagged with the system tag `_cert_sk=<UID>`
+where `<UID>` is the unique identifier of the private key.
+To search a certificate by linked to private key `9550c6f3-ac11-4db8-b54f-a0514b68c897`, set the `tag` value to
 the hex encoding of `["_cert_sk=9550c6f3-ac11-4db8-b54f-a0514b68c897"]`.
 
 === "Request"
@@ -251,7 +253,8 @@ the hex encoding of `["_cert_sk=9550c6f3-ac11-4db8-b54f-a0514b68c897"]`.
         }
       ]
     }
-    ```
+
+```
 
 === "Response"
     ```json
@@ -276,5 +279,5 @@ the hex encoding of `["_cert_sk=9550c6f3-ac11-4db8-b54f-a0514b68c897"]`.
           ]
         }
       ]
-    }    
-    ```
+    }
+```

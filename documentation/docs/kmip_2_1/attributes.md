@@ -49,8 +49,8 @@ Covercrypt uses a few vendor attributes which names can be seen in the code [att
 
 The attributes names and corresponding values used for a given `KeyFormatType` are as follows:
 
-  - `VENDOR_ATTR_COVER_CRYPT_POLICY = "cover_crypt_policy"`: the JSONified Policy found in the master keys.
+- `VENDOR_ATTR_COVER_CRYPT_POLICY = "cover_crypt_policy"`: the JSONified Policy found in the master keys.
 
-  - `VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY = "cover_crypt_access_policy"`: the JSONified boolean Access Policy found in a user key
+- `VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY = "cover_crypt_access_policy"`: the JSONified boolean Access Policy found in a user key
 
 In addition, the `VENDOR_ATTR_COVER_CRYPT_ATTR = "cover_crypt_attributes"` name is used in Locate requests to identify User Decryption Keys holding certain Policy Attributes.

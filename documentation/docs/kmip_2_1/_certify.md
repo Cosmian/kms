@@ -28,13 +28,13 @@ information in the Certificate Request takes precedence.
 
 To certify a Certificate Signing Request or a Public Key, one must provide:
 
- - either the unique identifier of the issuer private key which must have a link to a certificate with the 
+- either the unique identifier of the issuer private key which must have a link to a certificate with the
    corresponding public key
- - or the issuer certificate unique identifier which must have a link to the corresponding issuer private key
+- or the issuer certificate unique identifier which must have a link to the corresponding issuer private key
 
 #### Example - PKCS#10 Certificate Signing Request
 
-Certify a PKCS#10 Certificate Signing Request (CSR) with the issuer private key unique identifier 
+Certify a PKCS#10 Certificate Signing Request (CSR) with the issuer private key unique identifier
 `854d7914-3b1d-461a-a2dd-7aad27043b56`, and set the certificate requested validity to 365 days and the tag to `MyCert`.
 
 The corresponding `ckms` CLI command is
@@ -43,7 +43,7 @@ The corresponding `ckms` CLI command is
 ckms  certificates certify -r my_cert.csr -k 854d7914-3b1d-461a-a2dd-7aad27043b56 -d 365 -t "MyCert"
 ```
 
-Note: the `ckms` client converts the CSR from PEM TO DER before creating the JSON TTLV and sending it to the 
+Note: the `ckms` client converts the CSR from PEM TO DER before creating the JSON TTLV and sending it to the
 server.
 
 === "Request"
@@ -148,8 +148,9 @@ server.
           ]
         }
       ]
-    }  
-    ```
+    }
+
+```
 
 === "Response"
     ```json
@@ -164,12 +165,12 @@ server.
         }
       ]
     }
-    ```
+```
 
 #### Example - Public key
 
 Certify a public key with unique id `45e56e67-d813-468f-9116-4d1e611a1828` using the issuer private key
-`45e56e67-d813-468f-9116-4d1e611a1828`. 
+`45e56e67-d813-468f-9116-4d1e611a1828`.
 Set the Subject Name of the certificate to `C=FR, ST=IdF, L=Paris, O=AcmeTest, CN=bob@acme.com`, the tag to `Bob` and
 the certificate requested validity to 365 days.
 
@@ -182,9 +183,8 @@ ckms certificates certify -p 45e56e67-d813-468f-9116-4d1e611a1828 -k 854d7914-3b
 
 Please note the following in the JSON TTLV of the reauest:
 
- - the various Subject Name fields that are set for the certificate
- - the Subject Name issuer fields are ignored: they will be copied from the certificate linked to the issuer private key
-
+- the various Subject Name fields that are set for the certificate
+- the Subject Name issuer fields are ignored: they will be copied from the certificate linked to the issuer private key
 
 === "Request"
     ```json
@@ -363,7 +363,7 @@ Please note the following in the JSON TTLV of the reauest:
                     {
                       "tag": "LinkType",
                       "type": "Enumeration",
-                      // the unique identifier below is that of the issuer private key 
+                      // the unique identifier below is that of the issuer private key
                       "value": "PrivateKeyLink"
                     },
                     {
@@ -435,7 +435,8 @@ Please note the following in the JSON TTLV of the reauest:
         }
       ]
     }
-    ```
+
+```
 
 === "Response"
     ```json
@@ -449,5 +450,5 @@ Please note the following in the JSON TTLV of the reauest:
           "value": "974b3a79-25a8-4ace-bdd9-70f5b07695c9"
         }
       ]
-    }   
-    ```
+    }
+```

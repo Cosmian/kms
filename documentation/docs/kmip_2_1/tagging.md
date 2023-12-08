@@ -47,4 +47,3 @@ Export the Symmetric key (tag `_kk`) with user tag `myTag`:
   ]
 }
 ```
-

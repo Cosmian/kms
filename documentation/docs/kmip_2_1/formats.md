@@ -14,7 +14,7 @@ When requesting the export of an Object without specifying the Key Format Type, 
 | PGP Key             | Raw                         |                                                           |
 | Secret Data         | Raw                         |                                                           |
 | Symmetric Key       | Raw                         | Raw                                                       |
-| Split Key           | Raw                         |                                                           | 
+| Split Key           | Raw                         |                                                           |
 | RSA Private Key     | PKCS#1                      | PKCS#1, PKCS#8, Transparent RSA Private Key               |
 | RSA Public Key      | PKCS#1                      | PKCS#1, PKCS#8 (SPKI), Transparent RSA Public Key         |
 | EC Private Key      | Transparent EC Private Key  | Transparent EC Private Key, PKCS#8, EC Private Key (SEC1) |
@@ -22,16 +22,16 @@ When requesting the export of an Object without specifying the Key Format Type, 
 | DSA Private Key     | Transparent DSA Private Key |                                                           |
 | DSA Public Key      | Transparent DSA Public Key  |                                                           |
 
-- All ASN.1 based formats are vailable as `PEM` or `DER` encoded
+- All ASN.1 based formats are available as `PEM` or `DER` encoded
 - `SPKI` is denoted `PKCS8` for public keys in KMIP
 - `SEC1` (called `ECPrivateKey` in KMIP) is only available for NIST curves (i.e. not for curve 25519 and curve 448)
   private keys.
 - The `D` field of the `Transparent EC Private Key` is:
-    - the (absolute) value of the Big Integer of the scalar for NIST curves
-    - the Big Integer value of the private key raw bytes (as big endian) for Curve 25519 and Curve 448
+  - the (absolute) value of the Big Integer of the scalar for NIST curves
+  - the Big Integer value of the private key raw bytes (as big endian) for Curve 25519 and Curve 448
 - The `Q String` field of the `Transparent EC Public Key` is:
-    - the uncompressed point octet form as defined in RFC5480 and used in certificates and TLS records for NIST curves.
-    - the raw bytes of the public key for Curve 25519 and Curve 448
+  - the uncompressed point octet form as defined in RFC5480 and used in certificates and TLS records for NIST curves.
+  - the raw bytes of the public key for Curve 25519 and Curve 448
 
 ### Storage
 
@@ -47,4 +47,3 @@ So, even though this server enforces KMIP 2.1 default export formats, the storag
 
 Users requesting keys are encouraged to request them in the storage formats above to avoid conversions and match recent
 RFCs.
-

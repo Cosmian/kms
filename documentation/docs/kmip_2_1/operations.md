@@ -25,5 +25,3 @@ conducted on the server.
 
 The Cosmian KMS servers are kept stateless to simplify horizontal scaling and therefore do not support placeholder IDs
 for now.
-
-

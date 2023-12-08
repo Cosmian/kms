@@ -21,6 +21,7 @@ An owner of an object grants an access right to a specific user for a given oper
 The supported KMIP operations are: `get`, `export`, `encrypt`, `decrypt`, `import`, `revoke`, `destroy`.
 
 === "ckms"
+
 ```
 ➜ ckms access grant --help
 Grant another user an access right to an object.
@@ -71,6 +72,7 @@ An owner of an object can revoke an access right to a specific user for a given 
 
 === "ckms"
 ```
+
 ➜ ckms access revoke --help
 Revoke another user access right to an object.
 
@@ -117,6 +119,7 @@ Revoke another user access right to an object.
 The owner of an object can list all the access rights that have been granted to another object.
 
 === "ckms"
+
 ```
 ➜ ckms access list --help
 List the access rights granted on an object to other users.
@@ -157,6 +160,7 @@ or `Import` KMIP operations).
 
 === "ckms"
 ```
+
 ➜ ckms access owned --help
 List the objects owned by the calling user.
 
@@ -196,6 +200,7 @@ List the objects owned by the calling user.
 A user can list all the access rights that have been granted to it by object owners.
 
 === "ckms"
+
 ```
 ➜ ckms access obtained --help
 List the access rights obtained by the calling user

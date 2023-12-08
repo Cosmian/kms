@@ -23,13 +23,13 @@ Please see the [supported objects](./objects.md) for the list of key pairs that 
 
 Creating an X25519 key pair with the tag `MyECKeyPair`.
 
-Please note: 
+Please note:
 
- - The tag is set in a JSON array and is hex-encoded before being added to the KMIP request.
- - The `KeyFormatType` is set to `ECPrivateKey`.
- - The `ObjectType` is set to `PrivateKey`.
- - The `CryptographicAlgorithm` is set to `ECDH`.
- - The `RecommendedCurve` is set to `CURVE25519`.
+- The tag is set in a JSON array and is hex-encoded before being added to the KMIP request.
+- The `KeyFormatType` is set to `ECPrivateKey`.
+- The `ObjectType` is set to `PrivateKey`.
+- The `CryptographicAlgorithm` is set to `ECDH`.
+- The `RecommendedCurve` is set to `CURVE25519`.
 
 Corresponding `ckms` CLI command:
 
@@ -119,8 +119,9 @@ ckms ec keys create
           ]
         }
       ]
-    }    
-    ```
+    }
+
+```
 
 === "Response"
     ```json
@@ -139,19 +140,20 @@ ckms ec keys create
           "value": "52573030-0fed-4c67-b311-ceac944b2afc"
         }
       ]
-    }   
-    ```
+    }
+```
 
 #### Example -Covercrypt Master Key Pair
 
-Creating a Covercrypt master key pair with the following policy specifications which is hex-encoded before being 
+Creating a Covercrypt master key pair with the following policy specifications which is hex-encoded before being
 added to the KMIP request.
 
 **Note**: it is much easier to use the [`ckms` CLI](../cli/cli.md) to create Covercrypt master keys where a simple
-specification file can be used. Use the [debug mode](./json_ttlv_api.md) to get the hex-encoded policy from the 
+specification file can be used. Use the [debug mode](./json_ttlv_api.md) to get the hex-encoded policy from the
 specifications.
 
 For a specification file
+
 ```json
 {
     "Security Level::<": [
@@ -168,7 +170,8 @@ For a specification file
 }
 ```
 
-The policy to hex-encode to the call wil be:
+The policy to hex-encode to the call will be:
+
 ```json
 {
   "version": "V2",
@@ -242,8 +245,9 @@ The policy to hex-encode to the call wil be:
 ```
 
 Corresponding `ckms` CLI command:
+
 ```shell
-ckms cc keys create-master-key-pair -s policy_specifications.json 
+ckms cc keys create-master-key-pair -s policy_specifications.json
 ```
 
 === "Request"
@@ -324,7 +328,8 @@ ckms cc keys create-master-key-pair -s policy_specifications.json
         }
       ]
     }
-    ```
+
+```
 
 === "Response"
     ```json
@@ -343,5 +348,5 @@ ckms cc keys create-master-key-pair -s policy_specifications.json
           "value": "0fd1f684-156c-4ca6-adc2-0a6f4b620463"
         }
       ]
-    }  
-    ```
+    }
+```

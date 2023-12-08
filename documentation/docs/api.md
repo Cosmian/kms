@@ -3,7 +3,7 @@ In addition, the server exposes a few additional endpoints for authorization ope
 
 ### Calling the KMIP API
 
-This API is documented in the [KMIP section](./kmip_2_1/json_ttlv_api) of this manual.
+This API is documented in the [KMIP section](./kmip_2_1/json_ttlv_api.md) of this manual.
 
 ### Calling the authorization API
 
@@ -11,8 +11,8 @@ This API is documented in the [authorization section](./authorization.md) of thi
 
 ### Authentication
 
-The Cosmian server supports various authorization mechanisms: see the [authentication section](./authentication.md) 
-of this manua for details. When authenticating using JWT, a HTTP `Authorization` header must be passed with the JWT token 
+The Cosmian server supports various authorization mechanisms: see the [authentication section](./authentication.md)
+of this manual for details. When authenticating using JWT, a HTTP `Authorization` header must be passed with the JWT token
 as a bearer token.
 
 For example: `Authorization: Bearer <JWT_TOKEN>`

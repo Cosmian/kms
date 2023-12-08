@@ -17,6 +17,7 @@ This operation can be applied to all [supported objects](./objects.md).
 Get the attributes of a symmetric key by its unique identifier `027cced1-ff2b-4bd3-a200-db1041583bdc`.
 
 Corresponding `ckms` CLI command:
+
 ```bash
 ckms get-attributes -i 027cced1-ff2b-4bd3-a200-db1041583bdc
 ```
@@ -51,8 +52,9 @@ array with value
           "value": []
         }
       ]
-    } 
-    ```
+    }
+
+```
 
 === "Response"
     ```json
@@ -126,13 +128,14 @@ array with value
         }
       ]
     }
-    ```
+```
 
 ### Example - A NIST P-256 private key
 
-Get the attributes of a NIST P-256 private key. 
+Get the attributes of a NIST P-256 private key.
 
 Corresponding `ckms` CLI command:
+
 ```bash
 ckms get-attributes -i 927adccb-f59a-4cc9-a9e3-1eeb958c601f
 ```
@@ -162,8 +165,9 @@ In the response, please note:
           "value": []
         }
       ]
-    }  
-    ```
+    }
+
+```
 
 === "Response"
     ```json
@@ -249,27 +253,27 @@ In the response, please note:
         }
       ]
     }
-    ```
-
+```
 
 ### Example - A certificate imported as part of a PKCS#12 container
 
-Get the attributes of the certificate imported as part of a PKCS#12 container (see [Import](./_import.md) for 
-reference to the imported PKCS#12 container). The certificate is linked to a private key was signed by an 
+Get the attributes of the certificate imported as part of a PKCS#12 container (see [Import](./_import.md) for
+reference to the imported PKCS#12 container). The certificate is linked to a private key was signed by an
 intermediate certificate imported as part of the same container.
 
 Corresponding `ckms` CLI command:
+
 ```bash
-ckms get-attributes -i d2f4e937-dda9-4a86-bbe8-c866646a612f 
+ckms get-attributes -i d2f4e937-dda9-4a86-bbe8-c866646a612f
 ```
 
 The request has an empty `AttributeReference` structure, which means that all attributes are requested.
 
 Please note in the response:
 
-  - the `Link` to the private key 
-  - the `Link` to the intermediate certificate
-  - the presence of all the system and user tags associated with the certificate. This is the hex encoded value of a 
+- the `Link` to the private key
+- the `Link` to the intermediate certificate
+- the presence of all the system and user tags associated with the certificate. This is the hex encoded value of a
     JSON array with value
 
     ```json
@@ -282,7 +286,6 @@ Please note in the response:
         "_cert_sk=bf614d45-5a3e-49b9-95c0-5586d3c0d17b"
     ]
     ```
-
 
 === "Request"
     ```json
@@ -301,8 +304,9 @@ Please note in the response:
           "value": []
         }
       ]
-    }  
-    ```
+    }
+
+```
 
 === "Response"
     ```json
@@ -401,5 +405,4 @@ Please note in the response:
         }
       ]
     }
-    ```
-
+```

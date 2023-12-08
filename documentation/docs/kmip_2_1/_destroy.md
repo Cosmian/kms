@@ -17,6 +17,7 @@ operation, only metadata.
 Destroying key `f54f14a3-5639-4054-8c23-54af891669db`:
 
 Corresponding `ckms` command:
+
 ```shell
  ckms sym keys destroy -k f54f14a3-5639-4054-8c23-54af891669d
  ```
@@ -33,8 +34,9 @@ Corresponding `ckms` command:
           "value": "f54f14a3-5639-4054-8c23-54af891669db"
         }
       ]
-    }  
-    ```
+    }
+
+```
 
 === "Response"
     ```json
@@ -48,5 +50,5 @@ Corresponding `ckms` command:
           "value": "f54f14a3-5639-4054-8c23-54af891669db"
         }
       ]
-    }  
-    ```
+    }
+```

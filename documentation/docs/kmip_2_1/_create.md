@@ -19,12 +19,12 @@ Creating a 256 bit AES Symmetric Key with the tag `MySymmetricKey`.
 
 The tags are assembled in a JSON array and encoded in hex.
 
-The `CryptographicUsageMask` is optional. 
+The `CryptographicUsageMask` is optional.
 
 Corresponding `ckms` CLI command:
 
 ```shell
-ckms sym keys create --tag MySymmetricKey 
+ckms sym keys create --tag MySymmetricKey
 ```
 
 === "Request"
@@ -87,7 +87,7 @@ ckms sym keys create --tag MySymmetricKey
                     },
                     {
                       "tag": "AttributeValue",
-                      "type": "ByteString", 
+                      "type": "ByteString",
                       // ["MySymmetricKey"] in hex
                       "value": "5B224D7953796D6D65747269634B6579225D"
                     }
@@ -99,7 +99,8 @@ ckms sym keys create --tag MySymmetricKey
         }
       ]
     }
-    ```
+
+```
 
 === "Response"
     ```json
@@ -118,8 +119,9 @@ ckms sym keys create --tag MySymmetricKey
           "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
         }
       ]
-    } 
-    ```
+    }
+```
+
 #### Example - Covercrypt User Decryption Key
 
 Creating a Covercrypt User Decryption Key with the tag `MyUserKey` and the access policy `Security Level::Confidential && (Department::FIN || Department::HR)`
@@ -135,8 +137,8 @@ ckms cc keys create-user-key -t "MyUserKey"\
 
 Please note:
 
- - The tag(s) is (are) assembled in a JSON array and encoded in hex.
- - The access policy is encoded in hex.
+- The tag(s) is (are) assembled in a JSON array and encoded in hex.
+- The access policy is encoded in hex.
 
 === "Request"
     ```json
@@ -245,7 +247,8 @@ Please note:
         }
       ]
     }
-    ```
+
+```
 
 === "Response"
     ```json
@@ -264,7 +267,5 @@ Please note:
           "value": "df871e79-0923-47cd-9078-bbec83287c85"
         }
       ]
-    }    
-    ```
-
-
+    }
+```

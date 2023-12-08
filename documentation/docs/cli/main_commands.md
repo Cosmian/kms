@@ -73,11 +73,11 @@ Grant another user an access right to an object
 
 ### Arguments
 
-` <USER>` The user identifier to allow
+`<USER>` The user identifier to allow
 
-` <OBJECT_UID>` The object unique identifier stored in the KMS
+`<OBJECT_UID>` The object unique identifier stored in the KMS
 
-` <OPERATION>` The KMIP operation to allow
+`<OPERATION>` The KMIP operation to allow
 
 ---
 
@@ -94,11 +94,11 @@ Revoke another user access right to an object
 
 ### Arguments
 
-` <USER>` The user to revoke access to
+`<USER>` The user to revoke access to
 
-` <OBJECT_UID>` The object unique identifier stored in the KMS
+`<OBJECT_UID>` The object unique identifier stored in the KMS
 
-` <OPERATION>` The operation to revoke (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
+`<OPERATION>` The operation to revoke (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
 
 ---
 
@@ -113,7 +113,7 @@ List the access rights granted on an object to other users
 
 ### Arguments
 
-` <OBJECT_UID>` The object unique identifier
+`<OBJECT_UID>` The object unique identifier
 
 ---
 
@@ -260,9 +260,9 @@ Create a new user decryption key given an access policy expressed as a boolean e
 
 ### Arguments
 
-` <MASTER_PRIVATE_KEY_ID>` The master private key unique identifier
+`<MASTER_PRIVATE_KEY_ID>` The master private key unique identifier
 
-` <ACCESS_POLICY>` The access policy as a boolean expression combining policy attributes
+`<ACCESS_POLICY>` The access policy as a boolean expression combining policy attributes
 
 `--tag [-t] <TAG>` The tag to associate with the user decryption key. To specify multiple tags, use the option multiple times
 
@@ -279,7 +279,7 @@ Export a key from the KMS
 
 ### Arguments
 
-` <KEY_FILE>` The file to export the key to
+`<KEY_FILE>` The file to export the key to
 
 `--key-id [-k] <KEY_ID>` The key unique identifier stored in the KMS. If not specified, tags should be specified
 
@@ -293,9 +293,9 @@ Export a key from the KMS
 - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
 - `spki-pem` and `spki-der` only apply to RSA and EC public keys
 - `raw` returns the raw bytes of
-    - symmetric keys
-    - Covercrypt keys
-    - wrapped keys
+  - symmetric keys
+  - Covercrypt keys
+  - wrapped keys
 
 Possible values: `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
 
@@ -321,9 +321,9 @@ Import a private or public key in the KMS.
 
 ### Arguments
 
-` <KEY_FILE>` The KMIP JSON TTLV key file
+`<KEY_FILE>` The KMIP JSON TTLV key file
 
-` <KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
+`<KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
@@ -355,9 +355,9 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ### Arguments
 
-` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
+`<KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
 
-` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+`<KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
 
 `--wrap-password [-p] <WRAP_PASSWORD>` A password to wrap the imported key
 
@@ -381,9 +381,9 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ### Arguments
 
-` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
+`<KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
 
-` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+`<KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
 
 `--unwrap-password [-p] <UNWRAP_PASSWORD>` A password to unwrap the imported key
 
@@ -406,7 +406,7 @@ Revoke a Covercrypt master or user decryption key
 
 ### Arguments
 
-` <REVOCATION_REASON>` The reason for the revocation as a string
+`<REVOCATION_REASON>` The reason for the revocation as a string
 
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 
@@ -531,7 +531,7 @@ Rotate attributes and rekey the master and user keys.
 
 ### Arguments
 
-` <ATTRIBUTES>` The policy attributes to rotate. Example: `department::marketing level::confidential`
+`<ATTRIBUTES>` The policy attributes to rotate. Example: `department::marketing level::confidential`
 
 `--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS If not specified, tags should be specified
 
@@ -551,9 +551,9 @@ Encrypt a file using Covercrypt
 
 ### Arguments
 
-` <FILE>` The files to encrypt
+`<FILE>` The files to encrypt
 
-` <ENCRYPTION_POLICY>` The encryption policy to encrypt the file with Example: "department::marketing && level::confidential"`
+`<ENCRYPTION_POLICY>` The encryption policy to encrypt the file with Example: "department::marketing && level::confidential"`
 
 `--key-id [-k] <KEY_ID>` The public key unique identifier. If not specified, tags should be specified
 
@@ -576,7 +576,7 @@ Decrypt a file using Covercrypt
 
 ### Arguments
 
-` <FILE>` The files to decrypt
+`<FILE>` The files to decrypt
 
 `--key-id [-k] <KEY_ID>` The user key unique identifier If not specified, tags should be specified
 
@@ -662,7 +662,7 @@ Decrypt a file using the private key of a certificate
 
 ### Arguments
 
-` <FILE>` The file to decrypt
+`<FILE>` The file to decrypt
 
 `--key-id [-k] <PRIVATE_KEY_ID>` The private key unique identifier related to certificate If not specified, tags should be specified
 
@@ -685,7 +685,7 @@ Encrypt a file using the certificate public key
 
 ### Arguments
 
-` <FILE>` The file to encrypt
+`<FILE>` The file to encrypt
 
 `--certificate-id [-k] <CERTIFICATE_ID>` The certificate unique identifier. If not specified, tags should be specified
 
@@ -708,7 +708,7 @@ Export a certificate from the KMS
 
 ### Arguments
 
-` <CERTIFICATE_FILE>` The file to export the certificate to
+`<CERTIFICATE_FILE>` The file to export the certificate to
 
 `--certificate-id [-k] <UNIQUE_ID>` The certificate unique identifier stored in the KMS; for PKCS#12, provide the private key id
 If not specified, tags should be specified
@@ -745,9 +745,9 @@ Import one of the following:
 
 ### Arguments
 
-` <CERTIFICATE_FILE>` The input file in PEM, KMIP-JSON-TTLV or PKCS#12 format
+`<CERTIFICATE_FILE>` The input file in PEM, KMIP-JSON-TTLV or PKCS#12 format
 
-` <CERTIFICATE_ID>` The unique id of the leaf certificate; a unique id
+`<CERTIFICATE_ID>` The unique id of the leaf certificate; a unique id
 based on the key material is generated if not specified.
 When importing a PKCS12, the unique id will be that of the private key.
 
@@ -780,7 +780,7 @@ Revoke a certificate
 
 ### Arguments
 
-` <REVOCATION_REASON>` The reason for the revocation as a string
+`<REVOCATION_REASON>` The reason for the revocation as a string
 
 `--certificate-id [-k] <CERTIFICATE_ID>` The certificate unique identifier of the certificate to revoke. If not specified, tags should be specified
 
@@ -873,7 +873,7 @@ Export a key from the KMS
 
 ### Arguments
 
-` <KEY_FILE>` The file to export the key to
+`<KEY_FILE>` The file to export the key to
 
 `--key-id [-k] <KEY_ID>` The key unique identifier stored in the KMS. If not specified, tags should be specified
 
@@ -887,9 +887,9 @@ Export a key from the KMS
 - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
 - `spki-pem` and `spki-der` only apply to RSA and EC public keys
 - `raw` returns the raw bytes of
-    - symmetric keys
-    - Covercrypt keys
-    - wrapped keys
+  - symmetric keys
+  - Covercrypt keys
+  - wrapped keys
 
 Possible values: `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
 
@@ -915,9 +915,9 @@ Import a private or public key in the KMS.
 
 ### Arguments
 
-` <KEY_FILE>` The KMIP JSON TTLV key file
+`<KEY_FILE>` The KMIP JSON TTLV key file
 
-` <KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
+`<KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
@@ -949,9 +949,9 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ### Arguments
 
-` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
+`<KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
 
-` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+`<KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
 
 `--wrap-password [-p] <WRAP_PASSWORD>` A password to wrap the imported key
 
@@ -975,9 +975,9 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ### Arguments
 
-` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
+`<KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
 
-` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+`<KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
 
 `--unwrap-password [-p] <UNWRAP_PASSWORD>` A password to unwrap the imported key
 
@@ -1000,7 +1000,7 @@ Revoke a public or private key
 
 ### Arguments
 
-` <REVOCATION_REASON>` The reason for the revocation as a string
+`<REVOCATION_REASON>` The reason for the revocation as a string
 
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 
@@ -1035,7 +1035,7 @@ Encrypt a file with the given public key using ECIES
 
 ### Arguments
 
-` <FILE>` The file to encrypt
+`<FILE>` The file to encrypt
 
 `--key-id [-k] <KEY_ID>` The public key unique identifier. If not specified, tags should be specified
 
@@ -1058,7 +1058,7 @@ Decrypts a file with the given private key using ECIES
 
 ### Arguments
 
-` <FILE>` The file to decrypt
+`<FILE>` The file to decrypt
 
 `--key-id [-k] <KEY_ID>` The private key unique identifier If not specified, tags should be specified
 
@@ -1222,7 +1222,7 @@ Export a key from the KMS
 
 ### Arguments
 
-` <KEY_FILE>` The file to export the key to
+`<KEY_FILE>` The file to export the key to
 
 `--key-id [-k] <KEY_ID>` The key unique identifier stored in the KMS. If not specified, tags should be specified
 
@@ -1236,9 +1236,9 @@ Export a key from the KMS
 - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
 - `spki-pem` and `spki-der` only apply to RSA and EC public keys
 - `raw` returns the raw bytes of
-    - symmetric keys
-    - Covercrypt keys
-    - wrapped keys
+  - symmetric keys
+  - Covercrypt keys
+  - wrapped keys
 
 Possible values: `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
 
@@ -1264,9 +1264,9 @@ Import a private or public key in the KMS.
 
 ### Arguments
 
-` <KEY_FILE>` The KMIP JSON TTLV key file
+`<KEY_FILE>` The KMIP JSON TTLV key file
 
-` <KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
+`<KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
@@ -1298,9 +1298,9 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ### Arguments
 
-` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
+`<KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
 
-` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+`<KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
 
 `--wrap-password [-p] <WRAP_PASSWORD>` A password to wrap the imported key
 
@@ -1324,9 +1324,9 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ### Arguments
 
-` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
+`<KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
 
-` <KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+`<KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
 
 `--unwrap-password [-p] <UNWRAP_PASSWORD>` A password to unwrap the imported key
 
@@ -1349,7 +1349,7 @@ Revoke a symmetric key
 
 ### Arguments
 
-` <REVOCATION_REASON>` The reason for the revocation as a string
+`<REVOCATION_REASON>` The reason for the revocation as a string
 
 `--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
 
@@ -1384,7 +1384,7 @@ Encrypt a file using AES GCM
 
 ### Arguments
 
-` <FILE>` The file to encrypt
+`<FILE>` The file to encrypt
 
 `--key-id [-k] <KEY_ID>` The symmetric key unique identifier. If not specified, tags should be specified
 
@@ -1407,7 +1407,7 @@ Decrypts a file using AES GCM
 
 ### Arguments
 
-` <FILE>` The file to decrypt
+`<FILE>` The file to decrypt
 
 `--key-id [-k] <KEY_ID>` The private key unique identifier If not specified, tags should be specified
 
@@ -1430,7 +1430,7 @@ Query the KMS to check its trustworthiness. Validate the TLS certificate to use 
 
 ### Arguments
 
-` <EXPORT_PATH>` The path to store working files (quote, certificate, ...)
+`<EXPORT_PATH>` The path to store working files (quote, certificate, ...)
 
 ---
 

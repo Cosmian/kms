@@ -26,22 +26,22 @@ To see the list of supported cryptographic algorithms, please refer to [Supporte
 
 #### Example - AES GCM encryption
 
-Encrypting the text `Hello, world!` with symmetric key `027cced1-ff2b-4bd3-a200-db1041583bd` (go to [Create](./_create.md)  
+Encrypting the text `Hello, world!` with symmetric key `027cced1-ff2b-4bd3-a200-db1041583bd` (go to [Create](./_create.md)
 to see how to create the symmetric key).
 
 Corresponding `ckms` CLI command:
 
 ```shell
 ckms sym encrypt -k 027cced1-ff2b-4bd3-a200-db1041583bd /tmp/hello_world.txt
-``` 
-*Note*: the file `/tmp/hello_world.txt` contains the text `Hello, world!`.
+```
 
+*Note*: the file `/tmp/hello_world.txt` contains the text `Hello, world!`.
 
 Please note that the response contains:
 
- - the encrypted data 
- - the nounce: 12 bytes
- - the authentication tag: 16 bytes
+- the encrypted data
+- the nounce: 12 bytes
+- the authentication tag: 16 bytes
 
 === "Request"
     ```json
@@ -61,8 +61,9 @@ Please note that the response contains:
           "value": "48656C6C6F2C20776F726C64210A"
         }
       ]
-    }   
-    ```
+    }
+
+```
 
 === "Response"
     ```json
@@ -91,12 +92,12 @@ Please note that the response contains:
             "value": "50FCE680540BD3E96EFA9218A2F1009D"
           }
         ]
-      }   
-    ```
+      }
+```
 
 #### Example - Covercrypt
 
-Encrypting the text `Hello, world!` with the Covercrypt master public key `0fd1f684-156c-4ca6-adc2-0a6f4b620463` 
+Encrypting the text `Hello, world!` with the Covercrypt master public key `0fd1f684-156c-4ca6-adc2-0a6f4b620463`
 (go to  [Create Key Paire](./_create_key_pair.md) to see how to create the mater key pair) and attributes `Security Level::Confidential && Department::FIN`.
 
 Corresponding `ckms` CLI command:
@@ -105,14 +106,14 @@ Corresponding `ckms` CLI command:
 ckms cc encrypt -k 0fd1f684-156c-4ca6-adc2-0a6f4b620463 \
  /tmp/hello_world.txt "Security Level::Confidential && Department::FIN"
 ```
+
 *Note*: the file `/tmp/hello_world.txt` contains the text `Hello, world!`.
 
 In the request, please note that the `Data` parameter contains:
 
- - the length of the bytes of the attributes: `47 = 2F` in hexadecimal
- - the attributes as bytes: `Security Level::Confidential && Department::FIN`
- - the bytes to encrypt: `Hello, world!` as UTF-8 bytes
-
+- the length of the bytes of the attributes: `47 = 2F` in hexadecimal
+- the attributes as bytes: `Security Level::Confidential && Department::FIN`
+- the bytes to encrypt: `Hello, world!` as UTF-8 bytes
 
 === "Request"
     ```json
@@ -142,8 +143,9 @@ In the request, please note that the `Data` parameter contains:
           "value": "2F5365637572697479204C6576656C3A3A436F6E666964656E7469616C202626204465706172746D656E743A3A46494E0048656C6C6F2C20776F726C64210A"
         }
       ]
-    }  
-    ```
+    }
+
+```
 
 === "Response"
     ```json
@@ -162,5 +164,5 @@ In the request, please note that the `Data` parameter contains:
           "value": "AEA6CF824612448B8445CAF46F9D987161706DAD6E43DFD1A57DD0F39869DC39A68096657A3EDC03CBC619D563744D2CC9819B6A9AB9A3893FD27F452F49A244A8CAA42279C4705D4D3A9E04D2B7887F0100D947F27D27BBD1D06F5A65087F73B8AAB617568761273282D4C14770FFCBA47200D02DDB4C48E1028DC5C50DE860A10A26E35AC405EFE6405486B56E9968594471075687D7BF6935BD003D"
         }
       ]
-    }  
-    ```
+    }
+```

@@ -11,21 +11,21 @@ The server SHALL copy the Unique Identifier returned by this operations into the
 
 #### Implementation
 
-The Export operation - contrarily to the `Get`operation - allows exporting objects which have been revoked or 
+The Export operation - contrarily to the `Get`operation - allows exporting objects which have been revoked or
 destroyed.
 When an object is destroyed, the key material cannot be exported anymore; only the attributes are returned.
 
 To be able to export an Object the user must have the `export` permission on the object or be the object owner.
 
-Key wrapping and unwrapping on export is supported for all keys. Please check the [algorithms page](./algorithms.md) 
-for more details. 
+Key wrapping and unwrapping on export is supported for all keys. Please check the [algorithms page](./algorithms.md)
+for more details.
 
 For the list of supported key formats, please check the [formats page](./formats.md).
 
 #### Examples -  Check `Get`
 
-An export example is provided below but it is in every point similar to the `Get` operation save for the 
-name of the operation. To run `Export` instead of `Get` with he `ckms` CLI, pass the `--allow-revoked` flag on the 
+An export example is provided below but it is in every point similar to the `Get` operation save for the
+name of the operation. To run `Export` instead of `Get` with he `ckms` CLI, pass the `--allow-revoked` flag on the
 command line.
 
 Please check the [Get](./_get.md) page for more examples.
@@ -43,8 +43,9 @@ The response is in `Raw`format, the default format for symmetric keys specified 
 /formats.md) for details.
 
 Corresponding `ckms` CLI command:
+
 ```bash
-ckms sym keys export -t "MySymmetricKey" /tmp/sym_key.json  --allow-revoked 
+ckms sym keys export -t "MySymmetricKey" /tmp/sym_key.json  --allow-revoked
 ```
 
 === "Request"
@@ -64,8 +65,9 @@ ckms sym keys export -t "MySymmetricKey" /tmp/sym_key.json  --allow-revoked
           "value": "AsRegistered"
         }
       ]
-    }   
-    ```
+    }
+
+```
 
 === "Response"
     ```json
@@ -153,6 +155,5 @@ ckms sym keys export -t "MySymmetricKey" /tmp/sym_key.json  --allow-revoked
           ]
         }
       ]
-    }   
-    ```
-
+    }
+```

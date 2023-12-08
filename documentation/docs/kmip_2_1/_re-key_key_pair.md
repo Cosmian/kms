@@ -22,8 +22,8 @@ based on the dates of the existing key pair as follows
 
 #### Implementation
 
-The `Re-Key Key Pair` Operation is the main mechanism to rotate Covercrypt attributes on the Cosmian KMS Server. By 
-updating, through this operation, the Policy held by a Master Private Key in it Vendor Attributes, the Cosmian KMS Server 
+The `Re-Key Key Pair` Operation is the main mechanism to rotate Covercrypt attributes on the Cosmian KMS Server. By
+updating, through this operation, the Policy held by a Master Private Key in it Vendor Attributes, the Cosmian KMS Server
 will automatically
 
 - update the Policy held by the Master Public Key
@@ -35,12 +35,14 @@ The operation has currently no other usages on the Cosmian server.
 ### Example - Rotate the `Security Level::Confidential` attribute
 
 Corresponding `ckms` CLI command:
+
 ```bash
 ckms cc rotate -k b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9 "Security Level::Confidential"
 ```
 
-Using a JSON TTLV request to rotate the `Security Level::Confidential` attribute on a Master Private Key, construct a JSON object containing 
+Using a JSON TTLV request to rotate the `Security Level::Confidential` attribute on a Master Private Key, construct a JSON object containing
 an array of the attributes that must be rotated:
+
 ```json
 {
   "RotateAttributes":
@@ -49,7 +51,8 @@ an array of the attributes that must be rotated:
     ]
 }
 ```
-Then hex encode the JSON and addit as a `VendorAttribute` with name `cover_crypt_policy_edit_action` to the `Re-Key 
+
+Then hex encode the JSON and addit as a `VendorAttribute` with name `cover_crypt_policy_edit_action` to the `Re-Key
 Key Pair` request.
 
 The Private Key Unique Identifier of the Master Secret Key must be passed in the reauest.
@@ -116,7 +119,8 @@ The Private Key Unique Identifier of the Master Secret Key must be passed in the
         }
       ]
     }
-    ```
+
+```
 
 === "Response"
     ```json
@@ -135,5 +139,5 @@ The Private Key Unique Identifier of the Master Secret Key must be passed in the
           "value": "0fd1f684-156c-4ca6-adc2-0a6f4b620463"
         }
       ]
-    }   
-    ```
+    }
+```

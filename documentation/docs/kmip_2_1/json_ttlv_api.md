@@ -24,7 +24,7 @@ This creates a (default AES 256) symmetric key which will be tagged with the str
 
 ```bash
 RUST_LOG="cosmian_kms_client::kms_rest_client=debug" \
-ckms sym keys create --tag myKey 
+ckms sym keys create --tag myKey
 ```
 
 The CLI will then show the JSON TTLV requests and response:
@@ -99,7 +99,7 @@ The CLI will then show the JSON TTLV requests and response:
       ]
     }
   ]
-}    
+}
 2023-12-02T08:44:37.921325Z DEBUG ThreadId(01) cosmian_kms_client::kms_rest_client: crate/client/src/kms_rest_client.rs:675: <==
 {
   "tag": "CreateResponse",
@@ -116,5 +116,5 @@ The CLI will then show the JSON TTLV requests and response:
       "value": "5dc81bb2-648f-485f-b804-c6ea45467056"
     }
   ]
-}    
+}
 ```
