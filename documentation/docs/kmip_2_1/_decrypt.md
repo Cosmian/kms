@@ -27,7 +27,15 @@ Instead of using the UID of the key, we can use the unique tag of the key `MySym
 identified. It is possible to use multiple tags to identify a key; for instance symmetric keys automatically get a 
 *system* tag `_kk`. See [tagging](./tagging.md) for more information on tags.
 
-The request the same information as in the [`Encrypt` Response](./_encrypt.md):
+Corresponding `ckms` CLI command:
+
+```shell
+ckms sym decrypt /tmp/encrypted.bin -t MySymmetricKey
+```
+where `/tmp/encrypted.bin` contains the a concatenation of the the nounce, the encryped and the authentication tag 
+in that order.
+
+The JSON TTLV request the same information as in the [`Encrypt` Response](./_encrypt.md):
 
  - the encrypted data 
  - the nounce: 12 bytes
@@ -92,6 +100,12 @@ to [Create](./_create.md) to see how to create the Covercrypt user decryption ke
 Instead of using the UID of the key, we can use the unique tag of the key `MyUserKey`. The key must be uniquely
 identified. It is possible to use multiple tags to identify a key; for instance Covercrypt user decryption keys 
 automatically get a *system* tag `_uk`. See [tagging](./tagging.md) for more information on tags.
+
+Corresponding `ckms` CLI command:
+
+```shell
+ckms cc decrypt /tmp/encrypted.bin  -t MyUserKey 
+```
 
 === "Request"
     ```json

@@ -14,7 +14,14 @@ This operation can be applied to all [supported objects](./objects.md).
 
 ### Example - A symmetric key
 
-Get the attributes of a symmetric key. The request has an empty `AttributeReference` structure, which means that all
+Get the attributes of a symmetric key by its unique identifier `027cced1-ff2b-4bd3-a200-db1041583bdc`.
+
+Corresponding `ckms` CLI command:
+```bash
+ckms get-attributes -i 027cced1-ff2b-4bd3-a200-db1041583bdc
+```
+
+The request has an empty `AttributeReference` structure, which means that all
 attributes are requested.
 
 The response contains all the system and user tags associated with the key. This is the hex encoded value of a JSON
@@ -123,7 +130,14 @@ array with value
 
 ### Example - A NIST P-256 private key
 
-Get the attributes of a NIST P-256 private key. The request has an empty `AttributeReference` structure, which means that
+Get the attributes of a NIST P-256 private key. 
+
+Corresponding `ckms` CLI command:
+```bash
+ckms get-attributes -i 927adccb-f59a-4cc9-a9e3-1eeb958c601f
+```
+
+The request has an empty `AttributeReference` structure, which means that
 all attributes are requested.
 
 In the response, please note:
@@ -244,7 +258,12 @@ Get the attributes of the certificate imported as part of a PKCS#12 container (s
 reference to the imported PKCS#12 container). The certificate is linked to a private key was signed by an 
 intermediate certificate imported as part of the same container.
 
-The request has an emopty `AttributeReference` structure, which means that all attributes are requested.
+Corresponding `ckms` CLI command:
+```bash
+ckms get-attributes -i d2f4e937-dda9-4a86-bbe8-c866646a612f 
+```
+
+The request has an empty `AttributeReference` structure, which means that all attributes are requested.
 
 Please note in the response:
 

@@ -195,7 +195,14 @@ serialized to hex.
 
 All certificates are tagged with the system tag `_cert_cn=<CN>`. See [tagging](./tagging.md) for more 
 details.
-To search a certificate with CN `My server`,  set the `tag` value to the hex encoding of `["_cert_cn=My server"]`.
+
+Corresponding `ckms` CLI command:
+```bash
+ckms locate --certificate-cn "My server"
+```
+
+Using a JSON TTLV request, to search a certificate with CN `My server`,  set the `tag` value to the hex encoding of
+`["_cert_cn=My server"]`.
 
 When a certificate is imported as part of a PKCS12 bundle, the certificate is tagged with the system tag ` _cert_sk=<UID>` 
 where `<UID>` is the unique identifier of the private key. 

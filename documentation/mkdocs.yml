@@ -50,7 +50,7 @@ nav:
   - Authenticating users to the server: authentication.md
   - Authorizing users with access rights: authorization.md
   - The `ckms` command line interface:
-      - Installing and configuring: cli/cli.md
+      - Getting Started: cli/cli.md
       - User manual: cli/main_commands.md
   - Calling the KMS API: api.md
   - KMIP 2.1:

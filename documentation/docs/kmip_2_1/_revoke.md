@@ -21,7 +21,12 @@ A `Revoked` object can be destroyd using the `Destroy` operation.
 
 #### Example - Symmetric key
 
-Revoking key `f54f14a3-5639-4054-8c23-54af891669db` with reason `key was compromised`:
+Revoking key `f54f14a3-5639-4054-8c23-54af891669db` with reason `key was compromised`.
+
+Corresponding `ckms` CLI command:
+```bash
+ckms sym keys revoke -k f54f14a3-5639-4054-8c23-54af891669db "key was compromised"
+```
 
 === "Request"
     ```json

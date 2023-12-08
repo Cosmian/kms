@@ -21,7 +21,13 @@ For the list of supported key formats, please check the [formats page](./formats
 
 Importing a NIST P-256 EC Private Key in SEC1 format.
 
-Please note:
+Corresponding `ckms` CLI command:
+```bash
+ckms ec keys import crate/cli/test_data/certificates/openssl/prime256v1-private-key.pem --key-format pem
+```
+The conversion from PEM to DER is done by the `ckms` CLI.
+
+In the JSON TTLV requets, please note:
 
 - the empty `UniqueIdentifier` which requests the server to generate a new `UniqueIdentifier` for the imported key.
 - the empty tags `[]` in hex
@@ -136,7 +142,13 @@ Please note:
 
 Importing a RSA 2048 key in PKCS#8 format with tags `MyRSAKey`and `2048`.
 
-Please note:
+Corresponding `ckms` CLI command:
+```bash
+ckms ec keys import crate/cli/test_data/certificates/openssl/rsa-2048-private-key.pem --key-format pem --tag "MyRSAKey" --tag "2048"
+```
+The conversion from PEM to DER is done by the `ckms` CLI.
+
+In the JSON TLLV Request, please note:
 
 - the empty `UniqueIdentifier` which requests the server to generate a new `UniqueIdentifier` for the imported key.
 - the tags `["MyRSAKey","2048"]` in hex
@@ -252,7 +264,14 @@ Please note:
 Importing a wrapped Covercrypt user key after unwrapping it with symmetric key
 `027cced1-ff2b-4bd3-a200-db1041583bdc` using RFC 5649.
 
-Please note:
+Corresponding `ckms` CLI command:
+```bash
+ckms cc keys import /tmp/sym_key.json  -u
+```
+**Note**: the `-u` flag is used to indicate that the key should be unwrapped on import; the JSON file (obtained using the
+`export` command) contains the wrapped key details.
+
+In the JSON TTLV reauest, please note:
 
  - the `KeyWrapType` set to `NotWrapped` which indicates to the server that it should look into the 
    `KeyWrappingData`structure to see how to unwrap the key.
@@ -554,7 +573,12 @@ Please note:
 
 Importing a PKCS#12 container containing an EC private key, a certificate and an intermediate certificate.
 
-Please note:
+Corresponding `ckms` CLI command:
+```bash
+ckms certificates import crate/cli/test_data/certificates/p12/output.p12 --tag "MyPKCS12" -f pkcs12 -p secret
+```
+
+In the reauest, please note:
 
 - the empty `UniqueIdentifier` which requests the server to generate a new `UniqueIdentifier` for the imported 
   private key. The server will also generate unique identifiers for the certificate and the intermediate 
@@ -697,7 +721,13 @@ Please note:
 
 Importing a X509 certificate.  The certificate must be imported an X509, DER encoded.
 
-Please note:
+Corresponding `ckms` CLI command:
+```bash
+ckms certificates import --tag "MyImportedCert" crate/cli/test_data/certificates/ca.crt -f pem
+```
+The conversion from PEM to DER is done by the CLI.
+
+In the JSON TTLV request, please note:
 
 - the empty `UniqueIdentifier` which requests the server to generate a new `UniqueIdentifier` for the imported 
   certificate.

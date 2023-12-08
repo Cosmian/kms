@@ -24,10 +24,11 @@ For the list of supported key formats, please check the [formats page](./formats
 
 #### Examples -  Check `Get`
 
-An export example is provided below but it is in every point similar to the [`Get` operation](./_get.md) save for the 
-name of the operation.
+An export example is provided below but it is in every point similar to the `Get` operation save for the 
+name of the operation. To run `Export` instead of `Get` with he `ckms` CLI, pass the `--allow-revoked` flag on the 
+command line.
 
-Please check that page for more examples.
+Please check the [Get](./_get.md) page for more examples.
 
 #### Example - Symmetric Key
 
@@ -38,8 +39,13 @@ Instead of using the UID of the key, we can use the unique tag of the key `MySym
 identified. It is possible to use multiple tags to identify a key; for instance symmetric keys automatically get a
 *system* tag `_kk`. See [tagging](./tagging.md) for more information on tags.
 
-The response is in `Raw`format, the default format for synnetric keys specified by KMIP 2.1; see the [formats page](.
+The response is in `Raw`format, the default format for symmetric keys specified by KMIP 2.1; see the [formats page](.
 /formats.md) for details.
+
+Corresponding `ckms` CLI command:
+```bash
+ckms sym keys export -t "MySymmetricKey" /tmp/sym_key.json  --allow-revoked 
+```
 
 === "Request"
     ```json

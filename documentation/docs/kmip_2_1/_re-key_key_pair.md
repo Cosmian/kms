@@ -34,7 +34,12 @@ The operation has currently no other usages on the Cosmian server.
 
 ### Example - Rotate the `Security Level::Confidential` attribute
 
-To rotate the `Security Level::Confidential` attribute on a Master Private Key, construct a JSON object containing 
+Corresponding `ckms` CLI command:
+```bash
+ckms cc rotate -k b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9 "Security Level::Confidential"
+```
+
+Using a JSON TTLV request to rotate the `Security Level::Confidential` attribute on a Master Private Key, construct a JSON object containing 
 an array of the attributes that must be rotated:
 ```json
 {
