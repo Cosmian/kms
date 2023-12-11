@@ -1,9 +1,10 @@
-use std::process;
+use std::{env, process};
 
 use clap::{CommandFactory, Parser, Subcommand};
 use cosmian_kms_cli::{
     actions::{
         access::AccessAction,
+        bootstrap::BootstrapServerAction,
         certificates::CertificatesCommands,
         cover_crypt::CovercryptCommands,
         elliptic_curves::EllipticCurveCommands,
@@ -13,12 +14,15 @@ use cosmian_kms_cli::{
         new_database::NewDatabaseAction,
         shared::{GetAttributesAction, LocateObjectsAction},
         symmetric::SymmetricCommands,
+        verify::TeeAction,
         version::ServerVersionAction,
     },
     config::CliConf,
     error::CliError,
 };
 use cosmian_logger::log_utils::log_init;
+use klask::Settings;
+use tokio::task::spawn_blocking;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -31,6 +35,7 @@ struct Cli {
 enum CliCommands {
     #[command(subcommand)]
     AccessRights(AccessAction),
+    BootstrapStart(BootstrapServerAction),
     #[command(subcommand)]
     Cc(CovercryptCommands),
     #[command(subcommand)]
@@ -43,6 +48,7 @@ enum CliCommands {
     ServerVersion(ServerVersionAction),
     #[command(subcommand)]
     Sym(SymmetricCommands),
+    Verify(TeeAction),
     Login(LoginAction),
     Logout(LogoutAction),
     #[clap(hide = true)]
@@ -59,7 +65,12 @@ async fn main() {
 
 async fn main_() -> Result<(), CliError> {
     log_init("");
-
+    let args: Vec<_> = env::args().collect();
+    if args.len() < 2 {
+        let cmd = <Cli as CommandFactory>::command();
+        klask::run_app(cmd, Settings::default(), |_| {});
+        return Ok(())
+    }
     let opts = Cli::parse();
     let conf = CliConf::load()?;
 
