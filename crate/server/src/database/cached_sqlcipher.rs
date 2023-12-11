@@ -8,8 +8,8 @@ use std::{
 use async_trait::async_trait;
 use cloudproof::reexport::crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
-    kmip_objects,
-    kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
+    kmip_objects::Object,
+    kmip_types::{Attributes, StateEnumeration},
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
 use sqlx::{
@@ -28,10 +28,15 @@ use super::{
     },
 };
 use crate::{
-    database::{sqlite::retrieve_tags_, Database, SQLITE_QUERIES},
+    database::{
+        database_trait::AtomicOperation,
+        sqlite::{atomic_, retrieve_tags_},
+        Database, SQLITE_QUERIES,
+    },
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
 };
+
 pub struct CachedSqlCipher {
     path: PathBuf,
     cache: KMSSqliteCache,
@@ -139,10 +144,10 @@ impl Database for CachedSqlCipher {
         &self,
         uid: Option<String>,
         owner: &str,
-        object: &kmip_objects::Object,
+        object: &Object,
         tags: &HashSet<String>,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<UniqueIdentifier> {
+    ) -> KResult<String> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let mut tx = pool.begin().await?;
@@ -166,16 +171,16 @@ impl Database for CachedSqlCipher {
     async fn create_objects(
         &self,
         owner: &str,
-        objects: &[(Option<String>, kmip_objects::Object, &HashSet<String>)],
+        objects: Vec<(Option<String>, Object, &HashSet<String>)>,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<UniqueIdentifier>> {
+    ) -> KResult<Vec<String>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
 
             let mut res = vec![];
             let mut tx = pool.begin().await?;
             for (uid, object, tags) in objects {
-                match create_(uid.clone(), owner, object, tags, &mut tx).await {
+                match create_(uid.clone(), owner, &object, tags, &mut tx).await {
                     Ok(uid) => res.push(uid),
                     Err(e) => {
                         tx.rollback().await.context("transaction failed")?;
@@ -212,7 +217,7 @@ impl Database for CachedSqlCipher {
 
     async fn retrieve_tags(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
         if let Some(params) = params {
@@ -227,8 +232,8 @@ impl Database for CachedSqlCipher {
 
     async fn update_object(
         &self,
-        uid: &UniqueIdentifier,
-        object: &kmip_objects::Object,
+        uid: &str,
+        object: &Object,
         tags: Option<&HashSet<String>>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -254,15 +259,25 @@ impl Database for CachedSqlCipher {
 
     async fn update_state(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = update_state_(uid, state, &*pool).await;
-            self.post_query(params.group_id)?;
-            return ret
+            let mut tx = pool.begin().await?;
+            match update_state_(uid, state, &mut tx).await {
+                Ok(()) => {
+                    tx.commit().await?;
+                    self.post_query(params.group_id)?;
+                    return Ok(())
+                }
+                Err(e) => {
+                    tx.rollback().await.context("transaction failed")?;
+                    self.post_query(params.group_id)?;
+                    kms_bail!("update of state of object {uid} failed: {e}")
+                }
+            }
         }
 
         kms_bail!("Missing group_id/key for opening SQLCipher")
@@ -270,17 +285,17 @@ impl Database for CachedSqlCipher {
 
     async fn upsert(
         &self,
-        uid: &UniqueIdentifier,
-        owner: &str,
-        object: &kmip_objects::Object,
-        tags: &HashSet<String>,
+        uid: &str,
+        user: &str,
+        object: &Object,
+        tags: Option<&HashSet<String>>,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let mut tx = pool.begin().await?;
-            match upsert_(uid, owner, object, tags, state, &mut tx).await {
+            match upsert_(uid, user, object, tags, state, &mut tx).await {
                 Ok(()) => {
                     tx.commit().await?;
                     self.post_query(params.group_id)?;
@@ -299,7 +314,7 @@ impl Database for CachedSqlCipher {
 
     async fn delete(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -327,8 +342,7 @@ impl Database for CachedSqlCipher {
         &self,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
-    {
+    ) -> KResult<HashMap<String, (String, StateEnumeration, HashSet<ObjectOperationType>)>> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let ret = list_user_granted_access_rights_(owner, &*pool).await;
@@ -341,7 +355,7 @@ impl Database for CachedSqlCipher {
 
     async fn list_object_accesses_granted(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>> {
         if let Some(params) = params {
@@ -356,7 +370,7 @@ impl Database for CachedSqlCipher {
 
     async fn grant_access(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         userid: &str,
         operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
@@ -373,7 +387,7 @@ impl Database for CachedSqlCipher {
 
     async fn remove_access(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         userid: &str,
         operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
@@ -390,7 +404,7 @@ impl Database for CachedSqlCipher {
 
     async fn is_object_owned_by(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         userid: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
@@ -411,7 +425,7 @@ impl Database for CachedSqlCipher {
         user: &str,
         user_must_be_owner: bool,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
+    ) -> KResult<Vec<(String, StateEnumeration, Attributes, IsWrapped)>> {
         trace!("cached sqlcipher: find: {:?}", researched_attributes);
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
@@ -433,7 +447,7 @@ impl Database for CachedSqlCipher {
 
     async fn list_user_access_rights_on_object(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         userid: &str,
         no_inherited_access: bool,
         params: Option<&ExtraDatabaseParams>,
@@ -446,6 +460,32 @@ impl Database for CachedSqlCipher {
                 list_user_access_rights_on_object_(uid, userid, no_inherited_access, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
+        }
+
+        kms_bail!("Missing group_id/key for opening SQLCipher")
+    }
+
+    async fn atomic(
+        &self,
+        owner: &str,
+        operations: &[AtomicOperation],
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<()> {
+        if let Some(params) = params {
+            let pool = self.pre_query(params.group_id, &params.key).await?;
+            let mut tx = pool.begin().await?;
+            return match atomic_(owner, operations, &mut tx).await {
+                Ok(()) => {
+                    tx.commit().await?;
+                    self.post_query(params.group_id)?;
+                    Ok(())
+                }
+                Err(e) => {
+                    tx.rollback().await.context("transaction failed")?;
+                    self.post_query(params.group_id)?;
+                    Err(e)
+                }
+            }
         }
 
         kms_bail!("Missing group_id/key for opening SQLCipher")

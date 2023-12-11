@@ -6,7 +6,7 @@ use cosmian_kmip::kmip::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
         EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
-    kmip_types::{CryptographicAlgorithm, RevocationReason},
+    kmip_types::{CryptographicAlgorithm, RevocationReason, UniqueIdentifier},
 };
 use cosmian_kms_utils::{
     crypto::{
@@ -28,7 +28,7 @@ use crate::{
     tests::test_utils,
 };
 
-#[actix_web::test]
+#[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // log_init("cosmian_kms_server=info");
 
@@ -58,8 +58,14 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
-    let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
-    let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
+    let private_key_unique_identifier = create_key_pair_response
+        .private_key_unique_identifier
+        .as_str()
+        .context("There should be a private key unique identifier as a string")?;
+    let public_key_unique_identifier = create_key_pair_response
+        .public_key_unique_identifier
+        .as_str()
+        .context("There should be a public key unique identifier as a string")?;
 
     // Encrypt
     let authentication_data = b"cc the uid".to_vec();
@@ -89,7 +95,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         EMPTY_TAGS,
     )?;
     let create_response: CreateResponse = test_utils::post(&app, request).await?;
-    let user_decryption_key_identifier = &create_response.unique_identifier;
+    let user_decryption_key_identifier = create_response
+        .unique_identifier
+        .as_str()
+        .context("There should be a user decryption key unique identifier as a string")?;
 
     // decrypt
     let request = build_decryption_request(
@@ -144,7 +153,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         EMPTY_TAGS,
     )?;
     let create_response: CreateResponse = test_utils::post(&app, &request).await?;
-    let user_decryption_key_identifier_1 = &create_response.unique_identifier;
+    let user_decryption_key_identifier_1 = create_response
+        .unique_identifier
+        .as_str()
+        .context("There should be a user decryption key unique identifier as a string")?;
 
     //
     // Create another user decryption key
@@ -155,7 +167,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         EMPTY_TAGS,
     )?;
     let create_response2: CreateResponse = test_utils::post(&app, &request).await?;
-    let user_decryption_key_identifier_2 = &create_response2.unique_identifier;
+    let user_decryption_key_identifier_2 = &create_response2
+        .unique_identifier
+        .as_str()
+        .context("There should be a user decryption key unique identifier as a string")?;
 
     // test user1 can decrypt
     let request = build_decryption_request(
@@ -204,7 +219,9 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let _revoke_response: RevokeResponse = test_utils::post(
         &app,
         &Revoke {
-            unique_identifier: Some(user_decryption_key_identifier_1.clone()),
+            unique_identifier: Some(UniqueIdentifier::TextString(
+                user_decryption_key_identifier_1.to_string(),
+            )),
             revocation_reason: RevocationReason::TextString("Revocation test".to_owned()),
             compromise_occurrence_date: None,
         },
@@ -221,11 +238,17 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
-        &rekey_keypair_response.private_key_unique_identifier,
+        rekey_keypair_response
+            .private_key_unique_identifier
+            .as_str()
+            .context("There should be a private key unique identifier as a string")?,
         private_key_unique_identifier
     );
     assert_eq!(
-        &rekey_keypair_response.public_key_unique_identifier,
+        rekey_keypair_response
+            .public_key_unique_identifier
+            .as_str()
+            .context("There should be a public key unique identifier as a string")?,
         public_key_unique_identifier
     );
 
@@ -423,7 +446,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     let destroy_response: DestroyResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
         user_decryption_key_identifier_1,
-        &destroy_response.unique_identifier
+        destroy_response
+            .unique_identifier
+            .as_str()
+            .context("There should be a user decryption key unique identifier as a string")?
     );
 
     Ok(())

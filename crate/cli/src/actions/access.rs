@@ -1,4 +1,5 @@
 use clap::Parser;
+use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::access::{Access, ObjectOperationType};
 
@@ -50,7 +51,7 @@ pub struct GrantAccess {
 impl GrantAccess {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         let access = Access {
-            unique_identifier: Some(self.object_uid.clone()),
+            unique_identifier: Some(UniqueIdentifier::TextString(self.object_uid.clone())),
             user_id: self.user.clone(),
             operation_type: self.operation,
         };
@@ -90,7 +91,7 @@ pub struct RevokeAccess {
 impl RevokeAccess {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         let access = Access {
-            unique_identifier: Some(self.object_uid.clone()),
+            unique_identifier: Some(UniqueIdentifier::TextString(self.object_uid.clone())),
             user_id: self.user.clone(),
             operation_type: self.operation,
         };

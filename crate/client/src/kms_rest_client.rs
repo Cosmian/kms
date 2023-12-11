@@ -29,6 +29,7 @@ use josekit::{
     jwe::{alg::ecdh_es::EcdhEsJweAlgorithm, serialize_compact, JweHeader},
     jwk::Jwk,
 };
+use log::debug;
 use reqwest::{Client, ClientBuilder, Identity, Response};
 use rustls::{client::WebPkiVerifier, Certificate};
 use serde::{Deserialize, Serialize};
@@ -584,17 +585,28 @@ impl KmsRestClient {
     ) -> Result<R, RestClientError>
     where
         O: Serialize,
-        R: serde::de::DeserializeOwned + Sized + 'static,
+        R: serde::de::DeserializeOwned + Sized + Serialize + 'static,
     {
         let server_url = format!("{}{endpoint}", self.server_url);
         let response = match data {
-            Some(d) => self.client.post(server_url).json(d).send().await?,
+            Some(d) => {
+                debug!(
+                    "==>\n{}",
+                    serde_json::to_string_pretty(&d).unwrap_or("[N/A]".to_string())
+                );
+                self.client.post(server_url).json(d).send().await?
+            }
             None => self.client.post(server_url).send().await?,
         };
 
         let status_code = response.status();
         if status_code.is_success() {
-            return Ok(response.json::<R>().await?)
+            let response = response.json::<R>().await?;
+            debug!(
+                "<==\n{}",
+                serde_json::to_string_pretty(&response).unwrap_or("[N/A]".to_string())
+            );
+            return Ok(response)
         }
 
         // process error
@@ -648,6 +660,10 @@ impl KmsRestClient {
 
             request.body(payload)
         } else {
+            debug!(
+                "==>\n{}",
+                serde_json::to_string_pretty(&ttlv).unwrap_or("[N/A]".to_string())
+            );
             request.json(&ttlv)
         };
 
@@ -656,6 +672,10 @@ impl KmsRestClient {
         let status_code = response.status();
         if status_code.is_success() {
             let ttlv = response.json::<TTLV>().await?;
+            debug!(
+                "<==\n{}",
+                serde_json::to_string_pretty(&ttlv).unwrap_or("[N/A]".to_string())
+            );
             return from_ttlv(&ttlv).map_err(|e| RestClientError::ResponseFailed(e.to_string()))
         }
 

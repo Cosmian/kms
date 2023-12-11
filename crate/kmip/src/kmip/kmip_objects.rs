@@ -2,7 +2,6 @@ use std::convert::{TryFrom, TryInto};
 
 use num_bigint_dig::BigUint;
 use serde::{Deserialize, Serialize};
-use strum::{Display, EnumString};
 
 use super::{kmip_data_structures::KeyWrappingData, kmip_types::Attributes};
 use crate::{
@@ -33,9 +32,11 @@ use crate::{
 ///
 /// Order matters: `SecretData` will be deserialized as a `PrivateKey` if it
 /// appears after despite the presence of `secret_data_type`
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, Display)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum Object {
+    /// A Managed Cryptographic Object that is a digital certificate.
+    /// It is a DER-encoded X.509 public key certificate.
     #[serde(rename_all = "PascalCase")]
     Certificate {
         certificate_type: CertificateType,
@@ -43,6 +44,7 @@ pub enum Object {
         /// It is a DER-encoded X.509 public key certificate.
         certificate_value: Vec<u8>,
     },
+    /// A Managed Cryptographic Object containing the Certificate Request.
     #[serde(rename_all = "PascalCase")]
     CertificateRequest {
         certificate_request_type: CertificateRequestType,
@@ -76,6 +78,10 @@ pub enum Object {
         #[serde(rename = "KeyBlock")]
         key_block: KeyBlock,
     },
+    ///A Managed Cryptographic Object containing a shared secret value that is not
+    /// a key or certificate (e.g., a password).
+    /// The Key Block of the Secret Data object contains a Key Value of the Secret Data Type.
+    /// The Key Value MAY be wrapped.
     #[serde(rename_all = "PascalCase")]
     SecretData {
         secret_data_type: SecretDataType,
@@ -104,14 +110,18 @@ pub enum Object {
         prime_field_size: Option<BigUint>,
         key_block: KeyBlock,
     },
+    /// A Managed Cryptographic Object that is the private portion of an asymmetric key pair.
     PrivateKey {
         #[serde(rename = "KeyBlock")]
         key_block: KeyBlock,
     },
+    /// A Managed Cryptographic Object that is the public portion of an asymmetric key pair.
+    /// This is only a public key, not a certificate.
     PublicKey {
         #[serde(rename = "KeyBlock")]
         key_block: KeyBlock,
     },
+    /// A Managed Cryptographic Object that is a symmetric key.
     SymmetricKey {
         #[serde(rename = "KeyBlock")]
         key_block: KeyBlock,
@@ -247,7 +257,7 @@ impl TryInto<Vec<u8>> for Object {
 /// The type of a KMIP Objects
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, EnumString, Display)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub enum ObjectType {
     Certificate = 0x0000_0001,
@@ -259,4 +269,49 @@ pub enum ObjectType {
     OpaqueObject = 0x0000_0008,
     PGPKey = 0x0000_0009,
     CertificateRequest = 0x0000_000A,
+}
+
+impl TryFrom<&str> for ObjectType {
+    type Error = KmipError;
+
+    fn try_from(object_type: &str) -> Result<Self, Self::Error> {
+        match object_type {
+            "Certificate" => Ok(Self::Certificate),
+            "SymmetricKey" => Ok(Self::SymmetricKey),
+            "PublicKey" => Ok(Self::PublicKey),
+            "PrivateKey" => Ok(Self::PrivateKey),
+            "SplitKey" => Ok(Self::SplitKey),
+            "SecretData" => Ok(Self::SecretData),
+            "OpaqueObject" => Ok(Self::OpaqueObject),
+            "PGPKey" => Ok(Self::PGPKey),
+            "CertificateRequest" => Ok(Self::CertificateRequest),
+            _ => Err(KmipError::InvalidKmipObject(
+                ErrorReason::Invalid_Object_Type,
+                format!("{object_type} is not a valid ObjectType"),
+            )),
+        }
+    }
+}
+
+impl From<ObjectType> for String {
+    fn from(object_type: ObjectType) -> Self {
+        match object_type {
+            ObjectType::Certificate => "Certificate".to_string(),
+            ObjectType::SymmetricKey => "SymmetricKey".to_string(),
+            ObjectType::PublicKey => "PublicKey".to_string(),
+            ObjectType::PrivateKey => "PrivateKey".to_string(),
+            ObjectType::SplitKey => "SplitKey".to_string(),
+            ObjectType::SecretData => "SecretData".to_string(),
+            ObjectType::OpaqueObject => "OpaqueObject".to_string(),
+            ObjectType::PGPKey => "PGPKey".to_string(),
+            ObjectType::CertificateRequest => "CertificateRequest".to_string(),
+        }
+    }
+}
+
+impl std::fmt::Display for ObjectType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s: String = (*self).into();
+        write!(f, "{s}")
+    }
 }

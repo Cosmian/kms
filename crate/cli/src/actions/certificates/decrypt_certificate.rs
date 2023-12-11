@@ -1,7 +1,10 @@
 use std::{fs::File, io::prelude::*, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kmip::kmip::kmip_operations::{Decrypt, DecryptedData};
+use cosmian_kmip::kmip::{
+    kmip_operations::{Decrypt, DecryptedData},
+    kmip_types::UniqueIdentifier,
+};
 use cosmian_kms_client::KmsRestClient;
 
 use crate::{
@@ -54,7 +57,7 @@ impl DecryptCertificateAction {
 
         // Create the kmip query
         let decrypt_request = Decrypt {
-            unique_identifier: Some(id.clone()),
+            unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
             data: Some(ciphertext),
             authenticated_encryption_additional_data: self
                 .authentication_data

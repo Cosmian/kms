@@ -1153,12 +1153,16 @@ dependencies = [
  "cosmian_logger",
  "hex",
  "num-bigint-dig",
+ "openssl",
+ "pyo3",
  "serde",
  "serde_json",
  "strum",
  "thiserror",
  "time 0.3.30",
  "tracing",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]
@@ -1172,11 +1176,13 @@ dependencies = [
  "base64 0.21.5",
  "clap",
  "cloudproof",
+ "const-oid",
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_server",
  "cosmian_kms_utils",
  "cosmian_logger",
+ "der",
  "hex",
  "oauth2",
  "openssl",
@@ -1197,7 +1203,8 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
- "x509-parser",
+ "x509-cert",
+ "zeroize",
 ]
 
 [[package]]
@@ -1209,6 +1216,7 @@ dependencies = [
  "cosmian_kms_utils",
  "http",
  "josekit",
+ "log",
  "openssl",
  "ratls",
  "reqwest",
@@ -1272,7 +1280,6 @@ dependencies = [
  "josekit",
  "lazy_static",
  "mime",
- "num-bigint-dig",
  "openssl",
  "ratls",
  "rawsql",

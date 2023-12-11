@@ -16,7 +16,7 @@ timeout = []
 # To run in a test environment using a real domain name and enclaves without the rest api limit of let's encrypt
 staging = ["insecure"]
 
-# No features (insecure, timeout or staging)
+# No features (insecure, timeout or staging) and contain non FIPS approved libraries (e.g. Rust Crypto)
 default = []
 prod = []
 
@@ -37,7 +37,7 @@ base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 cloudproof = { workspace = true }
-cosmian_kmip = { path = "../kmip" }
+cosmian_kmip = { path = "../kmip", features = ["openssl"] }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
 dirs = "5.0"
 dotenvy = "0.15"
@@ -48,10 +48,8 @@ http = { workspace = true }
 josekit = { workspace = true }
 lazy_static = "1.4"
 mime = "0.3"
-num-bigint-dig = { workspace = true }
 openssl = { workspace = true }
 ratls = { workspace = true }
-tee_attestation = { workspace = true }
 rawsql = "0.1"
 redis = { workspace = true }
 reqwest = { workspace = true }
@@ -64,6 +62,7 @@ sqlx = { version = "0.7.3", default-features = false, features = [
     "postgres",
     "sqlite",
 ] }
+tee_attestation = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
 # this version of tokio should be the same as the one used in actix-web

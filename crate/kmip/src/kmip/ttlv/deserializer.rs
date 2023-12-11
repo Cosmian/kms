@@ -7,7 +7,10 @@ use serde::{
 use time::format_description::well_known::Rfc3339;
 use tracing::trace;
 
-use crate::kmip::ttlv::{error::TtlvError, to_u32_digits, TTLVEnumeration, TTLValue, TTLV};
+use crate::kmip::{
+    kmip_objects::{Object, ObjectType},
+    ttlv::{error::TtlvError, to_u32_digits, TTLVEnumeration, TTLValue, TTLV},
+};
 
 type Result<T> = std::result::Result<T, TtlvError>;
 
@@ -79,12 +82,39 @@ impl<'de> TtlvDeserializer<'de> {
     }
 }
 
+/// Parse a KMIP structure from its TTLV value.
+///
+/// Note: `Objects` are untagged enums, so it is impossible to know the type of the Object
+/// unless the the root value being deserialized is an object, in which case,
+/// the tag is the name of the variant.
+///
+/// #see `Object::post_fix()`
 pub fn from_ttlv<'a, T>(s: &'a TTLV) -> Result<T>
 where
     T: Deserialize<'a>,
 {
     let mut deserializer = TtlvDeserializer::from_ttlv(s);
-    T::deserialize(&mut deserializer)
+    let value = T::deserialize(&mut deserializer)?;
+
+    // postfix the TTLV if it is a root object
+    trait PostFix
+    where
+        Self: Sized,
+    {
+        fn post_fix(self, tag: &str) -> Result<Self>;
+    }
+    impl<T> PostFix for T {
+        default fn post_fix(self, _tag: &str) -> Result<Self> {
+            Ok(self)
+        }
+    }
+    impl PostFix for Object {
+        fn post_fix(self, tag: &str) -> Result<Self> {
+            let object_type = ObjectType::try_from(tag)?;
+            Ok(Object::post_fix(object_type, self))
+        }
+    }
+    value.post_fix(s.tag.as_str())
 }
 
 impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
@@ -592,6 +622,13 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut TtlvDeserializer<'de> {
             )),
             Deserializing::StructureValue => {
                 let value = &self.get_structure()?[self.index - 1].value;
+                trace!(
+                    "\ndeserialize_enum {}: {:?}, \n[{}]: {:#?}\n",
+                    _name,
+                    _variants,
+                    &self.index - 1,
+                    &value
+                );
                 match value {
                     TTLValue::Enumeration(_e) => visitor.visit_enum(EnumWalker::new(self)),
                     // TTLValue::Structure(_s) => visitor.visit_enum(EnumWalker::new(self)),

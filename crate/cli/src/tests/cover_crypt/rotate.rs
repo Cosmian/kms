@@ -13,7 +13,7 @@ use crate::{
             user_decryption_keys::create_user_decryption_key,
             SUB_COMMAND,
         },
-        shared::{export, import},
+        shared::{export_key, import_key},
         symmetric::create_key::create_symmetric_key,
         utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
@@ -29,7 +29,7 @@ pub async fn rotate(
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let mut args = vec!["rotate", "--key-id", master_private_key_id];
     args.extend_from_slice(attributes);
     cmd.arg(SUB_COMMAND).args(args);
@@ -121,22 +121,24 @@ async fn test_rotate_error() -> Result<(), CliError> {
     let symmetric_key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
     // export a wrapped key
     let exported_wrapped_key_file = tmp_path.join("exported_wrapped_master_private.key");
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         SUB_COMMAND,
         &master_private_key_id,
         exported_wrapped_key_file.to_str().unwrap(),
-        false,
+        None,
         false,
         Some(symmetric_key_id),
         false,
     )?;
     // import it wrapped
-    let wrapped_key_id = import(
+    let wrapped_key_id = import_key(
         &ctx.owner_cli_conf_path,
         SUB_COMMAND,
         &exported_wrapped_key_file.to_string_lossy(),
         None,
+        None,
+        &[],
         false,
         true,
     )?;
@@ -200,12 +202,12 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
 
     // export the user_decryption_key
     let exported_user_decryption_key_file = tmp_path.join("exported_user_decryption.key");
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         SUB_COMMAND,
         &user_decryption_key,
         exported_user_decryption_key_file.to_str().unwrap(),
-        false,
+        None,
         false,
         None,
         false,
@@ -247,11 +249,13 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     )?;
 
     // import the non rotated user_decryption_key
-    let old_user_decryption_key = import(
+    let old_user_decryption_key = import_key(
         &ctx.owner_cli_conf_path,
         SUB_COMMAND,
         &exported_user_decryption_key_file.to_string_lossy(),
         None,
+        None,
+        &[],
         false,
         false,
     )?;

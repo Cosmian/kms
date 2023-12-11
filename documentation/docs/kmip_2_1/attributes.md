@@ -2,7 +2,7 @@ In [chapter 4](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2
 
 Extensions in KMIP consist mostly in augmenting enumerations with new values and attributing a specific prefix values, usually `0x8880` to the new variants.
 
-The Cosmian extensions are listed below. They can also be viewed in the open sourced [Cloudproof Java library](https://github.com/Cosmian/cloudproof_java/) which implements the KMIP specifications required to interact with the Cosmian KMS server. For instance, the `CryptographicAlgorithm` enumeration extensions can be viewed in [this java source code](https://github.com/Cosmian/cloudproof_java/blob/main/src/main/java/com/cosmian/rest/kmip/types/CryptographicAlgorithm.java)
+To support [Covercrypt](https://github.com/Cosmian/cover_crypt), Cosmian is using a few extensions listed below.
 
 #### Key Format Type
 
@@ -44,14 +44,13 @@ CoverCrypt = 0x8880_0004,
 All keys managed by the Cosmian KMS server are primarily a `KeyMaterial` made of bytes. Some keys, typically those of ABE, also carry information regarding the underlying access policies. This information is carried together with the keys using [VendorAttributes](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html#_Toc32239382)
 
 Typically a vendor attribute is made of 3 values: a `Vendor Identification` - always hardcoded to `cosmian` - and a tuple `Attribute Name`, `Attribute Value`.
-The different attribute names can be seen in the [VendorAttributes.java](https://github.com/Cosmian/cloudproof_java/blob/main/src/main/java/com/cosmian/rest/kmip/types/VendorAttribute.java) file of the Cloudproof JavaLib.
+
+Covercrypt uses a few vendor attributes which names can be seen in the code [attributes.rs](https://github.com/Cosmian/kms/blob/main/crate/utils/src/crypto/cover_crypt/attributes.rs) file.
 
 The attributes names and corresponding values used for a given `KeyFormatType` are as follows:
 
-- `CovercryptMasterSecretKey` and `CovercryptMasterPublicKey`:
-  - `VENDOR_ATTR_COVER_CRYPT_POLICY = "cover_crypt_policy"` : the JSONified Policy
+- `VENDOR_ATTR_COVER_CRYPT_POLICY = "cover_crypt_policy"`: the JSONified Policy found in the master keys.
 
-- `AbeUserDecryptionKey`:
-  - `VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY = "cover_crypt_access_policy"`: the JSONified boolean Access Policy of the key
+- `VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY = "cover_crypt_access_policy"`: the JSONified boolean Access Policy found in a user key
 
 In addition, the `VENDOR_ATTR_COVER_CRYPT_ATTR = "cover_crypt_attributes"` name is used in Locate requests to identify User Decryption Keys holding certain Policy Attributes.

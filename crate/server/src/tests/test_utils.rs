@@ -5,15 +5,18 @@ use actix_web::{
     body::MessageBody,
     dev::{Service, ServiceResponse},
     test,
+    test::{call_service, read_body},
     web::Data,
     App,
 };
 use cosmian_kmip::kmip::ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV};
+use http::StatusCode;
 use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
 use crate::{
     config::{ClapConfig, DBConfig, HttpConfig, ServerParams},
+    kms_bail,
     result::KResult,
     routes, KMSServer,
 };
@@ -77,7 +80,14 @@ where
         // .insert_header(("Authorization", format!("Bearer {AUTH0_TOKEN}")))
         .set_json(to_ttlv(&operation)?)
         .to_request();
-    let body = test::call_and_read_body(&app, req).await;
+    let res = call_service(app, req).await;
+    if res.status() != StatusCode::OK {
+        kms_bail!(
+            "{}",
+            String::from_utf8(read_body(res).await.to_vec()).unwrap_or("[N/A".to_string())
+        );
+    }
+    let body = read_body(res).await;
     let json: TTLV = serde_json::from_slice(&body)?;
     let result: R = from_ttlv(&json)?;
     Ok(result)

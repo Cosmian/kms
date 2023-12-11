@@ -6,6 +6,7 @@ use cloudproof::reexport::{
     },
     crypto_core::{
         bytes_ser_de::{Deserializer, Serializable, Serializer},
+        reexport::zeroize::Zeroizing,
         SymmetricKey,
     },
 };
@@ -14,7 +15,7 @@ use cosmian_kmip::{
     kmip::{
         kmip_objects::Object,
         kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
 };
 use tracing::{debug, trace};
@@ -32,7 +33,7 @@ use crate::{
 pub struct CoverCryptEncryption {
     cover_crypt: Covercrypt,
     public_key_uid: String,
-    public_key_bytes: Vec<u8>,
+    public_key_bytes: Zeroizing<Vec<u8>>,
     policy: Policy,
 }
 
@@ -225,7 +226,7 @@ impl EncryptionSystem for CoverCryptEncryption {
         };
 
         Ok(EncryptResponse {
-            unique_identifier: self.public_key_uid.clone(),
+            unique_identifier: UniqueIdentifier::TextString(self.public_key_uid.clone()),
             data: Some(encrypted_data),
             iv_counter_nonce: None,
             correlation_value: None,

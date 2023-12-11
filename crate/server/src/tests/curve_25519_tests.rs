@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{ErrorReason, Import, Operation},
     kmip_types::{
         Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
+        ProtocolVersion, RecommendedCurve, ResultStatusEnumeration, UniqueIdentifier,
     },
 };
 use cosmian_kms_utils::crypto::curve_25519::{
@@ -17,11 +17,14 @@ use cosmian_kms_utils::crypto::curve_25519::{
 use cosmian_logger::log_utils::log_init;
 
 use crate::{
-    config::ServerParams, error::KmsError, result::KResult, tests::test_utils::https_clap_config,
+    config::ServerParams,
+    error::KmsError,
+    result::{KResult, KResultHelper},
+    tests::test_utils::https_clap_config,
     KMSServer,
 };
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_curve_25519_key_pair() -> KResult<()> {
     let clap_config = https_clap_config();
 
@@ -35,12 +38,20 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // check secret key
     let sk_response = kms
         .get(
-            get_private_key_request(&response.private_key_unique_identifier),
+            get_private_key_request(
+                response
+                    .private_key_unique_identifier
+                    .as_str()
+                    .context("no string for the private_key_unique_identifier")?,
+            ),
             owner,
             None,
         )
         .await?;
-    let sk_uid = &sk_response.unique_identifier;
+    let sk_uid = sk_response
+        .unique_identifier
+        .as_str()
+        .context("no string for the unique_identifier")?;
     let sk = &sk_response.object;
     let sk_key_block = match sk {
         Object::PrivateKey { key_block } => key_block.clone(),
@@ -52,9 +63,12 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     };
     assert_eq!(
         sk_key_block.cryptographic_algorithm,
-        CryptographicAlgorithm::ECDH,
+        Some(CryptographicAlgorithm::ECDH),
     );
-    assert_eq!(sk_key_block.cryptographic_length, operation::Q_LENGTH_BITS,);
+    assert_eq!(
+        sk_key_block.cryptographic_length,
+        Some(operation::Q_LENGTH_BITS)
+    );
     assert_eq!(
         sk_key_block.key_format_type,
         KeyFormatType::TransparentECPrivateKey
@@ -76,13 +90,23 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     assert_eq!(link.link_type, LinkType::PublicKeyLink);
     assert_eq!(
         link.linked_object_identifier,
-        LinkedObjectIdentifier::TextString(response.public_key_unique_identifier.clone())
+        LinkedObjectIdentifier::TextString(
+            response
+                .public_key_unique_identifier
+                .to_string()
+                .context("no string for the public_key_unique_identifier")?
+        )
     );
 
     // check public key
     let pk_response = kms
         .get(
-            get_public_key_request(&response.public_key_unique_identifier),
+            get_public_key_request(
+                response
+                    .public_key_unique_identifier
+                    .as_str()
+                    .context("no string for the public_key_unique_identifier")?,
+            ),
             owner,
             None,
         )
@@ -98,9 +122,12 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     };
     assert_eq!(
         pk_key_block.cryptographic_algorithm,
-        CryptographicAlgorithm::ECDH,
+        Some(CryptographicAlgorithm::ECDH),
     );
-    assert_eq!(pk_key_block.cryptographic_length, operation::Q_LENGTH_BITS,);
+    assert_eq!(
+        pk_key_block.cryptographic_length,
+        Some(operation::Q_LENGTH_BITS)
+    );
     assert_eq!(
         pk_key_block.key_format_type,
         KeyFormatType::TransparentECPublicKey
@@ -122,14 +149,19 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     assert_eq!(link.link_type, LinkType::PrivateKeyLink);
     assert_eq!(
         link.linked_object_identifier,
-        LinkedObjectIdentifier::TextString(response.private_key_unique_identifier)
+        LinkedObjectIdentifier::TextString(
+            response
+                .private_key_unique_identifier
+                .to_string()
+                .context("no string for the private_key_unique_identifier")?
+        )
     );
     // test import of public key
     let pk_bytes = pk.key_block()?.key_bytes()?;
     assert_eq!(pk_bytes.len(), X25519_PUBLIC_KEY_LENGTH);
     let pk = to_curve_25519_256_public_key(&pk_bytes, sk_uid);
     let request = Import {
-        unique_identifier: String::new(),
+        unique_identifier: UniqueIdentifier::TextString(String::new()),
         object_type: ObjectType::PublicKey,
         replace_existing: None,
         key_wrap_type: None,
@@ -157,9 +189,9 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_curve_25519_multiple() -> KResult<()> {
-    log_init("info,hyper=info,reqwest=info");
+    log_init("debug,hyper=info,reqwest=info");
 
     let clap_config = https_clap_config();
 
@@ -186,15 +218,9 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             )),
         ],
     };
-    println!(
-        "{:#?}",
-        cosmian_kmip::kmip::ttlv::serializer::to_ttlv(&request)
-    );
+
     let response = kms.message(request, owner, None).await?;
-    println!(
-        "{:#?}",
-        cosmian_kmip::kmip::ttlv::serializer::to_ttlv(&response)
-    );
+    assert_eq!(response.header.batch_count, 2);
 
     let request = Message {
         header: MessageHeader {

@@ -1,319 +1,35 @@
 use std::collections::HashSet;
 
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Import, ImportResponse},
-    kmip_types::{
-        Attributes, CertificateType, CryptographicAlgorithm, CryptographicDomainParameters,
-        CryptographicUsageMask, KeyFormatType, KeyWrapType, Link, LinkType, LinkedObjectIdentifier,
-        RecommendedCurve, StateEnumeration,
+use cosmian_kmip::{
+    kmip::{
+        kmip_objects::{Object, Object::Certificate, ObjectType},
+        kmip_operations::{Import, ImportResponse},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType,
+            LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
+        },
+    },
+    openssl::{
+        kmip_private_key_to_openssl, kmip_public_key_to_openssl, openssl_certificate_to_kmip,
+        openssl_private_key_to_kmip, openssl_public_key_to_kmip,
     },
 };
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
-    crypto::curve_25519::operation::Q_LENGTH_BITS,
-    tagging::{check_user_tags, get_tags},
+    tagging::{check_user_tags, remove_tags},
 };
-use num_bigint_dig::BigUint;
 use openssl::{
-    ec::{EcKey, PointConversionForm},
-    nid::Nid,
-    pkey::{Id, PKey, Private},
-    sha::Sha1,
+    pkey::{PKey, Private},
+    x509::X509,
 };
-use tracing::{debug, trace, warn};
-use x509_parser::parse_x509_certificate;
+use tracing::{debug, trace};
+use uuid::Uuid;
 
 use super::wrapping::unwrap_key;
-use crate::{
-    core::{
-        certificate::{
-            locate::locate_certificate_by_spki,
-            parsing::{get_certificate_subject_key_identifier, get_common_name},
-        },
-        KMS,
-    },
-    error::KmsError,
-    kms_bail,
-    result::KResult,
-};
-
-fn parse_certificate_and_create_tags(
-    tags: &mut HashSet<String>,
-    certificate_value: &[u8],
-) -> KResult<()> {
-    debug!("Import with _cert system tag");
-    tags.insert("_cert".to_string());
-
-    let (_, x509) = parse_x509_certificate(certificate_value)?;
-
-    if !x509.validity().is_valid() {
-        warn!(
-            "The certificate is expired. Certificate details: {:?}",
-            x509.validity()
-        );
-    }
-
-    let cert_spki = get_certificate_subject_key_identifier(&x509)?;
-    debug!(
-        "parse_certificate_and_create_tags: Subject Key Identifier: {:?}",
-        cert_spki
-    );
-
-    if let Some(spki) = cert_spki {
-        let spki_tag = format!("_cert_spki={spki}");
-        debug!("Add spki system tag: {spki_tag}");
-        tags.insert(spki_tag);
-    }
-    if x509.is_ca() {
-        match get_common_name(&x509.subject) {
-            Ok(subject_common_name) => {
-                let ca_tag = format!("_cert_ca={subject_common_name}");
-                debug!("Add CA system tag: {}", &ca_tag);
-                tags.insert(ca_tag);
-            }
-            Err(_) => {
-                warn!("no common name for certificate: {:?}", x509);
-            }
-        }
-    }
-    Ok(())
-}
-
-fn get_ec_private_key_object(
-    private_key_bytes: Vec<u8>,
-    recommended_curve: RecommendedCurve,
-    links: Option<Vec<Link>>,
-) -> Object {
-    Object::PrivateKey {
-        key_block: KeyBlock {
-            key_format_type: KeyFormatType::TransparentECPrivateKey,
-            key_value: KeyValue {
-                key_material: KeyMaterial::TransparentECPrivateKey {
-                    recommended_curve,
-                    d: BigUint::from_bytes_be(&private_key_bytes),
-                },
-                attributes: Some(Attributes {
-                    activation_date: None,
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-                    cryptographic_length: Some(Q_LENGTH_BITS),
-                    cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-                        q_length: Some(Q_LENGTH_BITS),
-                        recommended_curve: Some(recommended_curve),
-                    }),
-                    cryptographic_parameters: None,
-                    cryptographic_usage_mask: Some(
-                        CryptographicUsageMask::Encrypt
-                            | CryptographicUsageMask::Decrypt
-                            | CryptographicUsageMask::WrapKey
-                            | CryptographicUsageMask::UnwrapKey
-                            | CryptographicUsageMask::KeyAgreement,
-                    ),
-                    key_format_type: Some(KeyFormatType::ECPrivateKey),
-                    link: links,
-                    object_type: Some(ObjectType::PrivateKey),
-                    vendor_attributes: None,
-                }),
-            },
-            cryptographic_algorithm: CryptographicAlgorithm::ECDH,
-            cryptographic_length: Q_LENGTH_BITS,
-            key_compression_type: None,
-            key_wrapping_data: None,
-        },
-    }
-}
-
-fn get_rsa_private_key_object(
-    private_key: PKey<Private>,
-    links: Option<Vec<Link>>,
-) -> KResult<Object> {
-    let private_key_size = private_key.rsa()?.n().num_bits();
-    debug!("get_rsa_private_key_object: private_key_size in bits: {private_key_size:?}");
-    let object = Object::PrivateKey {
-        key_block: KeyBlock {
-            key_format_type: KeyFormatType::TransparentRSAPrivateKey,
-            key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(private_key.private_key_to_pkcs8()?),
-                attributes: Some(Attributes {
-                    activation_date: None,
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
-                    cryptographic_length: Some(private_key_size),
-                    cryptographic_domain_parameters: None,
-                    cryptographic_parameters: None,
-                    cryptographic_usage_mask: Some(
-                        CryptographicUsageMask::Encrypt
-                            | CryptographicUsageMask::Decrypt
-                            | CryptographicUsageMask::WrapKey
-                            | CryptographicUsageMask::UnwrapKey
-                            | CryptographicUsageMask::KeyAgreement,
-                    ),
-                    key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
-                    link: links,
-                    object_type: Some(ObjectType::PrivateKey),
-                    vendor_attributes: None,
-                }),
-            },
-            cryptographic_algorithm: CryptographicAlgorithm::RSA,
-            cryptographic_length: private_key_size,
-            key_compression_type: None,
-            key_wrapping_data: None,
-        },
-    };
-
-    Ok(object)
-}
-
-fn create_ec_spki_tag(tags: &mut HashSet<String>, private_key: &EcKey<Private>) -> KResult<String> {
-    debug!("create_spki_tag: entering");
-    let mut ctx = openssl::bn::BigNumContext::new()?;
-    let group = private_key.group();
-    let public_key_bytes =
-        private_key
-            .public_key()
-            .to_bytes(group, PointConversionForm::UNCOMPRESSED, &mut ctx)?;
-
-    create_spki_tag(tags, &public_key_bytes)
-}
-
-fn create_spki_tag(tags: &mut HashSet<String>, public_key_bytes: &[u8]) -> KResult<String> {
-    // Compute SPKI as described in <https://datatracker.ietf.org/doc/html/rfc5280#section-4.2.1.2>: implementing first method
-    debug!(
-        "create_spki_tag: public_key_bytes:{}",
-        hex::encode(public_key_bytes)
-    );
-    let mut sha1 = Sha1::default();
-    sha1.update(public_key_bytes);
-    let spki = hex::encode(sha1.finish());
-    let spki_tag = format!("_cert_spki={spki}");
-
-    debug!("create_spki_tag: add spki system tag: {spki_tag}");
-    tags.insert(spki_tag);
-    Ok(spki)
-}
-
-async fn create_certificate_link(
-    spki: &str,
-    kms: &KMS,
-    owner: &str,
-    params: Option<&ExtraDatabaseParams>,
-) -> Option<Vec<Link>> {
-    match locate_certificate_by_spki(spki, kms, owner, params).await {
-        Ok(certificate_id) => {
-            debug!("import_der: add Link with certificate_id: {certificate_id:?}");
-            let link = Link {
-                link_type: LinkType::CertificateLink,
-                linked_object_identifier: LinkedObjectIdentifier::TextString(certificate_id),
-            };
-            Some(vec![link])
-        }
-        Err(e) => {
-            warn!("No certificate found matching the private key SPKI: {spki:?}. Error: {e:?}");
-            // continue
-            None
-        }
-    }
-}
-
-/// The function `import_der` takes in a DER value, parses it, and creates an object
-/// based on the type of DER (certificate or private key).
-///
-/// Arguments:
-///
-/// * `tags`: A mutable `HashSet` of strings used to store tags associated with the
-/// imported object.
-/// * `der_value`: The `der_value` parameter is a byte slice that contains the
-/// DER-encoded data.
-/// * `kms`: The `kms` parameter is of type `KMS`, which is likely an abbreviation
-/// for Key Management Service. It is used for cryptographic operations such as
-/// creating certificate links and retrieving private key objects. The specific
-/// implementation and functionality of the `KMS` type would depend on the context
-/// and the code
-/// * `owner`: The `owner` parameter in the `import_der` function is a string that
-/// represents the owner of the imported object. It is used in the
-/// `create_certificate_link` function to associate the imported object with the
-/// owner.
-/// * `params`: The `params` parameter is an optional reference to an
-/// `ExtraDatabaseParams` struct. It is used to provide additional parameters for
-/// creating a certificate link.
-///
-/// Returns:
-///
-/// The imported DER certificate as a KMIP `Object`
-async fn import_der(
-    tags: &mut HashSet<String>,
-    der_value: &[u8],
-    kms: &KMS,
-    owner: &str,
-    params: Option<&ExtraDatabaseParams>,
-) -> KResult<Object> {
-    let der_is_a_cert = parse_x509_certificate(der_value).is_ok();
-
-    let object = if der_is_a_cert {
-        debug!("import_der: parsing certificate");
-        parse_certificate_and_create_tags(tags, der_value)?;
-
-        Object::Certificate {
-            certificate_type: CertificateType::X509,
-            certificate_value: der_value.into(),
-        }
-    } else {
-        debug!("import_der: parsing private key");
-        let pkey = PKey::private_key_from_der(der_value)?;
-        match pkey.id() {
-            Id::EC => {
-                debug!("import_der: parsing private key with PKey: {:?}", pkey);
-                let private_key = EcKey::private_key_from_der(der_value)?;
-                debug!("import_der: convert private key to EcKey");
-
-                // Create tag from public key sha1 digest
-                let spki = create_ec_spki_tag(tags, &private_key)?;
-                let links = create_certificate_link(&spki, kms, owner, params).await;
-
-                let recommended_curve = match private_key.group().curve_name() {
-                    Some(nid) => match nid {
-                        Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
-                        Nid::SECP224R1 => RecommendedCurve::P224,
-                        Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,
-                        Nid::SECP384R1 => RecommendedCurve::P384,
-                        _ => {
-                            kms_bail!("Elliptic curve not supported: {}", nid.long_name()?);
-                        }
-                    },
-                    None => kms_bail!("No curve name for this EC curve"),
-                };
-                let private_key_bytes = private_key.private_key().to_vec();
-                debug!(
-                    "import_der: private_key_bytes len: {}",
-                    private_key_bytes.len()
-                );
-                get_ec_private_key_object(private_key_bytes, recommended_curve, links)
-            }
-            Id::ED25519 => {
-                let spki = create_spki_tag(tags, &pkey.raw_public_key()?)?;
-                let links = create_certificate_link(&spki, kms, owner, params).await;
-                let private_key_bytes = pkey.raw_private_key()?;
-                get_ec_private_key_object(private_key_bytes, RecommendedCurve::CURVEED25519, links)
-            }
-            Id::X25519 => {
-                let spki = create_spki_tag(tags, &pkey.raw_public_key()?)?;
-                let links = create_certificate_link(&spki, kms, owner, params).await;
-                let private_key_bytes = pkey.raw_private_key()?;
-                get_ec_private_key_object(private_key_bytes, RecommendedCurve::CURVE25519, links)
-            }
-            Id::RSA => {
-                let spki = create_spki_tag(tags, &pkey.rsa()?.public_key_to_der_pkcs1()?.clone())?;
-                let links = create_certificate_link(&spki, kms, owner, params).await;
-                get_rsa_private_key_object(pkey, links)?
-            }
-            _ => kms_bail!("Private key id not supported: {:?}", pkey.id()),
-        }
-    };
-
-    Ok(object)
-}
-
+use crate::core::certificate::{add_attributes_to_certificate_tags, add_certificate_system_tags};
 /// Import a new object
+use crate::{core::KMS, database::AtomicOperation, error::KmsError, kms_bail, result::KResult};
+
 pub async fn import(
     kms: &KMS,
     request: Import,
@@ -325,99 +41,495 @@ pub async fn import(
     // see tagging
     // For instance, a request for unique identifier `[tag1]` will
     // attempt to find a valid single object tagged with `tag1`
-    if request.unique_identifier.starts_with('[') {
+    if request
+        .unique_identifier
+        .as_str()
+        .unwrap_or_default()
+        .starts_with('[')
+    {
         kms_bail!("Importing objects with unique identifiers starting with `[` is not supported");
     }
-
-    // recover user tags
-    let mut tags = get_tags(&request.attributes);
-    check_user_tags(&tags)?;
-
-    let object_type = request.object.object_type();
-    let object = match object_type {
-        ObjectType::SymmetricKey | ObjectType::PublicKey | ObjectType::PrivateKey => {
-            let mut object = request.object;
-            let object_key_block = object.key_block_mut()?;
-            // unwrap before storing if requested
-            if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
-                unwrap_key(object_type, object_key_block, kms, owner, params).await?;
-            }
-            // replace attributes
-            object_key_block.key_value = KeyValue {
-                key_material: object_key_block.key_value.key_material.clone(),
-                attributes: Some(request.attributes),
-            };
-            // insert the tag corresponding to the object type
-            match object_type {
-                ObjectType::SymmetricKey => {
-                    tags.insert("_kk".to_string());
-                }
-                ObjectType::PublicKey => {
-                    tags.insert("_pk".to_string());
-                }
-                ObjectType::PrivateKey => {
-                    tags.insert("_sk".to_string());
-                }
-                _ => unreachable!(),
-            }
-            object
-        }
-        ObjectType::Certificate => {
-            debug!("Import with _cert system tag");
-            tags.insert("_cert".to_string());
-            let certificate_der_bytes = match &request.object {
-                Object::Certificate {
-                    certificate_value, ..
-                } => Ok(certificate_value),
-                _ => Err(KmsError::Certificate(format!(
-                    "Invalid object type {object_type:?} when importing a certificate"
-                ))),
-            }?;
-            import_der(&mut tags, certificate_der_bytes, kms, owner, params).await?
-        }
+    // process the request based on the object type
+    let (uid, operations) = match request.object.object_type() {
+        ObjectType::SymmetricKey => process_symmetric_key(kms, request, owner, params).await?,
+        ObjectType::Certificate => process_certificate(request)?,
+        ObjectType::PublicKey => process_public_key(kms, request, owner, params).await?,
+        ObjectType::PrivateKey => process_private_key(kms, request, owner, params).await?,
         x => {
             return Err(KmsError::InvalidRequest(format!(
                 "Import is not yet supported for objects of type : {x}"
             )))
         }
     };
+    // execute the operations
+    kms.db.atomic(owner, &operations, params).await?;
+    // return the uid
+    debug!("Imported object with uid: {}", uid);
+    Ok(ImportResponse {
+        unique_identifier: UniqueIdentifier::TextString(uid),
+    })
+}
+
+async fn process_symmetric_key(
+    kms: &KMS,
+    request: Import,
+    owner: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+    // recover user tags
+    let mut attributes = request.attributes;
+    let mut tags = remove_tags(&mut attributes);
+    if let Some(tags) = tags.as_ref() {
+        check_user_tags(tags)?;
+    }
+
+    let mut object = request.object;
+    // unwrap key block if required
+    let object_key_block = object.key_block_mut()?;
+    // unwrap before storing if requested
+    if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
+        unwrap_key(object_key_block, kms, owner, params).await?;
+    }
+    // replace attributes
+    attributes.object_type = Some(ObjectType::SymmetricKey);
+    //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
+    object_key_block.key_value.attributes = Some(attributes);
+
+    let uid = match request.unique_identifier.to_string().unwrap_or_default() {
+        uid if uid.is_empty() => Uuid::new_v4().to_string(),
+        uid => uid,
+    };
+
+    // insert the tag corresponding to the object type if tags should be updated
+    if let Some(tags) = tags.as_mut() {
+        tags.insert("_sk".to_string());
+    }
 
     // check if the object will be replaced if it already exists
-    let replace_existing = if let Some(v) = request.replace_existing {
-        v
-    } else {
-        false
+    let replace_existing = request.replace_existing.unwrap_or(false);
+    Ok((
+        uid.clone(),
+        vec![single_operation(tags, replace_existing, object, uid)],
+    ))
+}
+
+fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+    // recover user tags
+    let mut request_attributes = request.attributes;
+    let mut user_tags = remove_tags(&mut request_attributes);
+    if let Some(tags) = user_tags.as_ref() {
+        check_user_tags(tags)?;
+    }
+
+    // The specification says that this should be DER bytes
+    let certificate_der_bytes = match request.object {
+        Certificate {
+            certificate_value, ..
+        } => Ok(certificate_value),
+        o => Err(KmsError::Certificate(format!(
+            "invalid object type {:?} on import",
+            o.object_type()
+        ))),
+    }?;
+
+    // parse the certificate as an openssl object to convert it to the pivot
+    let certificate = X509::from_der(&certificate_der_bytes)?;
+
+    // insert the tag corresponding to the object type if tags should be updated
+    if let Some(tags) = user_tags.as_mut() {
+        add_attributes_to_certificate_tags(tags, &request_attributes)?;
+        add_certificate_system_tags(tags, &certificate)?;
+    }
+
+    // convert the certificate to a KMIP object
+    let (unique_id, object) = openssl_certificate_to_kmip(certificate)?;
+    let uid = match request.unique_identifier.to_string().unwrap_or_default() {
+        uid if uid.is_empty() => unique_id,
+        uid => uid,
     };
 
-    // insert or update the object
-    let uid = if replace_existing {
-        debug!(
-            "Upserting object of type: {}, with uid: {}",
-            request.object_type, request.unique_identifier
-        );
+    // check if the object will be replaced if it already exists
+    let replace_existing = request.replace_existing.unwrap_or(false);
+    Ok((
+        uid.clone(),
+        vec![single_operation(user_tags, replace_existing, object, uid)],
+    ))
+}
 
-        kms.db
-            .upsert(
-                &request.unique_identifier,
-                owner,
-                &object,
-                &tags,
-                StateEnumeration::Active,
-                params,
-            )
-            .await?;
-        request.unique_identifier
-    } else {
-        debug!("Inserting object of type: {}", request.object_type);
-        let id = if request.unique_identifier.is_empty() {
-            None
+async fn process_public_key(
+    kms: &KMS,
+    request: Import,
+    owner: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+    // recover user tags
+    let mut request_attributes = request.attributes;
+    let mut tags = remove_tags(&mut request_attributes);
+    if let Some(tags) = tags.as_ref() {
+        check_user_tags(tags)?;
+    }
+
+    // unwrap key block if required
+    let object = {
+        let mut object = request.object;
+        if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
+            let object_key_block = object.key_block_mut()?;
+            unwrap_key(object_key_block, kms, owner, params).await?;
+        }
+        object
+    };
+
+    // convert to PKCS8 if not wrapped and not Covercrypt
+    let mut object = {
+        let object_key_block = object.key_block()?;
+        // if the key is not wrapped, try to parse it as an openssl object and import it
+        // else import it as such
+        // TODO: add Covercrypt keys when support for SPKI is added
+        // TODO: https://github.com/Cosmian/cover_crypt/issues/118
+        if object_key_block.key_wrapping_data.is_none()
+            && object_key_block.cryptographic_algorithm != Some(CryptographicAlgorithm::CoverCrypt)
+        {
+            // first, see if the public key can be parsed as an openssl object
+            let openssl_pk = kmip_public_key_to_openssl(&(object.clone()))?;
+            // convert back to KMIP Object
+            openssl_public_key_to_kmip(&openssl_pk, KeyFormatType::PKCS8)?
         } else {
-            Some(request.unique_identifier)
+            object
+        }
+    };
+    let object_key_block = object.key_block_mut()?;
+
+    // add imported links to attributes
+    //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
+    add_imported_links_to_attributes(
+        object_key_block
+            .key_value
+            .attributes
+            .get_or_insert(Attributes::default()),
+        &request_attributes,
+    );
+
+    if let Some(tags) = tags.as_mut() {
+        tags.insert("_pk".to_string());
+    }
+
+    let uid = match request.unique_identifier.to_string().unwrap_or_default() {
+        uid if uid.is_empty() => Uuid::new_v4().to_string(),
+        uid => uid,
+    };
+
+    // check if the object will be replaced if it already exists
+    let replace_existing = request.replace_existing.unwrap_or(false);
+    Ok((
+        uid.clone(),
+        vec![single_operation(tags, replace_existing, object, uid)],
+    ))
+}
+
+async fn process_private_key(
+    kms: &KMS,
+    request: Import,
+    owner: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+    // recover user tags
+    let mut request_attributes = request.attributes;
+    let tags = remove_tags(&mut request_attributes);
+    // insert the tag corresponding to the object type if tags should be updated
+    if let Some(tags) = tags.as_ref() {
+        check_user_tags(tags)?;
+    }
+    // whether the object will be replaced if it already exists
+    let replace_existing = request.replace_existing.unwrap_or(false);
+
+    // unwrap key block if required
+    let mut object = {
+        let mut object = request.object;
+        if request.key_wrap_type == Some(KeyWrapType::NotWrapped) {
+            let object_key_block = object.key_block_mut()?;
+            unwrap_key(object_key_block, kms, owner, params).await?;
+        }
+        object
+    };
+
+    // Process based on the key block type
+    let key_block = object.key_block()?;
+
+    // wrapped keys and Covercrypt keys
+    // cannot be further processed and must be imported as such
+    // TODO: remove Covercrypt keys from this exception when support for PKCS#8 is added
+    // TODO: https://github.com/Cosmian/cover_crypt/issues/118
+    if key_block.key_wrapping_data.is_some()
+        || key_block.cryptographic_algorithm == Some(CryptographicAlgorithm::CoverCrypt)
+    {
+        let object_key_block = object.key_block_mut()?;
+        // add imported links to attributes
+        //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
+        add_imported_links_to_attributes(
+            object_key_block
+                .key_value
+                .attributes
+                .get_or_insert(Attributes::default()),
+            &request_attributes,
+        );
+        // build ui if needed
+
+        let uid = match request.unique_identifier.to_string().unwrap_or_default() {
+            uid if uid.is_empty() => Uuid::new_v4().to_string(),
+            uid => uid,
         };
 
-        kms.db.create(id, owner, &object, &tags, params).await?
+        return Ok((
+            uid.clone(),
+            vec![single_operation(tags, replace_existing, object, uid)],
+        ))
+    }
+
+    // PKCS12  have their own processing
+    if key_block.key_format_type == KeyFormatType::PKCS12 {
+        //PKCS#12 contain more than just a private key, perform specific processing
+        return process_pkcs12(
+            request.unique_identifier.as_str().unwrap_or_default(),
+            object,
+            request_attributes,
+            tags,
+            request.replace_existing.unwrap_or(false),
+        )
+        .await
+    }
+
+    // Process a "standard" private key
+    // first, see if the private key can be parsed as an openssl object
+    let openssl_sk = kmip_private_key_to_openssl(&object)?;
+    // generate a KMIP private key
+    let (sk_uid, sk, sk_tags) = private_key_from_openssl(
+        openssl_sk,
+        tags,
+        request_attributes,
+        request.unique_identifier.as_str().unwrap_or_default(),
+    )?;
+    Ok((
+        sk_uid.clone(),
+        vec![single_operation(sk_tags, replace_existing, sk, sk_uid)],
+    ))
+}
+
+fn private_key_from_openssl(
+    sk: PKey<Private>,
+    user_tags: Option<HashSet<String>>,
+    request_attributes: Attributes,
+    request_uid: &str,
+) -> KResult<(String, Object, Option<HashSet<String>>)> {
+    // convert the private key to PKCS#8
+    let mut sk = openssl_private_key_to_kmip(&sk, KeyFormatType::PKCS8)?;
+
+    let sk_uid = if request_uid.is_empty() {
+        Uuid::new_v4().to_string()
+    } else {
+        request_uid.to_string()
     };
-    Ok(ImportResponse {
-        unique_identifier: uid,
-    })
+
+    let sk_key_block = sk.key_block_mut()?;
+
+    // add imported links to attributes
+    //TODO: this needs to be revisited when fixing: https://github.com/Cosmian/kms/issues/88
+    add_imported_links_to_attributes(
+        sk_key_block
+            .key_value
+            .attributes
+            .get_or_insert(Attributes::default()),
+        &request_attributes,
+    );
+
+    let sk_tags = user_tags.map(|mut tags| {
+        tags.insert("_sk".to_string());
+        tags
+    });
+    Ok((sk_uid, sk, sk_tags))
+}
+
+fn single_operation(
+    tags: Option<HashSet<String>>,
+    replace_existing: bool,
+    object: Object,
+    uid: String,
+) -> AtomicOperation {
+    if replace_existing {
+        AtomicOperation::Upsert((uid, object, tags.clone(), StateEnumeration::Active))
+    } else {
+        AtomicOperation::Create((uid.clone(), object, tags.clone().unwrap_or_default()))
+    }
+}
+
+async fn process_pkcs12(
+    private_key_id: &str,
+    object: Object,
+    request_attributes: Attributes,
+    user_tags: Option<HashSet<String>>,
+    replace_existing: bool,
+) -> Result<(String, Vec<AtomicOperation>), KmsError> {
+    // recover the PKCS#12 bytes from the object
+    let pkcs12_bytes = match object {
+        Object::PrivateKey { key_block } => key_block.key_bytes()?,
+        _ => kms_bail!("The PKCS12 object is not correctly formatted"),
+    };
+
+    // recover the password from the attributes
+    let password = request_attributes
+        .get_link(LinkType::PKCS12PasswordLink)
+        .unwrap_or_default();
+    // remove the password from the attributes
+    let mut request_attributes = request_attributes;
+    request_attributes.remove_link(LinkType::PKCS12PasswordLink);
+
+    // parse the PKCS12
+    let pkcs12_parser = openssl::pkcs12::Pkcs12::from_der(&pkcs12_bytes)?;
+    let pkcs12 = pkcs12_parser.parse2(&password)?;
+
+    // First build the tuples (id,Object) for the private key, the leaf certificate
+    // and the chain certificates
+
+    // build the private key
+    let (private_key_id, mut private_key, private_key_tags) = {
+        let openssl_sk = pkcs12.pkey.ok_or_else(|| {
+            KmsError::InvalidRequest("Private key not found in PKCS12".to_string())
+        })?;
+        private_key_from_openssl(
+            openssl_sk,
+            user_tags.clone(),
+            request_attributes,
+            private_key_id,
+        )?
+    };
+
+    //build the leaf certificate
+    let (leaf_certificate_uid, leaf_certificate, mut leaf_certificate_tags) = {
+        // Recover the PKCS12 X509 certificate
+        let openssl_cert = pkcs12.cert.ok_or_else(|| {
+            KmsError::InvalidRequest("X509 certificate not found in PKCS12".to_string())
+        })?;
+
+        // insert the tag corresponding to the object type if tags should be updated
+        let mut leaf_certificate_tags = user_tags.clone().unwrap_or_default();
+        add_certificate_system_tags(&mut leaf_certificate_tags, &openssl_cert)?;
+
+        // convert to KMIP
+        let (leaf_certificate_uid, leaf_certificate) = openssl_certificate_to_kmip(openssl_cert)?;
+
+        (
+            leaf_certificate_uid,
+            leaf_certificate,
+            leaf_certificate_tags,
+        )
+    };
+
+    // build the chain if any  (the chain is optional)
+    let mut chain: Vec<(String, Object, HashSet<String>)> = Vec::new();
+    if let Some(cas) = pkcs12.ca {
+        // import the cas
+        for openssl_cert in cas {
+            // insert the tag corresponding to the object type if tags should be updated
+            let mut chain_certificate_tags = user_tags.clone().unwrap_or_default();
+            add_certificate_system_tags(&mut chain_certificate_tags, &openssl_cert)?;
+
+            // convert to KMIP
+            let (chain_certificate_uid, chain_certificate) =
+                openssl_certificate_to_kmip(openssl_cert)?;
+
+            chain.push((
+                chain_certificate_uid,
+                chain_certificate,
+                chain_certificate_tags,
+            ));
+        }
+    }
+
+    //
+    // Stage 2 update the attributes and tags
+    // and create the corresponding operations
+    //
+    let mut operations = Vec::with_capacity(2 + chain.len());
+
+    //add link to certificate in the private key attributes
+    let attributes = private_key
+        .key_block_mut()?
+        .key_value
+        .attributes
+        .get_or_insert(Attributes::default());
+    attributes.add_link(
+        //Note: it is unclear what link type should be used here according to KMIP
+        // CertificateLink seems to be for public key only and there is not description
+        // for PKCS12CertificateLink
+        LinkType::PKCS12CertificateLink,
+        LinkedObjectIdentifier::TextString(leaf_certificate_uid.clone()),
+    );
+    operations.push(single_operation(
+        private_key_tags,
+        replace_existing,
+        private_key,
+        private_key_id.clone(),
+    ));
+
+    // Add links to the leaf certificate
+    //TODO: attributes not supported until https://github.com/Cosmian/kms/issues/88 is fixed; using tags instead
+
+    // add private key link to certificate
+    // (the KMIP spec is unclear whether there should be a LinkType::PrivateKeyLink)
+    let sk_tag = format!("_cert_sk={private_key_id}");
+    leaf_certificate_tags.insert(sk_tag);
+    // add parent link to certificate
+    // (according to the KMIP spec, this would be LinkType::CertificateLink)
+    if let Some((parent_id, _, _)) = chain.first() {
+        let parent_tag = format!("_cert_issuer={parent_id}");
+        leaf_certificate_tags.insert(parent_tag);
+    }
+
+    operations.push(single_operation(
+        Some(leaf_certificate_tags),
+        replace_existing,
+        leaf_certificate,
+        leaf_certificate_uid.clone(),
+    ));
+
+    // Add links to the chain certificate
+    //TODO: attributes not supported until https://github.com/Cosmian/kms/issues/88 is fixed; using tags instead
+    let mut parent_certificate_id = None;
+    for (chain_certificate_uid, chain_certificate, mut chain_certificate_tags) in
+        chain.into_iter().rev()
+    // reverse the chain to have the root first
+    {
+        if let Some(parent_certificate_id) = parent_certificate_id {
+            // add parent link to certificate
+            // (according to the KMIP spec, this would be LinkType::CertificateLink)
+            let parent_tag = format!("_cert_issuer={parent_certificate_id}");
+            chain_certificate_tags.insert(parent_tag);
+        }
+        operations.push(single_operation(
+            Some(chain_certificate_tags),
+            true,
+            chain_certificate,
+            chain_certificate_uid.clone(),
+        ));
+        parent_certificate_id = Some(chain_certificate_uid);
+    }
+
+    //return the private key
+    Ok((private_key_id, operations))
+}
+
+fn add_imported_links_to_attributes(attributes: &mut Attributes, links_to_add: &Attributes) {
+    if let Some(new_links) = links_to_add.link.as_ref() {
+        match attributes.link.as_mut() {
+            Some(existing_links) => {
+                for new_link in new_links {
+                    if !existing_links.contains(new_link) {
+                        existing_links.push(new_link.clone());
+                    }
+                }
+            }
+            None => {
+                attributes.link = Some(new_links.clone());
+            }
+        }
+    }
 }

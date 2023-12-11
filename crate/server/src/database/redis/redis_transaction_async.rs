@@ -114,7 +114,7 @@ mod tests {
     #[actix_web::test]
     #[serial]
     pub async fn test_async_transaction() -> KResult<()> {
-        log_init("test_permissions_db=trace");
+        log_init("test_permissions_db=info");
         trace!("test_permissions_db");
 
         let client = redis::Client::open(REDIS_URL)?;

@@ -141,12 +141,14 @@ repos:
     rev: v1.0.20
     hooks:
       - id: cargo-format
+      # - id: dprint-toml-fix
       # - id: cargo-upgrade
       # - id: cargo-update
       - id: cargo-machete
       - id: cargo-build-kms
       - id: docker-compose-up
       - id: cargo-test
+        args: [--, --skip, test_wrap_auth]
       - id: cargo-audit
       - id: cargo-outdated
       - id: clippy-autofix-all

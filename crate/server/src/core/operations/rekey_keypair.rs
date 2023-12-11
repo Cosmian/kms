@@ -15,7 +15,7 @@ use crate::{
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
     kms_bail,
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
 pub async fn rekey_keypair(
@@ -35,13 +35,15 @@ pub async fn rekey_keypair(
     // there must be an identifier
     let uid_or_tags = request
         .private_key_unique_identifier
-        .clone()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
+        .as_ref()
+        .ok_or(KmsError::UnsupportedPlaceholder)?
+        .as_str()
+        .context("Rekey keypair: the private key unique identifier must be a string")?;
 
     // retrieve from tags or use passed identifier
     let mut owm_s = kms
         .db
-        .retrieve(&uid_or_tags, user, ObjectOperationType::Rekey, params)
+        .retrieve(uid_or_tags, user, ObjectOperationType::Rekey, params)
         .await?
         .into_values()
         .filter(|owm| {
@@ -67,7 +69,7 @@ pub async fn rekey_keypair(
     // there can only be one private key
     let owm = owm_s
         .pop()
-        .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, uid_or_tags.clone()))?;
+        .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, uid_or_tags.to_string()))?;
 
     if !owm_s.is_empty() {
         return Err(KmsError::InvalidRequest(format!(

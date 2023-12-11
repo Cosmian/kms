@@ -1,7 +1,7 @@
 use std::{fs::File, io::prelude::*, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kmip::kmip::kmip_operations::Encrypt;
+use cosmian_kmip::kmip::{kmip_operations::Encrypt, kmip_types::UniqueIdentifier};
 use cosmian_kms_client::KmsRestClient;
 
 use crate::{
@@ -59,7 +59,7 @@ impl EncryptCertificateAction {
             .map(|auth_data| auth_data.as_bytes().to_vec());
 
         let encrypt_request = Encrypt {
-            unique_identifier: Some(id.clone()),
+            unique_identifier: Some(UniqueIdentifier::TextString(id.clone())),
             data: Some(data),
             authenticated_encryption_additional_data: authentication_data,
             ..Encrypt::default()

@@ -21,7 +21,7 @@ use super::{
     redis::{RedisWithFindex, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH},
     sqlite::SqlitePool,
 };
-use crate::result::KResult;
+use crate::{database::tests::database_tests::atomic, result::KResult};
 
 mod additional_redis_findex_tests;
 mod database_tests;
@@ -100,7 +100,7 @@ async fn get_redis_with_findex() -> KResult<(RedisWithFindex, Option<ExtraDataba
     Ok((redis_findex, None))
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_redis_with_findex() -> KResult<()> {
     test_objects_db().await?;
     test_permissions_db().await?;
@@ -111,12 +111,13 @@ pub async fn test_redis_with_findex() -> KResult<()> {
     permissions(&get_redis_with_findex().await?).await?;
     tags(&get_redis_with_findex().await?).await?;
     tx_and_list(&get_redis_with_findex().await?).await?;
+    atomic(&get_redis_with_findex().await?).await?;
     upsert(&get_redis_with_findex().await?).await?;
     crud(&get_redis_with_findex().await?).await?;
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_sql_cipher() -> KResult<()> {
     json_access(&get_sql_cipher().await?).await?;
     find_attributes(&get_sql_cipher().await?).await?;
@@ -124,12 +125,13 @@ pub async fn test_sql_cipher() -> KResult<()> {
     permissions(&get_sql_cipher().await?).await?;
     tags(&get_sql_cipher().await?).await?;
     tx_and_list(&get_sql_cipher().await?).await?;
+    atomic(&get_sql_cipher().await?).await?;
     upsert(&get_sql_cipher().await?).await?;
     crud(&get_sql_cipher().await?).await?;
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_sqlite() -> KResult<()> {
     find_attributes(&get_sqlite().await?).await?;
     json_access(&get_sqlite().await?).await?;
@@ -137,12 +139,13 @@ pub async fn test_sqlite() -> KResult<()> {
     permissions(&get_sqlite().await?).await?;
     tags(&get_sqlite().await?).await?;
     tx_and_list(&get_sqlite().await?).await?;
+    atomic(&get_sqlite().await?).await?;
     upsert(&get_sqlite().await?).await?;
     crud(&get_sqlite().await?).await?;
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_pgsql() -> KResult<()> {
     json_access(&get_pgsql().await?).await?;
     find_attributes(&get_pgsql().await?).await?;
@@ -150,16 +153,18 @@ pub async fn test_pgsql() -> KResult<()> {
     permissions(&get_pgsql().await?).await?;
     tags(&get_pgsql().await?).await?;
     tx_and_list(&get_pgsql().await?).await?;
+    atomic(&get_pgsql().await?).await?;
     upsert(&get_pgsql().await?).await?;
     crud(&get_pgsql().await?).await?;
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 pub async fn test_mysql() -> KResult<()> {
     crud(&get_mysql().await?).await?;
     upsert(&get_mysql().await?).await?;
     tx_and_list(&get_mysql().await?).await?;
+    atomic(&get_mysql().await?).await?;
     json_access(&get_mysql().await?).await?;
     find_attributes(&get_mysql().await?).await?;
     owner(&get_mysql().await?).await?;

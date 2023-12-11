@@ -2,7 +2,10 @@ use cloudproof::reexport::{
     cover_crypt::abe_policy::{AccessPolicy, Attribute, EncryptionHint, Policy},
     crypto_core::bytes_ser_de::Deserializer,
 };
-use cosmian_kmip::kmip::{kmip_operations::Get, kmip_types::RevocationReason};
+use cosmian_kmip::{
+    kmip::{kmip_operations::Get, kmip_types::RevocationReason},
+    result::KmipResultHelper,
+};
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::{
     cover_crypt::{
@@ -68,8 +71,14 @@ macro_rules! rekey_keypair {
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
             Ok((
-                response.public_key_unique_identifier,
-                response.private_key_unique_identifier,
+                response
+                    .public_key_unique_identifier
+                    .to_string()
+                    .context("The server did not return the public key uid as a string")?,
+                response
+                    .private_key_unique_identifier
+                    .to_string()
+                    .context("The server did not return the private key uid as a string")?,
             ))
         })
     }};
@@ -182,8 +191,14 @@ impl KmsClient {
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
             Ok((
-                response.public_key_unique_identifier,
-                response.private_key_unique_identifier,
+                response
+                    .public_key_unique_identifier
+                    .to_string()
+                    .context("The server did not return the public key uid as a string")?,
+                response
+                    .private_key_unique_identifier
+                    .to_string()
+                    .context("The server did not return the private key uid as a string")?,
             ))
         })
     }
@@ -242,7 +257,10 @@ impl KmsClient {
                 .import(request)
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response.unique_identifier)
+            Ok(response
+                .unique_identifier
+                .to_string()
+                .context("The server did not return the key uid as a string")?)
         })
     }
 
@@ -292,7 +310,10 @@ impl KmsClient {
                 .import(request)
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response.unique_identifier)
+            Ok(response
+                .unique_identifier
+                .to_string()
+                .context("The server did not return the public key uid as a string")?)
         })
     }
 
@@ -519,7 +540,10 @@ impl KmsClient {
                 .create(request)
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response.unique_identifier)
+            Ok(response
+                .unique_identifier
+                .to_string()
+                .expect("The server did not return the user secret key uid as a string"))
         })
     }
 
@@ -576,7 +600,10 @@ impl KmsClient {
                 .import(request)
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response.unique_identifier)
+            Ok(response
+                .unique_identifier
+                .to_string()
+                .expect("The server did not return the user secret key uid as a string"))
         })
     }
 
@@ -619,7 +646,10 @@ impl KmsClient {
                 .revoke(request)
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response.unique_identifier)
+            Ok(response
+                .unique_identifier
+                .to_string()
+                .context("The server did not return the revoked key uid as a string")?)
         })
     }
 
@@ -657,7 +687,10 @@ impl KmsClient {
                 .destroy(request)
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response.unique_identifier)
+            Ok(response
+                .unique_identifier
+                .to_string()
+                .context("The server did not return the destroyed key uid as a string")?)
         })
     }
 

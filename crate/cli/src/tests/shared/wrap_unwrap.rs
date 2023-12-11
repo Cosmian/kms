@@ -13,13 +13,13 @@ use cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod};
 use tempfile::TempDir;
 
 use crate::{
-    actions::shared::utils::read_key_from_file,
+    actions::shared::utils::read_object_from_json_ttlv_file,
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        shared::export::export,
+        shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
         utils::{recover_cmd_logs, start_default_test_kms_server, TestsContext, ONCE},
         PROG_NAME,
@@ -39,7 +39,7 @@ pub fn wrap(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let mut args: Vec<String> = vec![
         "keys".to_owned(),
         "wrap".to_owned(),
@@ -85,7 +85,7 @@ pub fn unwrap(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let mut args: Vec<String> = vec![
         "keys".to_owned(),
         "unwrap".to_owned(),
@@ -151,18 +151,18 @@ pub fn password_wrap_import_test(
 
     // Export
     let key_file = temp_dir.path().join("master_private.key");
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         sub_command,
         private_key_id,
         key_file.to_str().unwrap(),
-        false,
+        None,
         false,
         None,
         false,
     )?;
 
-    let object = read_key_from_file(&key_file)?;
+    let object = read_object_from_json_ttlv_file(&key_file)?;
     let key_bytes = object.key_block()?.key_bytes()?;
 
     //wrap and unwrap using a password
@@ -177,7 +177,7 @@ pub fn password_wrap_import_test(
             None,
             None,
         )?;
-        let wrapped_object = read_key_from_file(&key_file)?;
+        let wrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(wrapped_object.key_wrapping_data().is_some());
         assert_eq!(
             wrapped_object.key_wrapping_data().unwrap().wrapping_method,
@@ -185,7 +185,7 @@ pub fn password_wrap_import_test(
         );
         assert_eq!(
             wrapped_object.key_wrapping_data().unwrap().encoding_option,
-            Some(EncodingOption::NoEncoding)
+            Some(EncodingOption::TTLVEncoding)
         );
         assert_ne!(wrapped_object.key_block()?.key_bytes()?, key_bytes);
         unwrap(
@@ -198,7 +198,7 @@ pub fn password_wrap_import_test(
             None,
             None,
         )?;
-        let unwrapped_object = read_key_from_file(&key_file)?;
+        let unwrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(unwrapped_object.key_wrapping_data().is_none());
         assert_eq!(unwrapped_object.key_block()?.key_bytes()?, key_bytes);
     }
@@ -219,15 +219,16 @@ pub fn password_wrap_import_test(
             None,
             None,
         )?;
-        let wrapped_object = read_key_from_file(&key_file)?;
+        let wrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(wrapped_object.key_wrapping_data().is_some());
         assert_eq!(
             wrapped_object.key_wrapping_data().unwrap().wrapping_method,
             WrappingMethod::Encrypt
         );
+
         assert_eq!(
             wrapped_object.key_wrapping_data().unwrap().encoding_option,
-            Some(EncodingOption::NoEncoding)
+            Some(EncodingOption::TTLVEncoding)
         );
         assert_ne!(wrapped_object.key_block()?.key_bytes()?, key_bytes);
         unwrap(
@@ -240,7 +241,7 @@ pub fn password_wrap_import_test(
             None,
             None,
         )?;
-        let unwrapped_object = read_key_from_file(&key_file)?;
+        let unwrapped_object = read_object_from_json_ttlv_file(&key_file)?;
         assert!(unwrapped_object.key_wrapping_data().is_none());
         assert_eq!(unwrapped_object.key_block()?.key_bytes()?, key_bytes);
     }

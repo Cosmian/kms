@@ -1,286 +1,1453 @@
-The `ckms` client expects command with parameters and optional options.
+_-- This file is auto-generated using the `ckms markdown` command. --_
 
-```sh
-ckms <COMMAND>
-```
+## ckms
 
-At any time the online help for the CLI or a `COMMAND`, can be displayed using the `--help` option.
-
-```sh
-> ckms --help
-*
 CLI used to manage the Cosmian KMS.
 
-Usage: ckms <COMMAND>
+### Usage
 
-Commands:
-  access-rights    Manage the users' access rights to the cryptographic objects
-  bootstrap-start  Provide configuration and start the KMS server via the bootstrap server.
-  cc               Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
-  certificates     Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
-  ec               Manage elliptic curve keys. Encrypt and decrypt data using ECIES
-  locate           Locate cryptographic objects inside the KMS
-  new-database     Initialize a new user encrypted database and return the secret (`SQLCipher` only).
-  server-version   Print the version of the server
-  sym              Manage symmetric keys and salts. Encrypt and decrypt data
-  verify           Query the KMS to check its trustworthiness. Validate the TLS certificate to use in any further queries
-  help             Print this message or the help of the given subcommand(s)
+`ckms <subcommand>`
 
-Options:
-  -h, --help     Print help
-  -V, --version  Print version
-```
+### Subcommands
 
-### [access-rights](./access_rights.md)
+**`access-rights`** [[1]](#1-ckms-access-rights) Manage the users' access rights to the cryptographic objects
 
-Manage the users' access rights to the cryptographic objects.
+**`bootstrap-start`** [[2]](#2-ckms-bootstrap-start) Provide configuration and start the KMS server via the bootstrap server.
 
-```sh
-ckms access-rights [SUBCOMMAND]
-```
+**`cc`** [[3]](#3-ckms-cc) Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
 
-**subcommands:**
+**`certificates`** [[4]](#4-ckms-certificates) Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
 
-```sh
-grant     Grant another user an access right to an object
-revoke    Revoke another user access right to an object
-list      List the access rights granted on an object to other users
-owned     List the objects owned by the calling user
-obtained  List the access rights obtained by the calling user
-help      Print this message or the help of the given subcommand(s)
-```
+**`ec`** [[5]](#5-ckms-ec) Manage elliptic curve keys. Encrypt and decrypt data using ECIES
 
-[> view subcommands details](./access_rights.md)
+**`get-attributes`** [[6]](#6-ckms-get-attributes) Get the KMIP object attributes and tags.
 
-### bootstrap-start
+**`locate`** [[7]](#7-ckms-locate) Locate cryptographic objects inside the KMS
 
-Configure and start a KMS server configured in [bootstrap mode](../bootstrap.md).
+**`new-database`** [[8]](#8-ckms-new-database) Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 
-To contact the bootstrap server, `ckms` uses the `bootstrap_server_url` value configured in the `~/.cosmian/kms.json` configuration file. If the URL is not specified, the `kms_server_url` is used, replacing `http` with `https` if need be.
+**`server-version`** [[9]](#9-ckms-server-version) Print the version of the server
 
-A database must be configured for for the KMS server to launch. If no PKCS#12 file is provided, the KMS server will start in HTTP mode.
+**`sym`** [[10]](#10-ckms-sym) Manage symmetric keys. Encrypt and decrypt data
 
-**Usage:**
+**`verify`** [[11]](#11-ckms-verify) Query the KMS to check its trustworthiness. Validate the TLS certificate to use in any further queries
 
-```sh
-ckms bootstrap-start [OPTIONS]
-```
+**`login`** [[12]](#12-ckms-login) Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
 
-**Options:**
+**`logout`** [[13]](#13-ckms-logout) Logout from the Identity Provider.
 
-```sh
---database-type <DATABASE_TYPE>
-    The database type of the KMS server:
-    - postgresql: PostgreSQL. The database url must be provided
-    - mysql: MySql or MariaDB. The database url must be provided
-    - sqlite: SQLite. The data will be stored at the sqlite_path directory
-    - sqlite-enc: SQLite encrypted at rest. The data will be stored at the sqlite_path directory.
-    A key must be supplied on every call
-    - redis-findex: and redis database with encrypted data and encrypted indexes thanks to Findex.
-    The Redis database url must be provided, as well as the redis-master-password and the redis-findex-label
-    _
+---
 
-    [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
+## 1 ckms access-rights
 
---database-url <DATABASE_URL>
-    The url of the database for postgresql, mysql or findex-redis
+Manage the users' access rights to the cryptographic objects
 
---sqlite-path <SQLITE_PATH>
-    The directory path of the sqlite or sqlite-enc
+### Usage
 
-    [default: ./sqlite-data]
+`ckms access-rights <subcommand>`
 
---redis-master-password <REDIS_MASTER_PASSWORD>
-    redis-findex: a master password used to encrypt the Redis data and indexes
+### Subcommands
 
---redis-findex-label <REDIS_FINDEX_LABEL>
-    redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
+**`grant`** [[1.1]](#11-ckms-access-rights-grant) Grant another user an access right to an object
 
---clear-database
-    Clear the database on start.
-    WARNING: This will delete ALL the data in the database
+**`revoke`** [[1.2]](#12-ckms-access-rights-revoke) Revoke another user access right to an object
 
---https-p12-file <HTTPS_P12_FILE>
-    The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode
+**`list`** [[1.3]](#13-ckms-access-rights-list) List the access rights granted on an object to other users
 
---https-p12-password <HTTPS_P12_PASSWORD>
-    The password to open the PKCS#12 Certificates and Key file if not an empty string
+**`owned`** [[1.4]](#14-ckms-access-rights-owned) List the objects owned by the calling user
 
-    [default: ]
-```
+**`obtained`** [[1.5]](#15-ckms-access-rights-obtained) List the access rights obtained by the calling user
 
-### [cc](covercrypt/covercrypt.md)
+---
 
-Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data.
+## 1.1 ckms access-rights grant
 
-```sh
-ckms cc [SUBCOMMAND]
-```
+Grant another user an access right to an object
 
-**subcommands:**
+### Usage
 
-```sh
-keys     Create, destroy, import, export Covercrypt master and user keys
-policy   Extract or view policies of existing keys, and create a binary policy from specifications
-rotate   Rotate attributes and rekey the master and user keys.
-encrypt  Encrypt a file using Covercrypt
-decrypt  Decrypt a file using Covercrypt
-help     Print this message or the help of the given subcommand(s)
-```
+`ckms access-rights grant [options] <USER>
+<OBJECT_UID>
+<OPERATION>
+`
 
-[> view subcommands details](covercrypt/covercrypt.md)
+### Arguments
 
-### [certificates](certificates/certificates.md)
+`<USER>` The user identifier to allow
+
+`<OBJECT_UID>` The object unique identifier stored in the KMS
+
+`<OPERATION>` The KMIP operation to allow
+
+---
+
+## 1.2 ckms access-rights revoke
+
+Revoke another user access right to an object
+
+### Usage
+
+`ckms access-rights revoke [options] <USER>
+<OBJECT_UID>
+<OPERATION>
+`
+
+### Arguments
+
+`<USER>` The user to revoke access to
+
+`<OBJECT_UID>` The object unique identifier stored in the KMS
+
+`<OPERATION>` The operation to revoke (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
+
+---
+
+## 1.3 ckms access-rights list
+
+List the access rights granted on an object to other users
+
+### Usage
+
+`ckms access-rights list [options] <OBJECT_UID>
+`
+
+### Arguments
+
+`<OBJECT_UID>` The object unique identifier
+
+---
+
+## 1.4 ckms access-rights owned
+
+List the objects owned by the calling user
+
+### Usage
+
+`ckms access-rights owned`
+
+---
+
+## 1.5 ckms access-rights obtained
+
+List the access rights obtained by the calling user
+
+### Usage
+
+`ckms access-rights obtained`
+
+---
+
+## 2 ckms bootstrap-start
+
+Provide configuration and start the KMS server via the bootstrap server.
+
+### Usage
+
+`ckms bootstrap-start [options]`
+
+### Arguments
+
+`--database-type <DATABASE_TYPE>` The database type of the KMS server:
+
+- postgresql: PostgreSQL. The database url must be provided
+- mysql: MySql or MariaDB. The database url must be provided
+- sqlite: SQLite. The data will be stored at the sqlite_path directory
+- sqlite-enc: SQLite encrypted at rest. The data will be stored at the sqlite_path directory.
+
+  A key must be supplied on every call
+
+- redis-findex: and redis database with encrypted data and encrypted indexes thanks to Findex.
+
+  The Redis database url must be provided, as well as the redis-master-password and the redis-findex-label
+  \_
+
+Possible values: `"postgresql", "mysql", "sqlite", "sqlite-enc", "redis-findex"`
+
+`--database-url <DATABASE_URL>` The url of the database for postgresql, mysql or findex-redis
+
+`--sqlite-path <SQLITE_PATH>` The directory path of the sqlite or sqlite-enc
+
+`--redis-master-password <REDIS_MASTER_PASSWORD>` redis-findex: a master password used to encrypt the Redis data and indexes
+
+`--redis-findex-label <REDIS_FINDEX_LABEL>` redis-findex: a public arbitrary label that can be changed to rotate the Findex ciphertexts without changing the key
+
+`--clear-database <CLEAR_DATABASE>` Clear the database on start.
+WARNING: This will delete ALL the data in the database
+
+`--https-p12-file <HTTPS_P12_FILE>` The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode
+
+`--https-p12-password <HTTPS_P12_PASSWORD>` The password to open the PKCS#12 Certificates and Key file if not an empty string
+
+---
+
+## 3 ckms cc
+
+Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
+
+### Usage
+
+`ckms cc <subcommand>`
+
+### Subcommands
+
+**`keys`** [[3.1]](#31-ckms-cc-keys) Create, destroy, import, export `Covercrypt` master and user keys
+
+**`policy`** [[3.2]](#32-ckms-cc-policy) Extract or view policies of existing keys, and create a binary policy from specifications
+
+**`rotate`** [[3.3]](#33-ckms-cc-rotate) Rotate attributes and rekey the master and user keys.
+
+**`encrypt`** [[3.4]](#34-ckms-cc-encrypt) Encrypt a file using Covercrypt
+
+**`decrypt`** [[3.5]](#35-ckms-cc-decrypt) Decrypt a file using Covercrypt
+
+---
+
+## 3.1 ckms cc keys
+
+Create, destroy, import, export `Covercrypt` master and user keys
+
+### Usage
+
+`ckms cc keys <subcommand>`
+
+### Subcommands
+
+**`create-master-key-pair`** [[3.1.1]](#311-ckms-cc-keys-create-master-key-pair) Create a new master key pair for a given policy and return the key IDs.
+
+**`create-user-key`** [[3.1.2]](#312-ckms-cc-keys-create-user-key) Create a new user decryption key given an access policy expressed as a boolean expression.
+
+**`export`** [[3.1.3]](#313-ckms-cc-keys-export) Export a key from the KMS
+
+**`import`** [[3.1.4]](#314-ckms-cc-keys-import) Import a private or public key in the KMS.
+
+**`wrap`** [[3.1.5]](#315-ckms-cc-keys-wrap) Locally wrap a key in KMIP JSON TTLV format.
+
+**`unwrap`** [[3.1.6]](#316-ckms-cc-keys-unwrap) Locally unwrap a key in KMIP JSON TTLV format.
+
+**`revoke`** [[3.1.7]](#317-ckms-cc-keys-revoke) Revoke a Covercrypt master or user decryption key
+
+**`destroy`** [[3.1.8]](#318-ckms-cc-keys-destroy) Destroy a Covercrypt master or user decryption key
+
+---
+
+## 3.1.1 ckms cc keys create-master-key-pair
+
+Create a new master key pair for a given policy and return the key IDs.
+
+### Usage
+
+`ckms cc keys create-master-key-pair [options]`
+
+### Arguments
+
+`--policy-specifications [-s] <POLICY_SPECIFICATIONS_FILE>` The JSON policy specifications file to use to generate the master keys. See the inline doc of the `create-master-key-pair` command for details
+
+`--policy-binary [-b] <POLICY_BINARY_FILE>` When not using policy specifications, a policy binary file can be used instead. See the `policy` command, to create this binary file from policy specifications or to extract it from existing keys
+
+`--tag [-t] <TAG>` The tag to associate with the master key pair. To specify multiple tags, use the option multiple times
+
+---
+
+## 3.1.2 ckms cc keys create-user-key
+
+Create a new user decryption key given an access policy expressed as a boolean expression.
+
+### Usage
+
+`ckms cc keys create-user-key [options] <MASTER_PRIVATE_KEY_ID>
+<ACCESS_POLICY>
+`
+
+### Arguments
+
+`<MASTER_PRIVATE_KEY_ID>` The master private key unique identifier
+
+`<ACCESS_POLICY>` The access policy as a boolean expression combining policy attributes
+
+`--tag [-t] <TAG>` The tag to associate with the user decryption key. To specify multiple tags, use the option multiple times
+
+---
+
+## 3.1.3 ckms cc keys export
+
+Export a key from the KMS
+
+### Usage
+
+`ckms cc keys export [options] <KEY_FILE>
+`
+
+### Arguments
+
+`<KEY_FILE>` The file to export the key to
+
+`--key-id [-k] <KEY_ID>` The key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--key-format [-f] <KEY_FORMAT>` The format of the key
+
+- `json-ttlv` [default]. It should be the format to use to later re-import the key
+- `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+- `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
+- `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+- `spki-pem` and `spki-der` only apply to RSA and EC public keys
+- `raw` returns the raw bytes of
+  - symmetric keys
+  - Covercrypt keys
+  - wrapped keys
+
+Possible values: `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
+
+`--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
+
+`--wrap-key-id [-w] <WRAP_KEY_ID>` The id of the key/certificate to use to wrap this key before export
+
+`--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed keys.
+The user must be the owner of the key.
+Destroyed keys have their key material removed.
+
+---
+
+## 3.1.4 ckms cc keys import
+
+Import a private or public key in the KMS.
+
+### Usage
+
+`ckms cc keys import [options] <KEY_FILE>
+[KEY_ID]
+`
+
+### Arguments
+
+`<KEY_FILE>` The KMIP JSON TTLV key file
+
+`<KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
+
+`--key-format [-f] <KEY_FORMAT>` The format of the key
+
+Possible values: `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8", "spki", "aes", "chacha20"` [default: `"json-ttlv"`]
+
+`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding public key id if any
+
+`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding private key id if any
+
+`--certificate-id [-c] <CERTIFICATE_ID>` For a public or private key: the corresponding certificate id if any
+
+`--unwrap [-u] <UNWRAP>` In the case of a JSON TTLV key, unwrap the key if it is wrapped before storing it
+
+`--replace [-r] <REPLACE_EXISTING>` Replace an existing key under the same id
+
+`--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
+
+---
+
+## 3.1.5 ckms cc keys wrap
+
+Locally wrap a key in KMIP JSON TTLV format.
+
+### Usage
+
+`ckms cc keys wrap [options] <KEY_FILE_IN>
+[KEY_FILE_OUT]
+`
+
+### Arguments
+
+`<KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
+
+`<KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--wrap-password [-p] <WRAP_PASSWORD>` A password to wrap the imported key
+
+`--wrap-key-b64 [-k] <WRAP_KEY_B64>` A symmetric key as a base 64 string to wrap the imported key
+
+`--wrap-key-id [-i] <WRAP_KEY_ID>` The id of a wrapping key in the KMS that will be exported and used to wrap the key
+
+`--wrap-key-file [-f] <WRAP_KEY_FILE>` A wrapping key in a KMIP JSON TTLV file used to wrap the key
+
+---
+
+## 3.1.6 ckms cc keys unwrap
+
+Locally unwrap a key in KMIP JSON TTLV format.
+
+### Usage
+
+`ckms cc keys unwrap [options] <KEY_FILE_IN>
+[KEY_FILE_OUT]
+`
+
+### Arguments
+
+`<KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
+
+`<KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--unwrap-password [-p] <UNWRAP_PASSWORD>` A password to unwrap the imported key
+
+`--unwrap-key-b64 [-k] <UNWRAP_KEY_B64>` A symmetric key as a base 64 string to unwrap the imported key
+
+`--unwrap-key-id [-i] <UNWRAP_KEY_ID>` The id of a unwrapping key in the KMS that will be exported and used to unwrap the key
+
+`--unwrap-key-file [-f] <UNWRAP_KEY_FILE>` A unwrapping key in a KMIP JSON TTLV file used to unwrap the key
+
+---
+
+## 3.1.7 ckms cc keys revoke
+
+Revoke a Covercrypt master or user decryption key
+
+### Usage
+
+`ckms cc keys revoke [options] <REVOCATION_REASON>
+`
+
+### Arguments
+
+`<REVOCATION_REASON>` The reason for the revocation as a string
+
+`--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+---
+
+## 3.1.8 ckms cc keys destroy
+
+Destroy a Covercrypt master or user decryption key
+
+### Usage
+
+`ckms cc keys destroy [options]`
+
+### Arguments
+
+`--key-id [-k] <KEY_ID>` The key unique identifier. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+---
+
+## 3.2 ckms cc policy
+
+Extract or view policies of existing keys, and create a binary policy from specifications
+
+### Usage
+
+`ckms cc policy <subcommand>`
+
+### Subcommands
+
+**`view`** [[3.2.1]](#321-ckms-cc-policy-view) View the policy of an existing public or private master key.
+
+**`specs`** [[3.2.2]](#322-ckms-cc-policy-specs) Extract the policy specifications from a public or private master key to a policy specifications file
+
+**`binary`** [[3.2.3]](#323-ckms-cc-policy-binary) Extract the policy from a public or private master key to a policy binary file
+
+**`create`** [[3.2.4]](#324-ckms-cc-policy-create) Create a policy binary file from policy specifications
+
+---
+
+## 3.2.1 ckms cc policy view
+
+View the policy of an existing public or private master key.
+
+### Usage
+
+`ckms cc policy view [options]`
+
+### Arguments
+
+`--key-id [-i] <KEY_ID>` The public or private master key ID if the key is stored in the KMS
+
+`--key-file [-f] <KEY_FILE>` If `key-id` is not provided, the file containing the public or private master key in TTLV format
+
+`--detailed [-d] <DETAILED>` Show all the policy details rather than just the specifications
+
+---
+
+## 3.2.2 ckms cc policy specs
+
+Extract the policy specifications from a public or private master key to a policy specifications file
+
+### Usage
+
+`ckms cc policy specs [options]`
+
+### Arguments
+
+`--key-id [-i] <KEY_ID>` The public or private master key ID if the key is stored in the KMS
+
+`--key-file [-f] <KEY_FILE>` If `key-id` is not provided, the file containing the public or private master key in JSON TTLV format
+
+`--specifications [-s] <POLICY_SPECS_FILE>` The output policy specifications file
+
+---
+
+## 3.2.3 ckms cc policy binary
+
+Extract the policy from a public or private master key to a policy binary file
+
+### Usage
+
+`ckms cc policy binary [options]`
+
+### Arguments
+
+`--key-id [-i] <KEY_ID>` The public or private master key ID if the key is stored in the KMS
+
+`--key-file [-f] <KEY_FILE>` If `key-id` is not provided, the file containing the public or private master key in TTLV format
+
+`--policy [-p] <POLICY_BINARY_FILE>` The output binary policy file
+
+---
+
+## 3.2.4 ckms cc policy create
+
+Create a policy binary file from policy specifications
+
+### Usage
+
+`ckms cc policy create [options]`
+
+### Arguments
+
+`--specifications [-s] <POLICY_SPECIFICATIONS_FILE>` The policy specifications filename. The policy is expressed as a JSON object describing the Policy axes. See the documentation for details
+
+`--policy [-p] <POLICY_BINARY_FILE>` The output binary policy file generated from the specifications file
+
+---
+
+## 3.3 ckms cc rotate
+
+Rotate attributes and rekey the master and user keys.
+
+### Usage
+
+`ckms cc rotate [options] <ATTRIBUTES>...
+`
+
+### Arguments
+
+`<ATTRIBUTES>` The policy attributes to rotate. Example: `department::marketing level::confidential`
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+---
+
+## 3.4 ckms cc encrypt
+
+Encrypt a file using Covercrypt
+
+### Usage
+
+`ckms cc encrypt [options] <FILE>...
+<ENCRYPTION_POLICY>
+`
+
+### Arguments
+
+`<FILE>` The files to encrypt
+
+`<ENCRYPTION_POLICY>` The encryption policy to encrypt the file with Example: "department::marketing && level::confidential"`
+
+`--key-id [-k] <KEY_ID>` The public key unique identifier. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data. This data needs to be provided back for decryption
+
+---
+
+## 3.5 ckms cc decrypt
+
+Decrypt a file using Covercrypt
+
+### Usage
+
+`ckms cc decrypt [options] <FILE>...
+`
+
+### Arguments
+
+`<FILE>` The files to decrypt
+
+`--key-id [-k] <KEY_ID>` The user key unique identifier If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data that was supplied during encryption
+
+---
+
+## 4 ckms certificates
 
 Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
 
-```sh
-ckms certificates [SUBCOMMAND]
-```
+### Usage
 
-**subcommands:**
+`ckms certificates <subcommand>`
 
-```sh
-create   Create a new X509 certificate. If absent, the Certificate Authority certificates will be also created.
-decrypt  Decrypt a file using the private key of a certificate
-encrypt  Encrypt a file using the certificate public key
-export   Export a certificate from the KMS
-import   Import into the KMS database the following elements:
-            - a certificate (as PEM or TTLV format)
-            - a private key (as PEM or TTLV format)
-            - a certificate chain as a PEM-stack
-            - the Mozilla Common CA Database (CCADB). Automate the Mozilla database fetch.
-revoke   Revoke a certificate
-destroy  Destroy a certificate
-help     Print this message or the help of the given subcommand(s)
-```
+### Subcommands
 
-[> view subcommands details](certificates/certificates.md)
+**`certify`** [[4.1]](#41-ckms-certificates-certify) Certify a Certificate Signing Request or a Public key to create a X509 certificate.
 
-### [ec](ec/ec.md)
+**`decrypt`** [[4.2]](#42-ckms-certificates-decrypt) Decrypt a file using the private key of a certificate
 
-Manage elliptic curve keys and policies. Encrypt and decrypt data.
+**`encrypt`** [[4.3]](#43-ckms-certificates-encrypt) Encrypt a file using the certificate public key
 
-```sh
-ckms ec [SUBCOMMAND]
-```
+**`export`** [[4.4]](#44-ckms-certificates-export) Export a certificate from the KMS
 
-**subcommands:**
+**`import`** [[4.5]](#45-ckms-certificates-import) Import one of the following:
 
-```sh
-keys     Create, destroy, import, and export elliptic curve key pairs
-encrypt  Encrypt a file with the given public key using ECIES
-decrypt  Decrypts a file with the given private key using ECIES
-help     Print this message or the help of the given subcommand(s)
-```
+- a certificate: formatted as a X509 PEM (pem), X509 DER (der) or JSON TTLV (json-ttlv)
+- a certificate chain as a PEM-stack (chain)
+- a PKCS12 file containing a certificate, a private key and possibly a chain (pkcs12)
+- the Mozilla Common CA Database (CCADB - fetched by the CLI before import) (ccadb)
 
-[> view subcommands details](ec/ec.md)
+**`revoke`** [[4.6]](#46-ckms-certificates-revoke) Revoke a certificate
 
-### locate
+**`destroy`** [[4.7]](#47-ckms-certificates-destroy) Destroy a certificate
+
+---
+
+## 4.1 ckms certificates certify
+
+Certify a Certificate Signing Request or a Public key to create a X509 certificate.
+
+### Usage
+
+`ckms certificates certify [options]`
+
+### Arguments
+
+`--certificate-id [-i] <CERTIFICATE_ID>` The certificate unique identifier. A random one will be generated if not provided
+
+`--certificate-signing-request [-r] <CERTIFICATE_SIGNING_REQUEST>` The path to a certificate signing request
+
+`--certificate-signing-request-format [-f] <CERTIFICATE_SIGNING_REQUEST_FORMAT>` The format of the certificate signing request
+
+Possible values: `"pem", "der"` [default: `"pem"`]
+
+`--public-key-id-to-certify [-p] <PUBLIC_KEY_ID_TO_CERTIFY>` If not using a CSR, the id of the public key to certify
+
+`--subject-name [-s] <SUBJECT_NAME>` When certifying a public key, the subject name to use
+
+`--issuer-private-key-id [-k] <ISSUER_PRIVATE_KEY_ID>` The unique identifier of the private key of the issuer. A certificate must be linked to that private key if no issuer certificate id is provided
+
+`--issuer-certificate-id [-c] <ISSUER_CERTIFICATE_ID>` The unique identifier of the certificate of the issuer. A private key must be linked to that certificate if no issuer private key id is provided
+
+`--days [-d] <NUMBER_OF_DAYS>` The requested number of validity days The server may grant a different value
+
+`--tag [-t] <TAG>` The tag to associate to the certificate. To specify multiple tags, use the option multiple times
+
+---
+
+## 4.2 ckms certificates decrypt
+
+Decrypt a file using the private key of a certificate
+
+### Usage
+
+`ckms certificates decrypt [options] <FILE>
+`
+
+### Arguments
+
+`<FILE>` The file to decrypt
+
+`--key-id [-k] <PRIVATE_KEY_ID>` The private key unique identifier related to certificate If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data that was supplied during encryption
+
+---
+
+## 4.3 ckms certificates encrypt
+
+Encrypt a file using the certificate public key
+
+### Usage
+
+`ckms certificates encrypt [options] <FILE>
+`
+
+### Arguments
+
+`<FILE>` The file to encrypt
+
+`--certificate-id [-k] <CERTIFICATE_ID>` The certificate unique identifier. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data. This data needs to be provided back for decryption
+
+---
+
+## 4.4 ckms certificates export
+
+Export a certificate from the KMS
+
+### Usage
+
+`ckms certificates export [options] <CERTIFICATE_FILE>
+`
+
+### Arguments
+
+`<CERTIFICATE_FILE>` The file to export the certificate to
+
+`--certificate-id [-k] <UNIQUE_ID>` The certificate unique identifier stored in the KMS; for PKCS#12, provide the private key id
+If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the certificate/private key when no unique id is specified.
+To specify multiple tags, use the option multiple times.
+
+`--format [-f] <OUTPUT_FORMAT>` Export the certificate in the selected format
+
+Possible values: `"json-ttlv", "pem", "pkcs12"` [default: `"json-ttlv"`]
+
+`--pkcs12-password [-p] <PKCS12_PASSWORD>` Password to use to protect the PKCS#12 file
+
+`--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed certificates or private key (for PKCS#12).
+The user must be the owner of the certificate.
+Destroyed objects have their key material removed.
+
+---
+
+## 4.5 ckms certificates import
+
+Import one of the following:
+
+- a certificate: formatted as a X509 PEM (pem), X509 DER (der) or JSON TTLV (json-ttlv)
+- a certificate chain as a PEM-stack (chain)
+- a PKCS12 file containing a certificate, a private key and possibly a chain (pkcs12)
+- the Mozilla Common CA Database (CCADB - fetched by the CLI before import) (ccadb)
+
+### Usage
+
+`ckms certificates import [options] [CERTIFICATE_FILE]
+[CERTIFICATE_ID]
+`
+
+### Arguments
+
+`<CERTIFICATE_FILE>` The input file in PEM, KMIP-JSON-TTLV or PKCS#12 format
+
+`<CERTIFICATE_ID>` The unique id of the leaf certificate; a unique id
+based on the key material is generated if not specified.
+When importing a PKCS12, the unique id will be that of the private key.
+
+`--format [-f] <INPUT_FORMAT>` Import the certificate in the selected format
+
+Possible values: `"json-ttlv", "pem", "der", "chain", "ccadb", "pkcs12"` [default: `"json-ttlv"`]
+
+`--private-key-id [-k] <PRIVATE_KEY_ID>` The corresponding private key id if any. Ignored for PKCS12 and CCADB formats
+
+`--public-key-id [-q] <PUBLIC_KEY_ID>` The corresponding public key id if any. Ignored for PKCS12 and CCADB formats
+
+`--issuer-certificate-id [-i] <ISSUER_CERTIFICATE_ID>` The issuer certificate id if any. Ignored for PKCS12 and CCADB formats
+
+`--pkcs12-password [-p] <PKCS12_PASSWORD>` PKCS12 password: only available for PKCS12 format
+
+`--replace [-r] <REPLACE_EXISTING>` Replace an existing certificate under the same id
+
+`--tag [-t] <TAG>` The tag to associate with the certificate. To specify multiple tags, use the option multiple times
+
+---
+
+## 4.6 ckms certificates revoke
+
+Revoke a certificate
+
+### Usage
+
+`ckms certificates revoke [options] <REVOCATION_REASON>
+`
+
+### Arguments
+
+`<REVOCATION_REASON>` The reason for the revocation as a string
+
+`--certificate-id [-k] <CERTIFICATE_ID>` The certificate unique identifier of the certificate to revoke. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the certificate when no certificate id is specified. To specify multiple tags, use the option multiple times
+
+---
+
+## 4.7 ckms certificates destroy
+
+Destroy a certificate
+
+### Usage
+
+`ckms certificates destroy [options]`
+
+### Arguments
+
+`--certificate-id [-k] <CERTIFICATE_ID>` The certificate unique identifier. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the certificate when no certificate id is specified. To specify multiple tags, use the option multiple times
+
+---
+
+## 5 ckms ec
+
+Manage elliptic curve keys. Encrypt and decrypt data using ECIES
+
+### Usage
+
+`ckms ec <subcommand>`
+
+### Subcommands
+
+**`keys`** [[5.1]](#51-ckms-ec-keys) Create, destroy, import, and export elliptic curve key pairs
+
+**`encrypt`** [[5.2]](#52-ckms-ec-encrypt) Encrypt a file with the given public key using ECIES
+
+**`decrypt`** [[5.3]](#53-ckms-ec-decrypt) Decrypts a file with the given private key using ECIES
+
+---
+
+## 5.1 ckms ec keys
+
+Create, destroy, import, and export elliptic curve key pairs
+
+### Usage
+
+`ckms ec keys <subcommand>`
+
+### Subcommands
+
+**`create`** [[5.1.1]](#511-ckms-ec-keys-create) Create a new X25519 key pair
+
+**`export`** [[5.1.2]](#512-ckms-ec-keys-export) Export a key from the KMS
+
+**`import`** [[5.1.3]](#513-ckms-ec-keys-import) Import a private or public key in the KMS.
+
+**`wrap`** [[5.1.4]](#514-ckms-ec-keys-wrap) Locally wrap a key in KMIP JSON TTLV format.
+
+**`unwrap`** [[5.1.5]](#515-ckms-ec-keys-unwrap) Locally unwrap a key in KMIP JSON TTLV format.
+
+**`revoke`** [[5.1.6]](#516-ckms-ec-keys-revoke) Revoke a public or private key
+
+**`destroy`** [[5.1.7]](#517-ckms-ec-keys-destroy) Destroy a public or private key
+
+---
+
+## 5.1.1 ckms ec keys create
+
+Create a new X25519 key pair
+
+### Usage
+
+`ckms ec keys create [options]`
+
+### Arguments
+
+`--tag [-t] <TAG>` The tag to associate with the master key pair. To specify multiple tags, use the option multiple times
+
+---
+
+## 5.1.2 ckms ec keys export
+
+Export a key from the KMS
+
+### Usage
+
+`ckms ec keys export [options] <KEY_FILE>
+`
+
+### Arguments
+
+`<KEY_FILE>` The file to export the key to
+
+`--key-id [-k] <KEY_ID>` The key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--key-format [-f] <KEY_FORMAT>` The format of the key
+
+- `json-ttlv` [default]. It should be the format to use to later re-import the key
+- `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+- `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
+- `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+- `spki-pem` and `spki-der` only apply to RSA and EC public keys
+- `raw` returns the raw bytes of
+  - symmetric keys
+  - Covercrypt keys
+  - wrapped keys
+
+Possible values: `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
+
+`--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
+
+`--wrap-key-id [-w] <WRAP_KEY_ID>` The id of the key/certificate to use to wrap this key before export
+
+`--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed keys.
+The user must be the owner of the key.
+Destroyed keys have their key material removed.
+
+---
+
+## 5.1.3 ckms ec keys import
+
+Import a private or public key in the KMS.
+
+### Usage
+
+`ckms ec keys import [options] <KEY_FILE>
+[KEY_ID]
+`
+
+### Arguments
+
+`<KEY_FILE>` The KMIP JSON TTLV key file
+
+`<KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
+
+`--key-format [-f] <KEY_FORMAT>` The format of the key
+
+Possible values: `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8", "spki", "aes", "chacha20"` [default: `"json-ttlv"`]
+
+`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding public key id if any
+
+`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding private key id if any
+
+`--certificate-id [-c] <CERTIFICATE_ID>` For a public or private key: the corresponding certificate id if any
+
+`--unwrap [-u] <UNWRAP>` In the case of a JSON TTLV key, unwrap the key if it is wrapped before storing it
+
+`--replace [-r] <REPLACE_EXISTING>` Replace an existing key under the same id
+
+`--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
+
+---
+
+## 5.1.4 ckms ec keys wrap
+
+Locally wrap a key in KMIP JSON TTLV format.
+
+### Usage
+
+`ckms ec keys wrap [options] <KEY_FILE_IN>
+[KEY_FILE_OUT]
+`
+
+### Arguments
+
+`<KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
+
+`<KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--wrap-password [-p] <WRAP_PASSWORD>` A password to wrap the imported key
+
+`--wrap-key-b64 [-k] <WRAP_KEY_B64>` A symmetric key as a base 64 string to wrap the imported key
+
+`--wrap-key-id [-i] <WRAP_KEY_ID>` The id of a wrapping key in the KMS that will be exported and used to wrap the key
+
+`--wrap-key-file [-f] <WRAP_KEY_FILE>` A wrapping key in a KMIP JSON TTLV file used to wrap the key
+
+---
+
+## 5.1.5 ckms ec keys unwrap
+
+Locally unwrap a key in KMIP JSON TTLV format.
+
+### Usage
+
+`ckms ec keys unwrap [options] <KEY_FILE_IN>
+[KEY_FILE_OUT]
+`
+
+### Arguments
+
+`<KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
+
+`<KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--unwrap-password [-p] <UNWRAP_PASSWORD>` A password to unwrap the imported key
+
+`--unwrap-key-b64 [-k] <UNWRAP_KEY_B64>` A symmetric key as a base 64 string to unwrap the imported key
+
+`--unwrap-key-id [-i] <UNWRAP_KEY_ID>` The id of a unwrapping key in the KMS that will be exported and used to unwrap the key
+
+`--unwrap-key-file [-f] <UNWRAP_KEY_FILE>` A unwrapping key in a KMIP JSON TTLV file used to unwrap the key
+
+---
+
+## 5.1.6 ckms ec keys revoke
+
+Revoke a public or private key
+
+### Usage
+
+`ckms ec keys revoke [options] <REVOCATION_REASON>
+`
+
+### Arguments
+
+`<REVOCATION_REASON>` The reason for the revocation as a string
+
+`--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+---
+
+## 5.1.7 ckms ec keys destroy
+
+Destroy a public or private key
+
+### Usage
+
+`ckms ec keys destroy [options]`
+
+### Arguments
+
+`--key-id [-k] <KEY_ID>` The key unique identifier of the key to destroy If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+---
+
+## 5.2 ckms ec encrypt
+
+Encrypt a file with the given public key using ECIES
+
+### Usage
+
+`ckms ec encrypt [options] <FILE>
+`
+
+### Arguments
+
+`<FILE>` The file to encrypt
+
+`--key-id [-k] <KEY_ID>` The public key unique identifier. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data. This data needs to be provided back for decryption
+
+---
+
+## 5.3 ckms ec decrypt
+
+Decrypts a file with the given private key using ECIES
+
+### Usage
+
+`ckms ec decrypt [options] <FILE>
+`
+
+### Arguments
+
+`<FILE>` The file to decrypt
+
+`--key-id [-k] <KEY_ID>` The private key unique identifier If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data that was supplied during encryption
+
+---
+
+## 6 ckms get-attributes
+
+Get the KMIP object attributes and tags.
+
+### Usage
+
+`ckms get-attributes [options]`
+
+### Arguments
+
+`--id [-i] <ID>` The key unique identifier of the cryptographic object. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--attribute [-a] <ATTRIBUTE>` The attributes or tags to retrieve.
+To specify multiple attributes, use the option multiple times.
+
+Possible values: `"activation-date", "cryptographic-algorithm", "cryptographic-length", "cryptographic-parameters", "cryptographic-domain-parameters", "cryptographic-usage-mask", "key-format-type", "linked-private-key-id", "linked-public-key-id", "linked-issuer-certificate-id", "linked-certificate-id", "tags"`
+
+`--output-file [-o] <OUTPUT_FILE>` An optional file where to export the attributes.
+The attributes will be in JSON TTLV format.
+
+---
+
+## 7 ckms locate
 
 Locate cryptographic objects inside the KMS
 
-**Usage:**
+### Usage
 
-```sh
-ckms locate [OPTIONS]
-```
+`ckms locate [options]`
 
-**Options:**
+### Arguments
 
-```sh
--t, --tag <TAG>
-        User tags or system tags to locate the object.
-        To specify multiple tags, use the option multiple times.
+`--tag [-t] <TAG>` User tags or system tags to locate the object.
+To specify multiple tags, use the option multiple times.
 
--a, --algorithm <CRYPTOGRAPHIC_ALGORITHM>
-        Cryptographic algorithm (case insensitive)
+`--algorithm [-a] <CRYPTOGRAPHIC_ALGORITHM>` Cryptographic algorithm (case insensitive)
 
-        The list of algorithms is the one specified by KMIP 2.1 in addition to "Covercrypt".
-        Possible values include "Covercrypt", "ECDH", "ChaCha20Poly1305", "AES", "Ed25519"
+`--cryptographic-length [-l] <CRYPTOGRAPHIC_LENGTH>` Cryptographic length (e.g. key size) in bits
 
-        Running the locate sub-command with a wrong value will list all the possible values.
-        e.g. `ckms locate --algorithm WRONG`
+`--key-format-type [-f] <KEY_FORMAT_TYPE>` Key format type (case insensitive)
 
--l, --cryptographic-length <CRYPTOGRAPHIC_LENGTH>
-        Cryptographic length (e.g. key size) in bits
+`--public-key-id [-p] <PUBLIC_KEY_ID>` Locate an object which has a link to this public key id
 
--f, --key-format-type <KEY_FORMAT_TYPE>
-        Key format type (case insensitive)
+`--private-key-id [-k] <PRIVATE_KEY_ID>` Locate an object which has a link to this private key id
 
-        The list is the one specified by KMIP 2.1
-        in addition to the two Covercrypt formats: "CoverCryptSecretKey" and "CoverCryptPublicKey"
-        Possible values also include: "TransparentECPrivateKey", "TransparentECPublicKey" and "TransparentSymmetricKey"
+`--certificate-id [-c] <CERTIFICATE_ID>` Locate an object which has a link to this certificate key id
 
-        Running the locate sub-command with a wrong value will list all the possible values.
-        e.g. `ckms locate --key-format-type WRONG`
+`--certificate-cn <CERTIFICATE_CN>` Locate a certificate which has this Common Name
 
--h, --help
-        Print help (see a summary with '-h')
+`--certificate-spki <CERTIFICATE_SPKI>` Locate a certificate which has this Subject Public Key Info. For example: AF:B0:19:F4:09:3E:2F:F4:52:07:54:7F:17:62:9D:74:76:E3:A4:F6 The value will be stripped from the colons and converted to lower case
 
--h, --help                 Print help
-```
+---
 
-### [new-database](enclaves.md)
+## 8 ckms new-database
 
-Initialize a new user encrypted database and return the secret (SQLCipher only).
+Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 
-This secret is only displayed once and is not stored anywhere on the server.
-To use the encrypted database, the secret must be set in the `kms_database_secret`
-property of the CLI `kms.json` configuration file.
+### Usage
 
-Passing the correct secret "auto-selects" the correct encrypted database:
-multiple encrypted databases can be used concurrently on the same KMS server.
+`ckms new-database`
 
-Note: this action create a new database: it will not return the secret
-of the last created database and will not overwrite it.
+---
 
-**Usage:**
+## 9 ckms server-version
 
-```sh
-ckms new-database
-```
+Print the version of the server
 
-### verify
+### Usage
 
-When running the KMS inside a secure environment (TEE), before any query,
-the user needs to verify the trustworthiness of the KMS.
+`ckms server-version`
 
-First, edit the CLI configuration file by adding the measurements in the `tee_conf` section.
+---
 
-Then, run the following command:
+## 10 ckms sym
 
-```sh
-ckms verify
-```
+Manage symmetric keys. Encrypt and decrypt data
 
-If the verification fails, *DO NOT* use this KMS instance.
+### Usage
 
-If the verification succeeds, the CLI will update the configuration by adding the TLS certificate used to communicate
-with the KMS during the verification stage.
+`ckms sym <subcommand>`
 
-This certificate will then be the only allowed for any further requests to the KMS.
+### Subcommands
 
-The user can then used the CLI with full trust and does not need
-to restart the verification process as long as the KMS is not updated.
+**`keys`** [[10.1]](#101-ckms-sym-keys) Create, destroy, import, and export symmetric keys
 
-If a query to the KMS fails because the certificates don't match, proceed a new verification. Otherwise, call the KMS administrator.
+**`encrypt`** [[10.2]](#102-ckms-sym-encrypt) Encrypt a file using AES GCM
 
-### [sym](sym/sym.md)
+**`decrypt`** [[10.3]](#103-ckms-sym-decrypt) Decrypts a file using AES GCM
 
-Manage symmetric keys and salts. Encrypt and decrypt data.
+---
 
-```sh
-ckms sym [SUBCOMMAND]
-```
+## 10.1 ckms sym keys
 
-**subcommands:**
+Create, destroy, import, and export symmetric keys
 
-```sh
-keys     Create, destroy, import, and export symmetric keys
-encrypt  Encrypt a file using AES GCM
-decrypt  Decrypts a file using AES GCM
-help     Print this message or the help of the given subcommand(s)
-```
+### Usage
 
-[> view subcommands details](sym/sym.md)
+`ckms sym keys <subcommand>`
+
+### Subcommands
+
+**`create`** [[10.1.1]](#1011-ckms-sym-keys-create) Create a new symmetric key
+
+**`export`** [[10.1.2]](#1012-ckms-sym-keys-export) Export a key from the KMS
+
+**`import`** [[10.1.3]](#1013-ckms-sym-keys-import) Import a private or public key in the KMS.
+
+**`wrap`** [[10.1.4]](#1014-ckms-sym-keys-wrap) Locally wrap a key in KMIP JSON TTLV format.
+
+**`unwrap`** [[10.1.5]](#1015-ckms-sym-keys-unwrap) Locally unwrap a key in KMIP JSON TTLV format.
+
+**`revoke`** [[10.1.6]](#1016-ckms-sym-keys-revoke) Revoke a symmetric key
+
+**`destroy`** [[10.1.7]](#1017-ckms-sym-keys-destroy) Destroy a symmetric key
+
+---
+
+## 10.1.1 ckms sym keys create
+
+Create a new symmetric key
+
+### Usage
+
+`ckms sym keys create [options]`
+
+### Arguments
+
+`--number-of-bits [-l] <NUMBER_OF_BITS>` The length of the generated random key or salt in bits
+
+`--bytes-b64 [-k] <WRAP_KEY_B64>` The symmetric key bytes or salt as a base 64 string
+
+`--algorithm [-a] <ALGORITHM>` The algorithm
+
+Possible values: `"aes", "chacha20", "sha3", "shake"` [default: `"aes"`]
+
+`--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
+
+---
+
+## 10.1.2 ckms sym keys export
+
+Export a key from the KMS
+
+### Usage
+
+`ckms sym keys export [options] <KEY_FILE>
+`
+
+### Arguments
+
+`<KEY_FILE>` The file to export the key to
+
+`--key-id [-k] <KEY_ID>` The key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--key-format [-f] <KEY_FORMAT>` The format of the key
+
+- `json-ttlv` [default]. It should be the format to use to later re-import the key
+- `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+- `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
+- `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+- `spki-pem` and `spki-der` only apply to RSA and EC public keys
+- `raw` returns the raw bytes of
+  - symmetric keys
+  - Covercrypt keys
+  - wrapped keys
+
+Possible values: `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
+
+`--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
+
+`--wrap-key-id [-w] <WRAP_KEY_ID>` The id of the key/certificate to use to wrap this key before export
+
+`--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed keys.
+The user must be the owner of the key.
+Destroyed keys have their key material removed.
+
+---
+
+## 10.1.3 ckms sym keys import
+
+Import a private or public key in the KMS.
+
+### Usage
+
+`ckms sym keys import [options] <KEY_FILE>
+[KEY_ID]
+`
+
+### Arguments
+
+`<KEY_FILE>` The KMIP JSON TTLV key file
+
+`<KEY_ID>` The unique id of the key; a unique id based on the key material is generated if not specified
+
+`--key-format [-f] <KEY_FORMAT>` The format of the key
+
+Possible values: `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8", "spki", "aes", "chacha20"` [default: `"json-ttlv"`]
+
+`--public-key-id [-p] <PUBLIC_KEY_ID>` For a private key: the corresponding public key id if any
+
+`--private-key-id [-k] <PRIVATE_KEY_ID>` For a public key: the corresponding private key id if any
+
+`--certificate-id [-c] <CERTIFICATE_ID>` For a public or private key: the corresponding certificate id if any
+
+`--unwrap [-u] <UNWRAP>` In the case of a JSON TTLV key, unwrap the key if it is wrapped before storing it
+
+`--replace [-r] <REPLACE_EXISTING>` Replace an existing key under the same id
+
+`--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
+
+---
+
+## 10.1.4 ckms sym keys wrap
+
+Locally wrap a key in KMIP JSON TTLV format.
+
+### Usage
+
+`ckms sym keys wrap [options] <KEY_FILE_IN>
+[KEY_FILE_OUT]
+`
+
+### Arguments
+
+`<KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
+
+`<KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--wrap-password [-p] <WRAP_PASSWORD>` A password to wrap the imported key
+
+`--wrap-key-b64 [-k] <WRAP_KEY_B64>` A symmetric key as a base 64 string to wrap the imported key
+
+`--wrap-key-id [-i] <WRAP_KEY_ID>` The id of a wrapping key in the KMS that will be exported and used to wrap the key
+
+`--wrap-key-file [-f] <WRAP_KEY_FILE>` A wrapping key in a KMIP JSON TTLV file used to wrap the key
+
+---
+
+## 10.1.5 ckms sym keys unwrap
+
+Locally unwrap a key in KMIP JSON TTLV format.
+
+### Usage
+
+`ckms sym keys unwrap [options] <KEY_FILE_IN>
+[KEY_FILE_OUT]
+`
+
+### Arguments
+
+`<KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
+
+`<KEY_FILE_OUT>` The KMIP JSON output file. When not specified the input file is overwritten
+
+`--unwrap-password [-p] <UNWRAP_PASSWORD>` A password to unwrap the imported key
+
+`--unwrap-key-b64 [-k] <UNWRAP_KEY_B64>` A symmetric key as a base 64 string to unwrap the imported key
+
+`--unwrap-key-id [-i] <UNWRAP_KEY_ID>` The id of a unwrapping key in the KMS that will be exported and used to unwrap the key
+
+`--unwrap-key-file [-f] <UNWRAP_KEY_FILE>` A unwrapping key in a KMIP JSON TTLV file used to unwrap the key
+
+---
+
+## 10.1.6 ckms sym keys revoke
+
+Revoke a symmetric key
+
+### Usage
+
+`ckms sym keys revoke [options] <REVOCATION_REASON>
+`
+
+### Arguments
+
+`<REVOCATION_REASON>` The reason for the revocation as a string
+
+`--key-id [-k] <KEY_ID>` The key unique identifier of the key to revoke. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+---
+
+## 10.1.7 ckms sym keys destroy
+
+Destroy a symmetric key
+
+### Usage
+
+`ckms sym keys destroy [options]`
+
+### Arguments
+
+`--key-id [-k] <KEY_ID>` The key unique identifier. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+---
+
+## 10.2 ckms sym encrypt
+
+Encrypt a file using AES GCM
+
+### Usage
+
+`ckms sym encrypt [options] <FILE>
+`
+
+### Arguments
+
+`<FILE>` The file to encrypt
+
+`--key-id [-k] <KEY_ID>` The symmetric key unique identifier. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data. This data needs to be provided back for decryption
+
+---
+
+## 10.3 ckms sym decrypt
+
+Decrypts a file using AES GCM
+
+### Usage
+
+`ckms sym decrypt [options] <FILE>
+`
+
+### Arguments
+
+`<FILE>` The file to decrypt
+
+`--key-id [-k] <KEY_ID>` The private key unique identifier If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
+
+`--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data that was supplied during encryption
+
+---
+
+## 11 ckms verify
+
+Query the KMS to check its trustworthiness. Validate the TLS certificate to use in any further queries
+
+### Usage
+
+`ckms verify [options] [EXPORT_PATH]
+`
+
+### Arguments
+
+`<EXPORT_PATH>` The path to store working files (quote, certificate, ...)
+
+---
+
+## 12 ckms login
+
+Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
+
+### Usage
+
+`ckms login`
+
+---
+
+## 13 ckms logout
+
+Logout from the Identity Provider.
+
+### Usage
+
+`ckms logout`

@@ -46,6 +46,9 @@ clap = { version = "4.4", default-features = false, features = [
   "cargo",
 ] }
 cloudproof = { version = "2.3", features = ["findex-redis"] }
+const-oid = { version = "0.9", features = ["db"] }
+der = { version = "0.7", features = ["pem"] }
+env_logger = "0.10"
 hex = "0.4"
 http = "0.2"
 josekit = "0.8.3"
@@ -55,7 +58,7 @@ num-bigint-dig = { version = "0.8", default-features = false, features = [
   "rand",
   "serde",
 ] }
-openssl = { version = "0.10", features = ["vendored"] }
+openssl = { version = "0.10" }
 ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
 redis = { version = "0.23", features = [
   "aio",
@@ -65,8 +68,11 @@ redis = { version = "0.23", features = [
   "tokio-comp",
 ] }
 # Important: align the rustls version with reqwest rustls dependency
+# When using client certificate authentication, reqwest will use the
+# native-tls crate to create an Identity; this will be different backend
+# implementations depending on the operating system. On linux, it will
+# use a vendored version of openssl
 reqwest = { version = "0.11.22", features = [
-  "blocking",
   "json",
   "multipart",
   "native-tls",
@@ -89,5 +95,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2.4"
 uuid = { version = "1.6", features = ["v4"] }
 webpki-roots = "0.22"
+x509-cert = { version = "0.2", features = ["pem"] }
 x509-parser = { version = "0.15.1", features = ["verify"] }
 zeroize = { version = "1.7", features = ["zeroize_derive"] }

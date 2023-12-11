@@ -60,9 +60,21 @@ Finalize the configuration. The Client Side Encryption page should now show the 
 
 ![Cosmian KMS active](./images/cosmian_kms_active.png)
 
-
 ## Configuring CSE for GMail
 
+[Generating a self-signed certificate and user certificates](./smime_self_signed_cert.md)
 
-[Generating a self-signed certificate and user certificates](./smime_self_signed_cert.pem.md)
+```sh
+--jwt-issuer-uri=https://gsuitecse-tokenissuer-drive@system.gserviceaccount.com
+--jwks-uri=https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com
+--jwt-audience=cse-authorization
+```
 
+For example, if you are using the docker image, you can run the following command:
+
+```sh
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.6.0 \
+    --jwt-issuer-uri=https://gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
+    --jwks-uri=https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-drive@system.gserviceaccount.com \
+    --jwt-audience=cse-authorization
+```

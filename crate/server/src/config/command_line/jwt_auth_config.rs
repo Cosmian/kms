@@ -63,7 +63,7 @@ impl JwtAuthConfig {
                 let jwt_issuer_uri = jwt_issuer_uri.trim_end_matches('/');
                 let jwks_uri = self.jwks_uri.as_ref().map_or(
                     format!("{jwt_issuer_uri}/.well-known/jwks.json"),
-                    |jwks_uri| jwks_uri.to_string(),
+                    std::string::ToString::to_string,
                 );
                 task::spawn_blocking(move || {
                     JwtAuthConfig::request_jwks(&jwks_uri).map(Option::Some)

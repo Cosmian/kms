@@ -8,6 +8,8 @@ use sqlx::{mysql::MySqlRow, postgres::PgRow, sqlite::SqliteRow, Row};
 use super::{state_from_string, DBObject};
 use crate::{error::KmsError, result::KResultHelper};
 
+/// An object with its metadata such as permissions and state
+// TODO: add attributes when https://github.com/Cosmian/kms/issues/88 is fixed
 #[derive(Debug, Clone)]
 pub struct ObjectWithMetadata {
     pub(crate) id: String,

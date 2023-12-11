@@ -6,7 +6,7 @@ use std::{
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
-    kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
+    kmip_types::{Attributes, StateEnumeration},
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
 
@@ -30,19 +30,25 @@ pub trait Database {
         object: &Object,
         tags: &HashSet<String>,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<UniqueIdentifier>;
+    ) -> KResult<String>;
 
     /// Insert the provided Objects in the database in a transaction
     ///
-    /// A new UUID will be created if none is supplier.
+    /// Object is a triplet:
+    /// - optional uid
+    /// - KMIP object
+    /// - tags
+    ///
+    /// A new uid will be created if none is supplied.
     /// This method will fail if a `uid` is supplied
     /// and an object with the same id already exists
+    /// //TODO: this should be deprecated in favor of atomic()
     async fn create_objects(
         &self,
         owner: &str,
-        objects: &[(Option<String>, Object, &HashSet<String>)],
+        objects: Vec<(Option<String>, Object, &HashSet<String>)>,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<UniqueIdentifier>>;
+    ) -> KResult<Vec<String>>;
 
     /// Retrieve objects from the database.
     ///
@@ -59,10 +65,10 @@ pub trait Database {
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashMap<String, ObjectWithMetadata>>;
 
-    /// Retrieve the ags of the object with the given `uid`
+    /// Retrieve the tags of the object with the given `uid`
     async fn retrieve_tags(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>>;
 
@@ -71,7 +77,7 @@ pub trait Database {
     /// If tags is `None`, the tags will not be updated.
     async fn update_object(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         object: &Object,
         tags: Option<&HashSet<String>>,
         params: Option<&ExtraDatabaseParams>,
@@ -80,18 +86,20 @@ pub trait Database {
     /// Update the state of an object in the database.
     async fn update_state(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
     /// Upsert (update or create if does not exist)
+    ///
+    /// If tags is `None`, the tags will not be updated.
     async fn upsert(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         user: &str,
         object: &Object,
-        tags: &HashSet<String>,
+        tags: Option<&HashSet<String>>,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
@@ -99,7 +107,7 @@ pub trait Database {
     /// Delete an object from the database.
     async fn delete(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         user: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
@@ -113,13 +121,13 @@ pub trait Database {
         &self,
         user: &str,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>;
+    ) -> KResult<HashMap<String, (String, StateEnumeration, HashSet<ObjectOperationType>)>>;
 
     /// List all the accessed granted per `user`
     /// This is called by the owner only
     async fn list_object_accesses_granted(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>>;
 
@@ -127,7 +135,7 @@ pub trait Database {
     /// on the object identified by its `uid`
     async fn grant_access(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         user: &str,
         operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
@@ -137,7 +145,7 @@ pub trait Database {
     /// on the object identified by its `uid`
     async fn remove_access(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         user: &str,
         operation_type: ObjectOperationType,
         params: Option<&ExtraDatabaseParams>,
@@ -146,7 +154,7 @@ pub trait Database {
     /// Test if an object identified by its `uid` is currently owned by `owner`
     async fn is_object_owned_by(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool>;
@@ -160,7 +168,7 @@ pub trait Database {
         user: &str,
         user_must_be_owner: bool,
         params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>;
+    ) -> KResult<Vec<(String, StateEnumeration, Attributes, IsWrapped)>>;
 
     /// List all the access rights that have been granted to a user on an object
     ///
@@ -168,9 +176,34 @@ pub trait Database {
     /// unless `no_inherited_access` is set to `true`
     async fn list_user_access_rights_on_object(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         user: &str,
         no_inherited_access: bool,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<ObjectOperationType>>;
+
+    /// Perform an atomic set of operation on the database
+    /// (typically in a transaction)
+    async fn atomic(
+        &self,
+        owner: &str,
+        operations: &[AtomicOperation],
+        params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<()>;
+}
+
+/// An atomic operation on the database
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum AtomicOperation {
+    /// Create (uid, object, tags) - the state will be active
+    Create((String, Object, HashSet<String>)),
+    /// Upsert (uid, object, tags, state) - the state be updated
+    Upsert((String, Object, Option<HashSet<String>>, StateEnumeration)),
+    /// Update the object (uid, object, tags, state) - the state will be not be updated
+    UpdateObject((String, Object, Option<HashSet<String>>)),
+    /// Update the state (uid, state)
+    UpdateState((String, StateEnumeration)),
+    /// Delete (uid)
+    Delete(String),
 }

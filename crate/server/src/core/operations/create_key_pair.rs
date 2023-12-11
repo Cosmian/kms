@@ -1,6 +1,9 @@
-use cosmian_kmip::kmip::kmip_operations::{CreateKeyPair, CreateKeyPairResponse};
+use cosmian_kmip::kmip::{
+    kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
+    kmip_types::UniqueIdentifier,
+};
 use cosmian_kms_utils::access::ExtraDatabaseParams;
-use tracing::trace;
+use tracing::{debug, trace};
 use uuid::Uuid;
 
 use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
@@ -22,13 +25,13 @@ pub async fn create_key_pair(
     // generate uids and create the key pair and tags
     let sk_uid = Uuid::new_v4().to_string();
     let pk_uid = Uuid::new_v4().to_string();
-    let (key_pair, sk_tags, pk_tags) = kms.create_key_pair_and_tags(&request, &sk_uid, &pk_uid)?;
+    let (key_pair, sk_tags, pk_tags) = kms.create_key_pair_and_tags(request, &sk_uid, &pk_uid)?;
 
     trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
     kms.db
         .create_objects(
             owner,
-            &[
+            vec![
                 (
                     Some(sk_uid.clone()),
                     key_pair.private_key().clone(),
@@ -44,9 +47,9 @@ pub async fn create_key_pair(
         )
         .await?;
 
-    // debug!("Created  key pair: {}/{}", &sk_uid, &pk_uid);
+    debug!("Created  key pair: {}/{}", &sk_uid, &pk_uid);
     Ok(CreateKeyPairResponse {
-        private_key_unique_identifier: sk_uid,
-        public_key_unique_identifier: pk_uid,
+        private_key_unique_identifier: UniqueIdentifier::TextString(sk_uid),
+        public_key_unique_identifier: UniqueIdentifier::TextString(pk_uid),
     })
 }

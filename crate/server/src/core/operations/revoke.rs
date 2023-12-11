@@ -17,7 +17,7 @@ use crate::{
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
     kms_bail,
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
 pub(crate) async fn revoke_operation(
@@ -34,11 +34,13 @@ pub(crate) async fn revoke_operation(
     // there must be an identifier
     let uid_or_tags = request
         .unique_identifier
-        .clone()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
+        .as_ref()
+        .ok_or(KmsError::UnsupportedPlaceholder)?
+        .as_str()
+        .context("unique identifiers or tags should be strings")?;
 
     recursively_revoke_key(
-        &uid_or_tags,
+        uid_or_tags,
         revocation_reason,
         compromise_occurrence_date,
         kms,
@@ -49,7 +51,7 @@ pub(crate) async fn revoke_operation(
     .await?;
 
     Ok(RevokeResponse {
-        unique_identifier: uid_or_tags,
+        unique_identifier: UniqueIdentifier::TextString(uid_or_tags.to_string()),
     })
 }
 
@@ -189,7 +191,7 @@ pub(crate) async fn recursively_revoke_key<'a: 'async_recursion>(
 /// Revoke a key, knowing the object and state
 #[allow(clippy::too_many_arguments)]
 async fn revoke_key_core(
-    unique_identifier: &UniqueIdentifier,
+    unique_identifier: &str,
     revocation_reason: RevocationReason,
     compromise_occurrence_date: Option<u64>,
     kms: &KMS,

@@ -3,13 +3,12 @@ use std::convert::TryFrom;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{
+        extra::VENDOR_ID_COSMIAN,
         kmip_operations::ErrorReason,
         kmip_types::{Attributes, VendorAttribute},
     },
 };
 use serde::{Deserialize, Serialize};
-
-use crate::kmip_utils::VENDOR_ID_COSMIAN;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EnclaveSharedKeyCreateRequest {

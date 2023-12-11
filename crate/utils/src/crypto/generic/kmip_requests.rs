@@ -6,7 +6,7 @@ use cosmian_kmip::{
         kmip_operations::{Decrypt, Encrypt, ErrorReason, Import, Revoke},
         kmip_types::{
             Attributes, CryptographicAlgorithm, CryptographicParameters, KeyWrapType,
-            RevocationReason,
+            RevocationReason, UniqueIdentifier,
         },
     },
 };
@@ -19,7 +19,7 @@ pub fn build_revoke_key_request(
     revocation_reason: RevocationReason,
 ) -> Result<Revoke, KmipError> {
     Ok(Revoke {
-        unique_identifier: Some(unique_identifier.to_string()),
+        unique_identifier: Some(UniqueIdentifier::TextString(unique_identifier.to_string())),
         revocation_reason,
         compromise_occurrence_date: None,
     })
@@ -59,7 +59,9 @@ pub fn build_encryption_request(
     });
 
     Ok(Encrypt {
-        unique_identifier: Some(key_unique_identifier.to_owned()),
+        unique_identifier: Some(UniqueIdentifier::TextString(
+            key_unique_identifier.to_owned(),
+        )),
         cryptographic_parameters,
         data: Some(data_to_encrypt),
         iv_counter_nonce: None,
@@ -89,7 +91,9 @@ pub fn build_decryption_request(
     });
 
     Decrypt {
-        unique_identifier: Some(key_unique_identifier.to_owned()),
+        unique_identifier: Some(UniqueIdentifier::TextString(
+            key_unique_identifier.to_owned(),
+        )),
         cryptographic_parameters,
         data: Some(ciphertext),
         iv_counter_nonce: nonce,
@@ -118,7 +122,7 @@ pub fn build_import_object_request(
 
     // build the import request and run it
     Import {
-        unique_identifier: unique_identifier.to_owned(),
+        unique_identifier: UniqueIdentifier::TextString(unique_identifier.to_owned()),
         object_type,
         replace_existing,
         key_wrap_type,

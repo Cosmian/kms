@@ -3,7 +3,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{CreateKeyPair, Get},
     kmip_types::{
         Attributes, CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask,
-        KeyFormatType, RecommendedCurve,
+        KeyFormatType, RecommendedCurve, UniqueIdentifier,
     },
 };
 
@@ -17,7 +17,6 @@ pub fn ec_create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     recommended_curve: RecommendedCurve,
 ) -> Result<CreateKeyPair, KmipUtilsError> {
     let mut attributes = Attributes {
-        activation_date: None,
         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
         cryptographic_length: Some(Q_LENGTH_BITS),
         cryptographic_domain_parameters: Some(CryptographicDomainParameters {
@@ -33,9 +32,8 @@ pub fn ec_create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
                 | CryptographicUsageMask::KeyAgreement,
         ),
         key_format_type: Some(KeyFormatType::ECPrivateKey),
-        link: None,
         object_type: Some(ObjectType::PrivateKey),
-        vendor_attributes: None,
+        ..Attributes::default()
     };
     // add the tags
     set_tags(&mut attributes, tags)?;
@@ -48,7 +46,7 @@ pub fn ec_create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 #[must_use]
 pub fn get_private_key_request(uid: &str) -> Get {
     Get {
-        unique_identifier: Some(uid.to_string()),
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
         key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
         ..Get::default()
     }
@@ -57,7 +55,7 @@ pub fn get_private_key_request(uid: &str) -> Get {
 #[must_use]
 pub fn get_public_key_request(uid: &str) -> Get {
     Get {
-        unique_identifier: Some(uid.to_string()),
+        unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
         key_format_type: Some(KeyFormatType::TransparentECPublicKey),
         ..Get::default()
     }

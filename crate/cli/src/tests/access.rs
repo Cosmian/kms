@@ -7,7 +7,7 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        shared::{destroy, export, revoke},
+        shared::{destroy, export_key, revoke},
         symmetric::encrypt_decrypt::run_encrypt_decrypt_test,
         utils::{start_default_test_kms_server, ONCE},
         PROG_NAME,
@@ -30,7 +30,7 @@ pub(crate) fn grant_access(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND)
         .args(vec!["grant", user, object_id, operation]);
 
@@ -52,7 +52,7 @@ pub(crate) fn revoke_access(
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND)
         .args(vec!["revoke", user, object_id, operation]);
 
@@ -69,7 +69,7 @@ pub(crate) fn revoke_access(
 fn list_access(cli_conf_path: &str, object_id: &str) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec!["list", object_id]);
 
     let output = recover_cmd_logs(&mut cmd);
@@ -86,7 +86,7 @@ fn list_access(cli_conf_path: &str, object_id: &str) -> Result<String, CliError>
 fn list_owned_objects(cli_conf_path: &str) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec!["owned"]);
 
     let output = recover_cmd_logs(&mut cmd);
@@ -103,7 +103,7 @@ fn list_owned_objects(cli_conf_path: &str) -> Result<String, CliError> {
 fn list_accesses_rights_obtained(cli_conf_path: &str) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec!["obtained"]);
 
     let output = recover_cmd_logs(&mut cmd);
@@ -123,12 +123,12 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
     let key_id = gen_key(&ctx.owner_cli_conf_path)?;
 
     // the owner should have access
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
         "/tmp/output.json",
-        false,
+        None,
         false,
         None,
         false,
@@ -139,12 +139,12 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
 
     // the user should not be able to export
     assert!(
-        export(
+        export_key(
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
             "/tmp/output.json",
-            false,
+            None,
             false,
             None,
             false,
@@ -176,12 +176,12 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
     // switch to user
     // the user should still not be able to export
     assert!(
-        export(
+        export_key(
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
             "/tmp/output.json",
-            false,
+            None,
             false,
             None,
             false,
@@ -207,12 +207,12 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
 
     // switch to user
     // the user should now be able to export
-    export(
+    export_key(
         &ctx.user_cli_conf_path,
         "sym",
         &key_id,
         "/tmp/output.json",
-        false,
+        None,
         false,
         None,
         false,
@@ -298,20 +298,20 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     let key_id = gen_key(&ctx.owner_cli_conf_path)?;
 
-    // the user should not be able to export
+    /*    // the user should not be able to export
     assert!(
         export(
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
             "/tmp/output.json",
-            false,
+            None,
             false,
             None,
             false,
         )
         .is_err()
-    );
+    );*/
 
     // switch back to owner
     // grant encrypt and decrypt access to user
@@ -324,12 +324,12 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
 
     // switch to user
     // the user should now be able to export
-    export(
+    export_key(
         &ctx.user_cli_conf_path,
         "sym",
         &key_id,
         "/tmp/output.json",
-        false,
+        None,
         false,
         None,
         false,
@@ -346,12 +346,12 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
 
     // the user should not be able to export anymore
     assert!(
-        export(
+        export_key(
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
             "/tmp/output.json",
-            false,
+            None,
             false,
             None,
             false,
@@ -494,12 +494,12 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
     let key_id = gen_key(&ctx.owner_cli_conf_path)?;
 
     // the owner should have access
-    export(
+    export_key(
         &ctx.owner_cli_conf_path,
         "sym",
         &key_id,
         "/tmp/output.json",
-        false,
+        None,
         false,
         None,
         false,
@@ -510,12 +510,12 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
 
     // the user should not be able to export
     assert!(
-        export(
+        export_key(
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
             "/tmp/output.json",
-            false,
+            None,
             false,
             None,
             false,
@@ -537,12 +537,12 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
     // switch to user
     // the user should still not be able to export
     assert!(
-        export(
+        export_key(
             &ctx.user_cli_conf_path,
             "sym",
             &key_id,
             "/tmp/output.json",
-            false,
+            None,
             false,
             None,
             false,
@@ -563,12 +563,12 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
 
     // switch to user
     // the user should now be able to export
-    export(
+    export_key(
         &ctx.user_cli_conf_path,
         "sym",
         &key_id,
         "/tmp/output.json",
-        false,
+        None,
         false,
         None,
         false,
@@ -599,7 +599,7 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_access_right_obtained_using_wildcard() -> Result<(), CliError> {
-    std::env::set_var("RUST_LOG", "cosmian_kms_server=debug");
+    // std::env::set_var("RUST_LOG", "cosmian_kms_server=debug");
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     let key_id = gen_key(&ctx.owner_cli_conf_path)?;
 

@@ -19,6 +19,13 @@ pub enum KmipError {
 
     #[error("{0}: {1}")]
     KmipError(ErrorReason, String),
+
+    #[error("{0}")]
+    Default(String),
+
+    #[cfg(feature = "openssl")]
+    #[error("OpenSSL Error: {0}")]
+    OpenSSL(String),
 }
 
 impl KmipError {
@@ -55,6 +62,26 @@ impl From<CryptoCoreError> for KmipError {
     }
 }
 
+#[cfg(feature = "pyo3")]
+impl From<pyo3::PyErr> for KmipError {
+    fn from(e: pyo3::PyErr) -> Self {
+        Self::KmipError(ErrorReason::Codec_Error, e.to_string())
+    }
+}
+#[cfg(feature = "pyo3")]
+impl From<KmipError> for pyo3::PyErr {
+    fn from(e: KmipError) -> Self {
+        pyo3::exceptions::PyException::new_err(e.to_string())
+    }
+}
+
+#[cfg(feature = "openssl")]
+impl From<openssl::error::ErrorStack> for KmipError {
+    fn from(e: openssl::error::ErrorStack) -> Self {
+        Self::OpenSSL(e.to_string())
+    }
+}
+
 /// Return early with an error if a condition is not satisfied.
 ///
 /// This macro is equivalent to `if !$cond { return Err(From::from($err)); }`.
@@ -80,7 +107,7 @@ macro_rules! kmip_ensure {
 /// Construct a server error from a string.
 #[macro_export]
 macro_rules! kmip_error {
-    ($msg:literal $(,)?) => {
+    ($msg:literal) => {
         $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, $msg.to_owned())
     };
     ($err:expr $(,)?) => ({
@@ -94,7 +121,7 @@ macro_rules! kmip_error {
 /// Return early with an error if a condition is not satisfied.
 #[macro_export]
 macro_rules! kmip_bail {
-    ($msg:literal $(,)?) => {
+    ($msg:literal) => {
         return ::core::result::Result::Err($crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, $msg.to_owned()))
     };
     ($err:expr $(,)?) => {

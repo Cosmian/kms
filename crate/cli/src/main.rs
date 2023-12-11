@@ -1,12 +1,20 @@
 use std::process;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use cosmian_kms_cli::{
     actions::{
-        access::AccessAction, bootstrap::BootstrapServerAction, certificates::CertificatesCommands,
-        cover_crypt::CovercryptCommands, elliptic_curves::EllipticCurveCommands,
-        login::LoginAction, logout::LogoutAction, new_database::NewDatabaseAction,
-        shared::LocateObjectsAction, symmetric::SymmetricCommands, verify::TeeAction,
+        access::AccessAction,
+        bootstrap::BootstrapServerAction,
+        certificates::CertificatesCommands,
+        cover_crypt::CovercryptCommands,
+        elliptic_curves::EllipticCurveCommands,
+        login::LoginAction,
+        logout::LogoutAction,
+        markdown::MarkdownAction,
+        new_database::NewDatabaseAction,
+        shared::{GetAttributesAction, LocateObjectsAction},
+        symmetric::SymmetricCommands,
+        verify::TeeAction,
         version::ServerVersionAction,
     },
     config::CliConf,
@@ -33,6 +41,7 @@ enum CliCommands {
     Certificates(CertificatesCommands),
     #[command(subcommand)]
     Ec(EllipticCurveCommands),
+    GetAttributes(GetAttributesAction),
     Locate(LocateObjectsAction),
     NewDatabase(NewDatabaseAction),
     ServerVersion(ServerVersionAction),
@@ -41,6 +50,8 @@ enum CliCommands {
     Verify(TeeAction),
     Login(LoginAction),
     Logout(LogoutAction),
+    #[clap(hide = true)]
+    Markdown(MarkdownAction),
 }
 
 #[tokio::main]
@@ -70,6 +81,12 @@ async fn main_() -> Result<(), CliError> {
         return Ok(())
     }
 
+    if let CliCommands::Markdown(action) = opts.command {
+        let command = <Cli as CommandFactory>::command();
+        action.process(&command).await?;
+        return Ok(())
+    }
+
     let kms_rest_client = conf.initialize_kms_client()?;
 
     match opts.command {
@@ -82,8 +99,12 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
         CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
         CliCommands::BootstrapStart(_) | CliCommands::Verify(_) => {}
+        CliCommands::GetAttributes(action) => action.process(&kms_rest_client).await?,
         CliCommands::Login(action) => action.process().await?,
         CliCommands::Logout(action) => action.process().await?,
+        _ => {
+            println!("Error");
+        }
     };
 
     Ok(())

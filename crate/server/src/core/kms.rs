@@ -34,7 +34,7 @@ use crate::{
     error::KmsError,
     kms_bail, kms_error,
     middlewares::{ssl_auth::PeerCommonName, JwtAuthClaim},
-    result::KResult,
+    result::{KResult, KResultHelper},
 };
 
 /// A Simple Key Management System that partially implements KMIP 2.1:
@@ -571,7 +571,9 @@ impl KMS {
         let uid = access
             .unique_identifier
             .as_ref()
-            .ok_or(KmsError::UnsupportedPlaceholder)?;
+            .ok_or_else(|| KmsError::UnsupportedPlaceholder)?
+            .as_str()
+            .context("unique_identifier is not a string")?;
 
         // check the object identified by its `uid` is really owned by `owner`
         if !self.db.is_object_owned_by(uid, owner, params).await? {
@@ -606,7 +608,9 @@ impl KMS {
         let uid = access
             .unique_identifier
             .as_ref()
-            .ok_or(KmsError::UnsupportedPlaceholder)?;
+            .ok_or(KmsError::UnsupportedPlaceholder)?
+            .as_str()
+            .context("unique_identifier is not a string")?;
 
         // check the object identified by its `uid` is really owned by `owner`
         if !self.db.is_object_owned_by(uid, owner, params).await? {
@@ -637,6 +641,9 @@ impl KMS {
         owner: &str,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Vec<UserAccessResponse>> {
+        let object_id = object_id
+            .as_str()
+            .context("unique_identifier is not a string")?;
         // check the object identified by its `uid` is really owned by `owner`
         // only the owner can list the permission of an object
         if !self.db.is_object_owned_by(object_id, owner, params).await? {

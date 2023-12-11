@@ -7,7 +7,7 @@ use cosmian_kmip::{
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
-        kmip_operations::{CreateKeyPair, ErrorReason},
+        kmip_operations::ErrorReason,
         kmip_types::{
             Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
             LinkedObjectIdentifier,
@@ -24,15 +24,16 @@ use crate::{
 /// of a `CreateKeyPair` operation
 pub fn create_master_keypair(
     cover_crypt: &Covercrypt,
-    request: &CreateKeyPair,
     private_key_uid: &str,
     public_key_uid: &str,
+    common_attributes: Option<Attributes>,
+    private_key_attributes: Option<Attributes>,
+    public_key_attributes: Option<Attributes>,
 ) -> Result<KeyPair, KmipError> {
-    let attributes = request
-        .common_attributes
+    let any_attributes = common_attributes
         .as_ref()
-        .or(request.private_key_attributes.as_ref())
-        .or(request.public_key_attributes.as_ref())
+        .or(private_key_attributes.as_ref())
+        .or(public_key_attributes.as_ref())
         .ok_or_else(|| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Attribute_Not_Found,
@@ -41,7 +42,7 @@ pub fn create_master_keypair(
         })?;
 
     // verify that we can recover the policy
-    let policy = policy_from_attributes(attributes)?;
+    let policy = policy_from_attributes(any_attributes)?;
 
     // Now generate a master key using the CoverCrypt Engine
     let (sk, pk) = cover_crypt
@@ -50,10 +51,9 @@ pub fn create_master_keypair(
 
     // Private Key generation
     // First generate fresh attributes with that policy
-    let private_key_attributes = request
-        .private_key_attributes
+    let private_key_attributes = private_key_attributes
         .as_ref()
-        .or(request.common_attributes.as_ref());
+        .or(common_attributes.as_ref());
     let sk_bytes = sk.serialize().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Codec_Error,
@@ -69,10 +69,9 @@ pub fn create_master_keypair(
 
     // Public Key generation
     // First generate fresh attributes with that policy
-    let public_key_attributes = request
-        .public_key_attributes
+    let public_key_attributes = public_key_attributes
         .as_ref()
-        .or(request.common_attributes.as_ref());
+        .or(common_attributes.as_ref());
     let pk_bytes = pk.serialize().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Codec_Error,
@@ -97,6 +96,7 @@ fn create_master_private_key_object(
 ) -> Result<Object, KmipError> {
     let mut attributes = attributes.cloned().unwrap_or_default();
     attributes.object_type = Some(ObjectType::PrivateKey);
+    attributes.key_format_type = Some(KeyFormatType::CoverCryptSecretKey);
     // add the policy to the attributes
     upsert_policy_in_attributes(&mut attributes, policy)?;
     // link the private key to the public key
@@ -108,14 +108,14 @@ fn create_master_private_key_object(
     }]);
     Ok(Object::PrivateKey {
         key_block: KeyBlock {
-            cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
+            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptSecretKey,
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(key.to_vec()),
                 attributes: Some(attributes),
             },
-            cryptographic_length: key.len() as i32,
+            cryptographic_length: Some(key.len() as i32 * 8),
             key_wrapping_data: None,
         },
     })
@@ -133,6 +133,7 @@ fn create_master_public_key_object(
 ) -> Result<Object, KmipError> {
     let mut attributes = attributes.cloned().unwrap_or_default();
     attributes.object_type = Some(ObjectType::PublicKey);
+    attributes.key_format_type = Some(KeyFormatType::CoverCryptPublicKey);
     // add the policy to the attributes
     upsert_policy_in_attributes(&mut attributes, policy)?;
     // link the public key to the private key
@@ -144,14 +145,14 @@ fn create_master_public_key_object(
     }]);
     Ok(Object::PublicKey {
         key_block: KeyBlock {
-            cryptographic_algorithm: CryptographicAlgorithm::CoverCrypt,
+            cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: KeyFormatType::CoverCryptPublicKey,
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(key.to_vec()),
                 attributes: Some(attributes),
             },
-            cryptographic_length: key.len() as i32,
+            cryptographic_length: Some(key.len() as i32 * 8),
             key_wrapping_data: None,
         },
     })

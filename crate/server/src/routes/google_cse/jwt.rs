@@ -16,7 +16,7 @@ use crate::{
 
 fn get_jwks_uri(application: &str) -> String {
     std::env::var(format!("KMS_GOOGLE_CSE_{}_JWKS_URI", application.to_uppercase()))
-    .unwrap_or(format!("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{}@system.gserviceaccount.com", application))
+    .unwrap_or(format!("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"))
 }
 
 /// Fetch the JWT authorization configuration for Google CSE 'drive' or 'meet'
@@ -28,8 +28,7 @@ async fn jwt_authorization_config_application(application: &str) -> KResult<Arc<
         application.to_uppercase()
     ))
     .unwrap_or(format!(
-        "gsuitecse-tokenissuer-{}@system.gserviceaccount.com",
-        application
+        "gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"
     ));
 
     let jwt_audience =
@@ -250,9 +249,9 @@ mod tests {
         },
     };
 
-    #[actix_rt::test]
+    #[tokio::test]
     async fn test_wrap_auth() {
-        log_init("cosmian_kms_server=trace");
+        log_init("cosmian_kms_server=info");
 
         #[derive(Deserialize)]
         struct Token {

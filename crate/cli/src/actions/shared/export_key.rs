@@ -1,25 +1,43 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use cosmian_kmip::{kmip::kmip_types::KeyFormatType, result::KmipResultHelper};
 use cosmian_kms_client::KmsRestClient;
 
 use crate::{
-    actions::shared::utils::{export_object, write_bytes_to_file, write_kmip_object_to_file},
+    actions::shared::utils::{
+        der_to_pem, export_object, write_bytes_to_file, write_kmip_object_to_file,
+    },
     cli_bail,
     error::CliError,
 };
 
+#[derive(clap::ValueEnum, Debug, Clone, PartialEq)]
+pub enum ExportKeyFormat {
+    JsonTtlv,
+    Sec1Pem,
+    Sec1Der,
+    Pkcs1Pem,
+    Pkcs1Der,
+    Pkcs8Pem,
+    Pkcs8Der,
+    SpkiPem,
+    SpkiDer,
+    Raw,
+}
+
 /// Export a key from the KMS
 ///
-/// The key is exported in JSON KMIP TTLV format
-/// unless the `--bytes` option is specified, in which case
-/// the key bytes are exported without metadata, such as
-///  - the links between the keys in a pair
-///  - other metadata: policies, etc.
-/// Key bytes are sufficient to perform local encryption or decryption.
+/// If not format is specified, the key is exported as a json-ttlv with a
+/// `KeyFormatType` that follows the section 4.26 of the KMIP specification.
+/// https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
 ///
-/// The key can be wrapped or unwrapped when exported.
-/// If nothing is specified, it is returned as it is stored.
+/// The key can optionally be unwrapped and/or wrapped when exported.
+///
+/// If wrapping is specified, the key is wrapped using the specified wrapping key.
+/// The chosen Key Format must be either `json-ttlv` or `raw`. When `raw` is selected,
+/// only the wrapped bytes are returned.
+///
 /// Wrapping a key that is already wrapped is an error.
 /// Unwrapping a key that is not wrapped is ignored and returns the unwrapped key.
 ///
@@ -42,9 +60,23 @@ pub struct ExportKeyAction {
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
     tags: Option<Vec<String>>,
 
-    /// Export the key bytes only
-    #[clap(long = "bytes", short = 'b', default_value = "false")]
-    bytes: bool,
+    /// The format of the key
+    ///  - `json-ttlv` [default]. It should be the format to use to later re-import the key
+    ///  - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+    ///  - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
+    ///  - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+    ///  - `spki-pem` and `spki-der` only apply to RSA and EC public keys
+    ///  - `raw` returns the raw bytes of
+    ///       - symmetric keys
+    ///       - Covercrypt keys
+    ///       - wrapped keys
+    #[clap(
+        long = "key-format",
+        short = 'f',
+        default_value = "json-ttlv",
+        verbatim_doc_comment
+    )]
+    key_format: ExportKeyFormat,
 
     /// Unwrap the key if it is wrapped before export
     #[clap(
@@ -55,7 +87,7 @@ pub struct ExportKeyAction {
     )]
     unwrap: bool,
 
-    /// The id of key/certificate to use to wrap this key before export
+    /// The id of the key/certificate to use to wrap this key before export
     #[clap(
         long = "wrap-key-id",
         short = 'w',
@@ -67,7 +99,12 @@ pub struct ExportKeyAction {
     /// Allow exporting revoked and destroyed keys.
     /// The user must be the owner of the key.
     /// Destroyed keys have their key material removed.
-    #[clap(long = "allow-revoked", short = 'i', default_value = "false")]
+    #[clap(
+        long = "allow-revoked",
+        short = 'i',
+        default_value = "false",
+        verbatim_doc_comment
+    )]
     allow_revoked: bool,
 }
 
@@ -82,21 +119,48 @@ impl ExportKeyAction {
             cli_bail!("Either --key-id or one or more --tag must be specified")
         };
 
+        let (key_format_type, encode_to_pem) = match self.key_format {
+            ExportKeyFormat::JsonTtlv => (None, false),
+            ExportKeyFormat::Sec1Pem => (Some(KeyFormatType::ECPrivateKey), true),
+            ExportKeyFormat::Sec1Der => (Some(KeyFormatType::ECPrivateKey), false),
+            ExportKeyFormat::Pkcs1Pem => (Some(KeyFormatType::PKCS1), true),
+            ExportKeyFormat::Pkcs1Der => (Some(KeyFormatType::PKCS1), false),
+            ExportKeyFormat::Pkcs8Pem => (Some(KeyFormatType::PKCS8), true),
+            ExportKeyFormat::Pkcs8Der => (Some(KeyFormatType::PKCS8), false),
+            ExportKeyFormat::SpkiPem => (Some(KeyFormatType::PKCS8), true),
+            ExportKeyFormat::SpkiDer => (Some(KeyFormatType::PKCS8), false),
+            // For Raw: use the default format then do the local extraction of the bytes
+            ExportKeyFormat::Raw => (None, false),
+        };
+
         // export the object
-        let object = export_object(
+        let (object, _) = export_object(
             kms_rest_client,
             &id,
             self.unwrap,
             self.wrap_key_id.as_deref(),
             self.allow_revoked,
+            key_format_type,
         )
         .await?;
 
         // write the object to a file
-        if self.bytes {
-            // export the key bytes only
-            let key_bytes = object.key_block()?.key_bytes()?;
-            write_bytes_to_file(&key_bytes, &self.key_file)?;
+        if self.key_format != ExportKeyFormat::JsonTtlv {
+            // export the bytes only
+            let bytes = {
+                let mut bytes = object.key_block()?.key_bytes()?;
+                if encode_to_pem {
+                    bytes = der_to_pem(
+                        bytes.as_slice(),
+                        key_format_type.context(
+                            "Server Error: the Key Format Type should be known at this stage",
+                        )?,
+                        object.object_type(),
+                    )?;
+                }
+                bytes
+            };
+            write_bytes_to_file(&bytes, &self.key_file)?;
         } else {
             // save it to a file
             write_kmip_object_to_file(&object, &self.key_file)?;

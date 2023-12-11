@@ -5,6 +5,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
     kmip_types::{
         OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
+        UniqueIdentifier,
     },
 };
 use cosmian_kms_utils::crypto::curve_25519::kmip_requests::ec_create_key_pair_request;
@@ -13,7 +14,7 @@ use crate::{
     config::ServerParams, result::KResult, tests::test_utils::https_clap_config, KMSServer,
 };
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_kmip_messages() -> KResult<()> {
     cosmian_logger::log_utils::log_init("info,hyper=info,reqwest=info");
 
@@ -31,7 +32,7 @@ async fn test_kmip_messages() -> KResult<()> {
         MessageBatchItem::new(Operation::CreateKeyPair(ec_create_request)),
         MessageBatchItem::new(Operation::Locate(Locate::default())),
         MessageBatchItem::new(Operation::Decrypt(Decrypt {
-            unique_identifier: Some("id_12345".to_string()),
+            unique_identifier: Some(UniqueIdentifier::TextString("id_12345".to_string())),
             data: Some(b"decrypted_data".to_vec()),
             ..Default::default()
         })),

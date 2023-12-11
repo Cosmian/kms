@@ -5,8 +5,7 @@ use base64::{engine::general_purpose, Engine};
 use clap::crate_version;
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyWrappingData, KeyWrappingSpecification},
-    kmip_objects::ObjectType,
-    kmip_types::{self, CryptographicAlgorithm, EncodingOption},
+    kmip_types::{self, CryptographicAlgorithm, EncodingOption, UniqueIdentifier},
 };
 use cosmian_kms_utils::crypto::symmetric::create_symmetric_key;
 use serde::{Deserialize, Serialize};
@@ -96,13 +95,12 @@ pub async fn wrap(
     );
 
     wrap_key(
-        "Google CSE DEK",
         dek.key_block_mut()?,
         &KeyWrappingSpecification {
             wrapping_method: kmip_types::WrappingMethod::Encrypt,
             encoding_option: Some(EncodingOption::NoEncoding),
             encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
-                unique_identifier: "[\"google_cse\"]".to_string(),
+                unique_identifier: UniqueIdentifier::TextString("[\"google_cse\"]".to_string()),
                 cryptographic_parameters: Some(kmip_types::CryptographicParameters {
                     ..Default::default()
                 }),
@@ -175,7 +173,7 @@ pub async fn unwrap(
     wrapped_dek.key_block_mut()?.key_wrapping_data = Some(KeyWrappingData {
         wrapping_method: kmip_types::WrappingMethod::Encrypt,
         encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
-            unique_identifier: "[\"google_cse\"]".to_string(),
+            unique_identifier: UniqueIdentifier::TextString("[\"google_cse\"]".to_string()),
             cryptographic_parameters: None,
         }),
         encoding_option: Some(EncodingOption::NoEncoding),
@@ -183,7 +181,6 @@ pub async fn unwrap(
     });
 
     unwrap_key(
-        ObjectType::SymmetricKey,
         wrapped_dek.key_block_mut()?,
         kms,
         &user,

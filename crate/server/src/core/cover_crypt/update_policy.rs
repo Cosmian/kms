@@ -2,7 +2,7 @@ use cloudproof::reexport::cover_crypt::{abe_policy::Policy, Covercrypt};
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
-    kmip_types::{LinkType, StateEnumeration},
+    kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
@@ -72,8 +72,10 @@ pub async fn rekey_keypair_cover_crypt(
     .await?;
 
     Ok(ReKeyKeyPairResponse {
-        private_key_unique_identifier: master_private_key_uid.to_string(),
-        public_key_unique_identifier: master_public_key_uid,
+        private_key_unique_identifier: UniqueIdentifier::TextString(
+            master_private_key_uid.to_string(),
+        ),
+        public_key_unique_identifier: UniqueIdentifier::TextString(master_public_key_uid),
     })
 }
 
@@ -168,7 +170,7 @@ async fn rekey_master_keys(
 
     // re_import it
     let import_request = Import {
-        unique_identifier: master_private_key_uid.to_string(),
+        unique_identifier: UniqueIdentifier::TextString(master_private_key_uid.to_string()),
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(true),
         key_wrap_type: None,
@@ -180,7 +182,7 @@ async fn rekey_master_keys(
     // Update Master Public Key Policy and re-import the key
     // re_import it
     let import_request = Import {
-        unique_identifier: master_public_key_uid.clone(),
+        unique_identifier: UniqueIdentifier::TextString(master_public_key_uid.clone()),
         object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,

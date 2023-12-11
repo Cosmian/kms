@@ -2,15 +2,16 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
+use cosmian_logger::log_utils::log_init;
 
 use crate::{
-    actions::shared::utils::read_key_from_file,
+    actions::shared::{import_key::ImportKeyFormat, utils::read_object_from_json_ttlv_file},
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        shared::export::export,
+        shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
         utils::{
             extract_uids::extract_imported_key_id, recover_cmd_logs, start_default_test_kms_server,
@@ -20,20 +21,42 @@ use crate::{
     },
 };
 
-pub fn import(
+#[allow(clippy::too_many_arguments)]
+pub fn import_key(
     cli_conf_path: &str,
     sub_command: &str,
     key_file: &str,
+    key_format: Option<ImportKeyFormat>,
     key_id: Option<String>,
+    tags: &[String],
     unwrap: bool,
     replace_existing: bool,
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     let mut args: Vec<String> = vec!["keys".to_owned(), "import".to_owned(), key_file.to_owned()];
     if let Some(key_id) = key_id {
         args.push(key_id);
+    }
+    for tag in tags {
+        args.push("--tag".to_owned());
+        args.push(tag.clone());
+    }
+    if let Some(key_format) = key_format {
+        args.push("--key-format".to_owned());
+        let kfs = match key_format {
+            ImportKeyFormat::JsonTtlv => "json-ttlv",
+            ImportKeyFormat::Pem => "pem",
+            ImportKeyFormat::Sec1 => "sec1",
+            ImportKeyFormat::Pkcs1Priv => "pkcs1-priv",
+            ImportKeyFormat::Pkcs1Pub => "pkcs1-pub",
+            ImportKeyFormat::Pkcs8 => "pkcs8",
+            ImportKeyFormat::Spki => "spki",
+            ImportKeyFormat::Aes => "aes",
+            ImportKeyFormat::Chacha20 => "chacha20",
+        };
+        args.push(kfs.to_string());
     }
     if unwrap {
         args.push("-u".to_owned());
@@ -59,11 +82,13 @@ pub fn import(
 pub async fn test_import_cover_crypt() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
-    let uid: String = import(
+    let uid: String = import_key(
         &ctx.owner_cli_conf_path,
         "cc",
         "test_data/ttlv_public_key.json",
         None,
+        None,
+        &[],
         false,
         false,
     )?;
@@ -71,11 +96,13 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 
     // reimporting the same key  with the same id should fail
     assert!(
-        import(
+        import_key(
             &ctx.owner_cli_conf_path,
             "cc",
             "test_data/ttlv_public_key.json",
+            None,
             Some(uid.clone()),
+            &[],
             false,
             false,
         )
@@ -83,11 +110,13 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
     );
 
     //...unless we force it with replace_existing
-    let uid_: String = import(
+    let uid_: String = import_key(
         &ctx.owner_cli_conf_path,
         "cc",
         "test_data/ttlv_public_key.json",
+        None,
         Some(uid.clone()),
+        &[],
         false,
         true,
     )?;
@@ -98,9 +127,10 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 
 #[tokio::test]
 pub async fn test_generate_export_import() -> Result<(), CliError> {
+    log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
-    // Generate
+    // Covercrypt import/export test
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
         &ctx.owner_cli_conf_path,
         "--policy-specifications",
@@ -114,7 +144,7 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
         CryptographicAlgorithm::CoverCrypt,
     )?;
 
-    // generate a new key pair
+    // Test import/export of an EC Key Pair
     let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
     export_import_test(
         &ctx.owner_cli_conf_path,
@@ -142,42 +172,47 @@ pub fn export_import_test(
     algorithm: CryptographicAlgorithm,
 ) -> Result<(), CliError> {
     // Export
-    export(
+    export_key(
         cli_conf_path,
         sub_command,
         private_key_id,
         "/tmp/output.export",
-        false,
+        None,
         false,
         None,
         false,
     )?;
-    let object = read_key_from_file(&PathBuf::from("/tmp/output.export"))?;
+    let object = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output.export"))?;
     let key_bytes = object.key_block()?.key_bytes()?;
 
     // import and re-export
-    let uid: String = import(
+    let uid: String = import_key(
         cli_conf_path,
         sub_command,
         "/tmp/output.export",
         None,
+        None,
+        &[],
         false,
         false,
     )?;
-    export(
+    export_key(
         cli_conf_path,
         sub_command,
         &uid,
-        "/tmp/output.export",
-        false,
+        "/tmp/output2.export",
+        None,
         false,
         None,
         false,
     )?;
-    let object = read_key_from_file(&PathBuf::from("/tmp/output.export"))?;
-    assert_eq!(object.key_block()?.key_bytes()?, key_bytes);
-    assert_eq!(object.key_block()?.cryptographic_algorithm, algorithm);
-    assert!(object.key_block()?.key_wrapping_data.is_none());
+    let object2 = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/output2.export"))?;
+    assert_eq!(object2.key_block()?.key_bytes()?, key_bytes);
+    assert_eq!(
+        object2.key_block()?.cryptographic_algorithm,
+        Some(algorithm)
+    );
+    assert!(object2.key_block()?.key_wrapping_data.is_none());
 
     Ok(())
 }
