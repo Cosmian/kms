@@ -11,7 +11,7 @@ When [running in a zero-trust environment](./zero_trust.md) inside a confidentia
 To start the KMS server in bootstrap mode, use the `--use-bootstrap-server` option:
 
 ```sh
-docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.9.1 \
+docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.10.0 \
   --use-bootstrap-server
 ```
 
