@@ -6,6 +6,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::{DecryptedData, Get, Import, Locate},
     kmip_types::{
         Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
+        UniqueIdentifier,
     },
 };
 use cosmian_kms_utils::{
@@ -33,7 +34,7 @@ use crate::{
     KMSServer,
 };
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_cover_crypt_keys() -> KResult<()> {
     let clap_config = https_clap_config();
 
@@ -71,7 +72,10 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         )
         .await?;
     debug!("  -> response {:?}", cr);
-    let sk_uid = cr.private_key_unique_identifier;
+    let sk_uid = cr
+        .private_key_unique_identifier
+        .to_string()
+        .context("No private key uid as string in response")?;
     // check the generated id is an UUID
     let sk_uid_ = Uuid::parse_str(&sk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
     assert_eq!(&sk_uid, &sk_uid_.to_string());
@@ -79,7 +83,13 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     // get Private Key
     debug!("ABE Get Master Secret Key");
     let gr_sk = kms.get(Get::from(sk_uid.as_str()), owner, None).await?;
-    assert_eq!(&sk_uid, &gr_sk.unique_identifier);
+    assert_eq!(
+        &sk_uid,
+        &gr_sk
+            .unique_identifier
+            .as_str()
+            .context("No uid in response as string")?
+    );
     assert_eq!(ObjectType::PrivateKey, gr_sk.object_type);
 
     // check sk
@@ -95,15 +105,24 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         recovered_kms_sk_key_block.cryptographic_algorithm
     );
     assert_eq!(
-        CryptographicAlgorithm::CoverCrypt,
+        Some(CryptographicAlgorithm::CoverCrypt),
         recovered_kms_sk_key_block.cryptographic_algorithm
     );
 
     // get Public Key
     debug!("ABE Get Master Public Key");
-    let pk_uid = cr.public_key_unique_identifier;
+    let pk_uid = cr
+        .public_key_unique_identifier
+        .to_string()
+        .context("No public key uid as string in response")?;
     let gr_pk = kms.get(Get::from(pk_uid.as_str()), owner, None).await?;
-    assert_eq!(pk_uid, gr_pk.unique_identifier);
+    assert_eq!(
+        pk_uid,
+        gr_pk
+            .unique_identifier
+            .to_string()
+            .context("No uid in response")?
+    );
     assert_eq!(ObjectType::PublicKey, gr_pk.object_type);
 
     // check pk
@@ -119,13 +138,13 @@ async fn test_cover_crypt_keys() -> KResult<()> {
         recovered_kms_pk_key_block.cryptographic_algorithm
     );
     assert_eq!(
-        CryptographicAlgorithm::CoverCrypt,
+        Some(CryptographicAlgorithm::CoverCrypt),
         recovered_kms_pk_key_block.cryptographic_algorithm
     );
 
     // re-import public key - should fail
     let request = Import {
-        unique_identifier: pk_uid.clone(),
+        unique_identifier: UniqueIdentifier::TextString(pk_uid.clone()),
         object_type: ObjectType::PublicKey,
         replace_existing: Some(false),
         key_wrap_type: None,
@@ -139,7 +158,7 @@ async fn test_cover_crypt_keys() -> KResult<()> {
 
     // re-import public key - should succeed
     let request = Import {
-        unique_identifier: pk_uid.clone(),
+        unique_identifier: UniqueIdentifier::TextString(pk_uid.clone()),
         object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,
@@ -161,7 +180,10 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
-    let usk_uid = cr.unique_identifier;
+    let usk_uid = cr
+        .unique_identifier
+        .to_string()
+        .context("No uid string in user response key")?;
     // check the generated id is an UUID
     let usk_uid_ =
         Uuid::parse_str(&usk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
@@ -170,7 +192,12 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     // get object
     let gr = kms.get(Get::from(usk_uid.as_str()), owner, None).await?;
     let object = &gr.object;
-    assert_eq!(&usk_uid, &gr.unique_identifier);
+    assert_eq!(
+        &usk_uid,
+        &gr.unique_identifier
+            .as_str()
+            .context("No uid in response")?
+    );
     let _recovered_kms_uk_key_block = match object {
         Object::PrivateKey { key_block } => key_block,
         _other => {
@@ -186,7 +213,10 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     let cr = kms.create(request, owner, None).await?;
     debug!("Create Response for User Decryption Key {:?}", cr);
 
-    let usk_uid = cr.unique_identifier;
+    let usk_uid = cr
+        .unique_identifier
+        .to_string()
+        .context("no string uid in user key")?;
     // check the generated id is an UUID
     let usk_uid_ =
         Uuid::parse_str(&usk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
@@ -195,7 +225,12 @@ async fn test_cover_crypt_keys() -> KResult<()> {
     // get object
     let gr = kms.get(Get::from(usk_uid.as_str()), owner, None).await?;
     let object = &gr.object;
-    assert_eq!(&usk_uid, &gr.unique_identifier);
+    assert_eq!(
+        &usk_uid,
+        gr.unique_identifier
+            .as_str()
+            .context("No uid in response")?
+    );
     let recovered_kms_uk_key_block = match object {
         Object::PrivateKey { key_block } => key_block,
         _other => {
@@ -214,7 +249,7 @@ pub fn access_policy_serialization() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_abe_encrypt_decrypt() -> KResult<()> {
     let clap_config = https_clap_config();
 
@@ -249,8 +284,14 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    let master_private_key_id = &ckr.private_key_unique_identifier;
-    let master_public_key_id = &ckr.public_key_unique_identifier;
+    let master_private_key_id = ckr
+        .private_key_unique_identifier
+        .as_str()
+        .context("There should be a private key unique identifier in the response")?;
+    let master_public_key_id = ckr
+        .public_key_unique_identifier
+        .as_str()
+        .context("There should be a public key unique identifier in the response")?;
 
     // encrypt a resource MKG + confidential
     let confidential_authentication_data = b"cc the uid confidential".to_vec();
@@ -270,7 +311,12 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    assert_eq!(master_public_key_id, &er.unique_identifier);
+    assert_eq!(
+        master_public_key_id,
+        er.unique_identifier
+            .as_str()
+            .context("There should be a unique identifier in the response")?
+    );
     let confidential_mkg_encrypted_data = er.data.context("There should be encrypted data")?;
 
     // check it doesn't work with invalid tenant
@@ -308,7 +354,12 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    assert_eq!(master_public_key_id, &er.unique_identifier);
+    assert_eq!(
+        master_public_key_id,
+        er.unique_identifier
+            .as_str()
+            .context("There should be a unique identifier in the response")?
+    );
     let secret_fin_encrypted_data = er.data.context("There should be encrypted data")?;
 
     // check it doesn't work with invalid tenant
@@ -341,7 +392,10 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    let secret_mkg_fin_user_key = &cr.unique_identifier;
+    let secret_mkg_fin_user_key = &cr
+        .unique_identifier
+        .as_str()
+        .context("There should be a unique identifier in the response")?;
 
     // decrypt resource MKG + confidential
     let dr = kms
@@ -432,7 +486,7 @@ async fn test_abe_encrypt_decrypt() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_abe_json_access() -> KResult<()> {
     let clap_config = https_clap_config();
 
@@ -465,7 +519,10 @@ async fn test_abe_json_access() -> KResult<()> {
 
     // create Key Pair
     let ckr = kms.create_key_pair(master_keypair, owner, None).await?;
-    let master_private_key_uid = &ckr.private_key_unique_identifier;
+    let master_private_key_uid = ckr
+        .private_key_unique_identifier
+        .to_string()
+        .context("There should be a private key unique identifier in the response")?;
 
     // define search criteria
     let search_attrs = Attributes {
@@ -502,7 +559,7 @@ async fn test_abe_json_access() -> KResult<()> {
         .create(
             build_create_user_decryption_private_key_request(
                 secret_mkg_fin_access_policy,
-                master_private_key_uid,
+                &master_private_key_uid,
                 EMPTY_TAGS,
             )?,
             owner,
@@ -529,7 +586,7 @@ async fn test_abe_json_access() -> KResult<()> {
     Ok(())
 }
 
-#[actix_rt::test]
+#[tokio::test]
 async fn test_import_decrypt() -> KResult<()> {
     let clap_config = https_clap_config();
 
@@ -564,8 +621,14 @@ async fn test_import_decrypt() -> KResult<()> {
         )
         .await?;
     debug!("  -> response {:?}", cr);
-    let sk_uid = cr.private_key_unique_identifier;
-    let pk_uid = cr.public_key_unique_identifier;
+    let sk_uid = cr
+        .private_key_unique_identifier
+        .to_string()
+        .context("There should be a private key unique identifier in the response")?;
+    let pk_uid = cr
+        .public_key_unique_identifier
+        .to_string()
+        .context("There should be a public key unique identifier in the response")?;
 
     // check the generated id is an UUID
     let sk_uid_ = Uuid::parse_str(&sk_uid).map_err(|e| KmsError::InvalidRequest(e.to_string()))?;
@@ -589,7 +652,12 @@ async fn test_import_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    assert_eq!(&pk_uid, &er.unique_identifier);
+    assert_eq!(
+        &pk_uid,
+        er.unique_identifier
+            .as_str()
+            .context("There should be a unique identifier in the response")?
+    );
     let confidential_mkg_encrypted_data = er.data.context("There should be encrypted data")?;
 
     // Create a user decryption key MKG | FIN + secret
@@ -605,19 +673,28 @@ async fn test_import_decrypt() -> KResult<()> {
             None,
         )
         .await?;
-    let secret_mkg_fin_user_key = &cr.unique_identifier;
+    let secret_mkg_fin_user_key = cr
+        .unique_identifier
+        .to_string()
+        .context("There should be a unique identifier in the response as string")?;
 
     // Retrieve the user key...
     let gr_sk = kms
         .get(Get::from(secret_mkg_fin_user_key.as_str()), owner, None)
         .await?;
-    assert_eq!(secret_mkg_fin_user_key, &gr_sk.unique_identifier);
+    assert_eq!(
+        secret_mkg_fin_user_key,
+        gr_sk
+            .unique_identifier
+            .as_str()
+            .context("There should be a unique identifier in the response")?
+    );
     assert_eq!(ObjectType::PrivateKey, gr_sk.object_type);
 
     // ...and reimport it under custom uid (won't work)
-    let custom_sk_uid = uuid::Uuid::new_v4().to_string();
+    let custom_sk_uid = Uuid::new_v4().to_string();
     let request = Import {
-        unique_identifier: custom_sk_uid.clone(),
+        unique_identifier: UniqueIdentifier::TextString(custom_sk_uid.clone()),
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(false),
         key_wrap_type: None,
@@ -646,16 +723,22 @@ async fn test_import_decrypt() -> KResult<()> {
             owner,
             None,
         )
-        .await;
-    // Decryption fails: it cannot find the key.
-    // When importing the key, attributes are not set correctly
-    // in the import request
-    assert!(dr.is_err());
+        .await?;
+    // Decryption used to fails: import attributes were incorrect;
+    // this seems fixed since #71. Leaving the test in case this pops-up again
+    let decrypted_data: DecryptedData = dr
+        .data
+        .context("There should be decrypted data")?
+        .as_slice()
+        .try_into()
+        .unwrap();
+    assert_eq!(confidential_mkg_data, &decrypted_data.plaintext[..]);
+    assert!(decrypted_data.metadata.is_empty());
 
     // ...and reimport it under custom uid (will work)
-    let custom_sk_uid = uuid::Uuid::new_v4().to_string();
+    let custom_sk_uid = Uuid::new_v4().to_string();
     let request = Import {
-        unique_identifier: custom_sk_uid.clone(),
+        unique_identifier: UniqueIdentifier::TextString(custom_sk_uid.clone()),
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(false),
         key_wrap_type: None,

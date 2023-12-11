@@ -19,7 +19,7 @@ use num_bigint_dig::BigUint;
 use crate::KeyPair;
 
 pub const SECRET_KEY_LENGTH: usize = CURVE_25519_SECRET_LENGTH;
-pub const Q_LENGTH_BITS: i32 = (SECRET_KEY_LENGTH * 8) as i32;
+pub const Q_LENGTH_BITS: i32 = 253;
 
 /// convert to a X25519 256 bits KMIP Public Key
 /// no check performed
@@ -27,7 +27,7 @@ pub const Q_LENGTH_BITS: i32 = (SECRET_KEY_LENGTH * 8) as i32;
 pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Object {
     Object::PublicKey {
         key_block: KeyBlock {
-            cryptographic_algorithm: CryptographicAlgorithm::ECDH,
+            cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
             key_format_type: KeyFormatType::TransparentECPublicKey,
             key_compression_type: None,
             key_value: KeyValue {
@@ -59,7 +59,7 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Obj
                     ..Attributes::default()
                 }),
             },
-            cryptographic_length: Q_LENGTH_BITS,
+            cryptographic_length: Some(Q_LENGTH_BITS),
             key_wrapping_data: None,
         },
     }
@@ -71,7 +71,7 @@ pub fn to_curve_25519_256_public_key(bytes: &[u8], private_key_uid: &str) -> Obj
 pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Object {
     Object::PrivateKey {
         key_block: KeyBlock {
-            cryptographic_algorithm: CryptographicAlgorithm::ECDH,
+            cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
             key_format_type: KeyFormatType::TransparentECPrivateKey,
             key_compression_type: None,
             key_value: KeyValue {
@@ -103,13 +103,13 @@ pub fn to_curve_25519_256_private_key(bytes: &[u8], public_key_uid: &str) -> Obj
                     ..Attributes::default()
                 }),
             },
-            cryptographic_length: Q_LENGTH_BITS,
+            cryptographic_length: Some(Q_LENGTH_BITS),
             key_wrapping_data: None,
         },
     }
 }
 
-/// Generate a key CURVE 25519 Key Pair
+/// Generate a X25519 Key Pair
 pub fn create_x25519_key_pair<R>(
     rng: &mut R,
     private_key_uid: &str,
@@ -141,4 +141,56 @@ where
     let private_key = to_curve_25519_256_private_key(private_key.as_bytes(), public_key_uid);
     let public_key = to_curve_25519_256_public_key(public_key.as_bytes(), private_key_uid);
     Ok(KeyPair::new(private_key, public_key))
+}
+
+#[cfg(test)]
+mod tests {
+    use cloudproof::reexport::crypto_core::{reexport::rand_core::SeedableRng, CsRng};
+    use cosmian_kmip::kmip::kmip_data_structures::KeyMaterial;
+    use openssl::pkey::{Id, PKey};
+
+    use crate::crypto::curve_25519::operation::create_x25519_key_pair;
+
+    #[test]
+    fn test_x25519_conversions() {
+        let mut rng = CsRng::from_entropy();
+
+        // Create a Key pair
+        // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
+        // - the public key is a TransparentEcPublicKey where the key value is the bytes of the Montgomery point
+        let wrap_key_pair = create_x25519_key_pair(&mut rng, "sk_uid", "pk_uid").unwrap();
+
+        //
+        // public key
+        //
+        let original_public_key_value = &wrap_key_pair.public_key().key_block().unwrap().key_value;
+        let original_public_key_bytes = match &original_public_key_value.key_material {
+            KeyMaterial::TransparentECPublicKey { q_string, .. } => q_string,
+            _ => panic!("Not a transparent public key"),
+        };
+        // try to convert to openssl
+        let p_key = PKey::public_key_from_raw_bytes(original_public_key_bytes, Id::X25519).unwrap();
+        // convert back to bytes
+        let raw_bytes = p_key.raw_public_key().unwrap();
+        assert_eq!(&raw_bytes, original_public_key_bytes);
+
+        //
+        // private key
+        //
+        let original_private_key_value =
+            &wrap_key_pair.private_key().key_block().unwrap().key_value;
+        let original_private_key_bytes = match &original_private_key_value.key_material {
+            KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be(),
+            _ => panic!("Not a transparent private key"),
+        };
+        // try to convert to openssl
+        let p_key =
+            PKey::private_key_from_raw_bytes(&original_private_key_bytes, Id::X25519).unwrap();
+        // convert back to bytes
+        let raw_bytes = p_key.raw_private_key().unwrap();
+        assert_eq!(raw_bytes, original_private_key_bytes);
+        // get public key from private
+        let raw_public_key_bytes = p_key.raw_public_key().unwrap();
+        assert_eq!(&raw_public_key_bytes, original_public_key_bytes);
+    }
 }

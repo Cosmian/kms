@@ -4,7 +4,7 @@ use cloudproof::reexport::crypto_core::{
 };
 use cosmian_kmip::kmip::{
     kmip_operations::{Decrypt, Encrypt},
-    kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+    kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
 };
 
 use crate::{
@@ -27,7 +27,7 @@ pub fn test_aes() {
     // encrypt
     let enc_res = aes
         .encrypt(&Encrypt {
-            unique_identifier: Some("blah".to_owned()),
+            unique_identifier: Some(UniqueIdentifier::TextString("blah".to_owned())),
             cryptographic_parameters: Some(CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 initial_counter_value: Some(42),
@@ -44,7 +44,7 @@ pub fn test_aes() {
     // decrypt
     let dec_res = aes
         .decrypt(&Decrypt {
-            unique_identifier: Some("blah".to_owned()),
+            unique_identifier: Some(UniqueIdentifier::TextString("blah".to_owned())),
             cryptographic_parameters: Some(CryptographicParameters {
                 cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
                 initial_counter_value: Some(42),

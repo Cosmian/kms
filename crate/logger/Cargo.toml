@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_logger"
-version = "4.9.1"
+version = "4.10.0"
 authors = ["Emmanuel Coste <emmanuel.coste@cosmian.com>"]
 edition = "2021"
 license-file = "../../LICENSE.md"
@@ -8,6 +8,3 @@ license-file = "../../LICENSE.md"
 [dependencies]
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tracing-tree = { workspace = true }
-# Uncomment when `env_logger` is finally updated in tracing-log crate.
-# tracing-log = { workspace = true }

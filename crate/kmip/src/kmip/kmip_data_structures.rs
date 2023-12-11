@@ -2,6 +2,7 @@ use std::clone::Clone;
 
 use num_bigint_dig::BigUint;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};
 use crate::{
@@ -23,12 +24,22 @@ use crate::{
 #[serde(rename_all = "PascalCase")]
 pub struct KeyBlock {
     pub key_format_type: KeyFormatType,
+    /// Indicates the format of the elliptic curve public key. By default, the public key is uncompressed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_compression_type: Option<KeyCompressionType>,
-    // may be a KeyValue serialized struct - see specs
+    /// Byte String: for wrapped Key Value; Structure: for plaintext Key Value
     pub key_value: KeyValue,
-    pub cryptographic_algorithm: CryptographicAlgorithm,
-    pub cryptographic_length: i32,
+    /// MAY be omitted only if this information is available from the Key Value.
+    /// Does not apply to Secret Data  or Opaque.
+    /// If present, the Cryptographic Length SHALL also be present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    /// MAY be omitted only if this information is available from the Key Value.
+    /// Does not apply to Secret Data (or Opaque.
+    /// If present, the Cryptographic Algorithm SHALL also be present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cryptographic_length: Option<i32>,
+    /// SHALL only be present if the key is wrapped.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key_wrapping_data: Option<KeyWrappingData>,
 }
@@ -36,21 +47,25 @@ pub struct KeyBlock {
 impl KeyBlock {
     /// Give a slice view on the key bytes (which may be wrapped)
     /// Returns an error if there is no valid key material
-    pub fn key_bytes(&self) -> Result<Vec<u8>, KmipError> {
+    /// For a transparent symmetric key, this is the key itself
+    /// For a wrapped key, this is the wrapped key
+    /// For a Transparent EC Private key it is big endian representation
+    /// of the scalar of the private key which is also the .
+    /// For a Transparent EC Public key it is the raw bytes of Q string (the EC point)
+    /// Other keys are not supported.
+    pub fn key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
         match &self.key_value.key_material {
-            KeyMaterial::ByteString(v) => Ok(v.clone()),
-            KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
-            KeyMaterial::TransparentECPrivateKey {
-                d,
-                recommended_curve: _,
-            } => Ok(d.to_bytes_be()),
-            KeyMaterial::TransparentECPublicKey {
-                recommended_curve: _,
-                q_string,
-            } => Ok(q_string.clone()),
-            other => Err(KmipError::InvalidKmipValue(
+            KeyMaterial::ByteString(v) => Ok(Zeroizing::new(v.clone())),
+            KeyMaterial::TransparentSymmetricKey { key } => Ok(Zeroizing::new(key.clone())),
+            KeyMaterial::TransparentECPrivateKey { d, .. } => Ok(Zeroizing::new(d.to_bytes_be())),
+            KeyMaterial::TransparentECPublicKey { q_string, .. } => {
+                Ok(Zeroizing::new(q_string.clone()))
+            }
+            _ => Err(KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Data_Type,
-                format!("The key has an invalid key material: {other:?}"),
+                "Key bytes can only be recovered from ByteString or TransparentSymmetricKey key \
+                 material."
+                    .to_string(),
             )),
         }
     }
@@ -58,7 +73,9 @@ impl KeyBlock {
     /// Extract the Key bytes from the given `KeyBlock`
     /// and give an optional reference to `Attributes`
     /// Returns an error if there is no valid key material
-    pub fn key_bytes_and_attributes(&self) -> Result<(Vec<u8>, Option<&Attributes>), KmipError> {
+    pub fn key_bytes_and_attributes(
+        &self,
+    ) -> Result<(Zeroizing<Vec<u8>>, Option<&Attributes>), KmipError> {
         let key = self.key_bytes().map_err(|e| {
             KmipError::InvalidKmipValue(ErrorReason::Invalid_Data_Type, e.to_string())
         })?;
@@ -156,13 +173,21 @@ impl KeyBlock {
 /// • The Key Value Byte String is either the wrapped TTLV-encoded Key Value
 /// structure, or the wrapped un-encoded value of the Byte String Key Material
 /// field.
-#[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "PascalCase")]
 #[allow(clippy::large_enum_variant)]
 pub struct KeyValue {
-    #[serde(rename = "KeyMaterial")]
     pub key_material: KeyMaterial,
-    #[serde(rename = "Attributes", skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "attributes_is_default_or_none")]
     pub attributes: Option<Attributes>,
+}
+
+// Attributes is default is a fix for https://github.com/Cosmian/kms/issues/92
+fn attributes_is_default_or_none<T: Default + PartialEq + Serialize>(val: &Option<T>) -> bool {
+    match val {
+        Some(v) => *v == T::default(),
+        None => true,
+    }
 }
 
 impl KeyValue {
@@ -193,18 +218,6 @@ impl KeyValue {
                 format!("The key has an invalid key material: {other:?}"),
             )),
         }
-    }
-}
-
-impl Serialize for KeyValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let mut st = serializer.serialize_struct("KeyValue", 2)?;
-        st.serialize_field("KeyMaterial", &self.key_material)?;
-        st.serialize_field("Attributes", &self.attributes)?;
-        st.end()
     }
 }
 
@@ -268,7 +281,7 @@ impl Default for KeyWrappingData {
             mac_or_signature_key_information: None,
             mac_or_signature: None,
             iv_counter_nonce: None,
-            encoding_option: Some(EncodingOption::NoEncoding),
+            encoding_option: Some(EncodingOption::TTLVEncoding),
         }
     }
 }
@@ -309,24 +322,11 @@ impl Default for KeyWrappingSpecification {
             encryption_key_information: None,
             mac_or_signature_key_information: None,
             attribute_name: None,
-            encoding_option: Some(EncodingOption::NoEncoding),
+            encoding_option: Some(EncodingOption::TTLVEncoding),
         }
     }
 }
 
-// KeyMaterial has variants that do not appear in the TTLV
-// Typically, for a Transparent Symmetric key it will look like
-// this
-// ```
-// TTLV {
-//     tag: "KeyMaterial".to_string(),
-//     value: TTLValue::Structure(vec![TTLV {
-//         tag: "Key".to_string(),
-//         value: TTLValue::ByteString(key_value.to_vec()),
-//     }]),
-// }
-// ```
-// So we use the `untagged` which unfortunately breaks pascalCase
 #[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(untagged)]
 pub enum KeyMaterial {

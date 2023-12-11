@@ -2,9 +2,6 @@ use cloudproof::reexport::crypto_core::{key_unwrap, key_wrap};
 
 use crate::{crypto::password_derivation::derive_key_from_password, error::KmipUtilsError};
 
-/// The vendor ID to use for Cosmian specific attributes
-pub const VENDOR_ID_COSMIAN: &str = "cosmian";
-
 const WRAPPING_SECRET_LENGTH: usize = 32;
 
 /// Wrap a key using a password

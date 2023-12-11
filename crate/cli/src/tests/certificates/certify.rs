@@ -1,311 +1,329 @@
-use std::{
-    fs::{self, File},
-    io::Read,
-    process::Command,
+use std::{path::PathBuf, process::Command};
+
+use assert_cmd::cargo::CommandCargoExt;
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_types::{Attributes, LinkType},
+    ttlv::{deserializer::from_ttlv, TTLV},
 };
+use cosmian_logger::log_utils::log_init;
+use openssl::{nid::Nid, x509::X509};
+use uuid::Uuid;
 
-use assert_cmd::prelude::*;
-use tempfile::TempDir;
-use tracing::debug;
-
-use super::SUB_COMMAND;
 use crate::{
-    actions::certificates::CertificateExportFormat,
+    actions::{
+        certificates::{CertificateExportFormat, CertificateInputFormat},
+        shared::utils::{read_from_json_file, read_object_from_json_ttlv_file},
+    },
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        certificates::openssl::check_certificate,
-        shared::locate,
+        certificates::{export::export_certificate, import::import_certificate},
+        elliptic_curve::create_key_pair::create_ec_key_pair,
+        shared::export_key,
         utils::{extract_uids::extract_uid, recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
 
-// if logs are required, declare in bash: `export RUST_LOG="cosmian_kms_server=debug,cosmian_kms_cli=debug"`
+#[allow(clippy::too_many_arguments)]
 pub fn certify(
     cli_conf_path: &str,
-    ca: &str,
-    subject: &str,
-    tags: &[&str],
+    csr_file: Option<String>,
+    public_key_id_to_certify: Option<String>,
+    subject_name: Option<String>,
+    issuer_private_key_id: Option<String>,
+    issuer_certificate_key_id: Option<String>,
+    certificate_id: Option<String>,
+    days: Option<usize>,
+    tags: Option<&[&str]>,
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
-
-    let mut args = vec!["create"];
-
-    args.extend(vec!["--ca_subject_common_names", ca]);
-    args.extend(vec!["--subject_common_name", subject]);
-
-    debug!("certify: tags: {:?}", tags);
-
-    // add tags
-    for tag in tags {
-        args.push("--tag");
-        args.push(tag);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+    let mut args: Vec<String> = vec!["certify".to_owned()];
+    if let Some(issuer_certificate_key_id) = issuer_certificate_key_id {
+        args.push("--issuer-certificate-id".to_owned());
+        args.push(issuer_certificate_key_id);
     }
-    cmd.arg(SUB_COMMAND).args(args);
+    if let Some(issuer_private_key_id) = issuer_private_key_id {
+        args.push("--issuer-private-key-id".to_owned());
+        args.push(issuer_private_key_id);
+    }
+    if let Some(csr_file) = csr_file {
+        args.push("--certificate-signing-request".to_owned());
+        args.push(csr_file);
+    }
+    if let Some(public_key_id_to_certify) = public_key_id_to_certify {
+        args.push("--public-key-id-to-certify".to_owned());
+        args.push(public_key_id_to_certify);
+    }
+    if let Some(subject_name) = subject_name {
+        args.push("--subject-name".to_owned());
+        args.push(subject_name);
+    }
+    if let Some(certificate_id) = certificate_id {
+        args.push(certificate_id);
+    }
+    if let Some(days) = days {
+        args.push("--days".to_owned());
+        args.push(days.to_string());
+    }
+    if let Some(tags) = tags {
+        for tag in tags {
+            args.push("--tag".to_owned());
+            args.push((*tag).to_string());
+        }
+    }
+    cmd.arg("certificates").args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
-        let output = std::str::from_utf8(&output.stdout)?;
-
-        let unique_identifier = extract_uid(output, "The certificate was created with id")
-            .ok_or_else(|| {
-                CliError::Default("failed extracting the unique identifier".to_owned())
-            })?;
-        return Ok(unique_identifier.to_string())
-    }
-
-    Err(CliError::Default(
-        std::str::from_utf8(&output.stderr)?.to_owned(),
-    ))
-}
-
-fn get_file_as_byte_vec(filename: &str) -> Vec<u8> {
-    let mut f = File::open(filename).expect("no file found");
-    let metadata = fs::metadata(filename).expect("unable to read metadata");
-    let mut buffer = vec![0; metadata.len() as usize];
-    let _ret = f.read(&mut buffer).expect("buffer overflow");
-
-    buffer
-}
-
-#[allow(clippy::too_many_arguments)]
-pub fn export(
-    cli_conf_path: &str,
-    sub_command: &str,
-    tags_args: Option<&[&str]>,
-    certificate_id: &str,
-    certificate_file: &str,
-    output_format: CertificateExportFormat,
-    wrap_key_id: Option<String>,
-    allow_revoked: bool,
-) -> Result<(), CliError> {
-    let mut args = vec!["export"];
-    match tags_args {
-        Some(tags) => {
-            // add tags
-            for tag in tags {
-                args.push("--tag");
-                args.push(tag);
-            }
-        }
-        None => {
-            args.push("--certificate-id");
-            args.push(certificate_id);
-        }
-    };
-    args.push(certificate_file);
-    match output_format {
-        CertificateExportFormat::PEM => {
-            args.push("--format");
-            args.push("pem");
-        }
-        CertificateExportFormat::PKCS12 => {
-            args.push("--format");
-            args.push("pkcs12");
-            args.push("--pkcs12_password");
-            args.push("secret");
-        }
-        CertificateExportFormat::TTLV => {
-            args.push("--format");
-            args.push("ttlv");
-        }
-    };
-    if let Some(wki) = &wrap_key_id {
-        args.push("--wrap-key-id");
-        args.push(wki);
-    }
-    if allow_revoked {
-        args.push("--allow-revoked");
-    }
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(sub_command).args(args);
-    let output = cmd.output()?;
-    println!("output: {output:?}");
-    if output.status.success() {
-        return Ok(())
+        let import_output = std::str::from_utf8(&output.stdout)?;
+        let imported_key_id = extract_certificate_id(import_output)
+            .ok_or_else(|| CliError::Default("failed extracting the imported key id".to_owned()))?
+            .to_owned();
+        return Ok(imported_key_id)
     }
     Err(CliError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
     ))
 }
 
-pub fn revoke(
-    cli_conf_path: &str,
-    sub_command: &str,
-    certificate_id: &str,
-    revocation_reason: &str,
-) -> Result<(), CliError> {
-    let args: Vec<String> = [
-        "revoke",
-        "--certificate-id",
-        certificate_id,
-        revocation_reason,
-    ]
-    .into_iter()
-    .map(std::string::ToString::to_string)
-    .collect();
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(sub_command).args(args);
-    let output = cmd.output()?;
-    if output.status.success() {
-        return Ok(())
-    }
-    Err(CliError::Default(
-        std::str::from_utf8(&output.stderr)?.to_owned(),
-    ))
-}
-
-pub fn destroy(
-    cli_conf_path: &str,
-    sub_command: &str,
-    certificate_id: &str,
-) -> Result<(), CliError> {
-    let args: Vec<String> = vec!["destroy", "--certificate-id", certificate_id]
-        .into_iter()
-        .map(std::string::ToString::to_string)
-        .collect();
-    let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg(sub_command).args(args);
-    let output = cmd.output()?;
-    if output.status.success() {
-        return Ok(())
-    }
-    Err(CliError::Default(
-        std::str::from_utf8(&output.stderr)?.to_owned(),
-    ))
+/// Extract the imported key id
+pub fn extract_certificate_id(text: &str) -> Option<&str> {
+    extract_uid(text, ".*? was issued with id")
 }
 
 #[tokio::test]
-pub async fn test_certify() -> Result<(), CliError> {
-    // create a temp dir
-    let tmp_dir = TempDir::new()?;
-    let tmp_path = tmp_dir.into_path();
-    // let tmp_path = std::path::Path::new("./");
+async fn certify_a_csr_test() -> Result<(), CliError> {
+    log_init("cosmian_kms_server=debug");
+    // Create a test server
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
-    let ca = "RootCA/SubCA";
-    let hierarchical_depth = ca.split('/').count();
-    let tags = &["certificate"];
 
-    // create, export, check, revoke and destroy
-    {
-        let subject = "My server";
-        let certificate_id = certify(&ctx.owner_cli_conf_path, ca, subject, tags)?;
+    // import Root CA
+    import_certificate(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        "test_data/certificates/csr/ca.crt",
+        CertificateInputFormat::Pem,
+        None,
+        Some(Uuid::new_v4().to_string()),
+        None,
+        None,
+        Some(&["root_ca"]),
+        false,
+        true,
+    )?;
 
-        // Count the number of KMIP objects created
-        let ids = locate(&ctx.owner_cli_conf_path, Some(tags), None, None, None)?;
-        // Expected 3 kmip objects per certificate (including public and private keys):
-        // - 1 public key, 1 private key and 1 certificate for the root CA
-        // - 1 public key, 1 private key and 1 certificate for the sub CA
-        // - 1 public key, 1 private key and 1 certificate for the leaf certificate
-        assert_eq!(ids.len(), 3 * (hierarchical_depth + 1));
+    // import Intermediate p12
+    let issuer_private_key_id = import_certificate(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        "test_data/certificates/csr/intermediate.p12",
+        CertificateInputFormat::Pkcs12,
+        Some("secret"),
+        Some(Uuid::new_v4().to_string()),
+        None,
+        None,
+        Some(&["intermediate_ca"]),
+        false,
+        true,
+    )?;
 
-        // create another certificate (CA root already created)
-        debug!("\n\n\ntest_certify: create another certificate");
-        {
-            let subject = "My server Number 2";
-            let _certificate_id = certify(&ctx.owner_cli_conf_path, ca, subject, tags)?;
-        }
+    // Certify the CSR with the intermediate CA
+    let certificate_id = certify(
+        &ctx.owner_cli_conf_path,
+        Some("test_data/certificates/csr/leaf.csr".to_owned()),
+        None,
+        None,
+        Some(issuer_private_key_id.clone()),
+        None,
+        None,
+        None,
+        Some(&["certify_a_csr_test"]),
+    )?;
 
-        let ids = locate(&ctx.owner_cli_conf_path, Some(tags), None, None, None)?;
-        // Expected 3 more kmip objects:
-        // - 1 public key, 1 private key and 1 certificate for this new certificate
-        assert_eq!(ids.len(), 3 * (hierarchical_depth + 2));
+    // export the certificate
+    export_certificate(
+        &ctx.owner_cli_conf_path,
+        &certificate_id,
+        "/tmp/exported_cert.json",
+        Some(CertificateExportFormat::JsonTtlv),
+        None,
+        true,
+    )
+    .unwrap();
+    let cert = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_cert.json")).unwrap();
+    let cert_x509_der = match &cert {
+        Object::Certificate {
+            certificate_value, ..
+        } => certificate_value,
+        _ => panic!("wrong object type"),
+    };
+    // check that the certificate is valid by parsing it using openssl
+    let cert_x509 = X509::from_der(cert_x509_der).unwrap();
+    // print the subject name
+    assert_eq!(
+        "Test Leaf",
+        cert_x509
+            .subject_name()
+            .entries_by_nid(Nid::COMMONNAME)
+            .next()
+            .unwrap()
+            .data()
+            .as_utf8()
+            .unwrap()
+            .to_string()
+    );
+    let ttlv: TTLV =
+        read_from_json_file(&PathBuf::from("/tmp/exported_cert.attributes.json")).unwrap();
+    let attributes: Attributes = from_ttlv(&ttlv).unwrap();
+    // check that the attributes contain a certificate link to the intermediate
+    let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
+    // export the intermediate certificate
+    export_certificate(
+        &ctx.owner_cli_conf_path,
+        &certificate_link,
+        "/tmp/exported_intermediate_cert.json",
+        Some(CertificateExportFormat::Pem),
+        None,
+        true,
+    )?;
+    // check that the attributes contain a certificate link to the private key
+    let ttlv: TTLV = read_from_json_file(&PathBuf::from(
+        "/tmp/exported_intermediate_cert.attributes.json",
+    ))
+    .unwrap();
+    let attributes: Attributes = from_ttlv(&ttlv).unwrap();
+    let private_key_link = attributes.get_link(LinkType::PrivateKeyLink).unwrap();
+    assert_eq!(private_key_link, issuer_private_key_id);
+    Ok(())
+}
 
-        // Export certificate as PKCS12
-        debug!("\n\n\ntest_certify: export PKCS12");
-        let export_filename = tmp_path.join("output.p12").to_str().unwrap().to_owned();
-        export(
-            &ctx.owner_cli_conf_path,
-            SUB_COMMAND,
-            None,
-            &certificate_id,
-            &export_filename,
-            CertificateExportFormat::PKCS12,
-            None,
-            false,
-        )?;
+#[tokio::test]
+async fn certify_a_public_key_test() -> Result<(), CliError> {
+    log_init("cosmian_kms_server=debug");
+    // Create a test server
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
-        // Read the bytes of the file and check them with openssl
-        let certificate_bytes = get_file_as_byte_vec(&export_filename);
-        check_certificate(&certificate_bytes, "secret");
+    // import Root CA
+    import_certificate(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        "test_data/certificates/csr/ca.crt",
+        CertificateInputFormat::Pem,
+        None,
+        Some(Uuid::new_v4().to_string()),
+        None,
+        None,
+        Some(&["root_ca"]),
+        false,
+        true,
+    )?;
 
-        debug!("\n\n\ntest_certify: export PEM");
-        // Export certificate as PEM only
-        let export_filename = tmp_path.join("cert.pem").to_str().unwrap().to_owned();
-        export(
-            &ctx.owner_cli_conf_path,
-            SUB_COMMAND,
-            None,
-            &certificate_id,
-            &export_filename,
-            CertificateExportFormat::PEM,
-            None,
-            false,
-        )?;
-        let certificate_bytes = get_file_as_byte_vec(&export_filename);
-        let certificate_str = std::str::from_utf8(&certificate_bytes).unwrap();
-        println!("Certificate PEM: {certificate_str}");
+    // import Intermediate p12
+    let issuer_private_key_id = import_certificate(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        "test_data/certificates/csr/intermediate.p12",
+        CertificateInputFormat::Pkcs12,
+        Some("secret"),
+        Some(Uuid::new_v4().to_string()),
+        None,
+        None,
+        Some(&["intermediate_ca"]),
+        false,
+        true,
+    )?;
 
-        debug!("\n\n\ntest_certify: export RAW KMIP TTLV");
-        // Export certificate as RAW KMIP TTLV
-        let export_filename = tmp_path.join("ttlv.json").to_str().unwrap().to_owned();
-        export(
-            &ctx.owner_cli_conf_path,
-            SUB_COMMAND,
-            None,
-            &certificate_id,
-            &export_filename,
-            CertificateExportFormat::TTLV,
-            None,
-            false,
-        )?;
+    // create a Ed25519 Key Pair
+    let (_private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
 
-        // Export root CA certificate as PEM only
-        let export_filename = tmp_path.join("root.pem").to_str().unwrap().to_owned();
-        export(
-            &ctx.owner_cli_conf_path,
-            SUB_COMMAND,
-            Some(&["_cert", "_cert_ca=RootCA"]),
-            &certificate_id,
-            &export_filename,
-            CertificateExportFormat::PEM,
-            None,
-            false,
-        )?;
-        let certificate_bytes = get_file_as_byte_vec(&export_filename);
-        let certificate_str = std::str::from_utf8(&certificate_bytes).unwrap();
-        println!("CA ROOT PEM: {certificate_str}");
+    // Certify the public key with the intermediate CA
+    let certificate_id = certify(
+        &ctx.owner_cli_conf_path,
+        None,
+        Some(public_key_id),
+        Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = kmserver.acme.com".to_string()),
+        Some(issuer_private_key_id.clone()),
+        None,
+        None,
+        None,
+        None,
+    )?;
 
-        // Export sub CA certificate as PEM only
-        let export_filename = tmp_path.join("subca.pem").to_str().unwrap().to_owned();
-        export(
-            &ctx.owner_cli_conf_path,
-            SUB_COMMAND,
-            Some(&["_cert", "_cert_ca=SubCA"]),
-            &certificate_id,
-            &export_filename,
-            CertificateExportFormat::PEM,
-            None,
-            false,
-        )?;
-        let certificate_bytes = get_file_as_byte_vec(&export_filename);
-        let certificate_str = std::str::from_utf8(&certificate_bytes).unwrap();
-        println!("CA SubCA PEM: {certificate_str}");
+    // export the certificate
+    export_certificate(
+        &ctx.owner_cli_conf_path,
+        &certificate_id,
+        "/tmp/exported_cert.json",
+        Some(CertificateExportFormat::JsonTtlv),
+        None,
+        true,
+    )
+    .unwrap();
+    let cert = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_cert.json")).unwrap();
+    let cert_x509_der = match &cert {
+        Object::Certificate {
+            certificate_value, ..
+        } => certificate_value,
+        _ => panic!("wrong object type"),
+    };
+    // check that the certificate is valid by parsing it using openssl
+    let cert_x509 = X509::from_der(cert_x509_der).unwrap();
+    // print the subject name
+    assert_eq!(
+        "kmserver.acme.com",
+        cert_x509
+            .subject_name()
+            .entries_by_nid(Nid::COMMONNAME)
+            .next()
+            .unwrap()
+            .data()
+            .as_utf8()
+            .unwrap()
+            .to_string()
+    );
+    let ttlv: TTLV =
+        read_from_json_file(&PathBuf::from("/tmp/exported_cert.attributes.json")).unwrap();
+    let certificate_attributes: Attributes = from_ttlv(&ttlv).unwrap();
 
-        // Revoke it
-        revoke(
-            &ctx.owner_cli_conf_path,
-            SUB_COMMAND,
-            &certificate_id,
-            "cert revocation test",
-        )?;
-        destroy(&ctx.owner_cli_conf_path, SUB_COMMAND, &certificate_id).unwrap();
-    }
+    // check that the attributes contain a certificate link to the intermediate
+    let certificate_link = certificate_attributes
+        .get_link(LinkType::CertificateLink)
+        .unwrap();
+    // export the intermediate certificate
+    export_certificate(
+        &ctx.owner_cli_conf_path,
+        &certificate_link,
+        "/tmp/exported_intermediate_cert.json",
+        Some(CertificateExportFormat::Pem),
+        None,
+        true,
+    )?;
+
+    // check that the certificate contains a link to the public key
+    let public_key_link = certificate_attributes
+        .get_link(LinkType::PublicKeyLink)
+        .unwrap();
+    export_key(
+        &ctx.owner_cli_conf_path,
+        "ec",
+        &public_key_link,
+        "/tmp/exported_public_key.json",
+        None,
+        false,
+        None,
+        false,
+    )?;
+    let public_key =
+        read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_public_key.json")).unwrap();
+    //check that the public key contains a link to the certificate
+    let certificate_link = public_key
+        .attributes()?
+        .get_link(LinkType::CertificateLink)
+        .unwrap();
+    assert_eq!(certificate_link, certificate_id);
 
     Ok(())
 }

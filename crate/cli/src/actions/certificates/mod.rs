@@ -1,31 +1,30 @@
 use clap::Subcommand;
 use cosmian_kms_client::KmsRestClient;
+pub use export_certificate::CertificateExportFormat;
+pub use import_certificate::CertificateInputFormat;
 
 use self::{
-    create_certificate::CreateCertificateAction, decrypt_certificate::DecryptCertificateAction,
+    certify::CertifyAction, decrypt_certificate::DecryptCertificateAction,
     destroy_certificate::DestroyCertificateAction, encrypt_certificate::EncryptCertificateAction,
     export_certificate::ExportCertificateAction, import_certificate::ImportCertificateAction,
     revoke_certificate::RevokeCertificateAction,
 };
 use crate::error::CliError;
 
-mod create_certificate;
+mod certify;
+
 mod decrypt_certificate;
 mod destroy_certificate;
 mod encrypt_certificate;
 mod export_certificate;
 mod import_certificate;
-mod locate;
 mod revoke_certificate;
-
-pub use export_certificate::CertificateExportFormat;
-pub use import_certificate::CertificateInputFormat;
-pub use locate::{locate_and_get_key_bytes, locate_key};
 
 /// Manage certificates. Create, import, destroy and revoke. Encrypt and decrypt data
 #[derive(Subcommand)]
 pub enum CertificatesCommands {
-    Create(CreateCertificateAction),
+    Certify(CertifyAction),
+    // Create(CreateCertificateAction),
     Decrypt(DecryptCertificateAction),
     Encrypt(EncryptCertificateAction),
     Export(ExportCertificateAction),
@@ -37,7 +36,8 @@ pub enum CertificatesCommands {
 impl CertificatesCommands {
     pub async fn process(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
         match self {
-            Self::Create(action) => action.run(client_connector).await,
+            Self::Certify(action) => action.run(client_connector).await,
+            // Self::Create(action) => action.run(client_connector).await,
             Self::Decrypt(action) => action.run(client_connector).await,
             Self::Encrypt(action) => action.run(client_connector).await,
             Self::Export(action) => action.run(client_connector).await,

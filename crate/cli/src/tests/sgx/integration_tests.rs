@@ -20,7 +20,7 @@ pub async fn test_quote() -> Result<(), CliError> {
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, CONF_PATH);
-    cmd.env("RUST_LOG", "cosmian_kms_cli=debug");
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND)
         .args(vec!["--mr-enclave", "dummy", "/tmp"]);
     recover_cmd_logs(&mut cmd);

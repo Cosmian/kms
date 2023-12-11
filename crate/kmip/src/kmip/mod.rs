@@ -1,3 +1,4 @@
+pub mod extra;
 pub mod kmip_data_structures;
 pub mod kmip_messages;
 pub mod kmip_objects;

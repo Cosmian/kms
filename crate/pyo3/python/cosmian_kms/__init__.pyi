@@ -105,7 +105,7 @@ class KmsClient:
         self,
         attributes: List[Union[Attribute, str]],
         master_secret_key_identifier: Optional[str],
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ) -> Future[Tuple[str, str]]:
         """Rotate the given policy attributes. This will rekey in the KMS:
             - the Master Keys
@@ -123,11 +123,11 @@ class KmsClient:
         self,
         attributes: List[Union[Attribute, str]],
         master_secret_key_identifier: str,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ) -> Tuple[str, str]:
         """
         Remove old rotations from the specified policy attributes.
-        
+
         This will rekey in the KMS:
         - the Master Keys
         - all User Decryption Keys that contain one of these attributes in their policy.
@@ -136,7 +136,7 @@ class KmsClient:
             - attributes (List[Union[Attribute, str]): Attributes to rotate e.g. ["Department::HR"]
             - master_secret_key_identifier (str): Master secret key UID
             - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
-        
+
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
         """
@@ -144,11 +144,11 @@ class KmsClient:
         self,
         attribute: Union[Attribute, str],
         master_secret_key_identifier: str,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ) -> Tuple[str, str]:
         """
         Remove a specific attribute from a keypair's policy.
-        
+
         This will rekey in the KMS:
         - the Master Keys
         - all User Decryption Keys that contain one of these attributes in their policy.
@@ -157,7 +157,7 @@ class KmsClient:
             - attributes (List[Union[Attribute, str]): Attributes to remove e.g. "Department::HR"
             - master_secret_key_identifier (str): Master secret key UID
             - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
-        
+
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
         """
@@ -165,11 +165,11 @@ class KmsClient:
         self,
         attribute: Union[Attribute, str],
         master_secret_key_identifier: str,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ) -> Tuple[str, str]:
         """
         Disable a specific attribute from a keypair's policy.
-        
+
         This will rekey in the KMS:
         - the Master Keys
         - all User Decryption Keys that contain one of these attributes in their policy.
@@ -178,7 +178,7 @@ class KmsClient:
             - attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
             - master_secret_key_identifier (str): Master secret key UID
             - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
-        
+
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
         """
@@ -187,11 +187,11 @@ class KmsClient:
         attribute: Union[Attribute, str],
         is_hybridized: bool,
         master_secret_key_identifier: str,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ) -> Tuple[str, str]:
         """
         Add a specific attribute to a keypair's policy.
-        
+
         This will rekey in the KMS:
         - the Master Keys
         - all User Decryption Keys that contain one of these attributes in their policy.
@@ -201,7 +201,7 @@ class KmsClient:
             - is_hybridized (bool): hint for encryption
             - master_secret_key_identifier (str): Master secret key UID
             - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
-        
+
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
         """
@@ -210,11 +210,11 @@ class KmsClient:
         attribute: Union[Attribute, str],
         new_name: str,
         master_secret_key_identifier: str,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ) -> Tuple[str, str]:
         """
         Add a specific attribute to a keypair's policy.
-        
+
         This will rekey in the KMS:
         - the Master Keys
         - all User Decryption Keys that contain one of these attributes in their policy.
@@ -224,7 +224,7 @@ class KmsClient:
             - new_name (str): the new name for the attribute
             - master_secret_key_identifier (str): Master secret key UID
             - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
-        
+
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
         """

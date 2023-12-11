@@ -6,7 +6,7 @@ use cosmian_kmip::kmip::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
         EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
     },
-    kmip_types::RevocationReason,
+    kmip_types::{RevocationReason, UniqueIdentifier},
 };
 use cosmian_kms_utils::crypto::{
     cover_crypt::{
@@ -18,18 +18,69 @@ use cosmian_kms_utils::crypto::{
     },
     generic::kmip_requests::{build_decryption_request, build_encryption_request},
 };
+use cosmian_logger::log_utils::log_init;
 
 use crate::{
+    error::KmsError,
     result::{KResult, KResultHelper},
     tests::test_utils,
 };
 
-#[actix_web::test]
-async fn integration_tests_with_tags() -> KResult<()> {
-    // log_init("cosmian_kms_server=info");
-
+#[tokio::test]
+async fn test_re_key_with_tags() -> KResult<()> {
     let app = test_utils::test_app().await;
 
+    let policy = policy()?;
+
+    // create Key Pair
+    let mkp_tag = "mkp";
+    let mkp_json_tag = serde_json::to_string(&[mkp_tag.to_owned()])?;
+    let create_key_pair = build_create_master_keypair_request(&policy, [mkp_tag])?;
+    let create_key_pair_response: CreateKeyPairResponse =
+        test_utils::post(&app, &create_key_pair).await?;
+
+    log_init("cosmian_kms_server=debug");
+    let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
+    let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
+
+    //
+    // Re_key all key pairs with matching policy attributes
+    let abe_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
+    let request = build_rekey_keypair_request(
+        &mkp_json_tag,
+        EditPolicyAction::RotateAttributes(abe_policy_attributes),
+    )?;
+    let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
+    assert_eq!(
+        &rekey_keypair_response.private_key_unique_identifier,
+        private_key_unique_identifier
+    );
+    assert_eq!(
+        &rekey_keypair_response.public_key_unique_identifier,
+        public_key_unique_identifier
+    );
+
+    // Encrypt with the re-keyed public key
+    let authentication_data = b"cc the uid".to_vec();
+    let data = "Voilà voilà".as_bytes();
+    let encryption_policy = "Level::Confidential && Department::MKG";
+    let request = build_encryption_request(
+        &mkp_json_tag,
+        Some(encryption_policy.to_string()),
+        data.to_vec(),
+        None,
+        Some(authentication_data.clone()),
+        None,
+    )?;
+    let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
+    let _encrypted_data = encrypt_response
+        .data
+        .expect("There should be encrypted data");
+
+    Ok(())
+}
+
+fn policy() -> Result<Policy, KmsError> {
     let mut policy = Policy::new();
     policy.add_dimension(DimensionBuilder::new(
         "Department",
@@ -48,6 +99,16 @@ async fn integration_tests_with_tags() -> KResult<()> {
         ],
         true,
     ))?;
+    Ok(policy)
+}
+
+#[tokio::test]
+async fn integration_tests_with_tags() -> KResult<()> {
+    log_init("cosmian_kms_server=debug");
+
+    let app = test_utils::test_app().await;
+
+    let policy = policy()?;
 
     // create Key Pair
     let mkp_tag = "mkp";
@@ -193,7 +254,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
     let _revoke_response: RevokeResponse = test_utils::post(
         &app,
         &Revoke {
-            unique_identifier: Some(udk1_json_tag.clone()),
+            unique_identifier: Some(UniqueIdentifier::TextString(udk1_json_tag.to_string())),
             revocation_reason: RevocationReason::TextString("Revocation test".to_owned()),
             compromise_occurrence_date: None,
         },
@@ -271,7 +332,13 @@ async fn integration_tests_with_tags() -> KResult<()> {
     // Destroy user decryption key
     let request = build_destroy_key_request(&udk1_json_tag)?;
     let destroy_response: DestroyResponse = test_utils::post(&app, &request).await?;
-    assert_eq!(&udk1_json_tag, &destroy_response.unique_identifier);
+    assert_eq!(
+        &udk1_json_tag,
+        &destroy_response
+            .unique_identifier
+            .as_str()
+            .context("There should be a unique identifier in the destroy response")?
+    );
 
     Ok(())
 }

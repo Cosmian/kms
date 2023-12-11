@@ -1,14 +1,21 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::CertificateType};
+use cloudproof::reexport::crypto_core::reexport::x509_cert;
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_types::{Attributes, CertificateType, KeyFormatType, LinkType, LinkedObjectIdentifier},
+};
 use cosmian_kms_client::KmsRestClient;
-use openssl::x509::X509;
+use der::{Decode, DecodePem, Encode};
 use tracing::{debug, trace};
-use x509_parser::{nom::AsBytes, pem::parse_x509_pem};
+use x509_cert::Certificate;
 
 use crate::{
-    actions::shared::utils::{import_object, read_bytes_from_file, read_key_from_file},
+    actions::shared::{
+        import_key::build_private_key_from_der_bytes,
+        utils::{import_object, read_bytes_from_file, read_object_from_json_ttlv_file},
+    },
     error::CliError,
 };
 
@@ -17,51 +24,68 @@ const MOZILLA_CCADB: &str =
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum CertificateInputFormat {
-    TTLV,
-    PEM,
-    CHAIN,
+    JsonTtlv,
+    Pem,
+    Der,
+    Chain,
     CCADB,
-    PKCS12,
+    Pkcs12,
 }
 
-/// Import into the KMS database the following elements:
-/// - a certificate (as PEM or TTLV format)
-/// - a private key (as PEM or TTLV format)
-/// - a certificate chain as a PEM-stack
-/// - the Mozilla Common CA Database (CCADB). Automate the Mozilla database fetch.
+/// Import one of the following:
+/// - a certificate: formatted as a X509 PEM (pem), X509 DER (der) or JSON TTLV (json-ttlv)
+/// - a certificate chain as a PEM-stack (chain)
+/// - a PKCS12 file containing a certificate, a private key and possibly a chain (pkcs12)
+/// - the Mozilla Common CA Database (CCADB - fetched by the CLI before import) (ccadb)
 ///
-/// When no certificate unique id is specified, a random UUID v4 is generated.
+/// When no unique id is specified, a unique id based on the key material is generated.
 ///
 /// Tags can later be used to retrieve the certificate. Tags are optional.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
 pub struct ImportCertificateAction {
-    /// The input file in PEM or KMIP-JSON-TTLV format
-    #[clap(required = false)]
+    /// The input file in PEM, KMIP-JSON-TTLV or PKCS#12 format.
+    #[clap(
+        required_if_eq_any([
+            ("input_format", "json-ttlv"),
+            ("input_format", "pem"),
+            ("input_format", "der"),
+            ("input_format", "chain"),
+            ("input_format", "pkcs12")
+            ])
+    )]
     certificate_file: Option<PathBuf>,
 
-    /// The unique id of the certificate; a random UUID v4 is generated if not specified
-    #[clap(required = false)]
+    /// The unique id of the leaf certificate; a unique id
+    /// based on the key material is generated if not specified.
+    /// When importing a PKCS12, the unique id will be that of the private key.
+    #[clap(required = false, verbatim_doc_comment)]
     certificate_id: Option<String>,
 
-    /// Import the certificate in the selected format
-    #[clap(long = "format", short = 'f')]
+    /// Import the certificate in the selected format.
+    #[clap(long = "format", short = 'f', default_value = "json-ttlv")]
     input_format: CertificateInputFormat,
 
-    /// PKCS12 password: only available for PKCS12 format
+    /// The corresponding private key id if any.
+    /// Ignored for PKCS12 and CCADB formats.
+    #[clap(long = "private-key-id", short = 'k')]
+    private_key_id: Option<String>,
+
+    /// The corresponding public key id if any.
+    /// Ignored for PKCS12 and CCADB formats.
+    #[clap(long = "public-key-id", short = 'q')]
+    public_key_id: Option<String>,
+
+    /// The issuer certificate id if any.
+    /// Ignored for PKCS12 and CCADB formats.
+    #[clap(long = "issuer-certificate-id", short = 'i')]
+    issuer_certificate_id: Option<String>,
+
+    /// PKCS12 password: only available for PKCS12 format.
     #[clap(long = "pkcs12-password", short = 'p')]
     pkcs12_password: Option<String>,
 
-    /// Unwrap the object if it is wrapped before storing it
-    #[clap(
-        long = "unwrap",
-        short = 'u',
-        required = false,
-        default_value = "false"
-    )]
-    unwrap: bool,
-
-    /// Replace an existing certificate under the same id
+    /// Replace an existing certificate under the same id.
     #[clap(
         required = false,
         long = "replace",
@@ -80,91 +104,111 @@ impl ImportCertificateAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         debug!("CLI: entering import certificate");
 
+        //generate the leaf certificate attributes if links are specified
+        let mut leaf_certificate_attributes = None;
+        if let Some(issuer_certificate_id) = &self.issuer_certificate_id {
+            let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
+            attributes.add_link(
+                LinkType::CertificateLink,
+                LinkedObjectIdentifier::TextString(issuer_certificate_id.clone()),
+            );
+        };
+        if let Some(private_key_id) = &self.private_key_id {
+            let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
+            attributes.add_link(
+                LinkType::PrivateKeyLink,
+                LinkedObjectIdentifier::TextString(private_key_id.clone()),
+            );
+        };
+        if let Some(public_key_id) = &self.public_key_id {
+            let attributes = leaf_certificate_attributes.get_or_insert(Attributes::default());
+            attributes.add_link(
+                LinkType::PublicKeyLink,
+                LinkedObjectIdentifier::TextString(public_key_id.clone()),
+            );
+        };
+
         match self.input_format {
-            CertificateInputFormat::TTLV => {
+            CertificateInputFormat::JsonTtlv => {
                 trace!("CLI: import certificate as TTLV JSON file");
                 // read the certificate file
-                let object = read_key_from_file(self.get_certificate_file()?)?;
-                trace!("CLI: read key from file OK");
-
-                self.import(kms_rest_client, object, self.replace_existing)
+                let object = read_object_from_json_ttlv_file(self.get_certificate_file()?)?;
+                let certificate_id = self
+                    .import_chain(
+                        kms_rest_client,
+                        vec![object],
+                        self.replace_existing,
+                        leaf_certificate_attributes,
+                    )
                     .await?;
+                println!("The certificate in the JSON TTLV was imported with id: {certificate_id}",);
             }
-            CertificateInputFormat::PEM => {
-                debug!("CLI: import certificate as PEM file");
+            CertificateInputFormat::Pem => {
+                trace!("CLI: import certificate as PEM file");
                 let pem_value = read_bytes_from_file(&self.get_certificate_file()?)?;
-                let (_, pem) = parse_x509_pem(&pem_value)?;
-                let object = Object::Certificate {
-                    certificate_type: CertificateType::X509,
-                    certificate_value: pem.contents,
-                };
-                self.import(kms_rest_client, object, self.replace_existing)
-                    .await?;
-            }
-            CertificateInputFormat::PKCS12 => {
-                debug!("CLI: import certificate as PKCS12 file");
-                let password = self
-                    .pkcs12_password
-                    .as_deref()
-                    .ok_or(CliError::InvalidRequest("PKCS12 is required".to_string()))?;
-                let pkcs12_bytes = read_bytes_from_file(&self.get_certificate_file()?)?;
-
-                let pkcs12_parser = openssl::pkcs12::Pkcs12::from_der(&pkcs12_bytes)?;
-                let pkcs12 = pkcs12_parser.parse2(password)?;
-
-                // Import PKCS12 X509 certificate
-                let object = Object::Certificate {
-                    certificate_type: CertificateType::X509,
-                    certificate_value: pkcs12
-                        .cert
-                        .ok_or_else(|| {
-                            CliError::InvalidRequest(
-                                "X509 certificate not found in PKCS12".to_string(),
-                            )
-                        })?
-                        .to_der()?,
-                };
-                self.import(kms_rest_client, object, self.replace_existing)
-                    .await?;
-                // Import PKCS12 private key
-                let object = Object::Certificate {
-                    certificate_type: CertificateType::X509,
-                    certificate_value: pkcs12
-                        .pkey
-                        .ok_or_else(|| {
-                            CliError::InvalidRequest("Private key not found in PKCS12".to_string())
-                        })?
-                        .private_key_to_der()?,
-                };
-                self.import(kms_rest_client, object, self.replace_existing)
-                    .await?;
-
-                // Import PKCS12 chain
-                let chain = pkcs12.ca.ok_or_else(|| {
-                    CliError::InvalidRequest("CA Chain not found in PKCS12".to_string())
+                // convert the PEM to X509 to make sure it is correct
+                let certificate = Certificate::from_pem(&pem_value).map_err(|e| {
+                    CliError::Conversion(format!("Cannot read PEM content to X509. Error: {e:?}"))
                 })?;
-                for x509 in chain {
-                    let object = Object::Certificate {
-                        certificate_type: CertificateType::X509,
-                        certificate_value: x509.to_der()?,
-                    };
-                    self.import(kms_rest_client, object, self.replace_existing)
-                        .await?;
-                }
+                let object = Object::Certificate {
+                    certificate_type: CertificateType::X509,
+                    certificate_value: certificate.to_der()?,
+                };
+                let certificate_id = self
+                    .import_chain(
+                        kms_rest_client,
+                        vec![object],
+                        self.replace_existing,
+                        leaf_certificate_attributes,
+                    )
+                    .await?;
+                println!("The certificate in the PEM file was imported with id: {certificate_id}");
             }
-            CertificateInputFormat::CHAIN => {
+            CertificateInputFormat::Der => {
+                debug!("CLI: import certificate as a DER file");
+                let der_value = read_bytes_from_file(&self.get_certificate_file()?)?;
+                // convert DER to X509 to make sure it is correct
+                let certificate = Certificate::from_der(&der_value).map_err(|e| {
+                    CliError::Conversion(format!("Cannot read DER content to X509. Error: {e:?}"))
+                })?;
+                let object = Object::Certificate {
+                    certificate_type: CertificateType::X509,
+                    certificate_value: certificate.to_der()?,
+                };
+                let certificate_id = self
+                    .import_chain(
+                        kms_rest_client,
+                        vec![object],
+                        self.replace_existing,
+                        leaf_certificate_attributes,
+                    )
+                    .await?;
+                println!("The certificate in the DER file was imported with id: {certificate_id}");
+            }
+            CertificateInputFormat::Pkcs12 => {
+                debug!("CLI: import certificate as PKCS12 file");
+                let private_key_id = self.import_pkcs12(kms_rest_client).await?;
+                println!(
+                    "The private key in the PKCS12 file was imported with id: {private_key_id}"
+                );
+            }
+            CertificateInputFormat::Chain => {
                 debug!("CLI: import certificate chain as PEM file");
-                let pem_value = read_bytes_from_file(&self.get_certificate_file()?)?;
-
-                let stack = X509::stack_from_pem(&pem_value)?;
-                for cert in stack {
-                    let object = Object::Certificate {
-                        certificate_type: CertificateType::X509,
-                        certificate_value: cert.to_der()?,
-                    };
-                    self.import(kms_rest_client, object, self.replace_existing)
-                        .await?;
-                }
+                let pem_stack = read_bytes_from_file(&self.get_certificate_file()?)?;
+                let objects = build_chain_from_stack(&pem_stack)?;
+                // import the full chain
+                let leaf_certificate_id = self
+                    .import_chain(
+                        kms_rest_client,
+                        objects,
+                        self.replace_existing,
+                        leaf_certificate_attributes,
+                    )
+                    .await?;
+                println!(
+                    "The certificate chain in the PEM file was imported with id: \
+                     {leaf_certificate_id}"
+                );
             }
             CertificateInputFormat::CCADB => {
                 let ccadb_bytes = reqwest::get(MOZILLA_CCADB)
@@ -181,20 +225,48 @@ impl ImportCertificateAction {
                             "Cannot convert Mozilla CCADB content to bytes. Error: {e:?}"
                         ))
                     })?;
-
-                //
-                let stack = X509::stack_from_pem(ccadb_bytes.as_bytes())?;
-                for cert in stack {
-                    let object = Object::Certificate {
-                        certificate_type: CertificateType::X509,
-                        certificate_value: cert.to_der()?,
-                    };
-                    self.import(kms_rest_client, object, true).await?;
-                }
+                // import the certificates
+                let objects = build_chain_from_stack(&ccadb_bytes)?;
+                self.import_chain(kms_rest_client, objects, self.replace_existing, None)
+                    .await?;
+                println!("The list of Mozilla CCADB certificates was imported");
             }
         };
-
+        if !self.tags.is_empty() {
+            println!("Tags:");
+            for tag in &self.tags {
+                println!("    - {tag}");
+            }
+        }
         Ok(())
+    }
+
+    /// Import the certificate, the chain and the associated private key
+    async fn import_pkcs12(&self, kms_rest_client: &KmsRestClient) -> Result<String, CliError> {
+        let pkcs12_bytes = read_bytes_from_file(&self.get_certificate_file()?)?;
+
+        // Create a KMIP private key from the PKCS12 private key
+        let private_key = build_private_key_from_der_bytes(KeyFormatType::PKCS12, pkcs12_bytes);
+
+        let mut attributes = private_key.attributes().cloned().unwrap_or_default();
+        if let Some(password) = &self.pkcs12_password {
+            attributes.add_link(
+                LinkType::PKCS12PasswordLink,
+                LinkedObjectIdentifier::TextString(password.clone()),
+            );
+        }
+
+        let private_key_id = import_object(
+            kms_rest_client,
+            self.certificate_id.clone(),
+            private_key,
+            Some(attributes),
+            false,
+            self.replace_existing,
+            &self.tags,
+        )
+        .await?;
+        Ok(private_key_id)
     }
 
     fn get_certificate_file(&self) -> Result<&PathBuf, CliError> {
@@ -206,42 +278,79 @@ impl ImportCertificateAction {
             )))
     }
 
-    async fn import(
+    /// Import the certificates in reverse order (from root to leaf)
+    /// linking the child to the parent with `Link` of `LinkType::CertificateLink`
+    async fn import_chain(
         &self,
         kms_rest_client: &KmsRestClient,
-        object: Object,
+        mut objects: Vec<Object>,
         replace_existing: bool,
-    ) -> Result<(), CliError> {
-        // import the certificate
-        let unique_identifier = import_object(
-            kms_rest_client,
-            self.certificate_id.clone(),
-            object,
-            self.unwrap,
-            replace_existing,
-            &self.tags,
-        )
-        .await?;
-
-        // print the response
-        if let Some(cert_file) = &self.certificate_file {
-            println!(
-                "The certificate in file {:?} was imported with id: {}",
-                &cert_file, unique_identifier,
-            );
-        } else {
-            println!(
-                "[{:?}] The certificate was imported with id: {}",
-                self.input_format, unique_identifier,
-            );
-        }
-        if !self.tags.is_empty() {
-            println!("Tags:");
-            for tag in &self.tags {
-                println!("    - {tag}");
+        leaf_certificate_attributes: Option<Attributes>,
+    ) -> Result<String, CliError> {
+        let mut previous_identifier: Option<String> = None;
+        while let Some(object) = objects.pop() {
+            let mut import_attributes = if objects.is_empty() {
+                // this is the leaf certificate
+                leaf_certificate_attributes.clone()
+            } else {
+                None
+            };
+            // add link to issuer/parent certificate if any
+            if let Some(id) = previous_identifier {
+                let attributes = import_attributes.get_or_insert(Attributes::default());
+                attributes.add_link(
+                    LinkType::CertificateLink,
+                    LinkedObjectIdentifier::TextString(id.clone()),
+                );
             }
+            // import the certificate
+            let unique_identifier = import_object(
+                kms_rest_client,
+                self.certificate_id.clone(),
+                object,
+                import_attributes,
+                false,
+                replace_existing,
+                &self.tags,
+            )
+            .await?;
+            previous_identifier = Some(unique_identifier);
         }
+        // return the identifier of the leaf certificate
+        previous_identifier.ok_or_else(|| {
+            CliError::Default("The certificate chain does not contain any certificate".to_owned())
+        })
+    }
+}
 
-        Ok(())
+/// Build a chain of certificates from a PEM stack
+fn build_chain_from_stack(pem_chain: &[u8]) -> Result<Vec<Object>, CliError> {
+    let pem_s = pem::parse_many(pem_chain)
+        .map_err(|e| CliError::Conversion(format!("Cannot parse PEM content. Error: {e:?}")))?; // check the PEM is valid (no error
+    let mut objects = vec![];
+    for pem_data in pem_s {
+        // convert the PEM to X509 to make sure it is correct
+        let certificate = Certificate::from_der(pem_data.contents()).map_err(|e| {
+            CliError::Conversion(format!("Cannot read DER content to X509. Error: {e:?}"))
+        })?;
+        let object = Object::Certificate {
+            certificate_type: CertificateType::X509,
+            certificate_value: certificate.to_der()?,
+        };
+        objects.push(object);
+    }
+    Ok(objects)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::actions::certificates::import_certificate::build_chain_from_stack;
+
+    #[test]
+    fn test_chain_parse() {
+        let chain_str =
+            include_bytes!("../../../test_data/certificates/mozilla_IncludedRootsPEM.txt");
+        let objects = build_chain_from_stack(chain_str).unwrap();
+        assert_eq!(objects.len(), 144);
     }
 }

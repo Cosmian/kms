@@ -15,10 +15,14 @@ pub fn create_symmetric_key(
 ) -> Object {
     // this length is in bits
     let symmetric_key_len = key_bytes.len() as i32 * 8;
-    //
+    // The default format for a symmetric key is Raw
+    //  according to sec. 4.26 Key Format Type of the KMIP 2.1 specs:
+    //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
+    // The key created here has a format of TransparentSymmetricKey
+    // This is no a problem since when it is exported, it is by default converted to a Raw key
     Object::SymmetricKey {
         key_block: KeyBlock {
-            cryptographic_algorithm,
+            cryptographic_algorithm: Some(cryptographic_algorithm),
             key_format_type: KeyFormatType::TransparentSymmetricKey,
             key_compression_type: None,
             key_value: KeyValue {
@@ -40,7 +44,7 @@ pub fn create_symmetric_key(
                     ..Attributes::default()
                 }),
             },
-            cryptographic_length: symmetric_key_len,
+            cryptographic_length: Some(symmetric_key_len),
             key_wrapping_data: None,
         },
     }
@@ -53,7 +57,6 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
 ) -> Result<Create, KmipUtilsError> {
     let mut attributes = Attributes {
-        activation_date: None,
         cryptographic_algorithm: Some(cryptographic_algorithm),
         cryptographic_length: Some(key_len_in_bits as i32),
         cryptographic_parameters: None,
@@ -65,10 +68,8 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
                 | CryptographicUsageMask::KeyAgreement,
         ),
         key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-        link: None,
         object_type: Some(ObjectType::SymmetricKey),
-        vendor_attributes: None,
-        cryptographic_domain_parameters: None,
+        ..Attributes::default()
     };
     set_tags(&mut attributes, tags)?;
     Ok(Create {

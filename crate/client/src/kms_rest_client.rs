@@ -29,6 +29,7 @@ use josekit::{
     jwe::{alg::ecdh_es::EcdhEsJweAlgorithm, serialize_compact, JweHeader},
     jwk::Jwk,
 };
+use log::debug;
 use reqwest::{Client, ClientBuilder, Identity, Response};
 use rustls::{client::WebPkiVerifier, Certificate};
 use serde::{Deserialize, Serialize};
@@ -555,7 +556,7 @@ impl KmsRestClient {
         }
 
         // process error
-        let p = handle_error(response).await?;
+        let p = handle_error(endpoint, response).await?;
         Err(RestClientError::RequestFailed(p))
     }
 
@@ -573,7 +574,7 @@ impl KmsRestClient {
         }
 
         // process error
-        let p = handle_error(response).await?;
+        let p = handle_error(endpoint, response).await?;
         Err(RestClientError::RequestFailed(p))
     }
 
@@ -584,21 +585,32 @@ impl KmsRestClient {
     ) -> Result<R, RestClientError>
     where
         O: Serialize,
-        R: serde::de::DeserializeOwned + Sized + 'static,
+        R: serde::de::DeserializeOwned + Sized + Serialize + 'static,
     {
         let server_url = format!("{}{endpoint}", self.server_url);
         let response = match data {
-            Some(d) => self.client.post(server_url).json(d).send().await?,
+            Some(d) => {
+                debug!(
+                    "==>\n{}",
+                    serde_json::to_string_pretty(&d).unwrap_or("[N/A]".to_string())
+                );
+                self.client.post(server_url).json(d).send().await?
+            }
             None => self.client.post(server_url).send().await?,
         };
 
         let status_code = response.status();
         if status_code.is_success() {
-            return Ok(response.json::<R>().await?)
+            let response = response.json::<R>().await?;
+            debug!(
+                "<==\n{}",
+                serde_json::to_string_pretty(&response).unwrap_or("[N/A]".to_string())
+            );
+            return Ok(response)
         }
 
         // process error
-        let p = handle_error(response).await?;
+        let p = handle_error(endpoint, response).await?;
         Err(RestClientError::RequestFailed(p))
     }
 
@@ -607,7 +619,9 @@ impl KmsRestClient {
         O: Serialize,
         R: serde::de::DeserializeOwned + Sized + 'static,
     {
-        let mut request = self.client.post(self.server_url.clone() + "/kmip/2_1");
+        let endpoint = "/kmip/2_1";
+        let server_url = format!("{}{endpoint}", self.server_url);
+        let mut request = self.client.post(&server_url);
         let ttlv = to_ttlv(kmip_request)?;
 
         request = if let Some(jwe_public_key) = &self.jwe_public_key {
@@ -646,6 +660,10 @@ impl KmsRestClient {
 
             request.body(payload)
         } else {
+            debug!(
+                "==>\n{}",
+                serde_json::to_string_pretty(&ttlv).unwrap_or("[N/A]".to_string())
+            );
             request.json(&ttlv)
         };
 
@@ -654,11 +672,15 @@ impl KmsRestClient {
         let status_code = response.status();
         if status_code.is_success() {
             let ttlv = response.json::<TTLV>().await?;
+            debug!(
+                "<==\n{}",
+                serde_json::to_string_pretty(&ttlv).unwrap_or("[N/A]".to_string())
+            );
             return from_ttlv(&ttlv).map_err(|e| RestClientError::ResponseFailed(e.to_string()))
         }
 
         // process error
-        let p = handle_error(response).await?;
+        let p = handle_error(endpoint, response).await?;
         Err(RestClientError::RequestFailed(p))
     }
 }
@@ -671,19 +693,23 @@ pub struct ErrorPayload {
 
 /// Some errors are returned by the Middleware without going through our own error manager.
 /// In that case, we make the error clearer here for the client.
-async fn handle_error(response: Response) -> Result<String, RestClientError> {
+async fn handle_error(endpoint: &str, response: Response) -> Result<String, RestClientError> {
     let status = response.status();
     let text = response.text().await?;
 
-    if !text.is_empty() {
-        Ok(text)
-    } else {
-        Ok(match status {
-            StatusCode::NOT_FOUND => "KMS server endpoint does not exist".to_string(),
-            StatusCode::UNAUTHORIZED => "Bad authorization token".to_string(),
-            _ => format!("{status} {text}"),
-        })
-    }
+    Ok(format!(
+        "{}: {}",
+        endpoint,
+        if !text.is_empty() {
+            text
+        } else {
+            match status {
+                StatusCode::NOT_FOUND => "KMS server endpoint does not exist".to_string(),
+                StatusCode::UNAUTHORIZED => "Bad authorization token".to_string(),
+                _ => format!("{status} {text}"),
+            }
+        }
+    ))
 }
 
 /// Build a `TLSClient` to use with a KMS running inside a tee
@@ -702,7 +728,7 @@ pub fn build_tls_client_tee(
             trust_anchor.name_constraints,
         )
     });
-    root_cert_store.add_server_trust_anchors(trust_anchors);
+    root_cert_store.add_trust_anchors(trust_anchors);
 
     let verifier = if !accept_invalid_certs {
         LeafCertificateVerifier::new(

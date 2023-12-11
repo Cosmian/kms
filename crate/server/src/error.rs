@@ -199,6 +199,8 @@ impl From<KmipError> for KmsError {
             KmipError::KmipNotSupported(_, s) => Self::NotSupported(s),
             KmipError::NotSupported(s) => Self::NotSupported(s),
             KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            KmipError::Default(e) => Self::NotSupported(e),
+            KmipError::OpenSSL(e) => Self::NotSupported(e),
         }
     }
 }
@@ -224,6 +226,12 @@ impl From<KmsError> for redis::RedisError {
 impl From<url::ParseError> for KmsError {
     fn from(e: url::ParseError) -> Self {
         Self::UrlError(e.to_string())
+    }
+}
+
+impl From<base64::DecodeError> for KmsError {
+    fn from(e: base64::DecodeError) -> Self {
+        Self::ConversionError(e.to_string())
     }
 }
 

@@ -9,9 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/cache@v3
         with:
           path: ~/.cargo/bin
@@ -30,6 +28,7 @@ jobs:
 
   cargo-tests:
     uses: ./.github/workflows/cargo_tests.yml
+    secrets: inherit
     with:
       toolchain: nightly-2023-08-17
 
@@ -40,9 +39,6 @@ jobs:
 
   python_and_docker:
     uses: ./.github/workflows/python_and_docker.yml
-
-  sgx_docker:
-    uses: ./.github/workflows/docker_kms_sgx.yml
 
   ##############################################################################
   ### Releases

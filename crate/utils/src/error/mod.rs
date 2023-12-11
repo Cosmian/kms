@@ -1,4 +1,4 @@
-use cloudproof::reexport::crypto_core::CryptoCoreError;
+use cloudproof::reexport::crypto_core::{reexport::pkcs8, CryptoCoreError};
 use cosmian_kmip::{error::KmipError, kmip::kmip_operations::ErrorReason};
 use thiserror::Error;
 
@@ -53,6 +53,8 @@ impl From<KmipError> for KmipUtilsError {
             KmipError::KmipNotSupported(error_reason, value) => Self::Kmip(error_reason, value),
             KmipError::NotSupported(value) => Self::Kmip(ErrorReason::Feature_Not_Supported, value),
             KmipError::KmipError(error_reason, value) => Self::Kmip(error_reason, value),
+            KmipError::Default(value) => Self::NotSupported(value),
+            KmipError::OpenSSL(value) => Self::NotSupported(value),
         }
     }
 }
@@ -69,14 +71,14 @@ impl From<serde_json::Error> for KmipUtilsError {
     }
 }
 
-impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::spki::Error> for KmipUtilsError {
-    fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::spki::Error) -> Self {
+impl From<pkcs8::spki::Error> for KmipUtilsError {
+    fn from(e: pkcs8::spki::Error) -> Self {
         Self::ConversionError(e.to_string())
     }
 }
 
-impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::Error> for KmipUtilsError {
-    fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::Error) -> Self {
+impl From<pkcs8::Error> for KmipUtilsError {
+    fn from(e: pkcs8::Error) -> Self {
         Self::ConversionError(e.to_string())
     }
 }

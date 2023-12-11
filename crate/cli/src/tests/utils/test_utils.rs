@@ -20,7 +20,6 @@ use cosmian_kms_server::{
     kms_server::start_kms_server,
 };
 use cosmian_kms_utils::access::ExtraDatabaseParams;
-use cosmian_logger::log_utils::log_init;
 use rand::SeedableRng;
 use tokio::sync::OnceCell;
 use tracing::trace;
@@ -104,8 +103,6 @@ pub async fn start_test_server_with_options(
     use_jwe_encryption: bool,
     use_bootstrap_server: bool,
 ) -> TestsContext {
-    log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
-
     let server_params = genererate_server_params(
         port,
         use_jwt_token,

@@ -15,7 +15,7 @@ pub enum RestClientError {
     #[error("REST Request Failed: {0}")]
     RequestFailed(String),
 
-    #[error("REST Response Failed: {0}")]
+    #[error("REST Response Conversion Failed: {0}")]
     ResponseFailed(String),
 
     #[error("Unexpected Error: {0}")]
@@ -81,6 +81,8 @@ impl From<KmipError> for RestClientError {
             KmipError::KmipNotSupported(r, s) => Self::KmipNotSupported(r, s),
             KmipError::NotSupported(s) => Self::NotSupported(s),
             KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            KmipError::Default(s) => Self::NotSupported(s),
+            KmipError::OpenSSL(s) => Self::NotSupported(s),
         }
     }
 }

@@ -1,5 +1,7 @@
 use std::{array::TryFromSliceError, str::Utf8Error};
 
+#[cfg(test)]
+use assert_cmd::cargo::CargoError;
 use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
@@ -7,12 +9,10 @@ use cosmian_kmip::{
 use cosmian_kms_client::RestClientError;
 use cosmian_kms_utils::error::KmipUtilsError;
 use openssl::error::ErrorStack;
+use pem::PemError;
 use thiserror::Error;
-pub mod result;
 
-#[cfg(test)]
-use assert_cmd::cargo::CargoError;
-use x509_parser::prelude::PEMError;
+pub mod result;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug)]
@@ -66,6 +66,10 @@ pub enum CliError {
     KmsClientError(String),
 
     // Other errors
+    #[error("invalid options: {0}")]
+    UserError(String),
+
+    // Other errors
     #[error("{0}")]
     Default(String),
 
@@ -96,8 +100,8 @@ impl From<TtlvError> for CliError {
     }
 }
 
-impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::der::Error> for CliError {
-    fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::der::Error) -> Self {
+impl From<der::Error> for CliError {
+    fn from(e: der::Error) -> Self {
         Self::Conversion(e.to_string())
     }
 }
@@ -110,12 +114,6 @@ impl From<cloudproof::reexport::crypto_core::CryptoCoreError> for CliError {
 
 impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::Error> for CliError {
     fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::Error) -> Self {
-        Self::Conversion(e.to_string())
-    }
-}
-
-impl From<x509_parser::nom::Err<PEMError>> for CliError {
-    fn from(e: x509_parser::nom::Err<PEMError>) -> Self {
         Self::Conversion(e.to_string())
     }
 }
@@ -140,7 +138,7 @@ impl From<std::io::Error> for CliError {
 
 impl From<serde_json::Error> for CliError {
     fn from(e: serde_json::Error) -> Self {
-        Self::InvalidRequest(e.to_string())
+        Self::Conversion(e.to_string())
     }
 }
 
@@ -184,6 +182,8 @@ impl From<KmipError> for CliError {
             KmipError::KmipNotSupported(_, s) => Self::NotSupported(s),
             KmipError::NotSupported(s) => Self::NotSupported(s),
             KmipError::KmipError(r, s) => Self::KmipError(r, s),
+            KmipError::Default(s) => Self::NotSupported(s),
+            KmipError::OpenSSL(s) => Self::NotSupported(s),
         }
     }
 }
@@ -197,6 +197,18 @@ impl From<base64::DecodeError> for CliError {
 impl From<RestClientError> for CliError {
     fn from(e: RestClientError) -> Self {
         Self::KmsClientError(e.to_string())
+    }
+}
+
+impl From<PemError> for CliError {
+    fn from(e: PemError) -> Self {
+        Self::Conversion(format!("PEM error: {e}"))
+    }
+}
+
+impl From<std::fmt::Error> for CliError {
+    fn from(e: std::fmt::Error) -> Self {
+        Self::Default(e.to_string())
     }
 }
 

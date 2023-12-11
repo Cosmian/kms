@@ -1,0 +1,34 @@
+{
+  "name": "Google identity for workspace client-side encryption",
+  "client_id": "996739510374-au9fdbgp72dacrsag267ckg32jf3d3e2.apps.googleusercontent.com",
+  "discovery_uri": "https://accounts.google.com/.well-known/openid-configuration",
+  "applications": {
+    "drivefs": {
+      "client_id": "947318989803-k88lapdik9bledfml8rr69ic6d3rdv57.apps.googleusercontent.com"
+    },
+    "drive-android": {
+      "client_id": "313892590415-6lbccuf47cou4q45vanraqp3fv5jt9do.apps.googleusercontent.com"
+    },
+    "drive-ios": {
+      "client_id": "313892590415-d3h1l7kl4htab916r6jevqdtu8bfmh9m.apps.googleusercontent.com"
+    },
+    "calendar-android": {
+      "client_id": "313892590415-q84luo8fon5pn5vl8a6rppo1qvcd3qvn.apps.googleusercontent.com"
+    },
+    "calendar-ios": {
+      "client_id": "313892590415-283b3nilr8561tedgu1n4dcm9hd6g3hr.apps.googleusercontent.com"
+    },
+    "gmail-android": {
+      "client_id": "313892590415-samhd32i4piankgs42o9sit5e9dug452.apps.googleusercontent.com"
+    },
+    "gmail-ios": {
+      "client_id": "313892590415-ijvjpbnsh0gauuunjgsdn64ngg37k6rc.apps.googleusercontent.com"
+    },
+    "meet-android": {
+      "client_id": "313892590415-i06v47su4k03ns7ot38akv7s9ari5oa5.apps.googleusercontent.com"
+    },
+    "meet-ios": {
+      "client_id": "313892590415-32ha2bvs0tr1b12s089i33o58hjvqt55.apps.googleusercontent.com"
+    }
+  }
+}

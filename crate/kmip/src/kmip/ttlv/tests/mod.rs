@@ -1,26 +1,29 @@
 use cosmian_logger::log_utils::log_init;
 use num_bigint_dig::BigUint;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use time::OffsetDateTime;
 
-use crate::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
-    kmip_messages::{
-        Message, MessageBatchItem, MessageHeader, MessageResponse, MessageResponseBatchItem,
-        MessageResponseHeader,
+use crate::{
+    error::KmipError,
+    kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_messages::{
+            Message, MessageBatchItem, MessageHeader, MessageResponse, MessageResponseBatchItem,
+            MessageResponseHeader,
+        },
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{
+            Create, DecryptResponse, Encrypt, ErrorReason, Import, ImportResponse, Locate,
+            LocateResponse, Operation,
+        },
+        kmip_types::{
+            AsynchronousIndicator, AttestationType, Attributes, BatchErrorContinuationOption,
+            Credential, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
+            LinkedObjectIdentifier, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
+            ResultStatusEnumeration, UniqueIdentifier,
+        },
+        ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
     },
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{
-        Create, DecryptResponse, Encrypt, ErrorReason, Import, ImportResponse, Locate,
-        LocateResponse, Operation,
-    },
-    kmip_types::{
-        AsynchronousIndicator, AttestationType, Attributes, BatchErrorContinuationOption,
-        Credential, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, Link,
-        LinkedObjectIdentifier, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
-        ResultStatusEnumeration,
-    },
-    ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
 };
 
 pub fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
@@ -35,7 +38,7 @@ pub fn aes_key_value(key_value: &[u8]) -> KeyValue {
         attributes: Some(Attributes {
             object_type: Some(ObjectType::SymmetricKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
-            cryptographic_length: Some(256),
+            cryptographic_length: Some(key_value.len() as i32 * 8),
             cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
             ..Attributes::default()
@@ -48,8 +51,8 @@ pub fn aes_key_block(key_value: &[u8]) -> KeyBlock {
         key_format_type: KeyFormatType::TransparentSymmetricKey,
         key_compression_type: None,
         key_value: aes_key_value(key_value),
-        cryptographic_algorithm: CryptographicAlgorithm::AES,
-        cryptographic_length: 256,
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        cryptographic_length: Some(key_value.len() as i32 * 8),
         key_wrapping_data: None,
     }
 }
@@ -84,7 +87,7 @@ pub fn aes_key_value_ttlv(key_value: &[u8]) -> TTLV {
                     },
                     TTLV {
                         tag: "CryptographicLength".to_string(),
-                        value: TTLValue::Integer(256),
+                        value: TTLValue::Integer(key_value.len() as i32 * 8),
                     },
                     TTLV {
                         tag: "CryptographicUsageMask".to_string(),
@@ -125,7 +128,7 @@ pub fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
             },
             TTLV {
                 tag: "CryptographicLength".to_string(),
-                value: TTLValue::Integer(256),
+                value: TTLValue::Integer(key_value.len() as i32 * 8),
             },
         ]),
     }
@@ -133,7 +136,7 @@ pub fn aes_key_block_ttlv(key_value: &[u8]) -> TTLV {
 
 pub fn aes_key_ttlv(key_value: &[u8]) -> TTLV {
     TTLV {
-        tag: "Object".to_string(),
+        tag: "SymmetricKey".to_string(),
         value: TTLValue::Structure(vec![aes_key_block_ttlv(key_value)]),
     }
 }
@@ -479,12 +482,7 @@ fn test_des_aes_key() {
 
     let ttlv = aes_key_ttlv(key_bytes);
     let rec: Object = from_ttlv(&ttlv).unwrap();
-    // Deserialization cannot make the difference
-    // between a `SymmetricKey` or a `PrivateKey`
-    assert_eq!(
-        aes_key(key_bytes),
-        Object::post_fix(ObjectType::SymmetricKey, rec)
-    );
+    assert_eq!(aes_key(key_bytes), rec);
 }
 
 #[test]
@@ -623,7 +621,7 @@ fn test_java_import_request() {
 fn test_java_import_response() {
     log_init("info");
     let ir = ImportResponse {
-        unique_identifier: "blah".to_string(),
+        unique_identifier: UniqueIdentifier::TextString("blah".to_string()),
     };
     let json = serde_json::to_string(&to_ttlv(&ir).unwrap()).unwrap();
     let ir_ = from_ttlv(&serde_json::from_str::<TTLV>(&json).unwrap()).unwrap();
@@ -681,7 +679,12 @@ pub fn test_import_correct_object() {
     assert_eq!(ObjectType::PublicKey, import.object.object_type());
     assert_eq!(
         CryptographicAlgorithm::CoverCrypt,
-        import.object.key_block().unwrap().cryptographic_algorithm
+        import
+            .object
+            .key_block()
+            .unwrap()
+            .cryptographic_algorithm
+            .unwrap()
     );
 }
 
@@ -692,9 +695,7 @@ pub fn test_create() {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         link: Some(vec![Link {
             link_type: crate::kmip::kmip_types::LinkType::ParentLink,
-            linked_object_identifier: crate::kmip::kmip_types::LinkedObjectIdentifier::TextString(
-                "SK".to_string(),
-            ),
+            linked_object_identifier: LinkedObjectIdentifier::TextString("SK".to_string()),
         }]),
         ..Attributes::default()
     };
@@ -714,6 +715,63 @@ pub fn test_create() {
         LinkedObjectIdentifier::TextString("SK".to_string()),
         create_.attributes.link.as_ref().unwrap()[0].linked_object_identifier
     );
+}
+
+//Verify that issue https://github.com/Cosmian/kms/issues/92
+// is actually fixed
+#[test]
+fn test_issue_deserialize_object_with_empty_attributes() {
+    log_init("info,hyper=info,reqwest=info");
+
+    // this works
+    let _: KeyBlock = serialize_deserialize(get_key_block()).unwrap();
+    println!("KeyBlock serialize/deserialize OK");
+
+    // this should work too but does not deserialize
+    // because of the empty Attributes in the KeyValue
+    let object = Object::SymmetricKey {
+        key_block: get_key_block(),
+    };
+    let object_: Object = serialize_deserialize(object).unwrap();
+    match object_ {
+        Object::SymmetricKey { key_block } => {
+            assert_eq!(
+                get_key_block().key_value.key_material,
+                key_block.key_value.key_material
+            );
+        }
+        _ => panic!("wrong object type"),
+    }
+}
+
+fn serialize_deserialize<T: DeserializeOwned + Serialize>(object: T) -> Result<T, KmipError> {
+    // serialize
+    let object_ttlv = to_ttlv(&object)?;
+    let json = serde_json::to_string_pretty(&object_ttlv)?;
+    // deserialize
+    let ttlv: TTLV = serde_json::from_str(&json)?;
+    let t: T = from_ttlv(&ttlv)?;
+    Ok(t)
+}
+
+fn get_key_block() -> KeyBlock {
+    KeyBlock {
+        key_format_type: KeyFormatType::TransparentSymmetricKey,
+        key_compression_type: None,
+        key_value: KeyValue {
+            key_material: KeyMaterial::TransparentSymmetricKey {
+                key: hex::decode(
+                    b"EC189A82797F0AED1E5AEF9EB0D232E6079A1D3E5C00526DDEE59BCA16242604",
+                )
+                .unwrap(),
+            },
+            //TODO:: Empty attributes used to cause a deserialization issue for `Object`; `None` works
+            attributes: Some(Attributes::default()),
+        },
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        cryptographic_length: Some(256),
+        key_wrapping_data: None,
+    }
 }
 
 #[test]
@@ -801,7 +859,9 @@ pub fn test_message_response() {
                 unique_batch_item_id: Some(1234),
                 response_payload: Some(Operation::LocateResponse(LocateResponse {
                     located_items: Some(134),
-                    unique_identifiers: Some(vec!["some_id".to_string()]),
+                    unique_identifiers: Some(vec![UniqueIdentifier::TextString(
+                        "some_id".to_string(),
+                    )]),
                 })),
                 message_extension: Some(MessageExtension {
                     vendor_identification: "CosmianVendor".to_string(),
@@ -817,7 +877,7 @@ pub fn test_message_response() {
                 operation: Some(OperationEnumeration::Decrypt),
                 unique_batch_item_id: Some(1235),
                 response_payload: Some(Operation::DecryptResponse(DecryptResponse {
-                    unique_identifier: "id_12345".to_string(),
+                    unique_identifier: UniqueIdentifier::TextString("id_12345".to_string()),
                     data: Some(b"decrypted_data".to_vec()),
                     correlation_value: Some(vec![9_u8, 13]),
                 })),
@@ -851,7 +911,10 @@ pub fn test_message_response() {
         panic!("not a decrypt operation's response payload");
     };
     assert_eq!(decrypt.data, Some(b"decrypted_data".to_vec()));
-    assert_eq!(decrypt.unique_identifier, "id_12345".to_string());
+    assert_eq!(
+        decrypt.unique_identifier,
+        UniqueIdentifier::TextString("id_12345".to_string())
+    );
     assert_eq!(res, res_);
 }
 
@@ -934,7 +997,7 @@ pub fn test_message_enforce_enum() {
             unique_batch_item_id: None,
             // mismatch operation regarding the enum
             request_payload: Operation::DecryptResponse(DecryptResponse {
-                unique_identifier: "id_12345".to_string(),
+                unique_identifier: UniqueIdentifier::TextString("id_12345".to_string()),
                 data: Some(b"decrypted_data".to_vec()),
                 correlation_value: None,
             }),

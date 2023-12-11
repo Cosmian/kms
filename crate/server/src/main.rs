@@ -24,10 +24,10 @@ use clap::Parser;
 #[actix_web::main]
 async fn main() -> KResult<()> {
     // Set up environment variables and logging options
-    if option_env!("RUST_BACKTRACE").is_none() {
+    if std::env::var("RUST_BACKTRACE").is_err() {
         std::env::set_var("RUST_BACKTRACE", "1");
     }
-    if option_env!("RUST_LOG").is_none() {
+    if std::env::var("RUST_LOG").is_err() {
         std::env::set_var(
             "RUST_LOG",
             "info,cosmian=info,cosmian_kms_server=info, \
@@ -38,9 +38,6 @@ async fn main() -> KResult<()> {
     // Load variable from a .env file
     dotenv().ok();
 
-    // Uncomment and remove `env-logger` dep when `env_logger` is
-    // finally updated in tracing-log crate.
-    // cosmian_logger::reexport::tracing_log::env_logger::init();
     env_logger::init();
 
     // Instantiate a config object using the env variables and the args of the binary

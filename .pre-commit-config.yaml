@@ -7,7 +7,7 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-exclude: crate/cli/test_data|crate/cli/demo.sh|scripts/deploy_sgx.sh|documentation/pandoc|documentation/overrides|crate/cli/remove/kms.json|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml|.github/workflows/python_and_docker.yml|sgx
+exclude: crate/cli/test_data|crate/cli/demo.sh|scripts/deploy_sgx.sh|documentation/pandoc|documentation/overrides|crate/cli/remove/kms.json|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml|.github/workflows/python_and_docker.yml|sgx|crate/server/src/routes/google_cse/jwt.rs|documentation/docs/google_cse
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v2.1.1
@@ -45,6 +45,12 @@ repos:
       - id: htmlhint
       - id: dockerfile_lint
       - id: markdown-toc
+
+  - repo: https://github.com/tcort/markdown-link-check
+    rev: v3.11.2
+    hooks:
+      - id: markdown-link-check
+        args: [-q]
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.2
@@ -135,12 +141,14 @@ repos:
     rev: v1.0.20
     hooks:
       - id: cargo-format
+      # - id: dprint-toml-fix
       # - id: cargo-upgrade
       # - id: cargo-update
       - id: cargo-machete
       - id: cargo-build-kms
       - id: docker-compose-up
       - id: cargo-test
+        args: [--, --skip, test_wrap_auth]
       - id: cargo-audit
       - id: cargo-outdated
       - id: clippy-autofix-all

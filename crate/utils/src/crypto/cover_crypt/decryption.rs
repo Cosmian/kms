@@ -7,7 +7,7 @@ use cosmian_kmip::{
     kmip::{
         kmip_objects::Object,
         kmip_operations::{Decrypt, DecryptResponse, DecryptedData, ErrorReason},
-        kmip_types::{CryptographicAlgorithm, CryptographicParameters},
+        kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
 };
 use tracing::{debug, trace};
@@ -216,7 +216,7 @@ impl DecryptionSystem for CovercryptDecryption {
         };
 
         Ok(DecryptResponse {
-            unique_identifier: self.user_decryption_key_uid.clone(),
+            unique_identifier: UniqueIdentifier::TextString(self.user_decryption_key_uid.clone()),
             data: Some(decrypted_data.try_into()?),
             correlation_value: None,
         })

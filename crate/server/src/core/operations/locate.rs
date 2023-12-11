@@ -1,6 +1,6 @@
 use cosmian_kmip::kmip::{
     kmip_operations::{Locate, LocateResponse},
-    kmip_types::StateEnumeration,
+    kmip_types::{StateEnumeration, UniqueIdentifier},
 };
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
@@ -35,7 +35,7 @@ pub async fn locate(
             if access_policy_from_attributes(&request.attributes).is_err()
                 || compare_cover_crypt_attributes(&attributes, &request.attributes)?
             {
-                uids.push(uid);
+                uids.push(UniqueIdentifier::TextString(uid));
             }
         }
     }

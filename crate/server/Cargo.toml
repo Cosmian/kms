@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_server"
-version = "4.9.1"
+version = "4.10.0"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 license-file = "../../LICENSE.md"
@@ -10,28 +10,26 @@ description = "Cosmian Key Management Service"
 # Do not verify auth0 token expiration date and https ssl is auto-signed (to avoid to be banned by letsencrypt)
 insecure = []
 # The binary won't start after a date chosen at compile-time
-timeout = ["actix-rt"]
+timeout = []
 
 # Enable all the feature even insecure but timeout
 # To run in a test environment using a real domain name and enclaves without the rest api limit of let's encrypt
 staging = ["insecure"]
 
-# No features (insecure, timeout or staging)
+# No features (insecure, timeout or staging) and contain non FIPS approved libraries (e.g. Rust Crypto)
 default = []
 prod = []
 
 [dependencies]
-# We use our own acme-lib. We have removed timeout set to ureq
-# For a reason we ignore right now, it fails inside the enclave if we set timeout
-acme-lib = { git = "https://github.com/Cosmian/acme-lib" }
+acme-lib = { git = "https://github.com/Cosmian/acme-lib", branch = "master" }
 actix-cors = "0.6"
 actix-files = "0.6"
-actix-identity = "0.4"
+actix-identity = "0.6"
 actix-multipart = "0.6"
-actix-rt = { version = "2.8", optional = true }
+actix-rt = { workspace = true }
 actix-service = "2.0"
-actix-tls = "3.0.3"
-actix-web = { version = "4.3", features = ["openssl"] }
+actix-tls = "3.1"
+actix-web = { workspace = true }
 alcoholic_jwt = "4091"
 async-recursion = "1.0"
 async-trait = { workspace = true }
@@ -39,33 +37,32 @@ base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 cloudproof = { workspace = true }
-cosmian_kmip = { path = "../kmip" }
+cosmian_kmip = { path = "../kmip", features = ["openssl"] }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
 dirs = "5.0"
 dotenvy = "0.15"
-env_logger = { workspace = true }
+env_logger = "0.10"
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 josekit = { workspace = true }
 lazy_static = "1.4"
 mime = "0.3"
-num-bigint-dig = { workspace = true }
 openssl = { workspace = true }
 ratls = { workspace = true }
-tee_attestation = { workspace = true }
 rawsql = "0.1"
 redis = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sqlx = { version = "0.7.1", default-features = false, features = [
+sqlx = { version = "0.7.3", default-features = false, features = [
     "json",
     "runtime-tokio-native-tls",
     "mysql",
     "postgres",
     "sqlite",
 ] }
+tee_attestation = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
 # this version of tokio should be the same as the one used in actix-web
@@ -78,8 +75,7 @@ x509-parser = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-actix-http = "3.3"
-actix-rt = "2.8"
+actix-http = "3.4"
 cosmian_logger = { path = "../logger" }
 
 [build-dependencies]

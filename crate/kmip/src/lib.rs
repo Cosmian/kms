@@ -6,3 +6,7 @@
 
 pub mod error;
 pub mod kmip;
+pub mod result;
+
+#[cfg(feature = "openssl")]
+pub mod openssl;

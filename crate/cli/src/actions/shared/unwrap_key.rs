@@ -11,7 +11,7 @@ use cosmian_kms_utils::crypto::{
 
 use crate::{
     actions::shared::{
-        utils::{export_object, read_key_from_file, write_kmip_object_to_file},
+        utils::{export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file},
         SYMMETRIC_WRAPPING_KEY_SIZE,
     },
     cli_bail,
@@ -81,7 +81,7 @@ impl UnwrapKeyAction {
     /// Export a key from the KMS
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // read the key file
-        let mut object = read_key_from_file(&self.key_file_in)?;
+        let mut object = read_object_from_json_ttlv_file(&self.key_file_in)?;
 
         // cache the object type
         let object_type = object.object_type();
@@ -98,14 +98,16 @@ impl UnwrapKeyAction {
                     .to_vec();
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.unwrap_key_id {
-            export_object(kms_rest_client, key_id, false, None, false).await?
+            export_object(kms_rest_client, key_id, false, None, false, None)
+                .await?
+                .0
         } else if let Some(key_file) = &self.unwrap_key_file {
-            read_key_from_file(key_file)?
+            read_object_from_json_ttlv_file(key_file)?
         } else {
             cli_bail!("one of the unwrapping options must be specified");
         };
 
-        unwrap_key_block(object_type, object.key_block_mut()?, &unwrapping_key)?;
+        unwrap_key_block(object.key_block_mut()?, &unwrapping_key)?;
 
         // set the output file path to the input file path if not specified
         let output_file = self

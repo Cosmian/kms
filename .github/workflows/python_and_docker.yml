@@ -22,7 +22,10 @@ jobs:
       - name: Display cpuinfo
         run: cat /proc/cpuinfo
 
-      - uses: actions/checkout@v1
+      - name: Install tar
+        run: apk add --no-cache tar
+
+      - uses: actions/checkout@v3
 
       - name: Login to GitHub Packages
         uses: docker/login-action@v2
@@ -53,7 +56,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          file: delivery/Dockerfile.standalone
+          file: Dockerfile
           network: host
 
     outputs:
@@ -75,7 +78,7 @@ jobs:
       - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_kms_js.yml@develop
     with:
-      branch: test/kms_4_9
+      branch: develop
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
 
   cloudproof_java:
@@ -103,3 +106,4 @@ jobs:
       target: x86_64-unknown-linux-gnu
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       copy_fresh_build: true
+      findex-cloud-version: 0.3.1

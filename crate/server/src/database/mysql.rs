@@ -6,9 +6,9 @@ use std::{
 
 use async_trait::async_trait;
 use cosmian_kmip::kmip::{
-    kmip_objects::{self},
+    kmip_objects::Object,
     kmip_operations::ErrorReason,
-    kmip_types::{Attributes, StateEnumeration, UniqueIdentifier},
+    kmip_types::{Attributes, StateEnumeration},
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
 use serde_json::Value;
@@ -24,6 +24,7 @@ use super::{
     Database, MySqlPlaceholder, MYSQL_QUERIES,
 };
 use crate::{
+    database::database_trait::AtomicOperation,
     error::KmsError,
     kms_bail, kms_error,
     result::{KResult, KResultHelper},
@@ -88,10 +89,10 @@ impl Database for MySqlPool {
         &self,
         uid: Option<String>,
         user: &str,
-        object: &kmip_objects::Object,
+        object: &Object,
         tags: &HashSet<String>,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<UniqueIdentifier> {
+    ) -> KResult<String> {
         let mut tx = self.pool.begin().await?;
         let uid = match create_(uid, user, object, tags, &mut tx).await {
             Ok(uid) => uid,
@@ -107,13 +108,13 @@ impl Database for MySqlPool {
     async fn create_objects(
         &self,
         user: &str,
-        objects: &[(Option<String>, kmip_objects::Object, &HashSet<String>)],
+        objects: Vec<(Option<String>, Object, &HashSet<String>)>,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<UniqueIdentifier>> {
+    ) -> KResult<Vec<String>> {
         let mut res = vec![];
         let mut tx = self.pool.begin().await?;
         for (uid, object, tags) in objects {
-            match create_(uid.clone(), user, object, tags, &mut tx).await {
+            match create_(uid.clone(), user, &object, tags, &mut tx).await {
                 Ok(uid) => res.push(uid),
                 Err(e) => {
                     tx.rollback().await.context("transaction failed")?;
@@ -137,7 +138,7 @@ impl Database for MySqlPool {
 
     async fn retrieve_tags(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<String>> {
         retrieve_tags_(uid, &self.pool).await
@@ -145,8 +146,8 @@ impl Database for MySqlPool {
 
     async fn update_object(
         &self,
-        uid: &UniqueIdentifier,
-        object: &kmip_objects::Object,
+        uid: &str,
+        object: &Object,
         tags: Option<&HashSet<String>>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -165,19 +166,29 @@ impl Database for MySqlPool {
 
     async fn update_state(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        update_state_(uid, state, &self.pool).await
+        let mut tx = self.pool.begin().await?;
+        match update_state_(uid, state, &mut tx).await {
+            Ok(()) => {
+                tx.commit().await?;
+                Ok(())
+            }
+            Err(e) => {
+                tx.rollback().await.context("transaction failed")?;
+                kms_bail!("update of the state of object {uid} failed: {e}");
+            }
+        }
     }
 
     async fn upsert(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         user: &str,
-        object: &kmip_objects::Object,
-        tags: &HashSet<String>,
+        object: &Object,
+        tags: Option<&HashSet<String>>,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -196,7 +207,7 @@ impl Database for MySqlPool {
 
     async fn delete(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -217,14 +228,13 @@ impl Database for MySqlPool {
         &self,
         user: &str,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
-    {
+    ) -> KResult<HashMap<String, (String, StateEnumeration, HashSet<ObjectOperationType>)>> {
         list_user_granted_access_rights_(user, &self.pool).await
     }
 
     async fn list_object_accesses_granted(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>> {
         list_accesses_(uid, &self.pool).await
@@ -232,7 +242,7 @@ impl Database for MySqlPool {
 
     async fn grant_access(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         userid: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
@@ -242,7 +252,7 @@ impl Database for MySqlPool {
 
     async fn remove_access(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         userid: &str,
         operation_type: ObjectOperationType,
         _params: Option<&ExtraDatabaseParams>,
@@ -252,7 +262,7 @@ impl Database for MySqlPool {
 
     async fn is_object_owned_by(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         userid: &str,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<bool> {
@@ -266,7 +276,7 @@ impl Database for MySqlPool {
         user: &str,
         user_must_be_owner: bool,
         _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
+    ) -> KResult<Vec<(String, StateEnumeration, Attributes, IsWrapped)>> {
         find_(
             researched_attributes,
             state,
@@ -279,21 +289,40 @@ impl Database for MySqlPool {
 
     async fn list_user_access_rights_on_object(
         &self,
-        uid: &UniqueIdentifier,
+        uid: &str,
         userid: &str,
         no_inherited_access: bool,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<HashSet<ObjectOperationType>> {
         list_user_access_rights_on_object_(uid, userid, no_inherited_access, &self.pool).await
     }
+
+    async fn atomic(
+        &self,
+        owner: &str,
+        operations: &[AtomicOperation],
+        _params: Option<&ExtraDatabaseParams>,
+    ) -> KResult<()> {
+        let mut tx = self.pool.begin().await?;
+        match atomic_(owner, operations, &mut tx).await {
+            Ok(()) => {
+                tx.commit().await?;
+                Ok(())
+            }
+            Err(e) => {
+                tx.rollback().await.context("transaction failed")?;
+                Err(e)
+            }
+        }
+    }
 }
 pub(crate) async fn create_(
     uid: Option<String>,
     owner: &str,
-    object: &kmip_objects::Object,
+    object: &Object,
     tags: &HashSet<String>,
     executor: &mut Transaction<'_, MySql>,
-) -> KResult<UniqueIdentifier> {
+) -> KResult<String> {
     let object_json = serde_json::to_value(DBObject {
         object_type: object.object_type(),
         object: object.clone(),
@@ -417,7 +446,7 @@ where
     Ok(res)
 }
 
-async fn retrieve_tags_<'e, E>(uid: &UniqueIdentifier, executor: E) -> KResult<HashSet<String>>
+async fn retrieve_tags_<'e, E>(uid: &str, executor: E) -> KResult<HashSet<String>>
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
@@ -436,8 +465,8 @@ where
 }
 
 pub(crate) async fn update_object_(
-    uid: &UniqueIdentifier,
-    object: &kmip_objects::Object,
+    uid: &str,
+    object: &Object,
     tags: Option<&HashSet<String>>,
     executor: &mut Transaction<'_, MySql>,
 ) -> KResult<()> {
@@ -487,14 +516,11 @@ pub(crate) async fn update_object_(
     Ok(())
 }
 
-pub(crate) async fn update_state_<'e, E>(
-    uid: &UniqueIdentifier,
+pub(crate) async fn update_state_(
+    uid: &str,
     state: StateEnumeration,
-    executor: E,
-) -> KResult<()>
-where
-    E: Executor<'e, Database = MySql> + Copy,
-{
+    executor: &mut Transaction<'_, MySql>,
+) -> KResult<()> {
     sqlx::query(
         MYSQL_QUERIES
             .get("update-object-with-state")
@@ -502,14 +528,14 @@ where
     )
     .bind(state.to_string())
     .bind(uid)
-    .execute(executor)
+    .execute(&mut **executor)
     .await?;
     trace!("Updated in DB: {uid}");
     Ok(())
 }
 
 pub(crate) async fn delete_(
-    uid: &UniqueIdentifier,
+    uid: &str,
     owner: &str,
     executor: &mut Transaction<'_, MySql>,
 ) -> KResult<()> {
@@ -539,10 +565,10 @@ pub(crate) async fn delete_(
 }
 
 pub(crate) async fn upsert_(
-    uid: &UniqueIdentifier,
+    uid: &str,
     owner: &str,
-    object: &kmip_objects::Object,
-    tags: &HashSet<String>,
+    object: &Object,
+    tags: Option<&HashSet<String>>,
     state: StateEnumeration,
     executor: &mut Transaction<'_, MySql>,
 ) -> KResult<()> {
@@ -567,27 +593,29 @@ pub(crate) async fn upsert_(
     .execute(&mut **executor)
     .await?;
 
-    // delete the existing tags
-    sqlx::query(
-        MYSQL_QUERIES
-            .get("delete-tags")
-            .ok_or_else(|| kms_error!("SQL query can't be found"))?,
-    )
-    .bind(uid)
-    .execute(&mut **executor)
-    .await?;
-
     // Insert the new tags
-    for tag in tags {
+    if let Some(tags) = tags {
+        // delete the existing tags
         sqlx::query(
             MYSQL_QUERIES
-                .get("insert-tags")
+                .get("delete-tags")
                 .ok_or_else(|| kms_error!("SQL query can't be found"))?,
         )
         .bind(uid)
-        .bind(tag)
         .execute(&mut **executor)
         .await?;
+        // insert the new ones
+        for tag in tags {
+            sqlx::query(
+                MYSQL_QUERIES
+                    .get("insert-tags")
+                    .ok_or_else(|| kms_error!("SQL query can't be found"))?,
+            )
+            .bind(uid)
+            .bind(tag)
+            .execute(&mut **executor)
+            .await?;
+        }
     }
 
     trace!("Upserted in DB: {uid}");
@@ -595,7 +623,7 @@ pub(crate) async fn upsert_(
 }
 
 pub(crate) async fn list_accesses_<'e, E>(
-    uid: &UniqueIdentifier,
+    uid: &str,
     executor: E,
 ) -> KResult<HashMap<String, HashSet<ObjectOperationType>>>
 where
@@ -627,7 +655,7 @@ where
 pub(crate) async fn list_user_granted_access_rights_<'e, E>(
     user: &str,
     executor: E,
-) -> KResult<HashMap<UniqueIdentifier, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
+) -> KResult<HashMap<String, (String, StateEnumeration, HashSet<ObjectOperationType>)>>
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
@@ -640,10 +668,8 @@ where
     .bind(user)
     .fetch_all(executor)
     .await?;
-    let mut ids: HashMap<
-        UniqueIdentifier,
-        (String, StateEnumeration, HashSet<ObjectOperationType>),
-    > = HashMap::with_capacity(list.len());
+    let mut ids: HashMap<String, (String, StateEnumeration, HashSet<ObjectOperationType>)> =
+        HashMap::with_capacity(list.len());
     for row in list {
         ids.insert(
             row.get::<String, _>(0),
@@ -662,7 +688,7 @@ where
 }
 
 pub(crate) async fn list_user_access_rights_on_object_<'e, E>(
-    uid: &UniqueIdentifier,
+    uid: &str,
     userid: &str,
     no_inherited_access: bool,
     executor: E,
@@ -678,11 +704,7 @@ where
     Ok(user_perms)
 }
 
-async fn perms<'e, E>(
-    uid: &UniqueIdentifier,
-    userid: &str,
-    executor: E,
-) -> KResult<HashSet<ObjectOperationType>>
+async fn perms<'e, E>(uid: &str, userid: &str, executor: E) -> KResult<HashSet<ObjectOperationType>>
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
@@ -705,7 +727,7 @@ where
 }
 
 pub(crate) async fn insert_access_<'e, E>(
-    uid: &UniqueIdentifier,
+    uid: &str,
     userid: &str,
     operation_type: ObjectOperationType,
     executor: E,
@@ -742,7 +764,7 @@ where
 }
 
 pub(crate) async fn remove_access_<'e, E>(
-    uid: &UniqueIdentifier,
+    uid: &str,
     userid: &str,
     operation_type: ObjectOperationType,
     executor: E,
@@ -787,11 +809,7 @@ where
     Ok(())
 }
 
-pub(crate) async fn is_object_owned_by_<'e, E>(
-    uid: &UniqueIdentifier,
-    owner: &str,
-    executor: E,
-) -> KResult<bool>
+pub(crate) async fn is_object_owned_by_<'e, E>(uid: &str, owner: &str, executor: E) -> KResult<bool>
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
@@ -813,7 +831,7 @@ pub(crate) async fn find_<'e, E>(
     user: &str,
     user_must_be_owner: bool,
     executor: E,
-) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>>
+) -> KResult<Vec<(String, StateEnumeration, Attributes, IsWrapped)>>
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
@@ -832,7 +850,7 @@ where
 /// Convert a list of rows into a list of qualified uids
 fn to_qualified_uids(
     rows: &[MySqlRow],
-) -> KResult<Vec<(UniqueIdentifier, StateEnumeration, Attributes, IsWrapped)>> {
+) -> KResult<Vec<(String, StateEnumeration, Attributes, IsWrapped)>> {
     let mut uids = Vec::with_capacity(rows.len());
     for row in rows {
         let attrs: Attributes = match row.try_get::<Value, _>(2) {
@@ -880,5 +898,42 @@ where
     )
     .execute(executor)
     .await?;
+    Ok(())
+}
+
+pub(crate) async fn atomic_(
+    owner: &str,
+    operations: &[AtomicOperation],
+    tx: &mut Transaction<'_, MySql>,
+) -> KResult<()> {
+    for operation in operations {
+        match operation {
+            AtomicOperation::Create((uid, object, tags)) => {
+                if let Err(e) = create_(Some(uid.clone()), owner, object, tags, tx).await {
+                    kms_bail!("creation of object {uid} failed: {e}");
+                }
+            }
+            AtomicOperation::UpdateObject((uid, object, tags)) => {
+                if let Err(e) = update_object_(uid, object, tags.as_ref(), tx).await {
+                    kms_bail!("update of object {uid} failed: {e}");
+                }
+            }
+            AtomicOperation::UpdateState((uid, state)) => {
+                if let Err(e) = update_state_(uid, *state, tx).await {
+                    kms_bail!("update of the state of object {uid} failed: {e}");
+                }
+            }
+            AtomicOperation::Upsert((uid, object, tags, state)) => {
+                if let Err(e) = upsert_(uid, owner, object, tags.as_ref(), *state, tx).await {
+                    kms_bail!("upsert of object {uid} failed: {e}");
+                }
+            }
+            AtomicOperation::Delete(uid) => {
+                if let Err(e) = delete_(uid, owner, tx).await {
+                    kms_bail!("deletion of object {uid} failed: {e}");
+                }
+            }
+        }
+    }
     Ok(())
 }

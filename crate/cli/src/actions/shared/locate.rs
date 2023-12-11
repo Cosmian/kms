@@ -6,7 +6,9 @@ use clap::{
 };
 use cosmian_kmip::kmip::{
     kmip_operations::Locate,
-    kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+    },
 };
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::tagging::set_tags;
@@ -49,13 +51,36 @@ pub struct LocateObjectsAction {
     ///
     /// The list is the one specified by KMIP 2.1
     /// in addition to the two Covercrypt formats: "CoverCryptSecretKey" and "CoverCryptPublicKey"
-    /// Possible values also include: "TransparentECPrivateKey", "TransparentECPublicKey" and "TransparentSymmetricKey"
+    /// Possible values also include: "RAW" and "PKCS8"
+    /// Note: asymmetric keys are always stored in the "PKCS8" format; symmetric keys are always stored in the "Raw" format.
     ///
     /// Running the locate sub-command with a wrong value will list all the possible values.
     /// e.g. `ckms locate --key-format-type WRONG`
     #[clap(long = "key-format-type", short = 'f',
         value_parser = KeyFormatTypeParser,verbatim_doc_comment)]
     key_format_type: Option<KeyFormatType>,
+
+    /// Locate an object which has a link to this public key id.
+    #[clap(long = "public-key-id", short = 'p')]
+    public_key_id: Option<String>,
+
+    /// Locate an object which has a link to this private key id.
+    #[clap(long = "private-key-id", short = 'k')]
+    private_key_id: Option<String>,
+
+    /// Locate an object which has a link to this certificate key id.
+    #[clap(long = "certificate-id", short = 'c')]
+    certificate_id: Option<String>,
+
+    /// Locate a certificate which has this Common Name.
+    #[clap(long = "certificate-cn")]
+    certificate_cn: Option<String>,
+
+    /// Locate a certificate which has this Subject Public Key Info.
+    /// For example: AF:B0:19:F4:09:3E:2F:F4:52:07:54:7F:17:62:9D:74:76:E3:A4:F6
+    /// The value will be stripped from the colons and converted to lower case.
+    #[clap(long = "certificate-spki")]
+    certificate_spki: Option<String>,
 }
 
 impl LocateObjectsAction {
@@ -75,7 +100,43 @@ impl LocateObjectsAction {
             attributes.key_format_type = Some(key_format_type);
         }
 
-        if let Some(tags) = &self.tags {
+        if let Some(public_key_id) = &self.public_key_id {
+            attributes.add_link(
+                LinkType::PublicKeyLink,
+                LinkedObjectIdentifier::TextString(public_key_id.to_string()),
+            );
+        }
+
+        if let Some(private_key_id) = &self.private_key_id {
+            attributes.add_link(
+                LinkType::PrivateKeyLink,
+                LinkedObjectIdentifier::TextString(private_key_id.to_string()),
+            );
+        }
+
+        if let Some(certificate_id) = &self.certificate_id {
+            attributes.add_link(
+                LinkType::CertificateLink,
+                LinkedObjectIdentifier::TextString(certificate_id.to_string()),
+            );
+        }
+
+        let mut opt_tags = self.tags.clone();
+
+        if let Some(certificate_cn) = &self.certificate_cn {
+            let tags = opt_tags.get_or_insert(Vec::new());
+            tags.push(format!("_cert_cn={certificate_cn}"));
+        }
+
+        if let Some(certificate_spki) = &self.certificate_spki {
+            let tags = opt_tags.get_or_insert(Vec::new());
+            tags.push(format!(
+                "_cert_spki={}",
+                certificate_spki.replace(':', "").to_lowercase()
+            ));
+        }
+
+        if let Some(tags) = opt_tags {
             set_tags(&mut attributes, tags)?;
         }
 

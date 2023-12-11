@@ -11,7 +11,10 @@ use cosmian_kms_utils::{
 use tracing::trace;
 
 use crate::{
-    core::KMS, database::object_with_metadata::ObjectWithMetadata, error::KmsError, result::KResult,
+    core::KMS,
+    database::object_with_metadata::ObjectWithMetadata,
+    error::KmsError,
+    result::{KResult, KResultHelper},
 };
 
 pub async fn decrypt(
@@ -25,8 +28,10 @@ pub async fn decrypt(
     // there must be an identifier
     let uid_or_tags = request
         .unique_identifier
-        .as_deref()
-        .ok_or(KmsError::UnsupportedPlaceholder)?;
+        .as_ref()
+        .ok_or(KmsError::UnsupportedPlaceholder)?
+        .as_str()
+        .context("Decrypt: unique_identifier must be a string")?;
     trace!("decrypt: uid_or_tags: {uid_or_tags}");
 
     // retrieve from tags or use passed identifier

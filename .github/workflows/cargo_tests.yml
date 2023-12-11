@@ -64,12 +64,22 @@ jobs:
       - name: Display cpuinfo
         run: cat /proc/cpuinfo
 
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3
 
-      - uses: actions-rs/toolchain@v1
+      # `curl` in Centos 7 is too old (7.29) regarding
+      # what `dtolnay/rust-toolchain` needs  because it is
+      # using `--retry-connrefused` option (curl 7.52).
+      # Drop this when moving to Centos 8
+      - name: Update curl for Centos 7
+        run: |
+          curl --version
+          chmod +x ./scripts/centos_install_curl.sh
+          ./scripts/centos_install_curl.sh
+          curl --version
+
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ inputs.toolchain }}
-          override: true
           components: rustfmt, clippy
 
       - name: Centos 7 prerequisites
@@ -101,6 +111,10 @@ jobs:
 
           REDIS_HOST: redis
 
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+
   kms-centos7:
     needs: cleanup
     runs-on: ubuntu-22.04
@@ -109,11 +123,22 @@ jobs:
       image: iyxd/centos7-rust
 
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v3
+
+      # `curl` in Centos 7 is too old (7.29) regarding
+      # what `dtolnay/rust-toolchain` needs  because it is
+      # using `--retry-connrefused` option (curl 7.52).
+      # Drop this when moving to Centos 8
+      - name: Update curl for Centos 7
+        run: |
+          curl --version
+          chmod +x ./scripts/centos_install_curl.sh
+          ./scripts/centos_install_curl.sh
+          curl --version
+
+      - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ inputs.toolchain }}
-          override: true
           components: rustfmt, clippy
 
       - name: Centos 7 prerequisites
