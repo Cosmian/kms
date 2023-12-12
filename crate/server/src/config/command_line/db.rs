@@ -21,8 +21,6 @@ pub struct DBConfig {
     ///   A key must be supplied on every call
     /// - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
     ///   The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
-    ///
-    /// The database configuration can be securely provided via the bootstrap server. Check the documentation.
     #[clap(
         long,
         env("KMS_DATABASE_TYPE"),
@@ -144,7 +142,6 @@ impl DBConfig {
     ///
     /// # Parameters
     /// - `workspace`: The workspace configuration used to determine the public and shared paths
-    /// - `use_bootstrap_server`: Whether the bootstrap server should be used to configure the database
     ///
     /// # Returns
     /// - The DB parameters
@@ -152,11 +149,7 @@ impl DBConfig {
     /// # Errors
     /// - If both Postgres and MariaDB/MySQL URL are set
     /// - If `SQLCipher` is set along with Postgres or MariaDB/MySQL URL
-    pub fn init(
-        &self,
-        workspace: &WorkspaceConfig,
-        use_bootstrap_server: bool,
-    ) -> KResult<Option<DbParams>> {
+    pub fn init(&self, workspace: &WorkspaceConfig) -> KResult<Option<DbParams>> {
         Ok(if let Some(database_type) = &self.database_type {
             Some(match database_type.as_str() {
                 "postgresql" => {
@@ -199,9 +192,6 @@ impl DBConfig {
                 }
                 unknown => kms_bail!("Unknown database type: {unknown}"),
             })
-        } else if use_bootstrap_server {
-            // That is fine: the bootstrap server will be used to configure the database
-            None
         } else {
             // No database configuration provided; use the default config
             let path = workspace.finalize_directory(&self.sqlite_path)?;

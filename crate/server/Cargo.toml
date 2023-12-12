@@ -28,7 +28,6 @@ acme-lib = { git = "https://github.com/Cosmian/acme-lib", branch = "master" }
 actix-cors = "0.6"
 actix-files = "0.6"
 actix-identity = "0.6"
-actix-multipart = "0.6"
 actix-rt = { workspace = true }
 actix-service = "2.0"
 actix-tls = "3.1"
@@ -52,7 +51,6 @@ josekit = { workspace = true }
 lazy_static = "1.4"
 mime = "0.3"
 openssl = { workspace = true }
-ratls = { workspace = true }
 rawsql = "0.1"
 redis = { workspace = true }
 reqwest = { workspace = true }

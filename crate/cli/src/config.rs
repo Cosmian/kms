@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-use cosmian_kms_client::{BootstrapRestClient, KmsRestClient};
+use cosmian_kms_client::KmsRestClient;
 use hex::decode;
 use openssl::x509::X509;
 use rustls::Certificate;
@@ -165,8 +165,6 @@ pub struct CliConf {
     pub(crate) accept_invalid_certs: bool,
     pub(crate) kms_server_url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) bootstrap_server_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub tee_conf: Option<TeeConf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) kms_access_token: Option<String>,
@@ -186,14 +184,6 @@ impl CliConf {
     pub fn kms_server_url(&self) -> Result<Url, CliError> {
         Ok(Url::parse(&self.kms_server_url)?)
     }
-
-    pub fn bootstrap_server_url(&self) -> Result<Option<Url>, CliError> {
-        if let Some(url) = &self.bootstrap_server_url {
-            Ok(Some(Url::parse(url)?))
-        } else {
-            Ok(None)
-        }
-    }
 }
 
 impl Default for CliConf {
@@ -201,7 +191,6 @@ impl Default for CliConf {
         Self {
             accept_invalid_certs: false,
             kms_server_url: "http://0.0.0.0:9998".to_string(),
-            bootstrap_server_url: None,
             tee_conf: None,
             kms_access_token: None,
             kms_database_secret: None,
@@ -221,7 +210,6 @@ impl Default for CliConf {
 /// {
 ///     "accept_invalid_certs": false,
 ///     "kms_server_url": "http://127.0.0.1:9998",
-///     "bootstrap_server_url": "https://127.0.0.1:9998",
 ///     "kms_access_token": "AA...AAA",
 ///     "kms_database_secret": "BB...BBB",
 ///     "ssl_client_pkcs12_path": "/path/to/client.p12",
@@ -323,31 +311,6 @@ impl CliConf {
         })?;
 
         Ok(kms_rest_client)
-    }
-
-    pub fn initialize_bootstrap_client(&self) -> Result<BootstrapRestClient, CliError> {
-        // Instantiate a Bootstrap server REST client with the given configuration
-        let bootstrap_rest_client = BootstrapRestClient::instantiate(
-            self.bootstrap_server_url
-                .as_ref()
-                .unwrap_or(&self.kms_server_url.replace("http://", "https://")),
-            self.kms_access_token.as_deref(),
-            self.ssl_client_pkcs12_path.as_deref(),
-            self.ssl_client_pkcs12_password.as_deref(),
-            if let Some(tee_conf) = self.tee_conf.clone() {
-                tee_conf.try_into()?
-            } else {
-                TeeMeasurement::default()
-            },
-        )
-        .with_context(|| {
-            format!(
-                "Unable to instantiate a Bootstrap server REST client {}",
-                &self.kms_server_url
-            )
-        })?;
-
-        Ok(bootstrap_rest_client)
     }
 }
 

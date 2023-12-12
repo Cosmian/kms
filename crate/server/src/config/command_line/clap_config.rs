@@ -4,8 +4,7 @@ use clap::Parser;
 use tee_attestation::is_running_inside_tee;
 
 use super::{
-    BootstrapServerConfig, DBConfig, HttpConfig, HttpsCertbotConfig, JWEConfig, JwtAuthConfig,
-    TeeConfig, WorkspaceConfig,
+    DBConfig, HttpConfig, HttpsCertbotConfig, JWEConfig, JwtAuthConfig, TeeConfig, WorkspaceConfig,
 };
 
 #[derive(Parser, Default)]
@@ -19,9 +18,6 @@ pub struct ClapConfig {
 
     #[clap(flatten)]
     pub auth: JwtAuthConfig,
-
-    #[clap(flatten)]
-    pub bootstrap_server: BootstrapServerConfig,
 
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
@@ -56,22 +52,6 @@ pub struct ClapConfig {
 impl fmt::Debug for ClapConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
-        let x = if self.bootstrap_server.use_bootstrap_server {
-            x.field(
-                "bootstrap server port",
-                &self.bootstrap_server.bootstrap_server_port,
-            )
-            .field(
-                "bootstrap server subject",
-                &self.bootstrap_server.bootstrap_server_subject,
-            )
-            .field(
-                "bootstrap server days before expiration",
-                &self.bootstrap_server.bootstrap_server_expiration_days,
-            )
-        } else {
-            &mut x
-        };
         let x = x.field("db", &self.db);
         let x = if self.auth.jwt_issuer_uri.is_some() {
             x.field("auth0", &self.auth)

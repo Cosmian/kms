@@ -12,12 +12,10 @@ cosmian_kms_utils = { path = "../utils" }
 http = { workspace = true }
 josekit = { workspace = true }
 openssl = { workspace = true }
-ratls = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tee_attestation = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

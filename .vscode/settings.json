@@ -68,5 +68,6 @@
   "rust-analyzer.check.command": "clippy",
   "[python]": {
     "editor.defaultFormatter": "ms-python.autopep8"
-  }
+  },
+  "rust-analyzer.showUnlinkedFileNotification": false
 }
