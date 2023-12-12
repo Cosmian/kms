@@ -6,7 +6,7 @@ The Cosmian KMS is designed to [operate in **zero-trust** environments](./zero_t
     To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.10.0
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.10.1
     ```
 
     Check the Cosmian KMS server version
@@ -15,7 +15,7 @@ The Cosmian KMS is designed to [operate in **zero-trust** environments](./zero_t
     curl http://localhost:9998/version
     ```
 
-    Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.10.0/).
+    Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.10.1/).
 
 #### Open source
 
@@ -83,7 +83,7 @@ The KMS has an easy-to-use command line interface client built for many operatin
 
 The KMS server is available as a Docker image on the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
-Raw binaries for multiple operating systems are also available on the [Cosmian public packages repository](https://package.cosmian.com/kms/4.10.0/)
+Raw binaries for multiple operating systems are also available on the [Cosmian public packages repository](https://package.cosmian.com/kms/4.10.1/)
 
 #### Integrated with Cloudproof libraries
 
@@ -100,7 +100,7 @@ Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has 
 that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.10.0 --help
+docker run --rm ghcr.io/cosmian/kms:4.10.1 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the options help.

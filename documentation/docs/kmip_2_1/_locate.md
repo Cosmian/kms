@@ -87,17 +87,14 @@ Multiple tags can be used locate objects; a JSON array of tags is used to specif
 serialized to hex.
 
 === "Request"
+
     ```json
-    {
-      "tag": "Locate",
-      "type": "Structure",
-      "value": [
         {
-          "tag": "Attributes",
+          "tag": "Locate",
           "type": "Structure",
           "value": [
             {
-              "tag": "VendorAttributes",
+              "tag": "Attributes",
               "type": "Structure",
               "value": [
                 {
@@ -105,20 +102,26 @@ serialized to hex.
                   "type": "Structure",
                   "value": [
                     {
-                      "tag": "VendorIdentification",
-                      "type": "TextString",
-                      "value": "cosmian"
-                    },
-                    {
-                      "tag": "AttributeName",
-                      "type": "TextString",
-                      "value": "tag"
-                    },
-                    {
-                      "tag": "AttributeValue",
-                      "type": "ByteString",
-                      // hex encoding of ["_kk"]
-                      "value": "5B225F6B6B225D"
+                      "tag": "VendorAttributes",
+                      "type": "Structure",
+                      "value": [
+                        {
+                          "tag": "VendorIdentification",
+                          "type": "TextString",
+                          "value": "cosmian"
+                        },
+                        {
+                          "tag": "AttributeName",
+                          "type": "TextString",
+                          "value": "tag"
+                        },
+                        {
+                          "tag": "AttributeValue",
+                          "type": "ByteString",
+                          // hex encoding of ["_kk"]
+                          "value": "5B225F6B6B225D"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -126,71 +129,70 @@ serialized to hex.
             }
           ]
         }
-      ]
-    }
 
-```
+    ```
 
 === "Response"
+
     ```json
-    {
-      "tag": "LocateResponse",
-      "type": "Structure",
-      "value": [
         {
-          "tag": "LocatedItems",
-          "type": "Integer",
-          "value": 8
-        },
-        {
-          "tag": "UniqueIdentifier",
+          "tag": "LocateResponse",
           "type": "Structure",
           "value": [
             {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
+              "tag": "LocatedItems",
+              "type": "Integer",
+              "value": 8
             },
             {
               "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "1a35b3be-1a1a-4798-a3aa-d9fc67298461"
-            },
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "5dc81bb2-648f-485f-b804-c6ea45467056"
-            },
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "6ce69a21-5b4b-470a-84e7-0e1385947527"
-            },
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "ad9ba3be-93c7-4fac-a271-ef186fd645ce"
-            },
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "bac520f6-461f-40e5-b8f2-7927d8ae310b"
-            },
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "da5844b6-4d29-46b8-a657-9dfd449f8560"
-            },
-            {
-              "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "ebddca55-6027-4c86-ac1f-6b38dcfd6ead"
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "UniqueIdentifier",
+                  "type": "TextString",
+                  "value": "027cced1-ff2b-4bd3-a200-db1041583bdc"
+                },
+                {
+                  "tag": "UniqueIdentifier",
+                  "type": "TextString",
+                  "value": "1a35b3be-1a1a-4798-a3aa-d9fc67298461"
+                },
+                {
+                  "tag": "UniqueIdentifier",
+                  "type": "TextString",
+                  "value": "5dc81bb2-648f-485f-b804-c6ea45467056"
+                },
+                {
+                  "tag": "UniqueIdentifier",
+                  "type": "TextString",
+                  "value": "6ce69a21-5b4b-470a-84e7-0e1385947527"
+                },
+                {
+                  "tag": "UniqueIdentifier",
+                  "type": "TextString",
+                  "value": "ad9ba3be-93c7-4fac-a271-ef186fd645ce"
+                },
+                {
+                  "tag": "UniqueIdentifier",
+                  "type": "TextString",
+                  "value": "bac520f6-461f-40e5-b8f2-7927d8ae310b"
+                },
+                {
+                  "tag": "UniqueIdentifier",
+                  "type": "TextString",
+                  "value": "da5844b6-4d29-46b8-a657-9dfd449f8560"
+                },
+                {
+                  "tag": "UniqueIdentifier",
+                  "type": "TextString",
+                  "value": "ebddca55-6027-4c86-ac1f-6b38dcfd6ead"
+                }
+              ]
             }
           ]
         }
-      ]
-    }
-```
+    ```
 
 ### Example - A certificate by Common Name or Private Key Link
 
@@ -200,7 +202,7 @@ details.
 Corresponding `ckms` CLI command:
 
 ```bash
-ckms locate --certificate-cn "My server"
+  ckms locate --certificate-cn "My server"
 ```
 
 Using a JSON TTLV request, to search a certificate with CN `My server`,  set the `tag` value to the hex encoding of
@@ -212,17 +214,14 @@ To search a certificate by linked to private key `9550c6f3-ac11-4db8-b54f-a0514b
 the hex encoding of `["_cert_sk=9550c6f3-ac11-4db8-b54f-a0514b68c897"]`.
 
 === "Request"
+
     ```json
-    {
-      "tag": "Locate",
-      "type": "Structure",
-      "value": [
         {
-          "tag": "Attributes",
+          "tag": "Locate",
           "type": "Structure",
           "value": [
             {
-              "tag": "VendorAttributes",
+              "tag": "Attributes",
               "type": "Structure",
               "value": [
                 {
@@ -230,20 +229,26 @@ the hex encoding of `["_cert_sk=9550c6f3-ac11-4db8-b54f-a0514b68c897"]`.
                   "type": "Structure",
                   "value": [
                     {
-                      "tag": "VendorIdentification",
-                      "type": "TextString",
-                      "value": "cosmian"
-                    },
-                    {
-                      "tag": "AttributeName",
-                      "type": "TextString",
-                      "value": "tag"
-                    },
-                    {
-                      "tag": "AttributeValue",
-                      "type": "ByteString",
-                      // hex encoding of ["_cert_cn=My server"]
-                      "value": "5B225F636572745F636E3D4D7920736572766572225D"
+                      "tag": "VendorAttributes",
+                      "type": "Structure",
+                      "value": [
+                        {
+                          "tag": "VendorIdentification",
+                          "type": "TextString",
+                          "value": "cosmian"
+                        },
+                        {
+                          "tag": "AttributeName",
+                          "type": "TextString",
+                          "value": "tag"
+                        },
+                        {
+                          "tag": "AttributeValue",
+                          "type": "ByteString",
+                          // hex encoding of ["_cert_cn=My server"]
+                          "value": "5B225F636572745F636E3D4D7920736572766572225D"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -251,33 +256,32 @@ the hex encoding of `["_cert_sk=9550c6f3-ac11-4db8-b54f-a0514b68c897"]`.
             }
           ]
         }
-      ]
-    }
 
-```
+    ```
 
 === "Response"
+
     ```json
-    {
-      "tag": "LocateResponse",
-      "type": "Structure",
-      "value": [
         {
-          "tag": "LocatedItems",
-          "type": "Integer",
-          "value": 1
-        },
-        {
-          "tag": "UniqueIdentifier",
+          "tag": "LocateResponse",
           "type": "Structure",
           "value": [
             {
+              "tag": "LocatedItems",
+              "type": "Integer",
+              "value": 1
+            },
+            {
               "tag": "UniqueIdentifier",
-              "type": "TextString",
-              "value": "d2f4e937-dda9-4a86-bbe8-c866646a612f"
+              "type": "Structure",
+              "value": [
+                {
+                  "tag": "UniqueIdentifier",
+                  "type": "TextString",
+                  "value": "d2f4e937-dda9-4a86-bbe8-c866646a612f"
+                }
+              ]
             }
           ]
         }
-      ]
-    }
-```
+    ```

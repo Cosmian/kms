@@ -52,64 +52,67 @@ an array of the attributes that must be rotated:
 }
 ```
 
-Then hex encode the JSON and addit as a `VendorAttribute` with name `cover_crypt_policy_edit_action` to the `Re-Key
+Then hex encode the JSON and add it as a `VendorAttribute` with name `cover_crypt_policy_edit_action` to the `Re-Key
 Key Pair` request.
 
-The Private Key Unique Identifier of the Master Secret Key must be passed in the reauest.
+The Private Key Unique Identifier of the Master Secret Key must be passed in the request.
 
 === "Request"
+
     ```json
-    {
-      "tag": "ReKeyKeyPair",
-      "type": "Structure",
-      "value": [
         {
-          "tag": "PrivateKeyUniqueIdentifier",
-          "type": "TextString",
-          "value": "b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9"
-        },
-        {
-          "tag": "PrivateKeyAttributes",
+          "tag": "ReKeyKeyPair",
           "type": "Structure",
           "value": [
             {
-              "tag": "CryptographicAlgorithm",
-              "type": "Enumeration",
-              "value": "CoverCrypt"
+              "tag": "PrivateKeyUniqueIdentifier",
+              "type": "TextString",
+              "value": "b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9"
             },
             {
-              "tag": "KeyFormatType",
-              "type": "Enumeration",
-              "value": "CoverCryptSecretKey"
-            },
-            {
-              "tag": "ObjectType",
-              "type": "Enumeration",
-              "value": "PrivateKey"
-            },
-            {
-              "tag": "VendorAttributes",
+              "tag": "PrivateKeyAttributes",
               "type": "Structure",
               "value": [
+                {
+                  "tag": "CryptographicAlgorithm",
+                  "type": "Enumeration",
+                  "value": "CoverCrypt"
+                },
+                {
+                  "tag": "KeyFormatType",
+                  "type": "Enumeration",
+                  "value": "CoverCryptSecretKey"
+                },
+                {
+                  "tag": "ObjectType",
+                  "type": "Enumeration",
+                  "value": "PrivateKey"
+                },
                 {
                   "tag": "VendorAttributes",
                   "type": "Structure",
                   "value": [
                     {
-                      "tag": "VendorIdentification",
-                      "type": "TextString",
-                      "value": "cosmian"
-                    },
-                    {
-                      "tag": "AttributeName",
-                      "type": "TextString",
-                      "value": "cover_crypt_policy_edit_action"
-                    },
-                    {
-                      "tag": "AttributeValue",
-                      "type": "ByteString",
-                      // hex encoded JSON object {"RotateAttributes":["Security Level::Confidential"]}
-                      "value": "7B22526F7461746541747472696275746573223A5B225365637572697479204C6576656C3A3A436F6E666964656E7469616C225D7D"
+                      "tag": "VendorAttributes",
+                      "type": "Structure",
+                      "value": [
+                        {
+                          "tag": "VendorIdentification",
+                          "type": "TextString",
+                          "value": "cosmian"
+                        },
+                        {
+                          "tag": "AttributeName",
+                          "type": "TextString",
+                          "value": "cover_crypt_policy_edit_action"
+                        },
+                        {
+                          "tag": "AttributeValue",
+                          "type": "ByteString",
+                          // hex encoded JSON object {"RotateAttributes":["Security Level::Confidential"]}
+                          "value": "7B22526F7461746541747472696275746573223A5B225365637572697479204C6576656C3A3A436F6E666964656E7469616C225D7D"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -117,27 +120,26 @@ The Private Key Unique Identifier of the Master Secret Key must be passed in the
             }
           ]
         }
-      ]
-    }
 
-```
+    ```
 
 === "Response"
+
     ```json
-    {
-      "tag": "ReKeyKeyPairResponse",
-      "type": "Structure",
-      "value": [
         {
-          "tag": "PrivateKeyUniqueIdentifier",
-          "type": "TextString",
-          "value": "b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9"
-        },
-        {
-          "tag": "PublicKeyUniqueIdentifier",
-          "type": "TextString",
-          "value": "0fd1f684-156c-4ca6-adc2-0a6f4b620463"
+          "tag": "ReKeyKeyPairResponse",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "PrivateKeyUniqueIdentifier",
+              "type": "TextString",
+              "value": "b652a48a-a48c-4dc1-bd7e-cf0e5126b7b9"
+            },
+            {
+              "tag": "PublicKeyUniqueIdentifier",
+              "type": "TextString",
+              "value": "0fd1f684-156c-4ca6-adc2-0a6f4b620463"
+            }
+          ]
         }
-      ]
-    }
-```
+    ```
