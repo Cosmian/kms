@@ -36,7 +36,7 @@ use crate::{error::KmipError, kmip::kmip_operations::ErrorReason};
 //  CA=true
 //  pathlen=1
 /// ```
-pub fn parse_v3_ca(
+pub fn parse_v3_ca_from_file(
     extension_file: &PathBuf,
     x509_context: &X509v3Context,
 ) -> Result<Vec<openssl::x509::X509Extension>, KmipError> {
@@ -45,6 +45,26 @@ pub fn parse_v3_ca(
             "cannot read x509 extension file: `{extension_file:?}`. Reason: {e}"
         ))
     })?;
+    parse_v3_ca(&conf, x509_context)
+}
+
+#[cfg(test)]
+pub fn parse_v3_ca_from_str(
+    conf: &str,
+    x509_context: &X509v3Context,
+) -> Result<Vec<openssl::x509::X509Extension>, KmipError> {
+    let conf = Ini::load_from_str(conf).map_err(|e| {
+        KmipError::NotSupported(format!(
+            "cannot read x509 extension str: `{conf:?}`.\nReason: {e}"
+        ))
+    })?;
+    parse_v3_ca(&conf, x509_context)
+}
+
+pub fn parse_v3_ca(
+    conf: &Ini,
+    x509_context: &X509v3Context,
+) -> Result<Vec<openssl::x509::X509Extension>, KmipError> {
     let v3_ca = conf.section(Some("v3_ca")).ok_or_else(|| {
         KmipError::NotSupported(
             "unable to find `v3_ca` parag from X.509 extension content".to_string(),

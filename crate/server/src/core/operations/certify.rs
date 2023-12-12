@@ -233,7 +233,7 @@ fn build_certificate(
     if let Some(extension_filepath) = extension_filepath {
         let context = x509_builder.x509v3_context(Some(issuer_x509), None);
 
-        x509_extensions::parse_v3_ca(&extension_filepath, &context)?
+        x509_extensions::parse_v3_ca_from_file(&extension_filepath, &context)?
             .into_iter()
             .try_for_each(|extension| x509_builder.append_extension(extension))?;
     }
