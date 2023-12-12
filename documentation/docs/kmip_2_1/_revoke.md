@@ -26,41 +26,43 @@ Revoking key `f54f14a3-5639-4054-8c23-54af891669db` with reason `key was comprom
 Corresponding `ckms` CLI command:
 
 ```bash
-ckms sym keys revoke -k f54f14a3-5639-4054-8c23-54af891669db "key was compromised"
+  ckms sym keys revoke -k f54f14a3-5639-4054-8c23-54af891669db "key was compromised"
 ```
 
 === "Request"
-    ```json
-    {
-      "tag": "Revoke",
-      "type": "Structure",
-      "value": [
-        {
-          "tag": "UniqueIdentifier",
-          "type": "TextString",
-          "value": "f54f14a3-5639-4054-8c23-54af891669db"
-        },
-        {
-          "tag": "RevocationReason",
-          "type": "TextString",
-          "value": "key was compromised"
-        }
-      ]
-    }
 
-```
+    ```json
+        {
+          "tag": "Revoke",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "UniqueIdentifier",
+              "type": "TextString",
+              "value": "f54f14a3-5639-4054-8c23-54af891669db"
+            },
+            {
+              "tag": "RevocationReason",
+              "type": "TextString",
+              "value": "key was compromised"
+            }
+          ]
+        }
+
+    ```
 
 === "Response"
+
     ```json
-    {
-      "tag": "RevokeResponse",
-      "type": "Structure",
-      "value": [
         {
-          "tag": "UniqueIdentifier",
-          "type": "TextString",
-          "value": "f54f14a3-5639-4054-8c23-54af891669db"
+          "tag": "RevokeResponse",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "UniqueIdentifier",
+              "type": "TextString",
+              "value": "f54f14a3-5639-4054-8c23-54af891669db"
+            }
+          ]
         }
-      ]
-    }
-```
+    ```

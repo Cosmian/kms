@@ -22,9 +22,9 @@ The supported KMIP operations are: `get`, `export`, `encrypt`, `decrypt`, `impor
 
 === "ckms"
 
-```
-➜ ckms access grant --help
-Grant another user an access right to an object.
+      ```
+      ➜ ckms access grant --help
+      Grant another user an access right to an object.
 
       This command can only be called by the owner of the object.
 
@@ -48,7 +48,8 @@ Grant another user an access right to an object.
       ```
 
 === "REST"
-`POST` to the `/access/grant` endpoint with the JSON object:
+
+      `POST` to the `/access/grant` endpoint with the JSON object:
 
       ```json
       {
@@ -71,10 +72,10 @@ Grant another user an access right to an object.
 An owner of an object can revoke an access right to a specific user for a given operation on a given object at any time.
 
 === "ckms"
-```
 
-➜ ckms access revoke --help
-Revoke another user access right to an object.
+      ```
+      ➜ ckms access revoke --help
+      Revoke another user access right to an object.
 
       This command can only be called by the owner of the object.
 
@@ -96,7 +97,8 @@ Revoke another user access right to an object.
       ```
 
 === "REST"
-`POST` to the `/access/revoke` endpoint with the JSON object:
+
+      `POST` to the `/access/revoke` endpoint with the JSON object:
 
       ```json
       {
@@ -120,9 +122,9 @@ The owner of an object can list all the access rights that have been granted to 
 
 === "ckms"
 
-```
-➜ ckms access list --help
-List the access rights granted on an object to other users.
+      ```
+      ➜ ckms access list --help
+      List the access rights granted on an object to other users.
 
       This command can only be called by the owner of the object. Returns a list of users and the operations they have been granted access to.
 
@@ -138,7 +140,8 @@ List the access rights granted on an object to other users.
       ```
 
 === "REST"
-`GET` to the `/access/list/{object_unique_id}` endpoint:
+
+      `GET` to the `/access/list/{object_unique_id}` endpoint:
 
       The response is a JSON array:
 
@@ -159,10 +162,10 @@ A user can list all the objects it owns (i.e. the objects it created using eithe
 or `Import` KMIP operations).
 
 === "ckms"
-```
 
-➜ ckms access owned --help
-List the objects owned by the calling user.
+      ```
+      ➜ ckms access owned --help
+      List the objects owned by the calling user.
 
       Owners of objects can perform any operation on these objects and can grant access rights on any of these operations to any other user.
 
@@ -174,7 +177,8 @@ List the objects owned by the calling user.
       ```
 
 === "REST"
-`GET` to the `/access/owned` endpoint:
+
+      `GET` to the `/access/owned` endpoint:
 
       The response is a JSON array:
 
@@ -201,9 +205,9 @@ A user can list all the access rights that have been granted to it by object own
 
 === "ckms"
 
-```
-➜ ckms access obtained --help
-List the access rights obtained by the calling user
+      ```
+      ➜ ckms access obtained --help
+      List the access rights obtained by the calling user
 
       Returns a list of objects, their state, their owner and the accesses rights granted on the object
 
@@ -215,20 +219,21 @@ List the access rights obtained by the calling user
       ```
 
 === "REST"
-`GET` to the `/access/obtained` endpoint:
+
+      `GET` to the `/access/obtained` endpoint:
 
       The response is a JSON array:
 
       ```json
       [
-         {
+            {
             "object_id": "the object unique identifier",
             "owner_id": "the user identifier of the owner of the object",
             "state": "<state>",
             "operations": [ <operation type> ]
             "attributes": "<attributes>",
             "is_wrapped": "<wrapped_state>"
-         }
+            }
       ]
       ```
 

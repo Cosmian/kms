@@ -19,36 +19,37 @@ Destroying key `f54f14a3-5639-4054-8c23-54af891669db`:
 Corresponding `ckms` command:
 
 ```shell
- ckms sym keys destroy -k f54f14a3-5639-4054-8c23-54af891669d
- ```
+  ckms sym keys destroy -k f54f14a3-5639-4054-8c23-54af891669d
+```
 
 === "Request"
-    ```json
-    {
-      "tag": "Destroy",
-      "type": "Structure",
-      "value": [
-        {
-          "tag": "UniqueIdentifier",
-          "type": "TextString",
-          "value": "f54f14a3-5639-4054-8c23-54af891669db"
-        }
-      ]
-    }
 
-```
+    ```json
+        {
+          "tag": "Destroy",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "UniqueIdentifier",
+              "type": "TextString",
+              "value": "f54f14a3-5639-4054-8c23-54af891669db"
+            }
+          ]
+        }
+    ```
 
 === "Response"
+
     ```json
-    {
-      "tag": "DestroyResponse",
-      "type": "Structure",
-      "value": [
         {
-          "tag": "UniqueIdentifier",
-          "type": "TextString",
-          "value": "f54f14a3-5639-4054-8c23-54af891669db"
+          "tag": "DestroyResponse",
+          "type": "Structure",
+          "value": [
+            {
+              "tag": "UniqueIdentifier",
+              "type": "TextString",
+              "value": "f54f14a3-5639-4054-8c23-54af891669db"
+            }
+          ]
         }
-      ]
-    }
-```
+    ```
