@@ -93,10 +93,7 @@ async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
-    let (private_key_id, public_key_id) = create_ec_key_pair(
-        &ctx.owner_cli_conf_path,
-        &["test_encrypt_decrypt_using_ids"],
-    )?;
+    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
 
     encrypt(
         &ctx.owner_cli_conf_path,

@@ -36,8 +36,6 @@ cd ${VERSION}/
 if [ "${2}" = "cross-compile-windows" ]; then
     ./Configure mingw64 --cross-compile-prefix=x86_64-w64-mingw32- --prefix="${OPENSSL_DIR}" --openssldir="${OPENSSL_DIR}/ssl" threads enable-fips no-shared
 else
-    # OpenSSL 1.1.1w
-    # ./Configure --prefix="${OPENSSL_DIR}" --openssldir="${OPENSSL_DIR}/ssl" linux-generic64 no-shared
     ./Configure --prefix="${OPENSSL_DIR}" --openssldir="${OPENSSL_DIR}/ssl" threads enable-fips no-shared
 fi
 
