@@ -131,12 +131,10 @@ pub async fn test_password_wrap_import() -> Result<(), CliError> {
     )?;
     password_wrap_import_test(ctx, "cc", &private_key_id)?;
 
-    println!("avant ec");
     // EC
     let (private_key_id, _public_key_id) =
         create_ec_key_pair(&ctx.owner_cli_conf_path, &["test_password_wrap_import"])?;
     password_wrap_import_test(ctx, "ec", &private_key_id)?;
-    println!("apres ec");
 
     // syn
     let key_id = create_symmetric_key(
@@ -175,6 +173,8 @@ pub fn password_wrap_import_test(
     let key_bytes = object.key_block()?.key_bytes()?;
 
     //wrap and unwrap using a password
+    // TODO - Remove not fips flag by solving #124 on Github.
+    #[cfg(not(feature = "fips"))]
     {
         wrap(
             &ctx.owner_cli_conf_path,

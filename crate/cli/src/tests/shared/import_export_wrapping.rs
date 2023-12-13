@@ -11,6 +11,7 @@ use cosmian_kmip::kmip::{
 use cosmian_kms_utils::crypto::curve_25519::operation::create_x25519_key_pair;
 use cosmian_kms_utils::crypto::{symmetric::create_symmetric_key, wrap::decrypt_bytes};
 use tempfile::TempDir;
+#[cfg(not(feature = "fips"))]
 use tracing::debug;
 
 use crate::{
