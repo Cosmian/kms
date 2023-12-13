@@ -49,7 +49,7 @@ jobs:
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
-      distribution: ubuntu-20.04
+      distribution: ubuntu:20.04
       archive-name: ubuntu_20_04
       commands: |
         cargo build --release --bin ckms
@@ -63,7 +63,7 @@ jobs:
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
-      distribution: ubuntu-20.04
+      distribution: ubuntu:20.04
       archive-name: fips_ubuntu_20_04
       commands: |
         cargo build --release --features fips --bin ckms
@@ -80,7 +80,7 @@ jobs:
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
-      distribution: ubuntu-22.04
+      distribution: ubuntu:22.04
       archive-name: ubuntu_22_04
       commands: |
         cargo build --release --bin ckms

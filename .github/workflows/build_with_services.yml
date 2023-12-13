@@ -60,7 +60,10 @@ jobs:
           - 6379:6379
 
     name: ${{ inputs.archive-name }}
-    runs-on: ${{ inputs.distribution }}
+    runs-on: ubuntu-22.04
+    container:
+      image: ${{ inputs.distribution }}
+
     steps:
       - name: Display cpuinfo
         if: contains(runner.os, 'Linux')
