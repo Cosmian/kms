@@ -92,7 +92,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
         false,
         false,
     )?;
-    assert_eq!(uid.len(), 44);
+    assert_eq!(uid.len(), 36);
 
     // reimporting the same key  with the same id should fail
     assert!(
