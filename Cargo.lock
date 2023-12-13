@@ -650,12 +650,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c7f02d4ea65f2c1853089ffd8d2787bdbc63de2f0d29dedbcf8ccdfa0ccd4cf"
 
 [[package]]
-name = "base58"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6107fe1be6682a68940da878d9e9f5e90ca5745b3dec9fd1bb393c8777d4f581"
-
-[[package]]
 name = "base64"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1153,7 +1147,6 @@ dependencies = [
 name = "cosmian_kmip"
 version = "4.10.1"
 dependencies = [
- "base58",
  "bitflags 2.4.1",
  "chrono",
  "cloudproof",
@@ -1164,7 +1157,6 @@ dependencies = [
  "pyo3",
  "serde",
  "serde_json",
- "sha3",
  "strum",
  "thiserror",
  "time 0.3.30",
@@ -2777,6 +2769,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
+name = "openssl-src"
+version = "111.28.0+1.1.1w"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ce95ee1f6f999dfb95b8afd43ebe442758ea2104d1ccb99a94c30db22ae701f"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "openssl-sys"
 version = "0.9.91"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2784,6 +2785,7 @@ checksum = "866b5f16f90776b9bb8dc1e1802ac6f0513de3a7a7465867bfbc563dc737faac"
 dependencies = [
  "cc",
  "libc",
+ "openssl-src",
  "pkg-config",
  "vcpkg",
 ]
