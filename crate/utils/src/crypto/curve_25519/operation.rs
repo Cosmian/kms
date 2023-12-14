@@ -465,7 +465,7 @@ mod tests {
             KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be(),
             _ => panic!("Not a transparent private key"),
         };
-        pad_be_bytes(original_private_key_bytes, X25519_SECRET_LENGTH);
+        pad_be_bytes(&mut original_private_key_bytes, X25519_SECRET_LENGTH);
         // try to convert to openssl
         let p_key =
             PKey::private_key_from_raw_bytes(&original_private_key_bytes, Id::X25519).unwrap();
