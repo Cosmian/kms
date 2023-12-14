@@ -66,6 +66,11 @@ jobs:
           # Speeds up Ristretto 25519 multiplication x 2
           RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
+          # Google variables
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+
 
       - name: Upload KMS for ${{ inputs.distribution }}
         if: steps.cargo_cache.outputs.cache-hit != 'true'
