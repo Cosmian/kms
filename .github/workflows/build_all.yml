@@ -45,7 +45,7 @@ jobs:
         target/release/cosmian_kms_server
 
   ubuntu-20:
-    uses: ./.github/workflows/build_with_services.yml
+    uses: ./.github/workflows/build_generic_linux.yml
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -54,12 +54,15 @@ jobs:
       commands: |
         cargo build --release --bin ckms
         cargo build --release --bin cosmian_kms_server
+
+        cargo test --release -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test --release --bins -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
 
   fips-ubuntu-20:
-    uses: ./.github/workflows/build_with_services.yml
+    uses: ./.github/workflows/build_generic_linux.yml
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -69,14 +72,14 @@ jobs:
         cargo build --release --features fips --bin ckms
         cargo build --release --features fips --bin cosmian_kms_server
 
-        cargo test --release --features fips -- --nocapture
-        cargo test --release --features fips --bins -- --nocapture
+        cargo test --release --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test --release --features fips --bins -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
 
   ubuntu-22:
-    uses: ./.github/workflows/build_with_services.yml
+    uses: ./.github/workflows/build_generic_linux.yml
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -85,12 +88,15 @@ jobs:
       commands: |
         cargo build --release --bin ckms
         cargo build --release --bin cosmian_kms_server
+
+        cargo test --release -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test --release --bins -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
 
   windows:
-    uses: ./.github/workflows/build_without_service.yml
+    uses: ./.github/workflows/build_generic_linux.yml
     with:
       toolchain: ${{ inputs.toolchain }}
       distribution: ubuntu-20.04
@@ -110,7 +116,7 @@ jobs:
         target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
 
   mac:
-    uses: ./.github/workflows/build_without_service.yml
+    uses: ./.github/workflows/build_generic_linux.yml
     with:
       toolchain: ${{ inputs.toolchain }}
       distribution: macos-12
