@@ -112,11 +112,11 @@ jobs:
           PGUSER: kms
           POSTGRES_PASSWORD: kms
           POSTGRES_DB: kms
-          KMS_POSTGRES_URL: postgres://kms:kms@postgres/kms
+          KMS_POSTGRES_URL: postgres://kms:kms@0.0.0.0/kms
 
           MYSQL_DATABASE: kms
           MYSQL_ROOT_PASSWORD: kms
-          KMS_MYSQL_URL: mysql://root:kms@mariadb/kms
+          KMS_MYSQL_URL: mysql://root:kms@0.0.0.0/kms
 
           KMS_ENCLAVE_DIR_PATH: data/public
           KMS_SQLITE_PATH: data/shared
