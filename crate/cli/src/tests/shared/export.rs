@@ -1,9 +1,12 @@
 use std::{path::Path, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kmip::kmip::{
-    kmip_data_structures::KeyMaterial,
-    kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+use cosmian_kmip::{
+    kmip::{
+        kmip_data_structures::KeyMaterial,
+        kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+    },
+    openssl::pad_be_bytes,
 };
 use openssl::pkey::{Id, PKey};
 use tempfile::TempDir;
@@ -344,7 +347,11 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         _ => panic!("Invalid key value type"),
     };
     assert_eq!(recommended_curve, &RecommendedCurve::CURVE25519);
-    let pkey_1 = PKey::private_key_from_raw_bytes(&d.to_bytes_be(), Id::X25519)?;
+    let mut d_vec = d.to_bytes_be();
+    // 32 is privkey size on x25519.
+    pad_be_bytes(&mut d_vec, 32);
+    println!("dvec size is {:?}", d_vec.len());
+    let pkey_1 = PKey::private_key_from_raw_bytes(&d_vec, Id::X25519)?;
 
     // Export the bytes only
     export_key(

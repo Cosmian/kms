@@ -261,6 +261,8 @@ pub fn create_p521_key_pair(
 mod tests {
     #[cfg(not(feature = "fips"))]
     use cosmian_kmip::kmip::kmip_data_structures::KeyMaterial;
+    #[cfg(not(feature = "fips"))]
+    use cosmian_kmip::openssl::pad_be_bytes;
     use cosmian_kmip::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
     #[cfg(not(feature = "fips"))]
     use openssl::pkey::{Id, PKey};
@@ -271,6 +273,8 @@ mod tests {
     };
     #[cfg(not(feature = "fips"))]
     use super::{create_p192_key_pair, create_x25519_key_pair};
+    #[cfg(not(feature = "fips"))]
+    const X25519_SECRET_LENGTH: usize = 0x20;
 
     #[test]
     fn test_ed25519_keypair_generation() {
@@ -457,10 +461,11 @@ mod tests {
         //
         let original_private_key_value =
             &wrap_key_pair.private_key().key_block().unwrap().key_value;
-        let original_private_key_bytes = match &original_private_key_value.key_material {
+        let mut original_private_key_bytes = match &original_private_key_value.key_material {
             KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be(),
             _ => panic!("Not a transparent private key"),
         };
+        pad_be_bytes(original_private_key_bytes, X25519_SECRET_LENGTH);
         // try to convert to openssl
         let p_key =
             PKey::private_key_from_raw_bytes(&original_private_key_bytes, Id::X25519).unwrap();

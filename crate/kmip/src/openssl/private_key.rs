@@ -23,6 +23,7 @@ use crate::{
 
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
     while bytes.len() != size {
+        println!("pad be bytes");
         bytes.insert(0, 0);
     }
 }
@@ -175,16 +176,20 @@ fn ec_private_key_from_scalar(
     scalar: &BigUint,
     curve: &RecommendedCurve,
 ) -> Result<PKey<Private>, KmipError> {
-    let nid = match curve {
-        RecommendedCurve::P256 => Nid::X9_62_PRIME256V1,
-        RecommendedCurve::P192 => Nid::X9_62_PRIME192V1,
-        RecommendedCurve::P224 => Nid::SECP224R1,
-        RecommendedCurve::P384 => Nid::SECP384R1,
-        RecommendedCurve::P521 => Nid::SECP521R1,
+    let (nid, privkey_size) = match curve {
+        RecommendedCurve::P256 => (Nid::X9_62_PRIME256V1, 32),
+        RecommendedCurve::P192 => (Nid::X9_62_PRIME192V1, 24),
+        RecommendedCurve::P224 => (Nid::SECP224R1, 28),
+        RecommendedCurve::P384 => (Nid::SECP384R1, 48),
+        RecommendedCurve::P521 => (Nid::SECP521R1, 66),
         x => kmip_bail!("Unsupported curve: {:?} in this KMIP implementation", x),
     };
     let big_num_context = BigNumContext::new()?;
+
+    let mut scalar_vec = scalar.to_bytes_be();
+    pad_be_bytes(&mut scalar_vec, privkey_size);
     let scalar = BigNum::from_slice(scalar.to_bytes_be().as_slice())?;
+
     let ec_group = EcGroup::from_curve_name(nid)?;
     let mut ec_public_key = EcPoint::new(&ec_group)?;
     ec_public_key.mul_generator(&ec_group, &scalar, &big_num_context)?;
@@ -748,14 +753,13 @@ mod tests {
 
     #[test]
     fn test_conversion_privkey_null_first_byte() {
-        let my_ec_private_key_on_31_bytes = [
+        let key = [
             0, 113, 8, 182, 184, 86, 82, 102, 195, 88, 8, 230, 119, 254, 2, 177, 228, 135, 20, 247,
             106, 133, 91, 78, 125, 44, 57, 70, 202, 154, 25, 243,
         ];
-        let a = BigUint::from_bytes_be(&my_ec_private_key_on_31_bytes);
+        let a = BigUint::from_bytes_be(&key);
         let mut key_vec = a.to_bytes_be();
         pad_be_bytes(&mut key_vec, 32);
-
-        PKey::private_key_from_raw_bytes(&key_vec, Id::X25519).unwrap();
+        assert_eq!(key_vec, key);
     }
 }
