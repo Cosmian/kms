@@ -2,9 +2,8 @@ use std::{fmt, fs::File, io::Read, path::PathBuf};
 
 use alcoholic_jwt::JWKS;
 use openssl::x509::X509;
-use tee_attestation::is_running_inside_tee;
 
-use super::{DbParams, HttpParams, TeeParams};
+use super::{DbParams, HttpParams};
 use crate::{
     config::{command_line::JWEConfig, ClapConfig},
     kms_bail,
@@ -50,9 +49,6 @@ pub struct ServerParams {
     // pub certbot: Option<Arc<Mutex<Certbot>>>,
     pub http_params: HttpParams,
 
-    /// The tee parameters when running inside a tee
-    pub tee_params: TeeParams,
-
     /// The certificate used to verify the client TLS certificates
     /// used for authentication
     pub verify_cert: Option<X509>,
@@ -71,7 +67,7 @@ impl ServerParams {
         let workspace = conf.workspace.init()?;
 
         // The HTTP/HTTPS parameters
-        let http_params = HttpParams::try_from(conf, &workspace)?;
+        let http_params = HttpParams::try_from(conf)?;
 
         // Should we verify the client TLS certificates?
         let verify_cert = if let Some(authority_cert_file) = &conf.http.authority_cert_file {
@@ -96,8 +92,7 @@ impl ServerParams {
             clear_db_on_start: conf.db.clear_database,
             hostname: conf.http.hostname.clone(),
             port: conf.http.port,
-            http_params: HttpParams::try_from(conf, &workspace)?,
-            tee_params: conf.tee.init(&workspace)?,
+            http_params: HttpParams::try_from(conf)?,
             default_username: conf.default_username.clone(),
             force_default_username: conf.force_default_username,
             verify_cert,
@@ -153,11 +148,6 @@ impl fmt::Debug for ServerParams {
             .field("default_username", &self.default_username)
             .field("force_default_username", &self.force_default_username);
         let x = x.field("http_params", &self.http_params);
-        let x = if is_running_inside_tee() {
-            x.field("tee_params", &self.tee_params)
-        } else {
-            x
-        };
         x.finish()
     }
 }
@@ -179,7 +169,6 @@ impl Clone for ServerParams {
             hostname: self.hostname.clone(),
             port: self.port,
             http_params: HttpParams::Http,
-            tee_params: self.tee_params.clone(),
             verify_cert: self.verify_cert.clone(),
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
         }

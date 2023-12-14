@@ -7,7 +7,6 @@ The KMS server provides several features which can be enabled at compilation tim
 | Feature  | Description                                                                                                       | Staging | Prod 🔥 |
 |----------|-------------------------------------------------------------------------------------------------------------------|---------|---------|
 | auth     | Enable authentication. If disabled, multi-user is not supported                                                   | ✅       | ✅       |
-| enclave  | Enable the ability to run inside an enclave                                                                       | ✅       | ✅       |
 | https    | Enable https in the KMS in order to encrypt query between client and the KMS. If disabled, it uses http           | ✅       | ✅       |
 | insecure | Do not verify auth0 token expiration date and https ssl is self-signed (to avoid to be banned by letsencrypt)     | ✅       |         |
 | timeout  | The binary will stop (and won't be able to start again) after a period of time, starting from date of compilation |         |         |
@@ -33,7 +32,6 @@ For staging environment, you can use `--features=staging --no-default-features`.
 
 - to not verify the expiration of OAuth2 tokens if `KMS_JWT_ISSUER_URI` is set.
 - to use HTTPS connection with unsecure SSL certificates (it will play anyway all the process to get a valid certificates and starts a HTTPS server)
-- to be runnable only inside an enclave
 
 ### Timeout feature
 
@@ -70,8 +68,6 @@ cargo run --no-default-features -- --public-path /tmp --shared-path /tmp --priva
 or:
 
 ```sh
-export KMS_ENCLAVE_DIR_PATH=/tmp
-export KMS_CERTBOT_SSL_PATH=/tmp
 export KMS_SQLITE_PATH=/tmp
 cargo run --no-default-features
 ```

@@ -8,5 +8,4 @@ pub mod markdown;
 pub mod new_database;
 pub mod shared;
 pub mod symmetric;
-pub mod verify;
 pub mod version;

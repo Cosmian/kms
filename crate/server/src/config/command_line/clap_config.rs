@@ -1,11 +1,8 @@
 use std::fmt::{self};
 
 use clap::Parser;
-use tee_attestation::is_running_inside_tee;
 
-use super::{
-    DBConfig, HttpConfig, HttpsCertbotConfig, JWEConfig, JwtAuthConfig, TeeConfig, WorkspaceConfig,
-};
+use super::{DBConfig, HttpConfig, JWEConfig, JwtAuthConfig, WorkspaceConfig};
 
 #[derive(Parser, Default)]
 #[clap(version, about, long_about = None)]
@@ -22,9 +19,6 @@ pub struct ClapConfig {
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
 
-    #[clap(flatten)]
-    pub certbot_https: HttpsCertbotConfig,
-
     /// The default username to use when no authentication method is provided
     #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = "admin")]
     pub default_username: String,
@@ -36,9 +30,6 @@ pub struct ClapConfig {
 
     #[clap(flatten)]
     pub jwe: JWEConfig,
-
-    #[clap(flatten)]
-    pub tee: TeeConfig,
 
     #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL")]
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
@@ -58,17 +49,7 @@ impl fmt::Debug for ClapConfig {
         } else {
             x
         };
-        let x = if is_running_inside_tee() {
-            x.field("tee", &self.tee)
-        } else {
-            x
-        };
         let x = x.field("KMS http", &self.http);
-        let x = if self.certbot_https.use_certbot {
-            x.field("certbot", &self.certbot_https)
-        } else {
-            x
-        };
         let x = x.field("workspace", &self.workspace);
         let x = x.field("default username", &self.default_username);
         let x = x.field("force default username", &self.force_default_username);

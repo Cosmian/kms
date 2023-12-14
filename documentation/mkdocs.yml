@@ -45,7 +45,6 @@ nav:
   - Enabling TLS: tls.md
   - Deploying in single server mode: single_server_mode.md
   - Deploying for high-availability: high_availability_mode.md
-  - Secure bootstrap of the KMS server start: bootstrap.md
   - Running in the cloud or any zero-trust environment: zero_trust.md
   - Authenticating users to the server: authentication.md
   - Authorizing users with access rights: authorization.md

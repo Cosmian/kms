@@ -5,7 +5,6 @@ use std::{
     time::Duration,
 };
 
-use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 // re-export the kmip module as kmip
 use cosmian_kmip::kmip::{
     kmip_operations::{
@@ -17,12 +16,8 @@ use cosmian_kmip::kmip::{
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use cosmian_kms_utils::{
-    access::{
-        Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse,
-        UserAccessResponse,
-    },
-    tee::QuoteParams,
+use cosmian_kms_utils::access::{
+    Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse, UserAccessResponse,
 };
 use http::{HeaderMap, HeaderValue, StatusCode};
 use josekit::{
@@ -426,29 +421,6 @@ impl KmsRestClient {
         &self,
     ) -> Result<Vec<AccessRightsObtainedResponse>, RestClientError> {
         self.get_no_ttlv("/access/obtained", None::<&()>).await
-    }
-
-    /// This operation requests the server to get the sgx quote or sev attestation report.
-    pub async fn get_attestation_report(
-        &self,
-        nonce: &[u8; 32],
-    ) -> Result<Vec<u8>, RestClientError> {
-        let quote: String = self
-            .get_no_ttlv(
-                "/tee/attestation_report",
-                Some(&QuoteParams {
-                    nonce: b64.encode(nonce),
-                }),
-            )
-            .await?;
-
-        Ok(b64.decode(quote.as_bytes())?)
-    }
-
-    /// This operation requests the server to get the HTTPS certificate.
-    pub async fn get_sgx_enclave_public_key(&self) -> Result<String, RestClientError> {
-        self.get_no_ttlv("/tee/sgx_enclave_public_key", None::<&()>)
-            .await
     }
 
     /// This operation requests the version of the server

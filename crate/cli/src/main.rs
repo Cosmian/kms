@@ -13,7 +13,6 @@ use cosmian_kms_cli::{
         new_database::NewDatabaseAction,
         shared::{GetAttributesAction, LocateObjectsAction},
         symmetric::SymmetricCommands,
-        verify::TeeAction,
         version::ServerVersionAction,
     },
     config::CliConf,
@@ -44,7 +43,6 @@ enum CliCommands {
     ServerVersion(ServerVersionAction),
     #[command(subcommand)]
     Sym(SymmetricCommands),
-    Verify(TeeAction),
     Login(LoginAction),
     Logout(LogoutAction),
     #[clap(hide = true)]
@@ -65,11 +63,6 @@ async fn main_() -> Result<(), CliError> {
     let opts = Cli::parse();
     let conf = CliConf::load()?;
 
-    if let CliCommands::Verify(action) = opts.command {
-        action.process(&conf).await?;
-        return Ok(())
-    }
-
     if let CliCommands::Markdown(action) = opts.command {
         let command = <Cli as CommandFactory>::command();
         action.process(&command).await?;
@@ -87,7 +80,6 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Certificates(action) => action.process(&kms_rest_client).await?,
         CliCommands::NewDatabase(action) => action.process(&kms_rest_client).await?,
         CliCommands::ServerVersion(action) => action.process(&kms_rest_client).await?,
-        CliCommands::Verify(_) => {}
         CliCommands::GetAttributes(action) => action.process(&kms_rest_client).await?,
         CliCommands::Login(action) => action.process().await?,
         CliCommands::Logout(action) => action.process().await?,

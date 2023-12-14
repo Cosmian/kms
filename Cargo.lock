@@ -50,29 +50,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "actix-files"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d832782fac6ca7369a70c9ee9a20554623c5e51c76e190ad151780ebea1cf689"
-dependencies = [
- "actix-http",
- "actix-service",
- "actix-utils",
- "actix-web",
- "askama_escape",
- "bitflags 1.3.2",
- "bytes",
- "derive_more",
- "futures-core",
- "http-range",
- "log",
- "mime",
- "mime_guess",
- "percent-encoding",
- "pin-project-lite",
-]
-
-[[package]]
 name = "actix-http"
 version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -464,21 +441,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "askama_escape"
-version = "0.10.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "619743e34b5ba4e9703bba34deac3427c72507c7159f5fd030aea8cac0cfe341"
-
-[[package]]
-name = "asn1"
-version = "0.15.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae3ecbce89a22627b5e8e6e11d69715617138290289e385cde773b1fe50befdb"
-dependencies = [
- "asn1_derive",
-]
-
-[[package]]
 name = "asn1-rs"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -515,17 +477,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "asn1_derive"
-version = "0.15.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "861af988fac460ac69a09f41e6217a8fb9178797b76fcc9478444be6a59be19c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.39",
 ]
 
 [[package]]
@@ -640,21 +591,6 @@ name = "base64ct"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
-
-[[package]]
-name = "bincode"
-version = "1.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "bitfield"
-version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46afbd2983a5d5a7bd740ccb198caf5b82f45c40c09c0eed36052d91cb92e719"
 
 [[package]]
 name = "bitflags"
@@ -963,12 +899,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "codicon"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12170080f3533d6f09a19f81596f836854d0fa4867dc32c8172b8474b4e9de61"
-
-[[package]]
 name = "combine"
 version = "4.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1159,14 +1089,12 @@ dependencies = [
  "pem",
  "predicates",
  "rand",
- "ratls",
  "regex",
  "reqwest",
  "rustls",
  "serde",
  "serde_json",
  "strum",
- "tee_attestation",
  "tempfile",
  "thiserror",
  "tokio",
@@ -1221,7 +1149,6 @@ version = "4.10.1"
 dependencies = [
  "acme-lib",
  "actix-cors",
- "actix-files",
  "actix-http",
  "actix-identity",
  "actix-rt",
@@ -1254,7 +1181,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sqlx",
- "tee_attestation",
  "thiserror",
  "time 0.3.30",
  "tokio",
@@ -1587,7 +1513,6 @@ dependencies = [
  "digest",
  "elliptic-curve",
  "rfc6979",
- "sha2",
  "signature",
  "spki",
 ]
@@ -2058,12 +1983,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "http-range"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21dec9db110f5f872ed9699c3ecf50cf16f423502706ba5c72462e28d3157573"
-
-[[package]]
 name = "httparse"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2196,12 +2115,6 @@ dependencies = [
  "block-padding",
  "generic-array",
 ]
-
-[[package]]
-name = "iocuddle"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8972d5be69940353d5347a1344cb375d9b457d6809b428b05bb1ca2fb9ce007"
 
 [[package]]
 name = "ipnet"
@@ -3149,27 +3062,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ratls"
-version = "0.1.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#9085550a81f35c1a869e5d70bf43864225c5bae4"
-dependencies = [
- "asn1-rs",
- "bincode",
- "const-oid",
- "der",
- "ecdsa",
- "p256",
- "rand_chacha",
- "rustls",
- "sha2",
- "spki",
- "tee_attestation",
- "thiserror",
- "x509-cert",
- "x509-parser",
-]
-
-[[package]]
 name = "rawsql"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3474,26 +3366,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
-name = "scroll"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04c565b551bafbef4157586fa379538366e4385d42082f255bfd96e4fe8519da"
-dependencies = [
- "scroll_derive",
-]
-
-[[package]]
-name = "scroll_derive"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1db149f81d46d2deba7cd3c50772474707729550221e69588478ebf9ada425ae"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.39",
-]
-
-[[package]]
 name = "scrypt"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3567,24 +3439,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde-big-array"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11fc7cc2c76d73e0f27ee52abbd64eec84d46f370c88371120433196934e4b7f"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "serde_bytes"
-version = "0.11.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab33ec92f677585af6d88c65593ae2375adde54efdbf16d597f2cbc7a6d368ff"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "serde_derive"
 version = "1.0.193"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3627,82 +3481,6 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
-]
-
-[[package]]
-name = "sev"
-version = "1.2.1"
-source = "git+https://github.com/virtee/sev?rev=a6d6568c96a7a5d6c55d10228a54cda5f3c32e44#a6d6568c96a7a5d6c55d10228a54cda5f3c32e44"
-dependencies = [
- "bincode",
- "bitfield",
- "bitflags 1.3.2",
- "codicon",
- "dirs",
- "hex",
- "iocuddle",
- "lazy_static",
- "libc",
- "openssl",
- "serde",
- "serde-big-array",
- "serde_bytes",
- "static_assertions",
- "uuid",
-]
-
-[[package]]
-name = "sev_quote"
-version = "0.1.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#9085550a81f35c1a869e5d70bf43864225c5bae4"
-dependencies = [
- "asn1",
- "asn1-rs",
- "bincode",
- "hex",
- "hkdf",
- "log",
- "reqwest",
- "serde",
- "sev",
- "sha2",
- "thiserror",
- "uuid",
- "x509-parser",
-]
-
-[[package]]
-name = "sgx_pck_extension"
-version = "0.1.1"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#9085550a81f35c1a869e5d70bf43864225c5bae4"
-dependencies = [
- "asn1",
- "asn1-rs",
- "thiserror",
- "x509-parser",
-]
-
-[[package]]
-name = "sgx_quote"
-version = "0.2.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#9085550a81f35c1a869e5d70bf43864225c5bae4"
-dependencies = [
- "chrono",
- "elliptic-curve",
- "hex",
- "hkdf",
- "log",
- "p256",
- "reqwest",
- "rsa",
- "scroll",
- "serde",
- "serde_json",
- "sgx_pck_extension",
- "sha2",
- "thiserror",
- "urlencoding",
- "x509-parser",
 ]
 
 [[package]]
@@ -4148,17 +3926,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14c39fd04924ca3a864207c66fc2cd7d22d7c016007f9ce846cbb9326331930a"
 
 [[package]]
-name = "tee_attestation"
-version = "0.1.0"
-source = "git+https://github.com/Cosmian/tee-tools?branch=get_quote#9085550a81f35c1a869e5d70bf43864225c5bae4"
-dependencies = [
- "bincode",
- "sev_quote",
- "sgx_quote",
- "thiserror",
-]
-
-[[package]]
 name = "tempfile"
 version = "3.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4577,7 +4344,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e395fcf16a7a3d8127ec99782007af141946b4795001f876d54fb0d55978560"
 dependencies = [
  "getrandom",
- "serde",
 ]
 
 [[package]]

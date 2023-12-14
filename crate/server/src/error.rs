@@ -60,10 +60,6 @@ pub enum KmsError {
     #[error("Unexpected server error: {0}")]
     ServerError(String),
 
-    // Any errors related to a bad behavior of the server concerning the SGX environment
-    #[error(transparent)]
-    TeeAttestationError(#[from] tee_attestation::error::Error),
-
     // Any actions of the user which is not allowed
     #[error("Access denied: {0}")]
     Unauthorized(String),

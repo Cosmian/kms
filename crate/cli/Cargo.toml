@@ -29,13 +29,11 @@ oauth2 = "4.4"
 openssl = { workspace = true }
 pem = "3.0"
 rand = "0.8"
-ratls = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true }
-tee_attestation = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

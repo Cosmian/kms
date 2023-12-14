@@ -56,18 +56,6 @@ impl KMS {
     ///  - the server server certificate cannot be read
     pub fn get_server_x509_certificate(&self) -> KResult<Option<Vec<u8>>> {
         match &self.params.http_params {
-            crate::config::HttpParams::Certbot(certbot) => {
-                let cert = certbot.lock().expect("can't lock certificate mutex");
-                let (_, certificate) = cert.get_cert()?;
-                Ok(Some(
-                    certificate
-                        .first()
-                        .ok_or(KmsError::Certificate(
-                            "No leaf certificate in the KMS certificate chain".to_owned(),
-                        ))?
-                        .to_pem()?,
-                ))
-            }
             crate::config::HttpParams::Https(p12) => {
                 let pem = p12
                     .cert
@@ -81,20 +69,6 @@ impl KMS {
             }
             crate::config::HttpParams::Http => Ok(None),
         }
-    }
-
-    /// Get the enclave public key
-    ///
-    /// # Errors
-    /// Returns a `KResult` with a `Error` if the enclave public key file cannot be read
-    pub fn get_sgx_enclave_public_key(&self) -> KResult<String> {
-        if let Some(sgx_public_signer_key) = &self.params.tee_params.sgx_public_signer_key {
-            return Ok(fs::read_to_string(sgx_public_signer_key)?)
-        }
-
-        Err(KmsError::ItemNotFound(
-            "No SGX signer public key".to_owned(),
-        ))
     }
 
     /// Adds a new encrypted `SQLite` database to the KMS server.
@@ -146,23 +120,6 @@ impl KMS {
             "add_new_database: not an encrypted sqlite: this server does not allow this operation"
                 .to_owned()
         ));
-    }
-
-    /// Return the enclave quote
-    ///
-    /// This service is not available if the server is not running inside an enclave
-    #[cfg(target_os = "linux")]
-    pub fn get_attestation_report(&self, nonce: [u8; 32]) -> KResult<String> {
-        let certificate = self.get_server_x509_certificate()?;
-
-        if let Some(certificate) = certificate {
-            let report_data = cosmian_kms_utils::tee::forge_report_data(&nonce, &certificate)?;
-            return Ok(b64.encode(tee_attestation::get_quote(&report_data)?))
-        }
-
-        Err(KmsError::NotSupported(
-            "Can't get a report attestation without a configured certificate".to_string(),
-        ))
     }
 
     /// This operation requests the server to Import a Managed Object specified
@@ -571,7 +528,7 @@ impl KMS {
         let uid = access
             .unique_identifier
             .as_ref()
-            .ok_or_else(|| KmsError::UnsupportedPlaceholder)?
+            .ok_or(KmsError::UnsupportedPlaceholder)?
             .as_str()
             .context("unique_identifier is not a string")?;
 
