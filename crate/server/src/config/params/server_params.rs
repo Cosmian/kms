@@ -51,7 +51,7 @@ pub struct ServerParams {
 
     /// The certificate used to verify the client TLS certificates
     /// used for authentication
-    pub verify_cert: Option<X509>,
+    pub client_cert: Option<X509>,
 
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
     ///
