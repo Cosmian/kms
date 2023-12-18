@@ -52,7 +52,6 @@ jobs:
       - cargo-doc
       - build
       - python_and_docker
-      # - sgx_docker # do not depend on this for releases
     runs-on: [self-hosted, not-sgx]
     strategy:
       fail-fast: false

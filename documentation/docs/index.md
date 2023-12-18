@@ -214,34 +214,6 @@ Options:
 
           [env: KMS_JST_AUDIENCE=]
 
-      --use-bootstrap-server
-          Whether configuration should be finalized using a bootstrap server
-
-          [env: KMS_USE_BOOTSTRAP_SERVER=]
-
-      --bootstrap-server-subject <BOOTSTRAP_SERVER_SUBJECT>
-          Subject as an RFC 4514 string for the RA-TLS certificate in the bootstrap server
-
-          [env: KMS_BOOTSTRAP_SERVER_SUBJECT=]
-          [default: "CN=cosmian.kms,O=Cosmian Tech,C=FR,L=Paris,ST=Ile-de-France"]
-
-      --bootstrap-server-expiration-days <BOOTSTRAP_SERVER_EXPIRATION_DAYS>
-          Number of days before the certificate expires
-
-          [env: KMS_BOOTSTRAP_SERVER_EXPIRATION_DAYS=]
-          [default: 365]
-
-      --bootstrap-server-port <BOOTSTRAP_SERVER_PORT>
-          The bootstrap server may be started on a specific port, The hostname will be that configured in --hostname
-
-          [env: KMS_BOOTSTRAP_SERVER_PORT=]
-          [default: 9998]
-
-      --ensure-ra-tls
-          Ensure RA-TLS is available and used. The server will not start if this is not the case
-
-          [env: KMS_ENSURE_RA_TLS=]
-
       --root-data-path <ROOT_DATA_PATH>
           The root folder where the KMS will store its data A relative path is taken relative to the user HOME directory
 
@@ -253,36 +225,6 @@ Options:
 
           [env: KMS_TMP_PATH=]
           [default: /tmp]
-
-      --use-certbot
-          Enable TLS and use Let's Encrypt certbot to get a certificate
-
-          [env: KMS_USE_CERTBOT=]
-
-      --certbot-use-tee-key
-          Use TEE key generation to generate the certificate certificate (only available on tee)
-
-          [env: KMS_CERTBOT_USE_TEE_KEY=]
-
-      --certbot-hostname <CERTBOT_HOSTNAME>
-          The hostname of the KMS HTTPS server that will be used as the Common Name in the Let's Encrypt certificate
-
-          [env: KMS_CERTBOT_HOSTNAME=]
-          [default: ]
-
-      --certbot-email <CERTBOT_EMAIL>
-          The email used during the Let's Encrypt certbot certification process
-
-          [env: KMS_CERTBOT_EMAIL=]
-          [default: ]
-
-      --certbot-ssl-path <CERTBOT_SSL_PATH>
-          The folder where the KMS will store the SSL material created by certbot
-
-          A relative path is taken relative to the root_data_path
-
-          [env: KMS_CERTBOT_SSL_PATH=]
-          [default: ./certbot-ssl]
 
       --default-username <DEFAULT_USERNAME>
           The default username to use when no authentication method is provided
@@ -299,19 +241,6 @@ Options:
           Enable the use of encryption by providing a JWK private key as JSON
 
           [env: JWK_PRIVATE_KEY=]
-
-      --tee-dir-path <TEE_DIR_PATH>
-          The directory where the public key or other required files are located This path should not be encrypted by the enclave and should be directly readable from it
-
-          A relative path is taken relative to the root_data_path
-
-          [env: KMS_TEE_DIR_PATH=]
-          [default: ./tee]
-
-      --sgx-public-signer-key-filename <SGX_PUBLIC_SIGNER_KEY_FILENAME>
-          The filename of the public key for SGX
-
-          [env: KMS_SGX_PUBLIC_SIGNER_KEY_FILENAME=]
 
   -h, --help
           Print help (see a summary with '-h')

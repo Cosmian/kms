@@ -42,11 +42,6 @@ pub struct ServerParams {
 
     pub port: u16,
 
-    // /// The provided PKCS#12 when HTTPS is enabled
-    // pub server_pkcs_12: Option<ParsedPkcs12_2>,
-
-    // /// The certbot engine if certbot is enabled
-    // pub certbot: Option<Arc<Mutex<Certbot>>>,
     pub http_params: HttpParams,
 
     /// The certificate used to verify the client TLS certificates

@@ -13,7 +13,6 @@ insecure = []
 timeout = []
 
 # Enable all the feature even insecure but timeout
-# To run in a test environment using a real domain name and enclaves without the rest api limit of let's encrypt
 staging = ["insecure"]
 
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
@@ -24,7 +23,6 @@ default = []
 prod = []
 
 [dependencies]
-acme-lib = { git = "https://github.com/Cosmian/acme-lib", branch = "master" }
 actix-cors = "0.6"
 actix-identity = "0.6"
 actix-rt = { workspace = true }

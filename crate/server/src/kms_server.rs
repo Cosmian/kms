@@ -35,7 +35,6 @@ use crate::{
 /// The server is started using one of three methods:
 /// 1. Plain HTTP,
 /// 2. HTTPS with PKCS#12,
-/// 3. HTTPS with certbot.
 ///
 /// The method used depends on the server settings specified in the `ServerParams` instance provided.
 ///

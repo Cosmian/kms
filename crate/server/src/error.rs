@@ -151,12 +151,6 @@ impl From<openssl::error::ErrorStack> for KmsError {
     }
 }
 
-impl From<acme_lib::Error> for KmsError {
-    fn from(e: acme_lib::Error) -> Self {
-        Self::ServerError(e.to_string())
-    }
-}
-
 impl From<serde_json::Error> for KmsError {
     fn from(e: serde_json::Error) -> Self {
         Self::InvalidRequest(e.to_string())

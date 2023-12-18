@@ -31,8 +31,6 @@ And also some libraries:
 **Please refer to the README of the inner directories to have more
 information.**
 
-The `sgx` directory contains all the requirements to run the KMS inside an Intel SGX enclave.
-
 You can build a docker containing the KMS server as follow:
 
 ```sh
