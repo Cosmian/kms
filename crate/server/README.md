@@ -8,7 +8,7 @@ The KMS server provides several features which can be enabled at compilation tim
 |----------|-------------------------------------------------------------------------------------------------------------------|---------|---------|
 | auth     | Enable authentication. If disabled, multi-user is not supported                                                   | ✅       | ✅       |
 | https    | Enable https in the KMS in order to encrypt query between client and the KMS. If disabled, it uses http           | ✅       | ✅       |
-| insecure | Do not verify auth0 token expiration date and https ssl is self-signed (to avoid to be banned by letsencrypt)     | ✅       |         |
+| insecure | Do not verify auth0 token expiration date     | ✅       |         |
 | timeout  | The binary will stop (and won't be able to start again) after a period of time, starting from date of compilation |         |         |
 
 **Caption**:
