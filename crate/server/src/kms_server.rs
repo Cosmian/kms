@@ -136,7 +136,7 @@ async fn start_https_kms_server(
         }
     }
 
-    if let Some(verify_cert) = &server_params.verify_cert {
+    if let Some(verify_cert) = &server_params.client_cert {
         // This line sets the mode to verify peer (client) certificates
         builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         let mut store_builder = X509StoreBuilder::new()?;
@@ -203,7 +203,7 @@ pub async fn prepare_kms_server(
         (false, None)
     };
     // Determine if Client Cert Auth should be used for authentication.
-    let use_cert_auth = kms_server.params.verify_cert.is_some();
+    let use_cert_auth = kms_server.params.client_cert.is_some();
 
     // Determine if the application is using an encrypted SQLite database.
     let is_using_sqlite_enc = matches!(

@@ -309,12 +309,12 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, CliConf)
         } else {
             None
         },
-        ssl_client_pkcs12_path: if server_params.verify_cert.is_some() {
+        ssl_client_pkcs12_path: if server_params.client_cert.is_some() {
             Some("test_data/certificates/owner.client.acme.com.p12".to_string())
         } else {
             None
         },
-        ssl_client_pkcs12_password: if server_params.verify_cert.is_some() {
+        ssl_client_pkcs12_password: if server_params.client_cert.is_some() {
             Some("password".to_string())
         } else {
             None

@@ -95,7 +95,7 @@ impl ServerParams {
             http_params: HttpParams::try_from(conf)?,
             default_username: conf.default_username.clone(),
             force_default_username: conf.force_default_username,
-            verify_cert,
+            client_cert: verify_cert,
             google_cse_kacls_url: conf.google_cse_kacls_url.clone(),
         };
         Ok(server_conf)
@@ -139,7 +139,7 @@ impl fmt::Debug for ServerParams {
         } else {
             x
         };
-        let x = if let Some(verify_cert) = &self.verify_cert {
+        let x = if let Some(verify_cert) = &self.client_cert {
             x.field("verify_cert CN", verify_cert.subject_name())
         } else {
             x
@@ -169,7 +169,7 @@ impl Clone for ServerParams {
             hostname: self.hostname.clone(),
             port: self.port,
             http_params: HttpParams::Http,
-            verify_cert: self.verify_cert.clone(),
+            client_cert: self.client_cert.clone(),
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
         }
     }
