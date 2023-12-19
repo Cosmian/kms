@@ -1,31 +1,20 @@
+use std::path::PathBuf;
+
+use clap::Parser;
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams},
+    error::KmsError,
     kms_server::start_kms_server,
     result::KResult,
 };
 use dotenvy::dotenv;
-use tracing::debug;
-#[cfg(any(feature = "timeout", feature = "insecure"))]
-use tracing::info;
 #[cfg(feature = "timeout")]
 use tracing::warn;
+use tracing::{debug, info};
 #[cfg(feature = "timeout")]
 mod expiry;
 
-use clap::Parser;
-use clap_serde_derive::ClapSerde;
-
-#[derive(Parser)]
-#[command(author, version, about)]
-struct Args {
-    /// Config file
-    #[arg(short, long = "config", default_value = "config.toml")]
-    config_path: std::path::PathBuf,
-
-    /// Rest of the arguments
-    #[command(flatten)]
-    pub config: <ClapConfig as ClapSerde>::Opt,
-}
+const KMS_SERVER_CONF: &str = "/etc/cosmian_kms/conf.toml";
 
 /// The main entrypoint of the program.
 ///
@@ -50,23 +39,29 @@ async fn main() -> KResult<()> {
 
     env_logger::init();
 
-    let cfg_content = std::fs::read_to_string("./resources/config.toml").unwrap();
-    println!("{cfg_content}");
-    let clap_config =
-        ClapConfig::from(toml::from_str::<<ClapConfig as ClapSerde>::Opt>(&cfg_content).unwrap())
-            .merge_clap();
+    let conf =
+        PathBuf::from(std::env::var("COSMIAN_KMS_CONF").unwrap_or(KMS_SERVER_CONF.to_string()));
+    let clap_config = if conf.exists() {
+        _ = ClapConfig::parse(); // Do that do catch --help or --version even if we use a conf file
 
-    // let mut args = Args::parse();
-    // let clap_config = if let Ok(content) = std::fs::read_to_string(&args.config_path) {
-    //     let cfg: ClapConfig = toml::from_str::<<ClapConfig as ClapSerde>::Opt>(&content)
-    //         .unwrap()
-    //         .into();
-    //     cfg.merge(&mut args.config)
-    //     // cfg
-    // } else {
-    //     // If there is no config file, return only config parsed from Clap
-    //     ClapConfig::from(&mut args.config)
-    // };
+        info!(
+            "Configuration file {conf:?} found. Command line arguments and env variables are \
+             ignored."
+        );
+
+        let conf_content = std::fs::read_to_string(&conf).map_err(|e| {
+            KmsError::ServerError(format!(
+                "Cannot read kms server config at: {conf:?} - {e:?}"
+            ))
+        })?;
+        toml::from_str(&conf_content).map_err(|e| {
+            KmsError::ServerError(format!(
+                "Cannot parse kms server config at: {conf:?} - {e:?}"
+            ))
+        })?
+    } else {
+        ClapConfig::parse()
+    };
 
     // Instantiate a config object using the env variables and the args of the binary
     debug!("Command line config: {clap_config:#?}");

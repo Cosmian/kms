@@ -1,19 +1,17 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
-use clap_serde_derive::ClapSerde;
 use serde::{Deserialize, Serialize};
 
-#[derive(Args, ClapSerde, Clone, Deserialize, Serialize)]
+#[derive(Args, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct HttpConfig {
     /// The KMS server port
-    #[default(9998)]
-    #[clap(long, env = "KMS_PORT")]
+    #[clap(long, env = "KMS_PORT", default_value = "9998")]
     pub port: u16,
 
     /// The KMS server hostname
-    #[default("0.0.0.0".to_string())]
-    #[clap(long, env = "KMS_HOSTNAME")]
+    #[clap(long, env = "KMS_HOSTNAME", default_value = "0.0.0.0")]
     pub hostname: String,
 
     /// The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode.
@@ -53,5 +51,17 @@ impl Display for HttpConfig {
 impl std::fmt::Debug for HttpConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", &self))
+    }
+}
+
+impl Default for HttpConfig {
+    fn default() -> Self {
+        Self {
+            port: 9998,
+            hostname: "0.0.0.0".to_string(),
+            https_p12_file: None,
+            https_p12_password: None,
+            authority_cert_file: None,
+        }
     }
 }

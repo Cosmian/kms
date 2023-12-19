@@ -1,7 +1,6 @@
 use actix_rt::task;
 use alcoholic_jwt::JWKS;
 use clap::Args;
-use clap_serde_derive::ClapSerde;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,7 +12,8 @@ use crate::{
 // Support for JWT token inspired by the doc at : https://cloud.google.com/api-gateway/docs/authenticating-users-jwt
 // and following pages
 
-#[derive(Args, Debug, ClapSerde, Deserialize, Serialize)]
+#[derive(Debug, Default, Args, Deserialize, Serialize)]
+#[serde(default)]
 pub struct JwtAuthConfig {
     /// The issuer URI of the JWT token
     ///

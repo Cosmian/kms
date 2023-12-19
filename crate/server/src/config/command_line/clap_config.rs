@@ -1,33 +1,43 @@
 use std::fmt::{self};
 
 use clap::Parser;
-use clap_serde_derive::ClapSerde;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{DBConfig, HttpConfig, JWEConfig, JwtAuthConfig, WorkspaceConfig};
 
-#[derive(Parser, /*Default,*/ ClapSerde, Serialize)]
+impl Default for ClapConfig {
+    fn default() -> Self {
+        Self {
+            db: DBConfig::default(),
+            http: HttpConfig::default(),
+            auth: JwtAuthConfig::default(),
+            workspace: WorkspaceConfig::default(),
+            default_username: "admin".to_owned(),
+            force_default_username: false,
+            jwe: JWEConfig::default(),
+            google_cse_kacls_url: None,
+        }
+    }
+}
+
+#[derive(Parser, Serialize, Deserialize)]
 #[clap(version, about, long_about = None)]
+#[serde(default)]
 pub struct ClapConfig {
-    #[clap_serde]
     #[clap(flatten)]
     pub db: DBConfig,
 
-    #[clap_serde]
     #[clap(flatten)]
     pub http: HttpConfig,
 
-    #[clap_serde]
     #[clap(flatten)]
     pub auth: JwtAuthConfig,
 
-    #[clap_serde]
     #[clap(flatten)]
     pub workspace: WorkspaceConfig,
 
     /// The default username to use when no authentication method is provided
-    #[default("admin".to_string())]
-    #[clap(long, env = "KMS_DEFAULT_USERNAME")]
+    #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = "admin")]
     pub default_username: String,
 
     /// When an authentication method is provided, perform the authentication
@@ -35,7 +45,7 @@ pub struct ClapConfig {
     #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME")]
     pub force_default_username: bool,
 
-    #[clap_serde]
+    //#[clap_serde]
     #[clap(flatten)]
     pub jwe: JWEConfig,
 

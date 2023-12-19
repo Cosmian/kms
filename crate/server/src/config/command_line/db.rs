@@ -1,7 +1,6 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
-use clap_serde_derive::ClapSerde;
 use cloudproof::reexport::findex::Label;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -13,7 +12,8 @@ use crate::{
 };
 
 /// Configuration for the database
-#[derive(Args, ClapSerde, Clone, Deserialize, Serialize)]
+#[derive(Args, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct DBConfig {
     /// The database type of the KMS server
     /// - postgresql: PostgreSQL. The database url must be provided
@@ -69,6 +69,19 @@ pub struct DBConfig {
     /// WARNING: This will delete ALL the data in the database
     #[clap(long, env = "KMS_CLEAR_DATABASE", verbatim_doc_comment)]
     pub clear_database: bool,
+}
+
+impl Default for DBConfig {
+    fn default() -> Self {
+        Self {
+            sqlite_path: PathBuf::from("./sqlite-data"),
+            database_type: None,
+            database_url: None,
+            clear_database: false,
+            redis_master_password: None,
+            redis_findex_label: None,
+        }
+    }
 }
 
 impl Display for DBConfig {
