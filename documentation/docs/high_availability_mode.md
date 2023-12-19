@@ -31,13 +31,6 @@ Redis-with-Findex should be selected to [run the Cosmian KMS in the cloud or any
 The database parameters may be configured either:
 
 - using options on the command line that is used to start the KMS server
-- via a TLS connection when the KMS server is started in [bootstrap](./bootstrap.md) mode. Database parameters may contain sensitive information, such as passwords: providing them on a TLS connection is more secure than specifying them in plain text on the command line.
-
-Configuring the database via the [bootstrap](./bootstrap.md) TLS Connection should be selected to [run the Cosmian KMS in the cloud or any other zero-trust environment](./zero_trust.md).
-
-#### Configuring the database via the bootstrap server
-
-Configuring the database via the bootstrap TLS connection is described in the [bootstrap server documentation](bootstrap.md).
 
 #### Configuring the database via the command line
 

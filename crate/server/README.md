@@ -30,7 +30,6 @@ For staging environment, you can use `--features=staging --no-default-features`.
 
 - to not verify the expiration of OAuth2 tokens if `KMS_JWT_ISSUER_URI` is set.
 
-
 ### Timeout feature
 
 The KMS server's binary can be configured to stop running 3 months after date of compilation.

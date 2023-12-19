@@ -1357,7 +1357,3 @@ Generate the CLI documentation as markdown
 `
 ### Arguments
 ` <MARKDOWN_FILE>` The file to export the markdown to
-
-
-
-

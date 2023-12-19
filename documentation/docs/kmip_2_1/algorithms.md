@@ -72,7 +72,7 @@ When in FIPS mode, the KMS currently only supports:
 
 - AES is used in Galois Counter Mode ([GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)) with a 96 bits nonce and a 128 bits tag with a keysize of 128 or 256 bits.
 
-- `CKM_RSA_AES` is a PKCS#11 mechanism that is supported by most HSMs. It is initally used to asymmetrically wrap keys referring to PKCS#11 as described [here](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908). For general hybrid encryption using RSA-DEM, AES-GCM will be used instead of AES-KWP in a near future.
+- `CKM_RSA_AES` is a PKCS#11 mechanism that is supported by most HSMs. It is initially used to asymmetrically wrap keys referring to PKCS#11 as described [here](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908). For general hybrid encryption using RSA-DEM, AES-GCM will be used instead of AES-KWP in a near future.
 
 - `Salsa sealed box` uses X25519 and XSalsa20-Poly1305. A Ed25519 wrapping key can be used; it will be converted to X25519 first.
 
@@ -111,4 +111,4 @@ The randomness of cryptographic keys is essential for the security of cryptograp
 In normal mode, passwords are derived using `Argon2` hash algorithm with constant salt. Argon2 has the property of being computationally intensive making it significantly harder to crack by bruteforce only.
 
 ### FIPS mode
-In FIPS mode, passwords are derived using FIPS compliant `PBKDF2_HMAC` with `SHA512` and recommended 210,000 iterations by [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#pbkdf2) which follows FIPS recommendations as well. An additionnal random 128-bits salt is used.
+In FIPS mode, passwords are derived using FIPS compliant `PBKDF2_HMAC` with `SHA512` and recommended 210,000 iterations by [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#pbkdf2) which follows FIPS recommendations as well. An additional random 128-bits salt is used.

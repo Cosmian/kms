@@ -18,7 +18,7 @@ staging = ["insecure"]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
 fips = ["cosmian_kms_utils/fips"]
 
-# No features (insecure, timeout or staging) and contain non FIPS approved librairies (e.g. Rust Crypto)
+# No features (insecure, timeout or staging) and contain non FIPS approved libraries (e.g. Rust Crypto)
 default = []
 prod = []
 
