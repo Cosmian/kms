@@ -70,3 +70,11 @@ supervisorctl reload
 supervisorctl start cosmian_kms
 supervisorctl status cosmian_kms
 ```
+
+## Server parameters
+
+Order of variables for server configuration:
+- args in command line
+- env var
+- conf file
+- default (set on struct)

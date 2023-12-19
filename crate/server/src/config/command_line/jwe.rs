@@ -1,9 +1,11 @@
 use std::{ops::Deref, str::FromStr};
 
 use clap::Args;
+use clap_serde_derive::ClapSerde;
 use josekit::jwk::Jwk as JoseJwk;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Jwk(JoseJwk);
 
 impl FromStr for Jwk {
@@ -24,7 +26,7 @@ impl Deref for Jwk {
     }
 }
 
-#[derive(Debug, Args, Default, Clone)]
+#[derive(Args, Debug, ClapSerde, Clone, Deserialize, Serialize)]
 pub struct JWEConfig {
     /// Enable the use of encryption by providing a JWK private key as JSON
     #[clap(long, env = "JWK_PRIVATE_KEY", value_parser = clap::value_parser!(Jwk))]

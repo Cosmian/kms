@@ -1,7 +1,9 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
+use clap_serde_derive::ClapSerde;
 use cloudproof::reexport::findex::Label;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::workspace::WorkspaceConfig;
@@ -11,7 +13,7 @@ use crate::{
 };
 
 /// Configuration for the database
-#[derive(Args, Clone)]
+#[derive(Args, ClapSerde, Clone, Deserialize, Serialize)]
 pub struct DBConfig {
     /// The database type of the KMS server
     /// - postgresql: PostgreSQL. The database url must be provided
@@ -65,12 +67,7 @@ pub struct DBConfig {
 
     /// Clear the database on start.
     /// WARNING: This will delete ALL the data in the database
-    #[clap(
-        long,
-        env = "KMS_CLEAR_DATABASE",
-        default_value = "false",
-        verbatim_doc_comment
-    )]
+    #[clap(long, env = "KMS_CLEAR_DATABASE", verbatim_doc_comment)]
     pub clear_database: bool,
 }
 
@@ -121,19 +118,6 @@ impl Display for DBConfig {
 impl std::fmt::Debug for DBConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", &self))
-    }
-}
-
-impl Default for DBConfig {
-    fn default() -> Self {
-        Self {
-            database_type: None,
-            database_url: None,
-            sqlite_path: PathBuf::from("./sqlite-data"),
-            clear_database: false,
-            redis_master_password: None,
-            redis_findex_label: None,
-        }
     }
 }
 

@@ -32,7 +32,7 @@ pub fn https_clap_config() -> ClapConfig {
     ClapConfig {
         http: HttpConfig {
             https_p12_file: Some(PathBuf::from("src/tests/kmserver.acme.com.p12")),
-            https_p12_password: "password".to_string(),
+            https_p12_password: Some("password".to_string()),
             ..Default::default()
         },
         db: DBConfig {

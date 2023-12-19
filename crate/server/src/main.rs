@@ -13,6 +13,19 @@ use tracing::warn;
 mod expiry;
 
 use clap::Parser;
+use clap_serde_derive::ClapSerde;
+
+#[derive(Parser)]
+#[command(author, version, about)]
+struct Args {
+    /// Config file
+    #[arg(short, long = "config", default_value = "config.toml")]
+    config_path: std::path::PathBuf,
+
+    /// Rest of the arguments
+    #[command(flatten)]
+    pub config: <ClapConfig as ClapSerde>::Opt,
+}
 
 /// The main entrypoint of the program.
 ///
@@ -37,9 +50,26 @@ async fn main() -> KResult<()> {
 
     env_logger::init();
 
+    let cfg_content = std::fs::read_to_string("./resources/config.toml").unwrap();
+    println!("{cfg_content}");
+    let clap_config =
+        ClapConfig::from(toml::from_str::<<ClapConfig as ClapSerde>::Opt>(&cfg_content).unwrap())
+            .merge_clap();
+
+    // let mut args = Args::parse();
+    // let clap_config = if let Ok(content) = std::fs::read_to_string(&args.config_path) {
+    //     let cfg: ClapConfig = toml::from_str::<<ClapConfig as ClapSerde>::Opt>(&content)
+    //         .unwrap()
+    //         .into();
+    //     cfg.merge(&mut args.config)
+    //     // cfg
+    // } else {
+    //     // If there is no config file, return only config parsed from Clap
+    //     ClapConfig::from(&mut args.config)
+    // };
+
     // Instantiate a config object using the env variables and the args of the binary
-    let clap_config = ClapConfig::parse();
-    debug!("Command line config: {:#?}", clap_config);
+    debug!("Command line config: {clap_config:#?}");
 
     // Parse the Server Config from the command line arguments
     let server_params = ServerParams::try_from(&clap_config).await?;

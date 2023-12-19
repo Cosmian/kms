@@ -1,0 +1,4 @@
+default_username = "toto"
+
+[db]
+database_type = "redis-findex"
