@@ -1,17 +1,10 @@
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex, RwLock,
-    },
-    time::Duration,
-};
+use std::sync::{mpsc, Arc, RwLock};
 
 use actix_cors::Cors;
 use actix_identity::IdentityMiddleware;
 use actix_web::{
     dev::ServerHandle,
     middleware::Condition,
-    rt::{spawn, time::sleep},
     web::{self, Data, JsonConfig, PayloadConfig},
     App, HttpServer,
 };
@@ -19,12 +12,11 @@ use openssl::{
     ssl::{SslAcceptor, SslAcceptorBuilder, SslMethod, SslVerifyMode},
     x509::store::X509StoreBuilder,
 };
-use tee_attestation::is_running_inside_tee;
-use tracing::{debug, error, info};
+use tracing::info;
 
 use crate::{
-    config::{self, HttpParams, ServerParams},
-    core::{certbot::Certbot, KMS},
+    config::{self, ServerParams},
+    core::KMS,
     kms_bail, kms_error,
     middlewares::{
         ssl_auth::{extract_peer_certificate, SslAuth},
@@ -43,7 +35,6 @@ use crate::{
 /// The server is started using one of three methods:
 /// 1. Plain HTTP,
 /// 2. HTTPS with PKCS#12,
-/// 3. HTTPS with certbot.
 ///
 /// The method used depends on the server settings specified in the `ServerParams` instance provided.
 ///
@@ -62,9 +53,6 @@ pub async fn start_kms_server(
     // Log the server configuration
     info!("KMS Server configuration: {:#?}", server_params);
     match &server_params.http_params {
-        config::HttpParams::Certbot(_) => {
-            start_certbot_https_kms_server(server_params, kms_server_handle_tx).await
-        }
         config::HttpParams::Https(_) => {
             start_https_kms_server(server_params, kms_server_handle_tx).await
         }
@@ -147,7 +135,7 @@ async fn start_https_kms_server(
         }
     }
 
-    if let Some(verify_cert) = &server_params.verify_cert {
+    if let Some(verify_cert) = &server_params.client_cert {
         // This line sets the mode to verify peer (client) certificates
         builder.set_verify(SslVerifyMode::PEER | SslVerifyMode::FAIL_IF_NO_PEER_CERT);
         let mut store_builder = X509StoreBuilder::new()?;
@@ -168,195 +156,6 @@ async fn start_https_kms_server(
 
     // Run the server and return the result
     server.await.map_err(Into::into)
-}
-
-/// Start and https server with the ability to renew its certificates
-async fn start_auto_renew_https(
-    server_params: ServerParams,
-    certbot: &Arc<Mutex<Certbot>>,
-    server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
-) -> KResult<()> {
-    let kms_server = Arc::new(KMSServer::instantiate(server_params).await?);
-
-    // The loop is designed to restart the server in case it stops.
-    // It stops when we renew the certificates
-    loop {
-        // Define an HTTPS server
-        let (pk, x509) = certbot
-            .lock()
-            .expect("can't lock certificate mutex")
-            .get_cert()?;
-
-        debug!("Building the HTTPS server... ");
-        let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-        builder.set_private_key(&pk)?;
-        builder.set_certificate(&x509[0])?;
-        for x in x509 {
-            builder.add_extra_chain_cert(x)?;
-        }
-
-        let server = prepare_kms_server(kms_server.clone(), Some(builder)).await?;
-
-        // send the server handle to the caller
-        if let Some(tx) = &server_handle_transmitter {
-            tx.send(server.handle())?;
-        }
-
-        let restart = Arc::new(AtomicBool::new(false));
-        let restart_me = Arc::clone(&restart);
-        let srv = server.handle();
-        let cert_copy = Arc::clone(certbot);
-
-        // Define and start the thread renewing the certificate
-        spawn(async move {
-            let days_before_renew = cert_copy
-                .lock()
-                .expect("can't lock certificate mutex")
-                .get_days_before_renew();
-            let renew_in = match days_before_renew {
-                Ok(x) => x,
-                Err(error) => {
-                    error!("Error when asking for renewing the certificate {error}");
-                    0 // force the renew
-                }
-            };
-
-            // Wait for the renew date.
-            if renew_in > 0 {
-                info!("Waiting {renew_in} days before renewing the certificate!");
-                sleep(Duration::from_secs(renew_in as u64 * 3600 * 24)).await;
-            }
-
-            // It's time to renew!!
-            info!("Updating certificate now...");
-            let request_cert = cert_copy
-                .lock()
-                .expect("can't lock certificate mutex")
-                .request_cert();
-            match request_cert {
-                Ok(()) => restart_me.store(true, Ordering::Relaxed),
-                Err(error) => {
-                    error!("Error when renewing the certificate {error}");
-                    restart_me.store(false, Ordering::Relaxed);
-                }
-            }
-
-            info!("Stopping the HTTPS server...");
-            // Stop the HTTPS server. We don't need it anymore
-            srv.stop(true).await;
-        });
-
-        // Run server until stopped (either by ctrl-c or stopped by the previous thread)
-        info!("Starting the HTTPS KMS server...");
-        server.await?;
-
-        // We reach that part of the code when the thread renewing the certificates stops.
-        if restart.load(Ordering::Relaxed) {
-            restart.store(false, Ordering::Relaxed);
-        } else {
-            // If we reach that point, we don't want to restart.
-            // Contact the administrator
-            error!("Can't restart the HTTPS server (no valid certificate)...");
-            kms_bail!("Can't restart the HTTPS server (no valid certificate)...")
-
-            // Note: we could decide another behavior such as:
-            // Let the server up. Then the web browser or the wget will raise a security error the user can ignore
-            // That way, we don't stop our service.
-        }
-    }
-}
-
-async fn start_certbot_https_kms_server(
-    server_params: ServerParams,
-    server_handle_transmitter: Option<mpsc::Sender<ServerHandle>>,
-) -> KResult<()> {
-    // Before starting any servers, check the status of our SSL certificates
-    let certbot = match &server_params.http_params {
-        HttpParams::Certbot(certbot) => certbot.clone(),
-        _ => kms_bail!("trying to start a TLS server but certbot is not used !"),
-    };
-
-    debug!("Initializing certbot");
-    // Recover the previous certificate if exist
-    certbot
-        .lock()
-        .expect("can't lock certificate mutex")
-        .init()?;
-
-    debug!("Checking certificates...");
-    let mut has_valid_cert = certbot
-        .lock()
-        .expect("can't lock certificate mutex")
-        .check();
-
-    let http_root_path = certbot
-        .lock()
-        .expect("can't lock certificate mutex")
-        .http_root_path
-        .clone();
-
-    if !has_valid_cert {
-        info!("No valid certificate found!");
-        info!("Starting certification process...");
-
-        // Start a HTTP server, to negotiate a certificate
-        let server = HttpServer::new(move || {
-            App::new().service(actix_files::Files::new("/", &http_root_path).use_hidden_files())
-        })
-        .workers(1)
-        .bind(("0.0.0.0", 80))?
-        .run();
-        // The server is not started yet here!
-
-        let succeed = Arc::new(AtomicBool::new(false));
-        let succeed_me = Arc::clone(&succeed);
-        let srv = server.handle();
-        let cert_copy = Arc::clone(&certbot);
-
-        spawn(async move {
-            // Generate the certificate in another thread
-            info!("Requesting acme...");
-            let request_cert = cert_copy
-                .lock()
-                .expect("can't lock certificate mutex")
-                .request_cert();
-            match request_cert {
-                Ok(()) => succeed_me.store(true, Ordering::Relaxed),
-                Err(error) => {
-                    error!("Error when generating the certificate: {error}");
-                    succeed_me.store(false, Ordering::Relaxed);
-                }
-            }
-
-            // Stop the HTTP server. We don't need it anymore
-            srv.stop(true).await;
-        });
-
-        // Run server until stopped (either by ctrl-c or stopped by the previous thread)
-        info!("Starting the HTTP KMS server...");
-        server.await?;
-
-        // Note: cert_copy is a ref to cert. So `cert.certificates` contains the new certificates
-        // Therefore, we do not need to call `cert.init()`. That way, we avoid several acme useless queries
-        has_valid_cert = succeed.load(Ordering::Relaxed)
-            && certbot
-                .lock()
-                .expect("can't lock certificate mutex")
-                .check();
-
-        info!("Stop the HTTP server");
-    }
-
-    if has_valid_cert {
-        // Use it and start SSL Server
-        info!("Certificate is valid");
-        start_auto_renew_https(server_params, &certbot, server_handle_transmitter).await?;
-    } else {
-        error!("Abort program, failed to get a valid certificate");
-        kms_bail!("Abort program, failed to get a valid certificate")
-    }
-
-    Ok(())
 }
 
 /**
@@ -403,8 +202,8 @@ pub async fn prepare_kms_server(
         (false, None)
     };
     // Determine if Client Cert Auth should be used for authentication.
-    let use_cert_auth = kms_server.params.verify_cert.is_some();
-    // Determine if the application is running inside an enclave.
+    let use_cert_auth = kms_server.params.client_cert.is_some();
+
     // Determine if the application is using an encrypted SQLite database.
     let is_using_sqlite_enc = matches!(
         kms_server.params.db_params,
@@ -476,14 +275,6 @@ pub async fn prepare_kms_server(
         // The default scope is extended with the /new_database endpoint if the application is using an encrypted SQLite database.
         let default_scope = if is_using_sqlite_enc {
             default_scope.service(routes::add_new_database)
-        } else {
-            default_scope
-        };
-        // The default scope is extended with the /tee endpoints if the application is running inside an enclave.
-        let default_scope = if is_running_inside_tee() {
-            default_scope
-                .service(routes::tee::get_enclave_public_key)
-                .service(routes::tee::get_attestation_report)
         } else {
             default_scope
         };

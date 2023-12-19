@@ -45,10 +45,6 @@ pub enum CliError {
     #[error("Server error: {0}")]
     ServerError(String),
 
-    // Any errors related to a bad behavior of the server concerning the SGX environment
-    #[error("Unexpected sgx error: {0}")]
-    SGXError(String),
-
     // Any actions of the user which is not allowed
     #[error("Access denied: {0}")]
     Unauthorized(String),
@@ -72,10 +68,6 @@ pub enum CliError {
     // Other errors
     #[error("{0}")]
     Default(String),
-
-    // TEE errors
-    #[error(transparent)]
-    TeeAttestationError(#[from] tee_attestation::error::Error),
 
     // Url parsing errors
     #[error(transparent)]

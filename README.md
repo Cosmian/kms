@@ -31,8 +31,6 @@ And also some libraries:
 **Please refer to the README of the inner directories to have more
 information.**
 
-The `sgx` directory contains all the requirements to run the KMS inside an Intel SGX enclave.
-
 You can build a docker containing the KMS server as follow:
 
 ```sh
@@ -58,3 +56,17 @@ cargo test --no-default-features
 ## Releases
 
 All releases can be found in the public URL [package.cosmian.com](https://package.cosmian.com/kms/).
+
+## Setup as a `Supervisor` service
+
+Copy the binary `target/release/cosmian_kms` to the remote machine folder according to [cosmian_kms.ini](./resources/supervisor/cosmian_kms.ini) statement (ie: `/usr/sbin/cosmian_kms`).
+
+Copy the [cosmian_kms.ini](./resources/supervisor/cosmian_kms.ini) config file as `/etc/supervisord.d/cosmian_kms.ini` in the remote machine.
+
+Run:
+
+```console
+supervisorctl reload
+supervisorctl start cosmian_kms
+supervisorctl status cosmian_kms
+```
