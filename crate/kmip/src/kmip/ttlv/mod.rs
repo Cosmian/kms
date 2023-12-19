@@ -459,8 +459,9 @@ impl<'de> Deserialize<'de> for TTLV {
 /// doesn't provide such conversion.
 #[must_use]
 pub fn to_u32_digits(big_int: &BigUint) -> Vec<u32> {
-    big_int
-        .to_bytes_be()
+    let mut big_int_bytes = big_int.to_bytes_be();
+    big_int_bytes.reverse();
+    big_int_bytes
         .chunks(4)
         .map(|group_of_4_bytes| {
             group_of_4_bytes
