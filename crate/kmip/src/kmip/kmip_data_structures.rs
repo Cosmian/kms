@@ -15,6 +15,7 @@ use crate::{
             WrappingMethod,
         },
     },
+    openssl::pad_be_bytes,
 };
 
 /// A Key Block object is a structure used to encapsulate all of the information
@@ -57,7 +58,24 @@ impl KeyBlock {
         match &self.key_value.key_material {
             KeyMaterial::ByteString(v) => Ok(Zeroizing::new(v.clone())),
             KeyMaterial::TransparentSymmetricKey { key } => Ok(Zeroizing::new(key.clone())),
-            KeyMaterial::TransparentECPrivateKey { d, .. } => Ok(Zeroizing::new(d.to_bytes_be())),
+            KeyMaterial::TransparentECPrivateKey {
+                d,
+                recommended_curve,
+            } => {
+                let mut d_vec = d.to_bytes_be();
+                let privkey_size = match recommended_curve {
+                    RecommendedCurve::P192 => 24,
+                    RecommendedCurve::P224 => 28,
+                    RecommendedCurve::P256 => 32,
+                    RecommendedCurve::P384 => 48,
+                    RecommendedCurve::P521 => 66,
+                    RecommendedCurve::CURVE25519 | RecommendedCurve::CURVEED25519 => 32,
+                    RecommendedCurve::CURVE448 | RecommendedCurve::CURVEED448 => 56,
+                    _ => d_vec.len(),
+                };
+                pad_be_bytes(&mut d_vec, privkey_size);
+                Ok(Zeroizing::new(d_vec))
+            }
             KeyMaterial::TransparentECPublicKey { q_string, .. } => {
                 Ok(Zeroizing::new(q_string.clone()))
             }

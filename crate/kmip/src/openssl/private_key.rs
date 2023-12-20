@@ -23,7 +23,6 @@ use crate::{
 
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
     while bytes.len() != size {
-        println!("pad be bytes");
         bytes.insert(0, 0);
     }
 }

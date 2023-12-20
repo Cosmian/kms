@@ -459,7 +459,6 @@ impl<'de> Deserialize<'de> for TTLV {
 /// doesn't provide such conversion.
 #[must_use]
 pub fn to_u32_digits(big_int: &BigUint) -> Vec<u32> {
-    let mut big_int_bytes = big_int.to_bytes_be();
     // Since the KMS works with big-endian representation of bytearrays, casting
     // a group of 4 bytes in big-endian u32 representation needs revert iter so
     // that if you have a chunk [0, 12, 143, 239] you will do
@@ -470,12 +469,13 @@ pub fn to_u32_digits(big_int: &BigUint) -> Vec<u32> {
     // In this case, using this to convert a BigUint to a Vec<u32> will not lose
     // leading null bytes information which might be the case when an EC private
     // key is legally generated with leading null bytes.
-    big_int_bytes.reverse();
-    big_int_bytes
+    big_int
+        .to_bytes_be()
         .chunks(4)
         .map(|group_of_4_bytes| {
             group_of_4_bytes
                 .iter()
+                .rev()
                 .fold(0, |acc, byte| (acc << 8) + u32::from(*byte))
         })
         .collect::<Vec<_>>()
