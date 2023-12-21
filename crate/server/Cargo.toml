@@ -54,11 +54,11 @@ reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { version = "0.7.3", default-features = false, features = [
-    "json",
-    "runtime-tokio-native-tls",
-    "mysql",
-    "postgres",
-    "sqlite",
+  "json",
+  "runtime-tokio-native-tls",
+  "mysql",
+  "postgres",
+  "sqlite",
 ] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }

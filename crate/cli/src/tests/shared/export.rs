@@ -351,7 +351,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
     // 32 is privkey size on x25519.
     pad_be_bytes(&mut d_vec, 32);
     println!("dvec size is {:?}", d_vec.len());
-    let pkey_1 = PKey::private_key_from_raw_bytes(&d_vec, Id::X25519)?;
+    let pkey_1 = PKey::private_key_from_raw_bytes(&d_vec, Id::X25519).unwrap();
 
     // Export the bytes only
     export_key(
@@ -365,11 +365,11 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         false,
     )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
-    let pkey_2 = PKey::private_key_from_der(&bytes)?;
+    let pkey_2 = PKey::private_key_from_der(&bytes).unwrap();
 
     assert_eq!(
-        pkey_1.private_key_to_pkcs8()?,
-        pkey_2.private_key_to_pkcs8()?
+        pkey_1.private_key_to_pkcs8().unwrap(),
+        pkey_2.private_key_to_pkcs8().unwrap()
     );
 
     //
@@ -406,7 +406,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         _ => panic!("Invalid key value type"),
     };
     assert_eq!(recommended_curve, &RecommendedCurve::CURVE25519);
-    let pkey_1 = PKey::public_key_from_raw_bytes(q_string, Id::X25519)?;
+    let pkey_1 = PKey::public_key_from_raw_bytes(q_string, Id::X25519).unwrap();
 
     // Export the bytes only
     export_key(
@@ -420,9 +420,12 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
         false,
     )?;
     let bytes = read_bytes_from_file(&tmp_path.join("output.export.bytes"))?;
-    let pkey_2 = PKey::public_key_from_der(&bytes)?;
+    let pkey_2 = PKey::public_key_from_der(&bytes).unwrap();
 
-    assert_eq!(pkey_1.public_key_to_der()?, pkey_2.public_key_to_der()?);
+    assert_eq!(
+        pkey_1.public_key_to_der().unwrap(),
+        pkey_2.public_key_to_der().unwrap()
+    );
 
     Ok(())
 }

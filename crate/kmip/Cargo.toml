@@ -25,8 +25,8 @@ strum = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
-zeroize = { workspace = true }
 uuid = { version = "1.6.1", features = ["v4"] }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 cosmian_logger = { path = "../logger" }

@@ -8,7 +8,6 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::RestClientError;
 use cosmian_kms_utils::error::KmipUtilsError;
-use openssl::error::ErrorStack;
 use pem::PemError;
 use thiserror::Error;
 
@@ -106,12 +105,6 @@ impl From<cloudproof::reexport::crypto_core::CryptoCoreError> for CliError {
 
 impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::Error> for CliError {
     fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::Error) -> Self {
-        Self::Conversion(e.to_string())
-    }
-}
-
-impl From<ErrorStack> for CliError {
-    fn from(e: ErrorStack) -> Self {
         Self::Conversion(e.to_string())
     }
 }

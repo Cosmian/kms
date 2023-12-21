@@ -6,7 +6,7 @@ use std::{
 };
 
 use cosmian_kms_client::KmsRestClient;
-use openssl::x509::X509;
+use der::{DecodePem, Encode};
 use rustls::Certificate;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -212,7 +212,7 @@ impl CliConf {
             self.accept_invalid_certs,
             if let Some(certificate) = &self.verified_cert {
                 Some(Certificate(
-                    X509::from_pem(certificate.as_bytes())?.to_der()?,
+                    x509_cert::Certificate::from_pem(certificate.as_bytes())?.to_der()?,
                 ))
             } else {
                 None
