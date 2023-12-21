@@ -65,6 +65,7 @@ time = { workspace = true, features = ["local-offset", "formatting"] }
 # this version of tokio should be the same as the one used in actix-web
 # run `cargo tree -i tokio` to check
 tokio = { workspace = true }
+toml = "0.8"
 tracing = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true }

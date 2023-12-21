@@ -70,3 +70,14 @@ supervisorctl reload
 supervisorctl start cosmian_kms
 supervisorctl status cosmian_kms
 ```
+
+## Server parameters
+
+If a configuration file is provided, parameters are set following this order:
+- conf file (env variable `KMS_SERVER_CONF` set by default to `/etc/cosmian_kms/conf.toml`)
+- default (set on struct)
+
+otherwise the parameters are set following this order:
+- args in command line
+- env var
+- default (set on struct)

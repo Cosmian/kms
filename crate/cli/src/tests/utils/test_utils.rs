@@ -261,7 +261,7 @@ async fn genererate_server_params(
                     https_p12_file: Some(PathBuf::from(
                         "test_data/certificates/kmserver.acme.com.p12",
                     )),
-                    https_p12_password: "password".to_string(),
+                    https_p12_password: Some("password".to_string()),
                     authority_cert_file: Some(PathBuf::from("test_data/certificates/ca.crt")),
                     ..Default::default()
                 }
@@ -271,7 +271,7 @@ async fn genererate_server_params(
                     https_p12_file: Some(PathBuf::from(
                         "test_data/certificates/kmserver.acme.com.p12",
                     )),
-                    https_p12_password: "password".to_string(),
+                    https_p12_password: Some("password".to_string()),
                     ..Default::default()
                 }
             }

@@ -13,14 +13,16 @@ pub enum HttpParams {
 impl HttpParams {
     pub fn try_from(config: &ClapConfig) -> KResult<Self> {
         // start in HTTPS mode if a PKCS#12 file is provided
-        if let Some(p12_file) = &config.http.https_p12_file {
+        if let (Some(p12_file), Some(p12_password)) =
+            (&config.http.https_p12_file, &config.http.https_p12_password)
+        {
             // Open and read the file into a byte vector
             let mut file = File::open(p12_file)?;
             let mut der_bytes = Vec::new();
             file.read_to_end(&mut der_bytes)?;
             // Parse the byte vector as a PKCS#12 object
             let sealed_p12 = Pkcs12::from_der(der_bytes.as_slice())?;
-            let p12 = sealed_p12.parse2(&config.http.https_p12_password)?;
+            let p12 = sealed_p12.parse2(p12_password)?;
             Ok(Self::Https(p12))
         // else start in HTTP mode which is the default
         } else {
@@ -30,10 +32,7 @@ impl HttpParams {
 
     #[must_use]
     pub fn is_running_https(&self) -> bool {
-        match self {
-            Self::Https(_) => true,
-            Self::Http => false,
-        }
+        matches!(self, Self::Https(_))
     }
 }
 

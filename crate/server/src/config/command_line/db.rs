@@ -2,6 +2,7 @@ use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
 use cloudproof::reexport::findex::Label;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::workspace::WorkspaceConfig;
@@ -10,8 +11,11 @@ use crate::{
     result::KResult,
 };
 
+const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
+
 /// Configuration for the database
-#[derive(Args, Clone)]
+#[derive(Args, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct DBConfig {
     /// The database type of the KMS server
     /// - postgresql: PostgreSQL. The database url must be provided
@@ -41,7 +45,7 @@ pub struct DBConfig {
     #[clap(
         long,
         env = "KMS_SQLITE_PATH",
-        default_value = "./sqlite-data",
+        default_value = DEFAULT_SQLITE_PATH,
         required_if_eq_any([("database_type", "sqlite"), ("database_type", "sqlite-enc")])
     )]
     pub sqlite_path: PathBuf,
@@ -65,13 +69,21 @@ pub struct DBConfig {
 
     /// Clear the database on start.
     /// WARNING: This will delete ALL the data in the database
-    #[clap(
-        long,
-        env = "KMS_CLEAR_DATABASE",
-        default_value = "false",
-        verbatim_doc_comment
-    )]
+    #[clap(long, env = "KMS_CLEAR_DATABASE", verbatim_doc_comment)]
     pub clear_database: bool,
+}
+
+impl Default for DBConfig {
+    fn default() -> Self {
+        Self {
+            sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
+            database_type: None,
+            database_url: None,
+            clear_database: false,
+            redis_master_password: None,
+            redis_findex_label: None,
+        }
+    }
 }
 
 impl Display for DBConfig {
@@ -121,19 +133,6 @@ impl Display for DBConfig {
 impl std::fmt::Debug for DBConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("{}", &self))
-    }
-}
-
-impl Default for DBConfig {
-    fn default() -> Self {
-        Self {
-            database_type: None,
-            database_url: None,
-            sqlite_path: PathBuf::from("./sqlite-data"),
-            clear_database: false,
-            redis_master_password: None,
-            redis_findex_label: None,
-        }
     }
 }
 

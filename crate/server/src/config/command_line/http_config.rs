@@ -1,15 +1,20 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
+use serde::{Deserialize, Serialize};
 
-#[derive(Args, Clone)]
+const DEFAULT_PORT: u16 = 9998;
+const DEFAULT_HOSTNAME: &str = "0.0.0.0";
+
+#[derive(Args, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct HttpConfig {
     /// The KMS server port
-    #[clap(long, env = "KMS_PORT", default_value = "9998")]
+    #[clap(long, env = "KMS_PORT", default_value_t = DEFAULT_PORT)]
     pub port: u16,
 
     /// The KMS server hostname
-    #[clap(long, env = "KMS_HOSTNAME", default_value = "0.0.0.0")]
+    #[clap(long, env = "KMS_HOSTNAME", default_value = DEFAULT_HOSTNAME)]
     pub hostname: String,
 
     /// The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode.
@@ -17,8 +22,8 @@ pub struct HttpConfig {
     pub https_p12_file: Option<PathBuf>,
 
     /// The password to open the PKCS#12 Certificates and Key file
-    #[clap(long, env = "KMS_HTTPS_P12_PASSWORD", default_value = "")]
-    pub https_p12_password: String,
+    #[clap(long, env = "KMS_HTTPS_P12_PASSWORD")]
+    pub https_p12_password: Option<String>,
 
     /// The server optional authority X509 certificate in PEM format used to validate the client certificate presented for authentication.
     /// If provided, this will require clients to present a certificate signed by this authority for authentication.
@@ -32,11 +37,9 @@ impl Display for HttpConfig {
         if self.https_p12_file.is_some() {
             write!(f, "https://{}:{}, ", self.hostname, self.port)?;
             write!(f, "Pkcs12 file: {:?}, ", self.https_p12_file.as_ref())?;
-            write!(
-                f,
-                "password: {}, ",
-                self.https_p12_password.replace('.', "*")
-            )?;
+            if let Some(https_p12_password) = &self.https_p12_password {
+                write!(f, "password: {}, ", https_p12_password.replace('.', "*"))?;
+            }
             write!(
                 f,
                 "authority cert file: {:?}",
@@ -57,10 +60,10 @@ impl std::fmt::Debug for HttpConfig {
 impl Default for HttpConfig {
     fn default() -> Self {
         Self {
-            port: 9998,
-            hostname: "0.0.0.0".to_string(),
+            port: DEFAULT_PORT,
+            hostname: DEFAULT_HOSTNAME.to_string(),
             https_p12_file: None,
-            https_p12_password: String::new(),
+            https_p12_password: None,
             authority_cert_file: None,
         }
     }

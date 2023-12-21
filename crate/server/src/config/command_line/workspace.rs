@@ -5,26 +5,31 @@ use std::{
 
 use clap::Args;
 use dirs;
+use serde::{Deserialize, Serialize};
 
 use crate::{kms_error, result::KResult};
 
-#[derive(Debug, Args)]
+const DEFAULT_ROOT_DATA_PATH: &str = "./cosmian-kms";
+const DEFAULT_TMP_PATH: &str = "/tmp";
+
+#[derive(Debug, Args, Deserialize, Serialize)]
+#[serde(default)]
 pub struct WorkspaceConfig {
     /// The root folder where the KMS will store its data
     /// A relative path is taken relative to the user HOME directory
-    #[clap(long, env = "KMS_ROOT_DATA_PATH", default_value = "./cosmian-kms")]
+    #[clap(long, env = "KMS_ROOT_DATA_PATH", default_value = DEFAULT_ROOT_DATA_PATH)]
     pub root_data_path: PathBuf,
 
     /// The folder to store temporary data (non-persistent data readable by no-one but the current instance during the current execution)
-    #[clap(long, env = "KMS_TMP_PATH", default_value = "/tmp")]
+    #[clap(long, env = "KMS_TMP_PATH", default_value = DEFAULT_TMP_PATH)]
     pub tmp_path: PathBuf,
 }
 
 impl Default for WorkspaceConfig {
     fn default() -> Self {
         Self {
-            root_data_path: std::env::temp_dir(),
-            tmp_path: std::env::temp_dir(),
+            root_data_path: PathBuf::from(DEFAULT_ROOT_DATA_PATH),
+            tmp_path: PathBuf::from(DEFAULT_TMP_PATH),
         }
     }
 }

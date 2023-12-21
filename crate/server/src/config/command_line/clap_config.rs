@@ -1,11 +1,30 @@
 use std::fmt::{self};
 
 use clap::Parser;
+use serde::{Deserialize, Serialize};
 
 use super::{DBConfig, HttpConfig, JWEConfig, JwtAuthConfig, WorkspaceConfig};
 
-#[derive(Parser, Default)]
+const DEFAULT_USERNAME: &str = "admin";
+
+impl Default for ClapConfig {
+    fn default() -> Self {
+        Self {
+            db: DBConfig::default(),
+            http: HttpConfig::default(),
+            auth: JwtAuthConfig::default(),
+            workspace: WorkspaceConfig::default(),
+            default_username: DEFAULT_USERNAME.to_owned(),
+            force_default_username: false,
+            jwe: JWEConfig::default(),
+            google_cse_kacls_url: None,
+        }
+    }
+}
+
+#[derive(Parser, Serialize, Deserialize)]
 #[clap(version, about, long_about = None)]
+#[serde(default)]
 pub struct ClapConfig {
     #[clap(flatten)]
     pub db: DBConfig,
@@ -20,23 +39,23 @@ pub struct ClapConfig {
     pub workspace: WorkspaceConfig,
 
     /// The default username to use when no authentication method is provided
-    #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = "admin")]
+    #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = DEFAULT_USERNAME)]
     pub default_username: String,
 
     /// When an authentication method is provided, perform the authentication
     /// but always use the default username instead of the one provided by the authentication method
-    #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME", default_value = "false")]
+    #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME")]
     pub force_default_username: bool,
 
     #[clap(flatten)]
     pub jwe: JWEConfig,
 
-    #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL")]
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
     ///
     /// It should contain the external URL of this server as configured in Google Workspace client side encryption settings
     /// For instance, if this server is running on domain `cse.my_domain.com`,
     /// the URL should be something like <https://cse.my_domain.com/google_cse>
+    #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL")]
     pub google_cse_kacls_url: Option<String>,
 }
 
