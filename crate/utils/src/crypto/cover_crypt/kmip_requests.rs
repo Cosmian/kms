@@ -73,7 +73,6 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
     access_policy: &str,
     is_wrapped: bool,
     wrapping_password: Option<String>,
-    passwd_salt: Option<Vec<u8>>,
     tags: T,
 ) -> Result<Import, KmipUtilsError> {
     let mut attributes = Attributes {
@@ -96,8 +95,9 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
     //  - to wrapped (wrapping_password is some)
     //  - or not wrapped (otherwise)
     let is_wrapped = is_wrapped || wrapping_password.is_some();
+    // TODO - is salt necessary here ?
     let key = if let Some(wrapping_password) = wrapping_password {
-        wrap_key_bytes(private_key, &wrapping_password, passwd_salt)?
+        wrap_key_bytes(private_key, &wrapping_password, None)?
     } else {
         private_key.to_vec()
     };
@@ -148,7 +148,6 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
     policy: &Policy,
     is_wrapped: bool,
     wrapping_password: Option<String>,
-    passwd_salt: Option<Vec<u8>>,
     tags: T,
 ) -> Result<Import, KmipUtilsError> {
     let mut attributes = Attributes {
@@ -171,8 +170,9 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
     //  - to wrapped (wrapping_password is some)
     //  - or not wrapped (otherwise)
     let is_wrapped = is_wrapped || wrapping_password.is_some();
+    // TODO - is salt necessary here ?
     let key = if let Some(wrapping_password) = wrapping_password {
-        wrap_key_bytes(private_key, &wrapping_password, passwd_salt)?
+        wrap_key_bytes(private_key, &wrapping_password, None)?
     } else {
         private_key.to_vec()
     };
