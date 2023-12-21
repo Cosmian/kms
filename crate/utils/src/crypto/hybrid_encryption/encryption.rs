@@ -1,11 +1,14 @@
 use std::sync::{Arc, Mutex};
 
+#[cfg(not(feature = "fips"))]
 use cloudproof::reexport::crypto_core::{
-    reexport::{pkcs8::DecodePublicKey, rand_core::SeedableRng, zeroize::Zeroizing},
+    reexport::zeroize::Zeroizing, RsaKeyWrappingAlgorithm, RsaPublicKey,
+};
+use cloudproof::reexport::crypto_core::{
+    reexport::{pkcs8::DecodePublicKey, rand_core::SeedableRng},
     CsRng, Ecies, EciesP192Aes128, EciesP224Aes128, EciesP256Aes128, EciesP384Aes128,
     EciesSalsaSealBox, Ed25519PublicKey, P192PublicKey, P224PublicKey, P256PublicKey,
-    P384PublicKey, RsaKeyWrappingAlgorithm, RsaPublicKey, X25519PublicKey,
-    ED25519_PUBLIC_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH,
+    P384PublicKey, X25519PublicKey, ED25519_PUBLIC_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH,
 };
 use cosmian_kmip::kmip::{
     kmip_operations::{Encrypt, EncryptResponse},
@@ -18,6 +21,8 @@ use openssl::{
 };
 use tracing::{debug, trace};
 
+#[cfg(feature = "fips")]
+use crate::crypto::wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_wrap;
 use crate::{
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail, EncryptionSystem,
@@ -105,8 +110,17 @@ impl EncryptionSystem for HybridEncryptionSystem {
                 let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
                 EciesSalsaSealBox::encrypt(&mut *rng, &public_key, &plaintext, None)?
             }
+            #[cfg(feature = "fips")]
             Id::RSA => {
                 trace!("encrypt: RSA");
+
+                // TODO - change it for AES256 INSTEAD OF AES_KWP. Issue #112.
+                ckm_rsa_aes_key_wrap(self.public_key.clone(), &plaintext)?
+            }
+            #[cfg(not(feature = "fips"))]
+            Id::RSA => {
+                trace!("encrypt: RSA");
+
                 let spki_bytes = self.public_key.public_key_to_der()?;
                 let public_key = RsaPublicKey::from_public_key_der(&spki_bytes)?;
                 public_key.wrap_key(

@@ -18,18 +18,25 @@ use cosmian_kmip::{
     },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_utils::crypto::curve_25519::operation::create_p192_key_pair;
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
-        curve_25519::operation::{create_ed25519_key_pair, create_x25519_key_pair},
+        curve_25519::operation::{
+            create_ed25519_key_pair, create_p224_key_pair, create_p256_key_pair,
+            create_p384_key_pair, create_p521_key_pair, create_x25519_key_pair,
+        },
         hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
         symmetric::{create_symmetric_key, AesGcmSystem},
     },
     tagging::{check_user_tags, get_tags, remove_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
-use tracing::{debug, log::warn, trace};
+#[cfg(not(feature = "fips"))]
+use tracing::warn;
+use tracing::{debug, trace};
 use zeroize::Zeroize;
 
 use super::{cover_crypt::create_user_decryption_key, KMS};
@@ -382,17 +389,32 @@ impl KMS {
                     .cryptographic_domain_parameters
                     .unwrap_or_default();
                 match dp.recommended_curve.unwrap_or_default() {
+                    // TODO - #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVE25519 => {
-                        let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                        create_x25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                        create_x25519_key_pair(private_key_uid, public_key_uid)
                     }
+                    #[cfg(not(feature = "fips"))]
+                    RecommendedCurve::P192 => create_p192_key_pair(private_key_uid, public_key_uid),
+                    RecommendedCurve::P224 => create_p224_key_pair(private_key_uid, public_key_uid),
+                    RecommendedCurve::P256 => create_p256_key_pair(private_key_uid, public_key_uid),
+                    RecommendedCurve::P384 => create_p384_key_pair(private_key_uid, public_key_uid),
+                    RecommendedCurve::P521 => create_p521_key_pair(private_key_uid, public_key_uid),
+                    #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED25519 => {
                         warn!(
                             "An Edwards Keypair on curve 25519 should not be requested to perform \
-                             ECDH. Creating anyway as it can be converted to Montgomery X25519"
+                             ECDH. Creating anyway."
                         );
-                        let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                        create_ed25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                        create_ed25519_key_pair(private_key_uid, public_key_uid)
+                    }
+                    #[cfg(feature = "fips")]
+                    // Ed25519 not allowed for ECDH.
+                    // see NIST.SP.800-186 - Section 3.1.2 table 2.
+                    RecommendedCurve::CURVEED25519 => {
+                        kms_not_supported!(
+                            "An Edwards Keypair on curve 25519 should not be requested to perform \
+                             ECDH in FIPS mode."
+                        )
                     }
                     other => kms_not_supported!(
                         "Generation of Key Pair for curve: {other:?}, is not supported"
@@ -400,8 +422,7 @@ impl KMS {
                 }
             }
             CryptographicAlgorithm::Ed25519 => {
-                let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                create_ed25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                create_ed25519_key_pair(private_key_uid, public_key_uid)
             }
             CryptographicAlgorithm::CoverCrypt => {
                 cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(

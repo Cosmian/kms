@@ -2,8 +2,10 @@ use cloudproof::reexport::crypto_core::{
     reexport::{pkcs8::DecodePrivateKey, zeroize::Zeroizing},
     Ecies, EciesP192Aes128, EciesP224Aes128, EciesP256Aes128, EciesP384Aes128, EciesSalsaSealBox,
     Ed25519PrivateKey, P192PrivateKey, P224PrivateKey, P256PrivateKey, P384PrivateKey,
-    RsaKeyWrappingAlgorithm, RsaPrivateKey, X25519PrivateKey, CURVE_25519_SECRET_LENGTH,
+    X25519PrivateKey, CURVE_25519_SECRET_LENGTH,
 };
+#[cfg(not(feature = "fips"))]
+use cloudproof::reexport::crypto_core::{RsaKeyWrappingAlgorithm, RsaPrivateKey};
 use cosmian_kmip::{
     kmip::{
         kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
@@ -17,6 +19,8 @@ use openssl::{
 };
 use tracing::{debug, trace};
 
+#[cfg(feature = "fips")]
+use crate::crypto::wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_unwrap;
 use crate::{error::KmipUtilsError, kmip_utils_bail, DecryptionSystem};
 
 /// Decrypt a single block of data encrypted using a ECIES scheme or RSA hybrid system
@@ -34,106 +38,6 @@ impl HybridDecryptionSystem {
             private_key_uid,
         }
     }
-
-    /*fn ecies_decrypt(
-        &self,
-        recommended_curve: RecommendedCurve,
-        ciphertext: &[u8],
-    ) -> Result<Vec<u8>, KmipUtilsError> {
-        let plaintext = match recommended_curve {
-            RecommendedCurve::P192 => {
-                let private_key_bytes: [u8; P192_PRIVATE_KEY_LENGTH] = self
-                    .private_key
-                    .key_block()?
-                    .key_bytes()?
-                    .deref()
-                    .to_owned()
-                    .try_into()?;
-                let private_key = P192PrivateKey::try_from_bytes(private_key_bytes)?;
-                EciesP192Aes128::decrypt(&private_key, ciphertext, None)?
-            }
-            RecommendedCurve::P224 => {
-                let private_key_bytes: [u8; P224_PRIVATE_KEY_LENGTH] = self
-                    .private_key
-                    .key_block()?
-                    .key_bytes()?
-                    .deref()
-                    .to_owned()
-                    .try_into()?;
-                let private_key = P224PrivateKey::try_from_bytes(private_key_bytes)?;
-                EciesP224Aes128::decrypt(&private_key, ciphertext, None)?
-            }
-            RecommendedCurve::P256 => {
-                debug!("decrypt: RecommendedCurve::P256: size: {P256_PRIVATE_KEY_LENGTH}");
-                let private_key_bytes: [u8; P256_PRIVATE_KEY_LENGTH] = self
-                    .private_key
-                    .key_block()?
-                    .key_bytes()?
-                    .deref()
-                    .to_owned()
-                    .try_into()?;
-                debug!("decrypt: converted to slice OK");
-                let private_key = P256PrivateKey::try_from_bytes(private_key_bytes)?;
-                debug!("decrypt: converted to NIST curve OK");
-                EciesP256Aes128::decrypt(&private_key, ciphertext, None)?
-            }
-            RecommendedCurve::P384 => {
-                let private_key_bytes: [u8; P384_PRIVATE_KEY_LENGTH] = self
-                    .private_key
-                    .key_block()?
-                    .key_bytes()?
-                    .deref()
-                    .to_owned()
-                    .try_into()?;
-                let private_key = P384PrivateKey::try_from_bytes(private_key_bytes)?;
-                EciesP384Aes128::decrypt(&private_key, ciphertext, None)?
-            }
-            RecommendedCurve::CURVEED25519 => {
-                debug!("decrypt: match CURVEED25519");
-                let private_key_bytes: [u8; CURVE_25519_SECRET_LENGTH] = self
-                    .private_key
-                    .key_block()?
-                    .key_bytes()?
-                    .deref()
-                    .to_owned()
-                    .try_into()
-                    .map_err(|_| {
-                        KmipUtilsError::ConversionError(
-                            "invalid Curve Ed25519 private key length".to_string(),
-                        )
-                    })?;
-                let private_key = Ed25519PrivateKey::try_from_bytes(private_key_bytes)?;
-                let private_key = X25519PrivateKey::from_ed25519_private_key(&private_key);
-                debug!("decrypt: private_key");
-
-                // Decrypt the encrypted message
-                EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?
-            }
-            RecommendedCurve::CURVE25519 => {
-                debug!("decrypt: match CURVE25519");
-                let private_key_bytes: [u8; CURVE_25519_SECRET_LENGTH] = self
-                    .private_key
-                    .key_block()?
-                    .key_bytes()?
-                    .deref()
-                    .to_owned()
-                    .try_into()
-                    .map_err(|_| {
-                        KmipUtilsError::ConversionError(
-                            "invalid Curve 25519 private key length".to_string(),
-                        )
-                    })?;
-                let private_key = X25519PrivateKey::try_from_bytes(private_key_bytes)?;
-
-                // Decrypt the encrypted message
-                EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?
-            }
-            _ => Err(KmipUtilsError::NotSupported(format!(
-                "{recommended_curve:?} curve is not supported",
-            )))?,
-        };
-        Ok(plaintext)
-    }*/
 }
 
 impl DecryptionSystem for HybridDecryptionSystem {
@@ -166,8 +70,19 @@ impl DecryptionSystem for HybridDecryptionSystem {
                 let private_key = X25519PrivateKey::try_from_bytes(private_key_bytes)?;
                 Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
             }
+            #[cfg(feature = "fips")]
             Id::RSA => {
-                trace!("encrypt: RSA");
+                trace!("decrypt: RSA");
+
+                // TODO - change it for AES256 INSTEAD OF AES_KWP. Issue #112.
+                Zeroizing::from(ckm_rsa_aes_key_unwrap(
+                    self.private_key.clone(),
+                    ciphertext,
+                )?)
+            }
+            #[cfg(not(feature = "fips"))]
+            Id::RSA => {
+                trace!("decrypt: RSA");
                 let der_bytes = self.private_key.private_key_to_pkcs8()?;
                 let private_key = RsaPrivateKey::from_pkcs8_der(&der_bytes)?;
                 private_key.unwrap_key(RsaKeyWrappingAlgorithm::Aes256Sha256, ciphertext)?

@@ -13,19 +13,18 @@ insecure = []
 timeout = []
 
 # Enable all the feature even insecure but timeout
-# To run in a test environment using a real domain name and enclaves without the rest api limit of let's encrypt
 staging = ["insecure"]
+
+# Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
+fips = ["cosmian_kms_utils/fips"]
 
 # No features (insecure, timeout or staging) and contain non FIPS approved libraries (e.g. Rust Crypto)
 default = []
 prod = []
 
 [dependencies]
-acme-lib = { git = "https://github.com/Cosmian/acme-lib", branch = "master" }
 actix-cors = "0.6"
-actix-files = "0.6"
 actix-identity = "0.6"
-actix-multipart = "0.6"
 actix-rt = { workspace = true }
 actix-service = "2.0"
 actix-tls = "3.1"
@@ -49,20 +48,18 @@ josekit = { workspace = true }
 lazy_static = "1.4"
 mime = "0.3"
 openssl = { workspace = true }
-ratls = { workspace = true }
 rawsql = "0.1"
 redis = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { version = "0.7.3", default-features = false, features = [
-    "json",
-    "runtime-tokio-native-tls",
-    "mysql",
-    "postgres",
-    "sqlite",
+  "json",
+  "runtime-tokio-native-tls",
+  "mysql",
+  "postgres",
+  "sqlite",
 ] }
-tee_attestation = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["local-offset", "formatting"] }
 # this version of tokio should be the same as the one used in actix-web

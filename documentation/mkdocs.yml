@@ -45,7 +45,6 @@ nav:
   - Enabling TLS: tls.md
   - Deploying in single server mode: single_server_mode.md
   - Deploying for high-availability: high_availability_mode.md
-  - Secure bootstrap of the KMS server start: bootstrap.md
   - Running in the cloud or any zero-trust environment: zero_trust.md
   - Authenticating users to the server: authentication.md
   - Authorizing users with access rights: authorization.md
@@ -80,4 +79,3 @@ nav:
       - Getting started with Google Workspace CSE: google_cse/google_cse.md
       - Setting up a well-known file web server: google_cse/configuring-the-well-known-server.md
       - Configuring the well-known file: google_cse/configuring-the-well-known-file.md
-  # - SaaS: saas.md

@@ -43,7 +43,7 @@ Instead of using the UID of the key, we can use the unique tag of the key `MySym
 identified. It is possible to use multiple tags to identify a key; for instance symmetric keys automatically get a
 *system* tag `_kk`. See [tagging](./tagging.md) for more information on tags.
 
-The response is in `Raw`format, the default format for synnetric keys specified by KMIP 2.1; see the [formats page](.
+The response is in `Raw`format, the default format for symmetric keys specified by KMIP 2.1; see the [formats page](.
 /formats.md) for details.
 
 Corresponding `ckms` CLI command:

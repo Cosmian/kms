@@ -3,8 +3,6 @@
     "actix",
     "ascii",
     "canonicalize",
-    "certbot",
-    "Certbot",
     "chacha",
     "ciphertext",
     "ciphertexts",
@@ -26,7 +24,6 @@
     "keypair",
     "kmip",
     "KMIP",
-    "libsgx",
     "mozilla",
     "mysql",
     "nginx",
@@ -68,5 +65,6 @@
   "rust-analyzer.check.command": "clippy",
   "[python]": {
     "editor.defaultFormatter": "ms-python.autopep8"
-  }
+  },
+  "rust-analyzer.showUnlinkedFileNotification": false
 }

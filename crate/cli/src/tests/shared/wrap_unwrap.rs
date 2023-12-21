@@ -166,6 +166,8 @@ pub fn password_wrap_import_test(
     let key_bytes = object.key_block()?.key_bytes()?;
 
     //wrap and unwrap using a password
+    // TODO - Remove not fips flag by solving #124 on Github.
+    #[cfg(not(feature = "fips"))]
     {
         wrap(
             &ctx.owner_cli_conf_path,

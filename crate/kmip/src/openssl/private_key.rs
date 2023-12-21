@@ -21,6 +21,12 @@ use crate::{
     result::KmipResultHelper,
 };
 
+pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
+    while bytes.len() != size {
+        bytes.insert(0, 0);
+    }
+}
+
 /// Convert a KMIP Private key to openssl `PKey<Private>`
 ///
 /// The supported `KeyFormatType` are:
@@ -131,13 +137,22 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                 recommended_curve,
             } => match recommended_curve {
                 RecommendedCurve::CURVE25519 => {
-                    PKey::private_key_from_raw_bytes(&d.to_bytes_be(), Id::X25519)?
+                    let mut privkey_vec = d.to_bytes_be();
+                    // 32 is privkey size on x25519.
+                    pad_be_bytes(&mut privkey_vec, 32);
+                    PKey::private_key_from_raw_bytes(&privkey_vec, Id::X25519)?
                 }
                 RecommendedCurve::CURVE448 => {
-                    PKey::private_key_from_raw_bytes(&d.to_bytes_be(), Id::X448)?
+                    let mut privkey_vec = d.to_bytes_be();
+                    // 56 is privkey size on x448.
+                    pad_be_bytes(&mut privkey_vec, 56);
+                    PKey::private_key_from_raw_bytes(&privkey_vec, Id::X448)?
                 }
                 RecommendedCurve::CURVEED25519 => {
-                    PKey::private_key_from_raw_bytes(&d.to_bytes_be(), Id::ED25519)?
+                    let mut privkey_vec = d.to_bytes_be();
+                    // 32 is privkey size on ed25519.
+                    pad_be_bytes(&mut privkey_vec, 32);
+                    PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED25519)?
                 }
                 other => ec_private_key_from_scalar(d, other)?,
             },
@@ -160,16 +175,20 @@ fn ec_private_key_from_scalar(
     scalar: &BigUint,
     curve: &RecommendedCurve,
 ) -> Result<PKey<Private>, KmipError> {
-    let nid = match curve {
-        RecommendedCurve::P256 => Nid::X9_62_PRIME256V1,
-        RecommendedCurve::P192 => Nid::X9_62_PRIME192V1,
-        RecommendedCurve::P224 => Nid::SECP224R1,
-        RecommendedCurve::P384 => Nid::SECP384R1,
-        RecommendedCurve::P521 => Nid::SECP521R1,
+    let (nid, privkey_size) = match curve {
+        RecommendedCurve::P256 => (Nid::X9_62_PRIME256V1, 32),
+        RecommendedCurve::P192 => (Nid::X9_62_PRIME192V1, 24),
+        RecommendedCurve::P224 => (Nid::SECP224R1, 28),
+        RecommendedCurve::P384 => (Nid::SECP384R1, 48),
+        RecommendedCurve::P521 => (Nid::SECP521R1, 66),
         x => kmip_bail!("Unsupported curve: {:?} in this KMIP implementation", x),
     };
     let big_num_context = BigNumContext::new()?;
+
+    let mut scalar_vec = scalar.to_bytes_be();
+    pad_be_bytes(&mut scalar_vec, privkey_size);
     let scalar = BigNum::from_slice(scalar.to_bytes_be().as_slice())?;
+
     let ec_group = EcGroup::from_curve_name(nid)?;
     let mut ec_public_key = EcPoint::new(&ec_group)?;
     ec_public_key.mul_generator(&ec_group, &scalar, &big_num_context)?;
@@ -405,7 +424,7 @@ pub fn openssl_private_key_to_kmip(
 
 #[cfg(test)]
 mod tests {
-
+    use num_bigint_dig::BigUint;
     use openssl::{
         bn::BigNum,
         ec::{EcGroup, EcKey},
@@ -419,7 +438,10 @@ mod tests {
             kmip_objects::Object,
             kmip_types::{KeyFormatType, RecommendedCurve},
         },
-        openssl::{kmip_private_key_to_openssl, private_key::openssl_private_key_to_kmip},
+        openssl::{
+            kmip_private_key_to_openssl,
+            private_key::{openssl_private_key_to_kmip, pad_be_bytes},
+        },
     };
 
     #[test]
@@ -638,10 +660,14 @@ mod tests {
             _ => panic!("Invalid key block"),
         };
         assert_eq!(recommended_curve, RecommendedCurve::P256);
+
+        let mut privkey_vec = d.to_bytes_be();
+        // 32 is privkey size on P-256.
+        pad_be_bytes(&mut privkey_vec, 32);
         let private_key_ = PKey::from_ec_key(
             EcKey::from_private_components(
                 &ec_group,
-                &BigNum::from_slice(d.to_bytes_be().as_slice()).unwrap(),
+                &BigNum::from_slice(privkey_vec.as_slice()).unwrap(),
                 &ec_public_key,
             )
             .unwrap(),
@@ -712,11 +738,27 @@ mod tests {
             _ => panic!("Invalid key block"),
         };
         assert_eq!(recommended_curve, RecommendedCurve::CURVE25519);
-        let private_key_ = PKey::private_key_from_raw_bytes(&d.to_bytes_be(), Id::X25519).unwrap();
+
+        let mut privkey_vec = d.to_bytes_be();
+        // 32 is privkey size on X25519.
+        pad_be_bytes(&mut privkey_vec, 32);
+        let private_key_ = PKey::private_key_from_raw_bytes(&privkey_vec, Id::X25519).unwrap();
         assert_eq!(private_key_.id(), Id::X25519);
         assert_eq!(private_key_.bits(), 253);
         let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
         assert_eq!(private_key_.id(), Id::X25519);
         assert_eq!(private_key_.bits(), 253);
+    }
+
+    #[test]
+    fn test_conversion_privkey_null_first_byte() {
+        let key = [
+            0, 113, 8, 182, 184, 86, 82, 102, 195, 88, 8, 230, 119, 254, 2, 177, 228, 135, 20, 247,
+            106, 133, 91, 78, 125, 44, 57, 70, 202, 154, 25, 243,
+        ];
+        let a = BigUint::from_bytes_be(&key);
+        let mut key_vec = a.to_bytes_be();
+        pad_be_bytes(&mut key_vec, 32);
+        assert_eq!(key_vec, key);
     }
 }

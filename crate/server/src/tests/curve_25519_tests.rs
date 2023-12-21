@@ -12,7 +12,7 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::crypto::curve_25519::{
     kmip_requests::{ec_create_key_pair_request, get_private_key_request, get_public_key_request},
-    operation::{self, to_curve_25519_256_public_key},
+    operation::{self, to_ec_public_key},
 };
 use cosmian_logger::log_utils::log_init;
 
@@ -159,7 +159,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // test import of public key
     let pk_bytes = pk.key_block()?.key_bytes()?;
     assert_eq!(pk_bytes.len(), X25519_PUBLIC_KEY_LENGTH);
-    let pk = to_curve_25519_256_public_key(&pk_bytes, sk_uid);
+    let pk = to_ec_public_key(&pk_bytes, sk_uid, RecommendedCurve::CURVE25519);
     let request = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
         object_type: ObjectType::PublicKey,
@@ -264,11 +264,21 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         panic!("not a create key pair response payload");
     };
 
+    // Should fail in fips mode since ed25519 for ECDH is not allowed.
+    #[cfg(feature = "fips")]
+    assert_eq!(
+        response.items[1].result_status,
+        ResultStatusEnumeration::OperationFailed
+    );
+    #[cfg(not(feature = "fips"))]
     assert_eq!(
         response.items[1].result_status,
         ResultStatusEnumeration::Success
     );
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[1].response_payload else {
+
+    #[cfg(not(feature = "fips"))]
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[1].response_payload
+    else {
         panic!("not a create key pair response payload");
     };
 
@@ -289,11 +299,21 @@ async fn test_curve_25519_multiple() -> KResult<()> {
         )
     );
 
+    // Should fail in fips mode since ed25519 for ECDH is not allowed.
+    #[cfg(feature = "fips")]
+    assert_eq!(
+        response.items[3].result_status,
+        ResultStatusEnumeration::OperationFailed
+    );
+    #[cfg(not(feature = "fips"))]
     assert_eq!(
         response.items[3].result_status,
         ResultStatusEnumeration::Success
     );
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[3].response_payload else {
+
+    #[cfg(not(feature = "fips"))]
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[3].response_payload
+    else {
         panic!("not a create key pair response payload");
     };
 

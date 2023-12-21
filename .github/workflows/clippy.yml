@@ -8,6 +8,9 @@ on:
         required: true
         type: string
 
+env:
+  OPENSSL_DIR: /tmp/openssl_fips
+
 jobs:
   lint:
     runs-on: ubuntu-22.04
@@ -28,6 +31,10 @@ jobs:
           key: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-lint-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Local OpenSSL FIPS Install
+        run: |
+          bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
+
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ inputs.toolchain }}
@@ -39,3 +46,5 @@ jobs:
 
       - name: Static analysis
         run: cargo clippy --workspace --all-targets --all-features --release -- -D warnings
+        env:
+          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}

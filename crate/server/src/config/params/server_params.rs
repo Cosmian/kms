@@ -1,15 +1,9 @@
-use std::{
-    fmt::{self},
-    fs::File,
-    io::Read,
-    path::PathBuf,
-};
+use std::{fmt, fs::File, io::Read, path::PathBuf};
 
 use alcoholic_jwt::JWKS;
 use openssl::x509::X509;
-use tee_attestation::is_running_inside_tee;
 
-use super::{BootstrapServerParams, DbParams, HttpParams, TeeParams};
+use super::{DbParams, HttpParams};
 use crate::{
     config::{command_line::JWEConfig, ClapConfig},
     kms_bail,
@@ -38,7 +32,7 @@ pub struct ServerParams {
     /// but always use the default username instead of the one provided by the authentication method
     pub force_default_username: bool,
 
-    /// The DB parameters may be supplied on the command line or via the bootstrap server
+    /// The DB parameters may be supplied on the command line
     pub db_params: Option<DbParams>,
 
     /// Whether to clear the database on start
@@ -48,26 +42,11 @@ pub struct ServerParams {
 
     pub port: u16,
 
-    // /// The provided PKCS#12 when HTTPS is enabled
-    // pub server_pkcs_12: Option<ParsedPkcs12_2>,
-
-    // /// The certbot engine if certbot is enabled
-    // pub certbot: Option<Arc<Mutex<Certbot>>>,
     pub http_params: HttpParams,
-
-    /// The tee parameters when running inside a tee
-    pub tee_params: TeeParams,
 
     /// The certificate used to verify the client TLS certificates
     /// used for authentication
-    pub verify_cert: Option<X509>,
-
-    /// Use a bootstrap server (inside a tee for instance)
-    pub bootstrap_server_params: BootstrapServerParams,
-
-    /// Ensure RA-TLS is available and used.
-    /// The server will not start if this is not the case.
-    pub ensure_ra_tls: bool,
+    pub client_cert: Option<X509>,
 
     /// This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
     ///
@@ -83,7 +62,7 @@ impl ServerParams {
         let workspace = conf.workspace.init()?;
 
         // The HTTP/HTTPS parameters
-        let http_params = HttpParams::try_from(conf, &workspace)?;
+        let http_params = HttpParams::try_from(conf)?;
 
         // Should we verify the client TLS certificates?
         let verify_cert = if let Some(authority_cert_file) = &conf.http.authority_cert_file {
@@ -104,19 +83,14 @@ impl ServerParams {
             jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
             jwe_config: conf.jwe.clone(),
             jwt_audience: conf.auth.jwt_audience.clone(),
-            db_params: conf
-                .db
-                .init(&workspace, conf.bootstrap_server.use_bootstrap_server)?,
+            db_params: conf.db.init(&workspace)?,
             clear_db_on_start: conf.db.clear_database,
             hostname: conf.http.hostname.clone(),
             port: conf.http.port,
-            http_params: HttpParams::try_from(conf, &workspace)?,
-            tee_params: conf.tee.init(&workspace)?,
+            http_params: HttpParams::try_from(conf)?,
             default_username: conf.default_username.clone(),
             force_default_username: conf.force_default_username,
-            verify_cert,
-            bootstrap_server_params: conf.bootstrap_server.clone(),
-            ensure_ra_tls: conf.bootstrap_server.ensure_ra_tls,
+            client_cert: verify_cert,
             google_cse_kacls_url: conf.google_cse_kacls_url.clone(),
         };
         Ok(server_conf)
@@ -137,31 +111,6 @@ impl ServerParams {
 impl fmt::Debug for ServerParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut x = f.debug_struct("");
-        let x = if self.bootstrap_server_params.use_bootstrap_server {
-            x.field(
-                "bootstrap server url",
-                &format!(
-                    "https://{}:{}",
-                    &self.hostname, &self.bootstrap_server_params.bootstrap_server_port
-                ),
-            )
-            .field(
-                "bootstrap server subject",
-                &self.bootstrap_server_params.bootstrap_server_subject,
-            )
-            .field(
-                "bootstrap server days before expiration",
-                &self
-                    .bootstrap_server_params
-                    .bootstrap_server_expiration_days,
-            )
-            .field(
-                "bootstrap server ensure RA-TLS",
-                &self.bootstrap_server_params.ensure_ra_tls,
-            )
-        } else {
-            &mut x
-        };
         let x = x
             .field(
                 "kms_url",
@@ -185,7 +134,7 @@ impl fmt::Debug for ServerParams {
         } else {
             x
         };
-        let x = if let Some(verify_cert) = &self.verify_cert {
+        let x = if let Some(verify_cert) = &self.client_cert {
             x.field("verify_cert CN", verify_cert.subject_name())
         } else {
             x
@@ -194,11 +143,6 @@ impl fmt::Debug for ServerParams {
             .field("default_username", &self.default_username)
             .field("force_default_username", &self.force_default_username);
         let x = x.field("http_params", &self.http_params);
-        let x = if is_running_inside_tee() {
-            x.field("tee_params", &self.tee_params)
-        } else {
-            x
-        };
         x.finish()
     }
 }
@@ -220,10 +164,7 @@ impl Clone for ServerParams {
             hostname: self.hostname.clone(),
             port: self.port,
             http_params: HttpParams::Http,
-            tee_params: self.tee_params.clone(),
-            verify_cert: self.verify_cert.clone(),
-            bootstrap_server_params: self.bootstrap_server_params.clone(),
-            ensure_ra_tls: self.ensure_ra_tls,
+            client_cert: self.client_cert.clone(),
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
         }
     }
