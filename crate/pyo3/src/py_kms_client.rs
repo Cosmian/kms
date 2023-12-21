@@ -229,7 +229,6 @@ impl KmsClient {
         tags: Option<Vec<&str>>,
         is_wrapped: Option<bool>,
         wrapping_password: Option<String>,
-        passwd_salt: Option<Vec<u8>>,
         unique_identifier: Option<String>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
@@ -244,7 +243,6 @@ impl KmsClient {
             &policy,
             is_wrapped.unwrap_or(false),
             wrapping_password,
-            passwd_salt,
             tags.unwrap_or_default()
                 .into_iter()
                 .map(String::from)
@@ -573,7 +571,6 @@ impl KmsClient {
         tags: Option<Vec<&str>>,
         is_wrapped: Option<bool>,
         wrapping_password: Option<String>,
-        passwd_salt: Option<Vec<u8>>,
         unique_identifier: Option<String>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
@@ -589,7 +586,6 @@ impl KmsClient {
             access_policy_str,
             is_wrapped.unwrap_or(false),
             wrapping_password,
-            passwd_salt,
             tags.unwrap_or_default()
                 .into_iter()
                 .map(String::from)

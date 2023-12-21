@@ -24,7 +24,6 @@ cosmian_kms_client = { path = "../client" }
 cosmian_kms_utils = { path = "../utils" }
 cosmian_logger = { path = "../logger" }
 der = { workspace = true }
-hex = "0.4"
 oauth2 = "4.4"
 pem = "3.0"
 rand = "0.8"

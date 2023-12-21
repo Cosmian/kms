@@ -33,7 +33,7 @@ pub fn wrap(
     key_file_in: &Path,
     key_file_out: Option<&PathBuf>,
     wrap_password: Option<String>,
-    passwd_salt: Option<String>,
+    password_salt: Option<String>,
     wrap_key_b64: Option<String>,
     wrap_key_id: Option<String>,
     wrap_key_file: Option<PathBuf>,
@@ -54,7 +54,7 @@ pub fn wrap(
         args.push("-p".to_owned());
         args.push(wrap_password);
 
-        if let Some(salt) = passwd_salt {
+        if let Some(salt) = password_salt {
             args.push("-s".to_owned());
             args.push(salt);
         }
@@ -86,7 +86,7 @@ pub fn unwrap(
     key_file_in: &Path,
     key_file_out: Option<&PathBuf>,
     unwrap_password: Option<String>,
-    passwd_salt: Option<String>,
+    password_salt: Option<String>,
     unwrap_key_b64: Option<String>,
     unwrap_key_id: Option<String>,
     unwrap_key_file: Option<PathBuf>,
@@ -107,7 +107,7 @@ pub fn unwrap(
         args.push("-p".to_owned());
         args.push(unwrap_password);
 
-        if let Some(salt) = passwd_salt {
+        if let Some(salt) = password_salt {
             args.push("-s".to_owned());
             args.push(salt);
         }
@@ -186,7 +186,7 @@ pub fn password_wrap_import_test(
             &key_file,
             None,
             Some("password".to_owned()),
-            Some("000102030405060708090A0B0C0D0E0F".to_owned()),
+            Some("AAECAwQFBgcICQoLDA0ODw==".to_owned()),
             None,
             None,
             None,
@@ -208,7 +208,7 @@ pub fn password_wrap_import_test(
             &key_file,
             None,
             Some("password".to_owned()),
-            Some("000102030405060708090A0B0C0D0E0F".to_owned()),
+            Some("AAECAwQFBgcICQoLDA0ODw==".to_owned()),
             None,
             None,
             None,

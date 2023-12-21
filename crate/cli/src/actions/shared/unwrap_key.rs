@@ -51,7 +51,7 @@ pub struct UnwrapKeyAction {
 
     /// An optional hexadecimal salt to derivate the password into a key.
     #[clap(
-        long = "passwd-salt",
+        long = "password-salt",
         short = 's',
         required = false,
         group = "password",
@@ -103,10 +103,11 @@ impl UnwrapKeyAction {
                 .with_context(|| "failed decoding the unwrap key")?;
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(password) = &self.unwrap_password {
-            let salt = self
-                .unwrap_salt
-                .as_ref()
-                .map(|salt| hex::decode(salt).expect("Salt hexadecimal decoding failed."));
+            let salt = self.unwrap_salt.as_ref().map(|salt| {
+                general_purpose::STANDARD
+                    .decode(salt)
+                    .expect("Salt base64 decoding failed for key unwrapping.")
+            });
 
             let (_, key_bytes) =
                 derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes(), salt)?;
