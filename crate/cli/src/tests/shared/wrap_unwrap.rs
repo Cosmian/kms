@@ -33,6 +33,7 @@ pub fn wrap(
     key_file_in: &Path,
     key_file_out: Option<&PathBuf>,
     wrap_password: Option<String>,
+    passwd_salt: Option<String>,
     wrap_key_b64: Option<String>,
     wrap_key_id: Option<String>,
     wrap_key_file: Option<PathBuf>,
@@ -52,6 +53,11 @@ pub fn wrap(
     if let Some(wrap_password) = wrap_password {
         args.push("-p".to_owned());
         args.push(wrap_password);
+
+        if let Some(salt) = passwd_salt {
+            args.push("-s".to_owned());
+            args.push(salt);
+        }
     } else if let Some(wrap_key_b64) = wrap_key_b64 {
         args.push("-k".to_owned());
         args.push(wrap_key_b64);
@@ -62,6 +68,7 @@ pub fn wrap(
         args.push("-f".to_owned());
         args.push(wrap_key_file.to_str().unwrap().to_owned());
     }
+
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -79,6 +86,7 @@ pub fn unwrap(
     key_file_in: &Path,
     key_file_out: Option<&PathBuf>,
     unwrap_password: Option<String>,
+    passwd_salt: Option<String>,
     unwrap_key_b64: Option<String>,
     unwrap_key_id: Option<String>,
     unwrap_key_file: Option<PathBuf>,
@@ -98,6 +106,11 @@ pub fn unwrap(
     if let Some(unwrap_password) = unwrap_password {
         args.push("-p".to_owned());
         args.push(unwrap_password);
+
+        if let Some(salt) = passwd_salt {
+            args.push("-s".to_owned());
+            args.push(salt);
+        }
     } else if let Some(unwrap_key_b64) = unwrap_key_b64 {
         args.push("-k".to_owned());
         args.push(unwrap_key_b64);
@@ -166,8 +179,6 @@ pub fn password_wrap_import_test(
     let key_bytes = object.key_block()?.key_bytes()?;
 
     //wrap and unwrap using a password
-    // TODO - Remove not fips flag by solving #124 on Github.
-    #[cfg(not(feature = "fips"))]
     {
         wrap(
             &ctx.owner_cli_conf_path,
@@ -175,6 +186,7 @@ pub fn password_wrap_import_test(
             &key_file,
             None,
             Some("password".to_owned()),
+            Some("000102030405060708090A0B0C0D0E0F".to_owned()),
             None,
             None,
             None,
@@ -196,6 +208,7 @@ pub fn password_wrap_import_test(
             &key_file,
             None,
             Some("password".to_owned()),
+            Some("000102030405060708090A0B0C0D0E0F".to_owned()),
             None,
             None,
             None,
@@ -215,6 +228,7 @@ pub fn password_wrap_import_test(
             &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
+            None,
             None,
             None,
             Some(key_b64.clone()),
@@ -237,6 +251,7 @@ pub fn password_wrap_import_test(
             &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
+            None,
             None,
             None,
             Some(key_b64),

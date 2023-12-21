@@ -97,11 +97,16 @@ impl RedisWithFindex {
 
     pub fn master_key_from_password(
         master_password: &str,
-    ) -> KResult<SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>> {
-        let master_secret_key = derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
-            master_password.as_bytes(),
-        )?;
-        Ok(master_secret_key)
+        salt: Option<Vec<u8>>,
+    ) -> KResult<(Vec<u8>, SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>)> {
+        let (salt, output_key_material) = derive_key_from_password::<
+            REDIS_WITH_FINDEX_MASTER_KEY_LENGTH,
+        >(master_password.as_bytes(), salt)?;
+
+        let master_secret_key: SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH> =
+            SymmetricKey::try_from_bytes(output_key_material)?;
+
+        Ok((salt, master_secret_key))
     }
 
     /// Prepare an object for upsert

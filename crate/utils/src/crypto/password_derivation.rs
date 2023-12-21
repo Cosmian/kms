@@ -1,22 +1,17 @@
 // This file exists to standardize key-derivation across all KMS crates
 #[cfg(not(feature = "fips"))]
 use argon2::Argon2;
-use cloudproof::reexport::crypto_core::{FixedSizeCBytes, SymmetricKey};
+use openssl::rand::rand_bytes;
 #[cfg(feature = "fips")]
-use openssl::{hash::MessageDigest, pkcs5::pbkdf2_hmac, rand::rand_bytes};
+use openssl::{hash::MessageDigest, pkcs5::pbkdf2_hmac};
 
 use crate::error::KmipUtilsError;
 #[cfg(feature = "fips")]
 use crate::kmip_utils_bail;
 
-#[cfg(not(feature = "fips"))]
-/// The salt to use when deriving passwords in the KMS crate with Argon2.
-const KMS_ARGON2_SALT: &[u8] = b"Default salt used in KMS crates";
-
+const FIPS_MIN_SALT_SIZE: usize = 16;
 #[cfg(feature = "fips")]
 const FIPS_MIN_KLEN: usize = 14;
-#[cfg(feature = "fips")]
-const FIPS_MIN_SALT_SIZE: usize = 16;
 #[cfg(feature = "fips")]
 const FIPS_HLEN_BITS: usize = 256;
 #[cfg(feature = "fips")]
@@ -29,7 +24,8 @@ const FIPS_MIN_ITER: usize = 210_000;
 #[cfg(feature = "fips")]
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
-) -> Result<SymmetricKey<LENGTH>, KmipUtilsError> {
+    salt: Option<Vec<u8>>,
+) -> Result<(Vec<u8>, [u8; LENGTH]), KmipUtilsError> {
     if LENGTH < FIPS_MIN_KLEN || LENGTH * 8 > ((1 << 32) - 1) * FIPS_HLEN_BITS {
         kmip_utils_bail!(
             "Password derivation error: wrong output length argument, got {}",
@@ -38,8 +34,15 @@ pub fn derive_key_from_password<const LENGTH: usize>(
     }
 
     let mut output_key_material = [0u8; LENGTH];
-    let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
-    rand_bytes(&mut salt)?;
+
+    // Generate 128 bits of random salt.
+    let salt = if let Some(salt) = salt {
+        salt
+    } else {
+        let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
+        rand_bytes(&mut salt)?;
+        salt
+    };
 
     pbkdf2_hmac(
         password,
@@ -49,9 +52,7 @@ pub fn derive_key_from_password<const LENGTH: usize>(
         &mut output_key_material,
     )?;
 
-    // TODO Waiting for fix in crypto_core were from() should be implemented.
-    let sk = SymmetricKey::try_from_bytes(output_key_material)?;
-    Ok(sk)
+    Ok((salt, output_key_material))
 }
 
 #[cfg(not(feature = "fips"))]
@@ -59,18 +60,26 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 /// with SHA512 in FIPS mode.
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
-) -> Result<SymmetricKey<LENGTH>, KmipUtilsError> {
+    salt: Option<Vec<u8>>,
+) -> Result<(Vec<u8>, [u8; LENGTH]), KmipUtilsError> {
     let mut output_key_material = [0u8; LENGTH];
+
+    // Generate 128 bits of random salt
+    let salt = if let Some(salt) = salt {
+        salt
+    } else {
+        let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
+        rand_bytes(&mut salt)?;
+        salt
+    };
 
     {
         Argon2::default()
-            .hash_password_into(password, KMS_ARGON2_SALT, &mut output_key_material)
+            .hash_password_into(password, &salt, &mut output_key_material)
             .map_err(|e| KmipUtilsError::Derivation(e.to_string()))?;
     }
 
-    // TODO Waiting for fix in crypto_core were from() should be implemented.
-    let sk = SymmetricKey::try_from_bytes(output_key_material)?;
-    Ok(sk)
+    Ok((salt, output_key_material))
 }
 
 #[test]
@@ -80,7 +89,7 @@ fn test_password_derivation() {
     openssl::provider::Provider::load(None, "fips").unwrap();
 
     let my_weak_password = "doglover1234".as_bytes().to_vec();
-    let secure_mk = derive_key_from_password::<32>(&my_weak_password).unwrap();
+    let (_, secure_mk) = derive_key_from_password::<32>(&my_weak_password, None).unwrap();
 
     assert_eq!(secure_mk.len(), 32);
 }
@@ -93,7 +102,49 @@ fn test_password_derivation_bad_size() {
     openssl::provider::Provider::load(None, "fips").unwrap();
 
     let my_weak_password = "splintorage".as_bytes().to_vec();
-    let secure_mk = derive_key_from_password::<13>(&my_weak_password);
+    let secure_mk_res = derive_key_from_password::<13>(&my_weak_password, None);
 
-    assert!(secure_mk.is_err());
+    assert!(secure_mk_res.is_err());
+}
+
+#[test]
+fn test_password_derivation_reuse_salt() {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    openssl::provider::Provider::load(None, "fips").unwrap();
+
+    let mut salt = vec![0; FIPS_MIN_SALT_SIZE];
+    rand_bytes(&mut salt).unwrap();
+    let salt_bis = salt.clone();
+
+    let my_weak_password = "123pr1ncess".as_bytes().to_vec();
+    let (salt1, secure_mk1) =
+        derive_key_from_password::<32>(&my_weak_password, Some(salt)).unwrap();
+
+    let my_weak_password = "123pr1ncess".as_bytes().to_vec();
+    let (salt2, secure_mk2) =
+        derive_key_from_password::<32>(&my_weak_password, Some(salt_bis)).unwrap();
+
+    assert_eq!(salt1, salt2);
+    assert_eq!(secure_mk1, secure_mk2);
+}
+
+#[test]
+fn test_password_derivation_no_reuse_salt() {
+    #[cfg(feature = "fips")]
+    // Load FIPS provider module from OpenSSL.
+    openssl::provider::Provider::load(None, "fips").unwrap();
+
+    let mut salt = vec![0; FIPS_MIN_SALT_SIZE];
+    rand_bytes(&mut salt).unwrap();
+
+    let my_weak_password = "123pr1ncess".as_bytes().to_vec();
+    let (salt1, secure_mk1) =
+        derive_key_from_password::<32>(&my_weak_password, Some(salt)).unwrap();
+
+    let my_weak_password = "123pr1ncess".as_bytes().to_vec();
+    let (salt2, secure_mk2) = derive_key_from_password::<32>(&my_weak_password, None).unwrap();
+
+    assert_ne!(salt1, salt2);
+    assert_ne!(secure_mk1, secure_mk2);
 }
