@@ -47,7 +47,6 @@ pub struct ClapConfig {
     #[clap(long, env = "KMS_FORCE_DEFAULT_USERNAME")]
     pub force_default_username: bool,
 
-    //#[clap_serde]
     #[clap(flatten)]
     pub jwe: JWEConfig,
 
