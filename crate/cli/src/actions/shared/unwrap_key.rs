@@ -49,6 +49,16 @@ pub struct UnwrapKeyAction {
     )]
     unwrap_password: Option<String>,
 
+    /// An optional hexadecimal salt to derivate the password into a key.
+    #[clap(
+        long = "passwd-salt",
+        short = 's',
+        required = false,
+        group = "password",
+        requires = "unwrap_password"
+    )]
+    unwrap_salt: Option<String>,
+
     /// A symmetric key as a base 64 string to unwrap the imported key.
     #[clap(
         long = "unwrap-key-b64",
@@ -93,9 +103,14 @@ impl UnwrapKeyAction {
                 .with_context(|| "failed decoding the unwrap key")?;
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(password) = &self.unwrap_password {
-            let key_bytes =
-                derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes())?
-                    .to_vec();
+            let salt = self
+                .unwrap_salt
+                .as_ref()
+                .map(|salt| hex::decode(salt).expect("Salt hexadecimal decoding failed."));
+
+            let (_, key_bytes) =
+                derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes(), salt)?;
+
             create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.unwrap_key_id {
             export_object(kms_rest_client, key_id, false, None, false, None)
