@@ -35,7 +35,6 @@ async-trait = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
-clap-serde-derive = "0.2"
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip", features = ["openssl"] }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }

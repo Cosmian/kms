@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{DBConfig, HttpConfig, JWEConfig, JwtAuthConfig, WorkspaceConfig};
 
+const DEFAULT_USERNAME: &str = "admin";
+
 impl Default for ClapConfig {
     fn default() -> Self {
         Self {
@@ -12,7 +14,7 @@ impl Default for ClapConfig {
             http: HttpConfig::default(),
             auth: JwtAuthConfig::default(),
             workspace: WorkspaceConfig::default(),
-            default_username: "admin".to_owned(),
+            default_username: DEFAULT_USERNAME.to_owned(),
             force_default_username: false,
             jwe: JWEConfig::default(),
             google_cse_kacls_url: None,
@@ -37,7 +39,7 @@ pub struct ClapConfig {
     pub workspace: WorkspaceConfig,
 
     /// The default username to use when no authentication method is provided
-    #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = "admin")]
+    #[clap(long, env = "KMS_DEFAULT_USERNAME", default_value = DEFAULT_USERNAME)]
     pub default_username: String,
 
     /// When an authentication method is provided, perform the authentication

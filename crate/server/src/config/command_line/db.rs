@@ -11,6 +11,8 @@ use crate::{
     result::KResult,
 };
 
+const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
+
 /// Configuration for the database
 #[derive(Args, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -43,7 +45,7 @@ pub struct DBConfig {
     #[clap(
         long,
         env = "KMS_SQLITE_PATH",
-        default_value = "./sqlite-data",
+        default_value = DEFAULT_SQLITE_PATH,
         required_if_eq_any([("database_type", "sqlite"), ("database_type", "sqlite-enc")])
     )]
     pub sqlite_path: PathBuf,
@@ -74,7 +76,7 @@ pub struct DBConfig {
 impl Default for DBConfig {
     fn default() -> Self {
         Self {
-            sqlite_path: PathBuf::from("./sqlite-data"),
+            sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
             database_type: None,
             database_url: None,
             clear_database: false,
