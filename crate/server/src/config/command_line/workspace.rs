@@ -4,7 +4,6 @@ use std::{
 };
 
 use clap::Args;
-use dirs;
 use serde::{Deserialize, Serialize};
 
 use crate::{kms_error, result::KResult};
@@ -36,13 +35,8 @@ impl Default for WorkspaceConfig {
 
 impl WorkspaceConfig {
     pub fn init(&self) -> KResult<Self> {
-        let root_data_path = Self::finalize_directory_path(
-            &self.root_data_path,
-            &dirs::home_dir().ok_or_else(|| {
-                kms_error!("Unable to get the user home to set the KMS data path")
-            })?,
-        )?;
-        let tmp_path = Self::finalize_directory_path(&self.tmp_path, &root_data_path)?;
+        let root_data_path = Self::finalize_directory_path(&self.root_data_path, None)?;
+        let tmp_path = Self::finalize_directory_path(&self.tmp_path, Some(&root_data_path))?;
         Ok(Self {
             root_data_path,
             tmp_path,
@@ -65,7 +59,7 @@ impl WorkspaceConfig {
     ///
     /// Returns an error if the directory can't be created or if an error occurs while calling `std::fs::canonicalize`
     pub fn finalize_directory(&self, path: &PathBuf) -> KResult<PathBuf> {
-        Self::finalize_directory_path(path, &self.root_data_path)
+        Self::finalize_directory_path(path, Some(&self.root_data_path))
     }
 
     /// Transform a relative path to `root_data_path` to an absolute path and ensure that the directory exists.
@@ -74,7 +68,7 @@ impl WorkspaceConfig {
     /// # Arguments
     ///
     /// * `path` - The path to be transformed.
-    /// * `relative_root` - The root directory that will be used to make `path` absolute if it's relative.
+    /// * `relative_root` - The root directory that will be used to make `path` absolute if it's relative. Or current directory is None.
     ///
     /// # Returns
     ///
@@ -83,15 +77,24 @@ impl WorkspaceConfig {
     /// # Errors
     ///
     /// Returns an error if the directory can't be created or if an error occurs while calling `std::fs::canonicalize`
-    pub fn finalize_directory_path(path: &PathBuf, relative_root: &Path) -> KResult<PathBuf> {
+    pub fn finalize_directory_path(
+        path: &PathBuf,
+        relative_root: Option<&Path>,
+    ) -> KResult<PathBuf> {
         let path = if path.is_relative() {
-            relative_root.join(path)
+            if let Some(relative_root) = relative_root {
+                relative_root.join(path)
+            } else {
+                path.clone()
+            }
         } else {
             path.clone()
         };
+
         if !path.exists() {
             fs::create_dir_all(&path)?;
         }
+
         fs::canonicalize(path).map_err(|e| kms_error!(e))
     }
 

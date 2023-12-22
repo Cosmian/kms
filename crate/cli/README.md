@@ -19,24 +19,24 @@ Create a `kms.json` file with the `kms_server_url` and your `kms_access_token` s
 
 ```json
 {
-    "insecure": false,
+    "accept_invalid_certs": false,
     "kms_server_url": "http://127.0.0.1:9998",
     "kms_access_token": "MY_TOKEN"
 }
 ```
 
-Note: `insecure` needs to be `true` if `kms_server_url` uses https and the server provides a self-signed ssl connection
+Note: `accept_invalid_certs` needs to be `true` if `kms_server_url` uses https and the server provides a self-signed ssl connection
 
 Then from the same directory as the `kms.json` file, run:
 
 ```sh
-cosmian_kms_cli --help
+ckms --help
 ```
 
 If you wish to use a different configuration file, set its full path in the `KMS_CLI_CONF` environment variable e.g.
 
 ```sh
-KMS_CLI_CONF=kms.json cosmian_kms_cli --help
+KMS_CLI_CONF=kms.json ckms --help
 ```
 
 If the server is running without Auth0, you can let `kms_access_token` empty. Indeed, the server is running without authentication in a single-user mode.
@@ -44,7 +44,7 @@ If the server is running without Auth0, you can let `kms_access_token` empty. In
 If the server is running with cached sqlcipher as the KMS database, you also need to specify `kms_database_secret`. The first time, your organization uses the KMS, you will run the following command to get the `kms_database_secret`. Save the output because the KMS won't remember it!
 
 ```sh
-KMS_CLI_CONF=kms.json cosmian_kms_cli configure
+KMS_CLI_CONF=kms.json ckms configure
 ```
 
 ### Attribute Based Encryption: CoverCrypt
@@ -78,7 +78,7 @@ You can perform the following ABE operations by taking advantage of the KMS.
 For more details, run:
 
 ```sh
-cosmian_kms_cli cc --help
+ckms cc --help
 ```
 
 ### Permissions
@@ -94,8 +94,8 @@ You can perform the following operations concerning to the users-to-objects perm
 ## Testing
 
 ```sh
-cargo build --bin cosmian_kms_cli
-cargo test -p cosmian_kms_cli
+cargo build --bin ckms
+cargo test -p ckms
 ```
 
 A KMS server is started by the test. Make sure, you don't start another one by yourself.
@@ -103,6 +103,6 @@ A KMS server is started by the test. Make sure, you don't start another one by y
 You can also test using a remote KMS:
 
 ```sh
-cargo build --bin cosmian_kms_cli
-cargo test --features staging --no-default-features -p cosmian_kms_cli
+cargo build --bin ckms
+cargo test --features staging --no-default-features -p ckms
 ```
