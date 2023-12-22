@@ -22,7 +22,7 @@ const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
 /// Let `m` be the key/message to wrap, first generate a temporary random AES
 /// key `kek`. Encrypt it using RSA-OAEP; `c` is the encrypted key.
 ///
-/// Encrypt they key/message `m` such as`wk = enc(kek, m)` using the key `kek`
+/// Encrypt the key/message `m` such as`wk = enc(kek, m)` using the key `kek`
 /// with AES-KWP as specified in RFC5649.
 ///
 /// Send `c|wk` where `|` is the concatenation operator.
@@ -71,7 +71,7 @@ pub fn ckm_rsa_aes_key_wrap(
 /// Distinguish `c` and `wk`, respectively the encrypted `kek` and the wrapped
 /// key.
 ///
-/// First decrypt the key-encryption-key `kek` using RSA-OAEP. then proceed to
+/// First decrypt the key-encryption-key `kek` using RSA-OAEP. Then proceed to
 /// unwrap the key by decrypting `m = dec(wk, kek)` using AES-KWP as specified in
 /// RFC5649.
 ///
@@ -100,7 +100,7 @@ pub fn ckm_rsa_aes_key_unwrap(
         );
     }
 
-    let c: &[u8] = &ciphertext[..encapsulation_bytes_len];
+    let c = &ciphertext[..encapsulation_bytes_len];
     let wk = &ciphertext[encapsulation_bytes_len..];
 
     let mut kek = Zeroizing::from(vec![0u8; encapsulation_bytes_len]);
