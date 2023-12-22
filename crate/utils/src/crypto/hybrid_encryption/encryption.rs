@@ -1,9 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-#[cfg(not(feature = "fips"))]
-use cloudproof::reexport::crypto_core::{
-    reexport::zeroize::Zeroizing, RsaKeyWrappingAlgorithm, RsaPublicKey,
-};
 use cloudproof::reexport::crypto_core::{
     reexport::{pkcs8::DecodePublicKey, rand_core::SeedableRng},
     CsRng, Ecies, EciesP192Aes128, EciesP224Aes128, EciesP256Aes128, EciesP384Aes128,
@@ -21,7 +17,6 @@ use openssl::{
 };
 use tracing::{debug, trace};
 
-#[cfg(feature = "fips")]
 use super::rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt;
 use crate::{
     crypto::wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_wrap,
@@ -119,7 +114,6 @@ impl EncryptionSystem for HybridEncryptionSystem {
                     ckm_rsa_aes_key_wrap(self.public_key.clone(), &plaintext)?
                 } else {
                     trace!("encrypt: RSA");
-                    println!("hybrid encryption RSA");
                     rsa_oaep_aes_gcm_encrypt(
                         self.public_key.clone(),
                         &plaintext,

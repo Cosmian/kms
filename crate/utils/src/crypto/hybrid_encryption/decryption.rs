@@ -4,8 +4,6 @@ use cloudproof::reexport::crypto_core::{
     Ed25519PrivateKey, P192PrivateKey, P224PrivateKey, P256PrivateKey, P384PrivateKey,
     X25519PrivateKey, CURVE_25519_SECRET_LENGTH,
 };
-#[cfg(not(feature = "fips"))]
-use cloudproof::reexport::crypto_core::{RsaKeyWrappingAlgorithm, RsaPrivateKey};
 use cosmian_kmip::{
     kmip::{
         kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
@@ -19,7 +17,6 @@ use openssl::{
 };
 use tracing::{debug, trace};
 
-#[cfg(feature = "fips")]
 use super::rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt;
 use crate::{
     crypto::wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_unwrap, error::KmipUtilsError, kmip_utils_bail,
@@ -83,7 +80,6 @@ impl DecryptionSystem for HybridDecryptionSystem {
                     )?)
                 } else {
                     trace!("decrypt: RSA");
-
                     Zeroizing::from(rsa_oaep_aes_gcm_decrypt(
                         self.private_key.clone(),
                         ciphertext,
