@@ -174,6 +174,7 @@ impl KMS {
                 Box::new(HybridEncryptionSystem::instantiate_with_certificate(
                     &owm.id,
                     certificate_value,
+                    false,
                 )?) as Box<dyn EncryptionSystem>,
             ),
             other => kms_not_supported!("encryption with keys of type: {}", other.object_type()),

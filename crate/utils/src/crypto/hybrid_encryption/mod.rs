@@ -7,6 +7,7 @@
 
 mod decryption;
 mod encryption;
+mod rsa_oaep_aes_gcm;
 
 pub use decryption::HybridDecryptionSystem;
 pub use encryption::HybridEncryptionSystem;

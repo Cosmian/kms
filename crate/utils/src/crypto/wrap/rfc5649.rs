@@ -98,7 +98,7 @@ pub fn key_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsErr
 
     if n % AES_WRAP_PAD_BLOCK_SIZE != 0 || n < AES_BLOCK_SIZE {
         return Err(KmipUtilsError::InvalidSize(
-            "The ciphertext size should be >= 16 and a multiple of ".to_string(),
+            "The ciphertext size should be >= 16 and a multiple of 16.".to_string(),
         ))
     }
 

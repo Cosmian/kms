@@ -31,8 +31,11 @@ pub fn encrypt_bytes(wrapping_key: &Object, plaintext: &[u8]) -> Result<Vec<u8>,
             // TODO(ECSE): cert should be verified before anything
             //verify_certificate(certificate_value, kms, owner, params).await?;
             debug!("encrypt_bytes: Encryption with certificate: certificate OK");
-            let encrypt_system =
-                HybridEncryptionSystem::instantiate_with_certificate("id", certificate_value)?;
+            let encrypt_system = HybridEncryptionSystem::instantiate_with_certificate(
+                "id",
+                certificate_value,
+                true,
+            )?;
             let request = Encrypt {
                 data: Some(plaintext.to_vec()),
                 ..Encrypt::default()
