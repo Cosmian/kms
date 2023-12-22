@@ -1,6 +1,5 @@
 pub mod encrypt_decrypt;
 mod rfc5649;
-#[cfg(feature = "fips")]
 pub mod rsa_oaep_aes_kwp;
 mod wrap_unwrap_key;
 pub use encrypt_decrypt::{decrypt_bytes, encrypt_bytes};
