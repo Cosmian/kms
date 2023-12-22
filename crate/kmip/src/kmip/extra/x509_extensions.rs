@@ -31,10 +31,10 @@ use crate::{error::KmipError, kmip::kmip_operations::ErrorReason};
 /// ```cnf
 /// [ v3_ca ]
 /// basicConstraints=critical,@bs_section
-//
-//  [bs_section]
-//  CA=true
-//  pathlen=1
+///
+/// [bs_section]
+/// CA=true
+/// pathlen=1
 /// ```
 pub fn parse_v3_ca_from_file(
     extension_file: &PathBuf,
@@ -289,4 +289,56 @@ fn colon_split<'a>(value: &'a str, property_name: &str) -> Result<&'a str, KmipE
             ))
         })?;
     Ok(val)
+}
+
+#[cfg(test)]
+mod tests {
+    use openssl::x509::X509;
+
+    use super::{colon_split, parse_v3_ca_from_str};
+
+    #[test]
+    fn test_split() {
+        let split = colon_split("email:dummy@gmail.com", "email").unwrap();
+        assert_eq!(split, "dummy@gmail.com");
+        assert!(colon_split("email:dummy@gmail.com", "emails").is_err());
+    }
+
+    #[test]
+    fn test_parse_ext_file() {
+        let ext_file = r#"[ v3_ca ]
+basicConstraints=CA:TRUE,pathlen:0
+keyUsage=keyCertSign,digitalSignature
+extendedKeyUsage=emailProtection
+crlDistributionPoints=URI:http://cse.example.com/crl.pem
+"#;
+        let mut x509_builder = X509::builder().unwrap();
+        let x509_context = x509_builder.x509v3_context(None, None);
+        let parsed_file = parse_v3_ca_from_str(ext_file, &x509_context).unwrap();
+        assert_eq!(parsed_file.len(), 4);
+
+        parsed_file.iter().for_each(|x| {
+            println!("{:?}", x.to_der().unwrap());
+        });
+
+        parsed_file
+            .into_iter()
+            .try_for_each(|extension| x509_builder.append_extension(extension))
+            .unwrap();
+
+        let x509 = x509_builder.build();
+        let crl_distribution_point = x509.as_ref().crl_distribution_points().unwrap();
+        let stack = crl_distribution_point
+            .iter()
+            .next()
+            .unwrap()
+            .distpoint()
+            .unwrap()
+            .fullname()
+            .unwrap();
+        assert_eq!(
+            stack.get(0).unwrap().uri(),
+            Some("http://cse.example.com/crl.pem")
+        );
+    }
 }
