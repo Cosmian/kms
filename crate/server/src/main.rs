@@ -14,7 +14,7 @@ use tracing::{debug, info};
 #[cfg(feature = "timeout")]
 mod expiry;
 
-const KMS_SERVER_CONF: &str = "/etc/cosmian_kms/conf.toml";
+const KMS_SERVER_CONF: &str = "/etc/cosmian_kms/server.toml";
 
 /// The main entrypoint of the program.
 ///

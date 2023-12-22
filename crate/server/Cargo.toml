@@ -38,7 +38,6 @@ clap = { workspace = true }
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip", features = ["openssl"] }
 cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
-dirs = "5.0"
 dotenvy = "0.15"
 env_logger = "0.10"
 futures = "0.3"

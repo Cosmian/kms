@@ -4,7 +4,6 @@ use std::{
 };
 
 use clap::Args;
-use dirs;
 use serde::{Deserialize, Serialize};
 
 use crate::{kms_error, result::KResult};
@@ -36,12 +35,7 @@ impl Default for WorkspaceConfig {
 
 impl WorkspaceConfig {
     pub fn init(&self) -> KResult<Self> {
-        let root_data_path = Self::finalize_directory_path(
-            &self.root_data_path,
-            &dirs::home_dir().ok_or_else(|| {
-                kms_error!("Unable to get the user home to set the KMS data path")
-            })?,
-        )?;
+        let root_data_path = self.root_data_path.canonicalize()?;
         let tmp_path = Self::finalize_directory_path(&self.tmp_path, &root_data_path)?;
         Ok(Self {
             root_data_path,
