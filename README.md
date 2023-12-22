@@ -85,18 +85,21 @@ otherwise the parameters are set following this order:
 
 See [this README](https://github.com/Cosmian/cosmian_vm) for more details about Cosmian VM. 
 
-To deploy the KMS inside a Cosmian VM, follow these steps:
+To deploy the KMS inside a Cosmian VM, connect to the VM and follow these steps:
 
 ```console
-$ # Copy from resources/supervisor/cosmian_kms.ini
+# Copy from resources/supervisor/cosmian_kms.ini
 $ sudo vi /etc/supervisord.d/cosmian_kms.ini
-$ # Copy the kms server binary
+
+# Copy the KMS server binary
 $ sudo cp somelocation/cosmian_kms_server /usr/sbin/cosmian_kms
-$ # Create a conf file for the KMS (from resources/server.toml)
+
+# Create a conf file for the KMS (from resources/server.toml)
 $ sudo vi /etc/cosmian_kms/server.toml
 $ sudo supervisorctl reload 
 $ sudo supervisorctl start cosmian_kms
-$ # Check logs
+
+# Check logs
 $ sudo tail -f /var/log/cosmian_kms.err.log
 $ sudo tail -f /var/log/cosmian_kms.out.log
 ```
@@ -106,11 +109,12 @@ Now you can interact with your KMS through the KMS CLI.
 You can also interact with the Cosmiam VM Agent through its own CLI as follow:
 
 ```console
-$ # From your own host
-$ # Snapshot the VM (it could take a while)
-$ ./cosmian_vm --url https://domain.name:port snapshot 
-$ # Sometimes, verify it
-$ ./cosmian_vm --url https://domain.name:port verify --snapshot ./cosmian_vm.snapshot
+# From your own host
+# Snapshot the VM (it could take a while)
+$ ./cosmian_vm --url https://<DOMAIN_NAME>:<PORT> snapshot 
+
+# Sometimes, verify it
+$ ./cosmian_vm --url https://<DOMAIN_NAME>:<PORT> verify --snapshot ./cosmian_vm.snapshot
 Reading the snapshot...
 Fetching the collaterals...
 [ OK ] Verifying TPM attestation
@@ -128,24 +132,24 @@ service_app_name = "cosmian_kms"
 decrypted_folder = "/mnt/cosmian_vm/data"
 encrypted_secret_app_conf = "/etc/cosmian_kms/server.toml"
 ```
-3. Provider the configuration (where `conf.toml` is the configuration file of the KMS):
+3. Provide the configuration (where `conf.toml` is the configuration file of the KMS):
 ```console
 $ ./cosmian_vm --url https://domain.name:port app init  -c conf.toml 
 Proceeding the init of the deployed app...
 Save the key: `378f1f1b3b5cc92ed576edba265cc91de6872d61c00b0e01dba6d0ea80520820`
 The app has been configurated
 ```
-4. Save the prompted key for further use
-5. In case of reboot, u will need to restgart the KMS manually by sending the configuration decryption key:
+4. Save the printed key for further use
+5. In case of reboot, you will need to restart the KMS manually by sending the configuration decryption key (the key saved at step 4):
 ```console
-$  ./cosmian_vm --url https://domain.name:port app restart --key 378f1f1b3b5cc92ed576edba265cc91de6872d61c00b0e01dba6d0ea80520820
+$ ./cosmian_vm --url https://domain.name:port app restart --key 378f1f1b3b5cc92ed576edba265cc91de6872d61c00b0e01dba6d0ea80520820
 ```
 
-## Use the KMS inside a Cosmian VM on Sgx
+## Use the KMS inside a Cosmian VM on SGX
 
-Follow [this README](https://github.com/Cosmian/cosmian_vm/blob/main/resources/sgx/README.md).
+Follow [this README](https://github.com/Cosmian/cosmian_vm/blob/main/resources/sgx/README.md) to setup Cosmian VM tools.
 
-In a nutshell, copy the kms server binary (renamed as `app`) and the kms server configuration file. Path the following line in `cosmian_vm.manifest.template`  
+In a nutshell, copy the KMS server binary (renamed as `app`) and the KMS server configuration file. Edit  `cosmian_vm.manifest.template` and replace the following line:
 
 ```jinja
     { path = "/etc/app/server.toml", uri = "file:etc/app/server.toml" },
@@ -157,7 +161,7 @@ by that one:
 
 Then run the entrypoint script.
 
-The `etc/app/server.toml` is: 
+The `etc/app/server.toml` file contains: 
 ```
 [http]
 port = 3000
