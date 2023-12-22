@@ -402,18 +402,6 @@ async fn test_certificate_encrypt_using_prime192() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-#[cfg(feature = "fips")]
-async fn test_certificate_encrypt_using_prime224() -> Result<(), CliError> {
-    let err_check = import_encrypt_decrypt("secp224r1").await;
-
-    // Only RSA KEM allowed in FIPS mode. Fix with issue #112.
-    assert!(err_check.is_err());
-
-    Ok(())
-}
-
-#[tokio::test]
-#[cfg(not(feature = "fips"))]
 async fn test_certificate_encrypt_using_prime224() -> Result<(), CliError> {
     import_encrypt_decrypt("secp224r1").await
 }
@@ -427,35 +415,11 @@ async fn test_certificate_encrypt_using_ed25519() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-#[cfg(feature = "fips")]
-async fn test_certificate_encrypt_using_prime256() -> Result<(), CliError> {
-    let err_check = import_encrypt_decrypt("prime256v1").await;
-
-    // Only RSA KEM allowed in FIPS mode. Fix with issue #112.
-    assert!(err_check.is_err());
-
-    Ok(())
-}
-
-#[tokio::test]
-#[cfg(not(feature = "fips"))]
 async fn test_certificate_encrypt_using_prime256() -> Result<(), CliError> {
     import_encrypt_decrypt("prime256v1").await
 }
 
 #[tokio::test]
-#[cfg(feature = "fips")]
-async fn test_certificate_encrypt_using_secp384r1() -> Result<(), CliError> {
-    let err_check = import_encrypt_decrypt("secp384r1").await;
-
-    // Only RSA KEM allowed in FIPS mode. Fix with issue #112.
-    assert!(err_check.is_err());
-
-    Ok(())
-}
-
-#[tokio::test]
-#[cfg(not(feature = "fips"))]
 async fn test_certificate_encrypt_using_secp384r1() -> Result<(), CliError> {
     import_encrypt_decrypt("secp384r1").await
 }

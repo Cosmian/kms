@@ -24,8 +24,7 @@ const FIPS_MIN_ITER: usize = 210_000;
 #[cfg(feature = "fips")]
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
-    salt: Option<Vec<u8>>,
-) -> Result<(Vec<u8>, [u8; LENGTH]), KmipUtilsError> {
+) -> Result<[u8; LENGTH], KmipUtilsError> {
     if LENGTH < FIPS_MIN_KLEN || LENGTH * 8 > ((1 << 32) - 1) * FIPS_HLEN_BITS {
         kmip_utils_bail!(
             "Password derivation error: wrong output length argument, got {}",
@@ -36,13 +35,8 @@ pub fn derive_key_from_password<const LENGTH: usize>(
     let mut output_key_material = [0u8; LENGTH];
 
     // Generate 128 bits of random salt.
-    let salt = if let Some(salt) = salt {
-        salt
-    } else {
-        let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
-        rand_bytes(&mut salt)?;
-        salt
-    };
+    let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
+    rand_bytes(&mut salt)?;
 
     pbkdf2_hmac(
         password,
@@ -52,7 +46,7 @@ pub fn derive_key_from_password<const LENGTH: usize>(
         &mut output_key_material,
     )?;
 
-    Ok((salt, output_key_material))
+    Ok(output_key_material)
 }
 
 #[cfg(not(feature = "fips"))]
@@ -60,26 +54,18 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 /// with SHA512 in FIPS mode.
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
-    salt: Option<Vec<u8>>,
-) -> Result<(Vec<u8>, [u8; LENGTH]), KmipUtilsError> {
+) -> Result<[u8; LENGTH], KmipUtilsError> {
     let mut output_key_material = [0u8; LENGTH];
 
     // Generate 128 bits of random salt
-    let salt = if let Some(salt) = salt {
-        salt
-    } else {
-        let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
-        rand_bytes(&mut salt)?;
-        salt
-    };
+    let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
+    rand_bytes(&mut salt)?;
 
-    {
-        Argon2::default()
-            .hash_password_into(password, &salt, &mut output_key_material)
-            .map_err(|e| KmipUtilsError::Derivation(e.to_string()))?;
-    }
+    Argon2::default()
+        .hash_password_into(password, &salt, &mut output_key_material)
+        .map_err(|e| KmipUtilsError::Derivation(e.to_string()))?;
 
-    Ok((salt, output_key_material))
+    Ok(output_key_material)
 }
 
 #[test]
@@ -89,62 +75,20 @@ fn test_password_derivation() {
     openssl::provider::Provider::load(None, "fips").unwrap();
 
     let my_weak_password = "doglover1234".as_bytes().to_vec();
-    let (_, secure_mk) = derive_key_from_password::<32>(&my_weak_password, None).unwrap();
+    let secure_mk = derive_key_from_password::<32>(&my_weak_password).unwrap();
 
     assert_eq!(secure_mk.len(), 32);
 }
 
-#[cfg(feature = "fips")]
 #[test]
+#[cfg(feature = "fips")]
 fn test_password_derivation_bad_size() {
     #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
-    let my_weak_password = "splintorage".as_bytes().to_vec();
-    let secure_mk_res = derive_key_from_password::<13>(&my_weak_password, None);
+    let my_weak_password = "123princ3ss".as_bytes().to_vec();
+    let secure_mk_res = derive_key_from_password::<13>(&my_weak_password);
 
     assert!(secure_mk_res.is_err());
-}
-
-#[test]
-fn test_password_derivation_reuse_salt() {
-    #[cfg(feature = "fips")]
-    // Load FIPS provider module from OpenSSL.
-    openssl::provider::Provider::load(None, "fips").unwrap();
-
-    let mut salt = vec![0; FIPS_MIN_SALT_SIZE];
-    rand_bytes(&mut salt).unwrap();
-    let salt_bis = salt.clone();
-
-    let my_weak_password = "123pr1ncess".as_bytes().to_vec();
-    let (salt1, secure_mk1) =
-        derive_key_from_password::<32>(&my_weak_password, Some(salt)).unwrap();
-
-    let my_weak_password = "123pr1ncess".as_bytes().to_vec();
-    let (salt2, secure_mk2) =
-        derive_key_from_password::<32>(&my_weak_password, Some(salt_bis)).unwrap();
-
-    assert_eq!(salt1, salt2);
-    assert_eq!(secure_mk1, secure_mk2);
-}
-
-#[test]
-fn test_password_derivation_no_reuse_salt() {
-    #[cfg(feature = "fips")]
-    // Load FIPS provider module from OpenSSL.
-    openssl::provider::Provider::load(None, "fips").unwrap();
-
-    let mut salt = vec![0; FIPS_MIN_SALT_SIZE];
-    rand_bytes(&mut salt).unwrap();
-
-    let my_weak_password = "123pr1ncess".as_bytes().to_vec();
-    let (salt1, secure_mk1) =
-        derive_key_from_password::<32>(&my_weak_password, Some(salt)).unwrap();
-
-    let my_weak_password = "123pr1ncess".as_bytes().to_vec();
-    let (salt2, secure_mk2) = derive_key_from_password::<32>(&my_weak_password, None).unwrap();
-
-    assert_ne!(salt1, salt2);
-    assert_ne!(secure_mk1, secure_mk2);
 }

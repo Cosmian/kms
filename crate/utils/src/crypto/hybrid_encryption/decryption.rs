@@ -4,8 +4,6 @@ use cloudproof::reexport::crypto_core::{
     Ed25519PrivateKey, P192PrivateKey, P224PrivateKey, P256PrivateKey, P384PrivateKey,
     X25519PrivateKey, CURVE_25519_SECRET_LENGTH,
 };
-#[cfg(not(feature = "fips"))]
-use cloudproof::reexport::crypto_core::{RsaKeyWrappingAlgorithm, RsaPrivateKey};
 use cosmian_kmip::{
     kmip::{
         kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
@@ -19,23 +17,31 @@ use openssl::{
 };
 use tracing::{debug, trace};
 
-#[cfg(feature = "fips")]
-use crate::crypto::wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_unwrap;
-use crate::{error::KmipUtilsError, kmip_utils_bail, DecryptionSystem};
+use super::rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt;
+use crate::{
+    crypto::wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_unwrap, error::KmipUtilsError, kmip_utils_bail,
+    DecryptionSystem,
+};
 
 /// Decrypt a single block of data encrypted using a ECIES scheme or RSA hybrid system
 /// Cannot be used as a stream decipher
 pub struct HybridDecryptionSystem {
     private_key: PKey<Private>,
     private_key_uid: Option<String>,
+    key_unwrapping: bool,
 }
 
 impl HybridDecryptionSystem {
-    pub fn new(private_key_uid: Option<String>, private_key: PKey<Private>) -> Self {
+    pub fn new(
+        private_key_uid: Option<String>,
+        private_key: PKey<Private>,
+        key_unwrapping: bool,
+    ) -> Self {
         trace!("Instantiated hybrid decryption system for private key id: {private_key_uid:?}");
         Self {
             private_key,
             private_key_uid,
+            key_unwrapping,
         }
     }
 }
@@ -70,22 +76,20 @@ impl DecryptionSystem for HybridDecryptionSystem {
                 let private_key = X25519PrivateKey::try_from_bytes(private_key_bytes)?;
                 Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
             }
-            #[cfg(feature = "fips")]
             Id::RSA => {
-                trace!("decrypt: RSA");
-
-                // TODO - change it for AES256 INSTEAD OF AES_KWP. Issue #112.
-                Zeroizing::from(ckm_rsa_aes_key_unwrap(
-                    self.private_key.clone(),
-                    ciphertext,
-                )?)
-            }
-            #[cfg(not(feature = "fips"))]
-            Id::RSA => {
-                trace!("decrypt: RSA");
-                let der_bytes = self.private_key.private_key_to_pkcs8()?;
-                let private_key = RsaPrivateKey::from_pkcs8_der(&der_bytes)?;
-                private_key.unwrap_key(RsaKeyWrappingAlgorithm::Aes256Sha256, ciphertext)?
+                if self.key_unwrapping {
+                    Zeroizing::from(ckm_rsa_aes_key_unwrap(
+                        self.private_key.clone(),
+                        ciphertext,
+                    )?)
+                } else {
+                    trace!("decrypt: RSA");
+                    Zeroizing::from(rsa_oaep_aes_gcm_decrypt(
+                        self.private_key.clone(),
+                        ciphertext,
+                        request.authenticated_encryption_additional_data.as_deref(),
+                    )?)
+                }
             }
             _ => {
                 trace!("Not supported");

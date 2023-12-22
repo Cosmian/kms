@@ -151,7 +151,7 @@ mod tests {
         let sym_wrapping_key = create_symmetric_key(
             sym_wrapping_key_bytes.as_slice(),
             CryptographicAlgorithm::AES,
-        );
+        )?;
 
         // the key to wrap
         let mut sym_key_to_wrap_bytes = vec![0; 32];
@@ -159,7 +159,7 @@ mod tests {
         let mut sym_key_to_wrap = create_symmetric_key(
             sym_key_to_wrap_bytes.as_slice(),
             CryptographicAlgorithm::AES,
-        );
+        )?;
 
         let wrapping_key_pair =
             create_x25519_key_pair("wrapping_private_key_uid", "wrapping_public_key_uid")?;

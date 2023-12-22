@@ -105,9 +105,7 @@ impl EncryptionSystem for AesGcmSystem {
             &aad,
             plaintext,
             tag.as_mut(),
-        );
-
-        let ciphertext = ciphertext.unwrap();
+        )?;
 
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),

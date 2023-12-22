@@ -4,15 +4,11 @@ use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::{
-    password_derivation::derive_key_from_password, symmetric::create_symmetric_key,
-    wrap::unwrap_key_block,
-};
+use cosmian_kms_utils::crypto::{symmetric::create_symmetric_key, wrap::unwrap_key_block};
 
 use crate::{
-    actions::shared::{
-        utils::{export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file},
-        SYMMETRIC_WRAPPING_KEY_SIZE,
+    actions::shared::utils::{
+        export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file,
     },
     cli_bail,
     error::{result::CliResultHelper, CliError},
@@ -39,25 +35,6 @@ pub struct UnwrapKeyAction {
     /// The KMIP JSON output file. When not specified the input file is overwritten.
     #[clap(required = false)]
     key_file_out: Option<PathBuf>,
-
-    /// A password to unwrap the imported key.
-    #[clap(
-        long = "unwrap-password",
-        short = 'p',
-        required = false,
-        group = "unwrap"
-    )]
-    unwrap_password: Option<String>,
-
-    /// An optional hexadecimal salt to derivate the password into a key.
-    #[clap(
-        long = "password-salt",
-        short = 's',
-        required = false,
-        group = "password",
-        requires = "unwrap_password"
-    )]
-    unwrap_salt: Option<String>,
 
     /// A symmetric key as a base 64 string to unwrap the imported key.
     #[clap(
@@ -101,18 +78,7 @@ impl UnwrapKeyAction {
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the unwrap key")?;
-            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
-        } else if let Some(password) = &self.unwrap_password {
-            let salt = self.unwrap_salt.as_ref().map(|salt| {
-                general_purpose::STANDARD
-                    .decode(salt)
-                    .expect("Salt base64 decoding failed for key unwrapping.")
-            });
-
-            let (_, key_bytes) =
-                derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes(), salt)?;
-
-            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
+            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)?
         } else if let Some(key_id) = &self.unwrap_key_id {
             export_object(kms_rest_client, key_id, false, None, false, None)
                 .await?

@@ -1,9 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-#[cfg(not(feature = "fips"))]
-use cloudproof::reexport::crypto_core::{
-    reexport::zeroize::Zeroizing, RsaKeyWrappingAlgorithm, RsaPublicKey,
-};
 use cloudproof::reexport::crypto_core::{
     reexport::{pkcs8::DecodePublicKey, rand_core::SeedableRng},
     CsRng, Ecies, EciesP192Aes128, EciesP224Aes128, EciesP256Aes128, EciesP384Aes128,
@@ -21,9 +17,9 @@ use openssl::{
 };
 use tracing::{debug, trace};
 
-#[cfg(feature = "fips")]
-use crate::crypto::wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_wrap;
+use super::rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt;
 use crate::{
+    crypto::wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_wrap,
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail, EncryptionSystem,
 };
@@ -34,10 +30,11 @@ pub struct HybridEncryptionSystem {
     rng: Arc<Mutex<CsRng>>,
     public_key_uid: String,
     public_key: PKey<Public>,
+    key_wrapping: bool,
 }
 
 impl HybridEncryptionSystem {
-    pub fn new(public_key_uid: &str, public_key: PKey<Public>) -> Self {
+    pub fn new(public_key_uid: &str, public_key: PKey<Public>, key_wrapping: bool) -> Self {
         let rng = CsRng::from_entropy();
 
         trace!("Instantiated hybrid encryption system for public key id: {public_key_uid}");
@@ -46,12 +43,14 @@ impl HybridEncryptionSystem {
             rng: Arc::new(Mutex::new(rng)),
             public_key_uid: public_key_uid.into(),
             public_key,
+            key_wrapping,
         }
     }
 
     pub fn instantiate_with_certificate(
         certificate_uid: &str,
         certificate_value: &[u8],
+        key_wrapping: bool,
     ) -> Result<Self, KmipUtilsError> {
         debug!("instantiate_with_certificate: entering");
         let rng = CsRng::from_entropy();
@@ -69,21 +68,13 @@ impl HybridEncryptionSystem {
             rng: Arc::new(Mutex::new(rng)),
             public_key_uid: certificate_uid.into(),
             public_key,
+            key_wrapping,
         })
     }
 }
 
 impl EncryptionSystem for HybridEncryptionSystem {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError> {
-        if request
-            .authenticated_encryption_additional_data
-            .as_deref()
-            .is_some()
-        {
-            kmip_utils_bail!(
-                "Hybrid encryption system does not support additional authenticated data"
-            )
-        }
         let plaintext = request.data.clone().context("missing plaintext data")?;
         let mut rng = self.rng.lock().unwrap();
 
@@ -110,24 +101,17 @@ impl EncryptionSystem for HybridEncryptionSystem {
                 let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
                 EciesSalsaSealBox::encrypt(&mut *rng, &public_key, &plaintext, None)?
             }
-            #[cfg(feature = "fips")]
             Id::RSA => {
-                trace!("encrypt: RSA");
-
-                // TODO - change it for AES256 INSTEAD OF AES_KWP. Issue #112.
-                ckm_rsa_aes_key_wrap(self.public_key.clone(), &plaintext)?
-            }
-            #[cfg(not(feature = "fips"))]
-            Id::RSA => {
-                trace!("encrypt: RSA");
-
-                let spki_bytes = self.public_key.public_key_to_der()?;
-                let public_key = RsaPublicKey::from_public_key_der(&spki_bytes)?;
-                public_key.wrap_key(
-                    &mut *rng,
-                    RsaKeyWrappingAlgorithm::Aes256Sha256,
-                    &Zeroizing::from(plaintext.clone()),
-                )?
+                if self.key_wrapping {
+                    ckm_rsa_aes_key_wrap(self.public_key.clone(), &plaintext)?
+                } else {
+                    trace!("encrypt: RSA");
+                    rsa_oaep_aes_gcm_encrypt(
+                        self.public_key.clone(),
+                        &plaintext,
+                        request.authenticated_encryption_additional_data.as_deref(),
+                    )?
+                }
             }
             _ => {
                 trace!("Not supported");
@@ -141,6 +125,7 @@ impl EncryptionSystem for HybridEncryptionSystem {
             plaintext.len(),
             ciphertext.len(),
         );
+
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.public_key_uid.clone()),
             data: Some(ciphertext),

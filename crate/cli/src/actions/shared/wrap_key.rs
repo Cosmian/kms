@@ -44,16 +44,6 @@ pub struct WrapKeyAction {
     #[clap(long = "wrap-password", short = 'p', required = false, group = "wrap")]
     wrap_password: Option<String>,
 
-    /// An optional hexadecimal salt to derivate the password into a key.
-    #[clap(
-        long = "password-salt",
-        short = 's',
-        required = false,
-        group = "password",
-        requires = "wrap_password"
-    )]
-    wrap_salt: Option<String>,
-
     /// A symmetric key as a base 64 string to wrap the imported key.
     #[clap(long = "wrap-key-b64", short = 'k', required = false, group = "wrap")]
     wrap_key_b64: Option<String>,
@@ -85,18 +75,19 @@ impl WrapKeyAction {
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the wrap key")?;
-            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
+            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)?
         } else if let Some(password) = &self.wrap_password {
-            let salt = self.wrap_salt.as_ref().map(|salt| {
-                general_purpose::STANDARD
-                    .decode(salt)
-                    .expect("Salt base64 decoding failed for key wrapping.")
-            });
+            let key_bytes =
+                derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes())?;
 
-            let (_, key_bytes) =
-                derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes(), salt)?;
+            let symmetric_key_object =
+                create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)?;
 
-            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
+            println!(
+                "Wrapping key: {}",
+                general_purpose::STANDARD.encode(key_bytes)
+            );
+            symmetric_key_object
         } else if let Some(key_id) = &self.wrap_key_id {
             export_object(kms_rest_client, key_id, false, None, false, None)
                 .await?

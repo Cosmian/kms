@@ -30,7 +30,7 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
     let invalid_owner = "invalid_owner";
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
-    let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
+    let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES)?;
     let uid = Uuid::new_v4().to_string();
 
     db.upsert(

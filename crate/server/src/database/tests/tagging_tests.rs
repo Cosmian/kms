@@ -27,7 +27,7 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
     let mut symmetric_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key_bytes);
     // create symmetric key
-    let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES);
+    let symmetric_key = create_symmetric_key(&symmetric_key_bytes, CryptographicAlgorithm::AES)?;
 
     // insert into DB
 

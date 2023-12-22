@@ -499,6 +499,66 @@ pub struct CreateKeyPairResponse {
     pub public_key_unique_identifier: UniqueIdentifier,
 }
 
+#[allow(non_camel_case_types)]
+pub enum DerivationMethod {
+    PBKDF2 = 0x0000_0001,
+    HASH = 0x0000_0002,
+    HMAC = 0x0000_0003,
+    ENCRYPT = 0x0000_0004,
+    NIST800_108C = 0x0000_0005,
+    NIST800_108F = 0x0000_0006,
+    NIST800_108DPI = 0x0000_0007,
+    Asymmetric_Key = 0x0000_0008,
+    AWS_Signature_Version_4 = 0x0000_0009,
+    HKDF = 0x0000_000A,
+    // Extensions items available at values 8XXX_XXXX.
+}
+
+// TODO - derive key using DeriveKey operation.
+#[allow(dead_code)]
+pub struct DerivationParameters {
+    /// Depends on the PRF.
+    cryptographic_parameters: Option<CryptographicParameters>,
+    /// Depends on the PRF and mode of operation: an empty IV is assumed if not
+    /// provided.
+    initialization_vector: Option<Vec<u8>>,
+    /// Mandatory unless the Unique Identifier of a Secret Data object is
+    /// provided. May be repeated.
+    derivation_data: Option<Vec<u8>>,
+    /// Mandatory if Derivation method is PBKDF2.
+    salt: Option<Vec<u8>>,
+    /// Mandatory if derivation method is PBKDF2.
+    iteration_count: Option<i32>,
+}
+
+/// This request is used to derive a Symmetric Key or Secret Data object from
+/// keys or Secret Data objects that are already known to the key management
+/// system. The request SHALL only apply to Managed Objects that have the Derive
+/// Key bit set in the Cryptographic Usage Mask attribute of the specified
+/// Managed Object (i.e., are able to be used for key derivation). If the
+/// operation is issued for an object that does not have this bit set, then the
+/// server SHALL return an error. For all derivation methods, the client SHALL
+/// specify the desired length of the derived key or Secret Data object using
+/// the Cryptographic Length attribute.
+pub struct DeriveKey {
+    /// Determines the type of object to be created.
+    pub object_type: ObjectType,
+    /// Determines the object or objects to be used to derive a new key. Note
+    /// that the current value of the ID Placeholder SHALL NOT be used in place
+    /// of a Unique Identifier in this operation.
+    pub object_unique_identifier: UniqueIdentifier,
+    /// An Enumeration object specifying the method to be used to derive the new
+    /// key.
+    pub derivation_method: DerivationMethod,
+    /// A Structure object containing the parameters needed by the specified
+    /// derivation method.
+    pub derivation_parameters: DerivationParameters,
+    /// Specifies desired attributes to be associated with the new object; the
+    /// length and algorithm SHALL always be specified for the creation of a
+    /// symmetric key.
+    pub attributes: Attributes,
+}
+
 /// This operation requests that the server returns a Managed Object specified by its Unique Identifier,
 /// together with its attributes.
 /// The Key Format Type, Key Wrap Type, Key Compression Type and Key Wrapping Specification

@@ -21,7 +21,10 @@ use crate::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
-        utils::{recover_cmd_logs, start_default_test_kms_server, TestsContext, ONCE},
+        utils::{
+            extract_uids::extract_wrapping_key, recover_cmd_logs, start_default_test_kms_server,
+            TestsContext, ONCE,
+        },
         PROG_NAME,
     },
 };
@@ -33,11 +36,10 @@ pub fn wrap(
     key_file_in: &Path,
     key_file_out: Option<&PathBuf>,
     wrap_password: Option<String>,
-    password_salt: Option<String>,
     wrap_key_b64: Option<String>,
     wrap_key_id: Option<String>,
     wrap_key_file: Option<PathBuf>,
-) -> Result<(), CliError> {
+) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
@@ -50,14 +52,10 @@ pub fn wrap(
     if let Some(key_file_out) = key_file_out {
         args.push(key_file_out.to_str().unwrap().to_owned());
     }
+
     if let Some(wrap_password) = wrap_password {
         args.push("-p".to_owned());
         args.push(wrap_password);
-
-        if let Some(salt) = password_salt {
-            args.push("-s".to_owned());
-            args.push(salt);
-        }
     } else if let Some(wrap_key_b64) = wrap_key_b64 {
         args.push("-k".to_owned());
         args.push(wrap_key_b64);
@@ -71,8 +69,13 @@ pub fn wrap(
 
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
+    println!("wrap output: {output:?}");
     if output.status.success() {
-        return Ok(())
+        let wrap_output = std::str::from_utf8(&output.stdout)?;
+        let b64_wrapping_key = extract_wrapping_key(wrap_output)
+            .unwrap_or_default()
+            .to_owned();
+        return Ok(b64_wrapping_key)
     }
     Err(CliError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -86,7 +89,6 @@ pub fn unwrap(
     key_file_in: &Path,
     key_file_out: Option<&PathBuf>,
     unwrap_password: Option<String>,
-    password_salt: Option<String>,
     unwrap_key_b64: Option<String>,
     unwrap_key_id: Option<String>,
     unwrap_key_file: Option<PathBuf>,
@@ -103,14 +105,10 @@ pub fn unwrap(
     if let Some(key_file_out) = key_file_out {
         args.push(key_file_out.to_str().unwrap().to_owned());
     }
+
     if let Some(unwrap_password) = unwrap_password {
         args.push("-p".to_owned());
         args.push(unwrap_password);
-
-        if let Some(salt) = password_salt {
-            args.push("-s".to_owned());
-            args.push(salt);
-        }
     } else if let Some(unwrap_key_b64) = unwrap_key_b64 {
         args.push("-k".to_owned());
         args.push(unwrap_key_b64);
@@ -180,13 +178,12 @@ pub fn password_wrap_import_test(
 
     //wrap and unwrap using a password
     {
-        wrap(
+        let b64_wrapping_key = wrap(
             &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
             None,
             Some("password".to_owned()),
-            Some("AAECAwQFBgcICQoLDA0ODw==".to_owned()),
             None,
             None,
             None,
@@ -207,9 +204,8 @@ pub fn password_wrap_import_test(
             sub_command,
             &key_file,
             None,
-            Some("password".to_owned()),
-            Some("AAECAwQFBgcICQoLDA0ODw==".to_owned()),
             None,
+            Some(b64_wrapping_key),
             None,
             None,
         )?;
@@ -228,7 +224,6 @@ pub fn password_wrap_import_test(
             &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
-            None,
             None,
             None,
             Some(key_b64.clone()),
@@ -251,7 +246,6 @@ pub fn password_wrap_import_test(
             &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
-            None,
             None,
             None,
             Some(key_b64),

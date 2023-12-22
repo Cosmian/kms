@@ -8,19 +8,34 @@ use cosmian_kmip::kmip::{
 use crate::{error::KmipUtilsError, tagging::set_tags};
 
 /// Create a symmetric key for the given algorithm
-#[must_use]
 pub fn create_symmetric_key(
     key_bytes: &[u8],
     cryptographic_algorithm: CryptographicAlgorithm,
-) -> Object {
+) -> Result<Object, KmipUtilsError> {
     // this length is in bits
     let symmetric_key_len = key_bytes.len() as i32 * 8;
+
+    let attributes = Attributes {
+        object_type: Some(ObjectType::SymmetricKey),
+        cryptographic_algorithm: Some(cryptographic_algorithm),
+        cryptographic_length: Some(symmetric_key_len),
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::Encrypt
+                | CryptographicUsageMask::Decrypt
+                | CryptographicUsageMask::WrapKey
+                | CryptographicUsageMask::UnwrapKey
+                | CryptographicUsageMask::KeyAgreement,
+        ),
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        ..Attributes::default()
+    };
+
     // The default format for a symmetric key is Raw
     //  according to sec. 4.26 Key Format Type of the KMIP 2.1 specs:
     //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
     // The key created here has a format of TransparentSymmetricKey
     // This is no a problem since when it is exported, it is by default converted to a Raw key
-    Object::SymmetricKey {
+    Ok(Object::SymmetricKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(cryptographic_algorithm),
             key_format_type: KeyFormatType::TransparentSymmetricKey,
@@ -29,25 +44,12 @@ pub fn create_symmetric_key(
                 key_material: KeyMaterial::TransparentSymmetricKey {
                     key: key_bytes.to_vec(),
                 },
-                attributes: Some(Attributes {
-                    object_type: Some(ObjectType::SymmetricKey),
-                    cryptographic_algorithm: Some(cryptographic_algorithm),
-                    cryptographic_length: Some(symmetric_key_len),
-                    cryptographic_usage_mask: Some(
-                        CryptographicUsageMask::Encrypt
-                            | CryptographicUsageMask::Decrypt
-                            | CryptographicUsageMask::WrapKey
-                            | CryptographicUsageMask::UnwrapKey
-                            | CryptographicUsageMask::KeyAgreement,
-                    ),
-                    key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-                    ..Attributes::default()
-                }),
+                attributes: Some(attributes),
             },
             cryptographic_length: Some(symmetric_key_len),
             key_wrapping_data: None,
         },
-    }
+    })
 }
 
 /// Build a `CreateKeyPairRequest` for a curve 25519 key pair

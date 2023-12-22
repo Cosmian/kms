@@ -43,3 +43,8 @@ pub fn extract_database_secret(text: &str) -> Option<&str> {
         .captures(text)
         .and_then(|cap| cap.name("uid").map(|uid| uid.as_str()))
 }
+
+/// Extract the wrapping key from a test.
+pub fn extract_wrapping_key(text: &str) -> Option<&str> {
+    extract_uid(text, "Wrapping key")
+}

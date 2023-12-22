@@ -92,7 +92,7 @@ pub async fn wrap(
     let mut dek = create_symmetric_key(
         &general_purpose::STANDARD.decode(&wrap_request.key)?,
         CryptographicAlgorithm::AES,
-    );
+    )?;
 
     wrap_key(
         dek.key_block_mut()?,
@@ -168,7 +168,7 @@ pub async fn unwrap(
     let mut wrapped_dek = create_symmetric_key(
         &general_purpose::STANDARD.decode(&unwrap_request.wrapped_key)?,
         CryptographicAlgorithm::AES,
-    );
+    )?;
     // add key wrapping parameters to the wrapped key
     wrapped_dek.key_block_mut()?.key_wrapping_data = Some(KeyWrappingData {
         wrapping_method: kmip_types::WrappingMethod::Encrypt,

@@ -176,9 +176,8 @@ impl DBConfig {
                         "KMS_REDIS_MASTER_PASSWORD",
                     )?;
                     // Generate the symmetric key from the master password
-                    // TODO - store salt somewhere ?
-                    let (_, master_key) =
-                        RedisWithFindex::master_key_from_password(&redis_master_password, None)?;
+                    let master_key =
+                        RedisWithFindex::master_key_from_password(&redis_master_password)?;
                     let redis_findex_label = ensure_value(
                         self.redis_findex_label.as_deref(),
                         "redis-findex-label",

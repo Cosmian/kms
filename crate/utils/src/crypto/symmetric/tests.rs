@@ -19,7 +19,7 @@ pub fn test_aes() {
 
     let mut symmetric_key = vec![0; AES_256_GCM_KEY_LENGTH];
     rand_bytes(&mut symmetric_key).unwrap();
-    let key = create_symmetric_key(&symmetric_key, CryptographicAlgorithm::AES);
+    let key = create_symmetric_key(&symmetric_key, CryptographicAlgorithm::AES).unwrap();
     let aes = AesGcmSystem::instantiate("blah", &key).unwrap();
     let mut data = vec![0_u8; 42];
     rand_bytes(&mut data).unwrap();
