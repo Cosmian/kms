@@ -245,6 +245,8 @@ pub async fn prepare_kms_server(
         None
     };
 
+    let enable_ms_dke = kms_server.params.enable_ms_dke;
+
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
@@ -259,10 +261,19 @@ pub async fn prepare_kms_server(
             let google_cse_scope = web::scope("/google_cse")
                 .app_data(Data::new(google_cse_jwt_config.clone()))
                 .wrap(Cors::permissive())
-                .service(routes::google_cse::get_status)
-                .service(routes::google_cse::wrap)
-                .service(routes::google_cse::unwrap);
+                .service(google_cse::get_status)
+                .service(google_cse::wrap)
+                .service(google_cse::unwrap);
             app = app.service(google_cse_scope);
+        }
+
+        if enable_ms_dke {
+            // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
+            let ms_dke_scope = web::scope("/ms_dke")
+                .wrap(Cors::permissive())
+                .service(routes::ms_dke::get_key)
+                .service(routes::ms_dke::decrypt);
+            app = app.service(ms_dke_scope);
         }
 
         // The default scope serves from the root / the KMIP, permissions and tee endpoints

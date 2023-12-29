@@ -53,6 +53,9 @@ pub struct ServerParams {
     /// For instance, if this server is running on domain `cse.my_domain.com`,
     /// the URL should be something like <https://cse.my_domain.com/google_cse>
     pub google_cse_kacls_url: Option<String>,
+
+    /// Whether to enable Microsoft Double Key Encryption
+    pub enable_ms_dke: bool,
 }
 
 impl ServerParams {
@@ -91,6 +94,7 @@ impl ServerParams {
             force_default_username: conf.force_default_username,
             client_cert: verify_cert,
             google_cse_kacls_url: conf.google_cse_kacls_url.clone(),
+            enable_ms_dke: conf.enable_ms_dke,
         };
         Ok(server_conf)
     }
@@ -165,6 +169,7 @@ impl Clone for ServerParams {
             http_params: HttpParams::Http,
             client_cert: self.client_cert.clone(),
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
+            enable_ms_dke: self.enable_ms_dke,
         }
     }
 }

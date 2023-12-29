@@ -57,6 +57,10 @@ pub struct ClapConfig {
     /// the URL should be something like <https://cse.my_domain.com/google_cse>
     #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL")]
     pub google_cse_kacls_url: Option<String>,
+
+    /// Whether to enable Microsoft Double Key Encryption
+    #[clap(long, env = "KMS_MS_DKE")]
+    pub enable_ms_dke: bool,
 }
 
 impl fmt::Debug for ClapConfig {

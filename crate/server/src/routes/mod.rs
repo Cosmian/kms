@@ -14,6 +14,7 @@ use crate::{database::KMSServer, error::KmsError, result::KResult};
 pub mod access;
 pub mod google_cse;
 pub mod kmip;
+pub mod ms_dke;
 
 impl actix_web::error::ResponseError for KmsError {
     fn error_response(&self) -> HttpResponse {
