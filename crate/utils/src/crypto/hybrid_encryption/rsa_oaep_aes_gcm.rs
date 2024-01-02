@@ -1,10 +1,10 @@
-use cloudproof::reexport::crypto_core::reexport::zeroize::Zeroizing;
 use openssl::{
     pkey::{PKey, Private, Public},
     rand::rand_bytes,
     rsa::Padding,
     symm::{decrypt_aead, encrypt_aead, Cipher},
 };
+use zeroize::Zeroizing;
 
 use crate::{
     crypto::symmetric::{AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH},
