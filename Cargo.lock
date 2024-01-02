@@ -1068,7 +1068,6 @@ dependencies = [
  "cosmian_kms_utils",
  "cosmian_logger",
  "der",
- "hex",
  "oauth2",
  "openssl",
  "pem",
