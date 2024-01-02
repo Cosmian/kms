@@ -163,7 +163,7 @@ impl KMS {
                 | KeyFormatType::PKCS1
                 | KeyFormatType::PKCS8 => {
                     let p_key = kmip_public_key_to_openssl(&owm.object)?;
-                    Ok(Box::new(HybridEncryptionSystem::new(&owm.id, p_key))
+                    Ok(Box::new(HybridEncryptionSystem::new(&owm.id, p_key, false))
                         as Box<dyn EncryptionSystem>)
                 }
                 other => kms_not_supported!("encryption with public keys of format: {other}"),
@@ -209,8 +209,10 @@ impl KMS {
                 | KeyFormatType::TransparentRSAPrivateKey
                 | KeyFormatType::TransparentECPrivateKey => {
                     let p_key = kmip_private_key_to_openssl(&owm.object)?;
-                    Ok(Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key))
-                        as Box<dyn DecryptionSystem>)
+                    Ok(
+                        Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key, false))
+                            as Box<dyn DecryptionSystem>,
+                    )
                 }
                 other => kms_not_supported!("decryption with keys of format: {other}"),
             },
