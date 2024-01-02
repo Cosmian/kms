@@ -1184,6 +1184,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
