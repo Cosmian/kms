@@ -46,7 +46,7 @@ pub struct WrapKeyAction {
 
     /// An optional hexadecimal salt to derivate the password into a key.
     #[clap(
-        long = "passwd-salt",
+        long = "password-salt",
         short = 's',
         required = false,
         group = "password",
