@@ -34,7 +34,7 @@ pub struct HybridEncryptionSystem {
 }
 
 impl HybridEncryptionSystem {
-    pub fn new(public_key_uid: &str, public_key: PKey<Public>) -> Self {
+    pub fn new(public_key_uid: &str, public_key: PKey<Public>, key_wrapping: bool) -> Self {
         let rng = CsRng::from_entropy();
 
         trace!("Instantiated hybrid encryption system for public key id: {public_key_uid}");
@@ -43,7 +43,7 @@ impl HybridEncryptionSystem {
             rng: Arc::new(Mutex::new(rng)),
             public_key_uid: public_key_uid.into(),
             public_key,
-            key_wrapping: false,
+            key_wrapping,
         }
     }
 
@@ -75,14 +75,6 @@ impl HybridEncryptionSystem {
 
 impl EncryptionSystem for HybridEncryptionSystem {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError> {
-        let mut encrypt_response = EncryptResponse {
-            unique_identifier: UniqueIdentifier::TextString(self.public_key_uid.clone()),
-            data: None,
-            iv_counter_nonce: None,
-            correlation_value: None,
-            authenticated_encryption_tag: None,
-        };
-
         let plaintext = request.data.clone().context("missing plaintext data")?;
         let mut rng = self.rng.lock().unwrap();
 
@@ -134,8 +126,13 @@ impl EncryptionSystem for HybridEncryptionSystem {
             ciphertext.len(),
         );
 
-        encrypt_response.data = Some(ciphertext);
-        Ok(encrypt_response)
+        Ok(EncryptResponse {
+            unique_identifier: UniqueIdentifier::TextString(self.public_key_uid.clone()),
+            data: Some(ciphertext),
+            iv_counter_nonce: None,
+            correlation_value: None,
+            authenticated_encryption_tag: None,
+        })
     }
 }
 

@@ -32,12 +32,16 @@ pub struct HybridDecryptionSystem {
 }
 
 impl HybridDecryptionSystem {
-    pub fn new(private_key_uid: Option<String>, private_key: PKey<Private>) -> Self {
+    pub fn new(
+        private_key_uid: Option<String>,
+        private_key: PKey<Private>,
+        key_unwrapping: bool,
+    ) -> Self {
         trace!("Instantiated hybrid decryption system for private key id: {private_key_uid:?}");
         Self {
             private_key,
             private_key_uid,
-            key_unwrapping: false,
+            key_unwrapping,
         }
     }
 }

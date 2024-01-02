@@ -9,10 +9,7 @@ use cosmian_kmip::{
 use openssl::pkey::{PKey, Private, Public};
 use tracing::debug;
 
-use super::{
-    rfc5649::{key_unwrap, key_wrap},
-    rsa_oaep_aes_kwp::{ckm_rsa_aes_key_unwrap, ckm_rsa_aes_key_wrap},
-};
+use super::rfc5649::{key_unwrap, key_wrap};
 use crate::{
     crypto::hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
     error::{result::CryptoResultHelper, KmipUtilsError},
@@ -101,25 +98,20 @@ fn encrypt_with_public_key(
     pubkey: PKey<Public>,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
-    if pubkey.rsa().is_ok() {
-        ckm_rsa_aes_key_wrap(pubkey, plaintext)
-    } else {
-        // Wrap symmetric key using ECIES.
-        let request = Encrypt {
-            data: Some(plaintext.to_vec()),
-            ..Encrypt::default()
-        };
-        let encrypt_system = HybridEncryptionSystem::new("public_key_uid", pubkey);
-        let encrypt_response = encrypt_system.encrypt(&request)?;
-        let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
-            "Encrypt response does not contain ciphertext".to_string(),
-        ))?;
-        debug!(
-            "encrypt_bytes: succeeded: ciphertext length: {}",
-            ciphertext.len()
-        );
-        Ok(ciphertext)
-    }
+    let request = Encrypt {
+        data: Some(plaintext.to_vec()),
+        ..Encrypt::default()
+    };
+    let encrypt_system = HybridEncryptionSystem::new("public_key_uid", pubkey, true);
+    let encrypt_response = encrypt_system.encrypt(&request)?;
+    let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
+        "Encrypt response does not contain ciphertext".to_string(),
+    ))?;
+    debug!(
+        "encrypt_bytes: succeeded: ciphertext length: {}",
+        ciphertext.len()
+    );
+    Ok(ciphertext)
 }
 
 /// Decrypt bytes using the unwrapping key
@@ -171,33 +163,22 @@ fn decrypt_with_private_key(
     p_key: PKey<Private>,
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
-    if p_key.rsa().is_ok() {
-        // XXX - ECIES approved by fips ? not stated, only supporting RSA for
-        // now:
-        // XXX - Unwrap symmetric key using RSA. FIPS does not specify RSA for
-        // asymmetric key wrapping:
-        // > An RSA decryption operation using an exponentiation for key
-        // > encapsulation, as specified in the section 7.1.2.1 of SP 800-56Br2
-
-        ckm_rsa_aes_key_unwrap(p_key, ciphertext)
-    } else {
-        // If not in FIPS mode, perform Hybrid Encryption.
-        let decrypt_system = HybridDecryptionSystem::new(None, p_key);
-        let request = Decrypt {
-            data: Some(ciphertext.to_vec()),
-            ..Decrypt::default()
-        };
-        let decrypt_response = decrypt_system.decrypt(&request)?;
-        let plaintext = decrypt_response.data.ok_or(KmipUtilsError::Default(
-            "Decrypt response does not contain plaintext".to_string(),
-        ))?;
-        debug!(
-            "decrypt_bytes: succeeded: plaintext length: {}",
-            plaintext.len()
-        );
-        let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
-        Ok(decrypted_data.plaintext)
-    }
+    let decrypt_system = HybridDecryptionSystem::new(None, p_key, true);
+    let request = Decrypt {
+        data: Some(ciphertext.to_vec()),
+        ..Decrypt::default()
+    };
+    let decrypt_response = decrypt_system.decrypt(&request)?;
+    let plaintext = decrypt_response.data.ok_or(KmipUtilsError::Default(
+        "Decrypt response does not contain plaintext".to_string(),
+    ))?;
+    debug!(
+        "decrypt_bytes: succeeded: plaintext length: {}",
+        plaintext.len()
+    );
+    let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
+    Ok(decrypted_data.plaintext)
+    //}
 }
 
 #[cfg(test)]
