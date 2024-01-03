@@ -110,7 +110,7 @@ pub fn to_ec_private_key(bytes: &[u8], public_key_uid: &str, curve: RecommendedC
 }
 
 /// Generate an X25519 Key Pair. Not FIPS 140-3 compliant.
-// TODO - #[cfg(not(feature = "fips"))]
+#[cfg(not(feature = "fips"))]
 pub fn create_x25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -163,21 +163,12 @@ pub fn create_approved_ecc_key_pair(
     let curve = EcGroup::from_curve_name(curve_nid)?;
     let kmip_curve = match curve_nid {
         // P-CURVES
+        #[cfg(not(feature = "fips"))]
         Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
         Nid::SECP224R1 => RecommendedCurve::P224,
         Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,
         Nid::SECP384R1 => RecommendedCurve::P384,
         Nid::SECP521R1 => RecommendedCurve::P521,
-        // K-CURVES
-        Nid::SECT233K1 => RecommendedCurve::K233,
-        Nid::SECT283K1 => RecommendedCurve::K283,
-        Nid::SECT409K1 => RecommendedCurve::K409,
-        Nid::SECT571K1 => RecommendedCurve::K571,
-        // B-CURVES
-        Nid::SECT233R1 => RecommendedCurve::B233,
-        Nid::SECT283R1 => RecommendedCurve::B283,
-        Nid::SECT409R1 => RecommendedCurve::B409,
-        Nid::SECT571R1 => RecommendedCurve::B571,
         other => kmip_utils_bail!("Curve Nid {:?} not supported by KMS.", other),
     };
 
@@ -332,15 +323,5 @@ mod tests {
         keypair_generation(Nid::X9_62_PRIME256V1);
         keypair_generation(Nid::SECP384R1);
         keypair_generation(Nid::SECP521R1);
-        // K-CURVES
-        keypair_generation(Nid::SECT233K1);
-        keypair_generation(Nid::SECT283K1);
-        keypair_generation(Nid::SECT409K1);
-        keypair_generation(Nid::SECT571K1);
-        // B-CURVES
-        keypair_generation(Nid::SECT233R1);
-        keypair_generation(Nid::SECT283R1);
-        keypair_generation(Nid::SECT409R1);
-        keypair_generation(Nid::SECT571R1);
     }
 }

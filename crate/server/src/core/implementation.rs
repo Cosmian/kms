@@ -425,48 +425,6 @@ impl KMS {
                         public_key_uid,
                         Nid::SECP521R1,
                     ),
-                    // K-CURVES
-                    RecommendedCurve::K233 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::SECT233K1,
-                    ),
-                    RecommendedCurve::K283 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::SECT283K1,
-                    ),
-                    RecommendedCurve::K409 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::SECT409K1,
-                    ),
-                    RecommendedCurve::K571 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::SECT571K1,
-                    ),
-                    // B-CURVES
-                    RecommendedCurve::B233 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::SECT233R1,
-                    ),
-                    RecommendedCurve::B283 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::SECT283R1,
-                    ),
-                    RecommendedCurve::B409 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::SECT409R1,
-                    ),
-                    RecommendedCurve::B571 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::SECT571R1,
-                    ),
 
                     #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVE25519 => {
