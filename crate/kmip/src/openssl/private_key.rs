@@ -176,11 +176,14 @@ fn ec_private_key_from_scalar(
     curve: &RecommendedCurve,
 ) -> Result<PKey<Private>, KmipError> {
     let (nid, privkey_size) = match curve {
-        RecommendedCurve::P256 => (Nid::X9_62_PRIME256V1, 32),
+        // P-CURVES
+        #[cfg(not(feature = "fips"))]
         RecommendedCurve::P192 => (Nid::X9_62_PRIME192V1, 24),
+        RecommendedCurve::P256 => (Nid::X9_62_PRIME256V1, 32),
         RecommendedCurve::P224 => (Nid::SECP224R1, 28),
         RecommendedCurve::P384 => (Nid::SECP384R1, 48),
         RecommendedCurve::P521 => (Nid::SECP521R1, 66),
+
         x => kmip_bail!("Unsupported curve: {:?} in this KMIP implementation", x),
     };
     let big_num_context = BigNumContext::new()?;
@@ -264,6 +267,8 @@ pub fn openssl_private_key_to_kmip(
                     let d = BigUint::from_bytes_be(ec_key.private_key().to_vec().as_slice());
                     let recommended_curve = match ec_key.group().curve_name() {
                         Some(nid) => match nid {
+                            // P-CURVES
+                            #[cfg(not(feature = "fips"))]
                             Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
                             Nid::SECP224R1 => RecommendedCurve::P224,
                             Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,

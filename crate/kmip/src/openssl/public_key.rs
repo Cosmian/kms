@@ -89,6 +89,8 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, K
                 recommended_curve,
                 q_string,
             } => match recommended_curve {
+                // P-CURVES
+                #[cfg(not(feature = "fips"))]
                 RecommendedCurve::P192 => {
                     ec_public_key_from_point_encoding(q_string, Nid::X9_62_PRIME192V1)?
                 }
@@ -104,6 +106,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, K
                 RecommendedCurve::P521 => {
                     ec_public_key_from_point_encoding(q_string, Nid::SECP521R1)?
                 }
+
                 RecommendedCurve::CURVE25519 => {
                     PKey::public_key_from_raw_bytes(q_string, Id::X25519)?
                 }
@@ -252,6 +255,8 @@ pub fn openssl_public_key_to_kmip(
                         .curve_name()
                         .ok_or_else(|| kmip_error!("The EC group has no curve name"))?
                     {
+                        // P-CURVES
+                        #[cfg(not(feature = "fips"))]
                         Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
                         Nid::SECP224R1 => RecommendedCurve::P224,
                         Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,

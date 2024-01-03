@@ -2,17 +2,21 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
+#[cfg(not(feature = "fips"))]
 use cosmian_logger::log_utils::log_init;
 
+#[cfg(not(feature = "fips"))]
+use crate::tests::{
+    cover_crypt::master_key_pair::create_cc_master_key_pair,
+    elliptic_curve::create_key_pair::create_ec_key_pair,
+    symmetric::create_key::create_symmetric_key,
+};
 use crate::{
     actions::shared::{import_key::ImportKeyFormat, utils::read_object_from_json_ttlv_file},
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        cover_crypt::master_key_pair::create_cc_master_key_pair,
-        elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::export::export_key,
-        symmetric::create_key::create_symmetric_key,
         utils::{
             extract_uids::extract_imported_key_id, recover_cmd_logs, start_default_test_kms_server,
             ONCE,
@@ -125,6 +129,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_generate_export_import() -> Result<(), CliError> {
     log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
@@ -165,6 +170,7 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn export_import_test(
     cli_conf_path: &str,
     sub_command: &str,

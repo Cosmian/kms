@@ -1,16 +1,21 @@
 use std::{path::Path, process::Command};
 
 use assert_cmd::prelude::*;
+use cosmian_kmip::kmip::kmip_types::KeyFormatType;
+#[cfg(not(feature = "fips"))]
 use cosmian_kmip::{
     kmip::{
         kmip_data_structures::KeyMaterial,
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+        kmip_types::{CryptographicAlgorithm, RecommendedCurve},
     },
     openssl::pad_be_bytes,
 };
+#[cfg(not(feature = "fips"))]
 use openssl::pkey::{Id, PKey};
 use tempfile::TempDir;
 
+#[cfg(not(feature = "fips"))]
+use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
 use crate::{
     actions::shared::{
         utils::{read_bytes_from_file, read_object_from_json_ttlv_file},
@@ -23,7 +28,6 @@ use crate::{
             master_key_pair::create_cc_master_key_pair,
             user_decryption_keys::create_user_decryption_key,
         },
-        elliptic_curve::create_key_pair::create_ec_key_pair,
         symmetric::create_key::create_symmetric_key,
         utils::{recover_cmd_logs, start_default_test_kms_server, TestsContext, ONCE},
         PROG_NAME,
@@ -302,6 +306,7 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_export_x25519() -> Result<(), CliError> {
     // create a temp dir

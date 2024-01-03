@@ -3,10 +3,12 @@ mod export;
 mod get_attributes;
 mod import;
 mod import_export_encodings;
+#[cfg(not(feature = "fips"))]
 mod import_export_wrapping;
 mod jwe;
 mod locate;
 mod revoke;
+#[cfg(not(feature = "fips"))]
 mod wrap_unwrap;
 
 pub use destroy::destroy;

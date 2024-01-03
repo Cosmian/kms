@@ -7,7 +7,7 @@ use cloudproof::reexport::{
     cover_crypt::Covercrypt,
     crypto_core::{
         reexport::rand_core::{RngCore, SeedableRng},
-        Aes256Gcm, CsRng, FixedSizeCBytes, SymmetricKey,
+        CsRng, FixedSizeCBytes, SymmetricKey,
     },
 };
 use cosmian_kmip::{
@@ -19,21 +19,19 @@ use cosmian_kmip::{
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::curve_25519::operation::create_p192_key_pair;
+use cosmian_kms_utils::crypto::curve_25519::operation::create_x25519_key_pair;
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
-        curve_25519::operation::{
-            create_ed25519_key_pair, create_p224_key_pair, create_p256_key_pair,
-            create_p384_key_pair, create_p521_key_pair, create_x25519_key_pair,
-        },
+        curve_25519::operation::{create_approved_ecc_key_pair, create_ed25519_key_pair},
         hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
-        symmetric::{create_symmetric_key, AesGcmSystem},
+        symmetric::{create_symmetric_key, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
     },
     tagging::{check_user_tags, get_tags, remove_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
+use openssl::nid::Nid;
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
 use tracing::{debug, trace};
@@ -275,7 +273,7 @@ impl KMS {
                     // create the key
                     let key_len: usize = attributes
                         .cryptographic_length
-                        .map_or(Aes256Gcm::KEY_LENGTH, |v| v as usize / 8);
+                        .map_or(AES_256_GCM_KEY_LENGTH, |v| v as usize / 8);
                     let mut symmetric_key = vec![0; key_len];
                     rng.fill_bytes(&mut symmetric_key);
                     let object = create_symmetric_key(&symmetric_key, *cryptographic_algorithm);
@@ -340,7 +338,13 @@ impl KMS {
         }
     }
 
-    /// Create a key pair and the corresponding system tags
+    /// Create a key pair and the corresponding system tags.
+    /// Generate FIPS-140-3 compliant Key Pair for key agreement and digital signature.
+    ///
+    /// Sources:
+    /// - NIST.SP.800-56Ar3 - Appendix D.
+    /// - NIST.SP.800-186 - Section 3.1.2 table 2.
+    ///
     /// The tags will contain the user tags and the following:
     ///  - "_sk" for the private key
     ///  - "_pk" for the public key
@@ -389,16 +393,43 @@ impl KMS {
                     .cryptographic_domain_parameters
                     .unwrap_or_default();
                 match dp.recommended_curve.unwrap_or_default() {
-                    // TODO - #[cfg(not(feature = "fips"))]
+                    // P-CURVES
+                    #[cfg(not(feature = "fips"))]
+                    // Generate a P-192 Key Pair. Not FIPS-140-3 compliant. **This curve is for
+                    // legacy-use only** as it provides less than 112 bits of security.
+                    //
+                    // Sources:
+                    // - NIST.SP.800-186 - Section 3.2.1.1
+                    RecommendedCurve::P192 => create_approved_ecc_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        Nid::X9_62_PRIME192V1,
+                    ),
+                    RecommendedCurve::P224 => create_approved_ecc_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        Nid::SECP224R1,
+                    ),
+                    RecommendedCurve::P256 => create_approved_ecc_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        Nid::X9_62_PRIME256V1,
+                    ),
+                    RecommendedCurve::P384 => create_approved_ecc_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        Nid::SECP384R1,
+                    ),
+                    RecommendedCurve::P521 => create_approved_ecc_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        Nid::SECP521R1,
+                    ),
+
+                    #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVE25519 => {
                         create_x25519_key_pair(private_key_uid, public_key_uid)
                     }
-                    #[cfg(not(feature = "fips"))]
-                    RecommendedCurve::P192 => create_p192_key_pair(private_key_uid, public_key_uid),
-                    RecommendedCurve::P224 => create_p224_key_pair(private_key_uid, public_key_uid),
-                    RecommendedCurve::P256 => create_p256_key_pair(private_key_uid, public_key_uid),
-                    RecommendedCurve::P384 => create_p384_key_pair(private_key_uid, public_key_uid),
-                    RecommendedCurve::P521 => create_p521_key_pair(private_key_uid, public_key_uid),
                     #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED25519 => {
                         warn!(
@@ -407,6 +438,7 @@ impl KMS {
                         );
                         create_ed25519_key_pair(private_key_uid, public_key_uid)
                     }
+
                     #[cfg(feature = "fips")]
                     // Ed25519 not allowed for ECDH.
                     // see NIST.SP.800-186 - Section 3.1.2 table 2.

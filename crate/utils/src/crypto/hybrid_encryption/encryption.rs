@@ -87,7 +87,7 @@ impl EncryptionSystem for HybridEncryptionSystem {
         let plaintext = request.data.clone().context("missing plaintext data")?;
         let mut rng = self.rng.lock().unwrap();
 
-        // Convert the Pkey to a crypto_core curve and perform emcryption
+        // Convert the Pkey to a crypto_core curve and perform encryption
         // Note: All conversions below will go once we move to full openssl
         let id = self.public_key.id();
         let ciphertext: Vec<u8> = match id {

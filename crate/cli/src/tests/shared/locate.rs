@@ -2,6 +2,8 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 
+#[cfg(not(feature = "fips"))]
+use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
 use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
@@ -11,7 +13,6 @@ use crate::{
             master_key_pair::create_cc_master_key_pair,
             user_decryption_keys::create_user_decryption_key,
         },
-        elliptic_curve::create_key_pair::create_ec_key_pair,
         symmetric::create_key::create_symmetric_key,
         utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
@@ -201,6 +202,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     // init the test server
