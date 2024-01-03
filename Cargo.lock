@@ -1203,6 +1203,8 @@ dependencies = [
  "http",
  "josekit",
  "lazy_static",
+ "mime",
+ "num-bigint-dig",
  "openssl",
  "rawsql",
  "redis",

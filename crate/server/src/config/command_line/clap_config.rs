@@ -18,6 +18,7 @@ impl Default for ClapConfig {
             force_default_username: false,
             jwe: JWEConfig::default(),
             google_cse_kacls_url: None,
+            enable_ms_dke: true,
         }
     }
 }
