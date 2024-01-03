@@ -89,6 +89,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, K
                 recommended_curve,
                 q_string,
             } => match recommended_curve {
+                // P-CURVES
                 RecommendedCurve::P192 => {
                     ec_public_key_from_point_encoding(q_string, Nid::X9_62_PRIME192V1)?
                 }
@@ -104,6 +105,35 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, K
                 RecommendedCurve::P521 => {
                     ec_public_key_from_point_encoding(q_string, Nid::SECP521R1)?
                 }
+
+                // K-CURVES
+                RecommendedCurve::K233 => {
+                    ec_public_key_from_point_encoding(q_string, Nid::SECT233K1)?
+                }
+                RecommendedCurve::K283 => {
+                    ec_public_key_from_point_encoding(q_string, Nid::SECT283K1)?
+                }
+                RecommendedCurve::K409 => {
+                    ec_public_key_from_point_encoding(q_string, Nid::SECT409K1)?
+                }
+                RecommendedCurve::K571 => {
+                    ec_public_key_from_point_encoding(q_string, Nid::SECT571K1)?
+                }
+
+                // B-CURVES
+                RecommendedCurve::B233 => {
+                    ec_public_key_from_point_encoding(q_string, Nid::SECT233R1)?
+                }
+                RecommendedCurve::B283 => {
+                    ec_public_key_from_point_encoding(q_string, Nid::SECT283R1)?
+                }
+                RecommendedCurve::B409 => {
+                    ec_public_key_from_point_encoding(q_string, Nid::SECT409R1)?
+                }
+                RecommendedCurve::B571 => {
+                    ec_public_key_from_point_encoding(q_string, Nid::SECT571R1)?
+                }
+
                 RecommendedCurve::CURVE25519 => {
                     PKey::public_key_from_raw_bytes(q_string, Id::X25519)?
                 }
@@ -252,11 +282,22 @@ pub fn openssl_public_key_to_kmip(
                         .curve_name()
                         .ok_or_else(|| kmip_error!("The EC group has no curve name"))?
                     {
+                        // P-CURVES
                         Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
                         Nid::SECP224R1 => RecommendedCurve::P224,
                         Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,
                         Nid::SECP384R1 => RecommendedCurve::P384,
                         Nid::SECP521R1 => RecommendedCurve::P521,
+                        // K-CURVES
+                        Nid::SECT233K1 => RecommendedCurve::K233,
+                        Nid::SECT283K1 => RecommendedCurve::K283,
+                        Nid::SECT409K1 => RecommendedCurve::K409,
+                        Nid::SECT571K1 => RecommendedCurve::K571,
+                        // B-CURVES
+                        Nid::SECT233R1 => RecommendedCurve::B233,
+                        Nid::SECT283R1 => RecommendedCurve::B283,
+                        Nid::SECT409R1 => RecommendedCurve::B409,
+                        Nid::SECT571R1 => RecommendedCurve::B571,
                         unsupported_curve => {
                             kmip_bail!(
                                 "Unsupported curve: {:?} for a Transparent EC Public Key",

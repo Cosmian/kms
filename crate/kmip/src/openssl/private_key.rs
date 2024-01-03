@@ -176,11 +176,23 @@ fn ec_private_key_from_scalar(
     curve: &RecommendedCurve,
 ) -> Result<PKey<Private>, KmipError> {
     let (nid, privkey_size) = match curve {
+        // P-CURVES
         RecommendedCurve::P256 => (Nid::X9_62_PRIME256V1, 32),
         RecommendedCurve::P192 => (Nid::X9_62_PRIME192V1, 24),
         RecommendedCurve::P224 => (Nid::SECP224R1, 28),
         RecommendedCurve::P384 => (Nid::SECP384R1, 48),
         RecommendedCurve::P521 => (Nid::SECP521R1, 66),
+        // K-CURVES
+        RecommendedCurve::K233 => (Nid::SECT233K1, 30),
+        RecommendedCurve::K283 => (Nid::SECT283K1, 36),
+        RecommendedCurve::K409 => (Nid::SECT409K1, 52),
+        RecommendedCurve::K571 => (Nid::SECT571K1, 72),
+        // B-CURVES
+        RecommendedCurve::B233 => (Nid::SECT233R1, 30),
+        RecommendedCurve::B283 => (Nid::SECT283R1, 36),
+        RecommendedCurve::B409 => (Nid::SECT409R1, 52),
+        RecommendedCurve::B571 => (Nid::SECT571R1, 72),
+
         x => kmip_bail!("Unsupported curve: {:?} in this KMIP implementation", x),
     };
     let big_num_context = BigNumContext::new()?;
@@ -264,11 +276,22 @@ pub fn openssl_private_key_to_kmip(
                     let d = BigUint::from_bytes_be(ec_key.private_key().to_vec().as_slice());
                     let recommended_curve = match ec_key.group().curve_name() {
                         Some(nid) => match nid {
+                            // P-CURVES
                             Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
                             Nid::SECP224R1 => RecommendedCurve::P224,
                             Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,
                             Nid::SECP384R1 => RecommendedCurve::P384,
                             Nid::SECP521R1 => RecommendedCurve::P521,
+                            // K-CURVES
+                            Nid::SECT233K1 => RecommendedCurve::K233,
+                            Nid::SECT283K1 => RecommendedCurve::K283,
+                            Nid::SECT409K1 => RecommendedCurve::K409,
+                            Nid::SECT571K1 => RecommendedCurve::K571,
+                            // B-CURVES
+                            Nid::SECT233R1 => RecommendedCurve::B233,
+                            Nid::SECT283R1 => RecommendedCurve::B283,
+                            Nid::SECT409R1 => RecommendedCurve::B409,
+                            Nid::SECT571R1 => RecommendedCurve::B571,
                             _ => {
                                 kmip_bail!(
                                     "Unsupported openssl curve: {:?} in this KMIP implementation",

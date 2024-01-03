@@ -10,6 +10,8 @@ use cosmian_logger::log_utils::log_init;
 use openssl::{nid::Nid, x509::X509};
 use uuid::Uuid;
 
+#[cfg(not(feature = "fips"))]
+use crate::tests::{elliptic_curve::create_key_pair::create_ec_key_pair, shared::export_key};
 use crate::{
     actions::{
         certificates::{CertificateExportFormat, CertificateInputFormat},
@@ -19,8 +21,6 @@ use crate::{
     error::CliError,
     tests::{
         certificates::{export::export_certificate, import::import_certificate},
-        elliptic_curve::create_key_pair::create_ec_key_pair,
-        shared::export_key,
         utils::{extract_uids::extract_uid, recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
@@ -200,6 +200,7 @@ async fn certify_a_csr_test() -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn certify_a_public_key_test() -> Result<(), CliError> {
     log_init("cosmian_kms_server=debug");

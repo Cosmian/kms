@@ -3,6 +3,8 @@ use std::process::Command;
 use assert_cmd::prelude::CommandCargoExt;
 use tempfile::TempDir;
 
+#[cfg(not(feature = "fips"))]
+use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
 use crate::{
     actions::shared::utils::read_object_from_json_ttlv_file,
     cli_bail,
@@ -13,7 +15,6 @@ use crate::{
             master_key_pair::create_cc_master_key_pair,
             user_decryption_keys::create_user_decryption_key,
         },
-        elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::{export::export_key, revoke::revoke},
         symmetric::create_key::create_symmetric_key,
         utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
@@ -102,6 +103,7 @@ async fn test_destroy_symmetric_key() -> Result<(), CliError> {
     assert_destroyed(&ctx.owner_cli_conf_path, &key_id)
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn test_destroy_ec_key() -> Result<(), CliError> {
     // init the test server

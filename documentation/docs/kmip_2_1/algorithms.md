@@ -9,20 +9,20 @@ In the latter case, the public key (or the associated private key for unwrapping
 ### Normal mode
 The supported key-wrapping algorithms are:
 
-| Algorithm            | Wrap Key Type               | Description                                                                                                                                                                 |
-|----------------------|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| AES-KWP             | Symmetric key wrapping                         | Symmetric key-wrapping with padding as defined in [RFC3394](https://tools.ietf.org/html/rfc5649).                                   |
-| CKM_RSA_AES_KEY_WRAP | Hybrid key wrapping | RSA OAEP with SHA256 with AES-KWP for RSA keysize 2048, 3072 or 4096 bits.|
-| Salsa Sealed Box     | X25519, Ed25519             | ECIES compatible with libsodium [Sealed Box](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).                                                                |
-| ECIES NIST AES-128   | P-192, P-224, P-256, P-384  | ECIES with a NIST curve and AES-128-GCM.|
+| Algorithm            | Wrap Key Type              | Description                                                                                                   |
+|----------------------|----------------------------|---------------------------------------------------------------------------------------------------------------|
+| AES-KWP              | Symmetric key wrapping     | Symmetric key-wrapping with padding as defined in [RFC3394](https://tools.ietf.org/html/rfc5649).             |
+| CKM_RSA_AES_KEY_WRAP | Hybrid key wrapping        | RSA OAEP with SHA256 with AES-KWP for RSA key size 2048, 3072 or 4096 bits.                                   |
+| Salsa Sealed Box     | X25519, Ed25519            | ECIES compatible with libsodium [Sealed Box](https://doc.libsodium.org/public-key_cryptography/sealed_boxes). |
+| ECIES NIST AES-128   | P-192, P-224, P-256, P-384 | ECIES with a NIST curve and AES-128-GCM.                                                                      |
 
 ### FIPS mode
 When in FIPS mode, the KMS currently only supports:
 
-| Algorithm            | Wrap Key Type               | Description                                                                                                                                                                 |
-|----------------------|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| AES-KWP             | Symmetric key wrapping                         | Symmetric key-wrapping with padding as defined in [RFC3394](https://tools.ietf.org/html/rfc5649).                                                                                  |
-| CKM_RSA_AES_KEY_WRAP | Hybrid key wrapping | RSA OAEP with SHA256 with AES-KWP for RSA keysize 2048, 3072 or 4096 bits.|
+| Algorithm            | Wrap Key Type          | Description                                                                                       |
+|----------------------|------------------------|---------------------------------------------------------------------------------------------------|
+| AES-KWP              | Symmetric key wrapping | Symmetric key-wrapping with padding as defined in [RFC3394](https://tools.ietf.org/html/rfc5649). |
+| CKM_RSA_AES_KEY_WRAP | Hybrid key wrapping    | RSA OAEP with SHA256 with AES-KWP for RSA key size 2048, 3072 or 4096 bits.                       |
 
 
 
@@ -50,21 +50,21 @@ Encryption can be performed using a key or a certificate. Decryption can be perf
 ### Normal mode
 The supported encryption algorithms are:
 
-| Algorithm            | Encryption Key Type         | Description                                                                                                                                                                 |
-|----------------------|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Covercrypt           | Covercrypt                  | A fast post-quantum attribute based scheme: [Covercrypt](https://github.com/Cosmian/cover_crypt).                                                                            |
-| AES-128-GCM<br />AES-256-GCM | Symmetric authenticated encryption with additional data       | The NIST standardized symmetric encryption in [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf).                                                     |
-| CKM_RSA_AES_KEY_WRAP | Hybrid encryption | RSA OAEP with SHA256 with AES-KWP for RSA keysize 2048, 3072 or 4096 bits. This will change to use AES-GCM instead of AES-KWP in a near future.|
-| Salsa Sealed Box     | X25519, Ed25519             | ECIES compatible with libsodium [Sealed Box](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).                                                                |
-| ECIES NIST AES-128   | P-192, P-224, P-256, P-384  | ECIES with a NIST curve and AES-128-GCM.                                                                                                                                     |
+| Algorithm                    | Encryption Key Type                                     | Description                                                                                                                                      |
+|------------------------------|---------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| Covercrypt                   | Covercrypt                                              | A fast post-quantum attribute based scheme: [Covercrypt](https://github.com/Cosmian/cover_crypt).                                                |
+| AES-128-GCM<br />AES-256-GCM | Symmetric authenticated encryption with additional data | The NIST standardized symmetric encryption in [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf).                         |
+| CKM_RSA_AES_KEY_WRAP         | Hybrid encryption                                       | RSA OAEP with SHA256 with AES-KWP for RSA key size 2048, 3072 or 4096 bits. This will change to use AES-GCM instead of AES-KWP in a near future. |
+| Salsa Sealed Box             | X25519, Ed25519                                         | ECIES compatible with libsodium [Sealed Box](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).                                    |
+| ECIES NIST AES-128           | P-192, P-224, P-256, P-384                              | ECIES with a NIST curve and AES-128-GCM.                                                                                                         |
 
 ### FIPS mode
 When in FIPS mode, the KMS currently only supports:
 
-| Algorithm            | Encryption Key Type         | Description                                                                                                                                                                 |
-|----------------------|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| AES-128-GCM<br />AES-256-GCM             | Symmetric authenticated encryption with additional data      | The NIST standardized symmetric encryption in [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf).                                                     |
-| CKM_RSA_AES | Hybrid encryption | RSA OAEP with SHA256 with AES-KWP for RSA keysize 2048, 3072 or 4096 bits.  This will change to use AES-GCM instead of AES-KWP in a near future.|
+| Algorithm                    | Encryption Key Type                                     | Description                                                                                                                                       |
+|------------------------------|---------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
+| AES-128-GCM<br />AES-256-GCM | Symmetric authenticated encryption with additional data | The NIST standardized symmetric encryption in [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf).                          |
+| CKM_RSA_AES                  | Hybrid encryption                                       | RSA OAEP with SHA256 with AES-KWP for RSA key size 2048, 3072 or 4096 bits.  This will change to use AES-GCM instead of AES-KWP in a near future. |
 
 - [Covercrypt](https://github.com/Cosmian/cover_crypt) is a new post-quantum cryptographic algorithm, being standardized
   at [ETSI](https://www.etsi.org/) that allows creating ciphertexts for a set of attributes and issuing user keys with access policies over these
@@ -86,18 +86,18 @@ or building it from an existing public key.
 ### Normal mode
 The KMS supports the following algorithms for digital signature:
 
-| Algorithm | Signature Key Type         | Description                                                                  |
-|-----------|----------------------------|------------------------------------------------------------------------------|
+| Algorithm | Signature Key Type                 | Description                                                                                                               |
+|-----------|------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
 | ECDSA     | P-192, P-224, P-256, P-384, X25519 | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
-| EdDSA     | Ed25519                    | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf). |
+| EdDSA     | Ed25519                            | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
 
 ### FIPS mode
 The FIPS standard restricts specific curves on which to perform digital signature algorithms.
 
-| Algorithm | Signature Key Type         | Description                                                                  |
-|-----------|----------------------------|------------------------------------------------------------------------------|
+| Algorithm | Signature Key Type         | Description                                                                                                               |
+|-----------|----------------------------|---------------------------------------------------------------------------------------------------------------------------|
 | ECDSA     | P-224, P-256, P-384, P-521 | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
-| EdDSA     | Ed25519                    | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf). |
+| EdDSA     | Ed25519                    | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
 
 - `ECDSA` performs digital signatures on elliptic curves `P-192`, `P-224`, `P-256`, `P-384`, `P-512` and `X25519`.
 
@@ -108,7 +108,7 @@ The FIPS standard restricts specific curves on which to perform digital signatur
 The randomness of cryptographic keys is essential for the security of cryptographic applications. Sometimes, passwords may be the only input required from the users who are eligible to access the data. Due to the low entropy and possibly poor randomness of those passwords, they are not suitable to be used directly as cryptographic keys. The KMS addresses this problem by providing methods to derive a password into a secure cryptographic key.
 
 ### Normal mode
-In normal mode, passwords are derived using `Argon2` hash algorithm with constant salt. Argon2 has the property of being computationally intensive making it significantly harder to crack by bruteforce only.
+In normal mode, passwords are derived using `Argon2` hash algorithm with constant salt. Argon2 has the property of being computationally intensive making it significantly harder to crack by brute force only.
 
 ### FIPS mode
 In FIPS mode, passwords are derived using FIPS compliant `PBKDF2_HMAC` with `SHA512` and recommended 210,000 iterations by [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#pbkdf2) which follows FIPS recommendations as well. An additional random 128-bits salt is used.
