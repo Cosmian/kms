@@ -1058,6 +1058,7 @@ dependencies = [
  "hex",
  "num-bigint-dig",
  "openssl",
+ "openssl-sys",
  "pyo3",
  "rust-ini",
  "serde",
@@ -1068,6 +1069,7 @@ dependencies = [
  "time",
  "tracing",
  "uuid",
+ "x509-parser",
  "zeroize",
 ]
 

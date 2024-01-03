@@ -157,7 +157,7 @@ pub fn parse_v3_ca(
                     value.trim().split(',').try_for_each(|value| {
                         match value {
                             "critical" => bc.critical(),
-                            "CA:true" => bc.ca(),
+                            "CA:true" | "CA:TRUE" => bc.ca(),
                             _ if value.starts_with("pathlen") => {
                                 let pathlen =
                                     colon_split(value, "pathlen")?.parse::<u32>().map_err(|e| {
@@ -294,6 +294,13 @@ fn colon_split<'a>(value: &'a str, property_name: &str) -> Result<&'a str, KmipE
 #[cfg(test)]
 mod tests {
     use openssl::x509::X509;
+    use tracing::debug;
+    use x509_parser::{
+        der_parser::oid,
+        extensions::{ParsedExtension, X509ExtensionParser},
+        nom::Parser as _,
+        prelude::{DistributionPointName::FullName, GeneralName::URI, *},
+    };
 
     use super::{colon_split, parse_v3_ca_from_str};
 
@@ -312,16 +319,23 @@ keyUsage=keyCertSign,digitalSignature
 extendedKeyUsage=emailProtection
 crlDistributionPoints=URI:http://cse.example.com/crl.pem
 "#;
+
         let mut x509_builder = X509::builder().unwrap();
         let x509_context = x509_builder.x509v3_context(None, None);
-        let parsed_file = parse_v3_ca_from_str(ext_file, &x509_context).unwrap();
-        assert_eq!(parsed_file.len(), 4);
+        let parsed_exts = parse_v3_ca_from_str(ext_file, &x509_context).unwrap();
+        assert_eq!(parsed_exts.len(), 4);
 
-        parsed_file.iter().for_each(|x| {
-            println!("{:?}", x.to_der().unwrap());
-        });
+        let parsed_exts_der = parsed_exts
+            .iter()
+            .map(|x| x.to_der().unwrap())
+            .collect::<Vec<_>>();
 
-        parsed_file
+        let exts_with_x509_parser = parsed_exts_der
+            .iter()
+            .map(|x| X509ExtensionParser::new().parse(x).unwrap().1)
+            .collect::<Vec<_>>();
+
+        parsed_exts
             .into_iter()
             .try_for_each(|extension| x509_builder.append_extension(extension))
             .unwrap();
@@ -340,5 +354,210 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
             stack.get(0).unwrap().uri(),
             Some("http://cse.example.com/crl.pem")
         );
+
+        let cert_as_txt = x509.as_ref().to_text().unwrap();
+        let cert = String::from_utf8_lossy(&cert_as_txt);
+
+        let _cert = r#"            X509v3 Basic Constraints: 
+                CA:TRUE, pathlen:0
+            X509v3 Key Usage: 
+                Digital Signature, Certificate Sign
+            X509v3 Extended Key Usage: 
+                E-mail Protection
+            X509v3 CRL Distribution Points: 
+                Full Name:
+                  URI:http://cse.example.com/crl.pem
+    Signature Algorithm: NULL
+    Signature Value:
+
+"#;
+        assert_eq!(cert.split_once("X509v3 extensions:\n").unwrap().1, _cert);
+
+        for ext in &exts_with_x509_parser {
+            debug!("\n\next: {:?}", ext);
+            debug!("value is: {:?}", String::from_utf8(ext.value.to_vec()));
+        }
+
+        // BasicConstraints
+        let bc = exts_with_x509_parser
+            .iter()
+            .find(|x| x.oid == oid!(2.5.29.19))
+            .unwrap();
+        assert!(!bc.critical);
+        assert_eq!(
+            bc.parsed_extension(),
+            &ParsedExtension::BasicConstraints(BasicConstraints {
+                ca: true,
+                path_len_constraint: Some(0)
+            })
+        );
+
+        // KeyUsage
+        let ku: &X509Extension<'_> = exts_with_x509_parser
+            .iter()
+            .find(|x| x.oid == oid!(2.5.29.15))
+            .unwrap();
+        assert!(!ku.critical);
+        assert_eq!(
+            ku.parsed_extension(),
+            &ParsedExtension::KeyUsage(KeyUsage { flags: 33 })
+        );
+
+        // ExtendedKeyUsage
+        let eku: &X509Extension<'_> = exts_with_x509_parser
+            .iter()
+            .find(|x| x.oid == oid!(2.5.29.37))
+            .unwrap();
+        assert!(!eku.critical);
+        assert_eq!(
+            eku.parsed_extension(),
+            &ParsedExtension::ExtendedKeyUsage(ExtendedKeyUsage {
+                any: false,
+                server_auth: false,
+                client_auth: false,
+                code_signing: false,
+                email_protection: true,
+                time_stamping: false,
+                ocsp_signing: false,
+                other: vec![]
+            })
+        );
+
+        // CRLDistributionPoints
+        let crl_dp: &X509Extension<'_> = exts_with_x509_parser
+            .iter()
+            .find(|x| x.oid == oid!(2.5.29.31))
+            .unwrap();
+        assert!(!crl_dp.critical);
+        assert_eq!(
+            crl_dp.parsed_extension(),
+            &ParsedExtension::CRLDistributionPoints(CRLDistributionPoints {
+                points: vec![CRLDistributionPoint {
+                    distribution_point: Some(FullName(vec![URI("http://cse.example.com/crl.pem")])),
+                    reasons: None,
+                    crl_issuer: None
+                }]
+            })
+        );
+    }
+
+    /// Following documentation, these are used extensions by Gmail:
+    /// - Key Usage (required, critical)
+    /// - Extended Key Usage (required, either)
+    /// - Basic Constraints (required, critical)
+    /// - Certificate Policies (optional)
+    /// - CRL Distribution Points (required)
+    ///
+    /// see: https://support.google.com/a/answer/7300887?fl=1&sjid=2466928410660190479-NA#zippy=%2Croot-ca%2Cintermediate-ca-certificates-other-than-from-issuing-intermediate-ca%2Cintermediate-ca-certificate-that-issues-the-end-entity
+    #[test]
+    fn test_parse_extensions_gmail() {
+        // TODO: fix missing `certificatePolicies=2.5.29.32.0`
+        let ext_file = r#"[ v3_ca ]
+basicConstraints=critical,CA:TRUE,pathlen:0
+keyUsage=critical,keyCertSign,digitalSignature
+extendedKeyUsage=emailProtection
+crlDistributionPoints=URI:http://cse.example.com/crl.pem
+"#;
+
+        let mut x509_builder = X509::builder().unwrap();
+        let x509_context = x509_builder.x509v3_context(None, None);
+        let parsed_exts = parse_v3_ca_from_str(ext_file, &x509_context).unwrap();
+        assert_eq!(parsed_exts.len(), 4);
+
+        let parsed_exts_der = parsed_exts
+            .iter()
+            .map(|x| x.to_der().unwrap())
+            .collect::<Vec<_>>();
+
+        let exts_with_x509_parser = parsed_exts_der
+            .iter()
+            .map(|x| X509ExtensionParser::new().parse(x).unwrap().1)
+            .collect::<Vec<_>>();
+
+        parsed_exts
+            .into_iter()
+            .try_for_each(|extension| x509_builder.append_extension(extension))
+            .unwrap();
+
+        for ext in &exts_with_x509_parser {
+            debug!("\n\next: {:?}", ext);
+            debug!("value is: {:?}", String::from_utf8(ext.value.to_vec()));
+        }
+
+        // BasicConstraints
+        let bc = exts_with_x509_parser
+            .iter()
+            .find(|x| x.oid == oid!(2.5.29.19))
+            .unwrap();
+        assert!(bc.critical);
+        assert_eq!(
+            bc.parsed_extension(),
+            &ParsedExtension::BasicConstraints(BasicConstraints {
+                ca: true,
+                path_len_constraint: Some(0)
+            })
+        );
+
+        // KeyUsage
+        let ku: &X509Extension<'_> = exts_with_x509_parser
+            .iter()
+            .find(|x| x.oid == oid!(2.5.29.15))
+            .unwrap();
+        assert!(ku.critical);
+        assert_eq!(
+            ku.parsed_extension(),
+            &ParsedExtension::KeyUsage(KeyUsage { flags: 33 })
+        );
+
+        // ExtendedKeyUsage
+        let eku: &X509Extension<'_> = exts_with_x509_parser
+            .iter()
+            .find(|x| x.oid == oid!(2.5.29.37))
+            .unwrap();
+        assert!(!eku.critical);
+        assert_eq!(
+            eku.parsed_extension(),
+            &ParsedExtension::ExtendedKeyUsage(ExtendedKeyUsage {
+                any: false,
+                server_auth: false,
+                client_auth: false,
+                code_signing: false,
+                email_protection: true,
+                time_stamping: false,
+                ocsp_signing: false,
+                other: vec![]
+            })
+        );
+
+        // CRLDistributionPoints
+        let crl_dp: &X509Extension<'_> = exts_with_x509_parser
+            .iter()
+            .find(|x| x.oid == oid!(2.5.29.31))
+            .unwrap();
+        assert!(!crl_dp.critical);
+        assert_eq!(
+            crl_dp.parsed_extension(),
+            &ParsedExtension::CRLDistributionPoints(CRLDistributionPoints {
+                points: vec![CRLDistributionPoint {
+                    distribution_point: Some(FullName(vec![URI("http://cse.example.com/crl.pem")])),
+                    reasons: None,
+                    crl_issuer: None
+                }]
+            })
+        );
+
+        // // CertificatePolicies
+        // let cert_policies: &X509Extension<'_> = exts_with_x509_parser
+        //     .iter()
+        //     .find(|x| x.oid == oid!(2.5.29.31))
+        //     .unwrap();
+        // assert!(!cert_policies.critical);
+        // assert_eq!(
+        //     cert_policies.parsed_extension(),
+        //     &ParsedExtension::CertificatePolicies(CertificatePolicies {
+        //         buf: todo!(),
+        //         len: todo!()
+        //     })
+        // );
     }
 }
