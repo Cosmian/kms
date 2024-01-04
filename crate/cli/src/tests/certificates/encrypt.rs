@@ -147,6 +147,7 @@ pub fn decrypt(
 //     Ok(())
 // }
 
+#[cfg(not(feature = "fips"))]
 async fn test_certificate_import_encrypt(
     ca_path: &str,
     subca_path: &str,
@@ -251,6 +252,7 @@ async fn test_certificate_import_encrypt(
 }
 
 #[tokio::test]
+#[cfg(not(feature = "fips"))]
 async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), CliError> {
     test_certificate_import_encrypt(
         "p12/root.pem",

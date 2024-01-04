@@ -17,6 +17,8 @@ use openssl::{
 
 use crate::{error::KmipUtilsError, kmip_utils_bail, KeyPair};
 
+pub const X25519_SECRET_LENGTH: usize = 0x20;
+pub const X25519_PUBLIC_KEY_LENGTH: usize = 0x20;
 pub const ED25519_SECRET_LENGTH: usize = 0x20;
 pub const ED25519_PUBLIC_KEY_LENGTH: usize = 0x20;
 pub const Q_LENGTH_BITS: i32 = 253;

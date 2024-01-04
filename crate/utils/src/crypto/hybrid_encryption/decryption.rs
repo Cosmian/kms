@@ -1,23 +1,18 @@
+#[cfg(not(feature = "fips"))]
 use cloudproof::reexport::crypto_core::{
-    reexport::{pkcs8::DecodePrivateKey, zeroize::Zeroizing},
-    Ecies, EciesP192Aes128, EciesP224Aes128, EciesP256Aes128, EciesP384Aes128, EciesSalsaSealBox,
-    Ed25519PrivateKey, P192PrivateKey, P224PrivateKey, P256PrivateKey, P384PrivateKey,
-    X25519PrivateKey, CURVE_25519_SECRET_LENGTH,
+    Ecies, EciesSalsaSealBox, Ed25519PrivateKey, X25519PrivateKey,
 };
-use cosmian_kmip::{
-    kmip::{
-        kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
-        kmip_types::UniqueIdentifier,
-    },
-    result::KmipResultHelper,
+use cosmian_kmip::kmip::{
+    kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
+    kmip_types::UniqueIdentifier,
 };
-use openssl::{
-    nid::Nid,
-    pkey::{Id, PKey, Private},
-};
+use openssl::pkey::{Id, PKey, Private};
 use tracing::{debug, trace};
+use zeroize::Zeroizing;
 
-use super::rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt;
+use super::{ecies::ecies_decrypt, rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt};
+#[cfg(not(feature = "fips"))]
+use crate::crypto::curve_25519::operation::{ED25519_SECRET_LENGTH, X25519_SECRET_LENGTH};
 use crate::{
     crypto::wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_unwrap, error::KmipUtilsError, kmip_utils_bail,
     DecryptionSystem,
@@ -59,23 +54,7 @@ impl DecryptionSystem for HybridDecryptionSystem {
         // Note: All conversions below will go once we move to full openssl
         let id = self.private_key.id();
         let plaintext = match id {
-            Id::EC => decrypt_with_nist_curve(&self.private_key, ciphertext)?,
-            Id::ED25519 => {
-                debug!("decrypt: match CURVEED25519");
-                let raw_bytes = self.private_key.raw_private_key()?;
-                let private_key_bytes: [u8; CURVE_25519_SECRET_LENGTH] = raw_bytes.try_into()?;
-                let private_key = Ed25519PrivateKey::try_from_bytes(private_key_bytes)?;
-                let private_key = X25519PrivateKey::from_ed25519_private_key(&private_key);
-                Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
-            }
-            Id::X25519 => {
-                trace!("encrypt: X25519");
-                // The raw public key happens to be the (compressed) value of the Montgomery point
-                let raw_bytes = self.private_key.raw_private_key()?;
-                let private_key_bytes: [u8; CURVE_25519_SECRET_LENGTH] = raw_bytes.try_into()?;
-                let private_key = X25519PrivateKey::try_from_bytes(private_key_bytes)?;
-                Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
-            }
+            Id::EC => Zeroizing::new(ecies_decrypt(&self.private_key, ciphertext)?),
             Id::RSA => {
                 if self.key_unwrapping {
                     Zeroizing::from(ckm_rsa_aes_key_unwrap(
@@ -83,7 +62,6 @@ impl DecryptionSystem for HybridDecryptionSystem {
                         ciphertext,
                     )?)
                 } else {
-                    trace!("decrypt: RSA");
                     Zeroizing::from(rsa_oaep_aes_gcm_decrypt(
                         self.private_key.clone(),
                         ciphertext,
@@ -91,8 +69,23 @@ impl DecryptionSystem for HybridDecryptionSystem {
                     )?)
                 }
             }
+            #[cfg(not(feature = "fips"))]
+            Id::ED25519 => {
+                let raw_bytes = self.private_key.raw_private_key()?;
+                let private_key_bytes: [u8; ED25519_SECRET_LENGTH] = raw_bytes.try_into()?;
+                let private_key = Ed25519PrivateKey::try_from_bytes(private_key_bytes)?;
+                let private_key = X25519PrivateKey::from_ed25519_private_key(&private_key);
+                Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
+            }
+            #[cfg(not(feature = "fips"))]
+            Id::X25519 => {
+                // The raw public key happens to be the (compressed) value of the Montgomery point
+                let raw_bytes = self.private_key.raw_private_key()?;
+                let private_key_bytes: [u8; X25519_SECRET_LENGTH] = raw_bytes.try_into()?;
+                let private_key = X25519PrivateKey::try_from_bytes(private_key_bytes)?;
+                Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
+            }
             _ => {
-                trace!("Not supported");
                 kmip_utils_bail!("Public key id not supported yet: {:?}", id);
             }
         };
@@ -117,46 +110,4 @@ impl DecryptionSystem for HybridDecryptionSystem {
             correlation_value: None,
         })
     }
-}
-
-fn decrypt_with_nist_curve(
-    private_key: &PKey<Private>,
-    ciphertext: &[u8],
-) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
-    trace!("decrypt: NIST curve");
-    let pkcs8_der = private_key.private_key_to_pkcs8()?;
-    // determine the curve
-    let ec_key = private_key
-        .ec_key()
-        .context("the provided openssl key is not an elliptic curve private key")?;
-    let nid = ec_key
-        .group()
-        .curve_name()
-        .ok_or_else(|| KmipUtilsError::ConversionError("invalid curve name".to_string()))?;
-
-    let plaintext = match nid {
-        Nid::X9_62_PRIME192V1 => {
-            let private_key = P192PrivateKey::from_pkcs8_der(&pkcs8_der)?;
-            EciesP192Aes128::decrypt(&private_key, ciphertext, None)?
-        }
-        Nid::SECP224R1 => {
-            let private_key = P224PrivateKey::from_pkcs8_der(&pkcs8_der)?;
-            EciesP224Aes128::decrypt(&private_key, ciphertext, None)?
-        }
-        Nid::X9_62_PRIME256V1 => {
-            let private_key = P256PrivateKey::from_pkcs8_der(&pkcs8_der)?;
-            EciesP256Aes128::decrypt(&private_key, ciphertext, None)?
-        }
-        Nid::SECP384R1 => {
-            let private_key = P384PrivateKey::from_pkcs8_der(&pkcs8_der)?;
-            EciesP384Aes128::decrypt(&private_key, ciphertext, None)?
-        }
-        _ => {
-            kmip_utils_bail!(
-                "encrypt: Elliptic curve not supported: {}",
-                nid.long_name()?
-            );
-        }
-    };
-    Ok(Zeroizing::new(plaintext))
 }
