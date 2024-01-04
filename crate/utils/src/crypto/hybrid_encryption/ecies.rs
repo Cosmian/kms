@@ -127,7 +127,6 @@ pub fn ecies_decrypt(
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let mut ctx = BigNumContext::new_secure()?;
     let d = privkey.ec_key()?;
-    println!("after ec_key()");
     let curve = d.group();
 
     #[cfg(feature = "fips")]
