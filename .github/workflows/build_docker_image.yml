@@ -70,7 +70,7 @@ jobs:
     secrets: inherit
     with:
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
-      branch: develop
+      branch: feature/kms-generics
 
   cloudproof_kms_js:
     needs:

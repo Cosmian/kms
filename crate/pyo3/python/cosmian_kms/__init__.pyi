@@ -317,7 +317,7 @@ class KmsClient:
         Returns:
             Future[KmsObject]
         """
-    def revoke_cover_crypt_key(
+    def revoke_key(
         self,
         revocation_reason: str,
         key_identifier: Optional[str],
@@ -333,7 +333,7 @@ class KmsClient:
         Returns:
             Future[str]: uid of the revoked key
         """
-    def destroy_cover_crypt_key(
+    def destroy_key(
         self,
         key_identifier: Optional[str],
         tags: Optional[List[str]] = None,

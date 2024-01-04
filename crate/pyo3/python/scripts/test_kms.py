@@ -112,11 +112,11 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(custom_user_key_uid, 'my_custom_user_key')
 
         # Revoke key
-        revoked_uid = await self.client.revoke_cover_crypt_key('test', user_key_uid)
+        revoked_uid = await self.client.revoke_key('test', user_key_uid)
         self.assertEqual(revoked_uid, user_key_uid)
 
         # Destroy key
-        destroyed_uid = await self.client.destroy_cover_crypt_key(user_key_uid)
+        destroyed_uid = await self.client.destroy_key(user_key_uid)
         self.assertEqual(destroyed_uid, user_key_uid)
 
     async def test_simple_encryption_decryption_without_metadata(self) -> None:
@@ -338,18 +338,30 @@ class TestGenericKMS(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.client = KmsClient('http://localhost:9998')
 
-    async def test_symmetric_encrypt(self):
+    async def test_symmetric_encrypt_decrypt(self):
+        # Create
         sym_key_uid = await self.client.create_symmetric_key(256)
         
+        # Export
         sym_key = await self.client.get_object(sym_key_uid)
         self.assertEqual(sym_key.object_type(), "SymmetricKey")
         self.assertEqual(len(sym_key.key_block()), 32)
 
+        # Encrypt
         plaintext = b"Secret message"
         ciphertext, nonce, authentication_tag = await self.client.encrypt(plaintext, sym_key_uid)
         
+        # Decrypt
         decrypted_data = await self.client.decrypt(ciphertext, sym_key_uid, iv_counter_nonce=nonce, authentication_encryption_tag=authentication_tag)
         self.assertEqual(bytes(decrypted_data), plaintext)
+
+        # Revoke
+        revoked_uid = await self.client.revoke_key('test', sym_key_uid)
+        self.assertEqual(revoked_uid, sym_key_uid)
+
+        # Destroy
+        destroyed_uid = await self.client.destroy_key(sym_key_uid)
+        self.assertEqual(destroyed_uid, sym_key_uid)
 
 
 if __name__ == '__main__':

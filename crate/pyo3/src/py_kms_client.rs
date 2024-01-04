@@ -588,93 +588,6 @@ impl KmsClient {
         })
     }
 
-    /// Mark a CoverCrypt Key as revoked
-    ///
-    /// Args:
-    ///     - `revocation_reason` (str): explanation of the revocation
-    ///     - `key_identifier` (str):  the key unique identifier in the KMS
-    ///     - `tags` to use when the `key_identifier` is not provided
-    ///
-    /// Returns:
-    ///     Future[str]: uid of the revoked key
-    ///
-    /// If tags resolve to multiple keys, an error is thrown
-    pub fn revoke_cover_crypt_key<'p>(
-        &'p self,
-        revocation_reason: &str,
-        key_identifier: Option<&str>,
-        tags: Option<Vec<&str>>,
-        py: Python<'p>,
-    ) -> PyResult<&PyAny> {
-        let id = if let Some(key_id) = key_identifier {
-            key_id.to_owned()
-        } else if let Some(tags) = tags {
-            serde_json::to_string(&tags)
-                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
-        } else {
-            return Err(PyException::new_err("please specify a key id or tags"))
-        };
-
-        let request = build_revoke_key_request(
-            &id,
-            RevocationReason::TextString(revocation_reason.to_string()),
-        )
-        .map_err(|e| PyException::new_err(e.to_string()))?;
-
-        let client = self.0.clone();
-        pyo3_asyncio::tokio::future_into_py(py, async move {
-            let response = client
-                .revoke(request)
-                .await
-                .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response
-                .unique_identifier
-                .to_string()
-                .context("The server did not return the revoked key uid as a string")?)
-        })
-    }
-
-    /// Mark a CoverCrypt Key as destroyed
-    ///
-    /// Args:
-    ///     - `key_identifier` (str):  the key unique identifier in the KMS
-    ///     - `tags` to use when the `key_identifier` is not provided
-    ///
-    /// Returns:
-    ///     Future[str]: uid of the destroyed key
-    ///
-    /// If tags resolve to multiple keys, an error is thrown
-    pub fn destroy_cover_crypt_key<'p>(
-        &'p self,
-        key_identifier: Option<&str>,
-        tags: Option<Vec<&str>>,
-        py: Python<'p>,
-    ) -> PyResult<&PyAny> {
-        let id = if let Some(key_id) = key_identifier {
-            key_id.to_owned()
-        } else if let Some(tags) = tags {
-            serde_json::to_string(&tags)
-                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
-        } else {
-            return Err(PyException::new_err("please specify a key id or tags"))
-        };
-
-        let request =
-            build_destroy_key_request(&id).map_err(|e| PyException::new_err(e.to_string()))?;
-
-        let client = self.0.clone();
-        pyo3_asyncio::tokio::future_into_py(py, async move {
-            let response = client
-                .destroy(request)
-                .await
-                .map_err(|e| PyException::new_err(e.to_string()))?;
-            Ok(response
-                .unique_identifier
-                .to_string()
-                .context("The server did not return the destroyed key uid as a string")?)
-        })
-    }
-
     /// Hybrid encryption. Concatenates the encrypted header and the symmetric
     /// ciphertext.
     ///
@@ -815,6 +728,93 @@ impl KmsClient {
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
             Ok(KmsObject::new(response))
+        })
+    }
+
+    /// Mark a key as revoked
+    ///
+    /// Args:
+    ///     - `revocation_reason` (str): explanation of the revocation
+    ///     - `key_identifier` (str):  the key unique identifier in the KMS
+    ///     - `tags` to use when the `key_identifier` is not provided
+    ///
+    /// Returns:
+    ///     Future[str]: uid of the revoked key
+    ///
+    /// If tags resolve to multiple keys, an error is thrown
+    pub fn revoke_key<'p>(
+        &'p self,
+        revocation_reason: &str,
+        key_identifier: Option<&str>,
+        tags: Option<Vec<&str>>,
+        py: Python<'p>,
+    ) -> PyResult<&PyAny> {
+        let id = if let Some(key_id) = key_identifier {
+            key_id.to_owned()
+        } else if let Some(tags) = tags {
+            serde_json::to_string(&tags)
+                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
+        } else {
+            return Err(PyException::new_err("please specify a key id or tags"))
+        };
+
+        let request = build_revoke_key_request(
+            &id,
+            RevocationReason::TextString(revocation_reason.to_string()),
+        )
+        .map_err(|e| PyException::new_err(e.to_string()))?;
+
+        let client = self.0.clone();
+        pyo3_asyncio::tokio::future_into_py(py, async move {
+            let response = client
+                .revoke(request)
+                .await
+                .map_err(|e| PyException::new_err(e.to_string()))?;
+            Ok(response
+                .unique_identifier
+                .to_string()
+                .context("The server did not return the revoked key uid as a string")?)
+        })
+    }
+
+    /// Mark a key as destroyed
+    ///
+    /// Args:
+    ///     - `key_identifier` (str):  the key unique identifier in the KMS
+    ///     - `tags` to use when the `key_identifier` is not provided
+    ///
+    /// Returns:
+    ///     Future[str]: uid of the destroyed key
+    ///
+    /// If tags resolve to multiple keys, an error is thrown
+    pub fn destroy_key<'p>(
+        &'p self,
+        key_identifier: Option<&str>,
+        tags: Option<Vec<&str>>,
+        py: Python<'p>,
+    ) -> PyResult<&PyAny> {
+        let id = if let Some(key_id) = key_identifier {
+            key_id.to_owned()
+        } else if let Some(tags) = tags {
+            serde_json::to_string(&tags)
+                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
+        } else {
+            return Err(PyException::new_err("please specify a key id or tags"))
+        };
+
+        let request =
+            build_destroy_key_request(&id).map_err(|e| PyException::new_err(e.to_string()))?;
+
+        let client = self.0.clone();
+        pyo3_asyncio::tokio::future_into_py(py, async move {
+            let response = client
+                .destroy(request)
+                .await
+                .map_err(|e| PyException::new_err(e.to_string()))?;
+            Ok(response
+                .unique_identifier
+                .to_string()
+                .context("The server did not return the destroyed key uid as a string")?)
         })
     }
 

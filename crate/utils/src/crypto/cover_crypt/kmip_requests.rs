@@ -92,7 +92,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
 
     // The key could be:
     //  - already wrapped (is_wrapped is true)
-    //  - to wrapped (wrapping_password is some)
+    //  - to wrap (wrapping_password is some)
     //  - or not wrapped (otherwise)
     let is_wrapped = is_wrapped || wrapping_password.is_some();
     let key = if let Some(wrapping_password) = wrapping_password {
