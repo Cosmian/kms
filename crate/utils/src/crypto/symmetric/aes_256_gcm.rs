@@ -26,7 +26,7 @@ pub struct AesGcmSystem {
 impl AesGcmSystem {
     pub fn instantiate(uid: &str, symmetric_key: &Object) -> Result<Self, KmipUtilsError> {
         let key_block = match symmetric_key {
-            Object::SymmetricKey { key_block } => key_block.clone(),
+            Object::SymmetricKey { key_block } => key_block,
             _ => {
                 return Err(KmipUtilsError::NotSupported(
                     "Expected a KMIP Symmetric Key".to_owned(),
@@ -64,17 +64,14 @@ impl EncryptionSystem for AesGcmSystem {
             }
         });
 
-        let plaintext = match &request.data {
-            None => {
-                return Ok(EncryptResponse {
-                    unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
-                    data: None,
-                    iv_counter_nonce: None,
-                    correlation_value,
-                    authenticated_encryption_tag: None,
-                })
-            }
-            Some(data) => data.clone(),
+        let Some(plaintext) = &request.data else {
+            return Ok(EncryptResponse {
+                unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
+                data: None,
+                iv_counter_nonce: None,
+                correlation_value,
+                authenticated_encryption_tag: None,
+            })
         };
 
         // Supplied Nonce or new one.
@@ -106,7 +103,7 @@ impl EncryptionSystem for AesGcmSystem {
             self.symmetric_key.as_bytes(),
             Some(&nonce),
             &aad,
-            &plaintext,
+            plaintext,
             tag.as_mut(),
         );
 
@@ -135,22 +132,19 @@ impl DecryptionSystem for AesGcmSystem {
             Some(uid.clone())
         };
 
-        let ciphertext = match &request.data {
-            None => {
-                return Ok(DecryptResponse {
-                    unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
-                    data: None,
-                    correlation_value,
-                })
-            }
-            Some(ciphertext) => ciphertext.clone(),
+        let Some(ciphertext) = &request.data else {
+            return Ok(DecryptResponse {
+                unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
+                data: None,
+                correlation_value,
+            })
         };
 
         // Recover tag. Ensure it is of correct size.
         let tag: [u8; AES_256_GCM_MAC_LENGTH] = request
             .authenticated_encryption_tag
             .clone()
-            .unwrap_or_default()
+            .unwrap_or(vec![0_u8; AES_256_GCM_MAC_LENGTH])
             .try_into()?;
 
         // Recover nonce.
@@ -174,7 +168,7 @@ impl DecryptionSystem for AesGcmSystem {
             self.symmetric_key.as_bytes(),
             Some(&nonce),
             &aad,
-            &ciphertext,
+            ciphertext,
             &tag,
         )?;
 
