@@ -1,13 +1,11 @@
-use cosmian_kmip::kmip::{
-    kmip_objects::ObjectType, kmip_operations::GetResponse as GetResponseRust,
-};
+use cosmian_kmip::kmip::{kmip_objects::ObjectType, kmip_operations::GetResponse};
 use pyo3::{exceptions::PyException, prelude::*, types::PyBytes};
 
 #[pyclass]
-pub struct KmsObject(GetResponseRust);
+pub struct KmsObject(GetResponse);
 
 impl KmsObject {
-    pub fn new(get_response: GetResponseRust) -> Self {
+    pub fn new(get_response: GetResponse) -> Self {
         Self(get_response)
     }
 }

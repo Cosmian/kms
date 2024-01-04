@@ -56,7 +56,7 @@ class KmsClient:
         Returns:
             Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
         """
-    def import_cover_crypt_master_private_key_request(
+    def import_cover_crypt_master_private_key(
         self,
         private_key: bytes,
         replace_existing: bool,
@@ -81,7 +81,7 @@ class KmsClient:
         Returns:
             Future[str]: the unique identifier of the key
         """
-    def import_cover_crypt_public_key_request(
+    def import_cover_crypt_public_key(
         self,
         public_key: bytes,
         replace_existing: bool,
@@ -241,7 +241,7 @@ class KmsClient:
         Returns:
             Future[str]: User secret key UID
         """
-    def import_cover_crypt_user_decryption_key_request(
+    def import_cover_crypt_user_decryption_key(
         self,
         private_key: bytes,
         replace_existing: bool,
@@ -346,4 +346,56 @@ class KmsClient:
 
         Returns:
             Future[str]: uid of the destroyed key
+        """
+    def create_symmetric_key(self, 
+        key_len_in_bits: int,
+        algorithm: str = "AES",
+        tags: Optional[List[str]] = None,
+    ) -> Future[str]:
+        """Create a symmetric key using the specified key length, cryptographic algorithm, and optional tags
+
+        Args:
+            key_len_in_bits (int): length of the key in bits
+            algorithm (str, optional): cryptographic algorithm to be used, supported values are "AES" and "ChaCha20". Defaults to "AES"
+            tags (List[str], optional): tags associated with the key
+
+        Returns:
+            Future[str]: uid of the created key.
+        """
+    def encrypt(
+        self,
+        data: bytes,
+        key_identifier: Optional[str]=None,
+        tags: Optional[List[str]]=None,
+        ) -> Future[Tuple[bytes, bytes, bytes]]:
+        """Encrypts the provided binary data using the specified key identifier or tags
+
+        Args:
+            data (bytes): binary data to be encrypted
+            key_identifier (str, optional): key identifier associated with the encryption
+            tags (List[str], optional): tags associated with the encryption
+
+        Returns:
+            Future[Tuple[bytes, bytes, bytes]]: (ciphertext, counter nonce, authentication tag)
+        """
+
+    def decrypt(
+        self,
+        encrypted_data: bytes,
+        user_key_identifier: Optional[str],
+        tags: Optional[List[str]] = None,
+        iv_counter_nonce: Optional[bytes] = None,
+        authentication_encryption_tag: Optional[bytes] = None,
+    ) -> Future[bytes]:
+        """Hybrid decryption.
+
+        Args:
+            encrypted_data (bytes): ciphertext
+            user_key_identifier (str): identifier of the key. If not specified, tags must be provided
+            tags (Optional[List[str]]): tags to use to find the key
+            iv_counter_nonce (Optional[bytes]): the initialization vector, counter or nonce to be used
+            authentication_encryption_tag (Optional[bytes]): additional binary data used for authentication
+
+        Returns:
+            Future[bytes]: plaintext bytes
         """

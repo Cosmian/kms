@@ -3,7 +3,10 @@ use cloudproof::reexport::{
     crypto_core::bytes_ser_de::Deserializer,
 };
 use cosmian_kmip::{
-    kmip::{kmip_operations::Get, kmip_types::RevocationReason},
+    kmip::{
+        kmip_operations::Get,
+        kmip_types::{CryptographicAlgorithm, RevocationReason},
+    },
     result::KmipResultHelper,
 };
 use cosmian_kms_client::KmsRestClient;
@@ -20,6 +23,7 @@ use cosmian_kms_utils::crypto::{
     generic::kmip_requests::{
         build_decryption_request, build_encryption_request, build_revoke_key_request,
     },
+    symmetric::symmetric_key_create_request,
 };
 use openssl::x509::X509;
 use pyo3::{
@@ -164,22 +168,15 @@ impl KmsClient {
     pub fn create_cover_crypt_master_key_pair<'p>(
         &'p self,
         policy: &[u8],
-        tags: Option<Vec<&str>>,
+        tags: Option<Vec<String>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Parse the json policy
         let policy = Policy::try_from(policy).map_err(|e| PyTypeError::new_err(e.to_string()))?;
 
         // Create the kmip query
-        let request = build_create_master_keypair_request(
-            &policy,
-            tags.unwrap_or_default()
-                .into_iter()
-                .map(String::from)
-                .collect::<Vec<String>>()
-                .as_slice(),
-        )
-        .map_err(|e| PyException::new_err(e.to_string()))?;
+        let request = build_create_master_keypair_request(&policy, tags.unwrap_or_default())
+            .map_err(|e| PyException::new_err(e.to_string()))?;
 
         // Clone client to avoid lifetime error
         let client = self.0.clone();
@@ -220,13 +217,13 @@ impl KmsClient {
     /// Returns:
     ///     Future[str]: the unique identifier of the key
     #[allow(clippy::too_many_arguments)]
-    pub fn import_cover_crypt_master_private_key_request<'p>(
+    pub fn import_cover_crypt_master_private_key<'p>(
         &'p self,
         private_key: &[u8],
         replace_existing: bool,
         link_master_public_key_id: &str,
         policy: &[u8],
-        tags: Option<Vec<&str>>,
+        tags: Option<Vec<String>>,
         is_wrapped: Option<bool>,
         wrapping_password: Option<String>,
         unique_identifier: Option<String>,
@@ -243,11 +240,7 @@ impl KmsClient {
             &policy,
             is_wrapped.unwrap_or(false),
             wrapping_password,
-            tags.unwrap_or_default()
-                .into_iter()
-                .map(String::from)
-                .collect::<Vec<String>>()
-                .as_slice(),
+            tags.unwrap_or_default(),
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
 
@@ -277,14 +270,14 @@ impl KmsClient {
     /// Returns:
     ///     Future[str]: the unique identifier of the key
     #[allow(clippy::too_many_arguments)]
-    pub fn import_cover_crypt_public_key_request<'p>(
+    pub fn import_cover_crypt_public_key<'p>(
         &'p self,
         public_key: &[u8],
         replace_existing: bool,
         policy: &[u8],
         link_master_private_key_id: &str,
         unique_identifier: Option<String>,
-        tags: Option<Vec<&str>>,
+        tags: Option<Vec<String>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         // Convert policy from bytes
@@ -296,11 +289,7 @@ impl KmsClient {
             replace_existing,
             &policy,
             link_master_private_key_id,
-            tags.unwrap_or_default()
-                .into_iter()
-                .map(String::from)
-                .collect::<Vec<String>>()
-                .as_slice(),
+            tags.unwrap_or_default(),
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
 
@@ -562,22 +551,18 @@ impl KmsClient {
     /// Returns:
     ///     Future[str]: User secret key UID
     #[allow(clippy::too_many_arguments)]
-    pub fn import_cover_crypt_user_decryption_key_request<'p>(
+    pub fn import_cover_crypt_user_decryption_key<'p>(
         &'p self,
         private_key: &[u8],
         replace_existing: bool,
         link_master_private_key_id: &str,
         access_policy_str: &str,
-        tags: Option<Vec<&str>>,
+        tags: Option<Vec<String>>,
         is_wrapped: Option<bool>,
         wrapping_password: Option<String>,
         unique_identifier: Option<String>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        // Parse the access policy
-        let _access_policy = AccessPolicy::from_boolean_expression(access_policy_str)
-            .map_err(|e| PyTypeError::new_err(format!("Access policy creation failed: {e}")))?;
-
         let request = build_import_decryption_private_key_request(
             private_key,
             unique_identifier,
@@ -586,11 +571,7 @@ impl KmsClient {
             access_policy_str,
             is_wrapped.unwrap_or(false),
             wrapping_password,
-            tags.unwrap_or_default()
-                .into_iter()
-                .map(String::from)
-                .collect::<Vec<String>>()
-                .as_slice(),
+            tags.unwrap_or_default(),
         )
         .map_err(|e| PyException::new_err(e.to_string()))?;
 
@@ -834,6 +815,148 @@ impl KmsClient {
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
             Ok(KmsObject::new(response))
+        })
+    }
+
+    /// Create a symmetric key using the specified key length, cryptographic algorithm, and optional tags
+    ///
+    /// Args:
+    ///     - `key_len_in_bits` - The length of the key in bits.
+    ///     - `algorithm` (str) - The cryptographic algorithm to be used, supported values are "AES" and "ChaCha20".
+    ///     - `tags` - Optional tags associated with the key.
+    ///
+    /// Returns:
+    ///     Future[str]: uid of the created key.
+    #[pyo3(signature = (
+        key_len_in_bits,
+        algorithm = "AES",
+        tags = None,
+    ))]
+    pub fn create_symmetric_key<'p>(
+        &'p self,
+        key_len_in_bits: usize,
+        algorithm: &str,
+        tags: Option<Vec<String>>,
+        py: Python<'p>,
+    ) -> PyResult<&PyAny> {
+        let cryptographic_algorithm = match algorithm {
+            "AES" => Ok(CryptographicAlgorithm::AES),
+            "ChaCha20" => Ok(CryptographicAlgorithm::ChaCha20),
+            _ => Err(PyException::new_err("invalid algorithm")),
+        }?;
+        let request = symmetric_key_create_request(
+            key_len_in_bits,
+            cryptographic_algorithm,
+            tags.unwrap_or_default(),
+        )
+        .map_err(|e| PyException::new_err(e.to_string()))?;
+
+        // Clone client to avoid lifetime error
+        let client = self.0.clone();
+        // Convert Rust future to Python
+        pyo3_asyncio::tokio::future_into_py(py, async move {
+            // Query the KMS with your kmip data and get the key pair ids
+            let response = client
+                .create(request)
+                .await
+                .map_err(|e| PyException::new_err(e.to_string()))?;
+
+            Ok(response
+                .unique_identifier
+                .to_string()
+                .context("The server did not return the key uid as a string")?)
+        })
+    }
+
+    /// Encrypts the provided binary data using the specified key identifier or tags.
+    ///
+    /// Args:
+    ///
+    ///     - `data` - The binary data to be encrypted.
+    ///     - `key_identifier` - Optional key identifier associated with the encryption.
+    ///     - `tags` - Optional tags associated with the encryption.
+    ///
+    /// Returns:
+    ///     Future[Tuple[bytes, bytes, bytes]]: (ciphertext, counter nonce, authentication_tag)
+    pub fn encrypt<'p>(
+        &'p self,
+        data: Vec<u8>,
+        key_identifier: Option<&str>,
+        tags: Option<Vec<&str>>,
+        py: Python<'p>,
+    ) -> PyResult<&PyAny> {
+        let id = if let Some(key_id) = key_identifier {
+            key_id.to_owned()
+        } else if let Some(tags) = tags {
+            serde_json::to_string(&tags)
+                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
+        } else {
+            return Err(PyException::new_err("please specify a key id or tags"))
+        };
+
+        let request = build_encryption_request(&id, None, data, None, None, None)
+            .map_err(|e| PyException::new_err(e.to_string()))?;
+
+        let client = self.0.clone();
+        pyo3_asyncio::tokio::future_into_py(py, async move {
+            let response = client
+                .encrypt(request)
+                .await
+                .map_err(|e| PyException::new_err(e.to_string()))?;
+            Ok((
+                response.data,
+                response.iv_counter_nonce,
+                response.authenticated_encryption_tag,
+            ))
+        })
+    }
+
+    /// Decrypts the given ciphertext using the specified key identifier or tags.
+    ///
+    /// Args:
+    ///     - `encrypted_data` (bytes) - ciphertext
+    ///     - `key_identifier` (str) - secret key identifier
+    ///     - `tags` - Optional tags associated with the encryption.
+    ///     - `iv_counter_nonce` (Optional[bytes]) - the initialization vector, counter or nonce to be used
+    ///     - `authentication_encryption_tag` (Optional[bytes]) - Optional additional binary data used for authentication.
+    ///
+    /// Returns:
+    ///     Future[bytes]: plaintext bytes
+    pub fn decrypt<'p>(
+        &'p self,
+        encrypted_data: Vec<u8>,
+        key_identifier: Option<&str>,
+        tags: Option<Vec<&str>>,
+        iv_counter_nonce: Option<Vec<u8>>,
+        authentication_encryption_tag: Option<Vec<u8>>,
+        py: Python<'p>,
+    ) -> PyResult<&PyAny> {
+        let id = if let Some(key_id) = key_identifier {
+            key_id.to_owned()
+        } else if let Some(tags) = tags {
+            serde_json::to_string(&tags)
+                .map_err(|_e| PyException::new_err("invalid tag(s) specified"))?
+        } else {
+            return Err(PyException::new_err("please specify a key id or tags"))
+        };
+
+        let request = build_decryption_request(
+            &id,
+            iv_counter_nonce,
+            encrypted_data,
+            authentication_encryption_tag,
+            None,
+            None,
+        );
+
+        let client = self.0.clone();
+        pyo3_asyncio::tokio::future_into_py(py, async move {
+            let response = client
+                .decrypt(request)
+                .await
+                .map_err(|e| PyException::new_err(e.to_string()))?;
+
+            Ok(response.data)
         })
     }
 }

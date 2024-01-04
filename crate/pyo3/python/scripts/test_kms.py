@@ -11,7 +11,7 @@ from cloudproof_cover_crypt import (
 from cosmian_kms import KmsClient
 
 
-class TestKMS(unittest.IsolatedAsyncioTestCase):
+class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.client = KmsClient('http://localhost:9998')
 
@@ -59,7 +59,7 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
 
         # Import custom private key
         custom_priv_key_uid = (
-            await self.client.import_cover_crypt_master_private_key_request(
+            await self.client.import_cover_crypt_master_private_key(
                 priv_key.key_block(),
                 True,
                 self.pub_key_uid,
@@ -73,7 +73,7 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(custom_priv_key_uid, 'my_custom_priv_key')
 
         # Import custom public key
-        custom_pub_key_uid = await self.client.import_cover_crypt_public_key_request(
+        custom_pub_key_uid = await self.client.import_cover_crypt_public_key(
             pub_key.key_block(),
             True,
             self.policy.to_bytes(),
@@ -98,7 +98,7 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
 
         # Import custom user key
         custom_user_key_uid = (
-            await self.client.import_cover_crypt_user_decryption_key_request(
+            await self.client.import_cover_crypt_user_decryption_key(
                 user_key.key_block(),
                 True,
                 self.priv_key_uid,
@@ -333,6 +333,23 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
             user_key_uid,
         )
         self.assertEqual(bytes(plaintext), message)
+
+class TestGenericKMS(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.client = KmsClient('http://localhost:9998')
+
+    async def test_symmetric_encrypt(self):
+        sym_key_uid = await self.client.create_symmetric_key(256)
+        
+        sym_key = await self.client.get_object(sym_key_uid)
+        self.assertEqual(sym_key.object_type(), "SymmetricKey")
+        self.assertEqual(len(sym_key.key_block()), 32)
+
+        plaintext = b"Secret message"
+        ciphertext, nonce, authentication_tag = await self.client.encrypt(plaintext, sym_key_uid)
+        
+        decrypted_data = await self.client.decrypt(ciphertext, sym_key_uid, iv_counter_nonce=nonce, authentication_encryption_tag=authentication_tag)
+        self.assertEqual(bytes(decrypted_data), plaintext)
 
 
 if __name__ == '__main__':
