@@ -293,13 +293,16 @@ fn colon_split<'a>(value: &'a str, property_name: &str) -> Result<&'a str, KmipE
 
 #[cfg(test)]
 mod tests {
-    use openssl::x509::X509;
-    use tracing::debug;
+    use openssl::{
+        conf::{Conf, ConfMethod},
+        x509::X509,
+    };
+    use tracing::info;
     use x509_parser::{
         der_parser::oid,
         extensions::{ParsedExtension, X509ExtensionParser},
         nom::Parser as _,
-        prelude::{DistributionPointName::FullName, GeneralName::URI, *},
+        prelude::*,
     };
 
     use super::{colon_split, parse_v3_ca_from_str};
@@ -313,6 +316,8 @@ mod tests {
 
     #[test]
     fn test_parse_ext_file() {
+        cosmian_logger::log_utils::log_init("info,hyper=info,reqwest=info");
+
         let ext_file = r#"[ v3_ca ]
 basicConstraints=CA:TRUE,pathlen:0
 keyUsage=keyCertSign,digitalSignature
@@ -322,6 +327,7 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
 
         let mut x509_builder = X509::builder().unwrap();
         let x509_context = x509_builder.x509v3_context(None, None);
+
         let parsed_exts = parse_v3_ca_from_str(ext_file, &x509_context).unwrap();
         assert_eq!(parsed_exts.len(), 4);
 
@@ -374,8 +380,8 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
         assert_eq!(cert.split_once("X509v3 extensions:\n").unwrap().1, _cert);
 
         for ext in &exts_with_x509_parser {
-            debug!("\n\next: {:?}", ext);
-            debug!("value is: {:?}", String::from_utf8(ext.value.to_vec()));
+            info!("\n\next: {:?}", ext);
+            info!("value is: {:?}", String::from_utf8(ext.value.to_vec()));
         }
 
         // BasicConstraints
@@ -433,7 +439,9 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
             crl_dp.parsed_extension(),
             &ParsedExtension::CRLDistributionPoints(CRLDistributionPoints {
                 points: vec![CRLDistributionPoint {
-                    distribution_point: Some(FullName(vec![URI("http://cse.example.com/crl.pem")])),
+                    distribution_point: Some(DistributionPointName::FullName(vec![
+                        GeneralName::URI("http://cse.example.com/crl.pem")
+                    ])),
                     reasons: None,
                     crl_issuer: None
                 }]
@@ -451,18 +459,22 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
     /// see: https://support.google.com/a/answer/7300887?fl=1&sjid=2466928410660190479-NA#zippy=%2Croot-ca%2Cintermediate-ca-certificates-other-than-from-issuing-intermediate-ca%2Cintermediate-ca-certificate-that-issues-the-end-entity
     #[test]
     fn test_parse_extensions_gmail() {
-        // TODO: fix missing `certificatePolicies=2.5.29.32.0`
+        cosmian_logger::log_utils::log_init("info,hyper=info,reqwest=info");
+
         let ext_file = r#"[ v3_ca ]
 basicConstraints=critical,CA:TRUE,pathlen:0
 keyUsage=critical,keyCertSign,digitalSignature
 extendedKeyUsage=emailProtection
 crlDistributionPoints=URI:http://cse.example.com/crl.pem
+certificatePolicies=2.5.29.32
 "#;
 
+        let conf = Conf::new(ConfMethod::default()).unwrap();
         let mut x509_builder = X509::builder().unwrap();
-        let x509_context = x509_builder.x509v3_context(None, None);
+        let x509_context = x509_builder.x509v3_context(None, Some(conf.as_ref()));
+
         let parsed_exts = parse_v3_ca_from_str(ext_file, &x509_context).unwrap();
-        assert_eq!(parsed_exts.len(), 4);
+        assert_eq!(parsed_exts.len(), 5);
 
         let parsed_exts_der = parsed_exts
             .iter()
@@ -480,8 +492,8 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
             .unwrap();
 
         for ext in &exts_with_x509_parser {
-            debug!("\n\next: {:?}", ext);
-            debug!("value is: {:?}", String::from_utf8(ext.value.to_vec()));
+            info!("\n\next: {:?}", ext);
+            info!("value is: {:?}", String::from_utf8(ext.value.to_vec()));
         }
 
         // BasicConstraints
@@ -539,25 +551,27 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
             crl_dp.parsed_extension(),
             &ParsedExtension::CRLDistributionPoints(CRLDistributionPoints {
                 points: vec![CRLDistributionPoint {
-                    distribution_point: Some(FullName(vec![URI("http://cse.example.com/crl.pem")])),
+                    distribution_point: Some(DistributionPointName::FullName(vec![
+                        GeneralName::URI("http://cse.example.com/crl.pem")
+                    ])),
                     reasons: None,
                     crl_issuer: None
                 }]
             })
         );
 
-        // // CertificatePolicies
-        // let cert_policies: &X509Extension<'_> = exts_with_x509_parser
-        //     .iter()
-        //     .find(|x| x.oid == oid!(2.5.29.31))
-        //     .unwrap();
-        // assert!(!cert_policies.critical);
-        // assert_eq!(
-        //     cert_policies.parsed_extension(),
-        //     &ParsedExtension::CertificatePolicies(CertificatePolicies {
-        //         buf: todo!(),
-        //         len: todo!()
-        //     })
-        // );
+        // CertificatePolicies
+        let cert_policies: &X509Extension<'_> = exts_with_x509_parser
+            .iter()
+            .find(|x| x.oid == oid!(2.5.29.32))
+            .unwrap();
+        assert!(!cert_policies.critical);
+        assert_eq!(
+            cert_policies.parsed_extension(),
+            &ParsedExtension::CertificatePolicies(vec![PolicyInformation {
+                policy_id: oid!(2.5.29.32),
+                policy_qualifiers: None
+            }])
+        );
     }
 }
