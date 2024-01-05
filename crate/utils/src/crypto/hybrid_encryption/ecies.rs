@@ -24,14 +24,14 @@ fn ecies_get_iv(
     curve: &EcGroupRef,
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let mut ctx = BigNumContext::new_secure()?;
-    let Q_vec = Q.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
-    let R_vec = R.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
+    let Q_bytes = Q.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
+    let R_bytes = R.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
 
     let mut iv = vec![0; AES_256_GCM_IV_LENGTH];
 
     let mut hasher = Hasher::new(MessageDigest::shake_128())?;
-    hasher.update(&Q_vec)?;
-    hasher.update(&R_vec)?;
+    hasher.update(&Q_bytes)?;
+    hasher.update(&R_bytes)?;
     hasher.finish_xof(&mut iv)?;
 
     Ok(iv)
@@ -41,12 +41,12 @@ fn ecies_get_iv(
 #[allow(non_snake_case)]
 fn ecies_get_key(S: &EcPointRef, curve: &EcGroupRef) -> Result<Vec<u8>, KmipUtilsError> {
     let mut ctx = BigNumContext::new_secure()?;
-    let S_vec = S.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
+    let S_bytes = S.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
 
     let mut key = vec![0; AES_256_GCM_KEY_LENGTH];
 
     let mut hasher = Hasher::new(MessageDigest::shake_128())?;
-    hasher.update(&S_vec)?;
+    hasher.update(&S_bytes)?;
     hasher.finish_xof(&mut key)?;
 
     Ok(key)
@@ -101,11 +101,11 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
         tag.as_mut(),
     )?;
 
-    let R_vec = R
+    let R_bytes = R
         .public_key()
         .to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
 
-    Ok([R_vec, ct, tag].concat())
+    Ok([R_bytes, ct, tag].concat())
 }
 
 /// Decrypt `ciphertext` data using `privkey` private key following the ECIES
@@ -142,14 +142,14 @@ pub fn ecies_decrypt(
 
     // Ciphertext received is a concatenation of `R | ct | tag` with `R`
     // and `ct` of variable size and `tag` of size 128 bits.
-    let R_vec = &ciphertext[..pubkey_vec_size];
+    let R_bytes = &ciphertext[..pubkey_vec_size];
 
     let ct_offset = ciphertext.len() - AES_256_GCM_MAC_LENGTH;
     let ct = &ciphertext[pubkey_vec_size..ct_offset];
 
     let tag = &ciphertext[ct_offset..];
 
-    let R = EcPoint::from_bytes(curve, R_vec, &mut ctx)?;
+    let R = EcPoint::from_bytes(curve, R_bytes, &mut ctx)?;
 
     // Compute secret key from recipient public key `S = rQ = rdG = dR`.
     let mut S = EcPoint::new(curve)?;
