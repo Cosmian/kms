@@ -87,10 +87,8 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
     let key = ecies_get_key(&S, curve)?;
     let iv = ecies_get_iv(Q.public_key(), R.public_key(), curve)?;
 
-    // Allocating memory for AES-GCM to write the tag at.
     let mut tag = vec![0; AES_256_GCM_MAC_LENGTH];
 
-    // Encryption using AES-256-GCM.
     let ct: Vec<u8> = encrypt_aead(
         Cipher::aes_256_gcm(),
         &key,
@@ -156,7 +154,6 @@ pub fn ecies_decrypt(
     let iv = ecies_get_iv(d.public_key(), &R, curve)?;
     let key = ecies_get_key(&S, curve)?;
 
-    // Decrypt data using AES-256-GCM with freshly computed key.
     let plaintext = decrypt_aead(Cipher::aes_256_gcm(), &key, Some(&iv), &[], ct, tag)?;
 
     Ok(plaintext)
