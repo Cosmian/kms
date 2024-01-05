@@ -77,7 +77,6 @@ impl DecryptionSystem for HybridDecryptionSystem {
             }
             #[cfg(not(feature = "fips"))]
             Id::X25519 => {
-                // The raw public key happens to be the (compressed) value of the Montgomery point
                 let raw_bytes = self.private_key.raw_private_key()?;
                 let private_key_bytes: [u8; X25519_PRIVATE_KEY_LENGTH] = raw_bytes.try_into()?;
                 let private_key = X25519PrivateKey::try_from_bytes(private_key_bytes)?;
