@@ -52,8 +52,7 @@ impl DecryptionSystem for HybridDecryptionSystem {
 
         // Convert the Pkey to a crypto_core curve and perform decryption
         // Note: All conversions below will go once we move to full openssl
-        let id = self.private_key.id();
-        let plaintext = match id {
+        let plaintext = match self.private_key.id() {
             Id::EC => Zeroizing::new(ecies_decrypt(&self.private_key, ciphertext)?),
             Id::RSA => {
                 if self.key_unwrapping {
@@ -85,8 +84,8 @@ impl DecryptionSystem for HybridDecryptionSystem {
                 let private_key = X25519PrivateKey::try_from_bytes(private_key_bytes)?;
                 Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
             }
-            _ => {
-                kmip_utils_bail!("Public key id not supported yet: {:?}", id);
+            x => {
+                kmip_utils_bail!("private key id not supported yet: {:?}", x);
             }
         };
 

@@ -82,7 +82,7 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
     let r = EcKey::generate(curve)?;
     let R = EcKey::from_public_key(curve, r.public_key())?;
 
-    // Compute secret key from recipient public key `S = rQ`.
+    // Compute shared secret from recipient public key `S = rQ`.
     let mut S = EcPoint::new(curve)?;
     S.mul(curve, Q.public_key(), r.private_key(), &ctx)?;
 
@@ -137,6 +137,9 @@ pub fn ecies_decrypt(
     // OpenSSL stored compressed coordinates with one extra byte for some
     // reason hence the + 1 at the end.
     let pubkey_vec_size = idiv_ceil(curve.order_bits() as usize, 8) + 1;
+    if ciphertext.len() <= pubkey_vec_size + AES_256_GCM_MAC_LENGTH {
+        kmip_utils_bail!("Decryption error: invalid ciphertext.")
+    }
 
     // Ciphertext received is a concatenation of `R | ct | tag` with `R`
     // and `ct` of variable size and `tag` of size 128 bits.

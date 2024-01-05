@@ -77,7 +77,7 @@ impl EncryptionSystem for HybridEncryptionSystem {
         #[cfg(not(feature = "fips"))]
         let mut rng = rng.lock().expect("RNG lock poisoned");
 
-        // Convert the Pkey to a crypto_core curve and perform emcryption
+        // Convert the Pkey to a crypto_core curve and perform encryption
         // Note: All conversions below will go once we move to full openssl
         let id = self.public_key.id();
         let ciphertext: Vec<u8> = match id {
