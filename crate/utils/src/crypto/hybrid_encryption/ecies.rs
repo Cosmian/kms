@@ -15,8 +15,8 @@ use crate::{
     kmip_utils_bail,
 };
 
-/// Derive initialization vector from recipient public key `Q` and ephemeral
-/// public key `R` using SHAKE128-128.
+/// Derive a 128-byte initialization vector from recipient public key `Q` and
+/// ephemeral public key `R` using SHAKE128.
 #[allow(non_snake_case)]
 fn ecies_get_iv(
     Q: &EcPointRef,
@@ -37,7 +37,7 @@ fn ecies_get_iv(
     Ok(iv)
 }
 
-/// Derive S into the symmetric secret key using SHAKE128-256.
+/// Derive S into the 256-bit symmetric secret key using SHAKE128.
 #[allow(non_snake_case)]
 fn ecies_get_key(S: &EcPointRef, curve: &EcGroupRef) -> Result<Vec<u8>, KmipUtilsError> {
     let mut ctx = BigNumContext::new_secure()?;
