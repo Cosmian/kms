@@ -52,8 +52,7 @@ fn ecies_get_key(S: &EcPointRef, curve: &EcGroupRef) -> Result<Vec<u8>, KmipUtil
     Ok(key)
 }
 
-/// Encrypt `plaintext` data using `pubkey` public key following the ECIES
-/// principle.
+/// Encrypt `plaintext` data using `pubkey` public key following ECIES.
 ///
 /// Generate a random `r` and compute `R = rG` with `G` the curve generator.
 /// Using target pubic key `pubkey` we will call `Q`, compute `S = rQ`. `S` is
@@ -108,8 +107,7 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
     Ok([R_bytes, ct, tag].concat())
 }
 
-/// Decrypt `ciphertext` data using `privkey` private key following the ECIES
-/// principle.
+/// Decrypt `ciphertext` data using `privkey` private key following ECIES.
 ///
 /// `ciphertext` is a concatanation of `R | ct | tag` with `|` the concatenation
 /// operator, `R` the ephemeral public key on the curve, `ct` the encrypted data
