@@ -29,7 +29,7 @@ const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
 ///
 /// TODO - support OAEP for different hashes.
 pub fn rsa_oaep_aes_gcm_encrypt(
-    pubkey: PKey<Public>,
+    pubkey: &PKey<Public>,
     plaintext: &[u8],
     aad: Option<&[u8]>,
 ) -> Result<Vec<u8>, KmipUtilsError> {
@@ -86,7 +86,7 @@ pub fn rsa_oaep_aes_gcm_encrypt(
 ///
 /// TODO - support OAEP for different hashes.
 pub fn rsa_oaep_aes_gcm_decrypt(
-    p_key: PKey<Private>,
+    p_key: &PKey<Private>,
     ciphertext: &[u8],
     aad: Option<&[u8]>,
 ) -> Result<Vec<u8>, KmipUtilsError> {
@@ -164,9 +164,9 @@ fn test_rsa_oaep_encrypt_decrypt() -> Result<(), KmipUtilsError> {
 
     let privkey_to_wrap = openssl::rsa::Rsa::generate(2048)?.private_key_to_pem()?;
 
-    let ct = rsa_oaep_aes_gcm_encrypt(pubkey, &privkey_to_wrap, None)?;
+    let ct = rsa_oaep_aes_gcm_encrypt(&pubkey, &privkey_to_wrap, None)?;
 
-    let unwrapped_key = rsa_oaep_aes_gcm_decrypt(privkey, &ct, None)?;
+    let unwrapped_key = rsa_oaep_aes_gcm_decrypt(&privkey, &ct, None)?;
 
     assert_eq!(unwrapped_key, privkey_to_wrap);
 

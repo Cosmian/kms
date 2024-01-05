@@ -58,13 +58,10 @@ impl DecryptionSystem for HybridDecryptionSystem {
             Id::EC => Zeroizing::new(ecies_decrypt(&self.private_key, ciphertext)?),
             Id::RSA => {
                 if self.key_unwrapping {
-                    Zeroizing::from(ckm_rsa_aes_key_unwrap(
-                        self.private_key.clone(),
-                        ciphertext,
-                    )?)
+                    Zeroizing::from(ckm_rsa_aes_key_unwrap(&self.private_key, ciphertext)?)
                 } else {
                     Zeroizing::from(rsa_oaep_aes_gcm_decrypt(
-                        self.private_key.clone(),
+                        &self.private_key,
                         ciphertext,
                         request.authenticated_encryption_additional_data.as_deref(),
                     )?)

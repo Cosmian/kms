@@ -84,10 +84,10 @@ impl EncryptionSystem for HybridEncryptionSystem {
             Id::EC => ecies_encrypt(&self.public_key, &plaintext)?,
             Id::RSA => {
                 if self.key_wrapping {
-                    ckm_rsa_aes_key_wrap(self.public_key.clone(), &plaintext)?
+                    ckm_rsa_aes_key_wrap(&self.public_key, &plaintext)?
                 } else {
                     rsa_oaep_aes_gcm_encrypt(
-                        self.public_key.clone(),
+                        &self.public_key,
                         &plaintext,
                         request.authenticated_encryption_additional_data.as_deref(),
                     )?
