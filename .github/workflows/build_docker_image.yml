@@ -70,7 +70,7 @@ jobs:
     secrets: inherit
     with:
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
-      branch: feature/kms-generics
+      branch: develop
 
   cloudproof_kms_js:
     needs:
@@ -102,7 +102,7 @@ jobs:
       - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@develop
     with:
-      branch: develop
+      branch: feature/kms-generics
       target: x86_64-unknown-linux-gnu
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       copy_fresh_build: true
