@@ -12,7 +12,9 @@ use zeroize::Zeroizing;
 
 use super::{ecies::ecies_decrypt, rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt};
 #[cfg(not(feature = "fips"))]
-use crate::crypto::curve_25519::operation::{ED25519_SECRET_LENGTH, X25519_SECRET_LENGTH};
+use crate::crypto::curve_25519::operation::{
+    ED25519_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
+};
 use crate::{
     crypto::wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_unwrap, error::KmipUtilsError, kmip_utils_bail,
     DecryptionSystem,
@@ -71,7 +73,7 @@ impl DecryptionSystem for HybridDecryptionSystem {
             #[cfg(not(feature = "fips"))]
             Id::ED25519 => {
                 let raw_bytes = self.private_key.raw_private_key()?;
-                let private_key_bytes: [u8; ED25519_SECRET_LENGTH] = raw_bytes.try_into()?;
+                let private_key_bytes: [u8; ED25519_PRIVATE_KEY_LENGTH] = raw_bytes.try_into()?;
                 let private_key = Ed25519PrivateKey::try_from_bytes(private_key_bytes)?;
                 let private_key = X25519PrivateKey::from_ed25519_private_key(&private_key);
                 Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
@@ -80,7 +82,7 @@ impl DecryptionSystem for HybridDecryptionSystem {
             Id::X25519 => {
                 // The raw public key happens to be the (compressed) value of the Montgomery point
                 let raw_bytes = self.private_key.raw_private_key()?;
-                let private_key_bytes: [u8; X25519_SECRET_LENGTH] = raw_bytes.try_into()?;
+                let private_key_bytes: [u8; X25519_PRIVATE_KEY_LENGTH] = raw_bytes.try_into()?;
                 let private_key = X25519PrivateKey::try_from_bytes(private_key_bytes)?;
                 Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
             }

@@ -9,11 +9,10 @@ use openssl::{
     symm::{decrypt_aead, encrypt_aead, Cipher},
 };
 
-#[cfg(feature = "fips")]
-use crate::kmip_utils_bail;
 use crate::{
     crypto::symmetric::{AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH},
     error::KmipUtilsError,
+    kmip_utils_bail,
 };
 
 /// Derive initialization vector from recipient public key `Q` and ephemeral
