@@ -10,9 +10,11 @@ use cosmian_kmip::kmip::{
         ProtocolVersion, RecommendedCurve, ResultStatusEnumeration, UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::crypto::curve_25519::{
-    kmip_requests::{ec_create_key_pair_request, get_private_key_request, get_public_key_request},
-    operation::{self, to_ec_public_key},
+use cosmian_kms_utils::crypto::elliptic_curves::{
+    kmip_requests::{
+        create_curve_25519_key_pair_request, get_private_key_request, get_public_key_request,
+    },
+    operation::{self, to_ec_public_key, Q_LENGTH_BITS},
 };
 use cosmian_logger::log_utils::log_init;
 
@@ -32,7 +34,8 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request = ec_create_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
+    let request =
+        create_curve_25519_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
@@ -159,7 +162,12 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     // test import of public key
     let pk_bytes = pk.key_block()?.key_bytes()?;
     assert_eq!(pk_bytes.len(), X25519_PUBLIC_KEY_LENGTH);
-    let pk = to_ec_public_key(&pk_bytes, sk_uid, RecommendedCurve::CURVE25519);
+    let pk = to_ec_public_key(
+        &pk_bytes,
+        Q_LENGTH_BITS as u32,
+        sk_uid,
+        RecommendedCurve::CURVE25519,
+    );
     let request = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
         object_type: ObjectType::PublicKey,
@@ -209,10 +217,9 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             ..Default::default()
         },
         items: vec![
-            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
-                &[] as &[&str],
-                RecommendedCurve::CURVE25519,
-            )?)),
+            MessageBatchItem::new(Operation::CreateKeyPair(
+                create_curve_25519_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?,
+            )),
             MessageBatchItem::new(Operation::Locate(
                 cosmian_kmip::kmip::kmip_operations::Locate::default(),
             )),
@@ -233,22 +240,24 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             ..Default::default()
         },
         items: vec![
-            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
-                &[] as &[&str],
-                RecommendedCurve::CURVE25519,
-            )?)),
-            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
-                &[] as &[&str],
-                RecommendedCurve::CURVEED25519,
-            )?)),
-            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
-                &[] as &[&str],
-                RecommendedCurve::SECP256K1,
-            )?)),
-            MessageBatchItem::new(Operation::CreateKeyPair(ec_create_key_pair_request(
-                &[] as &[&str],
-                RecommendedCurve::CURVEED25519,
-            )?)),
+            MessageBatchItem::new(Operation::CreateKeyPair(
+                create_curve_25519_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?,
+            )),
+            MessageBatchItem::new(Operation::CreateKeyPair(
+                create_curve_25519_key_pair_request(
+                    &[] as &[&str],
+                    RecommendedCurve::CURVEED25519,
+                )?,
+            )),
+            MessageBatchItem::new(Operation::CreateKeyPair(
+                create_curve_25519_key_pair_request(&[] as &[&str], RecommendedCurve::SECP256K1)?,
+            )),
+            MessageBatchItem::new(Operation::CreateKeyPair(
+                create_curve_25519_key_pair_request(
+                    &[] as &[&str],
+                    RecommendedCurve::CURVEED25519,
+                )?,
+            )),
         ],
     };
 

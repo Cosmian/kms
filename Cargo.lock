@@ -1178,6 +1178,7 @@ dependencies = [
  "argon2",
  "cloudproof",
  "cosmian_kmip",
+ "cosmian_logger",
  "num-bigint-dig",
  "openssl",
  "serde",

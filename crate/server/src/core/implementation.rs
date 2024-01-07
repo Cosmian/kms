@@ -19,19 +19,20 @@ use cosmian_kmip::{
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::curve_25519::operation::create_x25519_key_pair;
+use cosmian_kms_utils::crypto::elliptic_curves::operation::create_x25519_key_pair;
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
-        curve_25519::operation::{create_approved_ecc_key_pair, create_ed25519_key_pair},
+        elliptic_curves::operation::{create_approved_ecc_key_pair, create_ed25519_key_pair},
         hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
+        rsa::{to_rsa_private_key, to_rsa_public_key},
         symmetric::{create_symmetric_key, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
     },
     tagging::{check_user_tags, get_tags, remove_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
-use openssl::nid::Nid;
+use openssl::{nid::Nid, rsa::Rsa};
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
 use tracing::{debug, trace};
@@ -452,6 +453,13 @@ impl KMS {
                         "Generation of Key Pair for curve: {other:?}, is not supported"
                     ),
                 }
+            }
+            CryptographicAlgorithm::RSA => {
+                let key_size = any_attributes.cryptographic_length.ok_or(4096).unwrap();
+                let rsa_private = Rsa::generate(key_size as u32)?;
+                let private_key = to_rsa_private_key(&rsa_private, key_size as u32, public_key_uid);
+                let public_key = to_rsa_public_key(&rsa_private, key_size as u32, private_key_uid);
+                Ok(KeyPair::new(private_key, public_key))
             }
             CryptographicAlgorithm::Ed25519 => {
                 create_ed25519_key_pair(private_key_uid, public_key_uid)

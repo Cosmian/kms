@@ -8,11 +8,11 @@ use cosmian_kmip::kmip::{
 };
 
 use crate::{
-    crypto::curve_25519::operation::Q_LENGTH_BITS, error::KmipUtilsError, tagging::set_tags,
+    crypto::elliptic_curves::operation::Q_LENGTH_BITS, error::KmipUtilsError, tagging::set_tags,
 };
 
 /// Build a `CreateKeyPairRequest` for a curve 25519 key pair
-pub fn ec_create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+pub fn create_curve_25519_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
     recommended_curve: RecommendedCurve,
 ) -> Result<CreateKeyPair, KmipUtilsError> {
