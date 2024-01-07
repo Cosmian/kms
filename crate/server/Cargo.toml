@@ -48,7 +48,7 @@ lazy_static = "1.4"
 openssl = { workspace = true }
 rawsql = "0.1"
 redis = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["blocking"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { version = "0.7.3", default-features = false, features = [

@@ -6,6 +6,7 @@ use openssl::{
     pkey::{Id, PKey, Public},
     rsa::Rsa,
 };
+use tracing::trace;
 
 use crate::{
     error::KmipError,
@@ -51,6 +52,7 @@ use crate::{
 /// * `PKey<Public>` - The openssl Public key
 ///
 pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, KmipError> {
+    trace!("kmip_public_key_to_openssl: {:?}", public_key);
     let key_block = match public_key {
         Object::PublicKey { key_block } => key_block,
         x => kmip_bail!("Invalid Object: {:?}. KMIP Public Key expected", x),
@@ -74,14 +76,18 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, K
                 modulus,
                 public_exponent,
             } => {
+                trace!("Key format type: TransparentRSAPublicKey");
                 let rsa_public_key = Rsa::from_public_components(
                     BigNum::from_slice(&modulus.to_bytes_be())?,
                     BigNum::from_slice(&public_exponent.to_bytes_be())?,
                 )?;
+                trace!("Key format type: convert Rsa<Public> openssl object");
                 PKey::from_rsa(rsa_public_key)?
             }
-            _ => kmip_bail!(
-                "Invalid Transparent RSA public key material: TransparentRSAPublicKey expected"
+            invalid_key_material => kmip_bail!(
+                "Invalid Transparent RSA public key material: expected TransparentRSAPublicKey \
+                 but got: {:?} ",
+                invalid_key_material
             ),
         },
         KeyFormatType::TransparentECPublicKey => match &key_block.key_value.key_material {

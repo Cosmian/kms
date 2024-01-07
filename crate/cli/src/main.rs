@@ -11,6 +11,7 @@ use cosmian_kms_cli::{
         logout::LogoutAction,
         markdown::MarkdownAction,
         new_database::NewDatabaseAction,
+        rsa::RsaCommands,
         shared::{GetAttributesAction, LocateObjectsAction},
         symmetric::SymmetricCommands,
         version::ServerVersionAction,
@@ -40,6 +41,8 @@ enum CliCommands {
     GetAttributes(GetAttributesAction),
     Locate(LocateObjectsAction),
     NewDatabase(NewDatabaseAction),
+    #[command(subcommand)]
+    Rsa(RsaCommands),
     ServerVersion(ServerVersionAction),
     #[command(subcommand)]
     Sym(SymmetricCommands),
@@ -75,6 +78,7 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Locate(action) => action.process(&kms_rest_client).await?,
         CliCommands::Cc(action) => action.process(&kms_rest_client).await?,
         CliCommands::Ec(action) => action.process(&kms_rest_client).await?,
+        CliCommands::Rsa(action) => action.process(&kms_rest_client).await?,
         CliCommands::Sym(action) => action.process(&kms_rest_client).await?,
         CliCommands::AccessRights(action) => action.process(&kms_rest_client).await?,
         CliCommands::Certificates(action) => action.process(&kms_rest_client).await?,
@@ -84,7 +88,7 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Login(action) => action.process().await?,
         CliCommands::Logout(action) => action.process().await?,
         _ => {
-            println!("Error");
+            println!("Error: unexpected command");
         }
     };
 

@@ -53,7 +53,7 @@ pub fn create_symmetric_key_kmip_object(
     }
 }
 
-/// Build a `CreateKeyPairRequest` for a curve 25519 key pair
+/// Build a `CreateKeyPairRequest` for a symmetric key
 pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
     key_len_in_bits: usize,
     cryptographic_algorithm: CryptographicAlgorithm,

@@ -6,6 +6,7 @@ pub mod login;
 pub mod logout;
 pub mod markdown;
 pub mod new_database;
+pub mod rsa;
 pub mod shared;
 pub mod symmetric;
 pub mod version;

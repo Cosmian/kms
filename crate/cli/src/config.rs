@@ -161,7 +161,7 @@ impl CliConf {
     }
 
     pub fn save(&self) -> Result<(), CliError> {
-        let conf_path = CliConf::location()?;
+        let conf_path = Self::location()?;
 
         fs::write(
             &conf_path,
@@ -177,7 +177,7 @@ impl CliConf {
 
     pub fn load() -> Result<Self, CliError> {
         // Deserialize the configuration from the file, or create a default configuration if none exists
-        let conf_path = CliConf::location()?;
+        let conf_path = Self::location()?;
         let conf = if conf_path.exists() {
             // Configuration file exists, read and deserialize it
             let file = File::open(&conf_path)

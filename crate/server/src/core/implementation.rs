@@ -19,12 +19,12 @@ use cosmian_kmip::{
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::curve_25519::operation::create_x25519_key_pair;
+use cosmian_kms_utils::crypto::elliptic_curves::operation::create_x25519_key_pair;
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
-        curve_25519::operation::{create_approved_ecc_key_pair, create_ed25519_key_pair},
+        elliptic_curves::operation::{create_approved_ecc_key_pair, create_ed25519_key_pair},
         hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
         symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
     },
@@ -114,6 +114,7 @@ impl KMS {
         mut owm: ObjectWithMetadata,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn EncryptionSystem>> {
+        trace!("get_encryption_system: entering: object id: {}", owm.id);
         // the key must be active
         if owm.state != StateEnumeration::Active {
             kms_bail!(KmsError::InconsistentOperation(
@@ -131,9 +132,9 @@ impl KMS {
                 }
             }
         }
-
         trace!("get_encryption_system: unwrap done (if required)");
-        match &owm.object {
+
+        let encryption_system = match &owm.object {
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
                     match &key_block.cryptographic_algorithm {
@@ -160,8 +161,15 @@ impl KMS {
                 | KeyFormatType::TransparentRSAPublicKey
                 | KeyFormatType::PKCS1
                 | KeyFormatType::PKCS8 => {
-                    let p_key = kmip_public_key_to_openssl(&owm.object)?;
-                    Ok(Box::new(HybridEncryptionSystem::new(&owm.id, p_key, false))
+                    trace!(
+                        "get_encryption_system: matching on key format type: {:?}",
+                        key_block.key_format_type
+                    );
+                    let public_key = kmip_public_key_to_openssl(&owm.object)?;
+                    trace!(
+                        "get_encryption_system: OpenSSL Public Key instantiated before encryption"
+                    );
+                    Ok(Box::new(HybridEncryptionSystem::new(&owm.id, public_key))
                         as Box<dyn EncryptionSystem>)
                 }
                 other => kms_not_supported!("encryption with public keys of format: {other}"),
@@ -172,11 +180,12 @@ impl KMS {
                 Box::new(HybridEncryptionSystem::instantiate_with_certificate(
                     &owm.id,
                     certificate_value,
-                    false,
                 )?) as Box<dyn EncryptionSystem>,
             ),
             other => kms_not_supported!("encryption with keys of type: {}", other.object_type()),
-        }
+        };
+        trace!("get_encryption_system: exiting");
+        encryption_system
     }
 
     /// Return a decryption system based on the type of key
@@ -207,10 +216,8 @@ impl KMS {
                 | KeyFormatType::TransparentRSAPrivateKey
                 | KeyFormatType::TransparentECPrivateKey => {
                     let p_key = kmip_private_key_to_openssl(&owm.object)?;
-                    Ok(
-                        Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key, false))
-                            as Box<dyn DecryptionSystem>,
-                    )
+                    Ok(Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key))
+                        as Box<dyn DecryptionSystem>)
                 }
                 other => kms_not_supported!("decryption with keys of format: {other}"),
             },
@@ -456,6 +463,18 @@ impl KMS {
                         "Generation of Key Pair for curve: {other:?}, is not supported"
                     ),
                 }
+            }
+            CryptographicAlgorithm::RSA => {
+                let key_size_in_bits = any_attributes
+                    .cryptographic_length
+                    .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_string()))?
+                    as u32;
+                trace!(
+                    "RSA key pair generation: size in bits: {}",
+                    key_size_in_bits
+                );
+
+                create_rsa_key_pair(key_size_in_bits, public_key_uid, private_key_uid)
             }
             CryptographicAlgorithm::Ed25519 => {
                 create_ed25519_key_pair(private_key_uid, public_key_uid)

@@ -190,7 +190,7 @@ impl LoginState {
     /// from the browser window. Once the code is received, the server is closed and the code is returned.
     pub async fn finalize(&self) -> Result<String, CliError> {
         // recover the authorization code, state and other parameters from the redirect URL
-        let auth_parameters = LoginState::receive_authorization_parameters()?;
+        let auth_parameters = Self::receive_authorization_parameters()?;
 
         // Once the user has been redirected to the redirect URL, you'll have access to the
         // authorization code. For security reasons, your code should verify that the `state`

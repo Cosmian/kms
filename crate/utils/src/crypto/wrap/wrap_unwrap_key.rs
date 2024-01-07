@@ -136,7 +136,7 @@ mod tests {
 
     use crate::{
         crypto::{
-            curve_25519::operation::create_x25519_key_pair,
+            elliptic_curves::operation::create_x25519_key_pair,
             symmetric::create_symmetric_key_kmip_object,
             wrap::{unwrap_key_block, wrap_key_block},
         },

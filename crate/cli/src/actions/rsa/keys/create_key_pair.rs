@@ -1,11 +1,10 @@
 use clap::Parser;
-use cosmian_kmip::kmip::kmip_types::RecommendedCurve;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::elliptic_curves::kmip_requests::create_curve_25519_key_pair_request;
+use cosmian_kms_utils::crypto::rsa::kmip_requests::create_rsa_key_pair_request;
 
 use crate::error::{result::CliResultHelper, CliError};
 
-/// Create a new X25519 key pair
+/// Create a new RSA key pair
 ///
 ///  - The public is used to encrypt
 ///      and can be safely shared.
@@ -16,6 +15,15 @@ use crate::error::{result::CliResultHelper, CliError};
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateKeyPairAction {
+    /// The expected size in bits
+    #[clap(
+        long = "size_in_bits",
+        short = 's',
+        value_name = "SIZE_IN_BITS",
+        default_value = "4096"
+    )]
+    key_size: usize,
+
     /// The tag to associate with the master key pair.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
@@ -24,19 +32,19 @@ pub struct CreateKeyPairAction {
 
 impl CreateKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
-        let create_key_pair_request =
-            create_curve_25519_key_pair_request(&self.tags, RecommendedCurve::CURVE25519)?;
+        println!("run: starting");
+        let create_key_pair_request = create_rsa_key_pair_request(&self.tags, self.key_size)?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client
             .create_key_pair(create_key_pair_request)
             .await
-            .with_context(|| "failed creating a Elliptic Curve key pair")?;
+            .with_context(|| "failed creating a RSA key pair")?;
 
         let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
         let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
-        println!("The EC key pair has been created.");
+        println!("The RSA key pair has been created.");
         println!("  Private key unique identifier: {private_key_unique_identifier}\n");
         println!("  Public key unique identifier : {public_key_unique_identifier}");
 

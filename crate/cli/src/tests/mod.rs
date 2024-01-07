@@ -4,6 +4,7 @@ mod certificates;
 mod cover_crypt;
 mod elliptic_curve;
 mod new_database;
+mod rsa;
 mod shared;
 mod symmetric;
 
