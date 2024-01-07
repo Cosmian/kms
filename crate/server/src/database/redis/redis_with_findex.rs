@@ -447,12 +447,7 @@ impl Database for RedisWithFindex {
             .await?;
         let redis_db_objects = self
             .objects_db
-            .objects_get(
-                &permissions
-                    .keys()
-                    .map(std::clone::Clone::clone)
-                    .collect::<HashSet<String>>(),
-            )
+            .objects_get(&permissions.keys().cloned().collect::<HashSet<String>>())
             .await?;
         Ok(permissions
             .into_iter()

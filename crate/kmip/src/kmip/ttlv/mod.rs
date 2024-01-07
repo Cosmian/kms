@@ -459,7 +459,7 @@ impl<'de> Deserialize<'de> for TTLV {
 /// doesn't provide such conversion.
 #[must_use]
 pub fn to_u32_digits(big_int: &BigUint) -> Vec<u32> {
-    // Since the KMS works with big-endian representation of bytearrays, casting
+    // Since the KMS works with big-endian representation of byte arrays, casting
     // a group of 4 bytes in big-endian u32 representation needs revert iter so
     // that if you have a chunk [0, 12, 143, 239] you will do
     // B = 239 + 143*2^8 + 12*2^16 + 0*2^24 which is the correct way to do. On

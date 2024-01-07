@@ -422,6 +422,10 @@ fn test_key_material_big_int_deserialization() {
         tag: "KeyMaterial".to_string(),
         value: TTLValue::Structure(vec![
             TTLV {
+                tag: "KeyTypeSer".to_string(),
+                value: TTLValue::Enumeration(TTLVEnumeration::Name("DH".to_string())),
+            },
+            TTLV {
                 tag: "P".to_string(),
                 value: TTLValue::BigInteger(BigUint::from(u32::MAX)),
             },

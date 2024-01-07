@@ -19,7 +19,7 @@ pub async fn encrypt(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<EncryptResponse> {
-    trace!("encrypt : {}", serde_json::to_string(&request)?);
+    trace!("operations::encrypt: {}", serde_json::to_string(&request)?);
 
     // there must be an identifier
     let uid_or_tags = request
@@ -28,7 +28,7 @@ pub async fn encrypt(
         .ok_or(KmsError::UnsupportedPlaceholder)?
         .as_str()
         .context("Encrypt: the unique identifier or tags must be a string")?;
-    trace!("encrypt: uid_or_tags: {uid_or_tags}");
+    trace!("operations::encrypt: uid_or_tags: {uid_or_tags}");
 
     // retrieve from tags or use passed identifier
     let mut owm_s = kms
@@ -45,7 +45,7 @@ pub async fn encrypt(
         })
         .collect::<Vec<ObjectWithMetadata>>();
 
-    trace!("encrypt: owm_s: {:?}", owm_s);
+    trace!("operations::encrypt: owm_s: {:?}", owm_s);
     // there can only be one key
     let owm = owm_s
         .pop()
@@ -57,7 +57,7 @@ pub async fn encrypt(
         )))
     }
 
-    debug!("Encrypting for {}", uid_or_tags);
+    debug!("operations::encrypt: Encrypting for {}", uid_or_tags);
     kms.get_encryption_system(owm, params)
         .await?
         .encrypt(&request)

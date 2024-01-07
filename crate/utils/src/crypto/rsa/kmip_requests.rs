@@ -2,27 +2,21 @@ use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{CreateKeyPair, Get},
     kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicDomainParameters, CryptographicUsageMask,
-        KeyFormatType, RecommendedCurve, UniqueIdentifier,
+        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
     },
 };
 
-use crate::{
-    crypto::curve_25519::operation::Q_LENGTH_BITS, error::KmipUtilsError, tagging::set_tags,
-};
+use crate::{error::KmipUtilsError, tagging::set_tags};
 
-/// Build a `CreateKeyPairRequest` for a curve 25519 key pair
-pub fn ec_create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+/// Build a `CreateKeyPairRequest` for a RSA key pair
+pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
-    recommended_curve: RecommendedCurve,
+    cryptographic_length: usize,
 ) -> Result<CreateKeyPair, KmipUtilsError> {
     let mut attributes = Attributes {
-        cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-        cryptographic_length: Some(Q_LENGTH_BITS),
-        cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-            q_length: Some(Q_LENGTH_BITS),
-            recommended_curve: Some(recommended_curve),
-        }),
+        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+        cryptographic_length: Some(cryptographic_length as i32),
+        cryptographic_domain_parameters: None,
         cryptographic_parameters: None,
         cryptographic_usage_mask: Some(
             CryptographicUsageMask::Encrypt
@@ -31,7 +25,7 @@ pub fn ec_create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
                 | CryptographicUsageMask::UnwrapKey
                 | CryptographicUsageMask::KeyAgreement,
         ),
-        key_format_type: Some(KeyFormatType::ECPrivateKey),
+        key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
         ..Attributes::default()
     };
@@ -47,7 +41,7 @@ pub fn ec_create_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
 pub fn get_private_key_request(uid: &str) -> Get {
     Get {
         unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
-        key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
+        key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
         ..Get::default()
     }
 }
@@ -56,7 +50,7 @@ pub fn get_private_key_request(uid: &str) -> Get {
 pub fn get_public_key_request(uid: &str) -> Get {
     Get {
         unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
-        key_format_type: Some(KeyFormatType::TransparentECPublicKey),
+        key_format_type: Some(KeyFormatType::TransparentRSAPublicKey),
         ..Get::default()
     }
 }

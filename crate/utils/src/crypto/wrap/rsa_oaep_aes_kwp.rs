@@ -9,7 +9,7 @@ use super::rfc5649::{key_unwrap, key_wrap, AES_KWP_KEY_SIZE};
 use crate::{error::KmipUtilsError, kmip_utils_bail};
 
 #[cfg(feature = "fips")]
-const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
+pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
 
 /// Asymmetrically wrap keys referring to PKCS#11 available at
 /// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908

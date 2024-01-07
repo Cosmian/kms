@@ -12,7 +12,7 @@ use crate::{
     error::CliError,
 };
 
-#[derive(clap::ValueEnum, Debug, Clone, PartialEq)]
+#[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum ExportKeyFormat {
     JsonTtlv,
     Sec1Pem,

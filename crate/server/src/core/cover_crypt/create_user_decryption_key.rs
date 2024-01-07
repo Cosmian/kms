@@ -70,10 +70,13 @@ async fn create_user_decryption_key_(
             if owm.object.object_type() != ObjectType::PrivateKey {
                 return false
             }
-            let attributes = match owm.object.attributes() {
-                Ok(attributes) => attributes,
-                Err(_) => return false,
+
+            let attributes = if let Ok(attributes) = owm.object.attributes() {
+                attributes
+            } else {
+                return false
             };
+
             if attributes.key_format_type != Some(KeyFormatType::CoverCryptSecretKey) {
                 return false
             }

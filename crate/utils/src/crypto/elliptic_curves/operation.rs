@@ -14,6 +14,7 @@ use openssl::{
     nid::Nid,
     pkey::PKey,
 };
+use tracing::trace;
 
 use crate::{error::KmipUtilsError, kmip_utils_bail, KeyPair};
 
@@ -25,8 +26,19 @@ pub const Q_LENGTH_BITS: i32 = 253;
 
 /// convert to a X25519 256 bits KMIP Public Key
 /// no check performed
-#[must_use]
-pub fn to_ec_public_key(bytes: &[u8], private_key_uid: &str, curve: RecommendedCurve) -> Object {
+pub fn to_ec_public_key(
+    bytes: &[u8],
+    pkey_bits_number: u32,
+    private_key_uid: &str,
+    curve: RecommendedCurve,
+) -> Object {
+    let cryptographic_length_in_bits = bytes.len() as i32 * 8;
+    trace!(
+        "to_ec_public_key: bytes len: {}, bits: {}",
+        cryptographic_length_in_bits,
+        pkey_bits_number
+    );
+
     Object::PublicKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
@@ -40,7 +52,7 @@ pub fn to_ec_public_key(bytes: &[u8], private_key_uid: &str, curve: RecommendedC
                 attributes: Some(Attributes {
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-                    cryptographic_length: Some(Q_LENGTH_BITS),
+                    cryptographic_length: Some(cryptographic_length_in_bits),
                     cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPublicKey),
@@ -49,7 +61,7 @@ pub fn to_ec_public_key(bytes: &[u8], private_key_uid: &str, curve: RecommendedC
                         ..CryptographicParameters::default()
                     }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-                        q_length: Some(Q_LENGTH_BITS),
+                        q_length: Some(pkey_bits_number as i32),
                         recommended_curve: Some(curve),
                     }),
                     link: Some(vec![Link {
@@ -61,7 +73,7 @@ pub fn to_ec_public_key(bytes: &[u8], private_key_uid: &str, curve: RecommendedC
                     ..Attributes::default()
                 }),
             },
-            cryptographic_length: Some(Q_LENGTH_BITS),
+            cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,
         },
     }
@@ -69,8 +81,20 @@ pub fn to_ec_public_key(bytes: &[u8], private_key_uid: &str, curve: RecommendedC
 
 /// convert to a curve 25519 256 bits KMIP Private Key
 /// no check performed
-#[must_use]
-pub fn to_ec_private_key(bytes: &[u8], public_key_uid: &str, curve: RecommendedCurve) -> Object {
+pub fn to_ec_private_key(
+    bytes: &[u8],
+    pkey_bits_number: u32,
+    public_key_uid: &str,
+    curve: RecommendedCurve,
+) -> Object {
+    let cryptographic_length_in_bits = bytes.len() as i32 * 8;
+
+    trace!(
+        "to_ec_private_key: bytes len: {}, bits: {}",
+        cryptographic_length_in_bits,
+        pkey_bits_number
+    );
+
     Object::PrivateKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
@@ -84,8 +108,8 @@ pub fn to_ec_private_key(bytes: &[u8], public_key_uid: &str, curve: RecommendedC
                 attributes: Some(Attributes {
                     object_type: Some(ObjectType::PrivateKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-                    cryptographic_length: Some(Q_LENGTH_BITS),
-                    cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
+                    cryptographic_length: Some(cryptographic_length_in_bits),
+                    cryptographic_usage_mask: Some(CryptographicUsageMask::Decrypt),
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
                     cryptographic_parameters: Some(CryptographicParameters {
@@ -93,7 +117,7 @@ pub fn to_ec_private_key(bytes: &[u8], public_key_uid: &str, curve: RecommendedC
                         ..CryptographicParameters::default()
                     }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-                        q_length: Some(Q_LENGTH_BITS),
+                        q_length: Some(pkey_bits_number as i32),
                         recommended_curve: Some(curve),
                     }),
                     link: Some(vec![Link {
@@ -105,7 +129,7 @@ pub fn to_ec_private_key(bytes: &[u8], public_key_uid: &str, curve: RecommendedC
                     ..Attributes::default()
                 }),
             },
-            cryptographic_length: Some(Q_LENGTH_BITS),
+            cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,
         },
     }
@@ -121,11 +145,13 @@ pub fn create_x25519_key_pair(
 
     let public_key = to_ec_public_key(
         &keypair.raw_public_key()?,
+        keypair.bits(),
         private_key_uid,
         RecommendedCurve::CURVE25519,
     );
     let private_key = to_ec_private_key(
         &keypair.raw_private_key()?,
+        keypair.bits(),
         public_key_uid,
         RecommendedCurve::CURVE25519,
     );
@@ -142,18 +168,23 @@ pub fn create_ed25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
 ) -> Result<KeyPair, KmipUtilsError> {
-    let keypair = PKey::generate_ed25519()?;
+    let private_key = PKey::generate_ed25519()?;
 
+    trace!("create_ed25519_key_pair: keypair OK");
     let public_key = to_ec_public_key(
-        &keypair.raw_public_key()?,
+        &private_key.raw_public_key()?,
+        private_key.bits(),
         private_key_uid,
         RecommendedCurve::CURVEED25519,
     );
+    trace!("create_ed25519_key_pair: public_key OK");
     let private_key = to_ec_private_key(
-        &keypair.raw_private_key()?,
+        &private_key.raw_private_key()?,
+        private_key.bits(),
         public_key_uid,
         RecommendedCurve::CURVEED25519,
     );
+    trace!("create_ed25519_key_pair: private_key OK");
     Ok(KeyPair::new(private_key, public_key))
 }
 
@@ -174,24 +205,25 @@ pub fn create_approved_ecc_key_pair(
         other => kmip_utils_bail!("Curve Nid {:?} not supported by KMS.", other),
     };
 
-    let ec_privkey = EcKey::generate(&curve)?;
-    let ec_pubkey = EcKey::from_public_key(&curve, ec_privkey.public_key())?;
-
+    let ec_private_key = EcKey::generate(&curve)?;
+    trace!("create_approved_ecc_key_pair: ec key OK");
     let private_key = to_ec_private_key(
-        &ec_privkey.private_key().to_vec(),
+        &ec_private_key.private_key().to_vec(),
+        ec_private_key.private_key().num_bits() as u32,
         public_key_uid,
         kmip_curve,
     );
-
+    trace!("create_approved_ecc_key_pair: private key converted OK");
     let mut ctx = BigNumContext::new()?;
-
     let public_key = to_ec_public_key(
-        &ec_pubkey
+        &ec_private_key
             .public_key()
             .to_bytes(&curve, PointConversionForm::HYBRID, &mut ctx)?,
+        ec_private_key.private_key().num_bits() as u32,
         private_key_uid,
         kmip_curve,
     );
+    trace!("create_approved_ecc_key_pair: public key converted OK");
 
     Ok(KeyPair::new(private_key, public_key))
 }
@@ -203,6 +235,7 @@ mod tests {
     #[cfg(not(feature = "fips"))]
     use cosmian_kmip::openssl::pad_be_bytes;
     use cosmian_kmip::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
+    use cosmian_logger::log_utils::log_init;
     use openssl::nid::Nid;
     #[cfg(not(feature = "fips"))]
     use openssl::pkey::{Id, PKey};
@@ -215,6 +248,7 @@ mod tests {
 
     #[test]
     fn test_ed25519_keypair_generation() {
+        log_init("trace");
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -316,6 +350,7 @@ mod tests {
 
     #[test]
     fn test_approved_ecc_keypair_generation() {
+        log_init("trace");
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
