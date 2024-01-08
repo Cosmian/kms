@@ -30,8 +30,8 @@ fn ecies_get_iv(
     let mut iv = vec![0; AES_256_GCM_IV_LENGTH];
 
     let mut hasher = Hasher::new(MessageDigest::shake_128())?;
-    hasher.update(&Q_bytes)?;
     hasher.update(&R_bytes)?;
+    hasher.update(&Q_bytes)?;
     hasher.finish_xof(&mut iv)?;
 
     Ok(iv)
@@ -72,7 +72,7 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
 
     #[cfg(feature = "fips")]
     if curve.curve_name() == Some(Nid::X9_62_PRIME192V1) {
-        kmip_utils_bail!("Curve P-192 not allowed in FIPS mode.")
+        kmip_utils_bail!("ECIES: Curve P-192 not allowed in FIPS mode.")
     }
 
     // Generating random ephemeral private key `r` and associated public key
@@ -126,14 +126,14 @@ pub fn ecies_decrypt(
 
     #[cfg(feature = "fips")]
     if curve.curve_name() == Some(Nid::X9_62_PRIME192V1) {
-        kmip_utils_bail!("Curve P-192 not allowed in FIPS mode.")
+        kmip_utils_bail!("ECIES: Curve P-192 not allowed in FIPS mode.")
     }
 
     // OpenSSL stored compressed coordinates with one extra byte for some
     // reason hence the + 1 at the end.
     let pubkey_vec_size = idiv_ceil(curve.order_bits() as usize, 8) + 1;
     if ciphertext.len() <= pubkey_vec_size + AES_256_GCM_MAC_LENGTH {
-        kmip_utils_bail!("Decryption error: invalid ciphertext.")
+        kmip_utils_bail!("ECIES: Decryption error: invalid ciphertext.")
     }
 
     // Ciphertext received is a concatenation of `R | ct | tag` with `R`
