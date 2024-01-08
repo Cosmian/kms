@@ -20,11 +20,23 @@ use tracing::trace;
 use crate::{kms_bail, kms_error, result::KResult, KMSServer};
 
 #[derive(Serialize, Debug)]
+enum KeyType {
+    #[serde(rename = "RSA")]
+    RSA,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+enum Algorithm {
+    #[serde(rename = "RSA-OAEP-256")]
+    RsaOaep256,
+}
+
+#[derive(Serialize, Debug)]
 pub struct DkePublicKey {
     /// The key type.
     /// The only supported value is 'RSA'.
     #[serde(rename = "kty")]
-    key_type: String,
+    key_type: KeyType,
 
     /// The public key modulus in base 64 format.
     #[serde(rename = "n")]
@@ -35,9 +47,9 @@ pub struct DkePublicKey {
     exponent: u32,
 
     /// The supported algorithm that can be used to encrypt the data.
-    /// The only supported value is 'RS256'.
+    /// The only supported value is 'RSA-OAEP-256'.
     #[serde(rename = "alg")]
-    algorithm: String,
+    algorithm: Algorithm,
 
     /// The key ID.
     /// A URI that identifies the key that is in use for the key name.  The format is {URI}/{KeyName}/{KeyVersion-Guid}
@@ -96,10 +108,10 @@ async fn _get_key(key_name: &str, req_http: HttpRequest, kms: &Arc<KMSServer>) -
                 public_exponent,
             } => Ok(KeyData {
                 key: DkePublicKey {
-                    key_type: "RSA".to_string(),
+                    key_type: KeyType::RSA,
                     modulus: STANDARD.encode(modulus.to_bytes_be()),
                     exponent: big_uint_to_u32(&public_exponent),
-                    algorithm: "RS256".to_string(),
+                    algorithm: Algorithm::RsaOaep256,
                     key_id: resp.unique_identifier.to_string().ok_or_else(|| {
                         kms_error!(
                             "The RSA public key does nopt have a text unique identifier. This is \
@@ -135,7 +147,7 @@ pub struct DecryptedData {
 pub struct EncryptedData {
     /// The algorithm used to encrypt the data.
     /// Currently only RSA-OAEP-256 is supported
-    alg: String,
+    alg: Algorithm,
     /// The base 64 value of the encrypted bytes
     value: String,
 }
@@ -172,6 +184,7 @@ fn big_uint_to_u32(bu: &BigUint) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    use base64::{engine::general_purpose::STANDARD, Engine};
     use num_bigint_dig::BigUint;
 
     use crate::routes::ms_dke::big_uint_to_u32;
@@ -189,5 +202,13 @@ mod tests {
         let bu = BigUint::from(1_u64 << 32);
         assert_eq!(5, bu.to_bytes_be().len());
         assert_eq!(0, big_uint_to_u32(&bu));
+    }
+
+    #[test]
+    fn test_decrypt_sample() {
+        let b64_string = "wP4ir0aynve6Cpv3ZcBo5+HDue7OA6ogQetNkql1ptfKXilQ2N6x+wDTszcrJlb672l+ckUV5Gjn+ohhFUh0hx6B3rTNKVyxJiGq8S+MRXrTl0UGjWjFED7fYZ2nYZPigu1VHdm3HgBVZdeR8TMr1uIjDHxhWgen2utnTvacn5r8X079ImwpbhilrYBUvt9q42r/CxRp+axsMY3ozkGYsSZ/vXsgjSN0Nbn+9cwHi+XeE2PcjAOnaxUTKVcxjcZvRE+y2FcwgT+nVfJub4ZvRjz9lAbhdDNUS2ZrisAtHVRWJx1ArAMHH7OYg41LoA9+wmBoB04cEzi3JkJkqNCwtw==";
+        let bytes = STANDARD.decode(b64_string.as_bytes()).unwrap();
+        let bu = BigUint::from_bytes_be(&bytes);
+        // println!("bu: {:?}", bu.to_str_radix(10_u32));
     }
 }
