@@ -1,53 +1,12 @@
 use std::process;
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser};
 use cosmian_kms_cli::{
-    actions::{
-        access::AccessAction,
-        certificates::CertificatesCommands,
-        cover_crypt::CovercryptCommands,
-        elliptic_curves::EllipticCurveCommands,
-        login::LoginAction,
-        logout::LogoutAction,
-        markdown::MarkdownAction,
-        new_database::NewDatabaseAction,
-        shared::{GetAttributesAction, LocateObjectsAction},
-        symmetric::SymmetricCommands,
-        version::ServerVersionAction,
-    },
+    commands::{Cli, CliCommands},
     config::CliConf,
     error::CliError,
 };
 use cosmian_logger::log_utils::log_init;
-
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-struct Cli {
-    #[command(subcommand)]
-    command: CliCommands,
-}
-
-#[derive(Subcommand)]
-enum CliCommands {
-    #[command(subcommand)]
-    AccessRights(AccessAction),
-    #[command(subcommand)]
-    Cc(CovercryptCommands),
-    #[command(subcommand)]
-    Certificates(CertificatesCommands),
-    #[command(subcommand)]
-    Ec(EllipticCurveCommands),
-    GetAttributes(GetAttributesAction),
-    Locate(LocateObjectsAction),
-    NewDatabase(NewDatabaseAction),
-    ServerVersion(ServerVersionAction),
-    #[command(subcommand)]
-    Sym(SymmetricCommands),
-    Login(LoginAction),
-    Logout(LogoutAction),
-    #[clap(hide = true)]
-    Markdown(MarkdownAction),
-}
 
 #[tokio::main]
 async fn main() {
@@ -84,7 +43,7 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Login(action) => action.process().await?,
         CliCommands::Logout(action) => action.process().await?,
         _ => {
-            println!("Error");
+            println!("Unknown command");
         }
     };
 
