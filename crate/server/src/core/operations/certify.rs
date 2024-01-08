@@ -1,7 +1,8 @@
-use std::{cmp::min, collections::HashSet};
+use std::{cmp::min, collections::HashSet, path::PathBuf};
 
 use cosmian_kmip::{
     kmip::{
+        extra::x509_extensions,
         kmip_objects::Object,
         kmip_operations::{Certify, CertifyResponse},
         kmip_types::{
@@ -109,6 +110,7 @@ pub async fn certify(
             number_of_days,
             certificate_subject_name,
             certificate_public_key,
+            None,
         )?;
         (
             issued_certificate_id.clone(),
@@ -159,6 +161,7 @@ pub async fn certify(
             number_of_days,
             certificate_subject_name,
             certificate_public_key,
+            None,
         )?;
         // Add link to certificate in public key
         public_key_owm.object.attributes_mut()?.add_link(
@@ -209,6 +212,7 @@ fn build_certificate(
     number_of_days: usize,
     subject_name: X509Name,
     certificate_public_key: PKey<Public>,
+    extension_filepath: Option<PathBuf>,
 ) -> Result<(String, Object), KmsError> {
     // Create an X509 struct with the desired certificate information.
     let mut x509_builder = X509::builder().unwrap();
@@ -224,6 +228,16 @@ fn build_certificate(
     )?;
     x509_builder.set_issuer_name(issuer_x509.subject_name())?;
     x509_builder.sign(issuer_pkey, MessageDigest::sha256())?;
+
+    // Extensions
+    if let Some(extension_filepath) = extension_filepath {
+        let context = x509_builder.x509v3_context(Some(issuer_x509), None);
+
+        x509_extensions::parse_v3_ca_from_file(&extension_filepath, &context)?
+            .into_iter()
+            .try_for_each(|extension| x509_builder.append_extension(extension))?;
+    }
+
     let x509 = x509_builder.build();
 
     // link the certificate to the issuer certificate

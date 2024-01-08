@@ -15,8 +15,10 @@ bitflags = { workspace = true }
 chrono = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }
+rust-ini = "0.20"
 num-bigint-dig = { workspace = true }
 openssl = { workspace = true, optional = true }
+openssl-sys = "0.9"
 pyo3 = { version = "0.20", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -30,3 +32,4 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 cosmian_logger = { path = "../logger" }
+x509-parser = "0.15"

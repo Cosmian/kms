@@ -789,7 +789,7 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub activation_date: Option<u64>, // epoch millis
 
-    ///The Certificate Attributes are the various items included in a certificate.
+    /// The Certificate Attributes are the various items included in a certificate.
     /// The following list is based on RFC2253.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub certificate_attributes: Option<CertificateAttributes>,

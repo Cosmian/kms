@@ -1,6 +1,10 @@
 use crate::{
     error::KmipError,
-    kmip::{extra::VENDOR_ID_COSMIAN, kmip_operations::ErrorReason, kmip_types::Attributes},
+    kmip::{
+        extra::{VENDOR_ID_COSMIAN, VENDOR_ID_X509_EXTENSION},
+        kmip_operations::ErrorReason,
+        kmip_types::Attributes,
+    },
 };
 
 const VENDOR_ATTR_REQUESTED_VALIDITY_DAYS: &str = "requested_validity_days";
@@ -33,5 +37,17 @@ impl Attributes {
             })
             .transpose()?;
         Ok(validity_days)
+    }
+
+    pub fn append_x509_extension(
+        &mut self,
+        x509_extension_name: &str,
+        x509_extension: openssl::x509::X509Extension,
+    ) -> &mut Self {
+        self.set_vendor_attribute(
+            VENDOR_ID_X509_EXTENSION,
+            x509_extension_name,
+            x509_extension.to_der().unwrap(),
+        )
     }
 }
