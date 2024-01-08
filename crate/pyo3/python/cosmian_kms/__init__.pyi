@@ -16,6 +16,58 @@ class KmsObject:
         Returns:
             bytes
         """
+class KmsEncryptResponse:
+    """Represents the response from a KMS encryption operation."""
+
+    @staticmethod
+    def from_json(data: str) -> KmsEncryptResponse:
+        """
+        Creates an instance from a JSON string.
+
+        Args:
+            data (str): The JSON string representing the KmsEncryptResponse.
+        """
+
+    def unique_identifier(self) -> str:
+        """
+        Retrieves the unique identifier of the key used during encryption.
+
+        Returns:
+            str: The unique identifier of the key.
+        """
+
+    def data(self) -> bytes:
+        """
+        Retrieves the data bytes from the encryption response.
+
+        Returns:
+            bytes.
+        """
+
+    def iv_counter_nonce(self) -> bytes:
+        """
+        Retrieves the IV, Counter, or Nonce bytes from the encryption response.
+
+        Returns:
+            bytes
+        """
+
+    def authenticated_encryption_tag(self) -> bytes:
+        """
+        Retrieves the authentication tag bytes from the encryption response.
+
+        Returns:
+            bytes
+        """
+
+    def correlation_value(self) -> bytes:
+        """
+        Retrieves the correlation value bytes from the encryption response.
+
+        Returns:
+            bytes
+        """
+
 
 class KmsClient:
     """Python client for a Key Management System (KMS). The methods return Future object which
@@ -367,7 +419,7 @@ class KmsClient:
         data: bytes,
         key_identifier: Optional[str]=None,
         tags: Optional[List[str]]=None,
-        ) -> Future[Tuple[bytes, bytes, bytes]]:
+        ) -> Future[KmsEncryptResponse]:
         """Encrypts the provided binary data using the specified key identifier or tags
 
         Args:
@@ -376,7 +428,7 @@ class KmsClient:
             tags (List[str], optional): tags associated with the encryption
 
         Returns:
-            Future[Tuple[bytes, bytes, bytes]]: (ciphertext, counter nonce, authentication tag)
+            Future[KmsEncryptResponse]: encryption result
         """
 
     def decrypt(
