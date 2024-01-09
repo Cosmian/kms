@@ -45,7 +45,7 @@ and an application-level encrypted database on top of Redis in a high-availabili
 
 #### Designed to securely run in the Cloud or other Zero-Trust environments
 
-Thanks to its "bootstrap" design, running on top of Cosmian VMs with a fully application-level encrypted database on top of Redis,
+Thanks to its design, running on top of Cosmian VMs with a fully application-level encrypted database on top of Redis,
 the Cosmian KMS is able to securely operate in zero-trust environments, such as the public cloud.
 
 See the dedicated page for [running the KMS in a zero-trust environment](./zero_trust.md).
@@ -123,8 +123,6 @@ Options:
           - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
             The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
 
-          The database configuration can be securely provided via the bootstrap server. Check the documentation.
-
           [env: KMS_DATABASE_TYPE=]
           [possible values: postgresql, mysql, sqlite, sqlite-enc, redis-findex]
 
@@ -162,7 +160,7 @@ Options:
           [default: 9998]
 
       --hostname <HOSTNAME>
-          The KMS server (and bootstrap server) hostname
+          The KMS server hostname
 
           [env: KMS_HOSTNAME=]
           [default: 0.0.0.0]
@@ -170,14 +168,10 @@ Options:
       --https-p12-file <HTTPS_P12_FILE>
           The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode.
 
-          The PKCS#12 can be securely provided via the bootstrap server. Check the documentation.
-
           [env: KMS_HTTPS_P12_FILE=]
 
       --https-p12-password <HTTPS_P12_PASSWORD>
           The password to open the PKCS#12 Certificates and Key file
-
-          The PKCS#12 password can be securely provided via the bootstrap server. Check the documentation.
 
           [env: KMS_HTTPS_P12_PASSWORD=]
           [default: ]
