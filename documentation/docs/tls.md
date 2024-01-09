@@ -3,7 +3,7 @@ The server can serve requests using either plaintext HTTP or HTTPS.
 When running in a zero-trust environment, the KMS server should be started using HTTPS.
 Check the [running in a zero-trust environment](./zero_trust.md) section for more information.
 
-To enable TLS, one can provide certificates - on the command line or via the bootstrap server.
+To enable TLS, one can provide certificates on the command line interface.
 
 ### Providing certificates
 
@@ -12,9 +12,7 @@ The key and full certificate chain must be available in a [PKCS#12](https://en.w
 There are 2 ways to provide the PKCS#12 file to the server:
 
 - using the KMS server start command line  `--https-p12-file` and `--https-p12-password` options
-- via the bootstrap server on a TLS connection when the KMS server is started in this mode. This is more secure than the command line.
-
-A PKCS#12 file should be provided to the KMS server via the bootstrap server in a [zero-trust environment](./zero_trust.md).
+- setup certificates on the Cosmian VM
 
 #### Configuring HTTPS via the command line
 
