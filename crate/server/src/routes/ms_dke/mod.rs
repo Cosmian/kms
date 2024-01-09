@@ -10,7 +10,7 @@ use chrono::{Duration, Local};
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyMaterial,
     kmip_objects::Object,
-    kmip_operations::{Get,Decrypt},
+    kmip_operations::{Decrypt, Get},
     kmip_types::{KeyFormatType, KeyWrapType, UniqueIdentifier},
 };
 use num_bigint_dig::BigUint;
@@ -162,28 +162,36 @@ pub async fn decrypt(
     let encrypted_data = wrap_request.into_inner();
     let (key_name, key_id) = path.into_inner();
     trace!("POST /{}/{}/Decrypt {:?}", key_name, key_id, encrypted_data);
-    match _decrypt(&key_name,&key_id, encrypted_data, req_http, &kms).await {
+    match _decrypt(&key_name, &key_id, encrypted_data, req_http, &kms).await {
         Ok(decrypted_data) => HttpResponse::Ok().json(decrypted_data),
         Err(e) => HttpResponse::from_error(e),
     }
 }
 
-async fn _decrypt(_key_name: &str, key_id: &str, encrypted_data: EncryptedData, req_http: HttpRequest, kms: &Arc<KMSServer>) -> KResult<DecryptedData> {
+async fn _decrypt(
+    _key_name: &str,
+    key_id: &str,
+    encrypted_data: EncryptedData,
+    req_http: HttpRequest,
+    kms: &Arc<KMSServer>,
+) -> KResult<DecryptedData> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(req_http)?;
     let decrypt_request = Decrypt {
-        
-        unique_identifier: Some(UniqueIdentifier::TextString(
-             key_id.to_string() 
-        ),
+        unique_identifier: Some(UniqueIdentifier::TextString(key_id.to_string())),
         data: Some(STANDARD.decode(encrypted_data.value.as_bytes())?),
-        iv_counter_nonce: None,
-        init_indicator: None,
-        final_indicator: None,
-        authenticated_encryption_additional_data: None,
-        cryptographic_parameters: None,
-        authenticated_encryption_tag: None,
+        ..Default::default()
     };
+    let response = kms
+        .decrypt(decrypt_request, &user, database_params.as_ref())
+        .await?;
+    Ok(DecryptedData {
+        value: STANDARD.encode(
+            response
+                .data
+                .ok_or_else(|| kms_error!("The response does not contain the decrypted data"))?,
+        ),
+    })
 }
 
 fn big_uint_to_u32(bu: &BigUint) -> u32 {
