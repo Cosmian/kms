@@ -154,6 +154,12 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                     pad_be_bytes(&mut privkey_vec, 32);
                     PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED25519)?
                 }
+                RecommendedCurve::CURVEED448 => {
+                    let mut privkey_vec = d.to_bytes_be();
+                    // 57 is privkey size on Ed448.
+                    pad_be_bytes(&mut privkey_vec, 57);
+                    PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED448)?
+                }
                 other => ec_private_key_from_scalar(d, other)?,
             },
             x => kmip_bail!(

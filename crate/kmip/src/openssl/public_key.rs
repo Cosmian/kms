@@ -114,6 +114,9 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, K
                 RecommendedCurve::CURVEED25519 => {
                     PKey::public_key_from_raw_bytes(q_string, Id::ED25519)?
                 }
+                RecommendedCurve::CURVEED448 => {
+                    PKey::public_key_from_raw_bytes(q_string, Id::ED448)?
+                }
                 unsupported_curve => {
                     kmip_bail!(
                         "Unsupported curve: {:?} for a Transparent EC Public Key",

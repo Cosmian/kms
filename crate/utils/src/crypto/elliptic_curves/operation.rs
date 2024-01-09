@@ -147,12 +147,39 @@ pub fn create_x25519_key_pair(
         private_key_uid,
         RecommendedCurve::CURVE25519,
     );
+
     let private_key = to_ec_private_key(
         &keypair.raw_private_key()?,
         keypair.bits(),
         public_key_uid,
         RecommendedCurve::CURVE25519,
     );
+
+    Ok(KeyPair::new(private_key, public_key))
+}
+
+/// Generate an X448 Key Pair. Not FIPS 140-3 compliant.
+//#[cfg(not(feature = "fips"))]
+pub fn create_x448_key_pair(
+    private_key_uid: &str,
+    public_key_uid: &str,
+) -> Result<KeyPair, KmipUtilsError> {
+    let keypair = PKey::generate_x448()?;
+
+    let public_key = to_ec_public_key(
+        &keypair.raw_public_key()?,
+        keypair.bits(),
+        private_key_uid,
+        RecommendedCurve::CURVE448,
+    );
+
+    let private_key = to_ec_private_key(
+        &keypair.raw_private_key()?,
+        keypair.bits(),
+        public_key_uid,
+        RecommendedCurve::CURVE448,
+    );
+
     Ok(KeyPair::new(private_key, public_key))
 }
 
@@ -167,8 +194,8 @@ pub fn create_ed25519_key_pair(
     public_key_uid: &str,
 ) -> Result<KeyPair, KmipUtilsError> {
     let private_key = PKey::generate_ed25519()?;
-
     trace!("create_ed25519_key_pair: keypair OK");
+
     let public_key = to_ec_public_key(
         &private_key.raw_public_key()?,
         private_key.bits(),
@@ -176,6 +203,7 @@ pub fn create_ed25519_key_pair(
         RecommendedCurve::CURVEED25519,
     );
     trace!("create_ed25519_key_pair: public_key OK");
+
     let private_key = to_ec_private_key(
         &private_key.raw_private_key()?,
         private_key.bits(),
@@ -183,6 +211,39 @@ pub fn create_ed25519_key_pair(
         RecommendedCurve::CURVEED25519,
     );
     trace!("create_ed25519_key_pair: private_key OK");
+
+    Ok(KeyPair::new(private_key, public_key))
+}
+
+/// Generate an Ed448 Key Pair. FIPS 140-3 compliant **for digital signature
+/// only**.
+///
+/// Sources:
+/// - NIST.SP.800-186 - Section 3.1.2 table 2.
+/// - NIST.FIPS.186-5
+pub fn create_ed448_key_pair(
+    private_key_uid: &str,
+    public_key_uid: &str,
+) -> Result<KeyPair, KmipUtilsError> {
+    let private_key = PKey::generate_ed448()?;
+    trace!("create_ed448_key_pair: keypair OK");
+
+    let public_key = to_ec_public_key(
+        &private_key.raw_public_key()?,
+        private_key.bits(),
+        private_key_uid,
+        RecommendedCurve::CURVEED448,
+    );
+    trace!("create_ed448_key_pair: public_key OK");
+
+    let private_key = to_ec_private_key(
+        &private_key.raw_private_key()?,
+        private_key.bits(),
+        public_key_uid,
+        RecommendedCurve::CURVEED448,
+    );
+    trace!("create_ed448_key_pair: private_key OK");
+
     Ok(KeyPair::new(private_key, public_key))
 }
 
@@ -205,6 +266,7 @@ pub fn create_approved_ecc_key_pair(
 
     let ec_private_key = EcKey::generate(&curve)?;
     trace!("create_approved_ecc_key_pair: ec key OK");
+
     let private_key = to_ec_private_key(
         &ec_private_key.private_key().to_vec(),
         ec_private_key.private_key().num_bits() as u32,
@@ -212,6 +274,7 @@ pub fn create_approved_ecc_key_pair(
         kmip_curve,
     );
     trace!("create_approved_ecc_key_pair: private key converted OK");
+
     let mut ctx = BigNumContext::new()?;
     let public_key = to_ec_public_key(
         &ec_private_key
@@ -238,11 +301,13 @@ mod tests {
     #[cfg(not(feature = "fips"))]
     use openssl::pkey::{Id, PKey};
 
-    #[cfg(not(feature = "fips"))]
-    use super::create_x25519_key_pair;
     use super::{create_approved_ecc_key_pair, create_ed25519_key_pair};
     #[cfg(not(feature = "fips"))]
-    const X25519_SECRET_LENGTH: usize = 0x20;
+    use super::{create_x25519_key_pair, create_x448_key_pair};
+    #[cfg(not(feature = "fips"))]
+    const X25519_PRIVATE_KEY_LENGTH: usize = 0x20;
+    #[cfg(not(feature = "fips"))]
+    const X448_PRIVATE_KEY_LENGTH: usize = 0x38;
 
     #[test]
     fn test_ed25519_keypair_generation() {
@@ -307,7 +372,7 @@ mod tests {
             KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be(),
             _ => panic!("Not a transparent private key"),
         };
-        pad_be_bytes(&mut original_private_key_bytes, X25519_SECRET_LENGTH);
+        pad_be_bytes(&mut original_private_key_bytes, X25519_PRIVATE_KEY_LENGTH);
         // try to convert to openssl
         let p_key =
             PKey::private_key_from_raw_bytes(&original_private_key_bytes, Id::X25519).unwrap();
@@ -358,5 +423,53 @@ mod tests {
         keypair_generation(Nid::X9_62_PRIME256V1);
         keypair_generation(Nid::SECP384R1);
         keypair_generation(Nid::SECP521R1);
+    }
+
+    #[test]
+    #[cfg(not(feature = "fips"))]
+    fn test_x448_conversions() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        // Create a Key pair
+        // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
+        // - the public key is a TransparentEcPublicKey where the key value is the bytes of the Montgomery point
+        let wrap_key_pair = create_x448_key_pair("sk_uid", "pk_uid")
+            .expect("failed to create x25519 key pair in test_x448_conversions");
+
+        //
+        // public key
+        //
+        let original_public_key_value = &wrap_key_pair.public_key().key_block().unwrap().key_value;
+        let original_public_key_bytes = match &original_public_key_value.key_material {
+            KeyMaterial::TransparentECPublicKey { q_string, .. } => q_string,
+            _ => panic!("Not a transparent public key"),
+        };
+        // try to convert to openssl
+        let p_key = PKey::public_key_from_raw_bytes(original_public_key_bytes, Id::X448).unwrap();
+        // convert back to bytes
+        let raw_bytes = p_key.raw_public_key().unwrap();
+        assert_eq!(&raw_bytes, original_public_key_bytes);
+
+        //
+        // private key
+        //
+        let original_private_key_value =
+            &wrap_key_pair.private_key().key_block().unwrap().key_value;
+        let mut original_private_key_bytes = match &original_private_key_value.key_material {
+            KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be(),
+            _ => panic!("Not a transparent private key"),
+        };
+        pad_be_bytes(&mut original_private_key_bytes, X448_PRIVATE_KEY_LENGTH);
+        // try to convert to openssl
+        let p_key =
+            PKey::private_key_from_raw_bytes(&original_private_key_bytes, Id::X448).unwrap();
+        // convert back to bytes
+        let raw_bytes = p_key.raw_private_key().unwrap();
+        assert_eq!(raw_bytes, original_private_key_bytes);
+        // get public key from private
+        let raw_public_key_bytes = p_key.raw_public_key().unwrap();
+        assert_eq!(&raw_public_key_bytes, original_public_key_bytes);
     }
 }

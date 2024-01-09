@@ -19,7 +19,9 @@ use cosmian_kmip::{
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::elliptic_curves::operation::create_x25519_key_pair;
+use cosmian_kms_utils::crypto::elliptic_curves::operation::{
+    create_x25519_key_pair, create_x448_key_pair,
+};
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
@@ -432,6 +434,10 @@ impl KMS {
                         create_x25519_key_pair(private_key_uid, public_key_uid)
                     }
                     #[cfg(not(feature = "fips"))]
+                    RecommendedCurve::CURVE448 => {
+                        create_x448_key_pair(private_key_uid, public_key_uid)
+                    }
+                    #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED25519 => {
                         warn!(
                             "An Edwards Keypair on curve 25519 should not be requested to perform \
@@ -446,6 +452,23 @@ impl KMS {
                     RecommendedCurve::CURVEED25519 => {
                         kms_not_supported!(
                             "An Edwards Keypair on curve 25519 should not be requested to perform \
+                             ECDH in FIPS mode."
+                        )
+                    }
+                    #[cfg(not(feature = "fips"))]
+                    RecommendedCurve::CURVEED448 => {
+                        warn!(
+                            "An Edwards Keypair on curve 448 should not be requested to perform \
+                             ECDH. Creating anyway."
+                        );
+                        create_ed448_key_pair(private_key_uid, public_key_uid)
+                    }
+                    #[cfg(feature = "fips")]
+                    // Ed448 not allowed for ECDH.
+                    // see NIST.SP.800-186 - Section 3.1.2 table 2.
+                    RecommendedCurve::CURVEED448 => {
+                        kms_not_supported!(
+                            "An Edwards Keypair on curve 448 should not be requested to perform \
                              ECDH in FIPS mode."
                         )
                     }
