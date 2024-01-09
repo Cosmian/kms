@@ -277,8 +277,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     );
 
     #[cfg(not(feature = "fips"))]
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[1].response_payload
-    else {
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[1].response_payload else {
         panic!("not a create key pair response payload");
     };
 
@@ -312,8 +311,7 @@ async fn test_curve_25519_multiple() -> KResult<()> {
     );
 
     #[cfg(not(feature = "fips"))]
-    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[3].response_payload
-    else {
+    let Some(Operation::CreateKeyPairResponse(_)) = &response.items[3].response_payload else {
         panic!("not a create key pair response payload");
     };
 
