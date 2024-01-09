@@ -338,7 +338,7 @@ pub fn openssl_public_key_to_kmip(
                                 q_string,
                             },
                             attributes: Some(Attributes {
-                                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                                cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                                 object_type: Some(ObjectType::PublicKey),
@@ -396,7 +396,7 @@ pub fn openssl_public_key_to_kmip(
                                 q_string,
                             },
                             attributes: Some(Attributes {
-                                cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                                cryptographic_algorithm: Some(CryptographicAlgorithm::Ed448),
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                                 object_type: Some(ObjectType::PublicKey),
@@ -409,7 +409,7 @@ pub fn openssl_public_key_to_kmip(
                                 ..Attributes::default()
                             }),
                         },
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                        cryptographic_algorithm: Some(CryptographicAlgorithm::Ed448),
                         cryptographic_length: Some(public_key.bits() as i32),
                         key_wrapping_data: None,
                         key_compression_type: None,
