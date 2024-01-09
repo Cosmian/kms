@@ -2,7 +2,7 @@ use std::{cmp::min, collections::HashSet};
 
 use cosmian_kmip::{
     kmip::{
-        extra::x509_extensions,
+        extra::{x509_extensions, VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_objects::Object,
         kmip_operations::{Certify, CertifyResponse},
         kmip_types::{
@@ -110,7 +110,6 @@ pub async fn certify(
             number_of_days,
             certificate_subject_name,
             certificate_public_key,
-            None,
         )?;
         (
             issued_certificate_id.clone(),
@@ -161,7 +160,6 @@ pub async fn certify(
             number_of_days,
             certificate_subject_name,
             certificate_public_key,
-            None,
         )?;
         // Add link to certificate in public key
         public_key_owm.object.attributes_mut()?.add_link(
@@ -212,7 +210,6 @@ fn build_certificate(
     number_of_days: usize,
     subject_name: X509Name,
     certificate_public_key: PKey<Public>,
-    extensions: Option<Vec<u8>>,
 ) -> Result<(String, Object), KmsError> {
     // Create an X509 struct with the desired certificate information.
     let mut x509_builder = X509::builder().unwrap();
@@ -230,8 +227,10 @@ fn build_certificate(
     x509_builder.sign(issuer_pkey, MessageDigest::sha256())?;
 
     // Extensions
-    if let Some(extensions) = extensions {
-        let extensions_as_str = String::from_utf8(extensions)?;
+    if let Some(extensions) =
+        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)
+    {
+        let extensions_as_str = String::from_utf8(extensions.to_vec())?;
 
         let context = x509_builder.x509v3_context(Some(issuer_x509), None);
 

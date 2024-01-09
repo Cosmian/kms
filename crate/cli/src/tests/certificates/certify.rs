@@ -9,6 +9,7 @@ use cosmian_kmip::kmip::{
 use cosmian_logger::log_utils::log_init;
 use openssl::{nid::Nid, x509::X509};
 use uuid::Uuid;
+use x509_parser::{der_parser::oid, prelude::*};
 
 #[cfg(not(feature = "fips"))]
 use crate::tests::{elliptic_curve::create_key_pair::create_ec_key_pair, shared::export_key};
@@ -36,6 +37,7 @@ pub fn certify(
     issuer_certificate_key_id: Option<String>,
     certificate_id: Option<String>,
     days: Option<usize>,
+    certificate_extensions: Option<PathBuf>,
     tags: Option<&[&str]>,
 ) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
@@ -69,6 +71,10 @@ pub fn certify(
         args.push("--days".to_owned());
         args.push(days.to_string());
     }
+    if let Some(certificate_extensions) = certificate_extensions {
+        args.push("--certificate-extensions".to_owned());
+        args.push(certificate_extensions.to_string_lossy().to_string());
+    }
     if let Some(tags) = tags {
         for tag in tags {
             args.push("--tag".to_owned());
@@ -95,7 +101,7 @@ pub fn extract_certificate_id(text: &str) -> Option<&str> {
 }
 
 #[tokio::test]
-async fn certify_a_csr_test() -> Result<(), CliError> {
+async fn test_certify_a_csr() -> Result<(), CliError> {
     log_init("cosmian_kms_server=debug");
     // Create a test server
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
@@ -137,6 +143,7 @@ async fn certify_a_csr_test() -> Result<(), CliError> {
         None,
         None,
         Some(issuer_private_key_id.clone()),
+        None,
         None,
         None,
         None,
@@ -200,6 +207,165 @@ async fn certify_a_csr_test() -> Result<(), CliError> {
     Ok(())
 }
 
+#[tokio::test]
+async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
+    log_init("cosmian_kms_server=debug");
+    // Create a test server
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+
+    // import Root CA
+    import_certificate(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        "test_data/certificates/csr/ca.crt",
+        CertificateInputFormat::Pem,
+        None,
+        Some(Uuid::new_v4().to_string()),
+        None,
+        None,
+        Some(&["root_ca"]),
+        false,
+        true,
+    )?;
+
+    // import Intermediate p12
+    let issuer_private_key_id = import_certificate(
+        &ctx.owner_cli_conf_path,
+        "certificates",
+        "test_data/certificates/csr/intermediate.p12",
+        CertificateInputFormat::Pkcs12,
+        Some("secret"),
+        Some(Uuid::new_v4().to_string()),
+        None,
+        None,
+        Some(&["intermediate_ca"]),
+        false,
+        true,
+    )?;
+
+    // Certify the CSR with the intermediate CA
+    let certificate_id = certify(
+        &ctx.owner_cli_conf_path,
+        Some("test_data/certificates/csr/leaf.csr".to_owned()),
+        None,
+        None,
+        Some(issuer_private_key_id.clone()),
+        None,
+        None,
+        None,
+        Some(PathBuf::from("test_data/certificates/openssl/ext.cnf")),
+        Some(&["certify_a_csr_test"]),
+    )?;
+
+    // export the certificate
+    export_certificate(
+        &ctx.owner_cli_conf_path,
+        &certificate_id,
+        "/tmp/exported_cert.json",
+        Some(CertificateExportFormat::JsonTtlv),
+        None,
+        true,
+    )
+    .unwrap();
+    let cert = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_cert.json")).unwrap();
+    let cert_x509_der = match &cert {
+        Object::Certificate {
+            certificate_value, ..
+        } => certificate_value,
+        _ => panic!("wrong object type"),
+    };
+    // check that the certificate is valid by parsing it using openssl
+    let cert_x509 = X509::from_der(cert_x509_der).unwrap();
+    // print the subject name
+    assert_eq!(
+        "Test Leaf",
+        cert_x509
+            .subject_name()
+            .entries_by_nid(Nid::COMMONNAME)
+            .next()
+            .unwrap()
+            .data()
+            .as_utf8()
+            .unwrap()
+            .to_string()
+    );
+
+    // check X509 extensions
+    let (_, cert_x509) = X509Certificate::from_der(cert_x509_der).unwrap();
+    let exts_with_x509_parser = cert_x509.extensions();
+
+    for ext in exts_with_x509_parser {
+        println!("\n\next: {:?}", ext);
+        println!("value is: {:?}", String::from_utf8(ext.value.to_vec()));
+    }
+
+    // BasicConstraints
+    let bc = exts_with_x509_parser
+        .iter()
+        .find(|x| x.oid == oid!(2.5.29.19))
+        .unwrap();
+    assert!(!bc.critical);
+    assert_eq!(
+        bc.parsed_extension(),
+        &ParsedExtension::BasicConstraints(BasicConstraints {
+            ca: true,
+            path_len_constraint: Some(0)
+        })
+    );
+
+    // KeyUsage
+    let ku: &X509Extension<'_> = exts_with_x509_parser
+        .iter()
+        .find(|x| x.oid == oid!(2.5.29.15))
+        .unwrap();
+    assert!(!ku.critical);
+    assert_eq!(
+        ku.parsed_extension(),
+        &ParsedExtension::KeyUsage(KeyUsage { flags: 33 })
+    );
+
+    // ExtendedKeyUsage
+    let eku: &X509Extension<'_> = exts_with_x509_parser
+        .iter()
+        .find(|x| x.oid == oid!(2.5.29.37))
+        .unwrap();
+    assert!(!eku.critical);
+    assert_eq!(
+        eku.parsed_extension(),
+        &ParsedExtension::ExtendedKeyUsage(ExtendedKeyUsage {
+            any: false,
+            server_auth: false,
+            client_auth: false,
+            code_signing: false,
+            email_protection: true,
+            time_stamping: false,
+            ocsp_signing: false,
+            other: vec![]
+        })
+    );
+
+    // CRLDistributionPoints
+    let crl_dp: &X509Extension<'_> = exts_with_x509_parser
+        .iter()
+        .find(|x| x.oid == oid!(2.5.29.31))
+        .unwrap();
+    assert!(!crl_dp.critical);
+    assert_eq!(
+        crl_dp.parsed_extension(),
+        &ParsedExtension::CRLDistributionPoints(CRLDistributionPoints {
+            points: vec![CRLDistributionPoint {
+                distribution_point: Some(DistributionPointName::FullName(vec![GeneralName::URI(
+                    "http://cse.example.com/crl.pem"
+                )])),
+                reasons: None,
+                crl_issuer: None
+            }]
+        })
+    );
+
+    Ok(())
+}
+
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn certify_a_public_key_test() -> Result<(), CliError> {
@@ -247,6 +413,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         Some(public_key_id),
         Some("C = FR, ST = IdF, L = Paris, O = AcmeTest, CN = kmserver.acme.com".to_string()),
         Some(issuer_private_key_id.clone()),
+        None,
         None,
         None,
         None,

@@ -2,12 +2,11 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kmip::kmip::{
-    extra::{VENDOR_ID_COSMIAN, VENDOR_ID_X509_EXTENSION},
     kmip_objects::ObjectType,
     kmip_operations::Certify,
     kmip_types::{
         Attributes, CertificateAttributes, CertificateRequestType, LinkType,
-        LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute,
+        LinkedObjectIdentifier, UniqueIdentifier,
     },
 };
 use cosmian_kms_client::KmsRestClient;
@@ -159,12 +158,7 @@ impl CertifyAction {
         };
 
         if let Some(extension_file) = &self.certificate_extensions {
-            let vas = attributes.vendor_attributes.get_or_insert_with(Vec::new);
-            vas.push(VendorAttribute {
-                vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-                attribute_name: VENDOR_ID_X509_EXTENSION.to_owned(),
-                attribute_value: std::fs::read(extension_file)?,
-            })
+            attributes.set_x509_extension_file(std::fs::read(extension_file)?);
         }
 
         let certify_request = Certify {
