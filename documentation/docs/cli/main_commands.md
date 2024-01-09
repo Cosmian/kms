@@ -579,6 +579,8 @@ Possible values:  `"pem", "der"` [default: `"pem"`]
 
 `--days [-d] <NUMBER_OF_DAYS>` The requested number of validity days The server may grant a different value
 
+`--certificate-extensions [-e] <CERTIFICATE_EXTENSIONS>` The path to a X509 extension's file, containing a `v3_ca` parag
+
 `--tag [-t] <TAG>` The tag to associate to the certificate. To specify multiple tags, use the option multiple times
 
 
