@@ -3,6 +3,9 @@ from typing import List, Optional, Tuple, Union
 
 from cloudproof_cover_crypt import Attribute, Policy
 
+UidOrTags = Union[str, List[str]]
+"""KMS Objects (e.g. keys) can either be referenced by an UID using a single string, or by a list of tags using a list of string."""
+
 class KmsObject:
     def object_type(self) -> str:
         """Get the type of the underlying KMIP object.
@@ -156,8 +159,7 @@ class KmsClient:
     def rotate_cover_crypt_attributes(
         self,
         attributes: List[Union[Attribute, str]],
-        master_secret_key_identifier: Optional[str],
-        tags: Optional[List[str]] = None,
+        master_secret_key_identifier: UidOrTags,
     ) -> Future[Tuple[str, str]]:
         """Rotate the given policy attributes. This will rekey in the KMS:
             - the Master Keys
@@ -165,8 +167,7 @@ class KmsClient:
 
         Args:
             attributes (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
-            master_secret_key_identifier (Optional[str]): master secret key UID. Tags should be supplied if the ID is not given.
-            tags (Optional[List[str]]): tags to retrieve the master secret key if it the id is not satisfied
+            master_secret_key_identifier (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 
         Returns:
             Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
@@ -174,8 +175,7 @@ class KmsClient:
     async def clear_cover_crypt_attributes_rotations(
         self,
         attributes: List[Union[Attribute, str]],
-        master_secret_key_identifier: str,
-        tags: Optional[List[str]] = None,
+        master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Remove old rotations from the specified policy attributes.
@@ -185,9 +185,8 @@ class KmsClient:
         - all User Decryption Keys that contain one of these attributes in their policy.
 
         Args:
-            - attributes (List[Union[Attribute, str]): Attributes to rotate e.g. ["Department::HR"]
-            - master_secret_key_identifier (str): Master secret key UID
-            - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
+            attributes (List[Union[Attribute, str]): Attributes to rotate e.g. ["Department::HR"]
+            master_secret_key_identifier (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
@@ -195,8 +194,7 @@ class KmsClient:
     async def remove_cover_crypt_attribute(
         self,
         attribute: Union[Attribute, str],
-        master_secret_key_identifier: str,
-        tags: Optional[List[str]] = None,
+        master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Remove a specific attribute from a keypair's policy.
@@ -206,9 +204,8 @@ class KmsClient:
         - all User Decryption Keys that contain one of these attributes in their policy.
 
         Args:
-            - attributes (List[Union[Attribute, str]): Attributes to remove e.g. "Department::HR"
-            - master_secret_key_identifier (str): Master secret key UID
-            - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
+            attributes (List[Union[Attribute, str]): Attributes to remove e.g. "Department::HR"
+            master_secret_key_identifier (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
@@ -216,8 +213,7 @@ class KmsClient:
     async def disable_cover_crypt_attribute(
         self,
         attribute: Union[Attribute, str],
-        master_secret_key_identifier: str,
-        tags: Optional[List[str]] = None,
+        master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Disable a specific attribute from a keypair's policy.
@@ -227,9 +223,8 @@ class KmsClient:
         - all User Decryption Keys that contain one of these attributes in their policy.
 
         Args:
-            - attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
-            - master_secret_key_identifier (str): Master secret key UID
-            - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
+            attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
+            master_secret_key_identifier (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
@@ -238,8 +233,7 @@ class KmsClient:
         self,
         attribute: Union[Attribute, str],
         is_hybridized: bool,
-        master_secret_key_identifier: str,
-        tags: Optional[List[str]] = None,
+        master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Add a specific attribute to a keypair's policy.
@@ -249,10 +243,10 @@ class KmsClient:
         - all User Decryption Keys that contain one of these attributes in their policy.
 
         Args:
-            - attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
-            - is_hybridized (bool): hint for encryption
-            - master_secret_key_identifier (str): Master secret key UID
-            - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
+            attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
+            is_hybridized (bool): hint for encryption
+            master_secret_key_identifier (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+
 
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
@@ -261,8 +255,7 @@ class KmsClient:
         self,
         attribute: Union[Attribute, str],
         new_name: str,
-        master_secret_key_identifier: str,
-        tags: Optional[List[str]] = None,
+        master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Add a specific attribute to a keypair's policy.
@@ -272,16 +265,15 @@ class KmsClient:
         - all User Decryption Keys that contain one of these attributes in their policy.
 
         Args:
-            - attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
-            - new_name (str): the new name for the attribute
-            - master_secret_key_identifier (str): Master secret key UID
-            - tags (List[str]): Tags to use when the master_secret_key_identifier is not provided (default: None)
+            attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
+            new_name (str): the new name for the attribute
+            master_secret_key_identifier (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)
         """
     def create_cover_crypt_user_decryption_key(
-        self, access_policy_str: str, master_secret_key_identifier: str
+        self, access_policy_str: str, master_secret_key_identifier: str, tags: Optional[str] = None
     ) -> Future[str]:
         """Generate a user secret key.
         A new user secret key does NOT include to old (i.e. rotated) partitions.
@@ -289,6 +281,7 @@ class KmsClient:
         Args:
             access_policy_str (str): user access policy
             master_secret_key_identifier (str): master secret key UID
+            tags (Optional[List[str]]): optional tags to use with the keys
 
         Returns:
             Future[str]: User secret key UID
@@ -323,8 +316,7 @@ class KmsClient:
         self,
         encryption_policy_str: str,
         data: bytes,
-        public_key_identifier: Optional[str],
-        tags: Optional[List[str]] = None,
+        public_key_identifier: UidOrTags,
         header_metadata: Optional[bytes] = None,
         authentication_data: Optional[bytes] = None,
     ) -> Future[bytes]:
@@ -334,8 +326,7 @@ class KmsClient:
         Args:
             encryption_policy_str (str): the access policy to use for encryption
             data (bytes): data to encrypt
-            public_key_identifier (str): identifier of the public key. If not specified, tags must be provided.
-            tags (Optional[List[str]]): tags to use to find the public key
+            public_key_identifier (Union[str, List[str]]): public key unique id or associated tags
             header_metadata (Optional[bytes]): additional data to symmetrically encrypt in the header
             authentication_data (Optional[bytes]): authentication data to use in symmetric encryptions
 
@@ -345,26 +336,24 @@ class KmsClient:
     def cover_crypt_decryption(
         self,
         encrypted_data: bytes,
-        user_key_identifier: Optional[str],
-        tags: Optional[List[str]] = None,
+        user_key_identifier: UidOrTags,
         authentication_data: Optional[bytes] = None,
     ) -> Future[Tuple[bytes, bytes]]:
         """Hybrid decryption.
 
         Args:
             encrypted_data (bytes): encrypted header || symmetric ciphertext
-            user_key_identifier (str): identifier of the user key. If not specified, tags must be provided.
-            tags (Optional[List[str]]): tags to use to find the user key
+            user_key_identifier (Union[str, List[str]]): user secret key unique id or associated tags
             authentication_data (Optional[bytes]): authentication data to use in symmetric decryption
 
         Returns:
             Future[Tuple[bytes, bytes]]: (plaintext bytes, header metadata bytes)
         """
-    def get_object(self, unique_identifier: str) -> Future[KmsObject]:
+    def get_object(self, unique_identifier: UidOrTags) -> Future[KmsObject]:
         """Fetch KMIP object by UID.
 
         Args:
-            unique_identifier (str): the object unique identifier in the KMS
+            unique_identifier (Union[str, List[str]]): object unique id or associated tags
 
         Returns:
             Future[KmsObject]
@@ -372,29 +361,25 @@ class KmsClient:
     def revoke_key(
         self,
         revocation_reason: str,
-        key_identifier: Optional[str],
-        tags: Optional[List[str]] = None,
+        key_identifier: UidOrTags,
     ) -> Future[str]:
         """Mark a CoverCrypt Key as revoked
 
         Args:
             revocation_reason (str): explanation of the revocation
-            key_identifier (str): identifier of the user key. If not specified, tags must be provided.
-            tags (Optional[List[str]]): tags to use to find the user key
+            key_identifier (Union[str, List[str]]): key unique id or associated tags
 
         Returns:
             Future[str]: uid of the revoked key
         """
     def destroy_key(
         self,
-        key_identifier: Optional[str],
-        tags: Optional[List[str]] = None,
+        key_identifier: UidOrTags,
     ) -> Future[str]:
         """Mark a CoverCrypt Key as destroyed
 
         Args:
-            key_identifier (str): identifier of the user key. If not specified, tags must be provided.
-            tags (Optional[List[str]]): tags to use to find the user key
+            key_identifier (Union[str, List[str]]): key unique id or associated tags
 
         Returns:
             Future[str]: uid of the destroyed key
@@ -417,15 +402,13 @@ class KmsClient:
     def encrypt(
         self,
         data: bytes,
-        key_identifier: Optional[str]=None,
-        tags: Optional[List[str]]=None,
+        key_identifier: UidOrTags,
         ) -> Future[KmsEncryptResponse]:
         """Encrypts the provided binary data using the specified key identifier or tags
 
         Args:
             data (bytes): binary data to be encrypted
-            key_identifier (str, optional): key identifier associated with the encryption
-            tags (List[str], optional): tags associated with the encryption
+            key_identifier (Union[str, List[str]]): secret key unique id or associated tags
 
         Returns:
             Future[KmsEncryptResponse]: encryption result
@@ -434,8 +417,7 @@ class KmsClient:
     def decrypt(
         self,
         encrypted_data: bytes,
-        user_key_identifier: Optional[str],
-        tags: Optional[List[str]] = None,
+        key_identifier: UidOrTags,
         iv_counter_nonce: Optional[bytes] = None,
         authentication_encryption_tag: Optional[bytes] = None,
     ) -> Future[bytes]:
@@ -443,8 +425,7 @@ class KmsClient:
 
         Args:
             encrypted_data (bytes): ciphertext
-            user_key_identifier (str): identifier of the key. If not specified, tags must be provided
-            tags (Optional[List[str]]): tags to use to find the key
+            key_identifier (Union[str, List[str]]): secret key unique id or associated tags
             iv_counter_nonce (Optional[bytes]): the initialization vector, counter or nonce to be used
             authentication_encryption_tag (Optional[bytes]): additional binary data used for authentication
 

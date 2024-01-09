@@ -365,6 +365,39 @@ class TestGenericKMS(unittest.IsolatedAsyncioTestCase):
         destroyed_uid = await self.client.destroy_key(sym_key_uid)
         self.assertEqual(destroyed_uid, sym_key_uid)
 
+    async def test_key_tags(self):
+        # Create key with associated tags
+        key_tags = ["top secret", "france"]
+        _ = await self.client.create_symmetric_key(256, tags=key_tags)
+
+        # Export
+        key_object = await self.client.get_object(key_tags)
+        self.assertEqual(key_object.object_type(), "SymmetricKey")
+        self.assertEqual(len(key_object.key_block()), 32)
+
+        # Wrong tag
+        with self.assertRaises(Exception):
+            await self.client.get_object(["wrong"])
+
+        # Encrypt
+        plaintext = b"Secret message"
+        response = await self.client.encrypt(plaintext, key_tags)
+
+        # Decrypt
+        decrypted_data = await self.client.decrypt(
+            response.data(),
+            key_tags,
+            iv_counter_nonce=response.iv_counter_nonce(),
+            authentication_encryption_tag=response.authenticated_encryption_tag(),
+        )
+        self.assertEqual(bytes(decrypted_data), plaintext)
+
+        # Revoke
+        await self.client.revoke_key("test", key_tags)
+
+        # Destroy
+        await self.client.destroy_key(key_tags)
+
 
 if __name__ == "__main__":
     unittest.main()

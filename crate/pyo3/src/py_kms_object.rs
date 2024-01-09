@@ -36,7 +36,7 @@ pub struct KmsEncryptResponse(pub EncryptResponse);
 
 #[pymethods]
 impl KmsEncryptResponse {
-    /// Reads a KmsENcryptResponse from a JSON string.
+    /// Reads a KmsEncryptResponse from a JSON string.
     #[staticmethod]
     pub fn from_json(data: &str) -> PyResult<Self> {
         Ok(Self(

@@ -73,7 +73,7 @@ macro_rules! rekey_keypair {
         })
     }};
 }
-
+/// KMS Objects (e.g. keys) can either be referenced by an UID using a single string, or by a list of tags using a list of string.
 pub struct ToUniqueIdentifier(String);
 
 impl FromPyObject<'_> for ToUniqueIdentifier {
@@ -86,7 +86,7 @@ impl FromPyObject<'_> for ToUniqueIdentifier {
             })?))
         } else {
             Err(pyo3::exceptions::PyValueError::new_err(
-                "KMS objects are references with a UID (string) or tags (list of strings)",
+                "KMS objects can only be referenced with an UID (str) or tags (List[str])",
             ))
         }
     }
@@ -576,7 +576,7 @@ impl KmsClient {
     /// Args:
     ///     - `access_policy_str` (str): the access policy to use for encryption
     ///     - `data` (bytes): data to encrypt
-    ///     - `public_key_identifier` (Optional[str, List[str]]): user secret key unique id or associated tags
+    ///     - `public_key_identifier` (Union[str, List[str]]): public key unique id or associated tags
     ///     - `header_metadata` (Optional[bytes]): additional data to symmetrically encrypt in the header
     ///     - `authentication_data` (Optional[bytes]): authentication data to use in symmetric encryptions
     ///
@@ -619,7 +619,7 @@ impl KmsClient {
     /// Args:
     ///     - `encrypted_data` (bytes): encrypted header || symmetric ciphertext
     ///     - `authentication_data` (Optional[bytes]): authentication data to use in symmetric decryption
-    ///     - `user_key_identifier` (Optional[str, List[str]]): user secret key unique id or associated tags
+    ///     - `user_key_identifier` (Union[str, List[str]]): user secret key unique id or associated tags
     ///
     /// Returns:
     ///     Future[Tuple[bytes, bytes]]: (plaintext bytes, header metadata
@@ -690,7 +690,7 @@ impl KmsClient {
     ///
     /// Args:
     ///     - `revocation_reason` (str): explanation of the revocation
-    ///     - `key_identifier` (Union[str, List[str]]) - secret key unique id or associated tags
+    ///     - `key_identifier` (Union[str, List[str]]) - key unique id or associated tags
     ///     - `tags` to use when the `key_identifier` is not provided
     ///
     /// Returns:
