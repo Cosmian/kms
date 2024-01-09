@@ -2,11 +2,12 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kmip::kmip::{
+    extra::{VENDOR_ID_COSMIAN, VENDOR_ID_X509_EXTENSION},
     kmip_objects::ObjectType,
     kmip_operations::Certify,
     kmip_types::{
         Attributes, CertificateAttributes, CertificateRequestType, LinkType,
-        LinkedObjectIdentifier, UniqueIdentifier,
+        LinkedObjectIdentifier, UniqueIdentifier, VendorAttribute,
     },
 };
 use cosmian_kms_client::KmsRestClient;
@@ -64,6 +65,10 @@ pub struct CertifyAction {
     /// The server may grant a different value
     #[clap(long = "days", short = 'd', default_value = "365")]
     number_of_days: usize,
+
+    /// The path to a X509 extension's file, containing a `v3_ca` parag
+    #[clap(long = "certificate-extensions", short = 'e')]
+    certificate_extensions: Option<PathBuf>,
 
     /// The tag to associate to the certificate.
     /// To specify multiple tags, use the option multiple times.
@@ -152,6 +157,15 @@ impl CertifyAction {
         } else {
             None
         };
+
+        if let Some(extension_file) = &self.certificate_extensions {
+            let vas = attributes.vendor_attributes.get_or_insert_with(Vec::new);
+            vas.push(VendorAttribute {
+                vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
+                attribute_name: VENDOR_ID_X509_EXTENSION.to_owned(),
+                attribute_value: std::fs::read(extension_file)?,
+            })
+        }
 
         let certify_request = Certify {
             unique_identifier,

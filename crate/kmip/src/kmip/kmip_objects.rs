@@ -78,7 +78,7 @@ pub enum Object {
         #[serde(rename = "KeyBlock")]
         key_block: KeyBlock,
     },
-    ///A Managed Cryptographic Object containing a shared secret value that is not
+    /// A Managed Cryptographic Object containing a shared secret value that is not
     /// a key or certificate (e.g., a password).
     /// The Key Block of the Secret Data object contains a Key Value of the Secret Data Type.
     /// The Key Value MAY be wrapped.

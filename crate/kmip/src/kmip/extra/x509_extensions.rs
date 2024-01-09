@@ -48,7 +48,6 @@ pub fn parse_v3_ca_from_file(
     parse_v3_ca(&conf, x509_context)
 }
 
-#[cfg(test)]
 pub fn parse_v3_ca_from_str(
     conf: &str,
     x509_context: &X509v3Context,

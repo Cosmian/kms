@@ -1,4 +1,4 @@
-use std::{cmp::min, collections::HashSet, path::PathBuf};
+use std::{cmp::min, collections::HashSet};
 
 use cosmian_kmip::{
     kmip::{
@@ -212,7 +212,7 @@ fn build_certificate(
     number_of_days: usize,
     subject_name: X509Name,
     certificate_public_key: PKey<Public>,
-    extension_filepath: Option<PathBuf>,
+    extensions: Option<Vec<u8>>,
 ) -> Result<(String, Object), KmsError> {
     // Create an X509 struct with the desired certificate information.
     let mut x509_builder = X509::builder().unwrap();
@@ -230,10 +230,12 @@ fn build_certificate(
     x509_builder.sign(issuer_pkey, MessageDigest::sha256())?;
 
     // Extensions
-    if let Some(extension_filepath) = extension_filepath {
+    if let Some(extensions) = extensions {
+        let extensions_as_str = String::from_utf8(extensions)?;
+
         let context = x509_builder.x509v3_context(Some(issuer_x509), None);
 
-        x509_extensions::parse_v3_ca_from_file(&extension_filepath, &context)?
+        x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
             .into_iter()
             .try_for_each(|extension| x509_builder.append_extension(extension))?;
     }
