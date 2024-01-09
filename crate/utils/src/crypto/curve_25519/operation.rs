@@ -17,7 +17,9 @@ use openssl::{
 
 use crate::{error::KmipUtilsError, kmip_utils_bail, KeyPair};
 
-pub const ED25519_SECRET_LENGTH: usize = 0x20;
+pub const X25519_PRIVATE_KEY_LENGTH: usize = 0x20;
+pub const X25519_PUBLIC_KEY_LENGTH: usize = 0x20;
+pub const ED25519_PRIVATE_KEY_LENGTH: usize = 0x20;
 pub const ED25519_PUBLIC_KEY_LENGTH: usize = 0x20;
 pub const Q_LENGTH_BITS: i32 = 253;
 
@@ -273,7 +275,7 @@ mod tests {
             KeyMaterial::TransparentECPrivateKey { d, .. } => d.to_bytes_be(),
             _ => panic!("Not a transparent private key"),
         };
-        pad_be_bytes(&mut original_private_key_bytes, X25519_SECRET_LENGTH);
+        pad_be_bytes(&mut original_private_key_bytes, X25519_PRIVATE_KEY_LENGTH);
         // try to convert to openssl
         let p_key =
             PKey::private_key_from_raw_bytes(&original_private_key_bytes, Id::X25519).unwrap();
