@@ -1109,6 +1109,7 @@ dependencies = [
  "url",
  "uuid",
  "x509-cert",
+ "x509-parser",
  "zeroize",
 ]
 

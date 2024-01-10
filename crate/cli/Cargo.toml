@@ -53,3 +53,4 @@ openssl = { workspace = true }
 predicates = "3.0"
 regex = { version = "1.10", default-features = false }
 tempfile = "3.8"
+x509-parser = { workspace = true }
