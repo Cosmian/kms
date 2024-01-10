@@ -159,7 +159,7 @@ pub fn create_x25519_key_pair(
 }
 
 /// Generate an X448 Key Pair. Not FIPS 140-3 compliant.
-//#[cfg(not(feature = "fips"))]
+#[cfg(not(feature = "fips"))]
 pub fn create_x448_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
