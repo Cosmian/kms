@@ -26,7 +26,9 @@ use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
-        elliptic_curves::operation::{create_approved_ecc_key_pair, create_ed25519_key_pair},
+        elliptic_curves::operation::{
+            create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
+        },
         hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
         rsa::{to_rsa_private_key, to_rsa_public_key},
         symmetric::{create_symmetric_key, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
@@ -487,6 +489,7 @@ impl KMS {
             CryptographicAlgorithm::Ed25519 => {
                 create_ed25519_key_pair(private_key_uid, public_key_uid)
             }
+            CryptographicAlgorithm::Ed448 => create_ed448_key_pair(private_key_uid, public_key_uid),
             CryptographicAlgorithm::CoverCrypt => {
                 cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
                     &Covercrypt::default(),
