@@ -95,7 +95,6 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
     //  - to wrapped (wrapping_password is some)
     //  - or not wrapped (otherwise)
     let is_wrapped = is_wrapped || wrapping_password.is_some();
-    // TODO - is salt necessary here ?
     let key = if let Some(wrapping_password) = wrapping_password {
         wrap_key_bytes(private_key, &wrapping_password)?
     } else {
