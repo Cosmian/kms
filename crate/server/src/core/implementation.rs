@@ -26,7 +26,7 @@ use cosmian_kms_utils::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
         curve_25519::operation::{create_approved_ecc_key_pair, create_ed25519_key_pair},
         hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
-        symmetric::{create_symmetric_key, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
+        symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
     },
     tagging::{check_user_tags, get_tags, remove_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
@@ -161,7 +161,7 @@ impl KMS {
                 | KeyFormatType::PKCS1
                 | KeyFormatType::PKCS8 => {
                     let p_key = kmip_public_key_to_openssl(&owm.object)?;
-                    Ok(Box::new(HybridEncryptionSystem::new(&owm.id, p_key))
+                    Ok(Box::new(HybridEncryptionSystem::new(&owm.id, p_key, false))
                         as Box<dyn EncryptionSystem>)
                 }
                 other => kms_not_supported!("encryption with public keys of format: {other}"),
@@ -172,6 +172,7 @@ impl KMS {
                 Box::new(HybridEncryptionSystem::instantiate_with_certificate(
                     &owm.id,
                     certificate_value,
+                    false,
                 )?) as Box<dyn EncryptionSystem>,
             ),
             other => kms_not_supported!("encryption with keys of type: {}", other.object_type()),
@@ -206,8 +207,10 @@ impl KMS {
                 | KeyFormatType::TransparentRSAPrivateKey
                 | KeyFormatType::TransparentECPrivateKey => {
                     let p_key = kmip_private_key_to_openssl(&owm.object)?;
-                    Ok(Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key))
-                        as Box<dyn DecryptionSystem>)
+                    Ok(
+                        Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key, false))
+                            as Box<dyn DecryptionSystem>,
+                    )
                 }
                 other => kms_not_supported!("decryption with keys of format: {other}"),
             },
@@ -276,7 +279,8 @@ impl KMS {
                         .map_or(AES_256_GCM_KEY_LENGTH, |v| v as usize / 8);
                     let mut symmetric_key = vec![0; key_len];
                     rng.fill_bytes(&mut symmetric_key);
-                    let object = create_symmetric_key(&symmetric_key, *cryptographic_algorithm);
+                    let object =
+                        create_symmetric_key_kmip_object(&symmetric_key, *cryptographic_algorithm);
 
                     //return the object and the tags
                     Ok((object, tags))

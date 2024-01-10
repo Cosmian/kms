@@ -13,7 +13,6 @@ use openssl::symm::{encrypt, Cipher, Crypter, Mode};
 
 use crate::error::KmipUtilsError;
 
-#[cfg(feature = "fips")]
 pub const AES_KWP_KEY_SIZE: usize = 0x20;
 const DEFAULT_RFC5649_CONST: u32 = 0xA659_59A6_u32;
 const DEFAULT_IV: u64 = 0xA6A6_A6A6_A6A6_A6A6;
@@ -98,7 +97,7 @@ pub fn key_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsErr
 
     if n % AES_WRAP_PAD_BLOCK_SIZE != 0 || n < AES_BLOCK_SIZE {
         return Err(KmipUtilsError::InvalidSize(
-            "The ciphertext size should be >= 16 and a multiple of ".to_string(),
+            "The ciphertext size should be >= 16 and a multiple of 16.".to_string(),
         ))
     }
 

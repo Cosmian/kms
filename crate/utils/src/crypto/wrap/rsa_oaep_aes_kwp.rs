@@ -22,14 +22,14 @@ const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
 /// Let `m` be the key/message to wrap, first generate a temporary random AES
 /// key `kek`. Encrypt it using RSA-OAEP; `c` is the encrypted key.
 ///
-/// Encrypt they key/message `m` such as`wk = enc(kek, m)` using the key `kek`
+/// Encrypt the key/message `m` such as`wk = enc(kek, m)` using the key `kek`
 /// with AES-KWP as specified in RFC5649.
 ///
 /// Send `c|wk` where `|` is the concatenation operator.
 ///
 /// TODO - support OAEP for different hashes.
 pub fn ckm_rsa_aes_key_wrap(
-    pubkey: PKey<Public>,
+    pubkey: &PKey<Public>,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let rsa_pubkey = pubkey.rsa()?;
@@ -71,13 +71,13 @@ pub fn ckm_rsa_aes_key_wrap(
 /// Distinguish `c` and `wk`, respectively the encrypted `kek` and the wrapped
 /// key.
 ///
-/// First decrypt the key-encryption-key `kek` using RSA-OAEP. then proceed to
+/// First decrypt the key-encryption-key `kek` using RSA-OAEP. Then proceed to
 /// unwrap the key by decrypting `m = dec(wk, kek)` using AES-KWP as specified in
 /// RFC5649.
 ///
 /// TODO - support OAEP for different hashes.
 pub fn ckm_rsa_aes_key_unwrap(
-    p_key: PKey<Private>,
+    p_key: &PKey<Private>,
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let rsa_privkey = p_key.rsa()?;
@@ -100,7 +100,7 @@ pub fn ckm_rsa_aes_key_unwrap(
         );
     }
 
-    let c: &[u8] = &ciphertext[..encapsulation_bytes_len];
+    let c = &ciphertext[..encapsulation_bytes_len];
     let wk = &ciphertext[encapsulation_bytes_len..];
 
     let mut kek = Zeroizing::from(vec![0u8; encapsulation_bytes_len]);
@@ -130,9 +130,9 @@ fn test_rsa_kem_wrap_unwrap() -> Result<(), KmipUtilsError> {
 
     let privkey_to_wrap = openssl::rsa::Rsa::generate(2048)?.private_key_to_pem()?;
 
-    let wrapped_key = ckm_rsa_aes_key_wrap(pubkey, &privkey_to_wrap)?;
+    let wrapped_key = ckm_rsa_aes_key_wrap(&pubkey, &privkey_to_wrap)?;
 
-    let unwrapped_key = ckm_rsa_aes_key_unwrap(privkey, &wrapped_key)?;
+    let unwrapped_key = ckm_rsa_aes_key_unwrap(&privkey, &wrapped_key)?;
 
     assert_eq!(unwrapped_key, privkey_to_wrap);
 

@@ -13,3 +13,5 @@ crate/cli/*.sqlite
 .DS_Store
 .idea/
 rustc-ice*.txt
+
+crate/cli/cosmian-kms/sqlite-data

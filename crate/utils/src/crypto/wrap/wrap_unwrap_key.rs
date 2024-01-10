@@ -137,7 +137,7 @@ mod tests {
     use crate::{
         crypto::{
             curve_25519::operation::create_x25519_key_pair,
-            symmetric::create_symmetric_key,
+            symmetric::create_symmetric_key_kmip_object,
             wrap::{unwrap_key_block, wrap_key_block},
         },
         error::KmipUtilsError,
@@ -148,7 +148,7 @@ mod tests {
         // the symmetric wrapping key
         let mut sym_wrapping_key_bytes = vec![0; 32];
         openssl::rand::rand_bytes(&mut sym_wrapping_key_bytes).unwrap();
-        let sym_wrapping_key = create_symmetric_key(
+        let sym_wrapping_key = create_symmetric_key_kmip_object(
             sym_wrapping_key_bytes.as_slice(),
             CryptographicAlgorithm::AES,
         );
@@ -156,7 +156,7 @@ mod tests {
         // the key to wrap
         let mut sym_key_to_wrap_bytes = vec![0; 32];
         openssl::rand::rand_bytes(&mut sym_key_to_wrap_bytes).unwrap();
-        let mut sym_key_to_wrap = create_symmetric_key(
+        let mut sym_key_to_wrap = create_symmetric_key_kmip_object(
             sym_key_to_wrap_bytes.as_slice(),
             CryptographicAlgorithm::AES,
         );

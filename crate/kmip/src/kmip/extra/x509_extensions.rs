@@ -317,12 +317,12 @@ mod tests {
     fn test_parse_ext_file() {
         cosmian_logger::log_utils::log_init("info,hyper=info,reqwest=info");
 
-        let ext_file = r#"[ v3_ca ]
+        let ext_file = r"[ v3_ca ]
 basicConstraints=CA:TRUE,pathlen:0
 keyUsage=keyCertSign,digitalSignature
 extendedKeyUsage=emailProtection
 crlDistributionPoints=URI:http://cse.example.com/crl.pem
-"#;
+";
 
         let mut x509_builder = X509::builder().unwrap();
         let x509_context = x509_builder.x509v3_context(None, None);
@@ -363,7 +363,7 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
         let cert_as_txt = x509.as_ref().to_text().unwrap();
         let cert = String::from_utf8_lossy(&cert_as_txt);
 
-        let _cert = r#"            X509v3 Basic Constraints: 
+        let _cert = r"            X509v3 Basic Constraints: 
                 CA:TRUE, pathlen:0
             X509v3 Key Usage: 
                 Digital Signature, Certificate Sign
@@ -375,7 +375,7 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
     Signature Algorithm: NULL
     Signature Value:
 
-"#;
+";
         assert_eq!(cert.split_once("X509v3 extensions:\n").unwrap().1, _cert);
 
         for ext in &exts_with_x509_parser {
@@ -460,13 +460,13 @@ crlDistributionPoints=URI:http://cse.example.com/crl.pem
     fn test_parse_extensions_gmail() {
         cosmian_logger::log_utils::log_init("info,hyper=info,reqwest=info");
 
-        let ext_file = r#"[ v3_ca ]
+        let ext_file = r"[ v3_ca ]
 basicConstraints=critical,CA:TRUE,pathlen:0
 keyUsage=critical,keyCertSign,digitalSignature
 extendedKeyUsage=emailProtection
 crlDistributionPoints=URI:http://cse.example.com/crl.pem
 certificatePolicies=2.5.29.32
-"#;
+";
 
         let conf = Conf::new(ConfMethod::default()).unwrap();
         let mut x509_builder = X509::builder().unwrap();

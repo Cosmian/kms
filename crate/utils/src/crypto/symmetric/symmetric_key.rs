@@ -9,12 +9,28 @@ use crate::{error::KmipUtilsError, tagging::set_tags};
 
 /// Create a symmetric key for the given algorithm
 #[must_use]
-pub fn create_symmetric_key(
+pub fn create_symmetric_key_kmip_object(
     key_bytes: &[u8],
     cryptographic_algorithm: CryptographicAlgorithm,
 ) -> Object {
     // this length is in bits
     let symmetric_key_len = key_bytes.len() as i32 * 8;
+
+    let attributes = Attributes {
+        object_type: Some(ObjectType::SymmetricKey),
+        cryptographic_algorithm: Some(cryptographic_algorithm),
+        cryptographic_length: Some(symmetric_key_len),
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::Encrypt
+                | CryptographicUsageMask::Decrypt
+                | CryptographicUsageMask::WrapKey
+                | CryptographicUsageMask::UnwrapKey
+                | CryptographicUsageMask::KeyAgreement,
+        ),
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        ..Attributes::default()
+    };
+
     // The default format for a symmetric key is Raw
     //  according to sec. 4.26 Key Format Type of the KMIP 2.1 specs:
     //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
@@ -29,20 +45,7 @@ pub fn create_symmetric_key(
                 key_material: KeyMaterial::TransparentSymmetricKey {
                     key: key_bytes.to_vec(),
                 },
-                attributes: Some(Attributes {
-                    object_type: Some(ObjectType::SymmetricKey),
-                    cryptographic_algorithm: Some(cryptographic_algorithm),
-                    cryptographic_length: Some(symmetric_key_len),
-                    cryptographic_usage_mask: Some(
-                        CryptographicUsageMask::Encrypt
-                            | CryptographicUsageMask::Decrypt
-                            | CryptographicUsageMask::WrapKey
-                            | CryptographicUsageMask::UnwrapKey
-                            | CryptographicUsageMask::KeyAgreement,
-                    ),
-                    key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
-                    ..Attributes::default()
-                }),
+                attributes: Some(attributes),
             },
             cryptographic_length: Some(symmetric_key_len),
             key_wrapping_data: None,

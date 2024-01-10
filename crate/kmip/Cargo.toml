@@ -18,7 +18,6 @@ hex = { workspace = true }
 rust-ini = "0.20"
 num-bigint-dig = { workspace = true }
 openssl = { workspace = true, optional = true }
-openssl-sys = "0.9"
 pyo3 = { version = "0.20", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -29,6 +28,9 @@ time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
 uuid = { version = "1.6.1", features = ["v4"] }
 zeroize = { workspace = true }
+
+[package.metadata.cargo-machete]
+ignored = ["rust-ini"]
 
 [dev-dependencies]
 cosmian_logger = { path = "../logger" }

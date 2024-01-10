@@ -1,21 +1,19 @@
-#[cfg(not(feature = "fips"))]
-use cosmian_kmip::kmip::kmip_operations::{Decrypt, DecryptedData};
 use cosmian_kmip::{
-    kmip::{kmip_objects::Object, kmip_operations::Encrypt, kmip_types::KeyFormatType},
+    kmip::{
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, DecryptedData, Encrypt},
+        kmip_types::KeyFormatType,
+    },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 use openssl::pkey::{PKey, Private, Public};
 use tracing::debug;
 
 use super::rfc5649::{key_unwrap, key_wrap};
-#[cfg(feature = "fips")]
-use super::rsa_oaep_aes_kwp::{ckm_rsa_aes_key_unwrap, ckm_rsa_aes_key_wrap};
-#[cfg(not(feature = "fips"))]
-use crate::{crypto::hybrid_encryption::HybridDecryptionSystem, DecryptionSystem};
 use crate::{
-    crypto::hybrid_encryption::HybridEncryptionSystem,
+    crypto::hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
     error::{result::CryptoResultHelper, KmipUtilsError},
-    kmip_utils_bail, EncryptionSystem,
+    kmip_utils_bail, DecryptionSystem, EncryptionSystem,
 };
 
 /// Encrypt bytes using the wrapping key
@@ -31,8 +29,11 @@ pub fn encrypt_bytes(wrapping_key: &Object, plaintext: &[u8]) -> Result<Vec<u8>,
             // TODO(ECSE): cert should be verified before anything
             //verify_certificate(certificate_value, kms, owner, params).await?;
             debug!("encrypt_bytes: Encryption with certificate: certificate OK");
-            let encrypt_system =
-                HybridEncryptionSystem::instantiate_with_certificate("id", certificate_value)?;
+            let encrypt_system = HybridEncryptionSystem::instantiate_with_certificate(
+                "id",
+                certificate_value,
+                true,
+            )?;
             let request = Encrypt {
                 data: Some(plaintext.to_vec()),
                 ..Encrypt::default()
@@ -93,33 +94,15 @@ pub fn encrypt_bytes(wrapping_key: &Object, plaintext: &[u8]) -> Result<Vec<u8>,
     }
 }
 
-#[cfg(feature = "fips")]
 fn encrypt_with_public_key(
     pubkey: PKey<Public>,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
-    // Wrap symmetric key using RSA.
-    // XXX - ECIES approved by fips ? not clear, only supporting RSA for
-    // now.
-    // XXX - build kmip request ?
-    if pubkey.rsa().is_err() {
-        kmip_utils_bail!("Encryption Error: Only RSA KEM supported in FIPS mode.")
-    }
-
-    ckm_rsa_aes_key_wrap(pubkey, plaintext)
-}
-
-#[cfg(not(feature = "fips"))]
-fn encrypt_with_public_key(
-    pubkey: PKey<Public>,
-    plaintext: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError> {
-    // Wrap symmetric key using ECIES.
     let request = Encrypt {
         data: Some(plaintext.to_vec()),
         ..Encrypt::default()
     };
-    let encrypt_system = HybridEncryptionSystem::new("public_key_uid", pubkey);
+    let encrypt_system = HybridEncryptionSystem::new("public_key_uid", pubkey, true);
     let encrypt_response = encrypt_system.encrypt(&request)?;
     let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
         "Encrypt response does not contain ciphertext".to_string(),
@@ -176,33 +159,11 @@ pub fn decrypt_bytes(
     Ok(plaintext)
 }
 
-#[cfg(feature = "fips")]
 fn decrypt_with_private_key(
     p_key: PKey<Private>,
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
-    // Unwrap symmetric key using RSA.
-    if p_key.rsa().is_err() {
-        kmip_utils_bail!("Decryption Error: Only RSA KEM supported in FIPS mode.")
-    }
-
-    // XXX - ECIES approved by fips ? not stated, only supporting RSA for
-    // now:
-    // XXX - Unwrap symmetric key using RSA. FIPS does not specify RSA for
-    // asymmetric key wrapping:
-    // > An RSA decryption operation using an exponentiation for key
-    // > encapsulation, as specified in the section 7.1.2.1 of SP 800-56Br2
-
-    ckm_rsa_aes_key_unwrap(p_key, ciphertext)
-}
-
-#[cfg(not(feature = "fips"))]
-fn decrypt_with_private_key(
-    p_key: PKey<Private>,
-    ciphertext: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError> {
-    // If not in FIPS mode, perform Hybrid Encryption.
-    let decrypt_system = HybridDecryptionSystem::new(None, p_key);
+    let decrypt_system = HybridDecryptionSystem::new(None, p_key, true);
     let request = Decrypt {
         data: Some(ciphertext.to_vec()),
         ..Decrypt::default()
@@ -217,6 +178,7 @@ fn decrypt_with_private_key(
     );
     let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
     Ok(decrypted_data.plaintext)
+    //}
 }
 
 #[cfg(test)]
@@ -234,7 +196,7 @@ mod tests {
 
     #[cfg(not(feature = "fips"))]
     use crate::crypto::curve_25519::operation::create_x25519_key_pair;
-    use crate::crypto::symmetric::create_symmetric_key;
+    use crate::crypto::symmetric::create_symmetric_key_kmip_object;
 
     #[test]
     fn test_encrypt_decrypt_rfc_5649() {
@@ -244,7 +206,8 @@ mod tests {
 
         let mut symmetric_key = vec![0; 32];
         rand_bytes(&mut symmetric_key).unwrap();
-        let wrap_key = create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
+        let wrap_key =
+            create_symmetric_key_kmip_object(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
         let plaintext = b"plaintext";
         let ciphertext = super::encrypt_bytes(&wrap_key, plaintext).unwrap();

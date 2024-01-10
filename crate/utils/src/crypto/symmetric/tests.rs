@@ -6,7 +6,8 @@ use openssl::rand::rand_bytes;
 
 use crate::{
     crypto::symmetric::{
-        create_symmetric_key, AesGcmSystem, AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH,
+        create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_IV_LENGTH,
+        AES_256_GCM_KEY_LENGTH,
     },
     DecryptionSystem, EncryptionSystem,
 };
@@ -19,7 +20,7 @@ pub fn test_aes() {
 
     let mut symmetric_key = vec![0; AES_256_GCM_KEY_LENGTH];
     rand_bytes(&mut symmetric_key).unwrap();
-    let key = create_symmetric_key(&symmetric_key, CryptographicAlgorithm::AES);
+    let key = create_symmetric_key_kmip_object(&symmetric_key, CryptographicAlgorithm::AES);
     let aes = AesGcmSystem::instantiate("blah", &key).unwrap();
     let mut data = vec![0_u8; 42];
     rand_bytes(&mut data).unwrap();

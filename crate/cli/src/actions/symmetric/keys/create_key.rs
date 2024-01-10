@@ -2,7 +2,9 @@ use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::symmetric::{create_symmetric_key, symmetric_key_create_request};
+use cosmian_kms_utils::crypto::symmetric::{
+    create_symmetric_key_kmip_object, symmetric_key_create_request,
+};
 
 use crate::{
     actions::shared::utils::import_object,
@@ -79,7 +81,7 @@ impl CreateKeyAction {
 
         let unique_identifier = match key_bytes {
             Some(key_bytes) => {
-                let object = create_symmetric_key(key_bytes.as_slice(), algorithm);
+                let object = create_symmetric_key_kmip_object(key_bytes.as_slice(), algorithm);
                 import_object(
                     kms_rest_client,
                     None,

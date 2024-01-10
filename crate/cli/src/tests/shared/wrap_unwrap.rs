@@ -21,7 +21,10 @@ use crate::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
-        utils::{recover_cmd_logs, start_default_test_kms_server, TestsContext, ONCE},
+        utils::{
+            extract_uids::extract_wrapping_key, recover_cmd_logs, start_default_test_kms_server,
+            TestsContext, ONCE,
+        },
         PROG_NAME,
     },
 };
@@ -36,7 +39,7 @@ pub fn wrap(
     wrap_key_b64: Option<String>,
     wrap_key_id: Option<String>,
     wrap_key_file: Option<PathBuf>,
-) -> Result<(), CliError> {
+) -> Result<String, CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
@@ -49,6 +52,7 @@ pub fn wrap(
     if let Some(key_file_out) = key_file_out {
         args.push(key_file_out.to_str().unwrap().to_owned());
     }
+
     if let Some(wrap_password) = wrap_password {
         args.push("-p".to_owned());
         args.push(wrap_password);
@@ -62,10 +66,16 @@ pub fn wrap(
         args.push("-f".to_owned());
         args.push(wrap_key_file.to_str().unwrap().to_owned());
     }
+
     cmd.arg(sub_command).args(args);
     let output = recover_cmd_logs(&mut cmd);
+    println!("wrap output: {output:?}");
     if output.status.success() {
-        return Ok(())
+        let wrap_output = std::str::from_utf8(&output.stdout)?;
+        let b64_wrapping_key = extract_wrapping_key(wrap_output)
+            .unwrap_or_default()
+            .to_owned();
+        return Ok(b64_wrapping_key)
     }
     Err(CliError::Default(
         std::str::from_utf8(&output.stderr)?.to_owned(),
@@ -95,6 +105,7 @@ pub fn unwrap(
     if let Some(key_file_out) = key_file_out {
         args.push(key_file_out.to_str().unwrap().to_owned());
     }
+
     if let Some(unwrap_password) = unwrap_password {
         args.push("-p".to_owned());
         args.push(unwrap_password);
@@ -166,10 +177,8 @@ pub fn password_wrap_import_test(
     let key_bytes = object.key_block()?.key_bytes()?;
 
     //wrap and unwrap using a password
-    // TODO - Remove not fips flag by solving #124 on Github.
-    #[cfg(not(feature = "fips"))]
     {
-        wrap(
+        let b64_wrapping_key = wrap(
             &ctx.owner_cli_conf_path,
             sub_command,
             &key_file,
@@ -195,8 +204,8 @@ pub fn password_wrap_import_test(
             sub_command,
             &key_file,
             None,
-            Some("password".to_owned()),
             None,
+            Some(b64_wrapping_key),
             None,
             None,
         )?;
