@@ -36,6 +36,7 @@ use crate::{
 ///    * CURVE25519
 ///    * CURVE448
 ///    * CURVEED25519
+///    * CURVEED448
 ///
 /// For the NIST P-curves the `q_string` is expected to be the octet form (as defined in RFC5480 and used in certificates and TLS records):
 /// only the content octets are present, the OCTET STRING tag and length are not included.
@@ -704,5 +705,200 @@ mod tests {
         let public_key_ = kmip_public_key_to_openssl(&object_).unwrap();
         assert_eq!(public_key_.id(), Id::X25519);
         assert_eq!(public_key_.bits(), 253);
+    }
+
+    #[test]
+    fn test_ec_ed25519_public_key() {
+        let private_key = PKey::generate_ed25519().unwrap();
+        let public_key_der = private_key.public_key_to_der().unwrap();
+        let public_key = PKey::public_key_from_der(&public_key_der).unwrap();
+
+        // PKCS#8
+        let object = openssl_public_key_to_kmip(&public_key, KeyFormatType::PKCS8).unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PublicKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let key_value = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material: KeyMaterial::ByteString(key_value),
+                        ..
+                    },
+                ..
+            } => key_value,
+            _ => panic!("Invalid key block"),
+        };
+        let public_key_ = PKey::public_key_from_der(&key_value).unwrap();
+        assert_eq!(public_key_.id(), Id::ED25519);
+        assert_eq!(public_key_.bits(), 256);
+        assert_eq!(public_key_.public_key_to_der().unwrap(), key_value);
+        let public_key_ = kmip_public_key_to_openssl(&object_).unwrap();
+        assert_eq!(public_key_.id(), Id::ED25519);
+        assert_eq!(public_key_.bits(), 256);
+        assert_eq!(public_key_.public_key_to_der().unwrap(), key_value);
+
+        // Transparent EC
+        let object =
+            openssl_public_key_to_kmip(&public_key, KeyFormatType::TransparentECPublicKey).unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PublicKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let (q_string, recommended_curve) = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material:
+                            KeyMaterial::TransparentECPublicKey {
+                                q_string,
+                                recommended_curve,
+                            },
+                        ..
+                    },
+                ..
+            } => (q_string, recommended_curve),
+            _ => panic!("Invalid key block"),
+        };
+        assert_eq!(recommended_curve, RecommendedCurve::CURVEED25519);
+        let public_key_ = PKey::public_key_from_raw_bytes(&q_string, Id::ED25519).unwrap();
+        assert_eq!(public_key_.id(), Id::ED25519);
+        assert_eq!(public_key_.bits(), 256);
+        let public_key_ = kmip_public_key_to_openssl(&object_).unwrap();
+        assert_eq!(public_key_.id(), Id::ED25519);
+        assert_eq!(public_key_.bits(), 256);
+    }
+
+    #[test]
+    fn test_ec_x448_public_key() {
+        let private_key = PKey::generate_x448().unwrap();
+        let public_key_der = private_key.public_key_to_der().unwrap();
+        let public_key = PKey::public_key_from_der(&public_key_der).unwrap();
+
+        // PKCS#8
+        let object = openssl_public_key_to_kmip(&public_key, KeyFormatType::PKCS8).unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PublicKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let key_value = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material: KeyMaterial::ByteString(key_value),
+                        ..
+                    },
+                ..
+            } => key_value,
+            _ => panic!("Invalid key block"),
+        };
+        let public_key_ = PKey::public_key_from_der(&key_value).unwrap();
+        assert_eq!(public_key_.id(), Id::X448);
+        assert_eq!(public_key_.bits(), 448);
+        assert_eq!(public_key_.public_key_to_der().unwrap(), key_value);
+        let public_key_ = kmip_public_key_to_openssl(&object_).unwrap();
+        assert_eq!(public_key_.id(), Id::X448);
+        assert_eq!(public_key_.bits(), 448);
+        assert_eq!(public_key_.public_key_to_der().unwrap(), key_value);
+
+        // Transparent EC
+        let object =
+            openssl_public_key_to_kmip(&public_key, KeyFormatType::TransparentECPublicKey).unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PublicKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let (q_string, recommended_curve) = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material:
+                            KeyMaterial::TransparentECPublicKey {
+                                q_string,
+                                recommended_curve,
+                            },
+                        ..
+                    },
+                ..
+            } => (q_string, recommended_curve),
+            _ => panic!("Invalid key block"),
+        };
+        assert_eq!(recommended_curve, RecommendedCurve::CURVE448);
+        let public_key_ = PKey::public_key_from_raw_bytes(&q_string, Id::X448).unwrap();
+        assert_eq!(public_key_.id(), Id::X448);
+        assert_eq!(public_key_.bits(), 448);
+        let public_key_ = kmip_public_key_to_openssl(&object_).unwrap();
+        assert_eq!(public_key_.id(), Id::X448);
+        assert_eq!(public_key_.bits(), 448);
+    }
+
+    #[test]
+    fn test_ec_ed448_public_key() {
+        let private_key = PKey::generate_ed448().unwrap();
+        let public_key_der = private_key.public_key_to_der().unwrap();
+        let public_key = PKey::public_key_from_der(&public_key_der).unwrap();
+
+        // PKCS#8
+        let object = openssl_public_key_to_kmip(&public_key, KeyFormatType::PKCS8).unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PublicKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let key_value = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material: KeyMaterial::ByteString(key_value),
+                        ..
+                    },
+                ..
+            } => key_value,
+            _ => panic!("Invalid key block"),
+        };
+        let public_key_ = PKey::public_key_from_der(&key_value).unwrap();
+        assert_eq!(public_key_.id(), Id::ED448);
+        assert_eq!(public_key_.bits(), 456);
+        assert_eq!(public_key_.public_key_to_der().unwrap(), key_value);
+        let public_key_ = kmip_public_key_to_openssl(&object_).unwrap();
+        assert_eq!(public_key_.id(), Id::ED448);
+        assert_eq!(public_key_.bits(), 456);
+        assert_eq!(public_key_.public_key_to_der().unwrap(), key_value);
+
+        // Transparent EC
+        let object =
+            openssl_public_key_to_kmip(&public_key, KeyFormatType::TransparentECPublicKey).unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PublicKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let (q_string, recommended_curve) = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material:
+                            KeyMaterial::TransparentECPublicKey {
+                                q_string,
+                                recommended_curve,
+                            },
+                        ..
+                    },
+                ..
+            } => (q_string, recommended_curve),
+            _ => panic!("Invalid key block"),
+        };
+        assert_eq!(recommended_curve, RecommendedCurve::CURVEED448);
+        let public_key_ = PKey::public_key_from_raw_bytes(&q_string, Id::ED448).unwrap();
+        assert_eq!(public_key_.id(), Id::ED448);
+        assert_eq!(public_key_.bits(), 456);
+        let public_key_ = kmip_public_key_to_openssl(&object_).unwrap();
+        assert_eq!(public_key_.id(), Id::ED448);
+        assert_eq!(public_key_.bits(), 456);
     }
 }

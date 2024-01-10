@@ -8,6 +8,8 @@ license-file = "../../LICENSE.md"
 default = []
 openssl = ["dep:openssl"]
 pyo3 = ["dep:pyo3"]
+# Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
+fips = []
 
 [dependencies]
 base58 = "0.2"

@@ -762,6 +762,216 @@ mod tests {
     }
 
     #[test]
+    fn test_ec_ed25519_private_key() {
+        let private_key = PKey::generate_ed25519().unwrap();
+
+        // PKCS#8
+        let object = openssl_private_key_to_kmip(&private_key, KeyFormatType::PKCS8).unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PrivateKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let key_value = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material: KeyMaterial::ByteString(key_value),
+                        ..
+                    },
+                ..
+            } => key_value,
+            _ => panic!("Invalid key block"),
+        };
+        let private_key_ = PKey::private_key_from_pkcs8(&key_value).unwrap();
+        assert_eq!(private_key_.id(), Id::ED25519);
+        assert_eq!(private_key_.bits(), 256);
+        assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
+        let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
+        assert_eq!(private_key_.id(), Id::ED25519);
+        assert_eq!(private_key_.bits(), 256);
+        assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
+
+        // SEC1 is not available for Ed25519
+
+        // Transparent EC
+        let object =
+            openssl_private_key_to_kmip(&private_key, KeyFormatType::TransparentECPrivateKey)
+                .unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PrivateKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let (d, recommended_curve) = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material:
+                            KeyMaterial::TransparentECPrivateKey {
+                                d,
+                                recommended_curve,
+                            },
+                        ..
+                    },
+                ..
+            } => (d, recommended_curve),
+            _ => panic!("Invalid key block"),
+        };
+        assert_eq!(recommended_curve, RecommendedCurve::CURVEED25519);
+
+        let mut privkey_vec = d.to_bytes_be();
+        // 32 is privkey size on Ed25519.
+        pad_be_bytes(&mut privkey_vec, 32);
+        let private_key_ = PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED25519).unwrap();
+        assert_eq!(private_key_.id(), Id::ED25519);
+        assert_eq!(private_key_.bits(), 256);
+        let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
+        assert_eq!(private_key_.id(), Id::ED25519);
+        assert_eq!(private_key_.bits(), 256);
+    }
+
+    #[test]
+    fn test_ec_x448_private_key() {
+        let private_key = PKey::generate_x448().unwrap();
+
+        // PKCS#8
+        let object = openssl_private_key_to_kmip(&private_key, KeyFormatType::PKCS8).unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PrivateKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let key_value = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material: KeyMaterial::ByteString(key_value),
+                        ..
+                    },
+                ..
+            } => key_value,
+            _ => panic!("Invalid key block"),
+        };
+        let private_key_ = PKey::private_key_from_pkcs8(&key_value).unwrap();
+        assert_eq!(private_key_.id(), Id::X448);
+        assert_eq!(private_key_.bits(), 448);
+        assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
+        let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
+        assert_eq!(private_key_.id(), Id::X448);
+        assert_eq!(private_key_.bits(), 448);
+        assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
+
+        // SEC1 is not available for X25519
+
+        // Transparent EC
+        let object =
+            openssl_private_key_to_kmip(&private_key, KeyFormatType::TransparentECPrivateKey)
+                .unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PrivateKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let (d, recommended_curve) = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material:
+                            KeyMaterial::TransparentECPrivateKey {
+                                d,
+                                recommended_curve,
+                            },
+                        ..
+                    },
+                ..
+            } => (d, recommended_curve),
+            _ => panic!("Invalid key block"),
+        };
+        assert_eq!(recommended_curve, RecommendedCurve::CURVE448);
+
+        let mut privkey_vec = d.to_bytes_be();
+        // 56 is privkey size on X448.
+        pad_be_bytes(&mut privkey_vec, 56);
+        let private_key_ = PKey::private_key_from_raw_bytes(&privkey_vec, Id::X448).unwrap();
+        assert_eq!(private_key_.id(), Id::X448);
+        assert_eq!(private_key_.bits(), 448);
+        let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
+        assert_eq!(private_key_.id(), Id::X448);
+        assert_eq!(private_key_.bits(), 448);
+    }
+
+    #[test]
+    fn test_ec_ed448_private_key() {
+        let private_key = PKey::generate_ed448().unwrap();
+
+        // PKCS#8
+        let object = openssl_private_key_to_kmip(&private_key, KeyFormatType::PKCS8).unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PrivateKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let key_value = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material: KeyMaterial::ByteString(key_value),
+                        ..
+                    },
+                ..
+            } => key_value,
+            _ => panic!("Invalid key block"),
+        };
+        let private_key_ = PKey::private_key_from_pkcs8(&key_value).unwrap();
+        assert_eq!(private_key_.id(), Id::ED448);
+        assert_eq!(private_key_.bits(), 456);
+        assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
+        let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
+        assert_eq!(private_key_.id(), Id::ED448);
+        assert_eq!(private_key_.bits(), 456);
+        assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
+
+        // SEC1 is not available for Ed25519
+
+        // Transparent EC
+        let object =
+            openssl_private_key_to_kmip(&private_key, KeyFormatType::TransparentECPrivateKey)
+                .unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PrivateKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let (d, recommended_curve) = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material:
+                            KeyMaterial::TransparentECPrivateKey {
+                                d,
+                                recommended_curve,
+                            },
+                        ..
+                    },
+                ..
+            } => (d, recommended_curve),
+            _ => panic!("Invalid key block"),
+        };
+        assert_eq!(recommended_curve, RecommendedCurve::CURVEED448);
+
+        let mut privkey_vec = d.to_bytes_be();
+        // 57 is privkey size on Ed448.
+        pad_be_bytes(&mut privkey_vec, 57);
+        let private_key_ = PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED448).unwrap();
+        assert_eq!(private_key_.id(), Id::ED448);
+        assert_eq!(private_key_.bits(), 456);
+        let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
+        assert_eq!(private_key_.id(), Id::ED448);
+        assert_eq!(private_key_.bits(), 456);
+    }
+
+    #[test]
     fn test_conversion_privkey_null_first_byte() {
         let key = [
             0, 113, 8, 182, 184, 86, 82, 102, 195, 88, 8, 230, 119, 254, 2, 177, 228, 135, 20, 247,
