@@ -113,18 +113,6 @@ impl EncryptionSystem for HybridEncryptionSystem {
                 let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
                 EciesSalsaSealBox::encrypt(&mut *rng, &public_key, &plaintext, None)?
             }
-            Id::RSA => {
-                if self.key_wrapping {
-                    ckm_rsa_aes_key_wrap(self.public_key.clone(), &plaintext)?
-                } else {
-                    trace!("encrypt: RSA");
-                    rsa_oaep_aes_gcm_encrypt(
-                        self.public_key.clone(),
-                        &plaintext,
-                        request.authenticated_encryption_additional_data.as_deref(),
-                    )?
-                }
-            }
             _ => {
                 kmip_utils_bail!(
                     "Public key id not supported for Hybrid encryption. FIPS mode may have \
@@ -149,45 +137,4 @@ impl EncryptionSystem for HybridEncryptionSystem {
             authenticated_encryption_tag: None,
         })
     }
-}
-
-fn encrypt_with_nist_curve(
-    rng: &mut CsRng,
-    public_key: &PKey<Public>,
-    plaintext: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError> {
-    debug!("encrypt: NIST curve");
-    let spki_bytes = public_key.public_key_to_der()?;
-    // Get the NID (Numeric ID) of the curve.
-    let ec_key = public_key.ec_key()?;
-    let nid = ec_key
-        .group()
-        .curve_name()
-        .ok_or_else(|| KmipUtilsError::ConversionError("invalid curve name".to_string()))?;
-    debug!("encrypt: Elliptic curve: {}", nid.long_name()?);
-    let ciphertext = match nid {
-        Nid::X9_62_PRIME192V1 => {
-            let public_key = P192PublicKey::from_public_key_der(&spki_bytes)?;
-            EciesP192Aes128::encrypt(rng, &public_key, plaintext, None)?
-        }
-        Nid::SECP224R1 => {
-            let public_key = P224PublicKey::from_public_key_der(&spki_bytes)?;
-            EciesP224Aes128::encrypt(rng, &public_key, plaintext, None)?
-        }
-        Nid::X9_62_PRIME256V1 => {
-            let public_key = P256PublicKey::from_public_key_der(&spki_bytes)?;
-            EciesP256Aes128::encrypt(rng, &public_key, plaintext, None)?
-        }
-        Nid::SECP384R1 => {
-            let public_key = P384PublicKey::from_public_key_der(&spki_bytes)?;
-            EciesP384Aes128::encrypt(rng, &public_key, plaintext, None)?
-        }
-        _ => {
-            kmip_utils_bail!(
-                "encrypt: Elliptic curve not supported: {}",
-                nid.long_name()?
-            );
-        }
-    };
-    Ok(ciphertext)
 }

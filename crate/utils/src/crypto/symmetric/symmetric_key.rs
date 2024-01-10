@@ -8,10 +8,11 @@ use cosmian_kmip::kmip::{
 use crate::{error::KmipUtilsError, tagging::set_tags};
 
 /// Create a symmetric key for the given algorithm
-pub fn create_symmetric_key(
+#[must_use]
+pub fn create_symmetric_key_kmip_object(
     key_bytes: &[u8],
     cryptographic_algorithm: CryptographicAlgorithm,
-) -> Result<Object, KmipUtilsError> {
+) -> Object {
     // this length is in bits
     let symmetric_key_len = key_bytes.len() as i32 * 8;
 
@@ -35,7 +36,7 @@ pub fn create_symmetric_key(
     //  see https://docs.oasis-open.org/kmip/kmip-spec/v2.1/os/kmip-spec-v2.1-os.html#_Toc57115585
     // The key created here has a format of TransparentSymmetricKey
     // This is no a problem since when it is exported, it is by default converted to a Raw key
-    Ok(Object::SymmetricKey {
+    Object::SymmetricKey {
         key_block: KeyBlock {
             cryptographic_algorithm: Some(cryptographic_algorithm),
             key_format_type: KeyFormatType::TransparentSymmetricKey,
@@ -49,7 +50,7 @@ pub fn create_symmetric_key(
             cryptographic_length: Some(symmetric_key_len),
             key_wrapping_data: None,
         },
-    })
+    }
 }
 
 /// Build a `CreateKeyPairRequest` for a curve 25519 key pair

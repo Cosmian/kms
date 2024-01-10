@@ -15,7 +15,9 @@ use cosmian_kmip::{
     kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration},
     result::KmipResultHelper,
 };
-use cosmian_kms_utils::{access::ObjectOperationType, crypto::symmetric::create_symmetric_key};
+use cosmian_kms_utils::{
+    access::ObjectOperationType, crypto::symmetric::create_symmetric_key_kmip_object,
+};
 use cosmian_logger::log_utils::log_init;
 use redis::aio::ConnectionManager;
 use tracing::trace;
@@ -63,7 +65,7 @@ pub async fn test_objects_db() -> KResult<()> {
 
     let mut symmetric_key = vec![0; 32];
     rng.fill_bytes(&mut symmetric_key);
-    let object = create_symmetric_key(&symmetric_key, CryptographicAlgorithm::AES)?;
+    let object = create_symmetric_key_kmip_object(&symmetric_key, CryptographicAlgorithm::AES);
 
     // clean up
     o_db.clear_all().await?;

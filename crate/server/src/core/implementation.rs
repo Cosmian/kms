@@ -26,7 +26,7 @@ use cosmian_kms_utils::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
         curve_25519::operation::{create_approved_ecc_key_pair, create_ed25519_key_pair},
         hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
-        symmetric::{create_symmetric_key, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
+        symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
     },
     tagging::{check_user_tags, get_tags, remove_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
@@ -279,7 +279,8 @@ impl KMS {
                         .map_or(AES_256_GCM_KEY_LENGTH, |v| v as usize / 8);
                     let mut symmetric_key = vec![0; key_len];
                     rng.fill_bytes(&mut symmetric_key);
-                    let object = create_symmetric_key(&symmetric_key, *cryptographic_algorithm)?;
+                    let object =
+                        create_symmetric_key_kmip_object(&symmetric_key, *cryptographic_algorithm);
 
                     //return the object and the tags
                     Ok((object, tags))

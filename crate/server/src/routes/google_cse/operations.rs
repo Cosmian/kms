@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyWrappingData, KeyWrappingSpecification},
     kmip_types::{self, CryptographicAlgorithm, EncodingOption, UniqueIdentifier},
 };
-use cosmian_kms_utils::crypto::symmetric::create_symmetric_key;
+use cosmian_kms_utils::crypto::symmetric::create_symmetric_key_kmip_object;
 use serde::{Deserialize, Serialize};
 
 use super::GoogleCseConfig;
@@ -89,10 +89,10 @@ pub async fn wrap(
     .await?;
 
     // decode the DEK and create a KMIP object from the key bytes
-    let mut dek = create_symmetric_key(
+    let mut dek = create_symmetric_key_kmip_object(
         &general_purpose::STANDARD.decode(&wrap_request.key)?,
         CryptographicAlgorithm::AES,
-    )?;
+    );
 
     wrap_key(
         dek.key_block_mut()?,
@@ -165,10 +165,10 @@ pub async fn unwrap(
     .await?;
 
     // Base 64 decode the encrypted DEK and create a wrapped KMIP object from the key bytes
-    let mut wrapped_dek = create_symmetric_key(
+    let mut wrapped_dek = create_symmetric_key_kmip_object(
         &general_purpose::STANDARD.decode(&unwrap_request.wrapped_key)?,
         CryptographicAlgorithm::AES,
-    )?;
+    );
     // add key wrapping parameters to the wrapped key
     wrapped_dek.key_block_mut()?.key_wrapping_data = Some(KeyWrappingData {
         wrapping_method: kmip_types::WrappingMethod::Encrypt,

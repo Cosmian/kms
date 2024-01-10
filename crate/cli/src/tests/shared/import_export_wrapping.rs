@@ -9,7 +9,7 @@ use cosmian_kmip::kmip::{
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_utils::crypto::curve_25519::operation::create_x25519_key_pair;
-use cosmian_kms_utils::crypto::{symmetric::create_symmetric_key, wrap::decrypt_bytes};
+use cosmian_kms_utils::crypto::{symmetric::create_symmetric_key_kmip_object, wrap::decrypt_bytes};
 use tempfile::TempDir;
 #[cfg(not(feature = "fips"))]
 use tracing::debug;
@@ -38,7 +38,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     let mut rng = CsRng::from_entropy();
     let mut wrap_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut wrap_key_bytes);
-    let wrap_key = create_symmetric_key(&wrap_key_bytes, CryptographicAlgorithm::AES)?;
+    let wrap_key = create_symmetric_key_kmip_object(&wrap_key_bytes, CryptographicAlgorithm::AES);
     write_kmip_object_to_file(&wrap_key, &wrap_key_path)?;
 
     // import the wrapping key

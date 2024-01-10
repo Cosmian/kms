@@ -211,7 +211,7 @@ mod tests {
     use super::create_x25519_key_pair;
     use super::{create_approved_ecc_key_pair, create_ed25519_key_pair};
     #[cfg(not(feature = "fips"))]
-    const X25519_SECRET_LENGTH: usize = 0x20;
+    use crate::crypto::curve_25519::operation::X25519_PRIVATE_KEY_LENGTH;
 
     #[test]
     fn test_ed25519_keypair_generation() {

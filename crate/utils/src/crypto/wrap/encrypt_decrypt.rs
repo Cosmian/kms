@@ -196,7 +196,7 @@ mod tests {
 
     #[cfg(not(feature = "fips"))]
     use crate::crypto::curve_25519::operation::create_x25519_key_pair;
-    use crate::crypto::symmetric::create_symmetric_key;
+    use crate::crypto::symmetric::create_symmetric_key_kmip_object;
 
     #[test]
     fn test_encrypt_decrypt_rfc_5649() {
@@ -207,7 +207,7 @@ mod tests {
         let mut symmetric_key = vec![0; 32];
         rand_bytes(&mut symmetric_key).unwrap();
         let wrap_key =
-            create_symmetric_key(symmetric_key.as_slice(), CryptographicAlgorithm::AES).unwrap();
+            create_symmetric_key_kmip_object(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
         let plaintext = b"plaintext";
         let ciphertext = super::encrypt_bytes(&wrap_key, plaintext).unwrap();

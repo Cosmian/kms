@@ -5,7 +5,7 @@ use clap::Parser;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::{
-    password_derivation::derive_key_from_password, symmetric::create_symmetric_key,
+    password_derivation::derive_key_from_password, symmetric::create_symmetric_key_kmip_object,
     wrap::wrap_key_block,
 };
 
@@ -76,13 +76,13 @@ impl WrapKeyAction {
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the wrap key")?;
-            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)?
+            create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(password) = &self.wrap_password {
             let key_bytes =
                 derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes())?;
 
             let symmetric_key_object =
-                create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)?;
+                create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES);
 
             // Print the wrapping key for user. This is the only time that this wrapping key will be printed
             println!(

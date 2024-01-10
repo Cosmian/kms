@@ -295,7 +295,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
     let exts_with_x509_parser = cert_x509.extensions();
 
     for ext in exts_with_x509_parser {
-        println!("\n\next: {:?}", ext);
+        println!("\n\next: {ext:?}");
         println!("value is: {:?}", String::from_utf8(ext.value.to_vec()));
     }
 

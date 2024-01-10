@@ -4,7 +4,9 @@ use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::{symmetric::create_symmetric_key, wrap::unwrap_key_block};
+use cosmian_kms_utils::crypto::{
+    symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block,
+};
 
 use crate::{
     actions::shared::utils::{
@@ -78,7 +80,7 @@ impl UnwrapKeyAction {
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the unwrap key")?;
-            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)?
+            create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.unwrap_key_id {
             export_object(kms_rest_client, key_id, false, None, false, None)
                 .await?
