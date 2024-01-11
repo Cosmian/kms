@@ -8,6 +8,7 @@ use cosmian_kmip::kmip::{
 };
 use openssl::pkey::{Id, PKey, Private};
 use tracing::{debug, trace};
+#[cfg(not(feature = "fips"))]
 use zeroize::Zeroizing;
 
 #[cfg(not(feature = "fips"))]
@@ -58,16 +59,16 @@ impl DecryptionSystem for HybridDecryptionSystem {
         // Convert the Pkey to a crypto_core curve and perform decryption
         // Note: All conversions below will go once we move to full openssl
         let plaintext = match self.private_key.id() {
-            Id::EC => Zeroizing::new(ecies_decrypt(&self.private_key, ciphertext)?),
+            Id::EC => ecies_decrypt(&self.private_key, ciphertext)?,
             Id::RSA => {
                 if self.key_unwrapping {
-                    Zeroizing::from(ckm_rsa_aes_key_unwrap(&self.private_key, ciphertext)?)
+                    ckm_rsa_aes_key_unwrap(&self.private_key, ciphertext)?
                 } else {
-                    Zeroizing::from(rsa_oaep_aes_gcm_decrypt(
+                    rsa_oaep_aes_gcm_decrypt(
                         &self.private_key,
                         ciphertext,
                         request.authenticated_encryption_additional_data.as_deref(),
-                    )?)
+                    )?
                 }
             }
             #[cfg(not(feature = "fips"))]

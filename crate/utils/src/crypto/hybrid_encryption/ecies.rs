@@ -8,6 +8,7 @@ use openssl::{
     pkey::{PKey, Private, Public},
     symm::{decrypt_aead, encrypt_aead, Cipher},
 };
+use zeroize::Zeroizing;
 
 use crate::{
     crypto::symmetric::{AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH},
@@ -39,11 +40,11 @@ fn ecies_get_iv(
 
 /// Derive S into the 256-bit symmetric secret key using SHAKE128.
 #[allow(non_snake_case)]
-fn ecies_get_key(S: &EcPointRef, curve: &EcGroupRef) -> Result<Vec<u8>, KmipUtilsError> {
+fn ecies_get_key(S: &EcPointRef, curve: &EcGroupRef) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let mut ctx = BigNumContext::new_secure()?;
-    let S_bytes = S.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
+    let S_bytes = Zeroizing::from(S.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?);
 
-    let mut key = vec![0; AES_256_GCM_KEY_LENGTH];
+    let mut key = Zeroizing::from(vec![0; AES_256_GCM_KEY_LENGTH]);
 
     let mut hasher = Hasher::new(MessageDigest::shake_128())?;
     hasher.update(&S_bytes)?;
@@ -119,7 +120,7 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
 pub fn ecies_decrypt(
     privkey: &PKey<Private>,
     ciphertext: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError> {
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let mut ctx = BigNumContext::new_secure()?;
     let d = privkey.ec_key()?;
     let curve = d.group();
@@ -154,7 +155,14 @@ pub fn ecies_decrypt(
     let iv = ecies_get_iv(d.public_key(), &R, curve)?;
     let key = ecies_get_key(&S, curve)?;
 
-    let plaintext = decrypt_aead(Cipher::aes_256_gcm(), &key, Some(&iv), &[], ct, tag)?;
+    let plaintext = Zeroizing::from(decrypt_aead(
+        Cipher::aes_256_gcm(),
+        &key,
+        Some(&iv),
+        &[],
+        ct,
+        tag,
+    )?);
 
     Ok(plaintext)
 }
@@ -166,6 +174,7 @@ mod tests {
         nid::Nid,
         pkey::PKey,
     };
+    use zeroize::Zeroizing;
 
     use super::{ecies_decrypt, ecies_encrypt};
 
@@ -177,12 +186,12 @@ mod tests {
         let pubkey = PKey::from_ec_key(ec_pubkey).unwrap();
         let privkey = PKey::from_ec_key(ec_privkey).unwrap();
 
-        let plaintext = "i love pancakes".as_bytes();
+        let plaintext = Zeroizing::from("i love pancakes".as_bytes().to_vec());
 
-        let ct = ecies_encrypt(&pubkey, plaintext).unwrap();
+        let ct = ecies_encrypt(&pubkey, &plaintext).unwrap();
         let pt = ecies_decrypt(&privkey, &ct).unwrap();
 
-        assert_eq!(plaintext, &pt);
+        assert_eq!(plaintext, pt);
     }
 
     #[test]

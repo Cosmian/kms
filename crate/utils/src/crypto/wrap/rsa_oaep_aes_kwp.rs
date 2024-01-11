@@ -79,7 +79,7 @@ pub fn ckm_rsa_aes_key_wrap(
 pub fn ckm_rsa_aes_key_unwrap(
     p_key: &PKey<Private>,
     ciphertext: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError> {
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let rsa_privkey = p_key.rsa()?;
 
     #[cfg(feature = "fips")]
@@ -128,7 +128,7 @@ fn test_rsa_kem_wrap_unwrap() -> Result<(), KmipUtilsError> {
     let privkey = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
     let pubkey = PKey::public_key_from_pem(&privkey.public_key_to_pem()?)?;
 
-    let privkey_to_wrap = openssl::rsa::Rsa::generate(2048)?.private_key_to_pem()?;
+    let privkey_to_wrap = Zeroizing::from(openssl::rsa::Rsa::generate(2048)?.private_key_to_pem()?);
 
     let wrapped_key = ckm_rsa_aes_key_wrap(&pubkey, &privkey_to_wrap)?;
 
