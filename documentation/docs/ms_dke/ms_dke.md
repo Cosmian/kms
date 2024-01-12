@@ -52,8 +52,19 @@ Then `Solutions > Information protection > Labels`
 
 Follow [these instructions](https://learn.microsoft.com/en-gb/purview/create-sensitivity-labels#create-and-configure-sensitivity-labels) to create the label.
 
- - Sensitivity labels must be activated for MS 365 groups
+ - Sensitivity labels must be activated for MS 365 groups which are also called unified groups
+
+The first objective is to set the `EnableMIPLabels` parameter to `True` at the Entra ID Directory level (which is set to `False` by default), using  `Group.Unified` template 
+
+> The [EnableMIPLabels] flag indicates whether sensitivity labels published in Microsoft Purview compliance portal can be applied to Microsoft 365 groups. For more information, see Assign Sensitivity Labels for Microsoft 365 groups.
+
+To verify the current value of the `EnableMIPLabels` parameter, run the following command:
+
+```powershell
+$Setting = Get-AzureADDirectorySetting | ? { $_.DisplayName -eq "Group.Unified"}
+&Setting.Values
+```
 
    [See this doc](https://learn.microsoft.com/en-gb/purview/sensitivity-labels-teams-groups-sites#using-sensitivity-labels-for-microsoft-teams-microsoft-365-groups-and-sharepoint-sites)
    - [Enable sensitivity label support in PowerShell](https://learn.microsoft.com/en-us/entra/identity/users/groups-assign-sensitivity-labels#enable-sensitivity-label-support-in-powershell)
-   - 
+   - which will probably require [configuring groups](https://learn.microsoft.com/en-us/entra/identity/users/groups-settings-cmdlets) first
