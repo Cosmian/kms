@@ -93,7 +93,7 @@ The documentation on configuring sensitivity labels is [available here](https://
    you do not activate co-authoring.
    ![Sensitivity Label](./sensitivity_label.png)
 
-   Activate the label (scope) for meetings does not seem to work.
+   Activating the label (scope) for meetings does not seem to work.
    ![label scope](./label_scope.png)
 
 
