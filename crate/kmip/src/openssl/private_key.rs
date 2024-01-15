@@ -21,6 +21,11 @@ use crate::{
     result::KmipResultHelper,
 };
 
+const X25519_PRIVATE_KEY_LENGTH: usize = 32;
+const ED25519_PRIVATE_KEY_LENGTH: usize = 32;
+const X448_PRIVATE_KEY_LENGTH: usize = 56;
+const ED448_PRIVATE_KEY_LENGTH: usize = 57;
+
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
     while bytes.len() != size {
         bytes.insert(0, 0);
@@ -138,26 +143,22 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
             } => match recommended_curve {
                 RecommendedCurve::CURVE25519 => {
                     let mut privkey_vec = d.to_bytes_be();
-                    // 32 is privkey size on x25519.
-                    pad_be_bytes(&mut privkey_vec, 32);
+                    pad_be_bytes(&mut privkey_vec, X25519_PRIVATE_KEY_LENGTH);
                     PKey::private_key_from_raw_bytes(&privkey_vec, Id::X25519)?
                 }
                 RecommendedCurve::CURVE448 => {
                     let mut privkey_vec = d.to_bytes_be();
-                    // 56 is privkey size on x448.
-                    pad_be_bytes(&mut privkey_vec, 56);
+                    pad_be_bytes(&mut privkey_vec, X448_PRIVATE_KEY_LENGTH);
                     PKey::private_key_from_raw_bytes(&privkey_vec, Id::X448)?
                 }
                 RecommendedCurve::CURVEED25519 => {
                     let mut privkey_vec = d.to_bytes_be();
-                    // 32 is privkey size on ed25519.
-                    pad_be_bytes(&mut privkey_vec, 32);
+                    pad_be_bytes(&mut privkey_vec, ED25519_PRIVATE_KEY_LENGTH);
                     PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED25519)?
                 }
                 RecommendedCurve::CURVEED448 => {
                     let mut privkey_vec = d.to_bytes_be();
-                    // 57 is privkey size on Ed448.
-                    pad_be_bytes(&mut privkey_vec, 57);
+                    pad_be_bytes(&mut privkey_vec, ED448_PRIVATE_KEY_LENGTH);
                     PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED448)?
                 }
                 other => ec_private_key_from_scalar(d, other)?,
