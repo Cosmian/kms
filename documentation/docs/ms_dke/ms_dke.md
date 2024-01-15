@@ -12,7 +12,8 @@ The documentation on configuring sensitivity labels is [available here](https://
 1. Activating the protection service from Azure Information Protection
 
     The protection service [must be activated](https://learn.microsoft.com/en-us/azure/information-protection/activate-service) in order to use DKE.
-    
+    If not activated, "Group and Sites" will not be available in the scopes of the sensitivity label.    
+
     Run PowerShell as Admin
     
     ```powershell
