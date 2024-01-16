@@ -15,20 +15,25 @@ use cosmian_kmip::kmip::{
 };
 use num_bigint_dig::BigUint;
 use serde::{Deserialize, Serialize};
-use tracing::trace;
+use tracing::{info, trace};
+use url::Url;
 
 use crate::{kms_bail, kms_error, result::KResult, KMSServer};
 
 #[derive(Serialize, Debug)]
-enum KeyType {
+pub enum KeyType {
     #[serde(rename = "RSA")]
     RSA,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-enum Algorithm {
+pub enum Algorithm {
+    /// The doc says the only supported value is 'RSA-OAEP-256'.
     #[serde(rename = "RSA-OAEP-256")]
     RsaOaep256,
+    /// The example uses this value...
+    #[serde(rename = "RS256")]
+    Rs256,
 }
 
 #[derive(Serialize, Debug)]
@@ -81,19 +86,29 @@ pub async fn get_key(
     path: Path<String>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
-    let key_name = path.into_inner();
+    let mut key_name = path.into_inner();
+    if key_name == "" {
+        key_name = "dke_key".to_string();
+    }
     match _get_key(&key_name, req_http, &kms).await {
         Ok(key_data) => HttpResponse::Ok().json(key_data),
         Err(e) => HttpResponse::from_error(e),
     }
 }
 
-async fn _get_key(key_name: &str, req_http: HttpRequest, kms: &Arc<KMSServer>) -> KResult<KeyData> {
+async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMSServer>) -> KResult<KeyData> {
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(req_http)?;
+    let dke_service_url = kms
+        .params
+        .ms_dke_service_url
+        .as_ref()
+        .ok_or_else(|| kms_error!("MS DKE: The MS DKE service URL is not configured"))?;
+    let mut dke_service_url = Url::parse(dke_service_url)
+        .map_err(|_e| kms_error!("MS DKE: Invalid MS DKE Service URL: {}", dke_service_url))?;
     let op = Get {
         unique_identifier: Some(UniqueIdentifier::TextString(
-            "[".to_string() + key_name + "]",
+            serde_json::to_string(&vec![key_tag, "_pk"]).map_err(|e| kms_error!(e))?,
         )),
         key_format_type: Some(KeyFormatType::TransparentRSAPublicKey),
         key_wrap_type: Some(KeyWrapType::NotWrapped),
@@ -102,38 +117,48 @@ async fn _get_key(key_name: &str, req_http: HttpRequest, kms: &Arc<KMSServer>) -
     };
     let resp = kms.get(op, &user, database_params.as_ref()).await?;
     match resp.object {
-        Object::PrivateKey { key_block, .. } => match key_block.key_value.key_material {
+        Object::PublicKey { key_block, .. } => match key_block.key_value.key_material {
             KeyMaterial::TransparentRSAPublicKey {
                 modulus,
                 public_exponent,
-            } => Ok(KeyData {
-                key: DkePublicKey {
-                    key_type: KeyType::RSA,
-                    modulus: STANDARD.encode(modulus.to_bytes_be()),
-                    exponent: big_uint_to_u32(&public_exponent),
-                    algorithm: Algorithm::RsaOaep256,
-                    key_id: resp.unique_identifier.to_string().ok_or_else(|| {
-                        kms_error!(
-                            "The RSA public key does nopt have a text unique identifier. This is \
-                             not supported"
-                        )
-                    })?,
-                },
-                cache: DkePublicKeyCache {
-                    expiration: {
-                        // make the key valid for one day
-                        let now = Local::now();
-                        let in_one_day = now + Duration::days(1);
-                        let formatted = in_one_day.format("%Y-%m-%dT%H:%M:%S").to_string();
-                        formatted
+            } => {
+                let key_id = resp.unique_identifier.as_str().ok_or_else(|| {
+                    kms_error!(
+                        "MS DKE: The RSA public key does not have a text unique identifier. This \
+                         is not supported"
+                    )
+                })?;
+                let mut existing_path = dke_service_url.path().to_string();
+                // remove the trailing / if any
+                if existing_path.ends_with('/') {
+                    existing_path.pop();
+                }
+                dke_service_url.set_path(&format!("{}/{}/{}", existing_path, key_tag, key_id));
+                Ok(KeyData {
+                    key: DkePublicKey {
+                        key_type: KeyType::RSA,
+                        modulus: STANDARD.encode(modulus.to_bytes_be()),
+                        exponent: big_uint_to_u32(&public_exponent),
+                        algorithm: Algorithm::Rs256,
+                        key_id: dke_service_url.to_string(),
                     },
-                },
-            }),
+                    cache: DkePublicKeyCache {
+                        expiration: {
+                            // make the key valid for one day
+                            let now = Local::now();
+                            // let later = now + Duration::days(1);
+                            let later = now + Duration::minutes(1);
+                            let formatted = later.format("%Y-%m-%dT%H:%M:%S").to_string();
+                            formatted
+                        },
+                    },
+                })
+            }
             _ => {
-                kms_bail!("Invalid Key Material for a transparent RSA private key")
+                kms_bail!("MS DKE: Invalid Key Material for a transparent RSA public key")
             }
         },
-        _ => kms_bail!("Invalid key type {}", resp.object_type),
+        _ => kms_bail!("MS DKE: Invalid key type {}", resp.object_type),
     }
 }
 
@@ -143,34 +168,43 @@ pub struct DecryptedData {
     value: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct EncryptedData {
     /// The algorithm used to encrypt the data.
-    /// Currently only RSA-OAEP-256 is supported
-    alg: Algorithm,
+    /// Currently only RSA-OAEP-256 (or RS256 ?) is supported
+    #[allow(dead_code)]
+    pub alg: Algorithm,
     /// The base 64 value of the encrypted bytes
-    value: String,
+    pub value: String,
 }
 
-#[post("/{key_name}/{key_id}/Decrypt")]
+// #[post("/{key_name}/{key_id}/decrypt")]
+// TODO the doc says Decrypt when it is decrypt
+#[post("/{key_id}/decrypt")]
 pub async fn decrypt(
     req_http: HttpRequest,
     wrap_request: Json<EncryptedData>,
-    path: Path<(String, String)>,
+    // path: Path<(String, String)>,
+    key_id: Path<String>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     let encrypted_data = wrap_request.into_inner();
-    let (key_name, key_id) = path.into_inner();
-    trace!("POST /{}/{}/Decrypt {:?}", key_name, key_id, encrypted_data);
-    match _decrypt(&key_name, &key_id, encrypted_data, req_http, &kms).await {
+    info!(
+        "Encrypted Data : {}",
+        serde_json::to_string(&encrypted_data).unwrap()
+    );
+    // let (key_name, key_id) = path.into_inner();
+    let _key_id = key_id.into_inner();
+    let key_tag = "ms_dke";
+    // trace!("POST /{}/{}/Decrypt {:?}", key_name, key_id, encrypted_data);
+    match _decrypt(key_tag, encrypted_data, req_http, &kms).await {
         Ok(decrypted_data) => HttpResponse::Ok().json(decrypted_data),
         Err(e) => HttpResponse::from_error(e),
     }
 }
 
 async fn _decrypt(
-    _key_name: &str,
-    key_id: &str,
+    key_tag: &str,
     encrypted_data: EncryptedData,
     req_http: HttpRequest,
     kms: &Arc<KMSServer>,
@@ -178,7 +212,9 @@ async fn _decrypt(
     let database_params = kms.get_sqlite_enc_secrets(&req_http)?;
     let user = kms.get_user(req_http)?;
     let decrypt_request = Decrypt {
-        unique_identifier: Some(UniqueIdentifier::TextString(key_id.to_string())),
+        unique_identifier: Some(UniqueIdentifier::TextString(
+            serde_json::to_string(&vec![key_tag, "_sk"]).map_err(|e| kms_error!(e))?,
+        )),
         data: Some(STANDARD.decode(encrypted_data.value.as_bytes())?),
         ..Default::default()
     };

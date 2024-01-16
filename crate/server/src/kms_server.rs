@@ -245,7 +245,8 @@ pub async fn prepare_kms_server(
         None
     };
 
-    let enable_ms_dke = kms_server.params.enable_ms_dke;
+    // Should we enable the MS DKE Service ?
+    let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
 
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {

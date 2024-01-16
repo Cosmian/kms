@@ -1206,6 +1206,7 @@ dependencies = [
  "mime",
  "num-bigint-dig",
  "openssl",
+ "pem",
  "rawsql",
  "redis",
  "reqwest",
