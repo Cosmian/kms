@@ -40,7 +40,7 @@ use openssl::nid::Nid;
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
 use tracing::{debug, trace};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 use super::{cover_crypt::create_user_decryption_key, KMS};
 use crate::{
@@ -294,7 +294,7 @@ impl KMS {
                     let key_len: usize = attributes
                         .cryptographic_length
                         .map_or(AES_256_GCM_KEY_LENGTH, |v| v as usize / 8);
-                    let mut symmetric_key = vec![0; key_len];
+                    let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
                     rng.fill_bytes(&mut symmetric_key);
                     let object =
                         create_symmetric_key_kmip_object(&symmetric_key, *cryptographic_algorithm);
@@ -385,13 +385,13 @@ impl KMS {
         // recover tags and clean them up from the common attributes
         let tags = remove_tags(&mut common_attributes).unwrap_or_default();
         check_user_tags(&tags)?;
-        //update the tags for the private key and the public key
+        // Update the tags for the private key and the public key.
         let mut sk_tags = tags.clone();
         sk_tags.insert("_sk".to_string());
         let mut pk_tags = tags;
         pk_tags.insert("_pk".to_string());
 
-        // Grab whatever attributes were supplied on the  create request
+        // Grab whatever attributes were supplied on the  create request.
         let any_attributes = Some(&common_attributes)
             .or(request.private_key_attributes.as_ref())
             .or(request.public_key_attributes.as_ref())
@@ -401,7 +401,7 @@ impl KMS {
                 )
             })?;
 
-        // check that the cryptographic algorithm is specified
+        // Check that the cryptographic algorithm is specified.
         let cryptographic_algorithm = &any_attributes.cryptographic_algorithm.ok_or_else(|| {
             KmsError::InvalidRequest(
                 "the cryptographic algorithm must be specified for key pair creation".to_string(),

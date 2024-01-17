@@ -9,6 +9,7 @@ use cosmian_kmip::kmip::{
 use num_bigint_dig::BigUint;
 use openssl::{pkey::Private, rsa::Rsa};
 use tracing::trace;
+use zeroize::Zeroizing;
 
 #[cfg(feature = "fips")]
 use crate::{crypto::wrap::rsa_oaep_aes_kwp::FIPS_MIN_RSA_MODULUS_LENGTH, kmip_utils_bail};
@@ -89,19 +90,25 @@ pub fn to_rsa_private_key(
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentRSAPrivateKey {
                     modulus: BigUint::from_bytes_be(&private_key.n().to_vec()),
-                    private_exponent: Some(BigUint::from_bytes_be(&private_key.d().to_vec())),
+                    private_exponent: Some(BigUint::from_bytes_be(&Zeroizing::from(
+                        private_key.d().to_vec(),
+                    ))),
                     public_exponent: Some(BigUint::from_bytes_be(&private_key.e().to_vec())),
-                    p: private_key.p().map(|p| BigUint::from_bytes_be(&p.to_vec())),
-                    q: private_key.q().map(|q| BigUint::from_bytes_be(&q.to_vec())),
+                    p: private_key
+                        .p()
+                        .map(|p| BigUint::from_bytes_be(&Zeroizing::from(p.to_vec()))),
+                    q: private_key
+                        .q()
+                        .map(|q| BigUint::from_bytes_be(&Zeroizing::from(q.to_vec()))),
                     prime_exponent_p: private_key
                         .dmp1()
-                        .map(|dmp1| BigUint::from_bytes_be(&dmp1.to_vec())),
+                        .map(|dmp1| BigUint::from_bytes_be(&Zeroizing::from(dmp1.to_vec()))),
                     prime_exponent_q: private_key
                         .dmq1()
-                        .map(|dmq1| BigUint::from_bytes_be(&dmq1.to_vec())),
+                        .map(|dmq1| BigUint::from_bytes_be(&Zeroizing::from(dmq1.to_vec()))),
                     crt_coefficient: private_key
                         .iqmp()
-                        .map(|iqmp| BigUint::from_bytes_be(&iqmp.to_vec())),
+                        .map(|iqmp| BigUint::from_bytes_be(&Zeroizing::from(iqmp.to_vec()))),
                 },
                 attributes: Some(Attributes {
                     object_type: Some(ObjectType::PrivateKey),

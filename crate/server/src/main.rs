@@ -8,6 +8,7 @@ use cosmian_kms_server::{
     result::KResult,
 };
 use dotenvy::dotenv;
+#[cfg(feature = "fips")]
 use openssl::provider::Provider;
 #[cfg(feature = "timeout")]
 use tracing::warn;
