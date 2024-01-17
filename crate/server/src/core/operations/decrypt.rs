@@ -75,7 +75,7 @@ pub async fn decrypt(
     }
 
     // decrypt
-    kms.get_decryption_system(owm, request.cryptographic_parameters.as_ref(), params)
+    kms.get_decryption_system(Covercrypt::default(), owm, params)
         .await?
         .decrypt(&request)
         .map_err(Into::into)
