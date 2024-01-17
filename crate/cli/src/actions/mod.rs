@@ -1,5 +1,4 @@
 pub mod access;
-pub mod bootstrap;
 pub mod certificates;
 pub mod cover_crypt;
 pub mod elliptic_curves;
@@ -7,7 +6,7 @@ pub mod login;
 pub mod logout;
 pub mod markdown;
 pub mod new_database;
+pub mod rsa;
 pub mod shared;
 pub mod symmetric;
-pub mod verify;
 pub mod version;

@@ -32,15 +32,43 @@ To certify a Certificate Signing Request or a Public Key, one must provide:
    corresponding public key
 - or the issuer certificate unique identifier which must have a link to the corresponding issuer private key
 
+#### Supply X509 extensions (optional)
+
+Specify X509 extensions for a `Certify` operation is possible using the `ckms` CLI.
+
+The `--certificate-extensions` arg (short version `-e`) expects a path to a configuration file written in `ini` format (roughly the same format as [OpenSSL X509 v3 cert extension cnf format](https://www.openssl.org/docs/man1.1.1/man5/x509v3_config.html)).
+
+The extensions may be part of a paragraph called `v3_ca`.
+
+Example of a configuration file containing `v3_ca` parag describing extensions to add:
+
+```ini
+[v3_ca]
+basicConstraints=critical,CA:FALSE,pathlen:0
+keyUsage=keyCertSign,digitalSignature
+extendedKeyUsage=emailProtection
+crlDistributionPoints=URI:http://cse.example.com/crl.pem
+```
+
+These extensions are embedded in the `Certify` request within the vendor attributes.
+
+Example of the corresponding `ckms` CLI command:
+
+```shell
+ckms certificates certify \
+  -r my_cert.csr -k 854d7914-3b1d-461a-a2dd-7aad27043b56 -d 365 -t "MyCert" \
+  -e /some/path/to/ext.cnf
+```
+
 #### Example - PKCS#10 Certificate Signing Request
 
 Certify a PKCS#10 Certificate Signing Request (CSR) with the issuer private key unique identifier
 `854d7914-3b1d-461a-a2dd-7aad27043b56`, and set the certificate requested validity to 365 days and the tag to `MyCert`.
 
-The corresponding `ckms` CLI command is
+The corresponding `ckms` CLI command is:
 
 ```shell
-ckms  certificates certify -r my_cert.csr -k 854d7914-3b1d-461a-a2dd-7aad27043b56 -d 365 -t "MyCert"
+ckms certificates certify -r my_cert.csr -k 854d7914-3b1d-461a-a2dd-7aad27043b56 -d 365 -t "MyCert"
 ```
 
 Note: the `ckms` client converts the CSR from PEM TO DER before creating the JSON TTLV and sending it to the

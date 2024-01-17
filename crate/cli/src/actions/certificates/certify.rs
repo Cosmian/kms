@@ -65,6 +65,10 @@ pub struct CertifyAction {
     #[clap(long = "days", short = 'd', default_value = "365")]
     number_of_days: usize,
 
+    /// The path to a X509 extension's file, containing a `v3_ca` parag
+    #[clap(long = "certificate-extensions", short = 'e')]
+    certificate_extensions: Option<PathBuf>,
+
     /// The tag to associate to the certificate.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
@@ -152,6 +156,10 @@ impl CertifyAction {
         } else {
             None
         };
+
+        if let Some(extension_file) = &self.certificate_extensions {
+            attributes.set_x509_extension_file(std::fs::read(extension_file)?);
+        }
 
         let certify_request = Certify {
             unique_identifier,

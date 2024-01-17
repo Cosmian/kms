@@ -7,7 +7,7 @@ use cloudproof::reexport::{
     cover_crypt::Covercrypt,
     crypto_core::{
         reexport::rand_core::{RngCore, SeedableRng},
-        Aes256Gcm, CsRng, FixedSizeCBytes, SymmetricKey,
+        CsRng, FixedSizeCBytes, SymmetricKey,
     },
 };
 use cosmian_kmip::{
@@ -18,18 +18,28 @@ use cosmian_kmip::{
     },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_utils::crypto::elliptic_curves::operation::{
+    create_x25519_key_pair, create_x448_key_pair,
+};
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
-        curve_25519::operation::{create_ed25519_key_pair, create_x25519_key_pair},
+        elliptic_curves::operation::{
+            create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
+        },
         hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
-        symmetric::{create_symmetric_key, AesGcmSystem},
+        rsa::operation::create_rsa_key_pair,
+        symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
     },
     tagging::{check_user_tags, get_tags, remove_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
-use tracing::{debug, log::warn, trace};
+use openssl::nid::Nid;
+#[cfg(not(feature = "fips"))]
+use tracing::warn;
+use tracing::{debug, trace};
 use zeroize::Zeroize;
 
 use super::{cover_crypt::create_user_decryption_key, KMS};
@@ -109,6 +119,7 @@ impl KMS {
         mut owm: ObjectWithMetadata,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn EncryptionSystem>> {
+        trace!("get_encryption_system: entering: object id: {}", owm.id);
         // the key must be active
         if owm.state != StateEnumeration::Active {
             kms_bail!(KmsError::InconsistentOperation(
@@ -126,9 +137,9 @@ impl KMS {
                 }
             }
         }
-
         trace!("get_encryption_system: unwrap done (if required)");
-        match &owm.object {
+
+        let encryption_system = match &owm.object {
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
                     match &key_block.cryptographic_algorithm {
@@ -155,9 +166,18 @@ impl KMS {
                 | KeyFormatType::TransparentRSAPublicKey
                 | KeyFormatType::PKCS1
                 | KeyFormatType::PKCS8 => {
-                    let p_key = kmip_public_key_to_openssl(&owm.object)?;
-                    Ok(Box::new(HybridEncryptionSystem::new(&owm.id, p_key))
-                        as Box<dyn EncryptionSystem>)
+                    trace!(
+                        "get_encryption_system: matching on key format type: {:?}",
+                        key_block.key_format_type
+                    );
+                    let public_key = kmip_public_key_to_openssl(&owm.object)?;
+                    trace!(
+                        "get_encryption_system: OpenSSL Public Key instantiated before encryption"
+                    );
+                    Ok(
+                        Box::new(HybridEncryptionSystem::new(&owm.id, public_key, false))
+                            as Box<dyn EncryptionSystem>,
+                    )
                 }
                 other => kms_not_supported!("encryption with public keys of format: {other}"),
             },
@@ -167,10 +187,13 @@ impl KMS {
                 Box::new(HybridEncryptionSystem::instantiate_with_certificate(
                     &owm.id,
                     certificate_value,
+                    false,
                 )?) as Box<dyn EncryptionSystem>,
             ),
             other => kms_not_supported!("encryption with keys of type: {}", other.object_type()),
-        }
+        };
+        trace!("get_encryption_system: exiting");
+        encryption_system
     }
 
     /// Return a decryption system based on the type of key
@@ -201,8 +224,10 @@ impl KMS {
                 | KeyFormatType::TransparentRSAPrivateKey
                 | KeyFormatType::TransparentECPrivateKey => {
                     let p_key = kmip_private_key_to_openssl(&owm.object)?;
-                    Ok(Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key))
-                        as Box<dyn DecryptionSystem>)
+                    Ok(
+                        Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key, false))
+                            as Box<dyn DecryptionSystem>,
+                    )
                 }
                 other => kms_not_supported!("decryption with keys of format: {other}"),
             },
@@ -268,10 +293,11 @@ impl KMS {
                     // create the key
                     let key_len: usize = attributes
                         .cryptographic_length
-                        .map_or(Aes256Gcm::KEY_LENGTH, |v| v as usize / 8);
+                        .map_or(AES_256_GCM_KEY_LENGTH, |v| v as usize / 8);
                     let mut symmetric_key = vec![0; key_len];
                     rng.fill_bytes(&mut symmetric_key);
-                    let object = create_symmetric_key(&symmetric_key, *cryptographic_algorithm);
+                    let object =
+                        create_symmetric_key_kmip_object(&symmetric_key, *cryptographic_algorithm);
 
                     //return the object and the tags
                     Ok((object, tags))
@@ -333,7 +359,13 @@ impl KMS {
         }
     }
 
-    /// Create a key pair and the corresponding system tags
+    /// Create a key pair and the corresponding system tags.
+    /// Generate FIPS-140-3 compliant Key Pair for key agreement and digital signature.
+    ///
+    /// Sources:
+    /// - NIST.SP.800-56Ar3 - Appendix D.
+    /// - NIST.SP.800-186 - Section 3.1.2 table 2.
+    ///
     /// The tags will contain the user tags and the following:
     ///  - "_sk" for the private key
     ///  - "_pk" for the public key
@@ -382,27 +414,103 @@ impl KMS {
                     .cryptographic_domain_parameters
                     .unwrap_or_default();
                 match dp.recommended_curve.unwrap_or_default() {
+                    // P-CURVES
+                    #[cfg(not(feature = "fips"))]
+                    // Generate a P-192 Key Pair. Not FIPS-140-3 compliant. **This curve is for
+                    // legacy-use only** as it provides less than 112 bits of security.
+                    //
+                    // Sources:
+                    // - NIST.SP.800-186 - Section 3.2.1.1
+                    RecommendedCurve::P192 => create_approved_ecc_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        Nid::X9_62_PRIME192V1,
+                    ),
+                    RecommendedCurve::P224 => create_approved_ecc_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        Nid::SECP224R1,
+                    ),
+                    RecommendedCurve::P256 => create_approved_ecc_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        Nid::X9_62_PRIME256V1,
+                    ),
+                    RecommendedCurve::P384 => create_approved_ecc_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        Nid::SECP384R1,
+                    ),
+                    RecommendedCurve::P521 => create_approved_ecc_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        Nid::SECP521R1,
+                    ),
+
+                    #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVE25519 => {
-                        let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                        create_x25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                        create_x25519_key_pair(private_key_uid, public_key_uid)
                     }
+                    #[cfg(not(feature = "fips"))]
+                    RecommendedCurve::CURVE448 => {
+                        create_x448_key_pair(private_key_uid, public_key_uid)
+                    }
+                    #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED25519 => {
                         warn!(
                             "An Edwards Keypair on curve 25519 should not be requested to perform \
-                             ECDH. Creating anyway as it can be converted to Montgomery X25519"
+                             ECDH. Creating anyway."
                         );
-                        let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                        create_ed25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+                        create_ed25519_key_pair(private_key_uid, public_key_uid)
+                    }
+
+                    #[cfg(feature = "fips")]
+                    // Ed25519 not allowed for ECDH.
+                    // see NIST.SP.800-186 - Section 3.1.2 table 2.
+                    RecommendedCurve::CURVEED25519 => {
+                        kms_not_supported!(
+                            "An Edwards Keypair on curve 25519 should not be requested to perform \
+                             ECDH in FIPS mode."
+                        )
+                    }
+                    #[cfg(not(feature = "fips"))]
+                    RecommendedCurve::CURVEED448 => {
+                        warn!(
+                            "An Edwards Keypair on curve 448 should not be requested to perform \
+                             ECDH. Creating anyway."
+                        );
+                        create_ed448_key_pair(private_key_uid, public_key_uid)
+                    }
+                    #[cfg(feature = "fips")]
+                    // Ed448 not allowed for ECDH.
+                    // see NIST.SP.800-186 - Section 3.1.2 table 2.
+                    RecommendedCurve::CURVEED448 => {
+                        kms_not_supported!(
+                            "An Edwards Keypair on curve 448 should not be requested to perform \
+                             ECDH in FIPS mode."
+                        )
                     }
                     other => kms_not_supported!(
                         "Generation of Key Pair for curve: {other:?}, is not supported"
                     ),
                 }
             }
-            CryptographicAlgorithm::Ed25519 => {
-                let mut rng = self.rng.lock().expect("RNG lock poisoned");
-                create_ed25519_key_pair(&mut *rng, private_key_uid, public_key_uid)
+            CryptographicAlgorithm::RSA => {
+                let key_size_in_bits = any_attributes
+                    .cryptographic_length
+                    .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_string()))?
+                    as u32;
+                trace!(
+                    "RSA key pair generation: size in bits: {}",
+                    key_size_in_bits
+                );
+
+                create_rsa_key_pair(key_size_in_bits, public_key_uid, private_key_uid)
             }
+            CryptographicAlgorithm::Ed25519 => {
+                create_ed25519_key_pair(private_key_uid, public_key_uid)
+            }
+            CryptographicAlgorithm::Ed448 => create_ed448_key_pair(private_key_uid, public_key_uid),
             CryptographicAlgorithm::CoverCrypt => {
                 cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
                     &Covercrypt::default(),

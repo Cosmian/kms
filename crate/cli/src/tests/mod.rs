@@ -1,11 +1,10 @@
 mod access;
 mod auth_tests;
-mod bootstrap_server;
 mod certificates;
 mod cover_crypt;
 mod elliptic_curve;
 mod new_database;
-mod sgx;
+mod rsa;
 mod shared;
 mod symmetric;
 

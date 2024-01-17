@@ -1,6 +1,10 @@
-use cloudproof::reexport::crypto_core::{key_unwrap, key_wrap};
-
-use crate::{crypto::password_derivation::derive_key_from_password, error::KmipUtilsError};
+use crate::{
+    crypto::{
+        password_derivation::derive_key_from_password,
+        wrap::{key_unwrap, key_wrap},
+    },
+    error::KmipUtilsError,
+};
 
 const WRAPPING_SECRET_LENGTH: usize = 32;
 

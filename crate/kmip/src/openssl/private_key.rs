@@ -21,6 +21,17 @@ use crate::{
     result::KmipResultHelper,
 };
 
+const X25519_PRIVATE_KEY_LENGTH: usize = 32;
+const ED25519_PRIVATE_KEY_LENGTH: usize = 32;
+const X448_PRIVATE_KEY_LENGTH: usize = 56;
+const ED448_PRIVATE_KEY_LENGTH: usize = 57;
+
+pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
+    while bytes.len() != size {
+        bytes.insert(0, 0);
+    }
+}
+
 /// Convert a KMIP Private key to openssl `PKey<Private>`
 ///
 /// The supported `KeyFormatType` are:
@@ -131,13 +142,24 @@ pub fn kmip_private_key_to_openssl(private_key: &Object) -> Result<PKey<Private>
                 recommended_curve,
             } => match recommended_curve {
                 RecommendedCurve::CURVE25519 => {
-                    PKey::private_key_from_raw_bytes(&d.to_bytes_be(), Id::X25519)?
+                    let mut privkey_vec = d.to_bytes_be();
+                    pad_be_bytes(&mut privkey_vec, X25519_PRIVATE_KEY_LENGTH);
+                    PKey::private_key_from_raw_bytes(&privkey_vec, Id::X25519)?
                 }
                 RecommendedCurve::CURVE448 => {
-                    PKey::private_key_from_raw_bytes(&d.to_bytes_be(), Id::X448)?
+                    let mut privkey_vec = d.to_bytes_be();
+                    pad_be_bytes(&mut privkey_vec, X448_PRIVATE_KEY_LENGTH);
+                    PKey::private_key_from_raw_bytes(&privkey_vec, Id::X448)?
                 }
                 RecommendedCurve::CURVEED25519 => {
-                    PKey::private_key_from_raw_bytes(&d.to_bytes_be(), Id::ED25519)?
+                    let mut privkey_vec = d.to_bytes_be();
+                    pad_be_bytes(&mut privkey_vec, ED25519_PRIVATE_KEY_LENGTH);
+                    PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED25519)?
+                }
+                RecommendedCurve::CURVEED448 => {
+                    let mut privkey_vec = d.to_bytes_be();
+                    pad_be_bytes(&mut privkey_vec, ED448_PRIVATE_KEY_LENGTH);
+                    PKey::private_key_from_raw_bytes(&privkey_vec, Id::ED448)?
                 }
                 other => ec_private_key_from_scalar(d, other)?,
             },
@@ -160,16 +182,23 @@ fn ec_private_key_from_scalar(
     scalar: &BigUint,
     curve: &RecommendedCurve,
 ) -> Result<PKey<Private>, KmipError> {
-    let nid = match curve {
-        RecommendedCurve::P256 => Nid::X9_62_PRIME256V1,
-        RecommendedCurve::P192 => Nid::X9_62_PRIME192V1,
-        RecommendedCurve::P224 => Nid::SECP224R1,
-        RecommendedCurve::P384 => Nid::SECP384R1,
-        RecommendedCurve::P521 => Nid::SECP521R1,
+    let (nid, privkey_size) = match curve {
+        // P-CURVES
+        #[cfg(not(feature = "fips"))]
+        RecommendedCurve::P192 => (Nid::X9_62_PRIME192V1, 24),
+        RecommendedCurve::P256 => (Nid::X9_62_PRIME256V1, 32),
+        RecommendedCurve::P224 => (Nid::SECP224R1, 28),
+        RecommendedCurve::P384 => (Nid::SECP384R1, 48),
+        RecommendedCurve::P521 => (Nid::SECP521R1, 66),
+
         x => kmip_bail!("Unsupported curve: {:?} in this KMIP implementation", x),
     };
     let big_num_context = BigNumContext::new()?;
+
+    let mut scalar_vec = scalar.to_bytes_be();
+    pad_be_bytes(&mut scalar_vec, privkey_size);
     let scalar = BigNum::from_slice(scalar.to_bytes_be().as_slice())?;
+
     let ec_group = EcGroup::from_curve_name(nid)?;
     let mut ec_public_key = EcPoint::new(&ec_group)?;
     ec_public_key.mul_generator(&ec_group, &scalar, &big_num_context)?;
@@ -245,6 +274,8 @@ pub fn openssl_private_key_to_kmip(
                     let d = BigUint::from_bytes_be(ec_key.private_key().to_vec().as_slice());
                     let recommended_curve = match ec_key.group().curve_name() {
                         Some(nid) => match nid {
+                            // P-CURVES
+                            #[cfg(not(feature = "fips"))]
                             Nid::X9_62_PRIME192V1 => RecommendedCurve::P192,
                             Nid::SECP224R1 => RecommendedCurve::P224,
                             Nid::X9_62_PRIME256V1 => RecommendedCurve::P256,
@@ -405,11 +436,11 @@ pub fn openssl_private_key_to_kmip(
 
 #[cfg(test)]
 mod tests {
-
     use openssl::{
         bn::BigNum,
-        ec::{EcGroup, EcKey},
-        pkey::{Id, PKey},
+        ec::{EcGroup, EcKey, EcPoint},
+        nid::Nid,
+        pkey::{Id, PKey, Private},
         rsa::Rsa,
     };
 
@@ -419,16 +450,20 @@ mod tests {
             kmip_objects::Object,
             kmip_types::{KeyFormatType, RecommendedCurve},
         },
-        openssl::{kmip_private_key_to_openssl, private_key::openssl_private_key_to_kmip},
+        openssl::{
+            kmip_private_key_to_openssl,
+            private_key::{openssl_private_key_to_kmip, pad_be_bytes},
+        },
     };
 
-    #[test]
-    fn test_rsa_private_key() {
-        let rsa_private_key = Rsa::generate(2048).unwrap();
-        let private_key = PKey::from_rsa(rsa_private_key).unwrap();
-
-        // PKCS#8
-        let object = openssl_private_key_to_kmip(&private_key, KeyFormatType::PKCS8).unwrap();
+    fn test_private_key_conversion_pkcs(
+        private_key: &PKey<Private>,
+        id: Id,
+        keysize: u32,
+        kft: KeyFormatType,
+    ) {
+        // PKCS#X
+        let object = openssl_private_key_to_kmip(private_key, kft).unwrap();
         let object_ = object.clone();
         let key_block = match object {
             Object::PrivateKey { key_block } => key_block,
@@ -445,17 +480,30 @@ mod tests {
             } => key_value,
             _ => panic!("Invalid key block"),
         };
-        let private_key_ = PKey::private_key_from_pkcs8(&key_value).unwrap();
-        assert_eq!(private_key_.id(), Id::RSA);
-        assert_eq!(private_key_.bits(), 2048);
-        assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
-        let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
-        assert_eq!(private_key_.id(), Id::RSA);
-        assert_eq!(private_key_.bits(), 2048);
-        assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
+        if kft == KeyFormatType::PKCS8 {
+            let private_key_ = PKey::private_key_from_pkcs8(&key_value).unwrap();
+            assert_eq!(private_key_.id(), id);
+            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
+            let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
+            assert_eq!(private_key_.id(), id);
+            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
+        } else {
+            let private_key_ = PKey::private_key_from_der(&key_value).unwrap();
+            assert_eq!(private_key_.id(), id);
+            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(private_key_.private_key_to_der().unwrap(), key_value);
+            let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
+            assert_eq!(private_key_.id(), id);
+            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(private_key_.private_key_to_der().unwrap(), key_value);
+        }
+    }
 
-        // PKCS#1
-        let object = openssl_private_key_to_kmip(&private_key, KeyFormatType::PKCS1).unwrap();
+    fn test_private_key_conversion_sec1(private_key: &PKey<Private>, id: Id, keysize: u32) {
+        // SEC1.
+        let object = openssl_private_key_to_kmip(private_key, KeyFormatType::ECPrivateKey).unwrap();
         let object_ = object.clone();
         let key_block = match object {
             Object::PrivateKey { key_block } => key_block,
@@ -472,18 +520,24 @@ mod tests {
             } => key_value,
             _ => panic!("Invalid key block"),
         };
-        let private_key_ = PKey::from_rsa(Rsa::private_key_from_der(&key_value).unwrap()).unwrap();
-        assert_eq!(private_key_.id(), Id::RSA);
-        assert_eq!(private_key_.bits(), 2048);
+        let private_key_ =
+            PKey::from_ec_key(EcKey::private_key_from_der(&key_value).unwrap()).unwrap();
+        assert_eq!(private_key_.id(), id);
+        assert_eq!(private_key_.bits(), keysize);
         assert_eq!(private_key_.private_key_to_der().unwrap(), key_value);
         let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
-        assert_eq!(private_key_.id(), Id::RSA);
-        assert_eq!(private_key_.bits(), 2048);
+        assert_eq!(private_key_.id(), id);
+        assert_eq!(private_key_.bits(), keysize);
         assert_eq!(private_key_.private_key_to_der().unwrap(), key_value);
+    }
 
-        // Transparent RSA
+    fn test_private_key_conversion_transparent_rsa(
+        private_key: &PKey<Private>,
+        id: Id,
+        keysize: u32,
+    ) {
         let object =
-            openssl_private_key_to_kmip(&private_key, KeyFormatType::TransparentRSAPrivateKey)
+            openssl_private_key_to_kmip(private_key, KeyFormatType::TransparentRSAPrivateKey)
                 .unwrap();
         let object_ = object.clone();
         let key_block = match object {
@@ -543,180 +597,312 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(private_key_.id(), Id::RSA);
-        assert_eq!(private_key_.bits(), 2048);
+
+        assert_eq!(private_key_.id(), id);
+        assert_eq!(private_key_.bits(), keysize);
+        assert_eq!(
+            private_key.private_key_to_der().unwrap(),
+            private_key_.private_key_to_der().unwrap()
+        );
+
         let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
-        assert_eq!(private_key_.id(), Id::RSA);
-        assert_eq!(private_key_.bits(), 2048);
+        assert_eq!(private_key_.id(), id);
+        assert_eq!(private_key_.bits(), keysize);
+        assert_eq!(
+            private_key.private_key_to_der().unwrap(),
+            private_key_.private_key_to_der().unwrap()
+        );
+    }
+
+    fn test_private_key_conversion_transparent_ec(
+        private_key: &PKey<Private>,
+        ec_public_key: Option<&EcPoint>,
+        ec_group: Option<&EcGroup>,
+        curve: RecommendedCurve,
+        id: Id,
+        keysize: u32,
+    ) {
+        // Transparent EC.
+        let object =
+            openssl_private_key_to_kmip(private_key, KeyFormatType::TransparentECPrivateKey)
+                .unwrap();
+        let object_ = object.clone();
+        let key_block = match object {
+            Object::PrivateKey { key_block } => key_block,
+            _ => panic!("Invalid key block"),
+        };
+        let (d, recommended_curve) = match key_block {
+            KeyBlock {
+                key_value:
+                    KeyValue {
+                        key_material:
+                            KeyMaterial::TransparentECPrivateKey {
+                                d,
+                                recommended_curve,
+                            },
+                        ..
+                    },
+                ..
+            } => (d, recommended_curve),
+            _ => panic!("Invalid key block"),
+        };
+        assert_eq!(recommended_curve, curve);
+
+        let mut privkey_vec = d.to_bytes_be();
+
+        // privkey size on curve.
+        let bytes_keysize = 1 + ((keysize as usize - 1) / 8);
+
+        pad_be_bytes(&mut privkey_vec, bytes_keysize);
+        if id == Id::EC {
+            let private_key_ = PKey::from_ec_key(
+                EcKey::from_private_components(
+                    ec_group.unwrap(),
+                    &BigNum::from_slice(privkey_vec.as_slice()).unwrap(),
+                    ec_public_key.unwrap(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(private_key_.id(), id);
+            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(
+                private_key.private_key_to_der().unwrap(),
+                private_key_.private_key_to_der().unwrap()
+            );
+            let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
+            assert_eq!(private_key_.id(), id);
+            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(
+                private_key.private_key_to_der().unwrap(),
+                private_key_.private_key_to_der().unwrap()
+            );
+        } else {
+            let private_key_ = PKey::private_key_from_raw_bytes(&privkey_vec, id).unwrap();
+            assert_eq!(private_key_.id(), id);
+            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(
+                private_key.raw_private_key().unwrap(),
+                private_key_.raw_private_key().unwrap()
+            );
+            let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
+            assert_eq!(private_key_.id(), id);
+            assert_eq!(private_key_.bits(), keysize);
+            assert_eq!(
+                private_key.raw_private_key().unwrap(),
+                private_key_.raw_private_key().unwrap()
+            );
+        }
     }
 
     #[test]
-    fn test_ec_p_256_private_key() {
+    fn test_conversion_rsa_private_key() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let keysize = 2048;
+        let rsa_private_key = Rsa::generate(keysize).unwrap();
+        let private_key = PKey::from_rsa(rsa_private_key).unwrap();
+
+        test_private_key_conversion_pkcs(&private_key, Id::RSA, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_pkcs(&private_key, Id::RSA, keysize, KeyFormatType::PKCS1);
+        test_private_key_conversion_transparent_rsa(&private_key, Id::RSA, keysize);
+    }
+
+    #[test]
+    #[cfg(not(feature = "fips"))]
+    fn test_conversion_ec_p_192_private_key() {
+        let keysize = 192;
+        let ec_group = EcGroup::from_curve_name(Nid::X9_62_PRIME192V1).unwrap();
+        let ec_key = EcKey::generate(&ec_group).unwrap();
+        let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
+        let private_key = PKey::from_ec_key(ec_key).unwrap();
+
+        test_private_key_conversion_pkcs(&private_key, Id::EC, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_sec1(&private_key, Id::EC, keysize);
+
+        test_private_key_conversion_transparent_ec(
+            &private_key,
+            Some(&ec_public_key),
+            Some(&ec_group),
+            RecommendedCurve::P192,
+            Id::EC,
+            keysize,
+        );
+    }
+
+    #[test]
+    fn test_conversion_ec_p_224_private_key() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let keysize = 224;
+        let ec_group = EcGroup::from_curve_name(Nid::SECP224R1).unwrap();
+        let ec_key = EcKey::generate(&ec_group).unwrap();
+        let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
+        let private_key = PKey::from_ec_key(ec_key).unwrap();
+
+        test_private_key_conversion_pkcs(&private_key, Id::EC, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_sec1(&private_key, Id::EC, keysize);
+
+        test_private_key_conversion_transparent_ec(
+            &private_key,
+            Some(&ec_public_key),
+            Some(&ec_group),
+            RecommendedCurve::P224,
+            Id::EC,
+            keysize,
+        );
+    }
+
+    #[test]
+    fn test_conversion_ec_p_256_private_key() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let keysize = 256;
         let ec_group = EcGroup::from_curve_name(openssl::nid::Nid::X9_62_PRIME256V1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
         let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
         let private_key = PKey::from_ec_key(ec_key).unwrap();
 
-        // PKCS#8
-        let object = openssl_private_key_to_kmip(&private_key, KeyFormatType::PKCS8).unwrap();
-        let object_ = object.clone();
-        let key_block = match object {
-            Object::PrivateKey { key_block } => key_block,
-            _ => panic!("Invalid key block"),
-        };
-        let key_value = match key_block {
-            KeyBlock {
-                key_value:
-                    KeyValue {
-                        key_material: KeyMaterial::ByteString(key_value),
-                        ..
-                    },
-                ..
-            } => key_value,
-            _ => panic!("Invalid key block"),
-        };
-        let private_key_ = PKey::private_key_from_pkcs8(&key_value).unwrap();
-        assert_eq!(private_key_.id(), Id::EC);
-        assert_eq!(private_key_.bits(), 256);
-        assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
-        let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
-        assert_eq!(private_key_.id(), Id::EC);
-        assert_eq!(private_key_.bits(), 256);
-        assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
+        test_private_key_conversion_pkcs(&private_key, Id::EC, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_sec1(&private_key, Id::EC, keysize);
 
-        // SEC1
-        let object =
-            openssl_private_key_to_kmip(&private_key, KeyFormatType::ECPrivateKey).unwrap();
-        let object_ = object.clone();
-        let key_block = match object {
-            Object::PrivateKey { key_block } => key_block,
-            _ => panic!("Invalid key block"),
-        };
-        let key_value = match key_block {
-            KeyBlock {
-                key_value:
-                    KeyValue {
-                        key_material: KeyMaterial::ByteString(key_value),
-                        ..
-                    },
-                ..
-            } => key_value,
-            _ => panic!("Invalid key block"),
-        };
-        let private_key_ =
-            PKey::from_ec_key(EcKey::private_key_from_der(&key_value).unwrap()).unwrap();
-        assert_eq!(private_key_.id(), Id::EC);
-        assert_eq!(private_key_.bits(), 256);
-        assert_eq!(private_key_.private_key_to_der().unwrap(), key_value);
-        let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
-        assert_eq!(private_key_.id(), Id::EC);
-        assert_eq!(private_key_.bits(), 256);
-        assert_eq!(private_key_.private_key_to_der().unwrap(), key_value);
-
-        // Transparent EC
-        let object =
-            openssl_private_key_to_kmip(&private_key, KeyFormatType::TransparentECPrivateKey)
-                .unwrap();
-        let object_ = object.clone();
-        let key_block = match object {
-            Object::PrivateKey { key_block } => key_block,
-            _ => panic!("Invalid key block"),
-        };
-        let (d, recommended_curve) = match key_block {
-            KeyBlock {
-                key_value:
-                    KeyValue {
-                        key_material:
-                            KeyMaterial::TransparentECPrivateKey {
-                                d,
-                                recommended_curve,
-                            },
-                        ..
-                    },
-                ..
-            } => (d, recommended_curve),
-            _ => panic!("Invalid key block"),
-        };
-        assert_eq!(recommended_curve, RecommendedCurve::P256);
-        let private_key_ = PKey::from_ec_key(
-            EcKey::from_private_components(
-                &ec_group,
-                &BigNum::from_slice(d.to_bytes_be().as_slice()).unwrap(),
-                &ec_public_key,
-            )
-            .unwrap(),
-        )
-        .unwrap();
-        assert_eq!(private_key_.id(), Id::EC);
-        assert_eq!(private_key_.bits(), 256);
-        let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
-        assert_eq!(private_key_.id(), Id::EC);
-        assert_eq!(private_key_.bits(), 256);
+        test_private_key_conversion_transparent_ec(
+            &private_key,
+            Some(&ec_public_key),
+            Some(&ec_group),
+            RecommendedCurve::P256,
+            Id::EC,
+            keysize,
+        );
     }
 
     #[test]
-    fn test_ec_x25519_private_key() {
+    fn test_conversion_ec_p_384_private_key() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let keysize = 384;
+        let ec_group = EcGroup::from_curve_name(openssl::nid::Nid::SECP384R1).unwrap();
+        let ec_key = EcKey::generate(&ec_group).unwrap();
+        let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
+        let private_key = PKey::from_ec_key(ec_key).unwrap();
+
+        test_private_key_conversion_pkcs(&private_key, Id::EC, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_sec1(&private_key, Id::EC, keysize);
+
+        test_private_key_conversion_transparent_ec(
+            &private_key,
+            Some(&ec_public_key),
+            Some(&ec_group),
+            RecommendedCurve::P384,
+            Id::EC,
+            keysize,
+        );
+    }
+
+    #[test]
+    fn test_conversion_ec_p_521_private_key() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let keysize = 521;
+        let ec_group = EcGroup::from_curve_name(openssl::nid::Nid::SECP521R1).unwrap();
+        let ec_key = EcKey::generate(&ec_group).unwrap();
+        let ec_public_key = ec_key.public_key().to_owned(&ec_group).unwrap();
+        let private_key = PKey::from_ec_key(ec_key).unwrap();
+
+        test_private_key_conversion_pkcs(&private_key, Id::EC, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_sec1(&private_key, Id::EC, keysize);
+
+        test_private_key_conversion_transparent_ec(
+            &private_key,
+            Some(&ec_public_key),
+            Some(&ec_group),
+            RecommendedCurve::P521,
+            Id::EC,
+            keysize,
+        );
+    }
+
+    #[test]
+    #[cfg(not(feature = "fips"))]
+    fn test_conversion_ec_x25519_private_key() {
+        let keysize = 253;
         let private_key = PKey::generate_x25519().unwrap();
 
-        // PKCS#8
-        let object = openssl_private_key_to_kmip(&private_key, KeyFormatType::PKCS8).unwrap();
-        let object_ = object.clone();
-        let key_block = match object {
-            Object::PrivateKey { key_block } => key_block,
-            _ => panic!("Invalid key block"),
-        };
-        let key_value = match key_block {
-            KeyBlock {
-                key_value:
-                    KeyValue {
-                        key_material: KeyMaterial::ByteString(key_value),
-                        ..
-                    },
-                ..
-            } => key_value,
-            _ => panic!("Invalid key block"),
-        };
-        let private_key_ = PKey::private_key_from_pkcs8(&key_value).unwrap();
-        assert_eq!(private_key_.id(), Id::X25519);
-        assert_eq!(private_key_.bits(), 253);
-        assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
-        let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
-        assert_eq!(private_key_.id(), Id::X25519);
-        assert_eq!(private_key_.bits(), 253);
-        assert_eq!(private_key_.private_key_to_pkcs8().unwrap(), key_value);
+        test_private_key_conversion_pkcs(&private_key, Id::X25519, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_transparent_ec(
+            &private_key,
+            None,
+            None,
+            RecommendedCurve::CURVE25519,
+            Id::X25519,
+            keysize,
+        );
+    }
 
-        // SEC1 is not available for X25519
+    #[test]
+    fn test_conversion_ec_ed25519_private_key() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
 
-        // Transparent EC
-        let object =
-            openssl_private_key_to_kmip(&private_key, KeyFormatType::TransparentECPrivateKey)
-                .unwrap();
-        let object_ = object.clone();
-        let key_block = match object {
-            Object::PrivateKey { key_block } => key_block,
-            _ => panic!("Invalid key block"),
-        };
-        let (d, recommended_curve) = match key_block {
-            KeyBlock {
-                key_value:
-                    KeyValue {
-                        key_material:
-                            KeyMaterial::TransparentECPrivateKey {
-                                d,
-                                recommended_curve,
-                            },
-                        ..
-                    },
-                ..
-            } => (d, recommended_curve),
-            _ => panic!("Invalid key block"),
-        };
-        assert_eq!(recommended_curve, RecommendedCurve::CURVE25519);
-        let private_key_ = PKey::private_key_from_raw_bytes(&d.to_bytes_be(), Id::X25519).unwrap();
-        assert_eq!(private_key_.id(), Id::X25519);
-        assert_eq!(private_key_.bits(), 253);
-        let private_key_ = kmip_private_key_to_openssl(&object_).unwrap();
-        assert_eq!(private_key_.id(), Id::X25519);
-        assert_eq!(private_key_.bits(), 253);
+        let keysize = 256;
+        let private_key = PKey::generate_ed25519().unwrap();
+
+        test_private_key_conversion_pkcs(&private_key, Id::ED25519, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_transparent_ec(
+            &private_key,
+            None,
+            None,
+            RecommendedCurve::CURVEED25519,
+            Id::ED25519,
+            keysize,
+        );
+    }
+
+    #[test]
+    #[cfg(not(feature = "fips"))]
+    fn test_conversion_ec_x448_private_key() {
+        let keysize = 448;
+        let private_key = PKey::generate_x448().unwrap();
+
+        test_private_key_conversion_pkcs(&private_key, Id::X448, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_transparent_ec(
+            &private_key,
+            None,
+            None,
+            RecommendedCurve::CURVE448,
+            Id::X448,
+            keysize,
+        );
+    }
+
+    #[test]
+    fn test_conversion_ec_ed448_private_key() {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
+
+        let keysize = 456;
+        let private_key = PKey::generate_ed448().unwrap();
+
+        test_private_key_conversion_pkcs(&private_key, Id::ED448, keysize, KeyFormatType::PKCS8);
+        test_private_key_conversion_transparent_ec(
+            &private_key,
+            None,
+            None,
+            RecommendedCurve::CURVEED448,
+            Id::ED448,
+            keysize,
+        );
     }
 }

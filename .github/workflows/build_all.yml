@@ -1,0 +1,130 @@
+---
+name: Build all
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+
+env:
+  OPENSSL_DIR: /tmp/openssl_fips
+
+jobs:
+  centos7:
+    uses: ./.github/workflows/build_centos7.yml
+    secrets: inherit
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      archive-name: centos7
+      commands: |
+        cargo build --release --bin ckms
+        cargo build --release --bin cosmian_kms_server
+
+        cargo test --release -- --nocapture
+        cargo test --release --bins -- --nocapture
+      artifacts: |
+        target/release/ckms
+        target/release/cosmian_kms_server
+
+  fips-centos7:
+    uses: ./.github/workflows/build_centos7.yml
+    secrets: inherit
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      archive-name: fips_centos7
+      commands: |
+        cargo build --release --features fips --bin ckms
+        cargo build --release --features fips --bin cosmian_kms_server
+
+        cargo test --release --features fips -- --nocapture
+        cargo test --release --features fips --bins -- --nocapture
+      artifacts: |
+        target/release/ckms
+        target/release/cosmian_kms_server
+
+  ubuntu-20:
+    uses: ./.github/workflows/build_generic_linux.yml
+    secrets: inherit
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: ubuntu-20.04
+      archive-name: ubuntu_20_04
+      commands: |
+        cargo build --release --bin ckms
+        cargo build --release --bin cosmian_kms_server
+
+        cargo test --release -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test --release --bins -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+      artifacts: |
+        target/release/ckms
+        target/release/cosmian_kms_server
+
+  fips-ubuntu-20:
+    uses: ./.github/workflows/build_generic_linux.yml
+    secrets: inherit
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: ubuntu-20.04
+      archive-name: fips_ubuntu_20_04
+      commands: |
+        cargo build --release --features fips --bin ckms
+        cargo build --release --features fips --bin cosmian_kms_server
+
+        cargo test --release --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test --release --features fips --bins -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+      artifacts: |
+        target/release/ckms
+        target/release/cosmian_kms_server
+
+  ubuntu-22:
+    uses: ./.github/workflows/build_generic_linux.yml
+    secrets: inherit
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: ubuntu-22.04
+      archive-name: ubuntu_22_04
+      commands: |
+        cargo build --release --bin ckms
+        cargo build --release --bin cosmian_kms_server
+
+        cargo test --release -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test --release --bins -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+      artifacts: |
+        target/release/ckms
+        target/release/cosmian_kms_server
+
+  windows:
+    uses: ./.github/workflows/build_generic_linux.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: ubuntu-20.04
+      archive-name: windows
+      commands: |
+        sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
+        rustup target add x86_64-pc-windows-gnu
+
+        rm -rf /tmp/openssl_fips
+        mkdir -p /tmp/openssl_fips
+        bash ./scripts/local_ossl_instl.sh /tmp/openssl_fips cross-compile-windows
+
+        cargo build --release --bin ckms --target x86_64-pc-windows-gnu
+        cargo build --release --bin cosmian_kms_server --target x86_64-pc-windows-gnu
+      artifacts: |
+        target/x86_64-pc-windows-gnu/release/ckms.exe
+        target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
+
+  mac:
+    uses: ./.github/workflows/build_generic_linux.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: macos-12
+      archive-name: macos
+      commands: |
+        rustup target add x86_64-apple-darwin
+        cargo build --release --bin ckms --target x86_64-apple-darwin
+        cargo build --release --bin cosmian_kms_server --target x86_64-apple-darwin
+      artifacts: |
+        target/x86_64-apple-darwin/release/ckms
+        target/x86_64-apple-darwin/release/cosmian_kms_server

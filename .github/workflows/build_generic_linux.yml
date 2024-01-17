@@ -1,0 +1,82 @@
+---
+name: KMS build for MacOS and Windows runner - no docker
+
+on:
+  workflow_call:
+    inputs:
+      toolchain:
+        required: true
+        type: string
+      distribution:
+        required: true
+        type: string
+      archive-name:
+        required: true
+        type: string
+      commands:
+        required: true
+        type: string
+      artifacts:
+        required: true
+        type: string
+
+env:
+  OPENSSL_DIR: /tmp/openssl_fips
+
+jobs:
+  kms-build:
+    name: ${{ inputs.archive-name }}
+    runs-on: ${{ inputs.distribution }}
+    steps:
+      - name: Display cpuinfo
+        if: contains(runner.os, 'Linux')
+        run: cat /proc/cpuinfo
+
+      - uses: actions/checkout@v3
+
+      - name: Set up cargo cache
+        id: cargo_cache
+        uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ inputs.distribution }}-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-${{ inputs.distribution }}-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
+
+      - uses: dtolnay/rust-toolchain@master
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        with:
+          toolchain: ${{ inputs.toolchain }}
+          components: rustfmt, clippy
+
+      - name: Local OpenSSL FIPS Install
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        run: |
+          bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
+
+      - name: Build
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        run: ${{ inputs.commands }}
+        env:
+          # Speeds up Ristretto 25519 multiplication x 2
+          RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
+          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
+          # Google variables
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+
+
+      - name: Upload KMS for ${{ inputs.distribution }}
+        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ inputs.archive-name }}
+          path: ${{ inputs.artifacts }}
+          retention-days: 1
+          if-no-files-found: error

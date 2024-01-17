@@ -1,20 +1,23 @@
 [package]
 name = "cosmian_kms_utils"
-version = "4.10.1"
+version = "4.11.0"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 license-file = "../../LICENSE.md"
 
 [features]
+fips = []
 curve25519 = []
 
 [dependencies]
 argon2 = "0.5"
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip", features = ["openssl"] }
+cosmian_logger = { path = "../logger" }
 num-bigint-dig = { workspace = true }
 openssl = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+zeroize = { workspace = true }

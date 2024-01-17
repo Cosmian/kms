@@ -195,10 +195,10 @@ pub enum CryptographicAlgorithm {
 /// Payload. Specific fields MAY only pertain to certain types of Managed
 /// Cryptographic Objects. The domain parameter `q_length` corresponds to the bit
 /// length of parameter Q (refer to RFC7778, SEC2 and SP800-56A).
-/// `q_length` applies to algorithms such as DSA and DH. The bit length of
-/// parameter P (refer toto RFC7778, SEC2 and SP800-56A) is specified
-/// separately by setting the Cryptographic Length attribute. Recommended Curve
-/// is applicable to elliptic curve algorithms such as ECDSA, ECDH, and ECMQV
+/// - `q_length` applies to algorithms such as DSA and DH. The bit length of
+/// parameter P (refer to RFC7778, SEC2 and SP800-56A) is specified
+/// separately by setting the Cryptographic Length attribute.
+/// - Recommended Curve is applicable to elliptic curve algorithms such as ECDSA, ECDH, and ECMQV
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
 #[serde(rename_all = "PascalCase")]
 pub struct CryptographicDomainParameters {
@@ -789,7 +789,7 @@ pub struct Attributes {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub activation_date: Option<u64>, // epoch millis
 
-    ///The Certificate Attributes are the various items included in a certificate.
+    /// The Certificate Attributes are the various items included in a certificate.
     /// The following list is based on RFC2253.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub certificate_attributes: Option<CertificateAttributes>,

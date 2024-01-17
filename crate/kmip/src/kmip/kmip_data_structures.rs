@@ -1,7 +1,11 @@
 use std::clone::Clone;
 
 use num_bigint_dig::BigUint;
-use serde::{ser::SerializeStruct, Deserialize, Serialize};
+use serde::{
+    de::{self, MapAccess, Visitor},
+    ser::SerializeStruct,
+    Deserialize, Serialize,
+};
 use zeroize::Zeroizing;
 
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};
@@ -15,6 +19,7 @@ use crate::{
             WrappingMethod,
         },
     },
+    openssl::pad_be_bytes,
 };
 
 /// A Key Block object is a structure used to encapsulate all of the information
@@ -57,7 +62,25 @@ impl KeyBlock {
         match &self.key_value.key_material {
             KeyMaterial::ByteString(v) => Ok(Zeroizing::new(v.clone())),
             KeyMaterial::TransparentSymmetricKey { key } => Ok(Zeroizing::new(key.clone())),
-            KeyMaterial::TransparentECPrivateKey { d, .. } => Ok(Zeroizing::new(d.to_bytes_be())),
+            KeyMaterial::TransparentECPrivateKey {
+                d,
+                recommended_curve,
+            } => {
+                let mut d_vec = d.to_bytes_be();
+                let privkey_size = match recommended_curve {
+                    RecommendedCurve::P192 => 24,
+                    RecommendedCurve::P224 => 28,
+                    RecommendedCurve::P256 => 32,
+                    RecommendedCurve::P384 => 48,
+                    RecommendedCurve::P521 => 66,
+                    RecommendedCurve::CURVE25519 | RecommendedCurve::CURVEED25519 => 32,
+                    RecommendedCurve::CURVE448 => 56,
+                    RecommendedCurve::CURVEED448 => 57,
+                    _ => d_vec.len(),
+                };
+                pad_be_bytes(&mut d_vec, privkey_size);
+                Ok(Zeroizing::new(d_vec))
+            }
             KeyMaterial::TransparentECPublicKey { q_string, .. } => {
                 Ok(Zeroizing::new(q_string.clone()))
             }
@@ -327,84 +350,70 @@ impl Default for KeyWrappingSpecification {
     }
 }
 
-#[derive(Deserialize, Clone, Debug, Eq, PartialEq)]
-#[serde(untagged)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum KeyMaterial {
     ByteString(Vec<u8>),
-    #[serde(rename_all = "PascalCase")]
     TransparentDHPrivateKey {
         p: BigUint,
-        #[serde(skip_serializing_if = "Option::is_none")]
         q: Option<BigUint>,
         g: BigUint,
-        #[serde(skip_serializing_if = "Option::is_none")]
         j: Option<BigUint>,
         x: BigUint,
     },
-    #[serde(rename_all = "PascalCase")]
     TransparentDHPublicKey {
         p: BigUint,
-        #[serde(skip_serializing_if = "Option::is_none")]
         q: Option<BigUint>,
         g: BigUint,
-        #[serde(skip_serializing_if = "Option::is_none")]
         j: Option<BigUint>,
         y: BigUint,
     },
-    //TODO  can be confused by the Deserializer with the TransparentDHPrivateKey
-    #[serde(rename_all = "PascalCase")]
     TransparentDSAPrivateKey {
         p: BigUint,
         q: BigUint,
         g: BigUint,
         x: BigUint,
     },
-    //TODO  can be confused by the Deserializer with the TransparentDHPublicKey
-    #[serde(rename_all = "PascalCase")]
     TransparentDSAPublicKey {
         p: BigUint,
         q: BigUint,
         g: BigUint,
         y: BigUint,
     },
-    #[serde(rename_all = "PascalCase")]
     TransparentSymmetricKey {
         key: Vec<u8>,
     },
-    #[serde(rename_all = "PascalCase")]
-    TransparentRSAPrivateKey {
-        modulus: BigUint,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        private_exponent: Option<BigUint>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        public_exponent: Option<BigUint>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        p: Option<BigUint>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        q: Option<BigUint>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        prime_exponent_p: Option<BigUint>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        prime_exponent_q: Option<BigUint>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        crt_coefficient: Option<BigUint>,
-    },
-    #[serde(rename_all = "PascalCase")]
     TransparentRSAPublicKey {
         modulus: BigUint,
         public_exponent: BigUint,
     },
-    #[serde(rename_all = "PascalCase")]
+    TransparentRSAPrivateKey {
+        modulus: BigUint,
+        private_exponent: Option<BigUint>,
+        public_exponent: Option<BigUint>,
+        p: Option<BigUint>,
+        q: Option<BigUint>,
+        prime_exponent_p: Option<BigUint>,
+        prime_exponent_q: Option<BigUint>,
+        crt_coefficient: Option<BigUint>,
+    },
     TransparentECPrivateKey {
         recommended_curve: RecommendedCurve,
         // big int in big endian format
         d: BigUint,
     },
-    #[serde(rename_all = "PascalCase")]
     TransparentECPublicKey {
         recommended_curve: RecommendedCurve,
         q_string: Vec<u8>,
     },
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+enum KeyTypeSer {
+    DH,
+    DSA,
+    RsaPublic,
+    RsaPrivate,
+    EC,
 }
 
 // Unfortunately, default serialization does not play well
@@ -415,14 +424,19 @@ impl Serialize for KeyMaterial {
         S: serde::Serializer,
     {
         match self {
-            Self::ByteString(bytes) => serializer.serialize_bytes(bytes),
+            Self::ByteString(bytes) => {
+                let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
+                st.serialize_field("ByteString", bytes)?;
+                st.end()
+            }
             Self::TransparentSymmetricKey { key } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
                 st.serialize_field("Key", key)?;
                 st.end()
             }
             Self::TransparentDHPrivateKey { p, q, g, j, x } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
+                let mut st = serializer.serialize_struct("KeyMaterial", 6)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::DH)?;
                 st.serialize_field("P", p)?;
                 if let Some(q) = q {
                     st.serialize_field("Q", q)?;
@@ -435,7 +449,8 @@ impl Serialize for KeyMaterial {
                 st.end()
             }
             Self::TransparentDHPublicKey { p, q, g, j, y } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
+                let mut st = serializer.serialize_struct("KeyMaterial", 6)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::DH)?;
                 st.serialize_field("P", p)?;
                 if let Some(q) = q {
                     st.serialize_field("Q", q)?;
@@ -448,7 +463,8 @@ impl Serialize for KeyMaterial {
                 st.end()
             }
             Self::TransparentDSAPrivateKey { p, q, g, x } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 4)?;
+                let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::DSA)?;
                 st.serialize_field("P", p)?;
                 st.serialize_field("Q", q)?;
                 st.serialize_field("G", g)?;
@@ -456,7 +472,8 @@ impl Serialize for KeyMaterial {
                 st.end()
             }
             Self::TransparentDSAPublicKey { p, q, g, y } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 4)?;
+                let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::DSA)?;
                 st.serialize_field("P", p)?;
                 st.serialize_field("Q", q)?;
                 st.serialize_field("G", g)?;
@@ -473,7 +490,8 @@ impl Serialize for KeyMaterial {
                 prime_exponent_q,
                 crt_coefficient,
             } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 8)?;
+                let mut st = serializer.serialize_struct("KeyMaterial", 9)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::RsaPrivate)?;
                 st.serialize_field("Modulus", modulus)?;
                 if let Some(private_exponent) = private_exponent {
                     st.serialize_field("PrivateExponent", private_exponent)?;
@@ -502,7 +520,8 @@ impl Serialize for KeyMaterial {
                 modulus,
                 public_exponent,
             } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 2)?;
+                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::RsaPublic)?;
                 st.serialize_field("Modulus", modulus)?;
                 st.serialize_field("PublicExponent", public_exponent)?;
                 st.end()
@@ -511,7 +530,8 @@ impl Serialize for KeyMaterial {
                 recommended_curve,
                 d,
             } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
+                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::EC)?;
                 st.serialize_field("RecommendedCurve", recommended_curve)?;
                 st.serialize_field("D", d)?;
                 st.end()
@@ -520,11 +540,295 @@ impl Serialize for KeyMaterial {
                 recommended_curve,
                 q_string,
             } => {
-                let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
+                let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
+                st.serialize_field("KeyTypeSer", &KeyTypeSer::EC)?;
                 st.serialize_field("RecommendedCurve", recommended_curve)?;
                 st.serialize_field("QString", q_string)?;
                 st.end()
             }
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for KeyMaterial {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier)]
+        enum Field {
+            ByteString,
+            D,
+            P,
+            Q,
+            G,
+            J,
+            X,
+            Y,
+            Key,
+            KeyTypeSer,
+            Modulus,
+            PrivateExponent,
+            PublicExponent,
+            PrimeExponentP,
+            PrimeExponentQ,
+            CrtCoefficient,
+            RecommendedCurve,
+            QString,
+        }
+
+        struct KeyMaterialVisitor;
+
+        impl<'de> Visitor<'de> for KeyMaterialVisitor {
+            type Value = KeyMaterial;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("struct KeyMaterialVisitor")
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut bytestring: Option<Vec<u8>> = None;
+                let mut key_type_ser: Option<KeyTypeSer> = None;
+                let mut p: Option<BigUint> = None;
+                let mut q: Option<BigUint> = None;
+                let mut g: Option<BigUint> = None;
+                let mut j: Option<BigUint> = None;
+                let mut x: Option<BigUint> = None;
+                let mut y: Option<BigUint> = None;
+                let mut key: Option<Vec<u8>> = None;
+                let mut modulus: Option<BigUint> = None;
+                let mut public_exponent: Option<BigUint> = None;
+                let mut private_exponent: Option<BigUint> = None;
+                let mut prime_exponent_p: Option<BigUint> = None;
+                let mut prime_exponent_q: Option<BigUint> = None;
+                let mut crt_coefficient: Option<BigUint> = None;
+                let mut recommended_curve: Option<RecommendedCurve> = None;
+                let mut d: Option<BigUint> = None;
+                let mut q_string: Option<Vec<u8>> = None;
+
+                while let Some(field) = map.next_key()? {
+                    match field {
+                        Field::ByteString => {
+                            if bytestring.is_some() {
+                                return Err(de::Error::duplicate_field("ByteString"))
+                            }
+                            bytestring = Some(map.next_value()?);
+                        }
+                        Field::D => {
+                            if d.is_some() {
+                                return Err(de::Error::duplicate_field("D"))
+                            }
+                            d = Some(map.next_value()?);
+                        }
+                        Field::P => {
+                            if p.is_some() {
+                                return Err(de::Error::duplicate_field("P"))
+                            }
+                            p = Some(map.next_value()?);
+                        }
+                        Field::Q => {
+                            if q.is_some() {
+                                return Err(de::Error::duplicate_field("Q"))
+                            }
+                            q = Some(map.next_value()?);
+                        }
+                        Field::G => {
+                            if g.is_some() {
+                                return Err(de::Error::duplicate_field("G"))
+                            }
+                            g = Some(map.next_value()?);
+                        }
+                        Field::J => {
+                            if j.is_some() {
+                                return Err(de::Error::duplicate_field("J"))
+                            }
+                            j = Some(map.next_value()?);
+                        }
+                        Field::X => {
+                            if x.is_some() {
+                                return Err(de::Error::duplicate_field("X"))
+                            }
+                            x = Some(map.next_value()?);
+                        }
+                        Field::Y => {
+                            if y.is_some() {
+                                return Err(de::Error::duplicate_field("Y"))
+                            }
+                            y = Some(map.next_value()?);
+                        }
+                        Field::Key => {
+                            if key.is_some() {
+                                return Err(de::Error::duplicate_field("Key"))
+                            }
+                            key = Some(map.next_value()?);
+                        }
+                        Field::KeyTypeSer => {
+                            if key_type_ser.is_some() {
+                                return Err(de::Error::duplicate_field("KeyTypeSer"))
+                            }
+                            key_type_ser = Some(map.next_value()?);
+                        }
+                        Field::Modulus => {
+                            if modulus.is_some() {
+                                return Err(de::Error::duplicate_field("Modulus"))
+                            }
+                            modulus = Some(map.next_value()?);
+                        }
+                        Field::PrivateExponent => {
+                            if private_exponent.is_some() {
+                                return Err(de::Error::duplicate_field("PrivateExponent"))
+                            }
+                            private_exponent = Some(map.next_value()?);
+                        }
+                        Field::PublicExponent => {
+                            if public_exponent.is_some() {
+                                return Err(de::Error::duplicate_field("PublicExponent"))
+                            }
+                            public_exponent = Some(map.next_value()?);
+                        }
+                        Field::PrimeExponentP => {
+                            if prime_exponent_p.is_some() {
+                                return Err(de::Error::duplicate_field("PrimeExponentP"))
+                            }
+                            prime_exponent_p = Some(map.next_value()?);
+                        }
+                        Field::PrimeExponentQ => {
+                            if prime_exponent_q.is_some() {
+                                return Err(de::Error::duplicate_field("PrimeExponentQ"))
+                            }
+                            prime_exponent_q = Some(map.next_value()?);
+                        }
+                        Field::CrtCoefficient => {
+                            if crt_coefficient.is_some() {
+                                return Err(de::Error::duplicate_field("CrtCoefficient"))
+                            }
+                            crt_coefficient = Some(map.next_value()?);
+                        }
+                        Field::RecommendedCurve => {
+                            if recommended_curve.is_some() {
+                                return Err(de::Error::duplicate_field("RecommendedCurve"))
+                            }
+                            recommended_curve = Some(map.next_value()?);
+                        }
+                        Field::QString => {
+                            if q_string.is_some() {
+                                return Err(de::Error::duplicate_field("QString"))
+                            }
+                            q_string = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                if let Some(key) = key {
+                    Ok(KeyMaterial::TransparentSymmetricKey { key })
+                } else if let Some(bytestring) = bytestring {
+                    Ok(KeyMaterial::ByteString(bytestring))
+                } else {
+                    Ok(match key_type_ser {
+                        Some(KeyTypeSer::DH) => {
+                            let p = p.ok_or_else(|| de::Error::missing_field("P for DH key"))?;
+                            let g = g.ok_or_else(|| de::Error::missing_field("G for DH key"))?;
+                            if let Some(x) = x {
+                                KeyMaterial::TransparentDHPrivateKey { p, q, g, j, x }
+                            } else {
+                                let y = y.ok_or_else(|| {
+                                    de::Error::missing_field("Y for DH public key")
+                                })?;
+                                KeyMaterial::TransparentDHPublicKey { p, q, g, j, y }
+                            }
+                        }
+                        Some(KeyTypeSer::DSA) => {
+                            let p = p.ok_or_else(|| de::Error::missing_field("P for DSA key"))?;
+                            let g = g.ok_or_else(|| de::Error::missing_field("G for DSA key"))?;
+                            let q = q.ok_or_else(|| de::Error::missing_field("Q for DSA key"))?;
+                            if let Some(x) = x {
+                                KeyMaterial::TransparentDSAPrivateKey { p, q, g, x }
+                            } else {
+                                let y = y.ok_or_else(|| {
+                                    de::Error::missing_field("Y for DSA public key")
+                                })?;
+                                KeyMaterial::TransparentDSAPublicKey { p, q, g, y }
+                            }
+                        }
+                        Some(KeyTypeSer::RsaPublic) => {
+                            let modulus = modulus.ok_or_else(|| {
+                                de::Error::missing_field("Modulus for RSA public key")
+                            })?;
+                            let public_exponent = public_exponent.ok_or_else(|| {
+                                de::Error::missing_field("Public exponent for RSA public key")
+                            })?;
+                            KeyMaterial::TransparentRSAPublicKey {
+                                modulus,
+                                public_exponent,
+                            }
+                        }
+                        Some(KeyTypeSer::RsaPrivate) => {
+                            let modulus = modulus.ok_or_else(|| {
+                                de::Error::missing_field("Modulus for RSA private key")
+                            })?;
+                            KeyMaterial::TransparentRSAPrivateKey {
+                                modulus,
+                                public_exponent,
+                                private_exponent,
+                                p,
+                                q,
+                                prime_exponent_p,
+                                prime_exponent_q,
+                                crt_coefficient,
+                            }
+                        }
+                        Some(KeyTypeSer::EC) => {
+                            let recommended_curve = recommended_curve.ok_or_else(|| {
+                                de::Error::missing_field("RecommendedCurve for EC key")
+                            })?;
+                            if let Some(d) = d {
+                                KeyMaterial::TransparentECPrivateKey {
+                                    recommended_curve,
+                                    d,
+                                }
+                            } else {
+                                let q_string = q_string.ok_or_else(|| {
+                                    de::Error::missing_field("QString for EC public key")
+                                })?;
+                                KeyMaterial::TransparentECPublicKey {
+                                    recommended_curve,
+                                    q_string,
+                                }
+                            }
+                        }
+                        _ => {
+                            return Err(de::Error::custom(
+                                "unable to differentiate key material variant",
+                            ))
+                        }
+                    })
+                }
+            }
+        }
+
+        const FIELDS: &[&str] = &[
+            "bytestring",
+            "p",
+            "q",
+            "g",
+            "j",
+            "x",
+            "y",
+            "key",
+            "modulus",
+            "public_exponent",
+            "private_exponent",
+            "prime_exponent_p",
+            "prime_exponent_q",
+            "crt_coefficient",
+            "recommended_curve",
+            "d",
+            "q_string",
+        ];
+        deserializer.deserialize_struct("KeyMaterial", FIELDS, KeyMaterialVisitor)
     }
 }

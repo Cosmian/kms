@@ -5,14 +5,12 @@ use clap::Parser;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::{
-    password_derivation::derive_key_from_password, symmetric::create_symmetric_key,
-    wrap::unwrap_key_block,
+    symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block,
 };
 
 use crate::{
-    actions::shared::{
-        utils::{export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file},
-        SYMMETRIC_WRAPPING_KEY_SIZE,
+    actions::shared::utils::{
+        export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file,
     },
     cli_bail,
     error::{result::CliResultHelper, CliError},
@@ -39,15 +37,6 @@ pub struct UnwrapKeyAction {
     /// The KMIP JSON output file. When not specified the input file is overwritten.
     #[clap(required = false)]
     key_file_out: Option<PathBuf>,
-
-    /// A password to unwrap the imported key.
-    #[clap(
-        long = "unwrap-password",
-        short = 'p',
-        required = false,
-        group = "unwrap"
-    )]
-    unwrap_password: Option<String>,
 
     /// A symmetric key as a base 64 string to unwrap the imported key.
     #[clap(
@@ -91,12 +80,7 @@ impl UnwrapKeyAction {
             let key_bytes = general_purpose::STANDARD
                 .decode(b64)
                 .with_context(|| "failed decoding the unwrap key")?;
-            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
-        } else if let Some(password) = &self.unwrap_password {
-            let key_bytes =
-                derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes())?
-                    .to_vec();
-            create_symmetric_key(&key_bytes, CryptographicAlgorithm::AES)
+            create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES)
         } else if let Some(key_id) = &self.unwrap_key_id {
             export_object(kms_rest_client, key_id, false, None, false, None)
                 .await?

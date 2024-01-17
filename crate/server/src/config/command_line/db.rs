@@ -2,6 +2,7 @@ use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
 use cloudproof::reexport::findex::Label;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use super::workspace::WorkspaceConfig;
@@ -10,8 +11,11 @@ use crate::{
     result::KResult,
 };
 
+const DEFAULT_SQLITE_PATH: &str = "./sqlite-data";
+
 /// Configuration for the database
-#[derive(Args, Clone)]
+#[derive(Args, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct DBConfig {
     /// The database type of the KMS server
     /// - postgresql: PostgreSQL. The database url must be provided
@@ -21,8 +25,6 @@ pub struct DBConfig {
     ///   A key must be supplied on every call
     /// - redis-findex: a Redis database with encrypted data and encrypted indexes thanks to Findex.
     ///   The Redis url must be provided, as well as the redis-master-password and the redis-findex-label
-    ///
-    /// The database configuration can be securely provided via the bootstrap server. Check the documentation.
     #[clap(
         long,
         env("KMS_DATABASE_TYPE"),
@@ -43,7 +45,7 @@ pub struct DBConfig {
     #[clap(
         long,
         env = "KMS_SQLITE_PATH",
-        default_value = "./sqlite-data",
+        default_value = DEFAULT_SQLITE_PATH,
         required_if_eq_any([("database_type", "sqlite"), ("database_type", "sqlite-enc")])
     )]
     pub sqlite_path: PathBuf,
@@ -67,13 +69,21 @@ pub struct DBConfig {
 
     /// Clear the database on start.
     /// WARNING: This will delete ALL the data in the database
-    #[clap(
-        long,
-        env = "KMS_CLEAR_DATABASE",
-        default_value = "false",
-        verbatim_doc_comment
-    )]
+    #[clap(long, env = "KMS_CLEAR_DATABASE", verbatim_doc_comment)]
     pub clear_database: bool,
+}
+
+impl Default for DBConfig {
+    fn default() -> Self {
+        Self {
+            sqlite_path: PathBuf::from(DEFAULT_SQLITE_PATH),
+            database_type: None,
+            database_url: None,
+            clear_database: false,
+            redis_master_password: None,
+            redis_findex_label: None,
+        }
+    }
 }
 
 impl Display for DBConfig {
@@ -126,25 +136,11 @@ impl std::fmt::Debug for DBConfig {
     }
 }
 
-impl Default for DBConfig {
-    fn default() -> Self {
-        Self {
-            database_type: None,
-            database_url: None,
-            sqlite_path: PathBuf::from("./sqlite-data"),
-            clear_database: false,
-            redis_master_password: None,
-            redis_findex_label: None,
-        }
-    }
-}
-
 impl DBConfig {
     /// Initialize the DB parameters based on the command-line parameters
     ///
     /// # Parameters
     /// - `workspace`: The workspace configuration used to determine the public and shared paths
-    /// - `use_bootstrap_server`: Whether the bootstrap server should be used to configure the database
     ///
     /// # Returns
     /// - The DB parameters
@@ -152,11 +148,7 @@ impl DBConfig {
     /// # Errors
     /// - If both Postgres and MariaDB/MySQL URL are set
     /// - If `SQLCipher` is set along with Postgres or MariaDB/MySQL URL
-    pub fn init(
-        &self,
-        workspace: &WorkspaceConfig,
-        use_bootstrap_server: bool,
-    ) -> KResult<Option<DbParams>> {
+    pub fn init(&self, workspace: &WorkspaceConfig) -> KResult<Option<DbParams>> {
         Ok(if let Some(database_type) = &self.database_type {
             Some(match database_type.as_str() {
                 "postgresql" => {
@@ -199,9 +191,6 @@ impl DBConfig {
                 }
                 unknown => kms_bail!("Unknown database type: {unknown}"),
             })
-        } else if use_bootstrap_server {
-            // That is fine: the bootstrap server will be used to configure the database
-            None
         } else {
             // No database configuration provided; use the default config
             let path = workspace.finalize_directory(&self.sqlite_path)?;

@@ -98,9 +98,13 @@ impl RedisWithFindex {
     pub fn master_key_from_password(
         master_password: &str,
     ) -> KResult<SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>> {
-        let master_secret_key = derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
+        let output_key_material = derive_key_from_password::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>(
             master_password.as_bytes(),
         )?;
+
+        let master_secret_key: SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH> =
+            SymmetricKey::try_from_bytes(output_key_material)?;
+
         Ok(master_secret_key)
     }
 
@@ -443,12 +447,7 @@ impl Database for RedisWithFindex {
             .await?;
         let redis_db_objects = self
             .objects_db
-            .objects_get(
-                &permissions
-                    .keys()
-                    .map(std::clone::Clone::clone)
-                    .collect::<HashSet<String>>(),
-            )
+            .objects_get(&permissions.keys().cloned().collect::<HashSet<String>>())
             .await?;
         Ok(permissions
             .into_iter()

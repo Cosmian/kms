@@ -8,7 +8,6 @@ use cosmian_kmip::{
 };
 use cosmian_kms_client::RestClientError;
 use cosmian_kms_utils::error::KmipUtilsError;
-use openssl::error::ErrorStack;
 use pem::PemError;
 use thiserror::Error;
 
@@ -45,10 +44,6 @@ pub enum CliError {
     #[error("Server error: {0}")]
     ServerError(String),
 
-    // Any errors related to a bad behavior of the server concerning the SGX environment
-    #[error("Unexpected sgx error: {0}")]
-    SGXError(String),
-
     // Any actions of the user which is not allowed
     #[error("Access denied: {0}")]
     Unauthorized(String),
@@ -72,10 +67,6 @@ pub enum CliError {
     // Other errors
     #[error("{0}")]
     Default(String),
-
-    // TEE errors
-    #[error(transparent)]
-    TeeAttestationError(#[from] tee_attestation::error::Error),
 
     // Url parsing errors
     #[error(transparent)]
@@ -114,12 +105,6 @@ impl From<cloudproof::reexport::crypto_core::CryptoCoreError> for CliError {
 
 impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::Error> for CliError {
     fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::Error) -> Self {
-        Self::Conversion(e.to_string())
-    }
-}
-
-impl From<ErrorStack> for CliError {
-    fn from(e: ErrorStack) -> Self {
         Self::Conversion(e.to_string())
     }
 }

@@ -2,6 +2,7 @@ use std::{cmp::min, collections::HashSet};
 
 use cosmian_kmip::{
     kmip::{
+        extra::{x509_extensions, VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
         kmip_objects::Object,
         kmip_operations::{Certify, CertifyResponse},
         kmip_types::{
@@ -224,6 +225,20 @@ fn build_certificate(
     )?;
     x509_builder.set_issuer_name(issuer_x509.subject_name())?;
     x509_builder.sign(issuer_pkey, MessageDigest::sha256())?;
+
+    // Extensions
+    if let Some(extensions) =
+        attributes.get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_X509_EXTENSION)
+    {
+        let extensions_as_str = String::from_utf8(extensions.to_vec())?;
+
+        let context = x509_builder.x509v3_context(Some(issuer_x509), None);
+
+        x509_extensions::parse_v3_ca_from_str(&extensions_as_str, &context)?
+            .into_iter()
+            .try_for_each(|extension| x509_builder.append_extension(extension))?;
+    }
+
     let x509 = x509_builder.build();
 
     // link the certificate to the issuer certificate

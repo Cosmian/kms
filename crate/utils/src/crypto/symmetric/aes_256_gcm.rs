@@ -1,44 +1,42 @@
-use std::{convert::TryFrom, sync::Mutex};
-
-use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::SeedableRng, Aes256Gcm, CsRng, DemInPlace, FixedSizeCBytes, Instantiable,
-    Nonce, RandomFixedSizeCBytes, SymmetricKey,
-};
+use cloudproof::reexport::crypto_core::{FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
     kmip_types::UniqueIdentifier,
 };
+use openssl::{
+    rand::rand_bytes,
+    symm::{decrypt_aead, encrypt_aead, Cipher},
+};
 
 use crate::{error::KmipUtilsError, DecryptionSystem, EncryptionSystem};
 
-/// AES 256 GCM key length in bytes
-pub const KEY_LENGTH: usize = Aes256Gcm::KEY_LENGTH;
-/// AES 256 GCM nonce length in bytes
-pub const NONCE_LENGTH: usize = Aes256Gcm::NONCE_LENGTH;
-/// AES 256 GCM tag/mac length in bytes
-pub const MAC_LENGTH: usize = Aes256Gcm::MAC_LENGTH;
+/// AES 256 GCM key length in bytes.
+pub const AES_256_GCM_KEY_LENGTH: usize = 32;
+/// AES 256 GCM nonce length in bytes.
+pub const AES_256_GCM_IV_LENGTH: usize = 12;
+/// AES 256 GCM tag/mac length in bytes.
+pub const AES_256_GCM_MAC_LENGTH: usize = 16;
 
 pub struct AesGcmSystem {
     key_uid: String,
-    symmetric_key: SymmetricKey<{ KEY_LENGTH }>,
-    rng: Mutex<CsRng>,
+    symmetric_key: SymmetricKey<{ AES_256_GCM_KEY_LENGTH }>,
 }
 
 impl AesGcmSystem {
     pub fn instantiate(uid: &str, symmetric_key: &Object) -> Result<Self, KmipUtilsError> {
         let key_block = match symmetric_key {
-            Object::SymmetricKey { key_block } => key_block.clone(),
+            Object::SymmetricKey { key_block } => key_block,
             _ => {
                 return Err(KmipUtilsError::NotSupported(
                     "Expected a KMIP Symmetric Key".to_owned(),
                 ))
             }
         };
-        let symmetric_key_bytes: [u8; KEY_LENGTH] =
+        let symmetric_key_bytes: [u8; AES_256_GCM_KEY_LENGTH] =
             key_block.key_bytes()?.as_slice().try_into().map_err(|_| {
                 KmipUtilsError::NotSupported(format!(
-                    "Expected a KMIP Symmetric Key of length {KEY_LENGTH}"
+                    "Expected a KMIP Symmetric Key of length {AES_256_GCM_KEY_LENGTH}"
                 ))
             })?;
         let symmetric_key = SymmetricKey::try_from_bytes(symmetric_key_bytes)
@@ -47,7 +45,6 @@ impl AesGcmSystem {
         Ok(Self {
             key_uid: uid.into(),
             symmetric_key,
-            rng: Mutex::new(CsRng::from_entropy()),
         })
     }
 }
@@ -67,52 +64,53 @@ impl EncryptionSystem for AesGcmSystem {
             }
         });
 
-        let mut data = match &request.data {
-            None => {
-                return Ok(EncryptResponse {
-                    unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
-                    data: None,
-                    iv_counter_nonce: None,
-                    correlation_value,
-                    authenticated_encryption_tag: None,
-                })
-            }
-            Some(data) => data.clone(),
+        let Some(plaintext) = &request.data else {
+            return Ok(EncryptResponse {
+                unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
+                data: None,
+                iv_counter_nonce: None,
+                correlation_value,
+                authenticated_encryption_tag: None,
+            })
         };
 
-        // supplied Nonce or fresh
-        let nonce: Nonce<{ NONCE_LENGTH }> = match request.iv_counter_nonce.as_ref() {
-            Some(v) => Nonce::try_from(v.as_slice())
-                .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?,
+        // Supplied Nonce or new one.
+        let nonce: [u8; AES_256_GCM_IV_LENGTH] = match request.iv_counter_nonce.as_ref() {
+            Some(iv) => iv.as_slice().try_into()?,
             None => {
-                let mut rng = self.rng.lock().expect("a mutex lock failed");
-                Nonce::new(&mut *rng)
+                let mut iv = [0; AES_256_GCM_IV_LENGTH];
+                rand_bytes(&mut iv)?;
+                iv
             }
         };
 
-        // Additional data
-        let mut ad = uid;
+        // Additional data.
+        let mut aad = uid;
         // For some unknown reason the block number is appended in little-endian mode
-        // see `Block` in crypto_base
+        // see `Block` in crypto_base.
         if let Some(cp) = &request.cryptographic_parameters {
             if let Some(block_number) = cp.initial_counter_value {
-                ad.extend((block_number as usize).to_le_bytes());
+                aad.extend((block_number as usize).to_le_bytes());
             }
         }
 
-        // now encrypt
-        let tag = Aes256Gcm::new(&self.symmetric_key)
-            .encrypt_in_place_detached(
-                &nonce,
-                &mut data,
-                if ad.is_empty() { None } else { Some(&ad) },
-            )
-            .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
+        // Create buffer for GCM tag (MAC).
+        let mut tag = vec![0; AES_256_GCM_MAC_LENGTH];
+
+        // Encryption.
+        let ciphertext = encrypt_aead(
+            Cipher::aes_256_gcm(),
+            self.symmetric_key.as_bytes(),
+            Some(&nonce),
+            &aad,
+            plaintext,
+            tag.as_mut(),
+        )?;
 
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
-            data: Some(data),
-            iv_counter_nonce: Some(nonce.as_bytes().to_vec()),
+            data: Some(ciphertext),
+            iv_counter_nonce: Some(nonce.to_vec()),
             correlation_value,
             authenticated_encryption_tag: Some(tag),
         })
@@ -132,52 +130,49 @@ impl DecryptionSystem for AesGcmSystem {
             Some(uid.clone())
         };
 
-        let mut bytes = match &request.data {
-            None => {
-                return Ok(DecryptResponse {
-                    unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
-                    data: None,
-                    correlation_value,
-                })
-            }
-            Some(ciphertext) => ciphertext.clone(),
+        let Some(ciphertext) = &request.data else {
+            return Ok(DecryptResponse {
+                unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
+                data: None,
+                correlation_value,
+            })
         };
 
-        // recover tag
-        let tag = request
+        // Recover tag. Ensure it is of correct size.
+        let tag: [u8; AES_256_GCM_MAC_LENGTH] = request
             .authenticated_encryption_tag
             .clone()
-            .unwrap_or_default();
+            .unwrap_or(vec![0_u8; AES_256_GCM_MAC_LENGTH])
+            .try_into()?;
 
-        // recover Nonce
-        let nonce_bytes = request.iv_counter_nonce.clone().ok_or_else(|| {
-            KmipUtilsError::NotSupported("the nonce is mandatory for AES GCM".to_string())
+        // Recover nonce.
+        let request_nonce_bytes = request.iv_counter_nonce.as_ref().ok_or_else(|| {
+            KmipUtilsError::NotSupported("The nonce is mandatory for AES GCM.".to_string())
         })?;
-        let nonce: Nonce<{ NONCE_LENGTH }> = Nonce::try_from(nonce_bytes.as_slice())
-            .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
+        let nonce: [u8; AES_256_GCM_IV_LENGTH] = request_nonce_bytes.as_slice().try_into()?;
 
-        // Additional data
-        let mut ad = uid;
+        // Additional data.
+        let mut aad = uid;
         // For some unknown reason the block number is appended in little-endian mode
-        // see `Block` in crypto_base
+        // see `Block` in crypto_base.
         if let Some(cp) = &request.cryptographic_parameters {
             if let Some(block_number) = cp.initial_counter_value {
-                ad.extend((block_number as usize).to_le_bytes());
+                aad.extend((block_number as usize).to_le_bytes());
             }
         }
 
-        Aes256Gcm::new(&self.symmetric_key)
-            .decrypt_in_place_detached(
-                &nonce,
-                &mut bytes,
-                &tag,
-                if ad.is_empty() { None } else { Some(&ad) },
-            )
-            .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
+        let plaintext = decrypt_aead(
+            Cipher::aes_256_gcm(),
+            self.symmetric_key.as_bytes(),
+            Some(&nonce),
+            &aad,
+            ciphertext,
+            &tag,
+        )?;
 
         Ok(DecryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
-            data: Some(bytes),
+            data: Some(plaintext),
             correlation_value,
         })
     }

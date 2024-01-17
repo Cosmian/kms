@@ -31,13 +31,6 @@ Redis-with-Findex should be selected to [run the Cosmian KMS in the cloud or any
 The database parameters may be configured either:
 
 - using options on the command line that is used to start the KMS server
-- via a TLS connection when the KMS server is started in [bootstrap](./bootstrap.md) mode. Database parameters may contain sensitive information, such as passwords: providing them on a TLS connection is more secure than specifying them in plain text on the command line.
-
-Configuring the database via the [bootstrap](./bootstrap.md) TLS Connection should be selected to [run the Cosmian KMS in the cloud or any other zero-trust environment](./zero_trust.md).
-
-#### Configuring the database via the bootstrap server
-
-Configuring the database via the bootstrap TLS connection is described in the [bootstrap server documentation](bootstrap.md).
 
 #### Configuring the database via the command line
 
@@ -53,7 +46,7 @@ e.g.
 
 ```sh
 docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:4.10.1 \
+  --name kms ghcr.io/cosmian/kms:4.11.0 \
   --database-type=postgresql \
   --database-url=postgres://kms_user:kms_password@pgsql-server:5432/kms
 
@@ -68,7 +61,7 @@ Example:
 
 ```sh
 docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:4.10.1 \
+  --name kms ghcr.io/cosmian/kms:4.11.0 \
   --database-type=redis-findex \
   --database-url=redis://localhost:6379 \
   --redis-master-password password \
@@ -105,7 +98,7 @@ Say the certificate is called `cert.p12` and is in a directory called `/certific
 
 ```sh
 docker run --rm -p 9998:9998 \
-  --name kms ghcr.io/cosmian/kms:4.10.1 \
+  --name kms ghcr.io/cosmian/kms:4.11.0 \
   -v /certificate/cert.p12:/root/cosmian-kms/cert.p12 \
   --database-type=mysql \
   --database-url=mysql://mysql_server:3306/kms \

@@ -1,6 +1,10 @@
 use crate::{
     error::KmipError,
-    kmip::{extra::VENDOR_ID_COSMIAN, kmip_operations::ErrorReason, kmip_types::Attributes},
+    kmip::{
+        extra::{VENDOR_ATTR_X509_EXTENSION, VENDOR_ID_COSMIAN},
+        kmip_operations::ErrorReason,
+        kmip_types::Attributes,
+    },
 };
 
 const VENDOR_ATTR_REQUESTED_VALIDITY_DAYS: &str = "requested_validity_days";
@@ -33,5 +37,14 @@ impl Attributes {
             })
             .transpose()?;
         Ok(validity_days)
+    }
+
+    /// Set an X509 extensions file containing a `v3_ca` parag.
+    pub fn set_x509_extension_file(&mut self, x509_extension_file: Vec<u8>) -> &mut Self {
+        self.set_vendor_attribute(
+            VENDOR_ID_COSMIAN,
+            VENDOR_ATTR_X509_EXTENSION,
+            x509_extension_file,
+        )
     }
 }

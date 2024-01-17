@@ -1,6 +1,1 @@
-KMS_CERTBOT_EMAIL = "tech@cosmian.com"
-KMS_CERTBOT_HOSTNAME = "testsgx.cosmian.com"
-KMS_ENCLAVE_DIR_PATH = "data/public"
 KMS_SQLITE_PATH = "data/shared"
-KMS_CERTBOT_SSL_PATH = "data/private"
-KMS_ENCLAVE_MANIFEST_FILENAME = "kms.manifest"

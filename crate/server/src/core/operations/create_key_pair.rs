@@ -47,7 +47,7 @@ pub async fn create_key_pair(
         )
         .await?;
 
-    debug!("Created  key pair: {}/{}", &sk_uid, &pk_uid);
+    debug!("Created key pair: {}/{}", &sk_uid, &pk_uid);
     Ok(CreateKeyPairResponse {
         private_key_unique_identifier: UniqueIdentifier::TextString(sk_uid),
         public_key_unique_identifier: UniqueIdentifier::TextString(pk_uid),

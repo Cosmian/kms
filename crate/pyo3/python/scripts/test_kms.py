@@ -11,7 +11,7 @@ from cloudproof_cover_crypt import (
 from cosmian_kms import KmsClient
 
 
-class TestKMS(unittest.IsolatedAsyncioTestCase):
+class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.client = KmsClient('http://localhost:9998')
 
@@ -58,22 +58,20 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
         )
 
         # Import custom private key
-        custom_priv_key_uid = (
-            await self.client.import_cover_crypt_master_private_key_request(
-                priv_key.key_block(),
-                True,
-                self.pub_key_uid,
-                self.policy.to_bytes(),
-                [],
-                False,
-                None,
-                'my_custom_priv_key',
-            )
+        custom_priv_key_uid = await self.client.import_cover_crypt_master_private_key(
+            priv_key.key_block(),
+            True,
+            self.pub_key_uid,
+            self.policy.to_bytes(),
+            [],
+            False,
+            None,
+            'my_custom_priv_key',
         )
         self.assertEqual(custom_priv_key_uid, 'my_custom_priv_key')
 
         # Import custom public key
-        custom_pub_key_uid = await self.client.import_cover_crypt_public_key_request(
+        custom_pub_key_uid = await self.client.import_cover_crypt_public_key(
             pub_key.key_block(),
             True,
             self.policy.to_bytes(),
@@ -97,26 +95,24 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
         )
 
         # Import custom user key
-        custom_user_key_uid = (
-            await self.client.import_cover_crypt_user_decryption_key_request(
-                user_key.key_block(),
-                True,
-                self.priv_key_uid,
-                'Department::MKG && Security Level::Confidential',
-                None,
-                False,
-                None,
-                'my_custom_user_key',
-            )
+        custom_user_key_uid = await self.client.import_cover_crypt_user_decryption_key(
+            user_key.key_block(),
+            True,
+            self.priv_key_uid,
+            'Department::MKG && Security Level::Confidential',
+            None,
+            False,
+            None,
+            'my_custom_user_key',
         )
         self.assertEqual(custom_user_key_uid, 'my_custom_user_key')
 
         # Revoke key
-        revoked_uid = await self.client.revoke_cover_crypt_key('test', user_key_uid)
+        revoked_uid = await self.client.revoke_key('test', user_key_uid)
         self.assertEqual(revoked_uid, user_key_uid)
 
         # Destroy key
-        destroyed_uid = await self.client.destroy_cover_crypt_key(user_key_uid)
+        destroyed_uid = await self.client.destroy_key(user_key_uid)
         self.assertEqual(destroyed_uid, user_key_uid)
 
     async def test_simple_encryption_decryption_without_metadata(self) -> None:
@@ -333,6 +329,74 @@ class TestKMS(unittest.IsolatedAsyncioTestCase):
             user_key_uid,
         )
         self.assertEqual(bytes(plaintext), message)
+
+
+class TestGenericKMS(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.client = KmsClient('http://localhost:9998')
+
+    async def test_symmetric_encrypt_decrypt(self):
+        # Create
+        sym_key_uid = await self.client.create_symmetric_key(256)
+
+        # Export
+        sym_key = await self.client.get_object(sym_key_uid)
+        self.assertEqual(sym_key.object_type(), 'SymmetricKey')
+        self.assertEqual(len(sym_key.key_block()), 32)
+
+        # Encrypt
+        plaintext = b'Secret message'
+        response = await self.client.encrypt(plaintext, sym_key_uid)
+
+        # Decrypt
+        decrypted_data = await self.client.decrypt(
+            response.data(),
+            sym_key_uid,
+            iv_counter_nonce=response.iv_counter_nonce(),
+            authentication_encryption_tag=response.authenticated_encryption_tag(),
+        )
+        self.assertEqual(bytes(decrypted_data), plaintext)
+
+        # Revoke
+        revoked_uid = await self.client.revoke_key('test', sym_key_uid)
+        self.assertEqual(revoked_uid, sym_key_uid)
+
+        # Destroy
+        destroyed_uid = await self.client.destroy_key(sym_key_uid)
+        self.assertEqual(destroyed_uid, sym_key_uid)
+
+    async def test_key_tags(self):
+        # Create key with associated tags
+        key_tags = ['top secret', 'france']
+        _ = await self.client.create_symmetric_key(256, tags=key_tags)
+
+        # Export
+        key_object = await self.client.get_object(key_tags)
+        self.assertEqual(key_object.object_type(), 'SymmetricKey')
+        self.assertEqual(len(key_object.key_block()), 32)
+
+        # Wrong tag
+        with self.assertRaises(Exception):
+            await self.client.get_object(['wrong'])
+
+        # Encrypt
+        plaintext = b'Secret message'
+        response = await self.client.encrypt(plaintext, key_tags)
+
+        # Decrypt
+        decrypted_data = await self.client.decrypt(
+            response.data(),
+            key_tags,
+            iv_counter_nonce=response.iv_counter_nonce(),
+            authentication_encryption_tag=response.authenticated_encryption_tag(),
+        )
+        self.assertEqual(bytes(decrypted_data), plaintext)
+
+        # Revoke
+        await self.client.revoke_key('test', key_tags)
+
+        # Destroy
+        await self.client.destroy_key(key_tags)
 
 
 if __name__ == '__main__':

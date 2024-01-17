@@ -1,24 +1,30 @@
+#[cfg(not(feature = "fips"))]
 use std::sync::{Arc, Mutex};
 
+#[cfg(not(feature = "fips"))]
 use cloudproof::reexport::crypto_core::{
-    reexport::{pkcs8::DecodePublicKey, rand_core::SeedableRng, zeroize::Zeroizing},
-    CsRng, Ecies, EciesP192Aes128, EciesP224Aes128, EciesP256Aes128, EciesP384Aes128,
-    EciesSalsaSealBox, Ed25519PublicKey, P192PublicKey, P224PublicKey, P256PublicKey,
-    P384PublicKey, RsaKeyWrappingAlgorithm, RsaPublicKey, X25519PublicKey,
-    ED25519_PUBLIC_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH,
+    reexport::rand_core::SeedableRng, CsRng, Ecies, EciesSalsaSealBox, Ed25519PublicKey,
+    X25519PublicKey,
 };
 use cosmian_kmip::kmip::{
     kmip_operations::{Encrypt, EncryptResponse},
     kmip_types::UniqueIdentifier,
 };
 use openssl::{
-    nid::Nid,
     pkey::{Id, PKey, Public},
     x509::X509,
 };
 use tracing::{debug, trace};
 
+#[cfg(not(feature = "fips"))]
+use crate::crypto::elliptic_curves::operation::{
+    ED25519_PUBLIC_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH,
+};
 use crate::{
+    crypto::{
+        hybrid_encryption::{ecies::ecies_encrypt, rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt},
+        wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_wrap,
+    },
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail, EncryptionSystem,
 };
@@ -26,30 +32,28 @@ use crate::{
 /// Encrypt a single block of data using a Salsa Sealed Box
 /// Cannot be used as a stream cipher
 pub struct HybridEncryptionSystem {
-    rng: Arc<Mutex<CsRng>>,
     public_key_uid: String,
     public_key: PKey<Public>,
+    key_wrapping: bool,
 }
 
 impl HybridEncryptionSystem {
-    pub fn new(public_key_uid: &str, public_key: PKey<Public>) -> Self {
-        let rng = CsRng::from_entropy();
-
+    pub fn new(public_key_uid: &str, public_key: PKey<Public>, key_wrapping: bool) -> Self {
         trace!("Instantiated hybrid encryption system for public key id: {public_key_uid}");
 
         Self {
-            rng: Arc::new(Mutex::new(rng)),
             public_key_uid: public_key_uid.into(),
             public_key,
+            key_wrapping,
         }
     }
 
     pub fn instantiate_with_certificate(
         certificate_uid: &str,
         certificate_value: &[u8],
+        key_wrapping: bool,
     ) -> Result<Self, KmipUtilsError> {
         debug!("instantiate_with_certificate: entering");
-        let rng = CsRng::from_entropy();
 
         debug!("instantiate_with_certificate: parsing");
         let cert = X509::from_der(certificate_value)
@@ -61,32 +65,39 @@ impl HybridEncryptionSystem {
         })?;
 
         Ok(Self {
-            rng: Arc::new(Mutex::new(rng)),
             public_key_uid: certificate_uid.into(),
             public_key,
+            key_wrapping,
         })
     }
 }
 
 impl EncryptionSystem for HybridEncryptionSystem {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError> {
-        if request
-            .authenticated_encryption_additional_data
-            .as_deref()
-            .is_some()
-        {
-            kmip_utils_bail!(
-                "Hybrid encryption system does not support additional authenticated data"
-            )
-        }
         let plaintext = request.data.clone().context("missing plaintext data")?;
-        let mut rng = self.rng.lock().unwrap();
 
-        // Convert the Pkey to a crypto_core curve and perform emcryption
+        #[cfg(not(feature = "fips"))]
+        let rng = Arc::new(Mutex::new(CsRng::from_entropy()));
+        #[cfg(not(feature = "fips"))]
+        let mut rng = rng.lock().expect("RNG lock poisoned");
+
+        // Convert the Pkey to a crypto_core curve and perform encryption
         // Note: All conversions below will go once we move to full openssl
         let id = self.public_key.id();
         let ciphertext: Vec<u8> = match id {
-            Id::EC => encrypt_with_nist_curve(&mut rng, &self.public_key, &plaintext)?,
+            Id::EC => ecies_encrypt(&self.public_key, &plaintext)?,
+            Id::RSA => {
+                if self.key_wrapping {
+                    ckm_rsa_aes_key_wrap(&self.public_key, &plaintext)?
+                } else {
+                    rsa_oaep_aes_gcm_encrypt(
+                        &self.public_key,
+                        &plaintext,
+                        request.authenticated_encryption_additional_data.as_deref(),
+                    )?
+                }
+            }
+            #[cfg(not(feature = "fips"))]
             Id::ED25519 => {
                 trace!("encrypt: Ed25519");
                 // The raw public key happens to be the (compressed) value of the Montgomery point
@@ -97,6 +108,7 @@ impl EncryptionSystem for HybridEncryptionSystem {
                 );
                 EciesSalsaSealBox::encrypt(&mut *rng, &public_key, &plaintext, None)?
             }
+            #[cfg(not(feature = "fips"))]
             Id::X25519 => {
                 trace!("encrypt: X25519");
                 // The raw public key happens to be the (compressed) value of the Montgomery point
@@ -105,19 +117,12 @@ impl EncryptionSystem for HybridEncryptionSystem {
                 let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
                 EciesSalsaSealBox::encrypt(&mut *rng, &public_key, &plaintext, None)?
             }
-            Id::RSA => {
-                trace!("encrypt: RSA");
-                let spki_bytes = self.public_key.public_key_to_der()?;
-                let public_key = RsaPublicKey::from_public_key_der(&spki_bytes)?;
-                public_key.wrap_key(
-                    &mut *rng,
-                    RsaKeyWrappingAlgorithm::Aes256Sha256,
-                    &Zeroizing::from(plaintext.clone()),
-                )?
-            }
             _ => {
-                trace!("Not supported");
-                kmip_utils_bail!("Public key id not supported yet: {:?}", id);
+                kmip_utils_bail!(
+                    "Public key id not supported for Hybrid encryption. FIPS mode may have \
+                     prevented this operation: {:?}",
+                    id
+                );
             }
         };
 
@@ -127,6 +132,7 @@ impl EncryptionSystem for HybridEncryptionSystem {
             plaintext.len(),
             ciphertext.len(),
         );
+
         Ok(EncryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.public_key_uid.clone()),
             data: Some(ciphertext),
@@ -135,45 +141,4 @@ impl EncryptionSystem for HybridEncryptionSystem {
             authenticated_encryption_tag: None,
         })
     }
-}
-
-fn encrypt_with_nist_curve(
-    rng: &mut CsRng,
-    public_key: &PKey<Public>,
-    plaintext: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError> {
-    debug!("encrypt: NIST curve");
-    let spki_bytes = public_key.public_key_to_der()?;
-    // Get the NID (Numeric ID) of the curve.
-    let ec_key = public_key.ec_key()?;
-    let nid = ec_key
-        .group()
-        .curve_name()
-        .ok_or_else(|| KmipUtilsError::ConversionError("invalid curve name".to_string()))?;
-    debug!("encrypt: Elliptic curve: {}", nid.long_name()?);
-    let ciphertext = match nid {
-        Nid::X9_62_PRIME192V1 => {
-            let public_key = P192PublicKey::from_public_key_der(&spki_bytes)?;
-            EciesP192Aes128::encrypt(rng, &public_key, plaintext, None)?
-        }
-        Nid::SECP224R1 => {
-            let public_key = P224PublicKey::from_public_key_der(&spki_bytes)?;
-            EciesP224Aes128::encrypt(rng, &public_key, plaintext, None)?
-        }
-        Nid::X9_62_PRIME256V1 => {
-            let public_key = P256PublicKey::from_public_key_der(&spki_bytes)?;
-            EciesP256Aes128::encrypt(rng, &public_key, plaintext, None)?
-        }
-        Nid::SECP384R1 => {
-            let public_key = P384PublicKey::from_public_key_der(&spki_bytes)?;
-            EciesP384Aes128::encrypt(rng, &public_key, plaintext, None)?
-        }
-        _ => {
-            kmip_utils_bail!(
-                "encrypt: Elliptic curve not supported: {}",
-                nid.long_name()?
-            );
-        }
-    };
-    Ok(ciphertext)
 }

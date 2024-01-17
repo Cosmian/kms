@@ -1,4 +1,3 @@
-pub(crate) mod certbot;
 pub(crate) mod certificate;
 pub(crate) mod cover_crypt;
 pub(crate) mod implementation;

@@ -53,14 +53,6 @@ dependencies = [
   "ci-rust-tests",
 ]
 
-[tasks.ci-enclave-tests]
-category = "dev"
-description = "Run Rust tests"
-script = '''
-cargo build --bin ckms
-cargo test --features staging --no-default-features -p kms
-'''
-
 #
 # Local tests
 #

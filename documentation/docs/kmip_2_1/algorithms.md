@@ -8,19 +8,26 @@ In the latter case, the public key (or the associated private key for unwrapping
 
 The supported key-wrapping algorithms are:
 
-| Algorithm            | Wrap Key Type               | Description                                                                                                                                                                 |
-|----------------------|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| RFC 5649             | AES                         | AES key-wrapping with padding as defined in [RFC3394](https://tools.ietf.org/html/rfc5649)                                                                                  |
-| CKM_RSA_AES_KEY_WRAP | RSA 2048, 3072 or 4096 bits | RSA OAEP with AES-256 GCM and Sha256 as defined in [RSA AES KEY WRAP](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908) |
-| Salsa Sealed Box     | X25519, Ed25519             | ECIES compatible with libsodium [Sealed Box](https://doc.libsodium.org/public-key_cryptography/sealed_boxes)                                                                |
-| ECIES NIST AES-128   | P-192, P-224, P-256, P-384  | ECIES with a NIST curve and AES-128 GCM                                                                                                                                     |
+|             Algorithm|           Wrap Key Type|                                    Description|
+|----------------------|------------------------|-----------------------------------------------|
+|               AES-KWP| Symmetric key wrapping | Symmetric key-wrapping with padding as defined in [RFC3394](https://tools.ietf.org/html/rfc5649).             |
+| CKM_RSA_AES_KEY_WRAP | Hybrid key wrapping        | RSA OAEP with SHA256 with AES-KWP for RSA key size 2048, 3072 or 4096 bits.                                   |
+| Salsa Sealed Box     | X25519, Ed25519            | ECIES compatible with libsodium [Sealed Box](https://doc.libsodium.org/public-key_cryptography/sealed_boxes). |
+| ECIES                | P-192, P-224, P-256, P-384, P-521 | ECIES with a NIST curve and AES-256-GCM.|
 
-- `CKM_RSA_AES_KEY_WRAP` is a PKCS#11 mechanism that is supported by most HSMs. It is compatible with Google KMS
-  - RSA_OAEP_3072_SHA256_AES_256 for RSA 3072 bits key
-  - RSA_OAEP_4096_SHA256_AES_256 for RSA 4096 bits key
-- `Salsa sealed box` uses X25519 and XSalsa20-Poly1305. A Ed25519 wrapping key can be used; it will be converted to
-  X25519 first.
-- There is no NIST standard for ECIES; `SalsaSealbox` if fast and widely used.
+
+- `Salsa sealed box` uses X25519 and XSalsa20-Poly1305. A Ed25519 wrapping key can be used; it will be converted to X25519 first.
+- There is no NIST standard for ECIES but since `SalsaSealbox` is fast and widely used, we expose ECIES encryption based on it for NIST P curves.
+
+- `AES-KWP` allows to symmetrically wrap keys using [RFC5649](https://tools.ietf.org/html/rfc5649).
+
+- `CKM_RSA_AES_KEY_WRAP` is a PKCS#11 mechanism that is supported by most HSMs. Asymmetrically wrap keys referring to PKCS#11 as described [here](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908). This document describes how to unwrap keys of any size using asymmetric encryption and the RSA algorithm. Since old similar wrapping methods based on RSA used naive RSA encryption and could present some flaws, it aims at a generally more secure method to wrap keys. Receive data of the form `c|wk` where `|` is the concatenation operator. Distinguish `c` and `wk`, respectively the encrypted `kek` and the wrapped key. First decrypt the key-encryption-key `kek` using RSA-OAEP, then proceed to unwrap the key by decrypting `m = dec(wk, kek)` using AES-KWP as specified in [RFC5649](https://tools.ietf.org/html/rfc5649). It is also compatible with Google KMS.
+
+- `Salsa sealed box` uses X25519 and XSalsa20-Poly1305. A Ed25519 wrapping key can be used; it will be converted to X25519 first.
+
+- Although there is no specific FIPS standard for hybrid encryption, we built an ECIES encryption scheme based on FIPS compliant crytographic primitives only. It supports the entire family of NIST P curves with the exception of `P-192` and it uses AES-256-GCM for encryption.
+
+
 
 ## Encryption schemes
 
@@ -30,25 +37,45 @@ please refer to [KMIP Messages](./messages.md) that allow combining multiple ope
 
 Encryption can be performed using a key or a certificate. Decryption can be performed using a key.
 
-| Algorithm            | Encryption Key Type         | Description                                                                                                                                                                 |
-|----------------------|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Covercrypt           | Covercrypt                  | A fast post-quantum attribute based scheme: [Covercrypt](https://github.com/Cosmian/cover_crypt)                                                                            |
-| AES GCM              | AES (128 or 256 bits)       | The NIST standardized symmetric encryption in [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf)                                                     |
-| CKM_RSA_AES_KEY_WRAP | RSA 2048, 3072 or 4096 bits | RSA OAEP with AES-256 GCM and Sha256 as defined in [RSA AES KEY WRAP](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908) |
-| Salsa Sealed Box     | X25519, Ed25519             | ECIES compatible with libsodium [Sealed Box](https://doc.libsodium.org/public-key_cryptography/sealed_boxes)                                                                |
-| ECIES NIST AES-128   | P-192, P-224, P-256, P-384  | ECIES with a NIST curve and AES-128 GCM                                                                                                                                     |
+The supported encryption algorithms are:
+
+|             Algorithm|     Encryption Key Type|                                    Description|
+|----------------------|------------------------|-----------------------------------------------|
+| Covercrypt                   | Covercrypt                                              | A fast post-quantum attribute based scheme: [Covercrypt](https://github.com/Cosmian/cover_crypt).                                                |
+| AES-128-GCM<br />AES-256-GCM | Symmetric authenticated encryption with additional data | The NIST standardized symmetric encryption in [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf).                         |
+| RSA_OAEP_AES_GCM | Hybrid encryption | RSA OAEP with SHA256 with AES-256-GCM for RSA key size 2048, 3072 or 4096 bits. This will change to use AES-GCM instead of AES-KWP in a near future. |
+| Salsa Sealed Box             | X25519, Ed25519| ECIES compatible with libsodium [Sealed Box](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).                                    |
+| ECIES           | P-192, P-224, P-256, P-384, P-521| ECIES with a NIST curve and AES-256-GCM.|
 
 - [Covercrypt](https://github.com/Cosmian/cover_crypt) is a new post-quantum cryptographic algorithm, being standardized
   at [ETSI](https://www.etsi.org/) that allows creating ciphertexts for a set of attributes and issuing user keys with access policies over these
   attributes. User keys are traceable with a unique fingerprint.
-- AES is used in Galois Counter Mode ([GCM](https://en.wikipedia.org/wiki/Galois/Counter_Mode)) with a 96 bits nonce and a 128 bits tag.
+
+- AES is used in Galois Counter Mode ([GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)) with a 96 bits nonce and a 128 bits tag with a keysize of 128 or 256 bits.
+
+- `RSA_OAEP_AES_GCM` is a PKCS#11 mechanism that is supported by most HSMs. It is initially used to asymmetrically wrap keys referring to PKCS#11 as described [here](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908). For general hybrid AES-GCM is used instead of AES-KWP.
+
+- `Salsa sealed box` uses X25519 and XSalsa20-Poly1305. A Ed25519 wrapping key can be used; it will be converted to X25519 first.
+
+- Although there is no specific FIPS standard for hybrid encryption, we built an ECIES encryption scheme based on FIPS compliant crytographic primitives only. It supports the entire family of NIST P curves with the exception of `P-192` and it uses AES-256-GCM for encryption.
+
 
 ## Signature
 
 Signature is only supported via the `Certify` operation, which is used to create a certificate either by signing a certificate request,
 or building it from an existing public key.
 
-| Algorithm | Signature Key Type         | Description                                                                  |
-|-----------|----------------------------|------------------------------------------------------------------------------|
-| EcDSA     | P-192, P-224, P-256, P-384 | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) |
-| EdDSA     | Ed25519                    | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) |
+
+|            Algorithm |     Signature Key Type |                                    Description|
+|----------------------|------------------------|-----------------------------------------------|
+| ECDSA     | P-192, P-224, P-256, P-384, X25519, X448 | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
+| EdDSA     | Ed25519, Ed448| See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
+
+- `ECDSA` performs digital signatures on elliptic curves `P-192`, `P-224`, `P-256`, `P-384`, `P-512` and `X25519`.
+- `EdDSA` performs digital signatures on Edwards curves `Ed25519`.
+
+
+## Password-based key derivation
+The randomness of cryptographic keys is essential for the security of cryptographic applications. Sometimes, passwords may be the only input required from the users who are eligible to access the data. Due to the low entropy and possibly poor randomness of those passwords, they are not suitable to be used directly as cryptographic keys. The KMS addresses this problem by providing methods to derive a password into a secure cryptographic key.
+
+In normal mode, passwords are derived using `Argon2` hash algorithm with a random 128-bit salt. Argon2 has the property of being computationally intensive making it significantly harder to crack by brute force only.

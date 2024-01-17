@@ -85,7 +85,7 @@ impl<'de> TtlvDeserializer<'de> {
 /// Parse a KMIP structure from its TTLV value.
 ///
 /// Note: `Objects` are untagged enums, so it is impossible to know the type of the Object
-/// unless the the root value being deserialized is an object, in which case,
+/// unless the root value being deserialized is an object, in which case,
 /// the tag is the name of the variant.
 ///
 /// #see `Object::post_fix()`

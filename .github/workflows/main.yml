@@ -1,0 +1,169 @@
+---
+name: CI checks
+
+on: push
+
+jobs:
+  cargo-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v3
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-audit-v0.15.2
+      - uses: rustsec/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  cargo-udeps:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-udeps.yml@develop
+
+  cargo-lint:
+    uses: ./.github/workflows/clippy.yml
+    with:
+      toolchain: nightly-2024-01-09
+
+  build:
+    uses: ./.github/workflows/build_all.yml
+    secrets: inherit
+    with:
+      toolchain: nightly-2024-01-09
+
+  cargo-doc:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-doc.yml@develop
+    with:
+      toolchain: nightly-2024-01-09
+
+  python_and_docker:
+    uses: ./.github/workflows/build_docker_image.yml
+
+  ##############################################################################
+  ### Releases
+  ##############################################################################
+  release:
+    name: release
+    needs:
+      - cargo-audit
+      - cargo-udeps
+      - cargo-lint
+      - cargo-doc
+      - build
+      - python_and_docker
+    runs-on: [self-hosted, not-sgx]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - archive_name: kms_centos7
+          - archive_name: kms_ubuntu_20_04
+          - archive_name: kms_ubuntu_22_04
+          - archive_name: kms_macos
+          - archive_name: kms_windows
+          - archive_name: kms_python_linux
+          - archive_name: kms_python_macos
+          - archive_name: kms_python_windows
+
+    steps:
+      - uses: actions/download-artifact@v3
+      - run: find .
+
+      - name: Creating zip to be attached to release
+        run: |
+          sudo apt-get install -y zip
+          zip -r ${{ matrix.archive_name }}.zip ${{ matrix.archive_name }}
+
+      - name: Push to package.cosmian.com
+        run: |
+          set -x
+          DESTINATION_DIR=/mnt/package/kms/last_build/$VERSION
+          ssh cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
+          scp ${{ matrix.archive_name }}.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
+        env:
+          VERSION: ${{ github.head_ref }}
+
+      - name: Push to package.cosmian.com - tags
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -x
+          DESTINATION_DIR=/mnt/package/kms/$VERSION
+          ssh cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
+          scp ${{ matrix.archive_name }}.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
+        env:
+          VERSION: ${{ github.ref_name }}
+
+      - name: Release on tags, attach asset on release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ matrix.archive_name }}.zip
+
+  python_publish:
+    name: python publish
+    needs:
+      - python_and_docker
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - archive_name: kms_python_linux
+          - archive_name: kms_python_macos
+          - archive_name: kms_python_windows
+
+    steps:
+      - uses: actions/download-artifact@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.7
+
+      - name: List directory
+        if: contains(runner.os, 'Linux')
+        run: find .
+
+      - name: Install requirements
+        run: |
+          pip install twine
+
+      - name: Publish .whl
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          twine upload -u "${PYPI_USERNAME}" -p "${PYPI_PASSWORD}" ${{ matrix.archive_name }}/*.whl
+        env:
+          PYPI_USERNAME: ${{ secrets.PYPI_USERNAME }}
+          PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+
+  cleanup:
+    needs:
+      - release
+      - python_publish
+    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
+    secrets: inherit
+
+  public_documentation:
+    needs:
+      - cleanup
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Deploy documentation in staging
+        if: ${{ github.ref_name == 'develop' }}
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: staging.yml
+          repo: Cosmian/public_documentation
+          ref: develop
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Deploy documentation in prod
+        if: startsWith(github.ref, 'refs/tags')
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: prod.yml
+          repo: Cosmian/public_documentation
+          ref: main
+          token: ${{ secrets.PAT_TOKEN }}

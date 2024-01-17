@@ -477,6 +477,10 @@ async fn process_symmetric_key(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()> {
+    trace!(
+        "process_symmetric_key: object_with_metadata: {:?}",
+        object_with_metadata
+    );
     let object_type = object_with_metadata.object.object_type();
     let key_block = object_with_metadata.object.key_block_mut()?;
 
@@ -519,6 +523,7 @@ async fn process_symmetric_key(
                 attributes: key_block.key_value.attributes.clone(),
             };
             key_block.key_format_type = KeyFormatType::Raw;
+            key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
             // wrap the key
             wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
             return Ok(())
@@ -540,6 +545,7 @@ async fn process_symmetric_key(
                 attributes: key_block.key_value.attributes.clone(),
             };
             key_block.key_format_type = KeyFormatType::Raw;
+            key_block.attributes_mut()?.key_format_type = Some(KeyFormatType::Raw);
         }
         _ => kms_bail!(
             "export: unsupported requested Key Format Type for a symmetric key: {:?}",

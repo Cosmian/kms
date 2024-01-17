@@ -147,6 +147,7 @@ pub fn decrypt(
 //     Ok(())
 // }
 
+#[cfg(not(feature = "fips"))]
 async fn test_certificate_import_encrypt(
     ca_path: &str,
     subca_path: &str,
@@ -251,6 +252,7 @@ async fn test_certificate_import_encrypt(
 }
 
 #[tokio::test]
+#[cfg(not(feature = "fips"))]
 async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), CliError> {
     test_certificate_import_encrypt(
         "p12/root.pem",
@@ -395,6 +397,8 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "fips"))]
+// P-192 should not be used in FIPS mode. See NIST.SP.800-186 - Section 3.2.1.1.
 async fn test_certificate_encrypt_using_prime192() -> Result<(), CliError> {
     import_encrypt_decrypt("prime192v1").await
 }
@@ -405,6 +409,9 @@ async fn test_certificate_encrypt_using_prime224() -> Result<(), CliError> {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "fips"))]
+// Edwards curve shall be used **for digital signature only**.
+// See NIST.SP.800-186 - Section 3.1.2 table 2 and NIST.FIPS.186-5.
 async fn test_certificate_encrypt_using_ed25519() -> Result<(), CliError> {
     import_encrypt_decrypt("ED25519").await
 }

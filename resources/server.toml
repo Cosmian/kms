@@ -1,0 +1,8 @@
+default_username = "admin"
+google_cse_kacls_url = "https://cse.my_domain.com/google_cse"
+
+[http]
+port = 8585
+hostname = "my_server.com"
+https_p12_file = "/mnt/some_p12_file.p12"
+https_p12_password = "Uuriez89("

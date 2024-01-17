@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kmip"
-version = "4.10.1"
+version = "4.11.0"
 edition = "2021"
 license-file = "../../LICENSE.md"
 
@@ -8,8 +8,11 @@ license-file = "../../LICENSE.md"
 default = []
 openssl = ["dep:openssl"]
 pyo3 = ["dep:pyo3"]
+# Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
+fips = []
 
 [dependencies]
+base58 = "0.2"
 bitflags = { workspace = true }
 chrono = { workspace = true }
 cloudproof = { workspace = true }
@@ -17,14 +20,20 @@ hex = { workspace = true }
 num-bigint-dig = { workspace = true }
 openssl = { workspace = true, optional = true }
 pyo3 = { version = "0.20", optional = true }
+rust-ini = "0.20"
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha3 = { version = "0.10", optional = true }
 strum = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
-zeroize = { workspace = true }
 uuid = { version = "1.6.1", features = ["v4"] }
+zeroize = { workspace = true }
+
+[package.metadata.cargo-machete]
+ignored = ["rust-ini"]
 
 [dev-dependencies]
 cosmian_logger = { path = "../logger" }
+x509-parser = "0.15"

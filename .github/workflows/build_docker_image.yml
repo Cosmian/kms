@@ -1,0 +1,109 @@
+---
+name: Docker
+
+on:
+  workflow_call:
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_IMAGE: ghcr.io/cosmian/kms
+
+jobs:
+  pyo3:
+    uses: ./.github/workflows/maturin.yml
+    with:
+      toolchain: nightly-2024-01-09
+
+  build-and-push-image:
+    runs-on: ubuntu-22.04
+    container: docker:19.03.15
+
+    steps:
+      - name: Display cpuinfo
+        run: cat /proc/cpuinfo
+
+      - name: Install tar
+        run: apk add --no-cache tar
+
+      - uses: actions/checkout@v3
+
+      - name: Login to GitHub Packages
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: |
+            ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build and tag docker container
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          file: Dockerfile
+          network: host
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+
+  python_tests:
+    needs:
+      - build-and-push-image
+      - pyo3
+    uses: ./.github/workflows/python_tests.yml
+    secrets: inherit
+    with:
+      kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
+      branch: develop
+
+  cloudproof_kms_js:
+    needs:
+      - build-and-push-image
+      - pyo3
+    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_kms_js.yml@develop
+    with:
+      branch: fix/serialization
+      kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
+
+  cloudproof_java:
+    needs:
+      - build-and-push-image
+      - pyo3
+    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_java_in_docker.yml@develop
+    with:
+      branch: fix/kmip_serialization
+      target: x86_64-unknown-linux-gnu
+      extension: so
+      destination: linux-x86-64
+      os: ubuntu-20.04
+      kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
+      findex-cloud-version: 0.3.1
+      copy_fresh_build: false
+
+  cloudproof_python:
+    needs:
+      - build-and-push-image
+      - pyo3
+    uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@develop
+    with:
+      branch: feature/kms-generics
+      target: x86_64-unknown-linux-gnu
+      kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
+      copy_fresh_build: true
+      findex-cloud-version: 0.3.1

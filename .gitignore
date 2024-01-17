@@ -10,7 +10,9 @@ data/keys
 **/data/public
 **/data/shared
 crate/cli/*.sqlite
-sgx/kms-test-*.json
 .DS_Store
 .idea/
 rustc-ice*.txt
+
+crate/cli/cosmian-kms/sqlite-data
+cosmian-kms/sqlite-data

@@ -7,11 +7,11 @@ use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
 };
-use cosmian_kms_utils::crypto::{
-    curve_25519::operation::create_x25519_key_pair, symmetric::create_symmetric_key,
-    wrap::decrypt_bytes,
-};
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_utils::crypto::elliptic_curves::operation::create_x25519_key_pair;
+use cosmian_kms_utils::crypto::{symmetric::create_symmetric_key_kmip_object, wrap::decrypt_bytes};
 use tempfile::TempDir;
+#[cfg(not(feature = "fips"))]
 use tracing::debug;
 
 use crate::{
@@ -38,7 +38,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     let mut rng = CsRng::from_entropy();
     let mut wrap_key_bytes = vec![0; 32];
     rng.fill_bytes(&mut wrap_key_bytes);
-    let wrap_key = create_symmetric_key(&wrap_key_bytes, CryptographicAlgorithm::AES);
+    let wrap_key = create_symmetric_key_kmip_object(&wrap_key_bytes, CryptographicAlgorithm::AES);
     write_kmip_object_to_file(&wrap_key, &wrap_key_path)?;
 
     // import the wrapping key
@@ -102,6 +102,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     // create a temp dir
@@ -110,11 +111,9 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     // init the test server
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     // Generate a symmetric wrapping key
-    let mut rng = CsRng::from_entropy();
     let wrap_private_key_uid = "wrap_private_key_uid";
     let wrap_public_key_uid = "wrap_public_key_uid";
-    let wrap_key_pair =
-        create_x25519_key_pair(&mut rng, wrap_private_key_uid, wrap_public_key_uid)?;
+    let wrap_key_pair = create_x25519_key_pair(wrap_private_key_uid, wrap_public_key_uid)?;
     // Write the private key to a file and import it
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
     write_kmip_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;

@@ -1,38 +1,20 @@
-use cosmian_kmip::kmip::{
-    kmip_objects::ObjectType, kmip_operations::GetResponse as GetResponseRust,
-};
+use cosmian_kmip::kmip::kmip_operations::{EncryptResponse, GetResponse};
 use pyo3::{exceptions::PyException, prelude::*, types::PyBytes};
 
 #[pyclass]
-pub struct KmsObject(GetResponseRust);
-
-impl KmsObject {
-    pub fn new(get_response: GetResponseRust) -> Self {
-        Self(get_response)
-    }
-}
+pub struct KmsObject(pub GetResponse);
 
 #[pymethods]
 impl KmsObject {
-    /// Get the type of the underlying KMIP object.
+    /// Gets the type of the underlying KMIP object.
     ///
     /// Returns:
     ///     str
-    pub fn object_type(&self) -> &str {
-        match self.0.object_type {
-            ObjectType::Certificate => "Certificate",
-            ObjectType::CertificateRequest => "CertificateRequest",
-            ObjectType::SymmetricKey => "SymmetricKey",
-            ObjectType::PublicKey => "PublicKey",
-            ObjectType::PrivateKey => "PrivateKey",
-            ObjectType::SplitKey => "SplitKey",
-            ObjectType::SecretData => "SecretData",
-            ObjectType::OpaqueObject => "OpaqueObject",
-            ObjectType::PGPKey => "PGPKey",
-        }
+    pub fn object_type(&self) -> String {
+        self.0.object_type.to_string()
     }
 
-    /// Retrieve key bytes
+    /// Retrieves key bytes
     ///
     /// Returns:
     ///     bytes
@@ -46,5 +28,67 @@ impl KmsObject {
             .map_err(|e| PyException::new_err(e.to_string()))?;
 
         Ok(PyBytes::new(py, &key_bytes).into())
+    }
+}
+
+#[pyclass]
+pub struct KmsEncryptResponse(pub EncryptResponse);
+
+#[pymethods]
+impl KmsEncryptResponse {
+    /// Reads a KmsEncryptResponse from a JSON string.
+    #[staticmethod]
+    pub fn from_json(data: &str) -> PyResult<Self> {
+        Ok(Self(
+            serde_json::from_str(data).map_err(|e| PyException::new_err(e.to_string()))?,
+        ))
+    }
+
+    /// Retrieves uid of the key used during encryption
+    ///
+    /// Returns:
+    ///     String
+    pub fn unique_identifier(&self) -> String {
+        self.0.unique_identifier.to_string().unwrap_or_default()
+    }
+
+    /// Retrieves data bytes
+    ///
+    /// Returns:
+    ///     bytes
+    pub fn data(&self, py: Python) -> PyResult<Py<PyBytes>> {
+        let bytes = self.0.data.clone().unwrap_or_default();
+        Ok(PyBytes::new(py, &bytes).into())
+    }
+
+    /// Retrieves IV, Counter, or Nonce bytes
+    ///
+    /// Returns:
+    ///     bytes
+    pub fn iv_counter_nonce(&self, py: Python) -> PyResult<Py<PyBytes>> {
+        let bytes = self.0.iv_counter_nonce.clone().unwrap_or_default();
+        Ok(PyBytes::new(py, &bytes).into())
+    }
+
+    /// Retrieves authentication tag bytes
+    ///
+    /// Returns:
+    ///     bytes
+    pub fn authenticated_encryption_tag(&self, py: Python) -> PyResult<Py<PyBytes>> {
+        let bytes = self
+            .0
+            .authenticated_encryption_tag
+            .clone()
+            .unwrap_or_default();
+        Ok(PyBytes::new(py, &bytes).into())
+    }
+
+    /// Retrieves correlation value bytes
+    ///
+    /// Returns:
+    ///     bytes
+    pub fn correlation_value(&self, py: Python) -> PyResult<Py<PyBytes>> {
+        let bytes = self.0.correlation_value.clone().unwrap_or_default();
+        Ok(PyBytes::new(py, &bytes).into())
     }
 }

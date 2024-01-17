@@ -96,11 +96,10 @@ pub async fn wrap_key(
     };
 
     // wrap the key based on the encoding
-    let mut rng = kms.rng.lock().expect("could not acquire a lock on the rng");
     match encoding {
         EncodingOption::TTLVEncoding => {
             let plaintext = serde_json::to_vec(&object_key_block.key_value)?;
-            let ciphertext = encrypt_bytes(&mut *rng, &wrapping_key.object, &plaintext)?;
+            let ciphertext = encrypt_bytes(&wrapping_key.object, &plaintext)?;
             object_key_block.key_value = KeyValue {
                 key_material: KeyMaterial::ByteString(ciphertext),
                 // not clear whether this should be filled or not
@@ -109,7 +108,7 @@ pub async fn wrap_key(
         }
         EncodingOption::NoEncoding => {
             let plaintext = object_key_block.key_bytes()?;
-            let ciphertext = encrypt_bytes(&mut *rng, &wrapping_key.object, &plaintext)?;
+            let ciphertext = encrypt_bytes(&wrapping_key.object, &plaintext)?;
             object_key_block.key_value.key_material = KeyMaterial::ByteString(ciphertext);
         }
     };
