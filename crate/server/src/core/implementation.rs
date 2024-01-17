@@ -5,21 +5,20 @@ use cosmian_kmip::{
     kmip::{
         kmip_objects::Object,
         kmip_operations::{Create, CreateKeyPair},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve, StateEnumeration},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, RecommendedCurve,
+            StateEnumeration,
+        },
     },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::elliptic_curves::operation::{
-    create_x25519_key_pair, create_x448_key_pair,
-};
+use cosmian_kms_utils::crypto::curve_25519::operation::create_x25519_key_pair;
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
-        elliptic_curves::operation::{
-            create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
-        },
+        curve_25519::operation::{create_approved_ecc_key_pair, create_ed25519_key_pair},
         hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
         rsa::operation::create_rsa_key_pair,
         secret::Secret,
@@ -105,7 +104,6 @@ impl KMS {
         mut owm: ObjectWithMetadata,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn EncryptionSystem>> {
-        trace!("get_encryption_system: entering: object id: {}", owm.id);
         // the key must be active
         if owm.state != StateEnumeration::Active {
             kms_bail!(KmsError::InconsistentOperation(
@@ -123,9 +121,9 @@ impl KMS {
                 }
             }
         }
-        trace!("get_encryption_system: unwrap done (if required)");
 
-        let encryption_system = match &owm.object {
+        trace!("get_encryption_system: unwrap done (if required)");
+        match &owm.object {
             Object::SymmetricKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
                     match &key_block.cryptographic_algorithm {
@@ -152,18 +150,9 @@ impl KMS {
                 | KeyFormatType::TransparentRSAPublicKey
                 | KeyFormatType::PKCS1
                 | KeyFormatType::PKCS8 => {
-                    trace!(
-                        "get_encryption_system: matching on key format type: {:?}",
-                        key_block.key_format_type
-                    );
-                    let public_key = kmip_public_key_to_openssl(&owm.object)?;
-                    trace!(
-                        "get_encryption_system: OpenSSL Public Key instantiated before encryption"
-                    );
-                    Ok(
-                        Box::new(HybridEncryptionSystem::new(&owm.id, public_key, false))
-                            as Box<dyn EncryptionSystem>,
-                    )
+                    let p_key = kmip_public_key_to_openssl(&owm.object)?;
+                    Ok(Box::new(HybridEncryptionSystem::new(&owm.id, p_key))
+                        as Box<dyn EncryptionSystem>)
                 }
                 other => kms_not_supported!("encryption with public keys of format: {other}"),
             },
@@ -173,20 +162,17 @@ impl KMS {
                 Box::new(HybridEncryptionSystem::instantiate_with_certificate(
                     &owm.id,
                     certificate_value,
-                    false,
                 )?) as Box<dyn EncryptionSystem>,
             ),
             other => kms_not_supported!("encryption with keys of type: {}", other.object_type()),
-        };
-        trace!("get_encryption_system: exiting");
-        encryption_system
+        }
     }
 
     /// Return a decryption system based on the type of key
     pub(crate) async fn get_decryption_system(
         &self,
-        cover_crypt: Covercrypt,
         mut owm: ObjectWithMetadata,
+        cryptographic_parameters: Option<&CryptographicParameters>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn DecryptionSystem>> {
         debug!("get_decryption_system: entering");
@@ -203,17 +189,38 @@ impl KMS {
         match &owm.object {
             Object::PrivateKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::CoverCryptSecretKey => Ok(Box::new(
-                    CovercryptDecryption::instantiate(cover_crypt, &owm.id, &owm.object)?,
+                    CovercryptDecryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?,
                 )),
                 KeyFormatType::PKCS8
                 | KeyFormatType::PKCS1
                 | KeyFormatType::TransparentRSAPrivateKey
                 | KeyFormatType::TransparentECPrivateKey => {
                     let p_key = kmip_private_key_to_openssl(&owm.object)?;
-                    Ok(
-                        Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key, false))
-                            as Box<dyn DecryptionSystem>,
-                    )
+                    if let Some(cryptographic_algorithm) =
+                        cryptographic_parameters.and_then(|cp| cp.cryptographic_algorithm.as_ref())
+                    {
+                        match cryptographic_algorithm {
+                            CryptographicAlgorithm::RSA => {
+                                Ok(Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key))
+                                    as Box<dyn DecryptionSystem>)
+                            }
+                            CryptographicAlgorithm::CoverCrypt => {
+                                Ok(Box::new(CovercryptDecryption::instantiate(
+                                    Covercrypt::default(),
+                                    &owm.id,
+                                    &owm.object,
+                                )?))
+                            }
+                            other => {
+                                kms_not_supported!(
+                                    "decryption with algorithm: {other:?} is not supported"
+                                )
+                            }
+                        }
+                    } else {
+                        Ok(Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key))
+                            as Box<dyn DecryptionSystem>)
+                    }
                 }
                 other => kms_not_supported!("decryption with keys of format: {other}"),
             },
@@ -437,10 +444,6 @@ impl KMS {
                         create_x25519_key_pair(private_key_uid, public_key_uid)
                     }
                     #[cfg(not(feature = "fips"))]
-                    RecommendedCurve::CURVE448 => {
-                        create_x448_key_pair(private_key_uid, public_key_uid)
-                    }
-                    #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED25519 => {
                         warn!(
                             "An Edwards Keypair on curve 25519 should not be requested to perform \
@@ -458,44 +461,14 @@ impl KMS {
                              ECDH in FIPS mode."
                         )
                     }
-                    #[cfg(not(feature = "fips"))]
-                    RecommendedCurve::CURVEED448 => {
-                        warn!(
-                            "An Edwards Keypair on curve 448 should not be requested to perform \
-                             ECDH. Creating anyway."
-                        );
-                        create_ed448_key_pair(private_key_uid, public_key_uid)
-                    }
-                    #[cfg(feature = "fips")]
-                    // Ed448 not allowed for ECDH.
-                    // see NIST.SP.800-186 - Section 3.1.2 table 2.
-                    RecommendedCurve::CURVEED448 => {
-                        kms_not_supported!(
-                            "An Edwards Keypair on curve 448 should not be requested to perform \
-                             ECDH in FIPS mode."
-                        )
-                    }
                     other => kms_not_supported!(
                         "Generation of Key Pair for curve: {other:?}, is not supported"
                     ),
                 }
             }
-            CryptographicAlgorithm::RSA => {
-                let key_size_in_bits = any_attributes
-                    .cryptographic_length
-                    .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_string()))?
-                    as u32;
-                trace!(
-                    "RSA key pair generation: size in bits: {}",
-                    key_size_in_bits
-                );
-
-                create_rsa_key_pair(key_size_in_bits, public_key_uid, private_key_uid)
-            }
             CryptographicAlgorithm::Ed25519 => {
                 create_ed25519_key_pair(private_key_uid, public_key_uid)
             }
-            CryptographicAlgorithm::Ed448 => create_ed448_key_pair(private_key_uid, public_key_uid),
             CryptographicAlgorithm::CoverCrypt => {
                 cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
                     &Covercrypt::default(),
