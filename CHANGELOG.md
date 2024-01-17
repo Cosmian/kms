@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.11.0] - 2024-01-17
+
+### Bug Fixes
+
+- Fix AES decryption: tag invalid size [#133](https://github.com/Cosmian/kms/issues/133)
+- Remove bootstrap server leftovers [#142](https://github.com/Cosmian/kms/issues/142)
+
+### Features
+
+- X509 v3 extensions support [#120](https://github.com/Cosmian/kms/issues/120)
+- Dynamic salt for password derivation, resolving issue #124 [#128](https://github.com/Cosmian/kms/issues/128)
+- Support Cosmian VM [#129](https://github.com/Cosmian/kms/issues/129)
+- Make rsa oaep aes a generalized encryption system for use in all kms and not only for key wrapping [#130](https://github.com/Cosmian/kms/issues/130)
+- ECIES implementation for Hybrid Encryption [#134](https://github.com/Cosmian/kms/issues/134)
+- Add pyo3 methods for symmetric `create_key`, `encrypt`, `decrypt` [#135](https://github.com/Cosmian/kms/issues/135)
+- Add RSA keys create key pair [#137](https://github.com/Cosmian/kms/issues/137)
+- Upgrade Rust toolchain to 2024-01-09 [#141](https://github.com/Cosmian/kms/issues/141)
+- Support keypair generation for curve448 Montgomery and edwards forms [#143](https://github.com/Cosmian/kms/issues/143)
+
 ## [4.10.1] - 2023-12-12
 
 ### Documentation
@@ -19,9 +38,9 @@ All notable changes to this project will be documented in this file.
 - Database: support for atomic operations
 - Replaced part of Rust Crypto with openssl for more standardized module support
 - Deactivated automatic certificate verification, which will be reallocated
-    for the future `Validate` KMIP operation support [#102](https://github.com/Cosmian/kms/issues/102)
+  for the future `Validate` KMIP operation support [#102](https://github.com/Cosmian/kms/issues/102)
 - Deactivated the non KMIP compliant certificate "quick create feature",
-     which can now be achieved using the `Certify` KMIP operation [#103](https://github.com/Cosmian/kms/issues/103)
+  which can now be achieved using the `Certify` KMIP operation [#103](https://github.com/Cosmian/kms/issues/103)
 
 ### Bug Fixes
 
