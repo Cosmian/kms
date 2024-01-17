@@ -27,7 +27,7 @@ async fn main() -> KResult<()> {
     #[cfg(feature = "fips")]
     Provider::load(None, "fips")?;
     #[cfg(not(feature = "fips"))]
-    Provider::load(None, "base")?;
+    Provider::load(None, "default")?;
 
     // Set up environment variables and logging options
     if std::env::var("RUST_BACKTRACE").is_err() {
