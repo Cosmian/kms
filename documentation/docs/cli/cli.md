@@ -39,3 +39,10 @@ Here is an example configuration with TLS authentication and an encrypted databa
 #### Usage examples
 
 Many usage examples are provided with descriptions of the various KMIP 2.1 [operations](../kmip_2_1/operations.md).
+
+#### KMS GUI
+
+The [KMS GUI](https://github.com/Cosmian/kms_gui) offers a graphical tool to configure and use the KMS CLI binary.
+
+!!! info "Download kms_gui"
+    Please download the latest version of the KMS GUI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.11.0/)
