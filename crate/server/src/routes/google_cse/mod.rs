@@ -13,7 +13,7 @@ use crate::{error::KmsError, result::KResult, KMSServer};
 mod jwt;
 mod operations;
 
-pub use jwt::{jwt_authorization_config, GoogleCseConfig};
+pub use jwt::{jwt_authorization_config, list_jwks_uri, GoogleCseConfig};
 
 /// Error reply for Google CSE
 ///
@@ -61,7 +61,7 @@ pub async fn wrap(
     req_http: HttpRequest,
     wrap_request: Json<operations::WrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<KMSServer>,
 ) -> HttpResponse {
     info!("POST /google_cse/wrap");
 
@@ -88,7 +88,7 @@ pub async fn unwrap(
     req_http: HttpRequest,
     unwrap_request: Json<operations::UnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<Arc<KMSServer>>,
+    kms: Data<KMSServer>,
 ) -> HttpResponse {
     info!("POST /google_cse/unwrap");
 

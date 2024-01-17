@@ -17,7 +17,7 @@ use futures::{
 };
 use tracing::{debug, error, trace};
 
-use crate::middlewares::jwt::JwtConfig;
+use crate::{config::JwtAuthConfig, error::KmsError, middlewares::jwt::JwtConfig};
 
 #[derive(Clone)]
 pub struct JwtAuth {
@@ -105,6 +105,12 @@ where
         let private_claim = jwt_config
             .decode_bearer_header(&identity)
             .map(|claim| claim.email);
+
+        // if an error occured, try to fetch JWKS again
+        if private_claim.is_err() {
+            jwt_config.jwks.refresh();
+        }
+
         match private_claim {
             Err(e) => Box::pin(async move {
                 error!(

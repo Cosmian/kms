@@ -58,21 +58,34 @@ impl JwtAuthConfig {
             .map_err(|e| kms_error!(format!("Unable to get JWKS as a JSON: {e}")))
     }
 
-    pub async fn fetch_jwks(&self) -> KResult<Option<JWKS>> {
-        match &self.jwt_issuer_uri {
-            None => Ok(None),
-            Some(jwt_issuer_uri) => {
-                let jwt_issuer_uri = jwt_issuer_uri.trim_end_matches('/');
-                let jwks_uri = self.jwks_uri.as_ref().map_or(
-                    format!("{jwt_issuer_uri}/.well-known/jwks.json"),
-                    std::string::ToString::to_string,
-                );
-                task::spawn_blocking(move || {
-                    JwtAuthConfig::request_jwks(&jwks_uri).map(Option::Some)
-                })
-                .await
-                .map_err(|e| KmsError::Unauthorized(format!("cannot request JWKS: {e}")))?
-            }
-        }
+    /// Build a JWKS URI using `jwt_issuer_uri` and an optional `jwks_uri`.
+    pub fn uri(jwt_issuer_uri: &str, jwks_uri: Option<&str>) -> String {
+        jwks_uri.as_ref().map_or(
+            format!(
+                "{}/.well-known/jwks.json",
+                jwt_issuer_uri.trim_end_matches('/')
+            ),
+            std::string::ToString::to_string,
+        )
     }
+
+    // pub fn fetch_jwks(&self) -> KResult<Option<JWKS>> {
+    //     match &self.jwt_issuer_uri {
+    //         None => Ok(None),
+    //         Some(jwt_issuer_uri) => {
+    //             let jwt_issuer_uri = jwt_issuer_uri.trim_end_matches('/');
+    //             let jwks_uri = self.jwks_uri.as_ref().map_or(
+    //                 format!("{jwt_issuer_uri}/.well-known/jwks.json"),
+    //                 std::string::ToString::to_string,
+    //             );
+    //             JwtAuthConfig::request_jwks(&jwks_uri).map(Option::Some)
+    //         }
+    //     }
+    // }
+
+    // pub async fn fetch_jwks(&self) -> KResult<Option<JWKS>> {
+    //     task::spawn_blocking(|| self.fetch_jwks_blocking())
+    //         .await
+    //         .map_err(|e| KmsError::Unauthorized(format!("cannot request JWKS: {e}")))?
+    // }
 }
