@@ -1,8 +1,6 @@
 use std::{fmt, fs::File, io::Read, path::PathBuf};
 
-use alcoholic_jwt::JWKS;
 use openssl::x509::X509;
-use url::Url;
 
 use super::{DbParams, HttpParams};
 use crate::{

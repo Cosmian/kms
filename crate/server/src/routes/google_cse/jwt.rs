@@ -1,17 +1,12 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, sync::Arc};
 
-use actix_rt::task;
 use alcoholic_jwt::token_kid;
 
 use crate::{
-    config::JwtAuthConfig,
     error::KmsError,
     kms_ensure,
     middlewares::{JwksManager, JwtConfig, JwtTokenHeaders, UserClaim},
-    result::{KResult, KResultHelper},
+    result::KResult,
 };
 
 fn get_jwks_uri(application: &str) -> String {
@@ -29,8 +24,6 @@ async fn jwt_authorization_config_application(
     application: &str,
     jwks_manager: Arc<JwksManager>,
 ) -> KResult<Arc<JwtConfig>> {
-    let jwks_uri = get_jwks_uri(application);
-
     let jwt_issuer_uri = std::env::var(format!(
         "KMS_GOOGLE_CSE_{}_JWT_ISSUER",
         application.to_uppercase()
@@ -41,13 +34,6 @@ async fn jwt_authorization_config_application(
 
     let jwt_audience =
         Some(std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or("cse-authorization".to_string()));
-
-    // // Fetch the JWKS for the Google CSE service account
-    // let jwks_uri_rq = jwks_uri.clone();
-    // let jwks = task::spawn_blocking(move || JwtAuthConfig::request_jwks(&jwks_uri_rq))
-    //     .await
-    //     .map_err(|e| KmsError::Unauthorized(format!("cannot request JWKS: {e}")))?
-    //     .context(&format!("Failed to fetch Google CSE JWKS at: {jwks_uri}"))?;
 
     Ok(Arc::new(JwtConfig {
         jwt_issuer_uri,
@@ -76,7 +62,6 @@ pub async fn jwt_authorization_config(
 pub async fn decode_jwt_authorization_token(
     jwt_config: &Arc<JwtConfig>,
     token: &str,
-    application: &str,
 ) -> KResult<(UserClaim, JwtTokenHeaders)> {
     kms_ensure!(
         !token.is_empty(),
@@ -111,9 +96,8 @@ pub async fn decode_jwt_authorization_token(
         .map_err(|_| KmsError::Unauthorized("Failed to decode token headers".to_string()))?
         .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_string()))?;
 
-    tracing::trace!("JWKS:\n{:?}", jwt_config.jwks);
+    tracing::trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
 
-    // let jwk = {
     let jwk = &jwt_config
         .jwks
         .find(&kid)
@@ -122,32 +106,9 @@ pub async fn decode_jwt_authorization_token(
             jwt_config.jwks.find(&kid)
         })
         .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_string()))?;
-    // .cloned();
-    //     match jwk {
-    //         Some(jwk) => jwk,
-    //         None => {
-    //             tracing::trace!("refreshing jwks");
-    //             let jwks_uri = get_jwks_uri(application);
-
-    //             // refresh JWKS
-    //             jwt_config
-    //                 .refresh_jwk_set(&jwks_uri)
-    //                 .await
-    //                 .context(&format!("Failed to fetch Google CSE JWKS at: {jwks_uri}"))?;
-
-    //             // retry auth
-    //             let jwks = jwt_config.jwks.read().expect("cannot lock jwks for read");
-    //             tracing::trace!("find '{kid:?}' in new jwks:\n{jwks:#?}");
-    //             jwks.find(&kid).cloned().ok_or_else(|| {
-    //                 KmsError::Unauthorized("Specified key not found in set".to_string())
-    //             })?
-    //         }
-    //     }
-    // };
-
     tracing::trace!("JWK has been found:\n{jwk:?}");
 
-    let valid_jwt = alcoholic_jwt::validate(token, &jwk, validations)
+    let valid_jwt = alcoholic_jwt::validate(token, jwk, validations)
         .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;
 
     tracing::trace!("valid_jwt user claims: {:?}", valid_jwt.claims);
@@ -201,7 +162,7 @@ pub async fn validate_tokens(
         ))
     })?;
     let (authorization_token, jwt_headers) =
-        decode_jwt_authorization_token(jwt_config, authorization_token, application).await?;
+        decode_jwt_authorization_token(jwt_config, authorization_token).await?;
     tracing::trace!("authorization token: {authorization_token:?}");
     tracing::trace!("authorization token headers: {jwt_headers:?}");
 
@@ -247,7 +208,7 @@ pub async fn validate_tokens(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
 
     use cosmian_logger::log_utils::log_init;
     use serde::Deserialize;
@@ -367,7 +328,6 @@ mod tests {
         let (authorization_token, jwt_headers) = decode_jwt_authorization_token(
             jwt_authorization_config.get("drive").unwrap(),
             &wrap_request.authorization,
-            "drive",
         )
         .await
         .unwrap();

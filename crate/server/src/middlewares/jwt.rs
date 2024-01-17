@@ -1,14 +1,10 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::sync::Arc;
 
-use actix_rt::task;
-use alcoholic_jwt::{token_kid, JWKS};
+use alcoholic_jwt::token_kid;
 use serde::{Deserialize, Serialize};
 
 use super::JwksManager;
-use crate::{config::JwtAuthConfig, error::KmsError, kms_ensure, result::KResult};
+use crate::{error::KmsError, kms_ensure, result::KResult};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct UserClaim {
@@ -92,75 +88,25 @@ impl JwtConfig {
             .map_err(|e| KmsError::Unauthorized(format!("Failed to decode kid: {e}")))?
             .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_string()))?;
 
-        // tracing::trace!("JWKS:\n{:?}", self.jwks);
+        tracing::trace!("looking for kid `{kid}` JWKS:\n{:?}", self.jwks);
 
-        // let jwk = {
-        //     let jwk = self
-        //         .jwks
-        //         .read()
-        //         .expect("cannot lock jwks for read")
-        //         .find(&kid)
-        //         .cloned();
-        //     match jwk {
-        //         Some(jwk) => jwk,
-        //         None => {
-        //             tracing::trace!("refreshing jwks");
-        //             let jwks_uri = get_jwks_uri(application);
+        let jwk = self
+            .jwks
+            .find(&kid)
+            .or_else(|| {
+                self.jwks.refresh();
+                self.jwks.find(&kid)
+            })
+            .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_string()))?;
 
-        //             // refresh JWKS
-        //             self.refresh_jwk_set(&jwks_uri)
-        //                 .await
-        //                 .context(&format!("Failed to fetch JWKS at: {jwks_uri}"))?;
+        tracing::trace!("JWK has been found:\n{jwk:?}");
 
-        //             // retry auth
-        //             let jwks = self.jwks.read().expect("cannot lock jwks for read");
-        //             tracing::trace!("find '{kid:?}' in new jwks:\n{jwks:#?}");
-        //             jwks.find(&kid).cloned().ok_or_else(|| {
-        //                 KmsError::Unauthorized("Specified key not found in set".to_string())
-        //             })?
-        //         }
-        //     }
-        // };
-
-        // tracing::trace!("JWK has been found:\n{jwk:?}");
-
-        let valid_jwt = {
-            // let jwks = self.jwks.read().expect("cannot lock jwks for read");
-            let jwk = self
-                .jwks
-                .find(&kid)
-                .or_else(|| {
-                    self.jwks.refresh();
-                    self.jwks.find(&kid)
-                })
-                .ok_or_else(|| {
-                    KmsError::Unauthorized("Specified key not found in set".to_string())
-                })?;
-
-            alcoholic_jwt::validate(token, &jwk, validations)
-                .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?
-        };
+        let valid_jwt = alcoholic_jwt::validate(token, &jwk, validations)
+            .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;
 
         let payload = serde_json::from_value(valid_jwt.claims)
             .map_err(|err| KmsError::Unauthorized(format!("JWT claims is malformed: {err:?}")))?;
 
         Ok(payload)
     }
-
-    // /// Refresh the JWK set by making an external HTTP call to the `jwks_uri`.
-    // ///
-    // /// This function is blocking until the request for the JWKS returns.
-    // pub async fn refresh_jwk_set(&self, jwks_uri: &str) -> KResult<()> {
-    //     let jwks_uri = jwks_uri.to_owned();
-
-    //     let new_jwks = task::spawn_blocking(move || JwtAuthConfig::request_jwks(&jwks_uri))
-    //         .await
-    //         .map_err(|e| KmsError::Unauthorized(format!("cannot request JWKS: {e}")))??;
-
-    //     {
-    //         let mut jwks = self.jwks.write().expect("cannot lock jwks for write");
-    //         *jwks = new_jwks;
-    //     }
-    //     Ok(())
-    // }
 }

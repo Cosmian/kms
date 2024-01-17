@@ -20,6 +20,8 @@ impl JwksManager {
         }
     }
 
+    /// Find the key identifier `kid` in
+    /// each registered JWKS.
     pub fn find(&self, kid: &str) -> Option<JWK> {
         self.jwks
             .read()
@@ -31,7 +33,9 @@ impl JwksManager {
 
     /// Fetch again all JWKS using the `uris`.
     ///
-    /// TODO: add a timer to avoid flooding attack
+    /// TODO: add a timer to avoid flooding attack,
+    /// or refresh automatically in a separate thread
+    /// the JWKS every 1 minute?
     pub fn refresh(&self) {
         tracing::info!("Refreshing JWKS");
 
@@ -41,20 +45,11 @@ impl JwksManager {
             let mut jwks = self.jwks.write().expect("cannot lock JWKS for write");
             *jwks = refreshed_jwks;
         }
-
-        // {
-        //     let mut jwks = self.jwks.write().expect("cannot lock JWKS for write");
-        //     (*jwks)[] = new_jwks;
-        // }
-
-        // jwks_uris.iter().for_each(|jwks_uri| {
-        //     match JwtAuthConfig::request_jwks(&jwks_uri) {
-        //         Ok(jwks) =>,
-        //         Err(e) => warn!("unable to refresh JWKS URI: {jwks_uri}")
-        //     }
-        // });
     }
 
+    /// Refresh the JWK set by making an external HTTP call to the `jwks_uri`.
+    ///
+    /// This function is blocking until the request for the JWKS returns.
     fn fetch_all(uris: &[String]) -> HashMap<String, JWKS> {
         uris.iter()
             .flat_map(|jwks_uri| match JwtAuthConfig::request_jwks(jwks_uri) {

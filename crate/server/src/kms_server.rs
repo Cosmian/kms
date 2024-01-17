@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{mpsc, Arc, RwLock},
-};
+use std::sync::{mpsc, Arc};
 
 use actix_cors::Cors;
 use actix_identity::IdentityMiddleware;
@@ -21,7 +18,7 @@ use crate::{
     config::{self, JwtAuthConfig, ServerParams},
     core::KMS,
     error::KmsError,
-    kms_bail, kms_error,
+    kms_bail,
     middlewares::{
         ssl_auth::{extract_peer_certificate, SslAuth},
         JwksManager, JwtAuth, JwtConfig,

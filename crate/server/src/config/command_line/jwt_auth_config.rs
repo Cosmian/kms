@@ -1,10 +1,8 @@
-use actix_rt::task;
 use alcoholic_jwt::JWKS;
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::KmsError,
     kms_error,
     result::{KResult, KResultHelper},
 };
