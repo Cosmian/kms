@@ -8,6 +8,8 @@ license-file = "../../LICENSE.md"
 default = []
 openssl = ["dep:openssl"]
 pyo3 = ["dep:pyo3"]
+# Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
+fips = []
 
 [dependencies]
 base58 = "0.2"
@@ -15,10 +17,10 @@ bitflags = { workspace = true }
 chrono = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }
-rust-ini = "0.20"
 num-bigint-dig = { workspace = true }
 openssl = { workspace = true, optional = true }
 pyo3 = { version = "0.20", optional = true }
+rust-ini = "0.20"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha3 = { version = "0.10", optional = true }

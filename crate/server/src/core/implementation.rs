@@ -19,13 +19,18 @@ use cosmian_kmip::{
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::elliptic_curves::operation::create_x25519_key_pair;
+use cosmian_kms_utils::crypto::elliptic_curves::operation::{
+    create_x25519_key_pair, create_x448_key_pair,
+};
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
         cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
-        elliptic_curves::operation::{create_approved_ecc_key_pair, create_ed25519_key_pair},
+        elliptic_curves::operation::{
+            create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
+        },
         hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
+        rsa::operation::create_rsa_key_pair,
         symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
     },
     tagging::{check_user_tags, get_tags, remove_tags},
@@ -169,8 +174,10 @@ impl KMS {
                     trace!(
                         "get_encryption_system: OpenSSL Public Key instantiated before encryption"
                     );
-                    Ok(Box::new(HybridEncryptionSystem::new(&owm.id, public_key))
-                        as Box<dyn EncryptionSystem>)
+                    Ok(
+                        Box::new(HybridEncryptionSystem::new(&owm.id, public_key, false))
+                            as Box<dyn EncryptionSystem>,
+                    )
                 }
                 other => kms_not_supported!("encryption with public keys of format: {other}"),
             },
@@ -180,6 +187,7 @@ impl KMS {
                 Box::new(HybridEncryptionSystem::instantiate_with_certificate(
                     &owm.id,
                     certificate_value,
+                    false,
                 )?) as Box<dyn EncryptionSystem>,
             ),
             other => kms_not_supported!("encryption with keys of type: {}", other.object_type()),
@@ -216,8 +224,10 @@ impl KMS {
                 | KeyFormatType::TransparentRSAPrivateKey
                 | KeyFormatType::TransparentECPrivateKey => {
                     let p_key = kmip_private_key_to_openssl(&owm.object)?;
-                    Ok(Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key))
-                        as Box<dyn DecryptionSystem>)
+                    Ok(
+                        Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key, false))
+                            as Box<dyn DecryptionSystem>,
+                    )
                 }
                 other => kms_not_supported!("decryption with keys of format: {other}"),
             },
@@ -442,6 +452,10 @@ impl KMS {
                         create_x25519_key_pair(private_key_uid, public_key_uid)
                     }
                     #[cfg(not(feature = "fips"))]
+                    RecommendedCurve::CURVE448 => {
+                        create_x448_key_pair(private_key_uid, public_key_uid)
+                    }
+                    #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED25519 => {
                         warn!(
                             "An Edwards Keypair on curve 25519 should not be requested to perform \
@@ -456,6 +470,23 @@ impl KMS {
                     RecommendedCurve::CURVEED25519 => {
                         kms_not_supported!(
                             "An Edwards Keypair on curve 25519 should not be requested to perform \
+                             ECDH in FIPS mode."
+                        )
+                    }
+                    #[cfg(not(feature = "fips"))]
+                    RecommendedCurve::CURVEED448 => {
+                        warn!(
+                            "An Edwards Keypair on curve 448 should not be requested to perform \
+                             ECDH. Creating anyway."
+                        );
+                        create_ed448_key_pair(private_key_uid, public_key_uid)
+                    }
+                    #[cfg(feature = "fips")]
+                    // Ed448 not allowed for ECDH.
+                    // see NIST.SP.800-186 - Section 3.1.2 table 2.
+                    RecommendedCurve::CURVEED448 => {
+                        kms_not_supported!(
+                            "An Edwards Keypair on curve 448 should not be requested to perform \
                              ECDH in FIPS mode."
                         )
                     }
@@ -479,6 +510,7 @@ impl KMS {
             CryptographicAlgorithm::Ed25519 => {
                 create_ed25519_key_pair(private_key_uid, public_key_uid)
             }
+            CryptographicAlgorithm::Ed448 => create_ed448_key_pair(private_key_uid, public_key_uid),
             CryptographicAlgorithm::CoverCrypt => {
                 cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
                     &Covercrypt::default(),

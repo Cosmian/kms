@@ -10,14 +10,17 @@ use openssl::pkey::{Id, PKey, Private};
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
-use super::{ecies::ecies_decrypt, rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt};
 #[cfg(not(feature = "fips"))]
-use crate::crypto::curve_25519::operation::{
+use crate::crypto::elliptic_curves::operation::{
     ED25519_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
 };
 use crate::{
-    crypto::wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_unwrap, error::KmipUtilsError, kmip_utils_bail,
-    DecryptionSystem,
+    crypto::{
+        hybrid_encryption::{ecies::ecies_decrypt, rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt},
+        wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_unwrap,
+    },
+    error::KmipUtilsError,
+    kmip_utils_bail, DecryptionSystem,
 };
 
 /// Decrypt a single block of data encrypted using a ECIES scheme or RSA hybrid system

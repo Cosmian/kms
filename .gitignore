@@ -15,3 +15,4 @@ crate/cli/*.sqlite
 rustc-ice*.txt
 
 crate/cli/cosmian-kms/sqlite-data
+cosmian-kms/sqlite-data
