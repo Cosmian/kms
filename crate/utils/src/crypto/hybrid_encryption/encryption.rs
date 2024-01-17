@@ -16,11 +16,15 @@ use openssl::{
 };
 use tracing::{debug, trace};
 
-use super::{ecies::ecies_encrypt, rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt};
 #[cfg(not(feature = "fips"))]
-use crate::crypto::curve_25519::operation::{ED25519_PUBLIC_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH};
+use crate::crypto::elliptic_curves::operation::{
+    ED25519_PUBLIC_KEY_LENGTH, X25519_PUBLIC_KEY_LENGTH,
+};
 use crate::{
-    crypto::wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_wrap,
+    crypto::{
+        hybrid_encryption::{ecies::ecies_encrypt, rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt},
+        wrap::rsa_oaep_aes_kwp::ckm_rsa_aes_key_wrap,
+    },
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail, EncryptionSystem,
 };

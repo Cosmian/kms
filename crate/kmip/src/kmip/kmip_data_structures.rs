@@ -74,7 +74,8 @@ impl KeyBlock {
                     RecommendedCurve::P384 => 48,
                     RecommendedCurve::P521 => 66,
                     RecommendedCurve::CURVE25519 | RecommendedCurve::CURVEED25519 => 32,
-                    RecommendedCurve::CURVE448 | RecommendedCurve::CURVEED448 => 56,
+                    RecommendedCurve::CURVE448 => 56,
+                    RecommendedCurve::CURVEED448 => 57,
                     _ => d_vec.len(),
                 };
                 pad_be_bytes(&mut d_vec, privkey_size);

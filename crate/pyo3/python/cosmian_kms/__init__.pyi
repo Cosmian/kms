@@ -19,6 +19,7 @@ class KmsObject:
         Returns:
             bytes
         """
+
 class KmsEncryptResponse:
     """Represents the response from a KMS encryption operation."""
 
@@ -30,7 +31,6 @@ class KmsEncryptResponse:
         Args:
             data (str): The JSON string representing the KmsEncryptResponse.
         """
-
     def unique_identifier(self) -> str:
         """
         Retrieves the unique identifier of the key used during encryption.
@@ -38,7 +38,6 @@ class KmsEncryptResponse:
         Returns:
             str: The unique identifier of the key.
         """
-
     def data(self) -> bytes:
         """
         Retrieves the data bytes from the encryption response.
@@ -46,7 +45,6 @@ class KmsEncryptResponse:
         Returns:
             bytes.
         """
-
     def iv_counter_nonce(self) -> bytes:
         """
         Retrieves the IV, Counter, or Nonce bytes from the encryption response.
@@ -54,7 +52,6 @@ class KmsEncryptResponse:
         Returns:
             bytes
         """
-
     def authenticated_encryption_tag(self) -> bytes:
         """
         Retrieves the authentication tag bytes from the encryption response.
@@ -62,7 +59,6 @@ class KmsEncryptResponse:
         Returns:
             bytes
         """
-
     def correlation_value(self) -> bytes:
         """
         Retrieves the correlation value bytes from the encryption response.
@@ -70,7 +66,6 @@ class KmsEncryptResponse:
         Returns:
             bytes
         """
-
 
 class KmsClient:
     """Python client for a Key Management System (KMS). The methods return Future object which
@@ -273,7 +268,10 @@ class KmsClient:
             Tuple[str, str]: (Public key UID, Master secret key UID)
         """
     def create_cover_crypt_user_decryption_key(
-        self, access_policy_str: str, master_secret_key_identifier: str, tags: Optional[str] = None
+        self,
+        access_policy_str: str,
+        master_secret_key_identifier: str,
+        tags: Optional[str] = None,
     ) -> Future[str]:
         """Generate a user secret key.
         A new user secret key does NOT include to old (i.e. rotated) partitions.
@@ -384,7 +382,8 @@ class KmsClient:
         Returns:
             Future[str]: uid of the destroyed key
         """
-    def create_symmetric_key(self, 
+    def create_symmetric_key(
+        self,
         key_len_in_bits: int,
         algorithm: str = "AES",
         tags: Optional[List[str]] = None,
@@ -403,7 +402,7 @@ class KmsClient:
         self,
         data: bytes,
         key_identifier: UidOrTags,
-        ) -> Future[KmsEncryptResponse]:
+    ) -> Future[KmsEncryptResponse]:
         """Encrypts the provided binary data using the specified key identifier or tags
 
         Args:
@@ -413,7 +412,6 @@ class KmsClient:
         Returns:
             Future[KmsEncryptResponse]: encryption result
         """
-
     def decrypt(
         self,
         encrypted_data: bytes,
