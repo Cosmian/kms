@@ -1,5 +1,6 @@
 use std::{
     pin::Pin,
+    rc::Rc,
     sync::Arc,
     task::{Context, Poll},
 };
@@ -33,7 +34,7 @@ impl JwtAuth {
 
 impl<S, B> Transform<S, ServiceRequest> for JwtAuth
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
 {
     type Error = Error;
@@ -45,20 +46,20 @@ where
     fn new_transform(&self, service: S) -> Self::Future {
         debug!("JWT Authentication enabled");
         ok(JwtAuthMiddleware {
-            service,
+            service: Rc::new(service),
             jwt_config: self.jwt_config.clone(),
         })
     }
 }
 
 pub struct JwtAuthMiddleware<S> {
-    service: S,
+    service: Rc<S>,
     jwt_config: Option<Arc<JwtConfig>>,
 }
 
 impl<S, B> Service<ServiceRequest> for JwtAuthMiddleware<S>
 where
-    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
     S::Future: 'static,
 {
     type Error = Error;
@@ -102,49 +103,61 @@ where
         trace!("Checking JWT identity: {identity:?}");
 
         // decode the JWT
-        let private_claim = {
-            let private_claim = jwt_config
-                .decode_bearer_header(&identity)
-                .map(|claim| claim.email);
+        let private_claim = jwt_config
+            .decode_bearer_header(&identity)
+            .map(|claim| claim.email);
 
-            // if an error occured, try to fetch JWKS again
-            if private_claim.is_err() {
-                jwt_config.jwks.refresh();
-            }
+        let srv = Rc::<S>::clone(&self.service);
+        let jwt_config = jwt_config.clone();
 
-            jwt_config
-                .decode_bearer_header(&identity)
-                .map(|claim| claim.email)
+        let handle_ok_none = |req: ServiceRequest| {
+            error!(
+                "{:?} {} 401 unauthorized, no email in JWT",
+                req.method(),
+                req.path()
+            );
+            Ok(req
+                .into_response(HttpResponse::Unauthorized().finish())
+                .map_into_right_body())
+        };
+
+        let handle_email = move |req: ServiceRequest, email: String| {
+            // forward to the endpoint the email got from this JWT
+            debug!("JWT Access granted to {email} !");
+            req.extensions_mut().insert(JwtAuthClaim::new(email));
+            srv.call(req)
         };
 
         match private_claim {
-            Err(e) => Box::pin(async move {
-                error!(
-                    "{:?} {} 401 unauthorized: bad JWT ({})",
-                    req.method(),
-                    req.path(),
-                    e
-                );
-                Ok(req
-                    .into_response(HttpResponse::Unauthorized().finish())
-                    .map_into_right_body())
-            }),
-            Ok(None) => Box::pin(async move {
-                error!(
-                    "{:?} {} 401 unauthorized, no email in JWT",
-                    req.method(),
-                    req.path()
-                );
-                Ok(req
-                    .into_response(HttpResponse::Unauthorized().finish())
-                    .map_into_right_body())
-            }),
-            Ok(Some(email)) => {
-                // forward to the endpoint the email got from this JWT
-                debug!("JWT Access granted to {email} !");
-                req.extensions_mut().insert(JwtAuthClaim::new(email));
+            Err(_) => Box::pin(async move {
+                jwt_config.jwks.refresh().await?;
 
-                let fut = self.service.call(req);
+                let private_claim = jwt_config
+                    .decode_bearer_header(&identity)
+                    .map(|claim| claim.email);
+
+                match private_claim {
+                    Err(e) => {
+                        error!(
+                            "{:?} {} 401 unauthorized: bad JWT ({e})",
+                            req.method(),
+                            req.path(),
+                        );
+                        Ok(req
+                            .into_response(HttpResponse::Unauthorized().finish())
+                            .map_into_right_body())
+                    }
+                    Ok(None) => handle_ok_none(req),
+                    Ok(Some(email)) => {
+                        let fut = handle_email(req, email);
+                        let res = fut.await?;
+                        Ok(res.map_into_left_body())
+                    }
+                }
+            }),
+            Ok(None) => Box::pin(async move { handle_ok_none(req) }),
+            Ok(Some(email)) => {
+                let fut = handle_email(req, email);
                 Box::pin(async move {
                     let res = fut.await?;
                     Ok(res.map_into_left_body())

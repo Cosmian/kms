@@ -102,7 +102,7 @@ pub async fn decode_jwt_authorization_token(
         .jwks
         .find(&kid)
         .or_else(|| {
-            jwt_config.jwks.refresh();
+            jwt_config.jwks.refresh_blocking();
             jwt_config.jwks.find(&kid)
         })
         .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_string()))?;
@@ -277,7 +277,8 @@ mod tests {
             uris.push(JwtAuthConfig::uri(jwt_issuer_uri, Some(jwks_uri)));
             uris
         };
-        let jwks_manager = Arc::new(JwksManager::new(uris));
+        let jwks_manager = Arc::new(JwksManager::new(uris).await.unwrap());
+        jwks_manager.refresh().await.unwrap();
 
         // Test authentication
         let jwt_authentication_config = JwtAuthConfig {

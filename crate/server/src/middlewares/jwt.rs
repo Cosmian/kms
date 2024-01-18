@@ -93,10 +93,6 @@ impl JwtConfig {
         let jwk = self
             .jwks
             .find(&kid)
-            .or_else(|| {
-                self.jwks.refresh();
-                self.jwks.find(&kid)
-            })
             .ok_or_else(|| KmsError::Unauthorized("Specified key not found in set".to_string()))?;
 
         tracing::trace!("JWK has been found:\n{jwk:?}");

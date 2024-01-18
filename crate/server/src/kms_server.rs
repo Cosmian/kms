@@ -196,7 +196,7 @@ pub async fn prepare_kms_server(
             },
         );
 
-        let jwks_manager = Arc::new(JwksManager::new(uris));
+        let jwks_manager = Arc::new(JwksManager::new(uris).await?);
 
         (
             true,
