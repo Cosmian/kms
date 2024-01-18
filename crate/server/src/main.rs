@@ -8,6 +8,7 @@ use cosmian_kms_server::{
     result::KResult,
 };
 use dotenvy::dotenv;
+use openssl::provider::Provider;
 #[cfg(feature = "timeout")]
 use tracing::warn;
 use tracing::{debug, info};
@@ -22,6 +23,10 @@ const KMS_SERVER_CONF: &str = "/etc/cosmian_kms/server.toml";
 /// then parses the command line arguments using [`ClapConfig::parse()`](https://docs.rs/clap/latest/clap/struct.ClapConfig.html#method.parse).
 #[actix_web::main]
 async fn main() -> KResult<()> {
+    // First operation to do is to load FIPS module if necessary.
+    #[cfg(feature = "fips")]
+    Provider::load(None, "fips")?;
+
     // Set up environment variables and logging options
     if std::env::var("RUST_BACKTRACE").is_err() {
         std::env::set_var("RUST_BACKTRACE", "1");

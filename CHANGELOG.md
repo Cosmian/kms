@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.11.1] - 2024-01-18
+
+### Bug Fixes
+
+- Load correct openssl provider on run
+
+### Ci
+
+- Pypi now requires a token to publish
+
 ## [4.11.0] - 2024-01-17
 
 ### Bug Fixes
