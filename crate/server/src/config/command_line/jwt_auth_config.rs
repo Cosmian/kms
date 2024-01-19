@@ -1,11 +1,5 @@
-use alcoholic_jwt::JWKS;
 use clap::Args;
 use serde::{Deserialize, Serialize};
-
-use crate::{
-    kms_error,
-    result::{KResult, KResultHelper},
-};
 
 // Support for JWT token inspired by the doc at : https://cloud.google.com/api-gateway/docs/authenticating-users-jwt
 // and following pages
@@ -40,27 +34,6 @@ pub struct JwtAuthConfig {
 }
 
 impl JwtAuthConfig {
-    /// Request JWKS using the `jwks_uri`
-    ///
-    /// Implementation details:
-    ///
-    /// this request is blocking because it may be called from
-    /// within an Actix service, which is not async.
-    /// Managing `Box::pin` around doesn't help much as it needs
-    /// the service's `call` method to have an extended
-    /// lifetime (on `self`), which is not very easy to handle.
-    pub async fn request_jwks(jwks_uri: &str) -> KResult<(String, JWKS)> {
-        Ok((
-            jwks_uri.to_string(),
-            reqwest::get(jwks_uri)
-                .await
-                .context("Unable to connect to retrieve JWKS")?
-                .json::<JWKS>()
-                .await
-                .map_err(|e| kms_error!(format!("Unable to get JWKS as a JSON: {e}")))?,
-        ))
-    }
-
     /// Build a JWKS URI using `jwt_issuer_uri` and an optional `jwks_uri`.
     pub fn uri(jwt_issuer_uri: &str, jwks_uri: Option<&str>) -> String {
         jwks_uri.as_ref().map_or(
@@ -71,24 +44,4 @@ impl JwtAuthConfig {
             std::string::ToString::to_string,
         )
     }
-
-    // pub fn fetch_jwks(&self) -> KResult<Option<JWKS>> {
-    //     match &self.jwt_issuer_uri {
-    //         None => Ok(None),
-    //         Some(jwt_issuer_uri) => {
-    //             let jwt_issuer_uri = jwt_issuer_uri.trim_end_matches('/');
-    //             let jwks_uri = self.jwks_uri.as_ref().map_or(
-    //                 format!("{jwt_issuer_uri}/.well-known/jwks.json"),
-    //                 std::string::ToString::to_string,
-    //             );
-    //             JwtAuthConfig::request_jwks(&jwks_uri).map(Option::Some)
-    //         }
-    //     }
-    // }
-
-    // pub async fn fetch_jwks(&self) -> KResult<Option<JWKS>> {
-    //     task::spawn_blocking(|| self.fetch_jwks_blocking())
-    //         .await
-    //         .map_err(|e| KmsError::Unauthorized(format!("cannot request JWKS: {e}")))?
-    // }
 }

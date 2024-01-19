@@ -16,7 +16,7 @@ pub struct ServerParams {
     // The JWT issuer URI if Auth is enabled
     pub jwt_issuer_uri: Option<String>,
 
-    // The JWKS if Auth is enabled
+    // The JWKS URI if Auth is enabled
     pub jwks_uri: Option<String>,
 
     pub jwe_config: JWEConfig,

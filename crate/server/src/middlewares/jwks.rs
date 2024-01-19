@@ -1,14 +1,18 @@
 use std::{collections::HashMap, sync::RwLock};
 
 use alcoholic_jwt::{JWK, JWKS};
+use chrono::{DateTime, Duration, Utc};
 use futures::StreamExt;
 
 use crate::result::KResult;
+
+static REFRESH_INTERVAL: i64 = 60; // in secs
 
 #[derive(Debug)]
 pub struct JwksManager {
     uris: Vec<String>,
     jwks: RwLock<HashMap<String, JWKS>>,
+    last_update: RwLock<Option<DateTime<Utc>>>,
 }
 
 impl JwksManager {
@@ -16,6 +20,7 @@ impl JwksManager {
         let jwks_manager = Self {
             uris,
             jwks: HashMap::new().into(),
+            last_update: None.into(),
         };
         jwks_manager.refresh().await?;
 
@@ -40,14 +45,30 @@ impl JwksManager {
 
     /// Fetch again all JWKS using the `uris`.
     ///
-    /// TODO: add a timer to avoid flooding attack,
-    /// or refresh automatically in a separate thread
-    /// the JWKS every 1 minute?
+    /// The threshold to refresh JWKS is set to `REFRESH_INTERVAL`.
     pub async fn refresh(&self) -> KResult<()> {
-        tracing::info!("Refreshing JWKS");
+        let refresh_is_allowed = {
+            let mut last_update = self
+                .last_update
+                .write()
+                .expect("cannot lock last_update for write");
 
-        let refreshed_jwks = Self::fetch_all(&self.uris).await;
-        self.set_jwks(refreshed_jwks);
+            let can_be_refreshed = last_update.map_or(true, |lu| {
+                (lu + Duration::seconds(REFRESH_INTERVAL)) < Utc::now()
+            });
+
+            if can_be_refreshed {
+                *last_update = Some(Utc::now());
+            }
+            can_be_refreshed
+        };
+
+        if refresh_is_allowed {
+            tracing::info!("Refreshing JWKS");
+            let refreshed_jwks = Self::fetch_all(&self.uris).await;
+            self.set_jwks(refreshed_jwks);
+        }
+
         Ok(())
     }
 
@@ -63,15 +84,17 @@ impl JwksManager {
                 let client = &client;
                 let jwks_uri = jwks_uri.clone();
                 async move {
-                    tracing::info!("Fetching {jwks_uri}...");
+                    tracing::debug!("Fetching {jwks_uri}...");
                     match client.get(jwks_uri.clone()).send().await {
                         Ok(resp) => match resp.json::<JWKS>().await {
                             Ok(jwks) => {
-                                tracing::info!("Done {jwks_uri}...");
+                                tracing::debug!("Done {jwks_uri}...");
                                 Some((jwks_uri, jwks))
                             }
                             Err(e) => {
-                                tracing::warn!("Unable to get content as JWKS `{jwks_uri}`: {e}");
+                                tracing::warn!(
+                                    "Unable to get content as JWKS struct for `{jwks_uri}`: {e}"
+                                );
                                 None
                             }
                         },

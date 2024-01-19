@@ -187,6 +187,7 @@ pub async fn prepare_kms_server(
     let (use_jwt_auth, jwt_config, jwks_manager) = if let Some(jwt_issuer_uri) =
         &kms_server.params.jwt_issuer_uri
     {
+        // Prepare all the needed URIs
         let jwks_uri = JwtAuthConfig::uri(jwt_issuer_uri, kms_server.params.jwks_uri.as_deref());
         let uris = google_cse_jwks.map_or_else(
             || vec![jwks_uri.clone()],
@@ -235,7 +236,7 @@ pub async fn prepare_kms_server(
                 "When using Google client-side encryption, an identity provider used to \
                  authenticate Google Workspace users must be configured.",
             )?,
-            authorization: google_cse::jwt_authorization_config(jwks_manager.clone()).await?,
+            authorization: google_cse::jwt_authorization_config(jwks_manager.clone()),
             kacls_url: kms_server.params.google_cse_kacls_url.clone().context(
                 "The Google Workspace Client Side Encryption KACLS URL must be provided",
             )?,

@@ -9,6 +9,8 @@ use crate::{
     result::KResult,
 };
 
+static APPLICATIONS: &[&str; 2] = &["meet", "drive"];
+
 fn get_jwks_uri(application: &str) -> String {
     std::env::var(format!("KMS_GOOGLE_CSE_{}_JWKS_URI", application.to_uppercase()))
     .unwrap_or(format!("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"))
@@ -16,14 +18,17 @@ fn get_jwks_uri(application: &str) -> String {
 
 /// List the possible JWKS URI for all the supported application
 pub fn list_jwks_uri() -> Vec<String> {
-    vec![get_jwks_uri("meet"), get_jwks_uri("drive")]
+    APPLICATIONS
+        .iter()
+        .map(|app| get_jwks_uri(app))
+        .collect::<Vec<_>>()
 }
 
 /// Fetch the JWT authorization configuration for Google CSE 'drive' or 'meet'
-async fn jwt_authorization_config_application(
+fn jwt_authorization_config_application(
     application: &str,
     jwks_manager: Arc<JwksManager>,
-) -> KResult<Arc<JwtConfig>> {
+) -> Arc<JwtConfig> {
     let jwt_issuer_uri = std::env::var(format!(
         "KMS_GOOGLE_CSE_{}_JWT_ISSUER",
         application.to_uppercase()
@@ -35,27 +40,24 @@ async fn jwt_authorization_config_application(
     let jwt_audience =
         Some(std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or("cse-authorization".to_string()));
 
-    Ok(Arc::new(JwtConfig {
+    Arc::new(JwtConfig {
         jwt_issuer_uri,
         jwks: jwks_manager,
         jwt_audience,
-    }))
+    })
 }
 
 /// Fetch the JWT authorization configuration for Google CSE 'drive' and 'meet'
-pub async fn jwt_authorization_config(
-    jwks_manager: Arc<JwksManager>,
-) -> KResult<HashMap<String, Arc<JwtConfig>>> {
-    Ok(HashMap::from([
-        (
-            "drive".to_string(),
-            jwt_authorization_config_application("drive", jwks_manager.clone()).await?,
-        ),
-        (
-            "meet".to_string(),
-            jwt_authorization_config_application("meet", jwks_manager).await?,
-        ),
-    ]))
+pub fn jwt_authorization_config(jwks_manager: Arc<JwksManager>) -> HashMap<String, Arc<JwtConfig>> {
+    APPLICATIONS
+        .iter()
+        .map(|app| {
+            (
+                app.to_string(),
+                jwt_authorization_config_application(app, jwks_manager.clone()),
+            )
+        })
+        .collect::<HashMap<_, _>>()
 }
 
 /// Decode a json web token (JWT) used for Google CSE
@@ -318,7 +320,7 @@ mod tests {
             "KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER",
             "https://accounts.google.com", // the token has been issued by Google Accounts (post request)
         );
-        let jwt_authorization_config = jwt_authorization_config(jwks_manager).await.unwrap();
+        let jwt_authorization_config = jwt_authorization_config(jwks_manager);
         tracing::trace!("{jwt_authorization_config:#?}");
 
         let (authorization_token, jwt_headers) = decode_jwt_authorization_token(
