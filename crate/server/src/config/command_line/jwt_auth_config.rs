@@ -49,11 +49,16 @@ impl JwtAuthConfig {
     /// Managing `Box::pin` around doesn't help much as it needs
     /// the service's `call` method to have an extended
     /// lifetime (on `self`), which is not very easy to handle.
-    pub fn request_jwks(jwks_uri: &str) -> KResult<JWKS> {
-        reqwest::blocking::get(jwks_uri)
-            .context("Unable to connect to retrieve JWKS")?
-            .json::<JWKS>()
-            .map_err(|e| kms_error!(format!("Unable to get JWKS as a JSON: {e}")))
+    pub async fn request_jwks(jwks_uri: &str) -> KResult<(String, JWKS)> {
+        Ok((
+            jwks_uri.to_string(),
+            reqwest::get(jwks_uri)
+                .await
+                .context("Unable to connect to retrieve JWKS")?
+                .json::<JWKS>()
+                .await
+                .map_err(|e| kms_error!(format!("Unable to get JWKS as a JSON: {e}")))?,
+        ))
     }
 
     /// Build a JWKS URI using `jwt_issuer_uri` and an optional `jwks_uri`.

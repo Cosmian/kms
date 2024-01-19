@@ -1,9 +1,9 @@
 use std::{collections::HashMap, sync::RwLock};
 
-use actix_rt::task;
 use alcoholic_jwt::{JWK, JWKS};
+use futures::StreamExt;
 
-use crate::{config::JwtAuthConfig, error::KmsError, result::KResult};
+use crate::result::KResult;
 
 #[derive(Debug)]
 pub struct JwksManager {
@@ -13,17 +13,13 @@ pub struct JwksManager {
 
 impl JwksManager {
     pub async fn new(uris: Vec<String>) -> KResult<Self> {
-        tracing::info!("Init JWKS");
-
-        let uris_spawn = uris.clone();
-        let jwks = task::spawn_blocking(move || Self::fetch_all(&uris_spawn))
-            .await
-            .map_err(|e| KmsError::Unauthorized(format!("cannot request JWKS: {e}")))?;
-
-        Ok(Self {
+        let jwks_manager = Self {
             uris,
-            jwks: RwLock::new(jwks),
-        })
+            jwks: HashMap::new().into(),
+        };
+        jwks_manager.refresh().await?;
+
+        Ok(jwks_manager)
     }
 
     /// Lock `jwks` to replace it
@@ -50,26 +46,47 @@ impl JwksManager {
     pub async fn refresh(&self) -> KResult<()> {
         tracing::info!("Refreshing JWKS");
 
-        let uris = self.uris.to_vec();
-        let refreshed_jwks = task::spawn_blocking(move || Self::fetch_all(&uris))
-            .await
-            .map_err(|e| KmsError::Unauthorized(format!("cannot request JWKS: {e}")))?;
+        let refreshed_jwks = Self::fetch_all(&self.uris).await;
         self.set_jwks(refreshed_jwks);
         Ok(())
     }
 
-    /// Refresh the JWK set by making an external HTTP call to the `jwks_uri`.
+    /// Refresh the JWK Set by making an external HTTP call to all the `uris`.
     ///
-    /// This function is blocking until the request for the JWKS returns.
-    fn fetch_all(uris: &[String]) -> HashMap<String, JWKS> {
-        uris.iter()
-            .flat_map(|jwks_uri| match JwtAuthConfig::request_jwks(jwks_uri) {
-                Err(e) => {
-                    tracing::error!("cannot fetch JWKS for `{jwks_uri}`: {e}");
-                    None
+    /// The JWK Sets are fetched in parallel and warns about failures
+    /// without stopping the whole fetch process.
+    async fn fetch_all(uris: &[String]) -> HashMap<String, JWKS> {
+        let client = reqwest::Client::new();
+
+        futures::stream::iter(uris)
+            .map(|jwks_uri| {
+                let client = &client;
+                let jwks_uri = jwks_uri.clone();
+                async move {
+                    tracing::info!("Fetching {jwks_uri}...");
+                    match client.get(jwks_uri.clone()).send().await {
+                        Ok(resp) => match resp.json::<JWKS>().await {
+                            Ok(jwks) => {
+                                tracing::info!("Done {jwks_uri}...");
+                                Some((jwks_uri, jwks))
+                            }
+                            Err(e) => {
+                                tracing::warn!("Unable to get content as JWKS `{jwks_uri}`: {e}");
+                                None
+                            }
+                        },
+                        Err(e) => {
+                            tracing::warn!("Unable to download JWKS `{jwks_uri}`: {e}");
+                            None
+                        }
+                    }
                 }
-                Ok(jwks) => Some((jwks_uri.clone(), jwks)),
             })
+            .buffer_unordered(4)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .flatten()
             .collect::<HashMap<_, _>>()
     }
 }

@@ -99,7 +99,7 @@ pub async fn decode_jwt_authorization_token(
     tracing::trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
 
     let jwk = &jwt_config.jwks.find(&kid).ok_or_else(|| {
-        KmsError::Unauthorized("Specified key not found in set for Google CSE".to_string())
+        KmsError::Unauthorized("[Google CSE auth] Specified key not found in set".to_string())
     })?;
     tracing::trace!("JWK has been found:\n{jwk:?}");
 
