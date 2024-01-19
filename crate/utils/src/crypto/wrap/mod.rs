@@ -1,3 +1,4 @@
+pub mod ckm_rsa_pkcs_oaep;
 pub mod encrypt_decrypt;
 mod rfc5649;
 pub mod rsa_oaep_aes_kwp;
