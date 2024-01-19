@@ -23,14 +23,14 @@ jobs:
           yum install -y perl-core zlib-devel wget libsodium-devel clang-devel centos-release-scl llvm-toolset-7
           # build openssl
           cd /tmp
-          wget https://www.openssl.org/source/openssl-1.1.1s.tar.gz
-          tar -xf openssl-1.1.1s.tar.gz
-          pushd openssl-1.1.1s
+          wget https://www.openssl.org/source/openssl-1.1.1w.tar.gz
+          tar -xf openssl-1.1.1w.tar.gz
+          pushd openssl-1.1.1w
           ./config --prefix=/usr/local/ssl --openssldir=/usr/local/ssl
           make -j
           make install_sw
           popd
-          rm -rf openssl-1.1.1s*
+          rm -rf openssl-1.1.1w*
           # install maturin and readelf
           pip install maturin==1.2.3
 
@@ -110,14 +110,14 @@ jobs:
           # build openssl
           pushd .
           cd /tmp
-          wget https://www.openssl.org/source/openssl-1.1.1s.tar.gz
-          tar -xf openssl-1.1.1s.tar.gz
-          cd openssl-1.1.1s
+          wget https://www.openssl.org/source/openssl-1.1.1w.tar.gz
+          tar -xf openssl-1.1.1w.tar.gz
+          cd openssl-1.1.1w
           ./Configure --cross-compile-prefix=x86_64-w64-mingw32- mingw64 --prefix=/usr/local/ssl --openssldir=/usr/local/ssl
           make -j
           sudo make install_sw
           cd ..
-          rm -rf openssl-1.1.1s*
+          rm -rf openssl-1.1.1w*
           popd
 
           cd crate/pyo3/python

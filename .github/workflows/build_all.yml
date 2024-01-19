@@ -8,9 +8,6 @@ on:
         required: true
         type: string
 
-env:
-  OPENSSL_DIR: /tmp/openssl_fips
-
 jobs:
   centos7:
     uses: ./.github/workflows/build_centos7.yml
@@ -21,6 +18,10 @@ jobs:
       commands: |
         cargo build --release --bin ckms
         cargo build --release --bin cosmian_kms_server
+
+        # Check binaries
+        target/release/ckms -h
+        target/release/cosmian_kms_server -h
 
         cargo test --release -- --nocapture
         cargo test --release --bins -- --nocapture
@@ -38,14 +39,19 @@ jobs:
         cargo build --release --features fips --bin ckms
         cargo build --release --features fips --bin cosmian_kms_server
 
+        # Check binaries
+        target/release/ckms -h
+        target/release/cosmian_kms_server -h
+
         cargo test --release --features fips -- --nocapture
         cargo test --release --features fips --bins -- --nocapture
       artifacts: |
+        /usr/local/openssl
         target/release/ckms
         target/release/cosmian_kms_server
 
   ubuntu-20:
-    uses: ./.github/workflows/build_generic_linux.yml
+    uses: ./.github/workflows/build_generic.yml
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -55,6 +61,10 @@ jobs:
         cargo build --release --bin ckms
         cargo build --release --bin cosmian_kms_server
 
+        # Check binaries
+        target/release/ckms -h
+        target/release/cosmian_kms_server -h
+
         cargo test --release -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
         cargo test --release --bins -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
@@ -62,7 +72,7 @@ jobs:
         target/release/cosmian_kms_server
 
   fips-ubuntu-20:
-    uses: ./.github/workflows/build_generic_linux.yml
+    uses: ./.github/workflows/build_generic.yml
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -72,14 +82,19 @@ jobs:
         cargo build --release --features fips --bin ckms
         cargo build --release --features fips --bin cosmian_kms_server
 
+        # Check binaries
+        target/release/ckms -h
+        target/release/cosmian_kms_server -h
+
         cargo test --release --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
         cargo test --release --features fips --bins -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
+        /usr/local/openssl
         target/release/ckms
         target/release/cosmian_kms_server
 
   ubuntu-22:
-    uses: ./.github/workflows/build_generic_linux.yml
+    uses: ./.github/workflows/build_generic.yml
     secrets: inherit
     with:
       toolchain: ${{ inputs.toolchain }}
@@ -89,6 +104,10 @@ jobs:
         cargo build --release --bin ckms
         cargo build --release --bin cosmian_kms_server
 
+        # Check binaries
+        target/release/ckms -h
+        target/release/cosmian_kms_server -h
+
         cargo test --release -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
         cargo test --release --bins -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
@@ -96,7 +115,7 @@ jobs:
         target/release/cosmian_kms_server
 
   windows:
-    uses: ./.github/workflows/build_generic_linux.yml
+    uses: ./.github/workflows/build_generic.yml
     with:
       toolchain: ${{ inputs.toolchain }}
       distribution: ubuntu-20.04
@@ -105,9 +124,9 @@ jobs:
         sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
         rustup target add x86_64-pc-windows-gnu
 
-        rm -rf /tmp/openssl_fips
-        mkdir -p /tmp/openssl_fips
-        bash ./scripts/local_ossl_instl.sh /tmp/openssl_fips cross-compile-windows
+        sudo mkdir -p /usr/local/openssl
+        sudo chown -R $USER /usr/local/openssl
+        bash ./scripts/local_ossl_instl.sh /usr/local/openssl cross-compile-windows
 
         cargo build --release --bin ckms --target x86_64-pc-windows-gnu
         cargo build --release --bin cosmian_kms_server --target x86_64-pc-windows-gnu
@@ -116,7 +135,7 @@ jobs:
         target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
 
   mac:
-    uses: ./.github/workflows/build_generic_linux.yml
+    uses: ./.github/workflows/build_generic.yml
     with:
       toolchain: ${{ inputs.toolchain }}
       distribution: macos-12
@@ -125,6 +144,9 @@ jobs:
         rustup target add x86_64-apple-darwin
         cargo build --release --bin ckms --target x86_64-apple-darwin
         cargo build --release --bin cosmian_kms_server --target x86_64-apple-darwin
+        # Check binaries
+        target/x86_64-apple-darwin/release/ckms -h
+        target/x86_64-apple-darwin/release/cosmian_kms_server -h
       artifacts: |
         target/x86_64-apple-darwin/release/ckms
         target/x86_64-apple-darwin/release/cosmian_kms_server
