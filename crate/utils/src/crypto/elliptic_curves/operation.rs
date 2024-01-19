@@ -25,8 +25,15 @@ pub const ED25519_PRIVATE_KEY_LENGTH: usize = 0x20;
 pub const ED25519_PUBLIC_KEY_LENGTH: usize = 0x20;
 pub const Q_LENGTH_BITS: i32 = 253;
 
-/// convert to a X25519 256 bits KMIP Public Key
-/// no check performed
+/// Convert to an Elliptic Curve KMIP Public Key.
+/// Supported curves are:
+/// X25519, Ed25519, X448, Ed448, P-192, P-224, P-256, P-384, P-521.
+///
+/// `pkey_bits_number` is passed independently from `len(bytes)` since some key
+/// sizes are not multiple of 8 thus it cannot be computes by taking the byte
+/// array length.
+///
+/// No check performed.
 pub fn to_ec_public_key(
     bytes: &[u8],
     pkey_bits_number: u32,
@@ -80,8 +87,15 @@ pub fn to_ec_public_key(
     }
 }
 
-/// convert to a curve 25519 256 bits KMIP Private Key
-/// no check performed
+/// Convert to an Elliptic Curve KMIP Private Key.
+/// Supported curves are:
+/// X25519, Ed25519, X448, Ed448, P-192, P-224, P-256, P-384, P-521.
+///
+/// `pkey_bits_number` is passed independently from `len(bytes)` since some key
+/// sizes are not multiple of 8 thus it cannot be computes by taking the byte
+/// array length.
+///
+/// No check performed.
 pub fn to_ec_private_key(
     bytes: &[u8],
     pkey_bits_number: u32,
