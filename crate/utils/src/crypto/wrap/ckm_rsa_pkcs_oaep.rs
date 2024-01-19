@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 ///! Implements the RSA Key Encryption Mechanism CKM_RSA_PKCS_OAEP
 ///! a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 ///! http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
@@ -9,9 +7,11 @@ use std::ops::Deref;
 ///!
 ///! As part of the NIST specification, NIST approved hash functions which can be used for the OAEP scheme are listed in
 ///!  - NIST FIPS 180-4: SHA-1, SHA-224, SHA-256, SHA-384, SHA-512 (https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf
-///   - NIST FIPS 202: SHA3-224, SHA3-256, SHA3-384, SHA3-512 (https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf)
+///!  - NIST FIPS 202: SHA3-224, SHA3-256, SHA3-384, SHA3-512 (https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf)
 ///!
 ///! The scheme can be used for both encryption and key wrapping
+use std::ops::Deref;
+
 use cloudproof::reexport::crypto_core::reexport::zeroize::Zeroizing;
 use openssl::{
     md::{Md, MdRef},
@@ -107,10 +107,10 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
 ) -> Result<(PkeyCtx<Public>, Vec<u8>), KmipUtilsError> {
     let rsa_pub_key = pub_key.rsa()?;
     #[cfg(feature = "fips")]
-    if rsa_pub_key.size() < FIPS_MIN_RSA_MODULUS_LENGTH {
+    if pub_key.bits() < FIPS_MIN_RSA_MODULUS_LENGTH {
         kmip_utils_bail!(
-            "CKM_RSA_OAEP encryption error: RSA key has insufficient size: expected >= {} bytes \
-             and got {} bytes",
+            "CKM_RSA_OAEP encryption error: RSA key has insufficient size: expected >= {} bits \
+             and got {} bits",
             FIPS_MIN_RSA_MODULUS_LENGTH,
             pub_key.bits()
         )
@@ -122,6 +122,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
 
     // Perform OAEP encryption.
     let mut ctx = PkeyCtx::new(&pub_key)?;
+    ctx.encrypt_init()?;
     ctx.set_rsa_oaep_md(hash_fn.to_md_ref())?;
     Ok((ctx, ciphertext))
 }
@@ -176,10 +177,10 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
 ) -> Result<(PkeyCtx<Private>, Vec<u8>), KmipUtilsError> {
     let rsa_priv_key = priv_key.rsa()?;
     #[cfg(feature = "fips")]
-    if rsa_priv_key.size() < FIPS_MIN_RSA_MODULUS_LENGTH {
+    if priv_key.bits() < FIPS_MIN_RSA_MODULUS_LENGTH {
         kmip_utils_bail!(
-            "CKM_RSA_OAEP encryption error: RSA key has insufficient size: expected >= {} bytes \
-             and got {} bytes",
+            "CKM_RSA_OAEP decryption error: RSA key has insufficient size: expected >= {} bits \
+             and got {} bits",
             FIPS_MIN_RSA_MODULUS_LENGTH,
             priv_key.bits()
         )
@@ -194,34 +195,27 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
 
     // Perform OAEP encryption.
     let mut ctx = PkeyCtx::new(&priv_key)?;
+    ctx.decrypt_init()?;
     ctx.set_rsa_oaep_md(hash_fn)?;
     Ok((ctx, plaintext))
 }
 
 #[test]
-fn test_ckm_rsa_pkcs_oaep_unwrap() -> Result<(), KmipUtilsError> {
+fn test_ckm_rsa_pkcs_oaep() -> Result<(), KmipUtilsError> {
     // Load FIPS provider module from OpenSSL.
     #[cfg(feature = "fips")]
     openssl::provider::Provider::load(None, "fips").unwrap();
 
-    let privkey = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
-    let pubkey = PKey::public_key_from_pem(&privkey.public_key_to_pem()?)?;
+    let priv_key = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
+    let pub_key = PKey::public_key_from_pem(&priv_key.public_key_to_pem()?)?;
 
-    // Test correct key size
     let dek_to_wrap = Zeroizing::from(vec![0x01; 2048 / 8 - 2 - 2 * 256 / 8]);
     let wrapped_key =
-        ckm_rsa_pkcs_oaep_key_wrap(&pubkey, RsaOaepHash::Sha256, dek_to_wrap.clone())?;
+        ckm_rsa_pkcs_oaep_key_wrap(&pub_key, RsaOaepHash::Sha256, dek_to_wrap.clone())?;
     assert_eq!(wrapped_key.len(), 2048 / 8);
-    let unwrapped_key = ckm_rsa_pkcs_oaep_key_unwrap(&privkey, RsaOaepHash::Sha256, &wrapped_key)?;
+    let unwrapped_key = ckm_rsa_pkcs_oaep_key_unwrap(&priv_key, RsaOaepHash::Sha256, &wrapped_key)?;
+    assert_eq!(unwrapped_key.len(), 2048 / 8 - 2 - 2 * 256 / 8);
     assert_eq!(unwrapped_key, dek_to_wrap);
 
-    /*    //test incorrect size
-        let dek_to_wrap = Zeroizing::from(vec![0x01; 2048 / 8 - 2 - 2 * 256 / 8 - 1]);
-        let wrapped_key =
-            ckm_rsa_pkcs_oaep_key_wrap(&pubkey, RsaOaepHash::Sha256, dek_to_wrap.clone())?;
-        assert_eq!(wrapped_key.len(), 2048 / 8);
-        let unwrapped_key = ckm_rsa_pkcs_oaep_key_unwrap(&privkey, RsaOaepHash::Sha256, &wrapped_key)?;
-        assert_eq!(unwrapped_key, dek_to_wrap);
-    */
     Ok(())
 }
