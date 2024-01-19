@@ -280,11 +280,9 @@ pub fn create_approved_ecc_key_pair(
 
     let mut ctx = BigNumContext::new()?;
     let public_key = to_ec_public_key(
-        &Zeroizing::from(ec_private_key.public_key().to_bytes(
-            &curve,
-            PointConversionForm::HYBRID,
-            &mut ctx,
-        )?),
+        &ec_private_key
+            .public_key()
+            .to_bytes(&curve, PointConversionForm::HYBRID, &mut ctx)?,
         ec_private_key.private_key().num_bits() as u32,
         private_key_uid,
         kmip_curve,
