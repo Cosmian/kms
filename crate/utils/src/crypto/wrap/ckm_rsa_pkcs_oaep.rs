@@ -19,7 +19,9 @@ use openssl::{
     pkey_ctx::PkeyCtx,
 };
 
-use crate::{error::KmipUtilsError, kmip_utils_bail};
+use crate::error::KmipUtilsError;
+#[cfg(feature = "fips")]
+use crate::kmip_utils_bail;
 
 /// Approved NIST hash functions for RSA OAEP as specified in NIST 800-56B rev. 2
 pub enum RsaOaepHash {
@@ -198,8 +200,8 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
 
 #[test]
 fn test_ckm_rsa_pkcs_oaep_unwrap() -> Result<(), KmipUtilsError> {
-    #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
+    #[cfg(feature = "fips")]
     openssl::provider::Provider::load(None, "fips").unwrap();
 
     let privkey = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
