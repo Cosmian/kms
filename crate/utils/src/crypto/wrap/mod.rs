@@ -1,8 +1,11 @@
 pub mod ckm_rsa_pkcs_oaep;
-pub mod encrypt_decrypt;
 mod rfc5649;
 pub mod rsa_oaep_aes_kwp;
-mod wrap_unwrap_key;
-pub use encrypt_decrypt::{decrypt_bytes, encrypt_bytes};
-pub use rfc5649::{key_unwrap, key_wrap};
-pub use wrap_unwrap_key::{unwrap_key_block, wrap_key_block};
+#[cfg(test)]
+mod tests;
+mod unwrap_key;
+mod wrap_key;
+
+pub use rfc5649::{rfc_5649_unwrap, tfc_5649_wrap};
+pub use unwrap_key::unwrap_key_block;
+pub use wrap_key::wrap_key_block;

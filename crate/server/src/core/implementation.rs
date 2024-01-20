@@ -5,7 +5,10 @@ use cosmian_kmip::{
     kmip::{
         kmip_objects::Object,
         kmip_operations::{Create, CreateKeyPair},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve, StateEnumeration},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, KeyFormatType, RecommendedCurve,
+            StateEnumeration,
+        },
     },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
@@ -185,8 +188,8 @@ impl KMS {
     /// Return a decryption system based on the type of key
     pub(crate) async fn get_decryption_system(
         &self,
-        cover_crypt: Covercrypt,
         mut owm: ObjectWithMetadata,
+        cryptographic_parameters: Option<&CryptographicParameters>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn DecryptionSystem>> {
         debug!("get_decryption_system: entering");
@@ -203,13 +206,30 @@ impl KMS {
         match &owm.object {
             Object::PrivateKey { key_block } => match &key_block.key_format_type {
                 KeyFormatType::CoverCryptSecretKey => Ok(Box::new(
-                    CovercryptDecryption::instantiate(cover_crypt, &owm.id, &owm.object)?,
+                    CovercryptDecryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?,
                 )),
                 KeyFormatType::PKCS8
                 | KeyFormatType::PKCS1
                 | KeyFormatType::TransparentRSAPrivateKey
                 | KeyFormatType::TransparentECPrivateKey => {
                     let p_key = kmip_private_key_to_openssl(&owm.object)?;
+                    // match  cryptographic_parameters.and_then(|cp| cp.cryptographic_algorithm) {
+                    //             CryptographicAlgorithm::RSA => {
+                    //                 Ok(Box::new(HybridDecryptionSystem::new(
+                    //                     Some(owm.id),
+                    //                     p_key,
+                    //                     false,
+                    //                 )) as Box<dyn DecryptionSystem>)
+                    //             }
+                    //             CryptographicAlgorithm::CoverCrypt => {
+                    //                 Ok(Box::new(HybridDecryptionSystem::new(
+                    //                     Some(owm.id),
+                    //                     p_key,
+                    //                     true,
+                    //                 )) as Box<dyn DecryptionSystem>)
+                    //             }
+                    //             other =>
+                    // }
                     Ok(
                         Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key, false))
                             as Box<dyn DecryptionSystem>,
