@@ -12,7 +12,7 @@ use tracing::trace;
 use zeroize::Zeroizing;
 
 #[cfg(feature = "fips")]
-use crate::{crypto::rsa::rsa_oaep_aes_kwp::FIPS_MIN_RSA_MODULUS_LENGTH, kmip_utils_bail};
+use crate::{crypto::rsa::ckm_rsa_aes_key_wrap::FIPS_MIN_RSA_MODULUS_LENGTH, kmip_utils_bail};
 use crate::{error::KmipUtilsError, KeyPair};
 
 /// convert to RSA KMIP Public Key

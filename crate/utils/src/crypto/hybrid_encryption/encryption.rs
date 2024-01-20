@@ -22,8 +22,9 @@ use crate::crypto::elliptic_curves::operation::{
 };
 use crate::{
     crypto::{
-        hybrid_encryption::{ecies::ecies_encrypt, rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt},
-        rsa::{ckm_rsa_pkcs_oaep::RsaOaepHash, rsa_oaep_aes_kwp::ckm_rsa_aes_key_wrap},
+        elliptic_curves::ecies::ecies_encrypt,
+        hybrid_encryption::rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt,
+        rsa::{ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap, ckm_rsa_pkcs_oaep::RsaOaepHash},
     },
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail, EncryptionSystem,

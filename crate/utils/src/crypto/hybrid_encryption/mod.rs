@@ -6,7 +6,6 @@
 //! These schemes do not support additional authenticated data.
 
 mod decryption;
-mod ecies;
 mod encryption;
 mod rsa_oaep_aes_gcm;
 pub use decryption::HybridDecryptionSystem;

@@ -1,13 +1,16 @@
-/*
- * Symmetrically wrap keys using RFC 5649 available at:
- * -> https://datatracker.ietf.org/doc/html/rfc5649
- *
- * This RFC is an improvement of RFC 3394 and allows to wrap keys of any size.
- * This is done by introducing an Integrity Check Register (ICR) of 64 bits. The
- * encryption algorithm is fed blocks of 64 bits concatenated to the ICR for a
- * total of 128 bits blocks. AES in ECB mode is used since padding and integrity
- * check are done manually following the RFC.
- */
+//! Symmetrically wrap keys using RFC 5649 available at:
+//! -> https://datatracker.ietf.org/doc/html/rfc5649
+//!
+//! This RFC is an improvement of RFC 3394 and allows to wrap keys of any size.
+//! This is done by introducing an Integrity Check Register (ICR) of 64 bits. The
+//! encryption algorithm is fed blocks of 64 bits concatenated to the ICR for a
+//! total of 128 bits blocks. AES in ECB mode is used since padding and integrity
+//! check are done manually following the RFC.
+//!
+//! OpenSSL unfortunately does not provide a way to use AES-KWP directly.
+//! See: https://github.com/openssl/openssl/issues/10605
+//! Google provides a patch : https://cloud.google.com/kms/docs/configuring-openssl-for-manual-key-wrapping
+//! and so does AWS: https://repost.aws/en/knowledge-center/patch-openssl-cloudhsm
 
 use openssl::symm::{encrypt, Cipher, Crypter, Mode};
 use zeroize::Zeroizing;

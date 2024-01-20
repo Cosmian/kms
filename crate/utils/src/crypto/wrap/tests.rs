@@ -1,9 +1,10 @@
 #[cfg(not(feature = "fips"))]
-use cosmian_kmip::kmip::{
-    kmip_data_structures::KeyWrappingData, kmip_objects::Object, kmip_types::EncodingOption,
-};
+use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::EncodingOption};
 use cosmian_kmip::{
-    kmip::kmip_types::{CryptographicAlgorithm, KeyFormatType},
+    kmip::{
+        kmip_data_structures::KeyWrappingData,
+        kmip_types::{CryptographicAlgorithm, KeyFormatType},
+    },
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
 };
 #[cfg(not(feature = "fips"))]
@@ -137,7 +138,7 @@ fn test_encrypt_decrypt_rfc_5649() {
         create_symmetric_key_kmip_object(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
     let plaintext = b"plaintext";
-    let ciphertext = wrap(&wrap_key, plaintext).unwrap();
+    let ciphertext = wrap(&wrap_key, &KeyWrappingData::default(), plaintext).unwrap();
     let decrypted_plaintext = unwrap(&wrap_key, &ciphertext).unwrap();
     assert_eq!(plaintext, &decrypted_plaintext[..]);
 }
@@ -146,7 +147,12 @@ fn test_encrypt_decrypt_rfc_5649() {
 fn test_encrypt_decrypt_rfc_ecies_x25519() {
     let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid").unwrap();
     let plaintext = b"plaintext";
-    let ciphertext = wrap(wrap_key_pair.public_key(), plaintext).unwrap();
+    let ciphertext = wrap(
+        wrap_key_pair.public_key(),
+        &KeyWrappingData::default(),
+        plaintext,
+    )
+    .unwrap();
     let decrypted_plaintext = unwrap(wrap_key_pair.private_key(), &ciphertext).unwrap();
     assert_eq!(plaintext, &decrypted_plaintext[..]);
 }
@@ -176,7 +182,7 @@ fn test_encrypt_decrypt_rsa() {
     .unwrap();
 
     let plaintext = b"plaintext";
-    let ciphertext = wrap(&wrap_key_pair_pub, plaintext).unwrap();
+    let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext).unwrap();
     let decrypted_plaintext = unwrap(&wrap_key_pair_priv, &ciphertext).unwrap();
     assert_eq!(plaintext, &decrypted_plaintext[..]);
 }
@@ -200,7 +206,7 @@ fn test_encrypt_decrypt_rsa_bad_size() {
     .unwrap();
 
     let plaintext = b"plaintext";
-    let encryption_res = wrap(&wrap_key_pair_pub, plaintext);
+    let encryption_res = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext);
     assert!(encryption_res.is_err());
 }
 
@@ -225,7 +231,7 @@ fn test_encrypt_decrypt_ec_p192() {
     .unwrap();
 
     let plaintext = b"plaintext";
-    let ciphertext = wrap(&wrap_key_pair_pub, plaintext).unwrap();
+    let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext).unwrap();
     let decrypted_plaintext = unwrap(&wrap_key_pair_priv, &ciphertext).unwrap();
     assert_eq!(plaintext, &decrypted_plaintext[..]);
 }
@@ -251,7 +257,7 @@ fn test_encrypt_decrypt_ec_p384() {
     .unwrap();
 
     let plaintext = b"plaintext";
-    let ciphertext = wrap(&wrap_key_pair_pub, plaintext).unwrap();
+    let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext).unwrap();
     let decrypted_plaintext = unwrap(&wrap_key_pair_priv, &ciphertext).unwrap();
     assert_eq!(plaintext, &decrypted_plaintext[..]);
 }

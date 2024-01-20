@@ -5,6 +5,7 @@ pub use aes_256_gcm::{
     AesGcmSystem, AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH,
 };
 
+pub mod aead;
 pub mod rfc5649;
 #[cfg(test)]
 mod tests;

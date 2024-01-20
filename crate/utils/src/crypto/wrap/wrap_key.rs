@@ -48,7 +48,7 @@ pub fn wrap_key_block(
     match encoding {
         EncodingOption::TTLVEncoding => {
             let plaintext = serde_json::to_vec(&object_key_block.key_value)?;
-            let ciphertext = wrap(wrapping_key, &plaintext)?;
+            let ciphertext = wrap(wrapping_key, &key_wrapping_data, &plaintext)?;
             object_key_block.key_value = KeyValue {
                 key_material: KeyMaterial::ByteString(ciphertext),
                 // not clear whether this should be filled or not
@@ -64,7 +64,7 @@ pub fn wrap_key_block(
                      TTLVEncoding instead."
                 ),
             };
-            let ciphertext = wrap(wrapping_key, &plaintext)?;
+            let ciphertext = wrap(wrapping_key, &key_wrapping_data, &plaintext)?;
             object_key_block.key_value.key_material = KeyMaterial::ByteString(ciphertext);
         }
     };
@@ -74,7 +74,11 @@ pub fn wrap_key_block(
 }
 
 /// Encrypt bytes using the wrapping key
-pub(crate) fn wrap(wrapping_key: &Object, plaintext: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
+pub(crate) fn wrap(
+    wrapping_key: &Object,
+    key_wrapping_data: &KeyWrappingData,
+    plaintext: &[u8],
+) -> Result<Vec<u8>, KmipUtilsError> {
     debug!(
         "encrypt_bytes: with object: {:?}",
         wrapping_key.object_type()
@@ -128,12 +132,12 @@ pub(crate) fn wrap(wrapping_key: &Object, plaintext: &[u8]) -> Result<Vec<u8>, K
                     //convert to transparent key and wrap
                     // note: when moving to full openssl this double conversion will be unnecessary
                     let p_key = kmip_public_key_to_openssl(wrapping_key)?;
-                    wrap_with_public_key(p_key, plaintext)
+                    wrap_with_public_key(p_key, &key_wrapping_data, plaintext)
                 }
                 // this really is SPKI
                 KeyFormatType::PKCS8 => {
                     let p_key = PKey::public_key_from_der(&key_block.key_bytes()?)?;
-                    wrap_with_public_key(p_key, plaintext)
+                    wrap_with_public_key(p_key, &key_wrapping_data, plaintext)
                 }
                 x => {
                     kmip_utils_bail!(
@@ -151,7 +155,11 @@ pub(crate) fn wrap(wrapping_key: &Object, plaintext: &[u8]) -> Result<Vec<u8>, K
     }
 }
 
-fn wrap_with_public_key(pubkey: PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
+fn wrap_with_public_key(
+    pubkey: PKey<Public>,
+    key_wrapping_data: &KeyWrappingData,
+    plaintext: &[u8],
+) -> Result<Vec<u8>, KmipUtilsError> {
     let request = Encrypt {
         data: Some(plaintext.to_vec()),
         ..Encrypt::default()
