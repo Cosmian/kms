@@ -11,7 +11,7 @@ use openssl::pkey::{PKey, Public};
 use tracing::debug;
 
 use crate::{
-    crypto::{hybrid_encryption::HybridEncryptionSystem, wrap::tfc_5649_wrap},
+    crypto::{hybrid_encryption::HybridEncryptionSystem, symmetric::rfc5649::rfc5649_wrap},
     error::KmipUtilsError,
     kmip_utils_bail, EncryptionSystem,
 };
@@ -121,7 +121,7 @@ pub(crate) fn wrap(wrapping_key: &Object, plaintext: &[u8]) -> Result<Vec<u8>, K
                 KeyFormatType::TransparentSymmetricKey => {
                     // wrap using rfc_5649
                     let wrap_secret = key_block.key_bytes()?;
-                    let ciphertext = tfc_5649_wrap(plaintext, &wrap_secret)?;
+                    let ciphertext = rfc5649_wrap(plaintext, &wrap_secret)?;
                     Ok(ciphertext)
                 }
                 KeyFormatType::TransparentECPublicKey | KeyFormatType::TransparentRSAPublicKey => {

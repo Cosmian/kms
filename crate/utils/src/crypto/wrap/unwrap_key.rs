@@ -11,7 +11,7 @@ use openssl::pkey::{PKey, Private};
 use tracing::debug;
 
 use crate::{
-    crypto::{hybrid_encryption::HybridDecryptionSystem, wrap::rfc_5649_unwrap},
+    crypto::{hybrid_encryption::HybridDecryptionSystem, symmetric::rfc5649::rfc5649_unwrap},
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail, DecryptionSystem,
 };
@@ -97,7 +97,7 @@ pub(crate) fn unwrap(
         KeyFormatType::TransparentSymmetricKey => {
             // unwrap using rfc_5649
             let unwrap_secret = unwrapping_key_block.key_bytes()?;
-            let plaintext = rfc_5649_unwrap(ciphertext, &unwrap_secret)?;
+            let plaintext = rfc5649_unwrap(ciphertext, &unwrap_secret)?;
             Ok(plaintext)
         }
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {

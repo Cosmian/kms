@@ -4,10 +4,12 @@ use openssl::{
     rand::rand_bytes,
 };
 
-use super::rfc5649::{rfc_5649_unwrap, tfc_5649_wrap, AES_KWP_KEY_SIZE};
 use crate::{
-    crypto::wrap::ckm_rsa_pkcs_oaep::{
-        ckm_rsa_pkcs_oaep_key_unwrap, ckm_rsa_pkcs_oaep_key_wrap, RsaOaepHash,
+    crypto::{
+        rsa::ckm_rsa_pkcs_oaep::{
+            ckm_rsa_pkcs_oaep_key_unwrap, ckm_rsa_pkcs_oaep_key_wrap, RsaOaepHash,
+        },
+        symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap, AES_KWP_KEY_SIZE},
     },
     error::KmipUtilsError,
     kmip_utils_bail,
@@ -46,7 +48,7 @@ pub fn ckm_rsa_aes_key_wrap(
     let encapsulation = ckm_rsa_pkcs_oaep_key_wrap(pubkey, hash_fn, kek.clone())?;
 
     // Wrap key according to RFC 5649 as recommended.
-    let wk = tfc_5649_wrap(plaintext, &kek)?;
+    let wk = rfc5649_wrap(plaintext, &kek)?;
 
     Ok([encapsulation, wk].concat())
 }
@@ -101,7 +103,7 @@ pub fn ckm_rsa_aes_key_unwrap(
     let kek = ckm_rsa_pkcs_oaep_key_unwrap(p_key, hash_fn, encapsulation)?;
 
     // Unwrap key according to RFC 5649 as recommended.
-    let plaintext = rfc_5649_unwrap(wk, &kek)?;
+    let plaintext = rfc5649_unwrap(wk, &kek)?;
 
     Ok(plaintext)
 }
