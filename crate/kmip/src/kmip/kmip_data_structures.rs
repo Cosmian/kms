@@ -304,7 +304,7 @@ impl Default for KeyWrappingData {
             mac_or_signature_key_information: None,
             mac_or_signature: None,
             iv_counter_nonce: None,
-            encoding_option: Some(EncodingOption::TTLVEncoding),
+            encoding_option: None,
         }
     }
 }

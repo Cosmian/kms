@@ -2,7 +2,7 @@
 use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::EncodingOption};
 use cosmian_kmip::{
     kmip::{
-        kmip_data_structures::KeyWrappingData,
+        kmip_data_structures::{KeyWrappingData, KeyWrappingSpecification},
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
@@ -85,7 +85,14 @@ fn wrap_test(
     // no encoding
     {
         // wrap
-        wrap_key_block(key_to_wrap.key_block_mut()?, wrapping_key, None)?;
+        wrap_key_block(
+            key_to_wrap.key_block_mut()?,
+            wrapping_key,
+            &KeyWrappingSpecification {
+                encoding_option: None,
+                ..Default::default()
+            },
+        )?;
         assert_ne!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
         assert_eq!(
             key_to_wrap.key_block()?.key_wrapping_data,
@@ -99,15 +106,14 @@ fn wrap_test(
 
     // TTLV encoding
     {
-        let key_wrapping_data = KeyWrappingData {
-            encoding_option: Some(EncodingOption::TTLVEncoding),
-            ..Default::default()
-        };
         // wrap
         wrap_key_block(
             key_to_wrap.key_block_mut()?,
             wrapping_key,
-            Some(key_wrapping_data),
+            &KeyWrappingSpecification {
+                encoding_option: Some(EncodingOption::TTLVEncoding),
+                ..Default::default()
+            },
         )?;
         assert_ne!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
         assert_eq!(

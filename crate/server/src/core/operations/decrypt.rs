@@ -1,4 +1,3 @@
-use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_operations::{Decrypt, DecryptResponse, ErrorReason},

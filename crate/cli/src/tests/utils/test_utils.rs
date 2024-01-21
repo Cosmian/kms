@@ -101,7 +101,7 @@ pub async fn start_test_server_with_options(
     use_client_cert: bool,
     use_jwe_encryption: bool,
 ) -> TestsContext {
-    let server_params = genererate_server_params(
+    let server_params = generate_server_params(
         port,
         use_jwt_token,
         use_https,
@@ -233,7 +233,7 @@ pub fn create_new_database(cli_conf_path: &str) -> Result<String, CliError> {
     Ok(database_secret.to_owned())
 }
 
-async fn genererate_server_params(
+async fn generate_server_params(
     port: u16,
     use_jwt_token: bool,
     use_https: bool,
@@ -314,7 +314,11 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, CliConf)
             None
         },
         ssl_client_pkcs12_path: if server_params.client_cert.is_some() {
-            Some("test_data/certificates/owner.client.acme.com.p12".to_string())
+            #[cfg(not(target_os = "macos"))]
+            let p = "test_data/certificates/owner.client.acme.com.p12".to_string();
+            #[cfg(target_os = "macos")]
+            let p = "test_data/certificates/owner.client.acme.com.old.format.p12".to_string();
+            Some(p)
         } else {
             None
         },
@@ -341,8 +345,13 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, CliConf)
 /// Generate a user configuration for user.client@acme.com and return the file path
 fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<String, CliError> {
     let mut user_conf = owner_cli_conf.clone();
-    user_conf.ssl_client_pkcs12_path =
-        Some("test_data/certificates/user.client.acme.com.p12".to_string());
+    user_conf.ssl_client_pkcs12_path = {
+        #[cfg(not(target_os = "macos"))]
+        let p = "test_data/certificates/user.client.acme.com.p12".to_string();
+        #[cfg(target_os = "macos")]
+        let p = "test_data/certificates/user.client.acme.com.old.format.p12".to_string();
+        Some(p)
+    };
     user_conf.ssl_client_pkcs12_password = Some("password".to_string());
 
     // write the user conf

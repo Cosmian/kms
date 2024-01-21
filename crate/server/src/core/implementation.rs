@@ -189,7 +189,7 @@ impl KMS {
     pub(crate) async fn get_decryption_system(
         &self,
         mut owm: ObjectWithMetadata,
-        cryptographic_parameters: Option<&CryptographicParameters>,
+        _cryptographic_parameters: Option<&CryptographicParameters>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<Box<dyn DecryptionSystem>> {
         debug!("get_decryption_system: entering");

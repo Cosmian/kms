@@ -6,7 +6,6 @@ use cosmian_kmip::kmip::{
     kmip_types::{Attributes, LinkType},
     ttlv::{deserializer::from_ttlv, TTLV},
 };
-use cosmian_logger::log_utils::log_init;
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -103,7 +102,9 @@ pub fn extract_certificate_id(text: &str) -> Option<&str> {
 
 #[tokio::test]
 async fn test_certify_a_csr() -> Result<(), CliError> {
-    log_init("cosmian_kms_server=debug");
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    // log_init("cosmian_kms_server=debug");
     // Create a test server
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
@@ -160,16 +161,17 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
         .join("exported_intermediate_cert.attributes.json");
 
     // export the certificate
+    let exported_cert_file = tmp_path.join("exported_cert.json");
     export_certificate(
         &ctx.owner_cli_conf_path,
         &certificate_id,
-        tmp_exported.to_str().unwrap(),
+        exported_cert_file.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
         None,
         true,
     )
     .unwrap();
-    let cert = read_object_from_json_ttlv_file(&tmp_exported).unwrap();
+    let cert = read_object_from_json_ttlv_file(&exported_cert_file).unwrap();
     let cert_x509_der = match &cert {
         Object::Certificate {
             certificate_value, ..
@@ -191,21 +193,23 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
             .unwrap()
             .to_string()
     );
-    let ttlv: TTLV = read_from_json_file(&tmp_attributes).unwrap();
+    let ttlv: TTLV = read_from_json_file(&tmp_path.join("exported_cert.attributes.json")).unwrap();
     let attributes: Attributes = from_ttlv(&ttlv).unwrap();
     // check that the attributes contain a certificate link to the intermediate
     let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
     // export the intermediate certificate
+    let exported_intermediate_cert_file = tmp_path.join("exported_intermediate_cert.json");
     export_certificate(
         &ctx.owner_cli_conf_path,
         &certificate_link,
-        tmp_intermediate.to_str().unwrap(),
+        exported_intermediate_cert_file.to_str().unwrap(),
         Some(CertificateExportFormat::Pem),
         None,
         true,
     )?;
     // check that the attributes contain a certificate link to the private key
-    let ttlv: TTLV = read_from_json_file(&tmp_intermediate_attributes).unwrap();
+    let ttlv: TTLV =
+        read_from_json_file(&tmp_path.join("exported_intermediate_cert.attributes.json")).unwrap();
     let attributes: Attributes = from_ttlv(&ttlv).unwrap();
     let private_key_link = attributes.get_link(LinkType::PrivateKeyLink).unwrap();
     assert_eq!(private_key_link, issuer_private_key_id);
@@ -214,7 +218,9 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
-    log_init("cosmian_kms_server=debug");
+    let tmp_dir = TempDir::new()?;
+    let tmp_path = tmp_dir.path();
+    // log_init("cosmian_kms_server=debug");
     // Create a test server
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
@@ -266,16 +272,17 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
     let tmp_exported = tmp_dir.path().join("exported_cert.json");
 
     // export the certificate
+    let exported_cert_file = tmp_path.join("exported_cert.json");
     export_certificate(
         &ctx.owner_cli_conf_path,
         &certificate_id,
-        tmp_exported.to_str().unwrap(),
+        exported_cert_file.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
         None,
         true,
     )
     .unwrap();
-    let cert = read_object_from_json_ttlv_file(&tmp_exported).unwrap();
+    let cert = read_object_from_json_ttlv_file(&exported_cert_file).unwrap();
     let cert_x509_der = match &cert {
         Object::Certificate {
             certificate_value, ..
@@ -377,7 +384,7 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn certify_a_public_key_test() -> Result<(), CliError> {
-    log_init("cosmian_kms_server=debug");
+    // log_init("cosmian_kms_server=debug");
     // Create a test server
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 

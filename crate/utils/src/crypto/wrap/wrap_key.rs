@@ -1,6 +1,8 @@
 use cosmian_kmip::{
     kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+        kmip_data_structures::{
+            KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
+        },
         kmip_objects::Object,
         kmip_operations::Encrypt,
         kmip_types::{EncodingOption, KeyFormatType, WrappingMethod},
@@ -24,26 +26,45 @@ use crate::{
 /// * `rng` - the random number generator
 /// * `object_key_block` - the key block of the object to wrap
 /// * `wrapping_key` - the wrapping key
-/// * `key_wrapping_data` - the key wrapping data
+/// * `key_wrapping_specification` - the key wrapping specification
 /// # Returns
 /// * `KResult<()>` - the result of the operation
 pub fn wrap_key_block(
     object_key_block: &mut KeyBlock,
     wrapping_key: &Object,
-    key_wrapping_data: Option<KeyWrappingData>,
+    key_wrapping_specification: &KeyWrappingSpecification,
 ) -> Result<(), KmipUtilsError> {
-    let mut key_wrapping_data = key_wrapping_data.unwrap_or_default();
-
-    if WrappingMethod::Encrypt != key_wrapping_data.wrapping_method {
-        kmip_utils_bail!("unable to wrap key: only the Encrypt wrapping method is supported")
+    if object_key_block.key_wrapping_data.is_some() {
+        kmip_utils_bail!("unable to wrap the key: it is already wrapped")
     }
-    key_wrapping_data.wrapping_method = WrappingMethod::Encrypt;
+    // check that the wrapping method is supported
+    match &key_wrapping_specification.wrapping_method {
+        WrappingMethod::Encrypt => {
+            // ok
+        }
+        x => {
+            kmip_utils_bail!("Unable to wrap the key: wrapping method is not supported: {x:?}")
+        }
+    }
 
-    let encoding = key_wrapping_data
+    // determine the encoding of the wrapping
+    let encoding = key_wrapping_specification
         .encoding_option
         .unwrap_or(EncodingOption::TTLVEncoding);
-    key_wrapping_data.encoding_option = Some(encoding);
 
+    let key_wrapping_data = KeyWrappingData {
+        wrapping_method: key_wrapping_specification.wrapping_method,
+        encryption_key_information: key_wrapping_specification
+            .encryption_key_information
+            .clone(),
+        mac_or_signature_key_information: key_wrapping_specification
+            .mac_or_signature_key_information
+            .clone(),
+        encoding_option: key_wrapping_specification.encoding_option,
+        ..KeyWrappingData::default()
+    };
+
+    // wrap the key based on the encoding
     // wrap the key based on the encoding
     match encoding {
         EncodingOption::TTLVEncoding => {
@@ -56,18 +77,12 @@ pub fn wrap_key_block(
             };
         }
         EncodingOption::NoEncoding => {
-            let plaintext = match &object_key_block.key_value.key_material {
-                KeyMaterial::TransparentSymmetricKey { ref key } => key.clone(),
-                KeyMaterial::ByteString(ref key) => key.clone(),
-                x => kmip_utils_bail!(
-                    "unable to wrap key: NoEncoding is not supported for key material: {x:?}. Use \
-                     TTLVEncoding instead."
-                ),
-            };
+            let plaintext = object_key_block.key_bytes()?;
             let ciphertext = wrap(wrapping_key, &key_wrapping_data, &plaintext)?;
             object_key_block.key_value.key_material = KeyMaterial::ByteString(ciphertext);
         }
     };
+
     object_key_block.key_wrapping_data = Some(key_wrapping_data);
 
     Ok(())
@@ -157,7 +172,7 @@ pub(crate) fn wrap(
 
 fn wrap_with_public_key(
     pubkey: PKey<Public>,
-    key_wrapping_data: &KeyWrappingData,
+    _key_wrapping_data: &KeyWrappingData,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let request = Encrypt {

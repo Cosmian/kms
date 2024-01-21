@@ -1,7 +1,6 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use cosmian_logger::log_utils::log_init;
 
 use super::SUB_COMMAND;
 use crate::{
@@ -52,7 +51,7 @@ pub fn create_rsa_key_pair(
 
 #[tokio::test]
 pub async fn test_rsa_create_key_pair() -> Result<(), CliError> {
-    log_init("trace");
+    // log_init("trace");
 
     // from specs
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;

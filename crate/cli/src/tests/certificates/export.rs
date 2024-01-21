@@ -205,6 +205,8 @@ async fn test_import_export_p12_25519() {
 
 #[tokio::test]
 async fn test_import_p12_rsa() {
+    let tmp_dir = TempDir::new().unwrap();
+    let tmp_path = tmp_dir.path();
     //load the PKCS#12 file
     let p12_bytes = include_bytes!("../../../test_data/certificates/csr/intermediate.p12");
     // Create a test server
@@ -233,11 +235,12 @@ async fn test_import_p12_rsa() {
     let tmp_exported_p12_sk = tmp_dir.path().join("exported_p12_sk.json");
 
     // export the private key
+    let key_file = tmp_path.join("exported_p12_sk.json");
     export_key(
         &ctx.owner_cli_conf_path,
         "ec",
         &imported_p12_sk,
-        tmp_exported_p12_sk.to_str().unwrap(),
+        &key_file.to_str().unwrap(),
         Some(JsonTtlv),
         false,
         None,
@@ -245,7 +248,7 @@ async fn test_import_p12_rsa() {
     )
     .unwrap();
     // export object by object
-    let sk = read_object_from_json_ttlv_file(&tmp_exported_p12_sk).unwrap();
+    let sk = read_object_from_json_ttlv_file(&key_file).unwrap();
     assert_eq!(
         sk.key_block().unwrap().key_format_type,
         KeyFormatType::PKCS1

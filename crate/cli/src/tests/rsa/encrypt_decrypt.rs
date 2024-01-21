@@ -1,7 +1,6 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_logger::log_utils::log_init;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -82,10 +81,9 @@ pub fn decrypt(
 
 #[tokio::test]
 async fn test_rsa_encrypt_decrypt_using_ids() -> Result<(), CliError> {
-    // log_init("trace");
-    log_init(
-        "cosmian_kms_cli=trace,cosmian_kms_server=trace,cosmian_kms_utils=trace,cosmian_kmip=trace",
-    );
+    // log_init(
+    //     "cosmian_kms_cli=trace,cosmian_kms_server=trace,cosmian_kms_utils=trace,cosmian_kmip=trace",
+    // );
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // create a temp dir

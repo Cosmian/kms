@@ -39,7 +39,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
-    log_init("cosmian_kms_server=debug");
+    // log_init("cosmian_kms_server=debug");
     let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
     let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
