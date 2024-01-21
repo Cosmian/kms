@@ -18,7 +18,6 @@ use cosmian_kms_utils::crypto::{
     },
     generic::kmip_requests::{build_decryption_request, build_encryption_request},
 };
-use cosmian_logger::log_utils::log_init;
 
 use crate::{
     error::KmsError,
@@ -104,7 +103,7 @@ fn policy() -> Result<Policy, KmsError> {
 
 #[tokio::test]
 async fn integration_tests_with_tags() -> KResult<()> {
-    log_init("cosmian_kms_server=debug");
+    // log_init("cosmian_kms_server=debug");
 
     let app = test_utils::test_app().await;
 

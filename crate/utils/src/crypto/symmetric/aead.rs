@@ -90,8 +90,8 @@ pub fn aead_encrypt(
     let ciphertext = encrypt_aead(
         aead_cipher.to_cipher(),
         key.deref(),
-        Some(&nonce),
-        &aad,
+        Some(nonce),
+        aad,
         plaintext,
         tag.as_mut(),
     )?;
@@ -110,8 +110,8 @@ pub fn aead_decrypt(
     let plaintext = decrypt_aead(
         aead_cipher.to_cipher(),
         key.deref(),
-        Some(&nonce),
-        &aad,
+        Some(nonce),
+        aad,
         encrypted_data.ciphertext.as_slice(),
         encrypted_data.tag.as_slice(),
     )?;

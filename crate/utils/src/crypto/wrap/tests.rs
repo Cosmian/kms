@@ -1,8 +1,11 @@
 #[cfg(not(feature = "fips"))]
-use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::EncodingOption};
+use cosmian_kmip::kmip::{
+    kmip_data_structures::KeyWrappingSpecification, kmip_objects::Object,
+    kmip_types::EncodingOption,
+};
 use cosmian_kmip::{
     kmip::{
-        kmip_data_structures::{KeyWrappingData, KeyWrappingSpecification},
+        kmip_data_structures::KeyWrappingData,
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},

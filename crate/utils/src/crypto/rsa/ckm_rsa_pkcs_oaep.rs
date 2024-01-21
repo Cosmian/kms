@@ -1,15 +1,15 @@
-///! Implements the RSA Key Encryption Mechanism CKM_RSA_PKCS_OAEP
-///! a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
-///! http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
-///!
-///! This scheme is part of the NIST 800-56B rev. 2 recommendation available at section 7.2.2  
-///! https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Br2.pdf
-///!
-///! As part of the NIST specification, NIST approved hash functions which can be used for the OAEP scheme are listed in
-///!  - NIST FIPS 180-4: SHA-1, SHA-224, SHA-256, SHA-384, SHA-512 (https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf
-///!  - NIST FIPS 202: SHA3-224, SHA3-256, SHA3-384, SHA3-512 (https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf)
-///!
-///! The scheme can be used for both encryption and key wrapping
+//! Implements the RSA Key Encryption Mechanism CKM_RSA_PKCS_OAEP
+//! a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
+//! http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
+//!
+//! This scheme is part of the NIST 800-56B rev. 2 recommendation available at section 7.2.2  
+//! https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Br2.pdf
+//!
+//! As part of the NIST specification, NIST approved hash functions which can be used for the OAEP scheme are listed in
+//!  - NIST FIPS 180-4: SHA-1, SHA-224, SHA-256, SHA-384, SHA-512 (https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf
+//!  - NIST FIPS 202: SHA3-224, SHA3-256, SHA3-384, SHA3-512 (https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf)
+//!
+//! The scheme can be used for both encryption and key wrapping
 use std::ops::Deref;
 
 use cloudproof::reexport::crypto_core::reexport::zeroize::Zeroizing;
@@ -121,7 +121,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
     let ciphertext = Vec::with_capacity(encapsulation_bytes_len);
 
     // Perform OAEP encryption.
-    let mut ctx = PkeyCtx::new(&pub_key)?;
+    let mut ctx = PkeyCtx::new(pub_key)?;
     ctx.encrypt_init()?;
     ctx.set_rsa_oaep_md(hash_fn.to_md_ref())?;
     Ok((ctx, ciphertext))
@@ -194,7 +194,7 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
     let plaintext = Vec::with_capacity(plaintext_bytes_len);
 
     // Perform OAEP encryption.
-    let mut ctx = PkeyCtx::new(&priv_key)?;
+    let mut ctx = PkeyCtx::new(priv_key)?;
     ctx.decrypt_init()?;
     ctx.set_rsa_oaep_md(hash_fn)?;
     Ok((ctx, plaintext))

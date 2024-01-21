@@ -87,7 +87,7 @@ pub async fn get_key(
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     let mut key_name = path.into_inner();
-    if key_name == "" {
+    if key_name.is_empty() {
         key_name = "dke_key".to_string();
     }
     match _get_key(&key_name, req_http, &kms).await {

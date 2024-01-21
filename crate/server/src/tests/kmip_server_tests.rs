@@ -19,7 +19,6 @@ use cosmian_kms_utils::crypto::{
     },
     symmetric::symmetric_key_create_request,
 };
-use cosmian_logger::log_utils::log_init;
 use tracing::trace;
 use uuid::Uuid;
 
@@ -253,7 +252,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 
 #[tokio::test]
 async fn test_create_transparent_symmetric_key() -> KResult<()> {
-    log_init("info");
+    // log_init("info");
 
     let clap_config = https_clap_config();
 
@@ -297,7 +296,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
 
 #[tokio::test]
 async fn test_database_user_tenant() -> KResult<()> {
-    log_init("info");
+    // log_init("info");
 
     let clap_config = https_clap_config();
 

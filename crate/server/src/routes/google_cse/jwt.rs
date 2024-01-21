@@ -215,7 +215,6 @@ pub async fn validate_tokens(
 mod tests {
     use std::sync::Arc;
 
-    use cosmian_logger::log_utils::log_init;
     use serde::Deserialize;
     use tracing::info;
 
@@ -233,7 +232,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_wrap_auth() {
-        log_init("cosmian_kms_server=info");
+        // log_init("cosmian_kms_server=info");
 
         #[derive(Deserialize)]
         struct Token {

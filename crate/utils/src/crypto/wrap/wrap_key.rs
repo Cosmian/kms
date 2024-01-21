@@ -147,12 +147,12 @@ pub(crate) fn wrap(
                     //convert to transparent key and wrap
                     // note: when moving to full openssl this double conversion will be unnecessary
                     let p_key = kmip_public_key_to_openssl(wrapping_key)?;
-                    wrap_with_public_key(p_key, &key_wrapping_data, plaintext)
+                    wrap_with_public_key(p_key, key_wrapping_data, plaintext)
                 }
                 // this really is SPKI
                 KeyFormatType::PKCS8 => {
                     let p_key = PKey::public_key_from_der(&key_block.key_bytes()?)?;
-                    wrap_with_public_key(p_key, &key_wrapping_data, plaintext)
+                    wrap_with_public_key(p_key, key_wrapping_data, plaintext)
                 }
                 x => {
                     kmip_utils_bail!(

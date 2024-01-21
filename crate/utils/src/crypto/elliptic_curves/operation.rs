@@ -328,7 +328,6 @@ mod tests {
 
     #[test]
     fn test_ed25519_keypair_generation() {
-        // log_init("trace");
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -430,7 +429,6 @@ mod tests {
 
     #[test]
     fn test_approved_ecc_keypair_generation() {
-        // log_init("trace");
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
