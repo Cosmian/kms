@@ -76,24 +76,41 @@ impl JwksManager {
     /// The JWK Sets are fetched in parallel and warns about failures
     /// without stopping the whole fetch process.
     async fn fetch_all(uris: &[String]) -> HashMap<String, JWKS> {
-        let mut map = HashMap::with_capacity(uris.len());
         let client = reqwest::Client::new();
-        for jwks_uri in uris {
-            match client.get(jwks_uri.clone()).send().await {
-                Ok(resp) => match resp.json::<JWKS>().await {
-                    Ok(jwks) => {
-                        tracing::info!("+ fetched {jwks_uri}...");
-                        map.insert(jwks_uri.to_string(), jwks);
+
+        let jwks_downloads = uris
+            .iter()
+            .map(|jwks_uri| {
+                let client = &client;
+                let jwks_uri = jwks_uri.clone();
+                async move {
+                    tracing::debug!("fetching {jwks_uri}");
+                    match client.get(&jwks_uri).send().await {
+                        Ok(resp) => match resp.json::<JWKS>().await {
+                            Ok(jwks) => {
+                                tracing::info!("+ fetched {jwks_uri}");
+                                Some((jwks_uri, jwks))
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Unable to get content as JWKS for `{jwks_uri}`: {e}"
+                                );
+                                None
+                            }
+                        },
+                        Err(e) => {
+                            tracing::warn!("Unable to download JWKS `{jwks_uri}`: {e}");
+                            None
+                        }
                     }
-                    Err(e) => {
-                        tracing::warn!("Unable to get content as JWKS `{jwks_uri}`: {e}");
-                    }
-                },
-                Err(e) => {
-                    tracing::warn!("Unable to download JWKS `{jwks_uri}`: {e}");
                 }
-            }
-        }
-        map
+            })
+            .collect::<Vec<_>>();
+
+        futures::future::join_all(jwks_downloads)
+            .await
+            .into_iter()
+            .flatten()
+            .collect::<HashMap<_, _>>()
     }
 }

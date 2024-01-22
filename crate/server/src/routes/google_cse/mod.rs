@@ -61,7 +61,7 @@ pub async fn wrap(
     req_http: HttpRequest,
     wrap_request: Json<operations::WrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<KMSServer>,
+    kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/wrap");
 
@@ -88,7 +88,7 @@ pub async fn unwrap(
     req_http: HttpRequest,
     unwrap_request: Json<operations::UnwrapRequest>,
     cse_config: Data<Option<GoogleCseConfig>>,
-    kms: Data<KMSServer>,
+    kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     info!("POST /google_cse/unwrap");
 
