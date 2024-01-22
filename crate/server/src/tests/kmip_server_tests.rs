@@ -9,7 +9,6 @@ use cosmian_kmip::kmip::{
         Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType,
         LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, WrappingMethod,
     },
-    ttlv::{deserializer::from_ttlv, TTLV},
 };
 use cosmian_kms_utils::crypto::{
     elliptic_curves::{
@@ -21,7 +20,7 @@ use cosmian_kms_utils::crypto::{
     symmetric::symmetric_key_create_request,
 };
 use cosmian_logger::log_utils::log_init;
-use tracing::{info, trace};
+use tracing::trace;
 use uuid::Uuid;
 
 use crate::{

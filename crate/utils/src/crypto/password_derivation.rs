@@ -4,6 +4,7 @@ use argon2::Argon2;
 use openssl::rand::rand_bytes;
 #[cfg(feature = "fips")]
 use openssl::{hash::MessageDigest, pkcs5::pbkdf2_hmac};
+use zeroize::Zeroizing;
 
 use crate::error::KmipUtilsError;
 #[cfg(feature = "fips")]
@@ -24,7 +25,7 @@ const FIPS_MIN_ITER: usize = 210_000;
 #[cfg(feature = "fips")]
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
-) -> Result<[u8; LENGTH], KmipUtilsError> {
+) -> Result<Zeroizing<[u8; LENGTH]>, KmipUtilsError> {
     if LENGTH < FIPS_MIN_KLEN || LENGTH * 8 > ((1 << 32) - 1) * FIPS_HLEN_BITS {
         kmip_utils_bail!(
             "Password derivation error: wrong output length argument, got {}",
@@ -32,7 +33,7 @@ pub fn derive_key_from_password<const LENGTH: usize>(
         )
     }
 
-    let mut output_key_material = [0u8; LENGTH];
+    let mut output_key_material = Zeroizing::from([0u8; LENGTH]);
 
     // Generate 128 bits of random salt.
     let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
@@ -43,7 +44,7 @@ pub fn derive_key_from_password<const LENGTH: usize>(
         &salt,
         FIPS_MIN_ITER,
         MessageDigest::sha512(),
-        &mut output_key_material,
+        output_key_material.as_mut(),
     )?;
 
     Ok(output_key_material)
@@ -54,15 +55,15 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 /// with SHA512 in FIPS mode.
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
-) -> Result<[u8; LENGTH], KmipUtilsError> {
-    let mut output_key_material = [0u8; LENGTH];
+) -> Result<Zeroizing<[u8; LENGTH]>, KmipUtilsError> {
+    let mut output_key_material = Zeroizing::from([0u8; LENGTH]);
 
     // Generate 128 bits of random salt
     let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
     rand_bytes(&mut salt)?;
 
     Argon2::default()
-        .hash_password_into(password, &salt, &mut output_key_material)
+        .hash_password_into(password, &salt, output_key_material.as_mut())
         .map_err(|e| KmipUtilsError::Derivation(e.to_string()))?;
 
     Ok(output_key_material)

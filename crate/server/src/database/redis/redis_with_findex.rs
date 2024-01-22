@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    ops::Deref,
     path::PathBuf,
     sync::Arc,
 };
@@ -103,7 +104,7 @@ impl RedisWithFindex {
         )?;
 
         let master_secret_key: SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH> =
-            SymmetricKey::try_from_bytes(output_key_material)?;
+            SymmetricKey::try_from_bytes(*output_key_material.deref())?;
 
         Ok(master_secret_key)
     }
