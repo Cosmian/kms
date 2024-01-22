@@ -231,7 +231,7 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>)
     // Number of 64-bit blocks minus 1
     let n = n / 8 - 1;
 
-    let mut blocks = Vec::with_capacity(n + 1);
+    let mut blocks = Zeroizing::from(Vec::with_capacity(n + 1));
     for chunk in ciphertext.chunks(AES_WRAP_PAD_BLOCK_SIZE) {
         blocks.push(u64::from_be_bytes(chunk.try_into()?));
     }
@@ -265,7 +265,7 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>)
             let big_i = (u128::from(icr ^ t) << 64 | u128::from(*block)).to_be_bytes();
             let big_b = big_i.as_slice();
 
-            let mut plaintext = vec![0; big_b.len() + AES_BLOCK_SIZE];
+            let mut plaintext = Zeroizing::from(vec![0; big_b.len() + AES_BLOCK_SIZE]);
             let mut dec_len = decrypt_cipher.update(big_b, &mut plaintext)?;
             dec_len += decrypt_cipher.finalize(&mut plaintext)?;
             plaintext.truncate(dec_len);
@@ -280,7 +280,7 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>)
         }
     }
 
-    let mut unwrapped_key = Zeroizing::from(Vec::with_capacity(blocks.len() - 1));
+    let mut unwrapped_key = Zeroizing::from(Vec::with_capacity((blocks.len() - 1) * 8));
     for block in &blocks[1..] {
         unwrapped_key.extend(block.to_be_bytes());
     }
