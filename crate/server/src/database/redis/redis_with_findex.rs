@@ -104,7 +104,13 @@ impl RedisWithFindex {
         )?;
 
         let master_secret_key: SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH> =
-            SymmetricKey::try_from_bytes(*output_key_material.deref())?;
+            SymmetricKey::try_from_bytes(
+                output_key_material
+                    .deref()
+                    .as_slice()
+                    .try_into()
+                    .expect("Derived key has invalid length."),
+            )?;
 
         Ok(master_secret_key)
     }
