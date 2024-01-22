@@ -130,6 +130,8 @@ pub enum CryptographicAlgorithm {
     DES = 0x0000_0001,
     THREE_DES = 0x0000_0002,
     AES = 0x0000_0003,
+    /// This is CKM_RSA_PKCS_OAEP from PKCS#11
+    /// see https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
     RSA = 0x0000_0004,
     DSA = 0x0000_0005,
     ECDSA = 0x0000_0006,
@@ -188,6 +190,9 @@ pub enum CryptographicAlgorithm {
     // Available slot 0x8880_0003,
     CoverCrypt = 0x8880_0004,
     CoverCryptBulk = 0x8880_0005,
+    /// This is CKM_RSA_AES_KEY_WRAP from PKCS#11
+    /// See https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908
+    RSAAESKeyWrap = 0x8880_0006,
 }
 
 /// The Cryptographic Domain Parameters attribute (4.14) is a structure that

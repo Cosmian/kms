@@ -240,7 +240,7 @@ async fn test_import_p12_rsa() {
         &ctx.owner_cli_conf_path,
         "ec",
         &imported_p12_sk,
-        &key_file.to_str().unwrap(),
+        key_file.to_str().unwrap(),
         Some(JsonTtlv),
         false,
         None,

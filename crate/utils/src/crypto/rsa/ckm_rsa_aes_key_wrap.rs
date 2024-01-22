@@ -45,7 +45,7 @@ pub fn ckm_rsa_aes_key_wrap(
     rand_bytes(&mut kek)?;
 
     // Encapsulate it using RSA-OAEP.
-    let encapsulation = ckm_rsa_pkcs_oaep_key_wrap(pubkey, hash_fn, kek.clone())?;
+    let encapsulation = ckm_rsa_pkcs_oaep_key_wrap(pubkey, hash_fn, &kek)?;
 
     // Wrap key according to RFC 5649 as recommended.
     let wk = rfc5649_wrap(plaintext, &kek)?;
@@ -109,7 +109,7 @@ pub fn ckm_rsa_aes_key_unwrap(
 }
 
 #[test]
-fn test_rsa_kem_wrap_unwsrap() -> Result<(), KmipUtilsError> {
+fn test_rsa_kem_wrap_unwrap() -> Result<(), KmipUtilsError> {
     #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();

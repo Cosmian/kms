@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use cosmian_kmip::{
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -9,6 +11,7 @@ use cosmian_kmip::{
 };
 use openssl::pkey::{PKey, Private};
 use tracing::debug;
+use zeroize::Zeroizing;
 
 use crate::{
     crypto::{hybrid_encryption::HybridDecryptionSystem, symmetric::rfc5649::rfc5649_unwrap},
@@ -48,16 +51,16 @@ pub fn unwrap_key_block(
         EncodingOption::TTLVEncoding => {
             let ciphertext = object_key_block.key_bytes()?;
             let plaintext = unwrap(unwrapping_key, ciphertext.as_slice())?;
-            serde_json::from_slice::<KeyValue>(&plaintext)?
+            serde_json::from_slice::<KeyValue>(plaintext.deref())?
         }
         EncodingOption::NoEncoding => {
             let (ciphertext, attributes) = object_key_block.key_bytes_and_attributes()?;
             let plain_text = unwrap(unwrapping_key, &ciphertext)?;
             let key_material: KeyMaterial = match object_key_block.key_format_type {
-                KeyFormatType::TransparentSymmetricKey => {
-                    KeyMaterial::TransparentSymmetricKey { key: plain_text }
-                }
-                _ => KeyMaterial::ByteString(plain_text),
+                KeyFormatType::TransparentSymmetricKey => KeyMaterial::TransparentSymmetricKey {
+                    key: plain_text.to_vec(),
+                },
+                _ => KeyMaterial::ByteString(plain_text.to_vec()),
             };
             KeyValue {
                 key_material,
@@ -77,7 +80,7 @@ pub fn unwrap_key_block(
 pub(crate) fn unwrap(
     unwrapping_key: &Object,
     ciphertext: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError> {
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     debug!(
         "decrypt_bytes: with object: {:?} on ciphertext length: {}",
         unwrapping_key,
@@ -97,7 +100,7 @@ pub(crate) fn unwrap(
         KeyFormatType::TransparentSymmetricKey => {
             // unwrap using rfc_5649
             let unwrap_secret = unwrapping_key_block.key_bytes()?;
-            let plaintext = rfc5649_unwrap(ciphertext, &unwrap_secret)?;
+            let plaintext = Zeroizing::from(rfc5649_unwrap(ciphertext, &unwrap_secret)?);
             Ok(plaintext)
         }
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {
@@ -121,7 +124,7 @@ pub(crate) fn unwrap(
 fn unwrap_with_private_key(
     p_key: PKey<Private>,
     ciphertext: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError> {
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let decrypt_system = HybridDecryptionSystem::new(None, p_key, true);
     let request = Decrypt {
         data: Some(ciphertext.to_vec()),
@@ -136,5 +139,5 @@ fn unwrap_with_private_key(
         plaintext.len()
     );
     let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
-    Ok(decrypted_data.plaintext)
+    Ok(Zeroizing::from(decrypted_data.plaintext))
 }

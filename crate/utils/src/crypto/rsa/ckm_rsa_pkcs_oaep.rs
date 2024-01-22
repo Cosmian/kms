@@ -13,6 +13,7 @@
 use std::ops::Deref;
 
 use cloudproof::reexport::crypto_core::reexport::zeroize::Zeroizing;
+use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
 use openssl::{
     md::{Md, MdRef},
     pkey::{PKey, Private, Public},
@@ -52,6 +53,23 @@ impl RsaOaepHash {
     }
 }
 
+impl From<HashingAlgorithm> for RsaOaepHash {
+    fn from(hash: HashingAlgorithm) -> Self {
+        match hash {
+            HashingAlgorithm::SHA1 => RsaOaepHash::Sha1,
+            HashingAlgorithm::SHA224 => RsaOaepHash::Sha224,
+            HashingAlgorithm::SHA256 => RsaOaepHash::Sha256,
+            HashingAlgorithm::SHA384 => RsaOaepHash::Sha384,
+            HashingAlgorithm::SHA512 => RsaOaepHash::Sha512,
+            HashingAlgorithm::SHA3224 => RsaOaepHash::Sha3_224,
+            HashingAlgorithm::SHA3256 => RsaOaepHash::Sha3_256,
+            HashingAlgorithm::SHA3384 => RsaOaepHash::Sha3_384,
+            HashingAlgorithm::SHA3512 => RsaOaepHash::Sha3_512,
+            h => panic!("Unsupported hash function: {:?} for RSA OAEP", h),
+        }
+    }
+}
+
 #[cfg(feature = "fips")]
 pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 2048;
 
@@ -67,14 +85,14 @@ pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 2048;
 /// Arguments:
 /// - `pubkey`: the public key used to wrap the key
 /// - `hash_fn`: the hash function to use for OAEP
-/// - `dek`: the data encryption key to wrap
+/// - `key_to_wrap`: the data encryption key to wrap
 pub fn ckm_rsa_pkcs_oaep_key_wrap(
     pub_key: &PKey<Public>,
     hash_fn: RsaOaepHash,
-    dek: Zeroizing<Vec<u8>>,
+    key_to_wrap: &Zeroizing<Vec<u8>>,
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let (mut ctx, mut ciphertext) = init_ckm_rsa_pkcs_oaep_encryption_context(pub_key, hash_fn)?;
-    ctx.encrypt_to_vec(dek.deref(), &mut ciphertext)?;
+    ctx.encrypt_to_vec(key_to_wrap.deref(), &mut ciphertext)?;
     Ok(ciphertext)
 }
 
@@ -210,8 +228,7 @@ fn test_ckm_rsa_pkcs_oaep() -> Result<(), KmipUtilsError> {
     let pub_key = PKey::public_key_from_pem(&priv_key.public_key_to_pem()?)?;
 
     let dek_to_wrap = Zeroizing::from(vec![0x01; 2048 / 8 - 2 - 2 * 256 / 8]);
-    let wrapped_key =
-        ckm_rsa_pkcs_oaep_key_wrap(&pub_key, RsaOaepHash::Sha256, dek_to_wrap.clone())?;
+    let wrapped_key = ckm_rsa_pkcs_oaep_key_wrap(&pub_key, RsaOaepHash::Sha256, &dek_to_wrap)?;
     assert_eq!(wrapped_key.len(), 2048 / 8);
     let unwrapped_key = ckm_rsa_pkcs_oaep_key_unwrap(&priv_key, RsaOaepHash::Sha256, &wrapped_key)?;
     assert_eq!(unwrapped_key.len(), 2048 / 8 - 2 - 2 * 256 / 8);

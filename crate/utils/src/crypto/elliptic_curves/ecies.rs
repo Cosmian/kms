@@ -1,3 +1,7 @@
+use cloudproof::reexport::crypto_core::{
+    reexport::rand_core::SeedableRng, CsRng, Ecies, EciesSalsaSealBox, Ed25519PrivateKey,
+    Ed25519PublicKey, X25519PrivateKey, X25519PublicKey,
+};
 use num_bigint_dig::algorithms::idiv_ceil;
 #[cfg(feature = "fips")]
 use openssl::nid::Nid;
@@ -5,13 +9,20 @@ use openssl::{
     bn::BigNumContext,
     ec::{EcGroupRef, EcKey, EcPoint, EcPointRef, PointConversionForm},
     hash::{Hasher, MessageDigest},
-    pkey::{PKey, Private, Public},
+    pkey::{Id, PKey, Private, Public},
     symm::{decrypt_aead, encrypt_aead, Cipher},
 };
+use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::symmetric::{AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH},
+    crypto::{
+        elliptic_curves::operation::{
+            ED25519_PRIVATE_KEY_LENGTH, ED25519_PUBLIC_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
+            X25519_PUBLIC_KEY_LENGTH,
+        },
+        symmetric::{AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH},
+    },
     error::KmipUtilsError,
     kmip_utils_bail,
 };
@@ -55,6 +66,11 @@ fn ecies_get_key(S: &EcPointRef, curve: &EcGroupRef) -> Result<Zeroizing<Vec<u8>
 
 /// Encrypt `plaintext` data using `pubkey` public key following ECIES.
 ///
+/// When using Curve25519 (X25519 or Ed25519 which is converted to X25519),
+/// SalsaSealBox is used. The implementation is compatible with that of libsodium.
+///
+/// When using standard curves, AES 256 GCM is used as the DEM with the following algorithm:  
+///
 /// Generate a random `r` and compute `R = rG` with `G` the curve generator.
 /// Using target pubic key `pubkey` we will call `Q`, compute `S = rQ`. `S` is
 /// the shared key used to symmetrically encrypt data using AES-256-GCM.
@@ -65,8 +81,51 @@ fn ecies_get_key(S: &EcPointRef, curve: &EcGroupRef) -> Result<Zeroizing<Vec<u8>
 ///
 /// Notice we don't send the IV since it is derived by hashing the public key as
 /// well as the ephemeral public key.
+pub fn ecies_encrypt(
+    public_key: &PKey<Public>,
+    plaintext: &[u8],
+) -> Result<Vec<u8>, KmipUtilsError> {
+    let ciphertext = match public_key.id() {
+        #[cfg(not(feature = "fips"))]
+        Id::ED25519 => {
+            trace!("encrypt: Ed25519");
+            let mut rng = CsRng::from_entropy();
+            // The raw public key happens to be the (compressed) value of the Montgomery point
+            let raw_bytes = public_key.raw_public_key()?;
+            let public_key_bytes: [u8; ED25519_PUBLIC_KEY_LENGTH] = raw_bytes.try_into()?;
+            let public_key = X25519PublicKey::from_ed25519_public_key(
+                &Ed25519PublicKey::try_from_bytes(public_key_bytes)?,
+            );
+            EciesSalsaSealBox::encrypt(&mut rng, &public_key, &plaintext, None)?
+        }
+        #[cfg(not(feature = "fips"))]
+        Id::X25519 => {
+            trace!("encrypt: X25519");
+            let mut rng = CsRng::from_entropy();
+            // The raw public key happens to be the (compressed) value of the Montgomery point
+            let raw_bytes = public_key.raw_public_key()?;
+            let public_key_bytes: [u8; X25519_PUBLIC_KEY_LENGTH] = raw_bytes.try_into()?;
+            let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
+            EciesSalsaSealBox::encrypt(&mut rng, &public_key, &plaintext, None)?
+        }
+        Id::EC => ecies_encrypt_standard_curve(public_key, plaintext)?,
+        _ => {
+            kmip_utils_bail!(
+                "Public key id not supported for ECIES encryption: {:?}",
+                public_key.id()
+            );
+        }
+    };
+    Ok(ciphertext)
+}
+
 #[allow(non_snake_case)]
-pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
+/// Encrypt `plaintext` data using `pubkey` public key following ECIES.
+/// see ecies_encrypt for details.
+fn ecies_encrypt_standard_curve(
+    pubkey: &PKey<Public>,
+    plaintext: &[u8],
+) -> Result<Vec<u8>, KmipUtilsError> {
     let mut ctx = BigNumContext::new_secure()?;
     let Q = pubkey.ec_key()?;
     let curve = Q.group();
@@ -108,7 +167,12 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
 
 /// Decrypt `ciphertext` data using `privkey` private key following ECIES.
 ///
-/// `ciphertext` is a concatanation of `R | ct | tag` with `|` the concatenation
+/// When using Curve25519 (X25519 or Ed25519 which is converted to X25519),
+/// SalsaSealBox is used. The implementation is compatible with that of libsodium.
+///
+/// When using a standard curve, AES 256 GCM is used as the DEM with the following algorithm:
+///
+/// `ciphertext` is a concatenation of `R | ct | tag` with `|` the concatenation
 /// operator, `R` the ephemeral public key on the curve, `ct` the encrypted data
 /// and `tag` the authentication tag forged during encryption.
 ///
@@ -116,8 +180,36 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
 /// key and the ephemeral public key.
 ///
 /// Return the plaintext.
-#[allow(non_snake_case)]
 pub fn ecies_decrypt(
+    private_key: &PKey<Private>,
+    ciphertext: &[u8],
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
+    let plaintext = match private_key.id() {
+        Id::EC => ecies_decrypt_standard_curve(&private_key, ciphertext)?,
+        #[cfg(not(feature = "fips"))]
+        Id::ED25519 => {
+            let raw_bytes = private_key.raw_private_key()?;
+            let private_key_bytes: [u8; ED25519_PRIVATE_KEY_LENGTH] = raw_bytes.try_into()?;
+            let private_key = Ed25519PrivateKey::try_from_bytes(private_key_bytes)?;
+            let private_key = X25519PrivateKey::from_ed25519_private_key(&private_key);
+            Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
+        }
+        #[cfg(not(feature = "fips"))]
+        Id::X25519 => {
+            let raw_bytes = private_key.raw_private_key()?;
+            let private_key_bytes: [u8; X25519_PRIVATE_KEY_LENGTH] = raw_bytes.try_into()?;
+            let private_key = X25519PrivateKey::try_from_bytes(private_key_bytes)?;
+            Zeroizing::new(EciesSalsaSealBox::decrypt(&private_key, ciphertext, None)?)
+        }
+        x => {
+            kmip_utils_bail!("private key id not supported yet: {:?}", x);
+        }
+    };
+    Ok(plaintext)
+}
+
+#[allow(non_snake_case)]
+pub fn ecies_decrypt_standard_curve(
     privkey: &PKey<Private>,
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
@@ -155,6 +247,7 @@ pub fn ecies_decrypt(
     let iv = ecies_get_iv(d.public_key(), &R, curve)?;
     let key = ecies_get_key(&S, curve)?;
 
+    // we could use ou own aead to offer more DEM options
     let plaintext = Zeroizing::from(decrypt_aead(
         Cipher::aes_256_gcm(),
         &key,
@@ -169,6 +262,8 @@ pub fn ecies_decrypt(
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Deref;
+
     use openssl::{
         ec::{EcGroup, EcKey},
         nid::Nid,
@@ -191,7 +286,7 @@ mod tests {
         let ct = ecies_encrypt(&pubkey, &plaintext).unwrap();
         let pt = ecies_decrypt(&privkey, &ct).unwrap();
 
-        assert_eq!(plaintext, pt);
+        assert_eq!(plaintext, pt.deref());
     }
 
     #[test]
