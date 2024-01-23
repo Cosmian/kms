@@ -9,6 +9,14 @@ use crate::{
     result::KResult,
 };
 
+// Default JWT issuer URI
+#[cfg(test)]
+const JWT_ISSUER_URI: &str = "https://accounts.google.com";
+
+// Default JWT Set URI
+#[cfg(test)]
+const JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
+
 static APPLICATIONS: &[&str; 2] = &["meet", "drive"];
 
 fn get_jwks_uri(application: &str) -> String {
@@ -216,7 +224,9 @@ mod tests {
         middlewares::{JwksManager, JwtConfig},
         routes::google_cse::{
             self,
-            jwt::{decode_jwt_authorization_token, jwt_authorization_config},
+            jwt::{
+                decode_jwt_authorization_token, jwt_authorization_config, JWKS_URI, JWT_ISSUER_URI,
+            },
             operations::WrapRequest,
         },
     };
@@ -267,11 +277,9 @@ mod tests {
         tracing::debug!("wrap_request: {wrap_request:?}");
         let wrap_request: WrapRequest = serde_json::from_str(&wrap_request).unwrap();
 
-        let jwt_issuer_uri = "https://accounts.google.com";
-        let jwks_uri = "https://www.googleapis.com/oauth2/v3/certs";
         let uris = {
             let mut uris = google_cse::list_jwks_uri();
-            uris.push(JwtAuthConfig::uri(jwt_issuer_uri, Some(jwks_uri)));
+            uris.push(JwtAuthConfig::uri(JWT_ISSUER_URI, Some(JWKS_URI)));
             uris
         };
         let jwks_manager = Arc::new(JwksManager::new(uris).await.unwrap());
@@ -279,8 +287,8 @@ mod tests {
 
         // Test authentication
         let jwt_authentication_config = JwtAuthConfig {
-            jwt_issuer_uri: Some(jwt_issuer_uri.to_string()),
-            jwks_uri: Some(jwks_uri.to_string()),
+            jwt_issuer_uri: Some(JWT_ISSUER_URI.to_string()),
+            jwks_uri: Some(JWKS_URI.to_string()),
             jwt_audience: None,
         };
         let jwt_authentication_config = JwtConfig {
@@ -312,14 +320,8 @@ mod tests {
         // Test authorization
         // we fake the URLs and use authentication tokens,
         // because we don't know the URL of the Google Drive authorization token API.
-        std::env::set_var(
-            "KMS_GOOGLE_CSE_DRIVE_JWKS_URI",
-            "https://www.googleapis.com/oauth2/v3/certs",
-        );
-        std::env::set_var(
-            "KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER",
-            "https://accounts.google.com", // the token has been issued by Google Accounts (post request)
-        );
+        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
+        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
         let jwt_authorization_config = jwt_authorization_config(jwks_manager);
         tracing::trace!("{jwt_authorization_config:#?}");
 
