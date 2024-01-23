@@ -140,7 +140,7 @@ repos:
         entry: bash -c 'cd documentation && mkdocs build --strict'
 
   - repo: https://github.com/Cosmian/git-hooks.git
-    rev: v1.0.20
+    rev: v1.0.25
     hooks:
       - id: cargo-format
       # - id: dprint-toml-fix
@@ -148,6 +148,7 @@ repos:
       # - id: cargo-update
       - id: cargo-machete
       - id: cargo-build-kms
+      - id: renew-kms-markdown
       - id: docker-compose-up
       - id: cargo-test
         args: [--, --skip, test_wrap_auth]
