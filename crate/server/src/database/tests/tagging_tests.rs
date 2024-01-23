@@ -151,13 +151,23 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
 
     // grant the Get access right to USER_GET
     const USER_GET: &str = "user_get";
-    db.grant_access(&uid, USER_GET, ObjectOperationType::Get, db_params)
-        .await?;
+    db.grant_access(
+        &uid,
+        USER_GET,
+        HashSet::from([ObjectOperationType::Get]),
+        db_params,
+    )
+    .await?;
 
     // grant the Decrypt access right to USER_DECRYPT
     const USER_DECRYPT: &str = "user_decrypt";
-    db.grant_access(&uid, USER_DECRYPT, ObjectOperationType::Decrypt, db_params)
-        .await?;
+    db.grant_access(
+        &uid,
+        USER_DECRYPT,
+        HashSet::from([ObjectOperationType::Decrypt]),
+        db_params,
+    )
+    .await?;
 
     // find this object from tags as USER_GET using tag1
     let res = db

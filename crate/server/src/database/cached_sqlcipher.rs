@@ -372,12 +372,12 @@ impl Database for CachedSqlCipher {
         &self,
         uid: &str,
         userid: &str,
-        operation_type: ObjectOperationType,
+        operation_types: HashSet<ObjectOperationType>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = insert_access_(uid, userid, operation_type, &*pool).await;
+            let ret = insert_access_(uid, userid, operation_types, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
@@ -389,12 +389,12 @@ impl Database for CachedSqlCipher {
         &self,
         uid: &str,
         userid: &str,
-        operation_type: ObjectOperationType,
+        operation_types: HashSet<ObjectOperationType>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
-            let ret = remove_access_(uid, userid, operation_type, &*pool).await;
+            let ret = remove_access_(uid, userid, operation_types, &*pool).await;
             self.post_query(params.group_id)?;
             return ret
         }
