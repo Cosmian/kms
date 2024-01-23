@@ -75,7 +75,7 @@ pub struct TestsContext {
     pub user_cli_conf_path: String,
     pub owner_cli_conf: CliConf,
     pub server_handle: ServerHandle,
-    pub thread_handle: thread::JoinHandle<Result<(), CliError>>,
+    pub thread_handle: JoinHandle<Result<(), CliError>>,
 }
 
 impl TestsContext {
@@ -153,9 +153,12 @@ fn start_test_kms_server(
     server_params: ServerParams,
 ) -> Result<(ServerHandle, JoinHandle<Result<(), CliError>>), CliError> {
     let (tx, rx) = mpsc::channel::<ServerHandle>();
-    let tokio_handle = tokio::runtime::Handle::current();
+
     let thread_handle = thread::spawn(move || {
-        tokio_handle
+        // allow others `spawn` to happen within the KMS Server future
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?
             .block_on(start_kms_server(server_params, Some(tx)))
             .map_err(|e| CliError::ServerError(e.to_string()))
     });
