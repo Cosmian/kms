@@ -1,4 +1,5 @@
 use cloudproof::reexport::crypto_core::reexport::zeroize::Zeroizing;
+use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
 use openssl::{
     pkey::{PKey, Private, Public},
     rand::rand_bytes,
@@ -6,9 +7,7 @@ use openssl::{
 
 use crate::{
     crypto::{
-        rsa::ckm_rsa_pkcs_oaep::{
-            ckm_rsa_pkcs_oaep_key_unwrap, ckm_rsa_pkcs_oaep_key_wrap, RsaOaepHash,
-        },
+        rsa::ckm_rsa_pkcs_oaep::{ckm_rsa_pkcs_oaep_key_unwrap, ckm_rsa_pkcs_oaep_key_wrap},
         symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap, AES_KWP_KEY_SIZE},
     },
     error::KmipUtilsError,
@@ -37,7 +36,7 @@ pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
 /// TODO - support OAEP for different hashes.
 pub fn ckm_rsa_aes_key_wrap(
     pubkey: &PKey<Public>,
-    hash_fn: RsaOaepHash,
+    hash_fn: HashingAlgorithm,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     // Generate temporary AES key.
@@ -72,7 +71,7 @@ pub fn ckm_rsa_aes_key_wrap(
 /// TODO - support OAEP for different hashes.
 pub fn ckm_rsa_aes_key_unwrap(
     p_key: &PKey<Private>,
-    hash_fn: RsaOaepHash,
+    hash_fn: HashingAlgorithm,
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let rsa_privkey = p_key.rsa()?;
@@ -119,9 +118,9 @@ fn test_rsa_kem_wrap_unwrap() -> Result<(), KmipUtilsError> {
 
     let privkey_to_wrap = Zeroizing::from(openssl::rsa::Rsa::generate(2048)?.private_key_to_pem()?);
 
-    let wrapped_key = ckm_rsa_aes_key_wrap(&pub_key, RsaOaepHash::Sha256, &priv_key_to_wrap)?;
+    let wrapped_key = ckm_rsa_aes_key_wrap(&pub_key, HashingAlgorithm::SHA256, &priv_key_to_wrap)?;
 
-    let unwrapped_key = ckm_rsa_aes_key_unwrap(&priv_key, RsaOaepHash::Sha256, &wrapped_key)?;
+    let unwrapped_key = ckm_rsa_aes_key_unwrap(&priv_key, HashingAlgorithm::SHA256, &wrapped_key)?;
 
     assert_eq!(unwrapped_key, priv_key_to_wrap);
 

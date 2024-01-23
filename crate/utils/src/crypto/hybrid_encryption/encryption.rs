@@ -8,7 +8,7 @@ use cloudproof::reexport::crypto_core::{
 };
 use cosmian_kmip::kmip::{
     kmip_operations::{Encrypt, EncryptResponse},
-    kmip_types::UniqueIdentifier,
+    kmip_types::{HashingAlgorithm, UniqueIdentifier},
 };
 use openssl::{
     pkey::{Id, PKey, Public},
@@ -24,7 +24,7 @@ use crate::{
     crypto::{
         elliptic_curves::ecies::ecies_encrypt,
         hybrid_encryption::rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt,
-        rsa::{ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap, ckm_rsa_pkcs_oaep::RsaOaepHash},
+        rsa::ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
     },
     error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail, EncryptionSystem,
@@ -89,7 +89,7 @@ impl EncryptionSystem for HybridEncryptionSystem {
             Id::EC => ecies_encrypt(&self.public_key, &plaintext)?,
             Id::RSA => {
                 if self.key_wrapping {
-                    ckm_rsa_aes_key_wrap(&self.public_key, RsaOaepHash::Sha256, &plaintext)?
+                    ckm_rsa_aes_key_wrap(&self.public_key, HashingAlgorithm::SHA256, &plaintext)?
                 } else {
                     rsa_oaep_aes_gcm_encrypt(
                         &self.public_key,

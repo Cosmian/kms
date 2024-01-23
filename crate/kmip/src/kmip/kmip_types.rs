@@ -10,6 +10,7 @@ use std::{
     vec::Vec,
 };
 
+use openssl::md::{Md, MdRef};
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
@@ -18,7 +19,7 @@ use serde::{
 use strum::{Display, EnumIter, EnumString};
 
 use super::kmip_objects::ObjectType;
-use crate::error::KmipError;
+use crate::{error::KmipError, kmip_bail};
 
 /// 4.7
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).
@@ -1608,6 +1609,28 @@ pub enum HashingAlgorithm {
     SHA3256 = 0x0000_000F,
     SHA3384 = 0x0000_0010,
     SHA3512 = 0x0000_0011,
+}
+
+impl TryFrom<HashingAlgorithm> for &'static MdRef {
+    type Error = KmipError;
+
+    fn try_from(hashing_algorithm: HashingAlgorithm) -> Result<Self, Self::Error> {
+        match hashing_algorithm {
+            HashingAlgorithm::SHA1 => Ok(Md::sha1()),
+            HashingAlgorithm::SHA224 => Ok(Md::sha224()),
+            HashingAlgorithm::SHA256 => Ok(Md::sha256()),
+            HashingAlgorithm::SHA384 => Ok(Md::sha384()),
+            HashingAlgorithm::SHA512 => Ok(Md::sha512()),
+            HashingAlgorithm::SHA3224 => Ok(Md::sha3_224()),
+            HashingAlgorithm::SHA3256 => Ok(Md::sha3_256()),
+            HashingAlgorithm::SHA3384 => Ok(Md::sha3_384()),
+            HashingAlgorithm::SHA3512 => Ok(Md::sha3_512()),
+            h => kmip_bail!(
+                "Unsupported hash function: {:?} for the openssl provider",
+                h
+            ),
+        }
+    }
 }
 
 #[allow(non_camel_case_types)]

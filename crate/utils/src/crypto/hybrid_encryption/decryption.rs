@@ -4,7 +4,7 @@ use cloudproof::reexport::crypto_core::{
 };
 use cosmian_kmip::kmip::{
     kmip_operations::{Decrypt, DecryptResponse, DecryptedData},
-    kmip_types::UniqueIdentifier,
+    kmip_types::{HashingAlgorithm, UniqueIdentifier},
 };
 use openssl::pkey::{Id, PKey, Private};
 use tracing::{debug, trace};
@@ -19,7 +19,7 @@ use crate::{
     crypto::{
         elliptic_curves::ecies::ecies_decrypt,
         hybrid_encryption::rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt,
-        rsa::{ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap, ckm_rsa_pkcs_oaep::RsaOaepHash},
+        rsa::ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
     },
     error::KmipUtilsError,
     kmip_utils_bail, DecryptionSystem,
@@ -65,7 +65,7 @@ impl DecryptionSystem for HybridDecryptionSystem {
                 if self.key_unwrapping {
                     Zeroizing::from(ckm_rsa_aes_key_unwrap(
                         &self.private_key,
-                        RsaOaepHash::Sha256,
+                        HashingAlgorithm::SHA256,
                         ciphertext,
                     )?)
                 } else {

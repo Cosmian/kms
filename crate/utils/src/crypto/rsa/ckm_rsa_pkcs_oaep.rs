@@ -15,7 +15,7 @@ use std::ops::Deref;
 use cloudproof::reexport::crypto_core::reexport::zeroize::Zeroizing;
 use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
 use openssl::{
-    md::{Md, MdRef},
+    md::MdRef,
     pkey::{PKey, Private, Public},
     pkey_ctx::PkeyCtx,
 };
@@ -23,52 +23,6 @@ use openssl::{
 use crate::error::KmipUtilsError;
 #[cfg(feature = "fips")]
 use crate::kmip_utils_bail;
-
-/// Approved NIST hash functions for RSA OAEP as specified in NIST 800-56B rev. 2
-pub enum RsaOaepHash {
-    Sha1,
-    Sha224,
-    Sha256,
-    Sha384,
-    Sha512,
-    Sha3_224,
-    Sha3_256,
-    Sha3_384,
-    Sha3_512,
-}
-
-impl RsaOaepHash {
-    fn to_md_ref(&self) -> &MdRef {
-        match self {
-            RsaOaepHash::Sha1 => Md::sha1(),
-            RsaOaepHash::Sha224 => Md::sha224(),
-            RsaOaepHash::Sha256 => Md::sha256(),
-            RsaOaepHash::Sha384 => Md::sha384(),
-            RsaOaepHash::Sha512 => Md::sha512(),
-            RsaOaepHash::Sha3_224 => Md::sha3_224(),
-            RsaOaepHash::Sha3_256 => Md::sha3_256(),
-            RsaOaepHash::Sha3_384 => Md::sha3_384(),
-            RsaOaepHash::Sha3_512 => Md::sha3_512(),
-        }
-    }
-}
-
-impl From<HashingAlgorithm> for RsaOaepHash {
-    fn from(hash: HashingAlgorithm) -> Self {
-        match hash {
-            HashingAlgorithm::SHA1 => RsaOaepHash::Sha1,
-            HashingAlgorithm::SHA224 => RsaOaepHash::Sha224,
-            HashingAlgorithm::SHA256 => RsaOaepHash::Sha256,
-            HashingAlgorithm::SHA384 => RsaOaepHash::Sha384,
-            HashingAlgorithm::SHA512 => RsaOaepHash::Sha512,
-            HashingAlgorithm::SHA3224 => RsaOaepHash::Sha3_224,
-            HashingAlgorithm::SHA3256 => RsaOaepHash::Sha3_256,
-            HashingAlgorithm::SHA3384 => RsaOaepHash::Sha3_384,
-            HashingAlgorithm::SHA3512 => RsaOaepHash::Sha3_512,
-            h => panic!("Unsupported hash function: {:?} for RSA OAEP", h),
-        }
-    }
-}
 
 #[cfg(feature = "fips")]
 pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 2048;
@@ -88,7 +42,7 @@ pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 2048;
 /// - `key_to_wrap`: the data encryption key to wrap
 pub fn ckm_rsa_pkcs_oaep_key_wrap(
     pub_key: &PKey<Public>,
-    hash_fn: RsaOaepHash,
+    hash_fn: HashingAlgorithm,
     key_to_wrap: &Zeroizing<Vec<u8>>,
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let (mut ctx, mut ciphertext) = init_ckm_rsa_pkcs_oaep_encryption_context(pub_key, hash_fn)?;
@@ -111,7 +65,7 @@ pub fn ckm_rsa_pkcs_oaep_key_wrap(
 /// - `plaintext`: the plaintext to encrypt
 pub fn ckm_rsa_pkcs_oaep_encrypt(
     pub_key: &PKey<Public>,
-    hash_fn: RsaOaepHash,
+    hash_fn: HashingAlgorithm,
     plaintext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let (mut ctx, mut ciphertext) = init_ckm_rsa_pkcs_oaep_encryption_context(pub_key, hash_fn)?;
@@ -121,7 +75,7 @@ pub fn ckm_rsa_pkcs_oaep_encrypt(
 
 fn init_ckm_rsa_pkcs_oaep_encryption_context(
     pub_key: &PKey<Public>,
-    hash_fn: RsaOaepHash,
+    hash_fn: HashingAlgorithm,
 ) -> Result<(PkeyCtx<Public>, Vec<u8>), KmipUtilsError> {
     let rsa_pub_key = pub_key.rsa()?;
     #[cfg(feature = "fips")]
@@ -141,7 +95,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
     // Perform OAEP encryption.
     let mut ctx = PkeyCtx::new(pub_key)?;
     ctx.encrypt_init()?;
-    ctx.set_rsa_oaep_md(hash_fn.to_md_ref())?;
+    ctx.set_rsa_oaep_md(hash_fn.try_into()?)?;
     Ok((ctx, ciphertext))
 }
 
@@ -159,7 +113,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
 /// - `wrapped_key`: the wrapped_key of the key to unwrap
 pub fn ckm_rsa_pkcs_oaep_key_unwrap(
     priv_key: &PKey<Private>,
-    hash_fn: RsaOaepHash,
+    hash_fn: HashingAlgorithm,
     wrapped_key: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let (mut ctx, mut plaintext) = init_ckm_rsa_pkcs_oaep_decryption_context(priv_key, hash_fn)?;
@@ -181,7 +135,7 @@ pub fn ckm_rsa_pkcs_oaep_key_unwrap(
 /// - `ciphertext`: the ciphertext to decrypt
 pub fn ckm_rsa_pkcs_oaep_key_decrypt(
     priv_key: &PKey<Private>,
-    hash_fn: RsaOaepHash,
+    hash_fn: HashingAlgorithm,
     ciphertext: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let (mut ctx, mut plaintext) = init_ckm_rsa_pkcs_oaep_decryption_context(priv_key, hash_fn)?;
@@ -191,7 +145,7 @@ pub fn ckm_rsa_pkcs_oaep_key_decrypt(
 
 fn init_ckm_rsa_pkcs_oaep_decryption_context(
     priv_key: &PKey<Private>,
-    hash_fn: RsaOaepHash,
+    hash_fn: HashingAlgorithm,
 ) -> Result<(PkeyCtx<Private>, Vec<u8>), KmipUtilsError> {
     let rsa_priv_key = priv_key.rsa()?;
     #[cfg(feature = "fips")]
@@ -205,7 +159,7 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
     }
 
     // The openssl hash function
-    let hash_fn = hash_fn.to_md_ref();
+    let hash_fn: &MdRef = hash_fn.try_into()?;
 
     // The ciphertext has the same length as the modulus.
     let plaintext_bytes_len = rsa_priv_key.size() as usize - 2 - 2 * hash_fn.size();
@@ -228,9 +182,10 @@ fn test_ckm_rsa_pkcs_oaep() -> Result<(), KmipUtilsError> {
     let pub_key = PKey::public_key_from_pem(&priv_key.public_key_to_pem()?)?;
 
     let dek_to_wrap = Zeroizing::from(vec![0x01; 2048 / 8 - 2 - 2 * 256 / 8]);
-    let wrapped_key = ckm_rsa_pkcs_oaep_key_wrap(&pub_key, RsaOaepHash::Sha256, &dek_to_wrap)?;
+    let wrapped_key = ckm_rsa_pkcs_oaep_key_wrap(&pub_key, HashingAlgorithm::SHA256, &dek_to_wrap)?;
     assert_eq!(wrapped_key.len(), 2048 / 8);
-    let unwrapped_key = ckm_rsa_pkcs_oaep_key_unwrap(&priv_key, RsaOaepHash::Sha256, &wrapped_key)?;
+    let unwrapped_key =
+        ckm_rsa_pkcs_oaep_key_unwrap(&priv_key, HashingAlgorithm::SHA256, &wrapped_key)?;
     assert_eq!(unwrapped_key.len(), 2048 / 8 - 2 - 2 * 256 / 8);
     assert_eq!(unwrapped_key, dek_to_wrap);
 
