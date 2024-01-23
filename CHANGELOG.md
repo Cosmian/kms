@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [X.Y.Z] - 2024-xx-xx
+
+### Features
+
+- Generalize the refresh of JWKS in the middleware [#150](https://github.com/Cosmian/kms/pull/150).
+
 ## [4.11.3] - 2024-01-26
 
 ### Features
