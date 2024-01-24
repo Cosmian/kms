@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 #[cfg(not(feature = "fips"))]
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyWrappingSpecification, kmip_objects::Object,
@@ -18,7 +16,6 @@ use openssl::{
     nid::Nid,
 };
 use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
-use zeroize::Zeroizing;
 
 use crate::crypto::{
     symmetric::create_symmetric_key_kmip_object,
@@ -149,24 +146,29 @@ fn test_encrypt_decrypt_rfc_5649() {
     let wrap_key =
         create_symmetric_key_kmip_object(symmetric_key.as_slice(), CryptographicAlgorithm::AES);
 
-    let plaintext = Zeroizing::from(b"plaintext".to_vec());
-    let ciphertext = wrap(&wrap_key, &KeyWrappingData::default(), &plaintext).unwrap();
-    let decrypted_plaintext = unwrap(&wrap_key, &ciphertext).unwrap();
-    assert_eq!(plaintext.deref(), &decrypted_plaintext[..]);
+    let plaintext = b"plaintext";
+    let ciphertext = wrap(&wrap_key, &KeyWrappingData::default(), plaintext).unwrap();
+    let decrypted_plaintext = unwrap(&wrap_key, &KeyWrappingData::default(), &ciphertext).unwrap();
+    assert_eq!(plaintext, &decrypted_plaintext[..]);
 }
 #[test]
 #[cfg(not(feature = "fips"))]
 fn test_encrypt_decrypt_rfc_ecies_x25519() {
     let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid").unwrap();
-    let plaintext = Zeroizing::from(b"plaintext".to_vec());
+    let plaintext = b"plaintext";
     let ciphertext = wrap(
         wrap_key_pair.public_key(),
         &KeyWrappingData::default(),
-        &plaintext,
+        plaintext,
     )
     .unwrap();
-    let decrypted_plaintext = unwrap(wrap_key_pair.private_key(), &ciphertext).unwrap();
-    assert_eq!(plaintext.deref(), &decrypted_plaintext[..]);
+    let decrypted_plaintext = unwrap(
+        wrap_key_pair.private_key(),
+        &KeyWrappingData::default(),
+        &ciphertext,
+    )
+    .unwrap();
+    assert_eq!(plaintext, &decrypted_plaintext[..]);
 }
 
 #[test]
@@ -193,15 +195,20 @@ fn test_encrypt_decrypt_rsa() {
     )
     .unwrap();
 
-    let plaintext = Zeroizing::from(b"plaintext".to_vec());
-    let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), &plaintext).unwrap();
-    let decrypted_plaintext = unwrap(&wrap_key_pair_priv, &ciphertext).unwrap();
-    assert_eq!(plaintext.deref(), &decrypted_plaintext[..]);
+    let plaintext = b"plaintext";
+    let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext).unwrap();
+    let decrypted_plaintext = unwrap(
+        &wrap_key_pair_priv,
+        &KeyWrappingData::default(),
+        &ciphertext,
+    )
+    .unwrap();
+    assert_eq!(plaintext, &decrypted_plaintext[..]);
 }
 
 #[cfg(feature = "fips")]
 #[test]
-fn test_encrypt_decrypt_rsa_bad_size() {
+fn test_encrypt_decrypt_no_rsa_1024_in_fips() {
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 
@@ -217,8 +224,8 @@ fn test_encrypt_decrypt_rsa_bad_size() {
     )
     .unwrap();
 
-    let plaintext = Zeroizing::from(b"plaintext".to_vec());
-    let encryption_res = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), &plaintext);
+    let plaintext = b"plaintext";
+    let encryption_res = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext);
     assert!(encryption_res.is_err());
 }
 
@@ -242,10 +249,15 @@ fn test_encrypt_decrypt_ec_p192() {
     )
     .unwrap();
 
-    let plaintext = Zeroizing::from(b"plaintext".to_vec());
-    let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), &plaintext).unwrap();
-    let decrypted_plaintext = unwrap(&wrap_key_pair_priv, &ciphertext).unwrap();
-    assert_eq!(plaintext.deref(), &decrypted_plaintext[..]);
+    let plaintext = b"plaintext";
+    let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext).unwrap();
+    let decrypted_plaintext = unwrap(
+        &wrap_key_pair_priv,
+        &KeyWrappingData::default(),
+        &ciphertext,
+    )
+    .unwrap();
+    assert_eq!(plaintext, &decrypted_plaintext[..]);
 }
 
 #[test]
@@ -268,8 +280,13 @@ fn test_encrypt_decrypt_ec_p384() {
     )
     .unwrap();
 
-    let plaintext = Zeroizing::from(b"plaintext".to_vec());
-    let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), &plaintext).unwrap();
-    let decrypted_plaintext = unwrap(&wrap_key_pair_priv, &ciphertext).unwrap();
-    assert_eq!(plaintext.deref(), &decrypted_plaintext[..]);
+    let plaintext = b"plaintext";
+    let ciphertext = wrap(&wrap_key_pair_pub, &KeyWrappingData::default(), plaintext).unwrap();
+    let decrypted_plaintext = unwrap(
+        &wrap_key_pair_priv,
+        &KeyWrappingData::default(),
+        &ciphertext,
+    )
+    .unwrap();
+    assert_eq!(plaintext, &decrypted_plaintext[..]);
 }

@@ -1,7 +1,4 @@
-use std::ops::Deref;
-
 use openssl::symm::{decrypt_aead, encrypt_aead, Cipher};
-use zeroize::Zeroizing;
 
 use crate::error::KmipUtilsError;
 
@@ -25,7 +22,7 @@ impl AeadCipher {
     }
 
     /// Get the tag size in bytes.  
-    fn tag_size(&self) -> usize {
+    pub fn tag_size(&self) -> usize {
         match self {
             AeadCipher::Aes256Gcm => 16,
             AeadCipher::Aes128Gcm => 16,
@@ -35,7 +32,7 @@ impl AeadCipher {
     }
 
     /// Get the nonce size in bytes.
-    fn nonce_size(&self) -> usize {
+    pub fn nonce_size(&self) -> usize {
         match self {
             AeadCipher::Aes256Gcm => 12,
             AeadCipher::Aes128Gcm => 12,
@@ -45,7 +42,7 @@ impl AeadCipher {
     }
 
     /// Get the key size in bytes.
-    fn key_size(&self) -> usize {
+    pub fn key_size(&self) -> usize {
         match self {
             AeadCipher::Aes256Gcm => 32,
             AeadCipher::Aes128Gcm => 16,
@@ -79,7 +76,7 @@ pub fn random_key(aead_cipher: AeadCipher) -> Result<Vec<u8>, KmipUtilsError> {
 /// Return the ciphertext and the tag.
 pub fn aead_encrypt(
     aead_cipher: AeadCipher,
-    key: &Zeroizing<Vec<u8>>,
+    key: &[u8],
     nonce: &[u8],
     plaintext: &[u8],
     aad: &[u8],
@@ -89,7 +86,7 @@ pub fn aead_encrypt(
     // Encryption.
     let ciphertext = encrypt_aead(
         aead_cipher.to_cipher(),
-        key.deref(),
+        &key,
         Some(nonce),
         aad,
         plaintext,
@@ -102,14 +99,14 @@ pub fn aead_encrypt(
 /// Return the plaintext.
 pub fn aead_decrypt(
     aead_cipher: AeadCipher,
-    key: &Zeroizing<Vec<u8>>,
+    key: &[u8],
     nonce: &[u8],
     aad: &[u8],
     encrypted_data: &EncryptedData,
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let plaintext = decrypt_aead(
         aead_cipher.to_cipher(),
-        key.deref(),
+        key,
         Some(nonce),
         aad,
         encrypted_data.ciphertext.as_slice(),

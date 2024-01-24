@@ -102,27 +102,42 @@ pub fn ckm_rsa_aes_key_unwrap(
     let kek = ckm_rsa_pkcs_oaep_key_unwrap(p_key, hash_fn, encapsulation)?;
 
     // Unwrap key according to RFC 5649 as recommended.
-    let plaintext = rfc5649_unwrap(wk, &kek)?;
+    let plaintext = Zeroizing::from(rfc5649_unwrap(wk, &kek)?);
 
     Ok(plaintext)
 }
 
-#[test]
-fn test_rsa_kem_wrap_unwrap() -> Result<(), KmipUtilsError> {
-    #[cfg(feature = "fips")]
-    // Load FIPS provider module from OpenSSL.
-    openssl::provider::Provider::load(None, "fips").unwrap();
+#[cfg(test)]
+mod tests {
+    use std::ops::Deref;
 
-    let priv_key = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
-    let pub_key = PKey::public_key_from_pem(&priv_key.public_key_to_pem()?)?;
+    use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
+    use openssl::pkey::PKey;
 
-    let privkey_to_wrap = Zeroizing::from(openssl::rsa::Rsa::generate(2048)?.private_key_to_pem()?);
+    use crate::{
+        crypto::rsa::ckm_rsa_aes_key_wrap::{ckm_rsa_aes_key_unwrap, ckm_rsa_aes_key_wrap},
+        error::KmipUtilsError,
+    };
 
-    let wrapped_key = ckm_rsa_aes_key_wrap(&pub_key, HashingAlgorithm::SHA256, &priv_key_to_wrap)?;
+    #[test]
+    fn test_rsa_kem_wrap_unwrap() -> Result<(), KmipUtilsError> {
+        #[cfg(feature = "fips")]
+        // Load FIPS provider module from OpenSSL.
+        openssl::provider::Provider::load(None, "fips").unwrap();
 
-    let unwrapped_key = ckm_rsa_aes_key_unwrap(&priv_key, HashingAlgorithm::SHA256, &wrapped_key)?;
+        let priv_key = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
+        let pub_key = PKey::public_key_from_pem(&priv_key.public_key_to_pem()?)?;
 
-    assert_eq!(unwrapped_key, priv_key_to_wrap);
+        let privkey_to_wrap = Zeroizing::from(openssl::rsa::Rsa::generate(2048)?.private_key_to_pem()?);
 
-    Ok(())
+        let wrapped_key =
+            ckm_rsa_aes_key_wrap(&pub_key, HashingAlgorithm::SHA256, &priv_key_to_wrap)?;
+
+        let unwrapped_key =
+            ckm_rsa_aes_key_unwrap(&priv_key, HashingAlgorithm::SHA256, &wrapped_key)?;
+
+        assert_eq!(unwrapped_key.deref(), &priv_key_to_wrap);
+
+        Ok(())
+    }
 }

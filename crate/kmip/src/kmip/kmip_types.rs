@@ -10,7 +10,10 @@ use std::{
     vec::Vec,
 };
 
-use openssl::md::{Md, MdRef};
+use openssl::{
+    hash::MessageDigest,
+    md::{Md, MdRef},
+};
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
@@ -133,6 +136,8 @@ pub enum CryptographicAlgorithm {
     AES = 0x0000_0003,
     /// This is CKM_RSA_PKCS_OAEP from PKCS#11
     /// see https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
+    /// To use  CKM_RSA_AES_KEY_WRAP from PKCS#11, use and RSA key with AES as the algorithm
+    /// See https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908
     RSA = 0x0000_0004,
     DSA = 0x0000_0005,
     ECDSA = 0x0000_0006,
@@ -191,9 +196,6 @@ pub enum CryptographicAlgorithm {
     // Available slot 0x8880_0003,
     CoverCrypt = 0x8880_0004,
     CoverCryptBulk = 0x8880_0005,
-    /// This is CKM_RSA_AES_KEY_WRAP from PKCS#11
-    /// See https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908
-    RSAAESKeyWrap = 0x8880_0006,
 }
 
 /// The Cryptographic Domain Parameters attribute (4.14) is a structure that
@@ -1627,6 +1629,28 @@ impl TryFrom<HashingAlgorithm> for &'static MdRef {
             HashingAlgorithm::SHA3512 => Ok(Md::sha3_512()),
             h => kmip_bail!(
                 "Unsupported hash function: {:?} for the openssl provider",
+                h
+            ),
+        }
+    }
+}
+
+impl TryFrom<HashingAlgorithm> for MessageDigest {
+    type Error = KmipError;
+
+    fn try_from(hashing_algorithm: HashingAlgorithm) -> Result<Self, Self::Error> {
+        match hashing_algorithm {
+            HashingAlgorithm::SHA1 => Ok(MessageDigest::sha1()),
+            HashingAlgorithm::SHA224 => Ok(MessageDigest::sha224()),
+            HashingAlgorithm::SHA256 => Ok(MessageDigest::sha256()),
+            HashingAlgorithm::SHA384 => Ok(MessageDigest::sha384()),
+            HashingAlgorithm::SHA512 => Ok(MessageDigest::sha512()),
+            HashingAlgorithm::SHA3224 => Ok(MessageDigest::sha3_224()),
+            HashingAlgorithm::SHA3256 => Ok(MessageDigest::sha3_256()),
+            HashingAlgorithm::SHA3384 => Ok(MessageDigest::sha3_384()),
+            HashingAlgorithm::SHA3512 => Ok(MessageDigest::sha3_512()),
+            h => kmip_bail!(
+                "Unsupported hash function: {:?} for the openssl Message Digest provider",
                 h
             ),
         }

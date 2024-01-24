@@ -10,8 +10,6 @@
 //!  - NIST FIPS 202: SHA3-224, SHA3-256, SHA3-384, SHA3-512 (https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf)
 //!
 //! The scheme can be used for both encryption and key wrapping
-use std::ops::Deref;
-
 use cloudproof::reexport::crypto_core::reexport::zeroize::Zeroizing;
 use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
 use openssl::{
@@ -43,10 +41,10 @@ pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 2048;
 pub fn ckm_rsa_pkcs_oaep_key_wrap(
     pub_key: &PKey<Public>,
     hash_fn: HashingAlgorithm,
-    key_to_wrap: &Zeroizing<Vec<u8>>,
+    key_to_wrap: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let (mut ctx, mut ciphertext) = init_ckm_rsa_pkcs_oaep_encryption_context(pub_key, hash_fn)?;
-    ctx.encrypt_to_vec(key_to_wrap.deref(), &mut ciphertext)?;
+    ctx.encrypt_to_vec(key_to_wrap, &mut ciphertext)?;
     Ok(ciphertext)
 }
 

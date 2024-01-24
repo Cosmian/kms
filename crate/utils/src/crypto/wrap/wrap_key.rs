@@ -1,35 +1,34 @@
-use std::ops::Deref;
-
 use cosmian_kmip::{
     kmip::{
         kmip_data_structures::{
             KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
         },
         kmip_objects::Object,
-        kmip_operations::Encrypt,
         kmip_types::{
-            CryptographicAlgorithm, EncodingOption, HashingAlgorithm, KeyFormatType, PaddingMethod,
-            WrappingMethod,
+            CryptographicAlgorithm, EncodingOption, KeyFormatType, PaddingMethod, WrappingMethod,
         },
     },
     openssl::kmip_public_key_to_openssl,
 };
-use openssl::pkey::{Id, PKey, Public};
+use openssl::{
+    pkey::{Id, PKey, Public},
+    x509::X509,
+};
 use tracing::debug;
 use zeroize::Zeroizing;
 
 use crate::{
     crypto::{
         elliptic_curves::ecies::ecies_encrypt,
-        hybrid_encryption::HybridEncryptionSystem,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_wrap,
         },
         symmetric::rfc5649::rfc5649_wrap,
+        wrap::common::rsa_parameters,
     },
     error::KmipUtilsError,
-    kmip_utils_bail, EncryptionSystem,
+    kmip_utils_bail,
 };
 
 /// Wrap a key block with a wrapping key
@@ -106,7 +105,7 @@ pub fn wrap_key_block(
 pub(crate) fn wrap(
     wrapping_key: &Object,
     key_wrapping_data: &KeyWrappingData,
-    key_to_wrap: &Zeroizing<Vec<u8>>,
+    key_to_wrap: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     debug!(
         "encrypt_bytes: with object: {:?}",
@@ -118,25 +117,14 @@ pub(crate) fn wrap(
         } => {
             // TODO(ECSE): cert should be verified before anything
             //verify_certificate(certificate_value, kms, owner, params).await?;
-            debug!("encrypt_bytes: Encryption with certificate: certificate OK");
-            let encrypt_system = HybridEncryptionSystem::instantiate_with_certificate(
-                "id",
-                certificate_value,
-                true,
-            )?;
-            let request = Encrypt {
-                data: Some(key_to_wrap.to_vec()),
-                ..Encrypt::default()
-            };
-            let encrypt_response = encrypt_system.encrypt(&request)?;
-            let ciphertext = encrypt_response.data.ok_or(KmipUtilsError::Default(
-                "Encrypt response does not contain ciphertext".to_string(),
-            ))?;
-            debug!(
-                "encrypt_bytes: succeeded: ciphertext length: {}",
-                ciphertext.len()
-            );
-            Ok(ciphertext)
+            let cert = X509::from_der(certificate_value)
+                .map_err(|e| KmipUtilsError::ConversionError(format!("invalid X509 DER: {e:?}")))?;
+            let public_key = cert.public_key().map_err(|e| {
+                KmipUtilsError::ConversionError(format!(
+                    "invalid certificate public key: error: {e:?}"
+                ))
+            })?;
+            wrap_with_public_key(public_key, key_wrapping_data, key_to_wrap)
         }
         Object::PGPKey { key_block, .. }
         | Object::SecretData { key_block, .. }
@@ -185,53 +173,33 @@ pub(crate) fn wrap(
 }
 
 fn wrap_with_public_key(
-    pub_key: PKey<Public>,
+    public_key: PKey<Public>,
     key_wrapping_data: &KeyWrappingData,
-    key_to_wrap: &Zeroizing<Vec<u8>>,
+    key_to_wrap: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
-    let ciphertext = match pub_key.id() {
-        Id::RSA => wrap_with_rsa(pub_key, key_wrapping_data, key_to_wrap)?,
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(&pub_key, key_to_wrap.deref())?,
+    match public_key.id() {
+        Id::RSA => wrap_with_rsa(public_key, key_wrapping_data, key_to_wrap),
+        #[cfg(not(feature = "fips"))]
+        Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(&public_key, key_to_wrap),
         other => {
             kmip_utils_bail!(
                 "Unable to wrap key: wrapping public key type not supported: {other:?}"
             )
         }
-    };
-
-    Ok(ciphertext)
+    }
 }
 
 fn wrap_with_rsa(
     pub_key: PKey<Public>,
     key_wrapping_data: &KeyWrappingData,
-    key_to_wrap: &Zeroizing<Vec<u8>>,
+    key_to_wrap: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
-    let (algorithm, padding, hashing_fn) = key_wrapping_data
-        .encryption_key_information
-        .as_ref()
-        .and_then(|eki| eki.cryptographic_parameters.as_ref())
-        .map(|cp| {
-            (
-                cp.cryptographic_algorithm
-                    .unwrap_or(CryptographicAlgorithm::RSAAESKeyWrap),
-                cp.padding_method.unwrap_or(PaddingMethod::OAEP),
-                cp.hashing_algorithm.unwrap_or(HashingAlgorithm::SHA256),
-            )
-        })
-        .unwrap_or_else(|| {
-            (
-                // default to CKM_RSA_AES_KEY_WRAP
-                CryptographicAlgorithm::RSAAESKeyWrap,
-                PaddingMethod::OAEP,
-                HashingAlgorithm::SHA256,
-            )
-        });
+    let (algorithm, padding, hashing_fn) = rsa_parameters(key_wrapping_data);
     if padding != PaddingMethod::OAEP {
         kmip_utils_bail!("Unable to wrap key with RSA: padding method not supported: {padding:?}")
     }
     match algorithm {
-        CryptographicAlgorithm::RSAAESKeyWrap => {
+        CryptographicAlgorithm::AES => {
             ckm_rsa_aes_key_wrap(&pub_key, hashing_fn.into(), key_to_wrap)
         }
         CryptographicAlgorithm::RSA => {

@@ -1,3 +1,4 @@
+mod common;
 #[cfg(test)]
 mod tests;
 mod unwrap_key;

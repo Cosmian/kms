@@ -2,21 +2,31 @@ use std::ops::Deref;
 
 use cosmian_kmip::{
     kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
         kmip_objects::Object,
-        kmip_operations::{Decrypt, DecryptedData},
-        kmip_types::{EncodingOption, KeyFormatType, WrappingMethod},
+        kmip_types::{
+            CryptographicAlgorithm, EncodingOption, KeyFormatType, PaddingMethod, WrappingMethod,
+        },
     },
     openssl::kmip_private_key_to_openssl,
 };
-use openssl::pkey::{PKey, Private};
+use openssl::pkey::{Id, PKey, Private};
 use tracing::debug;
 use zeroize::Zeroizing;
 
+#[cfg(not(feature = "fips"))]
+use crate::crypto::elliptic_curves::ecies::ecies_decrypt;
 use crate::{
-    crypto::{hybrid_encryption::HybridDecryptionSystem, symmetric::rfc5649::rfc5649_unwrap},
+    crypto::{
+        rsa::{
+            ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_unwrap,
+            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_unwrap,
+        },
+        symmetric::rfc5649::rfc5649_unwrap,
+        wrap::common::rsa_parameters,
+    },
     error::{result::CryptoResultHelper, KmipUtilsError},
-    kmip_utils_bail, DecryptionSystem,
+    kmip_utils_bail,
 };
 
 /// Unwrap a key block with a wrapping key
@@ -50,12 +60,12 @@ pub fn unwrap_key_block(
     let key_value: KeyValue = match encoding {
         EncodingOption::TTLVEncoding => {
             let ciphertext = object_key_block.key_bytes()?;
-            let plaintext = unwrap(unwrapping_key, ciphertext.as_slice())?;
+            let plaintext = unwrap(unwrapping_key, key_wrapping_data, ciphertext.as_slice())?;
             serde_json::from_slice::<KeyValue>(plaintext.deref())?
         }
         EncodingOption::NoEncoding => {
             let (ciphertext, attributes) = object_key_block.key_bytes_and_attributes()?;
-            let plain_text = unwrap(unwrapping_key, &ciphertext)?;
+            let plain_text = unwrap(unwrapping_key, key_wrapping_data, &ciphertext)?;
             let key_material: KeyMaterial = match object_key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => KeyMaterial::TransparentSymmetricKey {
                     key: plain_text.to_vec(),
@@ -79,6 +89,7 @@ pub fn unwrap_key_block(
 /// Decrypt bytes using the unwrapping key
 pub(crate) fn unwrap(
     unwrapping_key: &Object,
+    key_wrapping_data: &KeyWrappingData,
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     debug!(
@@ -106,11 +117,11 @@ pub(crate) fn unwrap(
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {
             // convert to an openssl private key
             let p_key = kmip_private_key_to_openssl(unwrapping_key)?;
-            unwrap_with_private_key(p_key, ciphertext)
+            unwrap_with_private_key(p_key, key_wrapping_data, ciphertext)
         }
         KeyFormatType::PKCS8 => {
             let p_key = PKey::private_key_from_der(&unwrapping_key_block.key_bytes()?)?;
-            unwrap_with_private_key(p_key, ciphertext)
+            unwrap_with_private_key(p_key, key_wrapping_data, ciphertext)
         }
         x => {
             kmip_utils_bail!(
@@ -122,22 +133,42 @@ pub(crate) fn unwrap(
 }
 
 fn unwrap_with_private_key(
-    p_key: PKey<Private>,
+    private_key: PKey<Private>,
+    key_wrapping_data: &KeyWrappingData,
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
-    let decrypt_system = HybridDecryptionSystem::new(None, p_key, true);
-    let request = Decrypt {
-        data: Some(ciphertext.to_vec()),
-        ..Decrypt::default()
-    };
-    let decrypt_response = decrypt_system.decrypt(&request)?;
-    let plaintext = decrypt_response.data.ok_or(KmipUtilsError::Default(
-        "Decrypt response does not contain plaintext".to_string(),
-    ))?;
-    debug!(
-        "decrypt_bytes: succeeded: plaintext length: {}",
-        plaintext.len()
-    );
-    let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
-    Ok(Zeroizing::from(decrypted_data.plaintext))
+    match private_key.id() {
+        Id::RSA => unwrap_with_rsa(private_key, key_wrapping_data, ciphertext),
+        #[cfg(not(feature = "fips"))]
+        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(&private_key, ciphertext),
+        other => {
+            kmip_utils_bail!(
+                "Unable to wrap key: wrapping public key type not supported: {other:?}"
+            )
+        }
+    }
+}
+
+fn unwrap_with_rsa(
+    private_key: PKey<Private>,
+    key_wrapping_data: &KeyWrappingData,
+    wrapped_key: &[u8],
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
+    let (algorithm, padding, hashing_fn) = rsa_parameters(key_wrapping_data);
+    if padding != PaddingMethod::OAEP {
+        kmip_utils_bail!("Unable to wrap key with RSA: padding method not supported: {padding:?}")
+    }
+    match algorithm {
+        CryptographicAlgorithm::AES => {
+            ckm_rsa_aes_key_unwrap(&private_key, hashing_fn, wrapped_key)
+        }
+        CryptographicAlgorithm::RSA => {
+            ckm_rsa_pkcs_oaep_key_unwrap(&private_key, hashing_fn, wrapped_key)
+        }
+        x => {
+            kmip_utils_bail!(
+                "Unable to wrap key with RSA: algorithm not supported for wrapping: {x:?}"
+            )
+        }
+    }
 }
