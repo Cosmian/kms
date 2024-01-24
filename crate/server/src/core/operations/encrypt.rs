@@ -50,7 +50,7 @@ pub async fn encrypt(
 
     trace!("operations::encrypt: owm_s: {:?}", owm_s);
     // there can only be one key
-    let owm = owm_s
+    let mut owm = owm_s
         .pop()
         .ok_or_else(|| KmsError::KmipError(ErrorReason::Item_Not_Found, uid_or_tags.to_string()))?;
 
@@ -69,7 +69,7 @@ pub async fn encrypt(
     }
 
     // unwrap if wrapped
-    match &owm.object {
+    match &mut owm.object {
         Object::Certificate { .. } => {}
         _ => {
             if owm.object.key_wrapping_data().is_some() {
@@ -79,6 +79,13 @@ pub async fn encrypt(
         }
     }
     trace!("get_encryption_system: unwrap done (if required)");
+
+
+    match &owm.object {
+        Object::SymmetricKey { key_block } => match &key_block.key_format_type {
+            KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {}
+        }
+    }
 
     let encryption_system = match &owm.object {
         Object::SymmetricKey { key_block } => match &key_block.key_format_type {
