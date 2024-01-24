@@ -1,5 +1,5 @@
 ---
-name: KMS build for MacOS and Windows runner - no docker
+name: KMS cargo build - no docker
 
 on:
   workflow_call:
@@ -21,7 +21,7 @@ on:
         type: string
 
 env:
-  OPENSSL_DIR: /tmp/openssl_fips
+  OPENSSL_DIR: /usr/local/openssl
 
 jobs:
   kms-build:
@@ -45,6 +45,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
+            ${{ env.OPENSSL_DIR }}
           key: ${{ runner.os }}-cargo-${{ inputs.distribution }}-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-${{ inputs.distribution }}-${{ inputs.archive-name }}-kms-${{ hashFiles('**/Cargo.lock') }}
 
@@ -57,6 +58,8 @@ jobs:
       - name: Local OpenSSL FIPS Install
         if: steps.cargo_cache.outputs.cache-hit != 'true'
         run: |
+          sudo mkdir ${{ env.OPENSSL_DIR }}
+          sudo chown -R $USER ${{ env.OPENSSL_DIR }}
           bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Build
@@ -66,6 +69,7 @@ jobs:
           # Speeds up Ristretto 25519 multiplication x 2
           RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
+
           # Google variables
           TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}

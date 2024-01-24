@@ -9,7 +9,7 @@ on:
         type: string
 
 env:
-  OPENSSL_DIR: /tmp/openssl_fips
+  OPENSSL_DIR: /usr/local/openssl
 
 jobs:
   lint:
@@ -33,6 +33,7 @@ jobs:
 
       - name: Local OpenSSL FIPS Install
         run: |
+          sudo chown -R $USER:$USER /usr/local
           bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - uses: dtolnay/rust-toolchain@master

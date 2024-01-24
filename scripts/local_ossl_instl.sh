@@ -55,5 +55,8 @@ sed -i.bu 's/# fips = fips_sect/fips = fips_sect\nbase = base_sect\n\n[ base_sec
 # Remove backup file.
 rm -f "${OPENSSL_DIR}/ssl/openssl.cnf.bu"
 
+# Remove non-required folder
+rm -rf "${OPENSSL_DIR:?}/bin"
+rm -rf "${OPENSSL_DIR:?}/share"
 echo -e "\nOpenSSL successfully installed at ${OPENSSL_DIR}"
 echo -e "\nIf this program was not sourced, remember to export the absolute path of ${OPENSSL_DIR} as an environment variable."
