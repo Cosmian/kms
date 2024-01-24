@@ -63,11 +63,24 @@ jobs:
           bash ./scripts/local_ossl_instl.sh ${{ env.OPENSSL_DIR }}
 
       - name: Build
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        if: steps.cargo_cache.outputs.cache-hit != 'true' && !contains(runner.os, 'macos')
         run: ${{ inputs.commands }}
         env:
           # Speeds up Ristretto 25519 multiplication x 2
           RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
+          OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
+
+          # Google variables
+          TEST_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_ID }}
+          TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
+          TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
+
+      - name: Build on Mac
+        if: steps.cargo_cache.outputs.cache-hit != 'true' && contains(runner.os, 'macos')
+        run: ${{ inputs.commands }}
+        env:
+          # Speeds up using cpu optimizations
+          RUSTFLAGS: -C target-cpu=native
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
 
           # Google variables
