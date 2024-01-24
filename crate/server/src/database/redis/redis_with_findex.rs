@@ -485,12 +485,14 @@ impl Database for RedisWithFindex {
         &self,
         uid: &str,
         user: &str,
-        operation_type: ObjectOperationType,
+        operation_types: HashSet<ObjectOperationType>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        self.permissions_db
-            .add(&self.findex_key, uid, user, operation_type)
-            .await?;
+        for operation in &operation_types {
+            self.permissions_db
+                .add(&self.findex_key, uid, user, *operation)
+                .await?;
+        }
         Ok(())
     }
 
@@ -500,12 +502,14 @@ impl Database for RedisWithFindex {
         &self,
         uid: &str,
         user: &str,
-        operation_type: ObjectOperationType,
+        operation_types: HashSet<ObjectOperationType>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        self.permissions_db
-            .remove(&self.findex_key, uid, user, operation_type)
-            .await?;
+        for operation in &operation_types {
+            self.permissions_db
+                .remove(&self.findex_key, uid, user, *operation)
+                .await?;
+        }
         Ok(())
     }
 

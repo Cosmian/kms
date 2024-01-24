@@ -26,13 +26,15 @@ pub(crate) fn grant_access(
     cli_conf_path: &str,
     object_id: &str,
     user: &str,
-    operation: &str,
+    operations: &[&str],
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
-    cmd.arg(SUB_COMMAND)
-        .args(vec!["grant", user, object_id, operation]);
+    cmd.arg(SUB_COMMAND).args(vec!["grant", user, object_id]);
+    for operation in operations {
+        cmd.arg(operation);
+    }
 
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -48,13 +50,15 @@ pub(crate) fn revoke_access(
     cli_conf_path: &str,
     object_id: &str,
     user: &str,
-    operation: &str,
+    operations: &[&str],
 ) -> Result<(), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
-    cmd.arg(SUB_COMMAND)
-        .args(vec!["revoke", user, object_id, operation]);
+    cmd.arg(SUB_COMMAND).args(vec!["revoke", user, object_id]);
+    for operation in operations {
+        cmd.arg(operation);
+    }
 
     let output = recover_cmd_logs(&mut cmd);
     if output.status.success() {
@@ -164,13 +168,13 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &key_id,
         "user.client@acme.com",
-        "encrypt",
+        &["encrypt"],
     )?;
     grant_access(
         &ctx.owner_cli_conf_path,
         &key_id,
         "user.client@acme.com",
-        "decrypt",
+        &["decrypt"],
     )?;
 
     // switch to user
@@ -202,7 +206,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &key_id,
         "user.client@acme.com",
-        "get",
+        &["get"],
     )?;
 
     // switch to user
@@ -228,7 +232,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &key_id,
         "user.client@acme.com",
-        "revoke",
+        &["revoke"],
     )?;
 
     // switch to user
@@ -241,7 +245,7 @@ pub async fn test_ownership_and_grant() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &key_id,
         "user.client@acme.com",
-        "destroy",
+        &["destroy"],
     )?;
 
     // switch to user
@@ -262,7 +266,7 @@ pub async fn test_grant_error() -> Result<(), CliError> {
             &ctx.owner_cli_conf_path,
             &key_id,
             "user.client@acme.com",
-            "BAD OP",
+            &["BAD_OP"],
         )
         .is_err(),
     );
@@ -273,7 +277,7 @@ pub async fn test_grant_error() -> Result<(), CliError> {
             &ctx.owner_cli_conf_path,
             "BAD ID",
             "user.client@acme.com",
-            "get"
+            &["get"]
         )
         .is_err()
     );
@@ -284,7 +288,7 @@ pub async fn test_grant_error() -> Result<(), CliError> {
             &ctx.owner_cli_conf_path,
             &key_id,
             "owner.client@acme.com",
-            "get"
+            &["get"]
         )
         .is_err()
     );
@@ -319,7 +323,7 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &key_id,
         "user.client@acme.com",
-        "get",
+        &["get"],
     )?;
 
     // switch to user
@@ -341,7 +345,7 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &key_id,
         "user.client@acme.com",
-        "get",
+        &["get"],
     )?;
 
     // the user should not be able to export anymore
@@ -366,7 +370,7 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
             &ctx.owner_cli_conf_path,
             &key_id,
             "user.client@acme.com",
-            "BAD"
+            &["BAD"]
         )
         .is_err()
     );
@@ -375,13 +379,13 @@ pub async fn test_revoke_access() -> Result<(), CliError> {
             &ctx.owner_cli_conf_path,
             "BAD KEY",
             "user.client@acme.com",
-            "get"
+            &["get"]
         )
         .is_err()
     );
 
     // this will not error
-    revoke_access(&ctx.owner_cli_conf_path, &key_id, "BAD USER", "get")?;
+    revoke_access(&ctx.owner_cli_conf_path, &key_id, "BAD USER", &["get"])?;
 
     Ok(())
 }
@@ -396,7 +400,7 @@ pub async fn test_list_access_rights() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &key_id,
         "user.client@acme.com",
-        "get",
+        &["get"],
     )?;
 
     // the owner can list access rights granted
@@ -427,7 +431,7 @@ pub async fn test_list_owned_objects() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &key_id,
         "user.client@acme.com",
-        "get",
+        &["get"],
     )?;
 
     // the owner should have the object in the list
@@ -467,7 +471,7 @@ pub async fn test_access_right_obtained() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &key_id,
         "user.client@acme.com",
-        "get",
+        &["get"],
     )?;
 
     // the user should have the "get" access granted
@@ -531,8 +535,8 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
 
     // switch back to owner
     // grant encrypt and decrypt access to user
-    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", "encrypt")?;
-    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", "decrypt")?;
+    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", &["encrypt"])?;
+    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", &["decrypt"])?;
 
     // switch to user
     // the user should still not be able to export
@@ -559,7 +563,7 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
 
     // switch back to owner
     // grant encrypt and decrypt access to user
-    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", "get")?;
+    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", &["get"])?;
 
     // switch to user
     // the user should now be able to export
@@ -580,7 +584,7 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
 
     // switch back to owner
     // grant revoke access to user
-    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", "revoke")?;
+    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", &["revoke"])?;
 
     // switch to user
     // the user should now be able to revoke the key
@@ -588,7 +592,7 @@ pub async fn test_ownership_and_grant_wildcard_user() -> Result<(), CliError> {
 
     // switch back to owner
     // grant destroy access to user
-    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", "destroy")?;
+    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", &["destroy"])?;
 
     // switch to user
     // destroy the key
@@ -608,14 +612,14 @@ pub async fn test_access_right_obtained_using_wildcard() -> Result<(), CliError>
     assert!(!list.contains(&key_id));
 
     // grant get access to the wildcard user
-    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", "get")?;
+    grant_access(&ctx.owner_cli_conf_path, &key_id, "*", &["get"])?;
 
     // grant encrypt access to user
     grant_access(
         &ctx.owner_cli_conf_path,
         &key_id,
         "user.client@acme.com",
-        "encrypt",
+        &["encrypt"],
     )?;
 
     // the user should have the "get" access granted
@@ -632,6 +636,47 @@ pub async fn test_access_right_obtained_using_wildcard() -> Result<(), CliError>
     // the owner should have the object in the list
     let owner_list = list_accesses_rights_obtained(&ctx.owner_cli_conf_path)?;
     assert!(!owner_list.contains(&key_id));
+
+    Ok(())
+}
+
+#[tokio::test]
+pub async fn test_grant_multiple_operations() -> Result<(), CliError> {
+    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let key_id = gen_key(&ctx.owner_cli_conf_path)?;
+
+    // grant multiple access to user
+    grant_access(
+        &ctx.owner_cli_conf_path,
+        &key_id,
+        "user.client@acme.com",
+        &["get", "revoke", "create", "create"], // double `create` will be dedupe
+    )?;
+
+    // the owner can list access rights granted
+    let owner_list = list_access(&ctx.owner_cli_conf_path, &key_id)?;
+    assert!(owner_list.contains("user.client@acme.com: {create, get, revoke}"));
+
+    // revoke multiple access to user
+    revoke_access(
+        &ctx.owner_cli_conf_path,
+        &key_id,
+        "user.client@acme.com",
+        &["get", "revoke", "get"], // double `get` will be dedupe
+    )?;
+
+    let owner_list = list_access(&ctx.owner_cli_conf_path, &key_id)?;
+    assert!(owner_list.contains("user.client@acme.com: {create}"));
+
+    // revoke same, nothing changed
+    revoke_access(
+        &ctx.owner_cli_conf_path,
+        &key_id,
+        "user.client@acme.com",
+        &["get", "revoke", "get"], // double `get` will be dedupe
+    )?;
+    let owner_list = list_access(&ctx.owner_cli_conf_path, &key_id)?;
+    assert!(owner_list.contains("user.client@acme.com: {create}"));
 
     Ok(())
 }

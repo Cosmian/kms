@@ -34,10 +34,7 @@ fn get_home_folder() -> Option<PathBuf> {
     // Check for the existence of the HOMEDRIVE and HOMEPATH environment variables on Windows
     else if let (Some(hdrive), Some(hpath)) = (env::var_os("HOMEDRIVE"), env::var_os("HOMEPATH"))
     {
-        let mut path = PathBuf::new();
-        path.push(hdrive);
-        path.push(hpath);
-        return Some(path)
+        return Some(PathBuf::from(hdrive).join(hpath))
     }
     // If none of the above environment variables exist, the home folder cannot be determined
     None

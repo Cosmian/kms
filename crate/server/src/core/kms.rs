@@ -1,4 +1,5 @@
 use std::{
+    collections::{BTreeSet, HashSet},
     fs,
     sync::{Arc, Mutex},
 };
@@ -548,7 +549,12 @@ impl KMS {
         }
 
         self.db
-            .grant_access(uid, &access.user_id, access.operation_type, params)
+            .grant_access(
+                uid,
+                &access.user_id,
+                HashSet::from_iter(access.operation_types.clone()),
+                params,
+            )
             .await?;
         Ok(())
     }
@@ -585,7 +591,12 @@ impl KMS {
         }
 
         self.db
-            .remove_access(uid, &access.user_id, access.operation_type, params)
+            .remove_access(
+                uid,
+                &access.user_id,
+                HashSet::from_iter(access.operation_types.clone()),
+                params,
+            )
             .await?;
         Ok(())
     }
@@ -617,7 +628,7 @@ impl KMS {
             .into_iter()
             .map(|(user_id, operations)| UserAccessResponse {
                 user_id,
-                operations,
+                operations: operations.into_iter().collect::<BTreeSet<_>>(),
             })
             .collect();
 
