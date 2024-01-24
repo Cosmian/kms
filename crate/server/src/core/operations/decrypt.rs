@@ -73,6 +73,71 @@ pub async fn decrypt(
         )))
     }
 
+    // unwrap if wrapped
+    if owm.object.key_wrapping_data().is_some() {
+        let key_block = owm.object.key_block_mut()?;
+        unwrap_key(key_block, self, &owm.owner, params).await?;
+    }
+
+    trace!(
+        "get_decryption_system: matching on object: {:?}",
+        owm.object
+    );
+    match &owm.object {
+        Object::PrivateKey { key_block } => {
+            match &key_block.key_format_type {
+                KeyFormatType::CoverCryptSecretKey => Ok(Box::new(
+                    CovercryptDecryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?,
+                )),
+                KeyFormatType::PKCS8
+                | KeyFormatType::PKCS1
+                | KeyFormatType::TransparentRSAPrivateKey
+                | KeyFormatType::TransparentECPrivateKey => {
+                    let p_key = kmip_private_key_to_openssl(&owm.object)?;
+                    // match  cryptographic_parameters.and_then(|cp| cp.cryptographic_algorithm) {
+                    //             CryptographicAlgorithm::RSA => {
+                    //                 Ok(Box::new(HybridDecryptionSystem::new(
+                    //                     Some(owm.id),
+                    //                     p_key,
+                    //                     false,
+                    //                 )) as Box<dyn DecryptionSystem>)
+                    //             }
+                    //             CryptographicAlgorithm::CoverCrypt => {
+                    //                 Ok(Box::new(HybridDecryptionSystem::new(
+                    //                     Some(owm.id),
+                    //                     p_key,
+                    //                     true,
+                    //                 )) as Box<dyn DecryptionSystem>)
+                    //             }
+                    //             other =>
+                    // }
+                    Ok(
+                        Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key, false))
+                            as Box<dyn DecryptionSystem>,
+                    )
+                }
+                other => kms_not_supported!("decryption with keys of format: {other}"),
+            }
+        }
+        Object::SymmetricKey { key_block } => match &key_block.key_format_type {
+            KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
+                match &key_block.cryptographic_algorithm {
+                    Some(CryptographicAlgorithm::AES) => {
+                        Ok(Box::new(AesGcmSystem::instantiate(&owm.id, &owm.object)?))
+                    }
+                    other => {
+                        kms_not_supported!(
+                            "symmetric decryption with algorithm: {}",
+                            other.map_or("[N/A]".to_string(), |alg| alg.to_string())
+                        )
+                    }
+                }
+            }
+            other => kms_not_supported!("decryption with keys of format: {other}"),
+        },
+        other => kms_not_supported!("decryption with keys of type: {}", other.object_type()),
+    }
+
     // decrypt
     kms.get_decryption_system(owm, request.cryptographic_parameters.as_ref(), params)
         .await?

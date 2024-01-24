@@ -16,7 +16,6 @@ use cosmian_kms_utils::crypto::elliptic_curves::{
     },
     operation::{self, to_ec_public_key, Q_LENGTH_BITS},
 };
-use cosmian_logger::log_utils::log_init;
 
 use crate::{
     config::ServerParams,
@@ -199,7 +198,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 
 #[tokio::test]
 async fn test_curve_25519_multiple() -> KResult<()> {
-    log_init("debug,hyper=info,reqwest=info");
+    // log_init("debug,hyper=info,reqwest=info");
 
     let clap_config = https_clap_config();
 
