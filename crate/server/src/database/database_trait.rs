@@ -137,7 +137,7 @@ pub trait Database {
         &self,
         uid: &str,
         user: &str,
-        operation_type: ObjectOperationType,
+        operation_types: HashSet<ObjectOperationType>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 
@@ -147,7 +147,7 @@ pub trait Database {
         &self,
         uid: &str,
         user: &str,
-        operation_type: ObjectOperationType,
+        operation_types: HashSet<ObjectOperationType>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
 

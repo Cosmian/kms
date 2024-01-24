@@ -74,8 +74,13 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
 
     // Add authorized `userid` to `read_access` table
 
-    db.grant_access(&uid, user_id_1, ObjectOperationType::Get, db_params)
-        .await?;
+    db.grant_access(
+        &uid,
+        user_id_1,
+        HashSet::from([ObjectOperationType::Get]),
+        db_params,
+    )
+    .await?;
 
     // Retrieve object with authorized `user_id_1` with `Create` operation type - ko
 
@@ -104,12 +109,22 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
     }
 
     // Add authorized `userid2` to `read_access` table
-    db.grant_access(&uid, user_id_2, ObjectOperationType::Get, db_params)
-        .await?;
+    db.grant_access(
+        &uid,
+        user_id_2,
+        HashSet::from([ObjectOperationType::Get]),
+        db_params,
+    )
+    .await?;
 
     // Try to add same access again - OK
-    db.grant_access(&uid, user_id_2, ObjectOperationType::Get, db_params)
-        .await?;
+    db.grant_access(
+        &uid,
+        user_id_2,
+        HashSet::from([ObjectOperationType::Get]),
+        db_params,
+    )
+    .await?;
 
     // We should still be able to find the object by its owner
     let objects = db.find(None, None, owner, true, db_params).await?;
@@ -176,8 +191,13 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
     }
 
     // Remove `userid2` authorization
-    db.remove_access(&uid, user_id_2, ObjectOperationType::Get, db_params)
-        .await?;
+    db.remove_access(
+        &uid,
+        user_id_2,
+        HashSet::from([ObjectOperationType::Get]),
+        db_params,
+    )
+    .await?;
 
     // Retrieve object with `userid2` with `Get` operation type - ko
     if !db
