@@ -10,6 +10,7 @@ use cosmian_kmip::kmip::kmip_objects::Object;
 use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, KeyFormatType};
 use cosmian_kmip::openssl::kmip_public_key_to_openssl;
 use cosmian_kms_utils::crypto::cover_crypt::encryption::CoverCryptEncryption;
+use cosmian_kms_utils::crypto::symmetric::aead::{aead_encrypt, AeadCipher};
 use cosmian_kms_utils::crypto::symmetric::AesGcmSystem;
 use cosmian_kms_utils::EncryptionSystem;
 
@@ -83,7 +84,33 @@ pub async fn encrypt(
 
     match &owm.object {
         Object::SymmetricKey { key_block } => match &key_block.key_format_type {
-            KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {}
+            KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
+                let key_bytes = key_block.key_bytes()?;
+                let aead = match  key_block.cryptographic_algorithm().unwrap_or(CryptographicAlgorithm::AES) {
+                    CryptographicAlgorithm::AES => {
+                        match  key_bytes.len() {
+                            16 => AeadCipher::Aes128Gcm,
+                            32 => AeadCipher::Aes256Gcm,
+                            _ => kms_bail!(KmsError::InvalidRequest(
+                                "AES key must be 16 or 32 bytes long".to_owned()
+                            )),
+                        }
+                    }
+                    CryptographicAlgorithm::ChaCha20 => {
+                        match  key_bytes.len() {
+                            32 => AeadCipher::Chacha20Poly1305,
+                            _ => kms_bail!(KmsError::InvalidRequest(
+                                "ChaCha20 key must be 32 bytes long".to_owned()
+                            )),
+                        }
+                    }
+                    other => kms_bail!(KmsError::InvalidRequest(format!(
+                        "unsupported cryptographic algorithm: {} for a symmetric key",
+                        other
+                    ))),
+                };
+            }
+            aead_encrypt(&key_bytes, &request.data, &request.iv, &request.additional_authenticated_data, aead)  
         }
     }
 
@@ -150,4 +177,8 @@ pub async fn encrypt(
         .await?
         .encrypt(&request)
         .map_err(Into::into)
+}
+
+fn get_cryptographic_algorithm() -> {
+    
 }
