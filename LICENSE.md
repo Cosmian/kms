@@ -4,11 +4,11 @@ License text copyright (c) 2020 MariaDB Corporation Ab, All Rights Reserved.
 Parameters
 
 Licensor:             Cosmian Tech SAS.
-Licensed Work:        Cosmian KMS version 4.11.3 or later. 
+Licensed Work:        Cosmian KMS version 4.11.3 or later.
                       The Licensed Work is (c) 2024 Cosmian Tech SAS.
 Additional Use Grant: You may use the Licensed Work in production, provided
-                      your total use of does not exceed a total of 4 vCPUS on virtual 
-                      machines or 2 physical cores on bare metal machines. This use 
+                      your total use of does not exceed a total of 4 vCPUS on virtual
+                      machines or 2 physical cores on bare metal machines. This use
                       does not include offering the Licensed Work to third parties.
 Change Date:          Four years from the date the Licensed Work is published.
 Change License:       MPL 2.0

@@ -2,7 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-
 ## [4.11.3] - 2024-01-26
 
 ### Features
@@ -12,7 +11,6 @@ All notable changes to this project will be documented in this file.
 ### Miscellaneous Tasks
 
 - Business Source License 1.1
-
 
 ## [4.11.2] - 2024-01-23
 
