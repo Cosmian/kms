@@ -1,7 +1,7 @@
 The `ckms` binary is a command line interface (CLI) used to manage cryptographic objects inside the KMS.
 
 !!! info "Download ckms"
-    Please download the latest version of the CLI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.11.2/)
+    Please download the latest version of the CLI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.11.3/)
 
 #### Configuration
 
@@ -45,4 +45,4 @@ Many usage examples are provided with descriptions of the various KMIP 2.1 [oper
 The [KMS GUI](https://github.com/Cosmian/kms_gui) offers a graphical tool to configure and use the KMS CLI binary.
 
 !!! info "Download kms_gui"
-    Please download the latest version of the KMS GUI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.11.2/)
+    Please download the latest version of the KMS GUI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.11.3/)
