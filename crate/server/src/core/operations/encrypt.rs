@@ -110,7 +110,7 @@ pub async fn encrypt(
                     ))),
                 };
             }
-            aead_encrypt(&key_bytes, &request.data, &request.iv, &request.additional_authenticated_data, aead)  
+            aead_encrypt(aead, &key_bytes, request., aad, plaintext)  
         }
     }
 
@@ -179,6 +179,3 @@ pub async fn encrypt(
         .map_err(Into::into)
 }
 
-fn get_cryptographic_algorithm() -> {
-    
-}
