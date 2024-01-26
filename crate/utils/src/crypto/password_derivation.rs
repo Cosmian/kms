@@ -12,9 +12,14 @@ use crate::kmip_utils_bail;
 
 const FIPS_MIN_SALT_SIZE: usize = 16;
 #[cfg(feature = "fips")]
+const FIPS_HLEN_BITS: usize = 512;
+#[cfg(feature = "fips")]
 const FIPS_MIN_KLEN: usize = 14;
 #[cfg(feature = "fips")]
-const FIPS_HLEN_BITS: usize = 256;
+/// Max key length authorized is (2^32 - 1) x hLen.
+/// Source: NIST.FIPS.800-132 - Section 5.3.
+const FIPS_MAX_KLEN: usize = ((1 << 32) - 1) * FIPS_HLEN_BITS;
+
 #[cfg(feature = "fips")]
 /// OWASP recommended parameter for SHA-512 chosen following NIST.FIPS.800-132
 /// recommendations.
@@ -26,7 +31,8 @@ const FIPS_MIN_ITER: usize = 210_000;
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
-    if LENGTH < FIPS_MIN_KLEN || LENGTH * 8 > ((1 << 32) - 1) * FIPS_HLEN_BITS {
+    // Check requested key length is in the authorized bounds.
+    if LENGTH < FIPS_MIN_KLEN || LENGTH * 8 > FIPS_MAX_KLEN {
         kmip_utils_bail!(
             "Password derivation error: wrong output length argument, got {}",
             LENGTH,
@@ -94,6 +100,11 @@ fn test_password_derivation_bad_size() {
 
     let my_weak_password = "123princ3ss".as_bytes().to_vec();
     let secure_mk_res = derive_key_from_password::<13>(&my_weak_password);
+
+    assert!(secure_mk_res.is_err());
+
+    const BIG_KEY_LENGTH: usize = (((1 << 32) - 1) * 512) / 8 + 1;
+    let secure_mk_res = derive_key_from_password::<BIG_KEY_LENGTH>(&my_weak_password);
 
     assert!(secure_mk_res.is_err());
 }
