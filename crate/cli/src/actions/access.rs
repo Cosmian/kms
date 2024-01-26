@@ -29,23 +29,27 @@ impl AccessAction {
     }
 }
 
-/// Grant another user an access right to an object.
+/// Grant another user one or multiple access rights to an object.
 ///
 /// This command can only be called by the owner of the object.
 ///
-/// The right is granted for one of the supported KMIP operations:
-/// create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy
+/// The right is granted for one or multiple supported KMIP operations:
+/// `create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`.
 ///
+/// Multiple operations must be supplied whitespace separated, such as: 'create get rekey'
 #[derive(Parser, Debug)]
 pub struct GrantAccess {
     /// The user identifier to allow
+    #[clap(required = true)]
     user: String,
 
     /// The object unique identifier stored in the KMS
+    #[clap(required = true)]
     object_uid: String,
 
-    /// The KMIP operation to allow
-    operation: ObjectOperationType,
+    /// The operations to grant (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`)
+    #[clap(required = true)]
+    operations: Vec<ObjectOperationType>,
 }
 
 impl GrantAccess {
@@ -53,7 +57,7 @@ impl GrantAccess {
         let access = Access {
             unique_identifier: Some(UniqueIdentifier::TextString(self.object_uid.clone())),
             user_id: self.user.clone(),
-            operation_type: self.operation,
+            operation_types: self.operations.clone(),
         };
 
         kms_rest_client
@@ -62,17 +66,22 @@ impl GrantAccess {
             .with_context(|| "Can't execute the query on the kms server")?;
 
         println!(
-            "The {} access right was successfully granted to {}",
-            self.operation, self.user
+            "The following access right were successfully granted to `{}`: {:?}",
+            self.user, self.operations,
         );
 
         Ok(())
     }
 }
 
-/// Revoke another user access right to an object.
+/// Revoke another user one or multiple access rights to an object.
 ///
 /// This command can only be called by the owner of the object.
+///
+/// The right is revoked for one or multiple supported KMIP operations:
+/// `create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`
+///
+/// Multiple operations must be supplied whitespace separated, such as: 'create get rekey'
 #[derive(Parser, Debug)]
 pub struct RevokeAccess {
     /// The user to revoke access to
@@ -83,9 +92,9 @@ pub struct RevokeAccess {
     #[clap(required = true)]
     object_uid: String,
 
-    /// The operation to revoke (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
+    /// The operations to revoke (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`)
     #[clap(required = true)]
-    operation: ObjectOperationType,
+    operations: Vec<ObjectOperationType>,
 }
 
 impl RevokeAccess {
@@ -93,7 +102,7 @@ impl RevokeAccess {
         let access = Access {
             unique_identifier: Some(UniqueIdentifier::TextString(self.object_uid.clone())),
             user_id: self.user.clone(),
-            operation_type: self.operation,
+            operation_types: self.operations.clone(),
         };
 
         kms_rest_client
@@ -101,7 +110,10 @@ impl RevokeAccess {
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
 
-        println!("The permission has been properly removed");
+        println!(
+            "The following permissions have been properly removed for `{}`: {:?}",
+            self.user, self.operations
+        );
 
         Ok(())
     }

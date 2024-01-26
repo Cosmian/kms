@@ -46,9 +46,9 @@ Manage the users' access rights to the cryptographic objects
 
 ### Subcommands
 
-**`grant`** [[1.1]](#11-ckms-access-rights-grant)  Grant another user an access right to an object
+**`grant`** [[1.1]](#11-ckms-access-rights-grant)  Grant another user one or multiple access rights to an object
 
-**`revoke`** [[1.2]](#12-ckms-access-rights-revoke)  Revoke another user access right to an object
+**`revoke`** [[1.2]](#12-ckms-access-rights-revoke)  Revoke another user one or multiple access rights to an object
 
 **`list`** [[1.3]](#13-ckms-access-rights-list)  List the access rights granted on an object to other users
 
@@ -60,19 +60,19 @@ Manage the users' access rights to the cryptographic objects
 
 ## 1.1 ckms access-rights grant
 
-Grant another user an access right to an object
+Grant another user one or multiple access rights to an object
 
 ### Usage
 `ckms access-rights grant [options] <USER>
  <OBJECT_UID>
- <OPERATION>
+ <OPERATIONS>...
 `
 ### Arguments
 ` <USER>` The user identifier to allow
 
 ` <OBJECT_UID>` The object unique identifier stored in the KMS
 
-` <OPERATION>` The KMIP operation to allow
+` <OPERATIONS>` The operations to grant (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`)
 
 
 
@@ -80,19 +80,19 @@ Grant another user an access right to an object
 
 ## 1.2 ckms access-rights revoke
 
-Revoke another user access right to an object
+Revoke another user one or multiple access rights to an object
 
 ### Usage
 `ckms access-rights revoke [options] <USER>
  <OBJECT_UID>
- <OPERATION>
+ <OPERATIONS>...
 `
 ### Arguments
 ` <USER>` The user to revoke access to
 
 ` <OBJECT_UID>` The object unique identifier stored in the KMS
 
-` <OPERATION>` The operation to revoke (create, get, encrypt, decrypt, import, revoke, locate, rekey, destroy)
+` <OPERATIONS>` The operations to revoke (`create`, `get`, `encrypt`, `decrypt`, `import`, `revoke`, `locate`, `rekey`, `destroy`)
 
 
 
@@ -1612,3 +1612,7 @@ Generate the CLI documentation as markdown
 `
 ### Arguments
 ` <MARKDOWN_FILE>` The file to export the markdown to
+
+
+
+

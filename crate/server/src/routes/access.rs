@@ -84,7 +84,7 @@ pub async fn grant_access(
         .await?;
     debug!(
         "Access granted on {:?} for {:?} to {}",
-        &access.unique_identifier, &access.operation_type, &access.user_id
+        access.unique_identifier, access.operation_types, access.user_id
     );
 
     Ok(Json(SuccessResponse {
@@ -108,7 +108,7 @@ pub async fn revoke_access(
         .await?;
     debug!(
         "Access revoke on {:?} for {:?} to {}",
-        &access.unique_identifier, &access.operation_type, &access.user_id
+        access.unique_identifier, access.operation_types, access.user_id
     );
 
     Ok(Json(SuccessResponse {

@@ -244,20 +244,20 @@ impl Database for MySqlPool {
         &self,
         uid: &str,
         userid: &str,
-        operation_type: ObjectOperationType,
+        operation_types: HashSet<ObjectOperationType>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        insert_access_(uid, userid, operation_type, &self.pool).await
+        insert_access_(uid, userid, operation_types, &self.pool).await
     }
 
     async fn remove_access(
         &self,
         uid: &str,
         userid: &str,
-        operation_type: ObjectOperationType,
+        operation_types: HashSet<ObjectOperationType>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
-        remove_access_(uid, userid, operation_type, &self.pool).await
+        remove_access_(uid, userid, operation_types, &self.pool).await
     }
 
     async fn is_object_owned_by(
@@ -729,7 +729,7 @@ where
 pub(crate) async fn insert_access_<'e, E>(
     uid: &str,
     userid: &str,
-    operation_type: ObjectOperationType,
+    operation_types: HashSet<ObjectOperationType>,
     executor: E,
 ) -> KResult<()>
 where
@@ -737,11 +737,11 @@ where
 {
     // Retrieve existing permissions if any
     let mut perms = list_user_access_rights_on_object_(uid, userid, false, executor).await?;
-    if perms.contains(&operation_type) {
-        // permission is already setup
+    if operation_types.is_subset(&perms) {
+        // permissions are already setup
         return Ok(())
     }
-    perms.insert(operation_type);
+    perms.extend(operation_types.iter());
 
     // Serialize permissions
     let json = serde_json::to_value(&perms)
@@ -766,15 +766,18 @@ where
 pub(crate) async fn remove_access_<'e, E>(
     uid: &str,
     userid: &str,
-    operation_type: ObjectOperationType,
+    operation_types: HashSet<ObjectOperationType>,
     executor: E,
 ) -> KResult<()>
 where
     E: Executor<'e, Database = MySql> + Copy,
 {
     // Retrieve existing permissions if any
-    let mut perms = list_user_access_rights_on_object_(uid, userid, true, executor).await?;
-    perms.retain(|p| *p != operation_type);
+    let perms = list_user_access_rights_on_object_(uid, userid, true, executor)
+        .await?
+        .difference(&operation_types)
+        .cloned()
+        .collect::<HashSet<_>>();
 
     // No remaining permissions, delete the row
     if perms.is_empty() {

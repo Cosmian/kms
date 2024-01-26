@@ -1,3 +1,9 @@
+use std::{
+    collections::{BTreeSet, HashSet},
+    fmt,
+    str::FromStr,
+};
+
 use cloudproof::reexport::crypto_core::{FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::kmip_types::{Attributes, StateEnumeration, UniqueIdentifier};
 use serde::{Deserialize, Serialize};
@@ -10,13 +16,13 @@ pub struct Access {
     pub unique_identifier: Option<UniqueIdentifier>,
     /// User identifier, beneficiary of the access
     pub user_id: String,
-    /// Operation type for the access
-    pub operation_type: ObjectOperationType,
+    /// Operation types for the access
+    pub operation_types: Vec<ObjectOperationType>,
 }
 
 /// Operation types that can get or create objects
 /// These operations use `retrieve` or `get` methods.
-#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone, Hash)]
+#[derive(Eq, PartialEq, Serialize, Deserialize, Copy, Clone, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
 pub enum ObjectOperationType {
     Create,
@@ -99,8 +105,6 @@ impl<'de> Deserialize<'de> for ExtraDatabaseParams {
     }
 }
 
-use std::{collections::HashSet, fmt, str::FromStr};
-
 // any error type implementing Display is acceptable.
 type ParseError = &'static str;
 
@@ -128,7 +132,8 @@ impl FromStr for ObjectOperationType {
 #[derive(Deserialize, Serialize, Debug)] // Debug is required by ok_json()
 pub struct UserAccessResponse {
     pub user_id: String,
-    pub operations: HashSet<ObjectOperationType>,
+    /// A `BTreeSet` is used to keep results sorted
+    pub operations: BTreeSet<ObjectOperationType>,
 }
 
 pub type IsWrapped = bool;

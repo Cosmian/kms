@@ -40,15 +40,15 @@ jobs:
   python_and_docker:
     uses: ./.github/workflows/build_docker_image.yml
 
-  kms_gui:
+  ckms_gui:
     runs-on: ubuntu-latest
     steps:
-      - name: Build kms_gui on tags
+      - name: Build ckms_gui on tags
         if: startsWith(github.ref, 'refs/tags')
         uses: benc-uk/workflow-dispatch@v1
         with:
           workflow: main.yml
-          repo: Cosmian/kms_gui
+          repo: Cosmian/ckms_gui
           ref: main
           token: ${{ secrets.PAT_TOKEN }}
           inputs: '{ "kms_version": "${{ github.ref_name }}" }'
@@ -129,7 +129,7 @@ jobs:
       - build
       - python_and_docker
       - clean_env_test
-      - kms_gui
+      - ckms_gui
     runs-on: [self-hosted, not-sgx]
     strategy:
       fail-fast: false

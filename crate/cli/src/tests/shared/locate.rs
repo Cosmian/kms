@@ -431,7 +431,7 @@ pub async fn test_locate_grant() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &user_key_id,
         "user.client@acme.com",
-        "encrypt",
+        &["encrypt"],
     )?;
 
     // The user should be able to locate the user key and only that one
@@ -450,7 +450,7 @@ pub async fn test_locate_grant() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         &user_key_id,
         "user.client@acme.com",
-        "encrypt",
+        &["encrypt"],
     )?;
 
     // the user should no more be able to locate the key
