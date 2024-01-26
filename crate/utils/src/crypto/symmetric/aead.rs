@@ -3,6 +3,7 @@ use openssl::symm::{decrypt_aead, encrypt_aead, Cipher};
 use crate::error::KmipUtilsError;
 
 /// The supported AEAD ciphers.
+#[derive(Debug, Clone, Copy)]
 pub enum AeadCipher {
     Aes256Gcm,
     Aes128Gcm,
@@ -12,7 +13,7 @@ pub enum AeadCipher {
 
 impl AeadCipher {
     /// Convert to the corresponding OpenSSL cipher.
-    fn to_cipher(&self) -> Cipher {
+    fn to_cipher(self) -> Cipher {
         match self {
             AeadCipher::Aes256Gcm => Cipher::aes_256_gcm(),
             AeadCipher::Aes128Gcm => Cipher::aes_128_gcm(),
@@ -52,12 +53,6 @@ impl AeadCipher {
     }
 }
 
-/// Encrypted data consumed and retuned by the ciphers
-pub struct EncryptedData {
-    pub ciphertext: Vec<u8>,
-    pub tag: Vec<u8>,
-}
-
 /// Generate a random nonce for the given AEAD cipher.
 pub fn random_nonce(aead_cipher: AeadCipher) -> Result<Vec<u8>, KmipUtilsError> {
     let mut nonce = vec![0; aead_cipher.nonce_size()];
@@ -80,19 +75,19 @@ pub fn aead_encrypt(
     nonce: &[u8],
     plaintext: &[u8],
     aad: &[u8],
-) -> Result<EncryptedData, KmipUtilsError> {
+) -> Result<(Vec<u8>, Vec<u8>), KmipUtilsError> {
     // Create buffer for the tag
     let mut tag = vec![0; aead_cipher.tag_size()];
     // Encryption.
     let ciphertext = encrypt_aead(
         aead_cipher.to_cipher(),
-        &key,
+        key,
         Some(nonce),
         aad,
         plaintext,
         tag.as_mut(),
     )?;
-    Ok(EncryptedData { ciphertext, tag })
+    Ok((ciphertext, tag))
 }
 
 /// Decrypt the ciphertext using the given AEAD cipher, key, nonce and additional authenticated data.
@@ -102,15 +97,16 @@ pub fn aead_decrypt(
     key: &[u8],
     nonce: &[u8],
     aad: &[u8],
-    encrypted_data: &EncryptedData,
+    ciphertext: &[u8],
+    tag: &[u8],
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let plaintext = decrypt_aead(
         aead_cipher.to_cipher(),
         key,
         Some(nonce),
         aad,
-        encrypted_data.ciphertext.as_slice(),
-        encrypted_data.tag.as_slice(),
+        ciphertext,
+        tag,
     )?;
     Ok(plaintext)
 }
@@ -140,11 +136,11 @@ mod tests {
         let mut aad = vec![0_u8; 24];
         rand_bytes(&mut aad).unwrap();
 
-        let encrypted_data =
+        let (ciphertext, tag) =
             aead_encrypt(AeadCipher::Aes128Gcm, &key, &nonce, &message, &aad).unwrap();
 
         let decrypted_data =
-            aead_decrypt(AeadCipher::Aes128Gcm, &key, &nonce, &aad, &encrypted_data).unwrap();
+            aead_decrypt(AeadCipher::Aes128Gcm, &key, &nonce, &aad, &ciphertext, &tag).unwrap();
 
         assert_eq!(decrypted_data, message);
     }
@@ -165,11 +161,11 @@ mod tests {
         let mut aad = vec![0_u8; 24];
         rand_bytes(&mut aad).unwrap();
 
-        let encrypted_data =
+        let (ciphertext, tag) =
             aead_encrypt(AeadCipher::Aes256Gcm, &key, &nonce, &message, &aad).unwrap();
 
         let decrypted_data =
-            aead_decrypt(AeadCipher::Aes256Gcm, &key, &nonce, &aad, &encrypted_data).unwrap();
+            aead_decrypt(AeadCipher::Aes256Gcm, &key, &nonce, &aad, &ciphertext, &tag).unwrap();
 
         assert_eq!(decrypted_data, message);
     }
@@ -187,7 +183,7 @@ mod tests {
         let mut aad = vec![0_u8; 24];
         rand_bytes(&mut aad).unwrap();
 
-        let encrypted_data =
+        let (ciphertext, tag) =
             aead_encrypt(AeadCipher::Chacha20Poly1305, &key, &nonce, &message, &aad).unwrap();
 
         let decrypted_data = aead_decrypt(
@@ -195,7 +191,8 @@ mod tests {
             &key,
             &nonce,
             &aad,
-            &encrypted_data,
+            &ciphertext,
+            &tag,
         )
         .unwrap();
 

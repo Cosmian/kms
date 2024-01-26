@@ -170,22 +170,37 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
     Ok((ctx, plaintext))
 }
 
-#[test]
-fn test_ckm_rsa_pkcs_oaep() -> Result<(), KmipUtilsError> {
-    // Load FIPS provider module from OpenSSL.
-    #[cfg(feature = "fips")]
-    openssl::provider::Provider::load(None, "fips").unwrap();
+#[cfg(test)]
+mod tests {
+    use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
+    use openssl::pkey::PKey;
+    use zeroize::Zeroizing;
 
-    let priv_key = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
-    let pub_key = PKey::public_key_from_pem(&priv_key.public_key_to_pem()?)?;
+    use crate::{
+        crypto::rsa::ckm_rsa_pkcs_oaep::{
+            ckm_rsa_pkcs_oaep_key_unwrap, ckm_rsa_pkcs_oaep_key_wrap,
+        },
+        error::KmipUtilsError,
+    };
 
-    let dek_to_wrap = Zeroizing::from(vec![0x01; 2048 / 8 - 2 - 2 * 256 / 8]);
-    let wrapped_key = ckm_rsa_pkcs_oaep_key_wrap(&pub_key, HashingAlgorithm::SHA256, &dek_to_wrap)?;
-    assert_eq!(wrapped_key.len(), 2048 / 8);
-    let unwrapped_key =
-        ckm_rsa_pkcs_oaep_key_unwrap(&priv_key, HashingAlgorithm::SHA256, &wrapped_key)?;
-    assert_eq!(unwrapped_key.len(), 2048 / 8 - 2 - 2 * 256 / 8);
-    assert_eq!(unwrapped_key, dek_to_wrap);
+    #[test]
+    fn test_ckm_rsa_pkcs_oaep() -> Result<(), KmipUtilsError> {
+        // Load FIPS provider module from OpenSSL.
+        #[cfg(feature = "fips")]
+        openssl::provider::Provider::load(None, "fips").unwrap();
 
-    Ok(())
+        let priv_key = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
+        let pub_key = PKey::public_key_from_pem(&priv_key.public_key_to_pem()?)?;
+
+        let dek_to_wrap = Zeroizing::from(vec![0x01; 2048 / 8 - 2 - 2 * 256 / 8]);
+        let wrapped_key =
+            ckm_rsa_pkcs_oaep_key_wrap(&pub_key, HashingAlgorithm::SHA256, &dek_to_wrap)?;
+        assert_eq!(wrapped_key.len(), 2048 / 8);
+        let unwrapped_key =
+            ckm_rsa_pkcs_oaep_key_unwrap(&priv_key, HashingAlgorithm::SHA256, &wrapped_key)?;
+        assert_eq!(unwrapped_key.len(), 2048 / 8 - 2 - 2 * 256 / 8);
+        assert_eq!(unwrapped_key, dek_to_wrap);
+
+        Ok(())
+    }
 }

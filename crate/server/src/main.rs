@@ -8,8 +8,6 @@ use cosmian_kms_server::{
     result::KResult,
 };
 use dotenvy::dotenv;
-#[cfg(feature = "fips")]
-use openssl::provider::Provider;
 #[cfg(feature = "timeout")]
 use tracing::warn;
 use tracing::{debug, info};
@@ -26,7 +24,7 @@ const KMS_SERVER_CONF: &str = "/etc/cosmian_kms/server.toml";
 async fn main() -> KResult<()> {
     // First operation to do is to load FIPS module if necessary.
     #[cfg(feature = "fips")]
-    Provider::load(None, "fips")?;
+    openssl::provider::Provider::load(None, "fips")?;
 
     // Set up environment variables and logging options
     if std::env::var("RUST_BACKTRACE").is_err() {

@@ -8,7 +8,7 @@ use openssl::{
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::symmetric::aead::{aead_decrypt, aead_encrypt, AeadCipher, EncryptedData},
+    crypto::symmetric::aead::{aead_decrypt, aead_encrypt, AeadCipher},
     error::KmipUtilsError,
     kmip_utils_bail,
 };
@@ -96,13 +96,13 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
     )?;
 
     // Encrypt data using the provided.
-    let encrypted_data = aead_encrypt(aead, &key, &iv, plaintext, &[])?;
+    let (ciphertext, tag) = aead_encrypt(aead, &key, &iv, plaintext, &[])?;
 
     let R_bytes = R
         .public_key()
         .to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
 
-    Ok([R_bytes, encrypted_data.ciphertext, encrypted_data.tag].concat())
+    Ok([R_bytes, ciphertext, tag].concat())
 }
 
 /// When using standard curves, the hashing algorithm is SHAKE128, the
@@ -156,16 +156,7 @@ pub fn ecies_decrypt(
     let key = ecies_get_key(&S, curve, aead.key_size(), MessageDigest::shake_128())?;
 
     // we could use ou own aead to offer more DEM options
-    let plaintext = Zeroizing::from(aead_decrypt(
-        aead,
-        &key,
-        &iv,
-        &[],
-        &EncryptedData {
-            ciphertext: ct.to_vec(),
-            tag: tag.to_vec(),
-        },
-    )?);
+    let plaintext = Zeroizing::from(aead_decrypt(aead, &key, &iv, &[], ct, tag)?);
 
     Ok(plaintext)
 }
