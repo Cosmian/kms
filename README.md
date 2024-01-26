@@ -140,9 +140,9 @@ encrypted_secret_app_conf = "/etc/cosmian_kms/server.toml"
 
 ```console
 $ ./cosmian_vm --url https://domain.name:port app init  -c conf.toml
-Proceeding the init of the deployed app...
+Processing init of the deployed app...
 Save the key: `378f1f1b3b5cc92ed576edba265cc91de6872d61c00b0e01dba6d0ea80520820`
-The app has been configurated
+The app has been configured
 ```
 
 4. Save the printed key for further use
