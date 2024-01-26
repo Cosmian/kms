@@ -3,11 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 
-## [X.Y.Z] - 2024-xx-xx
+## [4.11.3] - 2024-01-26
 
 ### Features
 
 - CLI: allow multiple operations to be supplied at once for access control [#155](https://github.com/Cosmian/kms/pull/155).
+
+### Miscellaneous Tasks
+
+- Business Source License 1.1
+
 
 ## [4.11.2] - 2024-01-23
 
