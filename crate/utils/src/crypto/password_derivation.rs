@@ -4,6 +4,7 @@ use argon2::Argon2;
 use openssl::rand::rand_bytes;
 #[cfg(feature = "fips")]
 use openssl::{hash::MessageDigest, pkcs5::pbkdf2_hmac};
+use zeroize::Zeroizing;
 
 use crate::error::KmipUtilsError;
 #[cfg(feature = "fips")]
@@ -11,9 +12,14 @@ use crate::kmip_utils_bail;
 
 const FIPS_MIN_SALT_SIZE: usize = 16;
 #[cfg(feature = "fips")]
+const FIPS_HLEN_BITS: usize = 512;
+#[cfg(feature = "fips")]
 const FIPS_MIN_KLEN: usize = 14;
 #[cfg(feature = "fips")]
-const FIPS_HLEN_BITS: usize = 256;
+/// Max key length authorized is (2^32 - 1) x hLen.
+/// Source: NIST.FIPS.800-132 - Section 5.3.
+const FIPS_MAX_KLEN: usize = ((1 << 32) - 1) * FIPS_HLEN_BITS;
+
 #[cfg(feature = "fips")]
 /// OWASP recommended parameter for SHA-512 chosen following NIST.FIPS.800-132
 /// recommendations.
@@ -24,15 +30,16 @@ const FIPS_MIN_ITER: usize = 210_000;
 #[cfg(feature = "fips")]
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
-) -> Result<[u8; LENGTH], KmipUtilsError> {
-    if LENGTH < FIPS_MIN_KLEN || LENGTH * 8 > ((1 << 32) - 1) * FIPS_HLEN_BITS {
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
+    // Check requested key length is in the authorized bounds.
+    if LENGTH < FIPS_MIN_KLEN || LENGTH * 8 > FIPS_MAX_KLEN {
         kmip_utils_bail!(
             "Password derivation error: wrong output length argument, got {}",
             LENGTH,
         )
     }
 
-    let mut output_key_material = [0u8; LENGTH];
+    let mut output_key_material = Zeroizing::from(vec![0u8; LENGTH]);
 
     // Generate 128 bits of random salt.
     let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
@@ -43,8 +50,10 @@ pub fn derive_key_from_password<const LENGTH: usize>(
         &salt,
         FIPS_MIN_ITER,
         MessageDigest::sha512(),
-        &mut output_key_material,
+        output_key_material.as_mut(),
     )?;
+
+    output_key_material.truncate(LENGTH);
 
     Ok(output_key_material)
 }
@@ -54,16 +63,18 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 /// with SHA512 in FIPS mode.
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
-) -> Result<[u8; LENGTH], KmipUtilsError> {
-    let mut output_key_material = [0u8; LENGTH];
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
+    let mut output_key_material = Zeroizing::from(vec![0u8; LENGTH]);
 
     // Generate 128 bits of random salt
     let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
     rand_bytes(&mut salt)?;
 
     Argon2::default()
-        .hash_password_into(password, &salt, &mut output_key_material)
+        .hash_password_into(password, &salt, output_key_material.as_mut())
         .map_err(|e| KmipUtilsError::Derivation(e.to_string()))?;
+
+    output_key_material.truncate(LENGTH);
 
     Ok(output_key_material)
 }
@@ -89,6 +100,11 @@ fn test_password_derivation_bad_size() {
 
     let my_weak_password = "123princ3ss".as_bytes().to_vec();
     let secure_mk_res = derive_key_from_password::<13>(&my_weak_password);
+
+    assert!(secure_mk_res.is_err());
+
+    const BIG_KEY_LENGTH: usize = (((1 << 32) - 1) * 512) / 8 + 1;
+    let secure_mk_res = derive_key_from_password::<BIG_KEY_LENGTH>(&my_weak_password);
 
     assert!(secure_mk_res.is_err());
 }

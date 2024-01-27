@@ -8,6 +8,7 @@ use cosmian_kmip::{
 };
 use openssl::pkey::{PKey, Private, Public};
 use tracing::debug;
+use zeroize::Zeroizing;
 
 use super::rfc5649::{key_unwrap, key_wrap};
 use crate::{
@@ -118,7 +119,7 @@ fn encrypt_with_public_key(
 pub fn decrypt_bytes(
     unwrapping_key: &Object,
     ciphertext: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError> {
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     debug!(
         "decrypt_bytes: with object: {:?} on ciphertext length: {}",
         unwrapping_key,
@@ -162,22 +163,23 @@ pub fn decrypt_bytes(
 fn decrypt_with_private_key(
     p_key: PKey<Private>,
     ciphertext: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError> {
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let decrypt_system = HybridDecryptionSystem::new(None, p_key, true);
     let request = Decrypt {
         data: Some(ciphertext.to_vec()),
         ..Decrypt::default()
     };
     let decrypt_response = decrypt_system.decrypt(&request)?;
-    let plaintext = decrypt_response.data.ok_or(KmipUtilsError::Default(
+    let plaintext = Zeroizing::from(decrypt_response.data.ok_or(KmipUtilsError::Default(
         "Decrypt response does not contain plaintext".to_string(),
-    ))?;
+    ))?);
     debug!(
         "decrypt_bytes: succeeded: plaintext length: {}",
         plaintext.len()
     );
     let decrypted_data = DecryptedData::try_from(plaintext.as_ref())?;
-    Ok(decrypted_data.plaintext)
+
+    Ok(Zeroizing::from(decrypted_data.plaintext))
 }
 
 #[cfg(test)]
@@ -186,12 +188,13 @@ mod tests {
         kmip::kmip_types::{CryptographicAlgorithm, KeyFormatType},
         openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
     };
-    #[cfg(not(feature = "fips"))]
     use openssl::{
         ec::{EcGroup, EcKey},
         nid::Nid,
+        pkey::PKey,
+        rand::rand_bytes,
+        rsa::Rsa,
     };
-    use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 
     #[cfg(not(feature = "fips"))]
     use crate::crypto::elliptic_curves::operation::create_x25519_key_pair;
@@ -305,7 +308,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "fips"))]
     fn test_encrypt_decrypt_ec_p384() {
         let curve = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
 

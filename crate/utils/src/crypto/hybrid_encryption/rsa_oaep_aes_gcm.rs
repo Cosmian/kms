@@ -89,7 +89,7 @@ pub fn rsa_oaep_aes_gcm_decrypt(
     p_key: &PKey<Private>,
     ciphertext: &[u8],
     aad: Option<&[u8]>,
-) -> Result<Vec<u8>, KmipUtilsError> {
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let rsa_privkey = p_key.rsa()?;
 
     #[cfg(feature = "fips")]
@@ -141,14 +141,14 @@ pub fn rsa_oaep_aes_gcm_decrypt(
     }
 
     // Decrypt data using AES-256-GCM with key-ecryption-key freshly decrypted.
-    let plaintext = decrypt_aead(
+    let plaintext = Zeroizing::from(decrypt_aead(
         Cipher::aes_256_gcm(),
         &kek,
         Some(iv),
         aad.unwrap_or_default(),
         ct,
         tag,
-    )?;
+    )?);
 
     Ok(plaintext)
 }
@@ -162,7 +162,7 @@ fn test_rsa_oaep_encrypt_decrypt() -> Result<(), KmipUtilsError> {
     let privkey = PKey::from_rsa(openssl::rsa::Rsa::generate(2048)?)?;
     let pubkey = PKey::public_key_from_pem(&privkey.public_key_to_pem()?)?;
 
-    let privkey_to_wrap = openssl::rsa::Rsa::generate(2048)?.private_key_to_pem()?;
+    let privkey_to_wrap = Zeroizing::from(openssl::rsa::Rsa::generate(2048)?.private_key_to_pem()?);
 
     let ct = rsa_oaep_aes_gcm_encrypt(&pubkey, &privkey_to_wrap, None)?;
 

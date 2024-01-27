@@ -15,6 +15,7 @@ use openssl::{
     pkey::PKey,
 };
 use tracing::trace;
+use zeroize::Zeroizing;
 
 use crate::{error::KmipUtilsError, kmip_utils_bail, KeyPair};
 
@@ -24,8 +25,15 @@ pub const ED25519_PRIVATE_KEY_LENGTH: usize = 0x20;
 pub const ED25519_PUBLIC_KEY_LENGTH: usize = 0x20;
 pub const Q_LENGTH_BITS: i32 = 253;
 
-/// convert to a X25519 256 bits KMIP Public Key
-/// no check performed
+/// Convert to an Elliptic Curve KMIP Public Key.
+/// Supported curves are:
+/// X25519, Ed25519, X448, Ed448, P-192, P-224, P-256, P-384, P-521.
+///
+/// `pkey_bits_number` is passed independently from `len(bytes)` since some key
+/// sizes are not multiple of 8 thus it cannot be computed by taking the byte
+/// array length.
+///
+/// No check performed.
 pub fn to_ec_public_key(
     bytes: &[u8],
     pkey_bits_number: u32,
@@ -79,8 +87,15 @@ pub fn to_ec_public_key(
     }
 }
 
-/// convert to a curve 25519 256 bits KMIP Private Key
-/// no check performed
+/// Convert to an Elliptic Curve KMIP Private Key.
+/// Supported curves are:
+/// X25519, Ed25519, X448, Ed448, P-192, P-224, P-256, P-384, P-521.
+///
+/// `pkey_bits_number` is passed independently from `len(bytes)` since some key
+/// sizes are not multiple of 8 thus it cannot be computed by taking the byte
+/// array length.
+///
+/// No check performed.
 pub fn to_ec_private_key(
     bytes: &[u8],
     pkey_bits_number: u32,
@@ -141,18 +156,18 @@ pub fn create_x25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
 ) -> Result<KeyPair, KmipUtilsError> {
-    let keypair = PKey::generate_x25519()?;
+    let private_key = PKey::generate_x25519()?;
 
     let public_key = to_ec_public_key(
-        &keypair.raw_public_key()?,
-        keypair.bits(),
+        &private_key.raw_public_key()?,
+        private_key.bits(),
         private_key_uid,
         RecommendedCurve::CURVE25519,
     );
 
     let private_key = to_ec_private_key(
-        &keypair.raw_private_key()?,
-        keypair.bits(),
+        &Zeroizing::from(private_key.raw_private_key()?),
+        private_key.bits(),
         public_key_uid,
         RecommendedCurve::CURVE25519,
     );
@@ -166,18 +181,18 @@ pub fn create_x448_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
 ) -> Result<KeyPair, KmipUtilsError> {
-    let keypair = PKey::generate_x448()?;
+    let private_key = PKey::generate_x448()?;
 
     let public_key = to_ec_public_key(
-        &keypair.raw_public_key()?,
-        keypair.bits(),
+        &private_key.raw_public_key()?,
+        private_key.bits(),
         private_key_uid,
         RecommendedCurve::CURVE448,
     );
 
     let private_key = to_ec_private_key(
-        &keypair.raw_private_key()?,
-        keypair.bits(),
+        &Zeroizing::from(private_key.raw_private_key()?),
+        private_key.bits(),
         public_key_uid,
         RecommendedCurve::CURVE448,
     );
@@ -207,7 +222,7 @@ pub fn create_ed25519_key_pair(
     trace!("create_ed25519_key_pair: public_key OK");
 
     let private_key = to_ec_private_key(
-        &private_key.raw_private_key()?,
+        &Zeroizing::from(private_key.raw_private_key()?),
         private_key.bits(),
         public_key_uid,
         RecommendedCurve::CURVEED25519,
@@ -239,7 +254,7 @@ pub fn create_ed448_key_pair(
     trace!("create_ed448_key_pair: public_key OK");
 
     let private_key = to_ec_private_key(
-        &private_key.raw_private_key()?,
+        &Zeroizing::from(private_key.raw_private_key()?),
         private_key.bits(),
         public_key_uid,
         RecommendedCurve::CURVEED448,
@@ -270,7 +285,7 @@ pub fn create_approved_ecc_key_pair(
     trace!("create_approved_ecc_key_pair: ec key OK");
 
     let private_key = to_ec_private_key(
-        &ec_private_key.private_key().to_vec(),
+        &Zeroizing::from(ec_private_key.private_key().to_vec()),
         ec_private_key.private_key().num_bits() as u32,
         public_key_uid,
         kmip_curve,

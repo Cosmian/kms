@@ -10,6 +10,7 @@
  */
 
 use openssl::symm::{encrypt, Cipher, Crypter, Mode};
+use zeroize::Zeroizing;
 
 use crate::error::KmipUtilsError;
 
@@ -92,7 +93,7 @@ pub fn key_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
 ///
 /// The function name matches the one used in the RFC and has no link to the
 /// unwrap function in Rust.
-pub fn key_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
+pub fn key_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let n = ciphertext.len();
 
     if n % AES_WRAP_PAD_BLOCK_SIZE != 0 || n < AES_BLOCK_SIZE {
@@ -112,7 +113,7 @@ pub fn key_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsErr
         }
 
         let unpadded_size = u32::from_le(iv as u32) as usize;
-        Ok(padded_plain[0..unpadded_size].to_vec())
+        Ok(Zeroizing::from(padded_plain[0..unpadded_size].to_vec()))
     } else {
         /*
          * Encrypt block using AES with ECB mode i.e. raw AES as specified in
@@ -133,7 +134,7 @@ pub fn key_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsErr
         decrypt_cipher.pad(false);
 
         //// A | P[1] = DEC(K, C[0] | C[1])
-        let mut plaintext = vec![0; ciphertext.len() + AES_BLOCK_SIZE];
+        let mut plaintext = Zeroizing::from(vec![0; ciphertext.len() + AES_BLOCK_SIZE]);
         let mut dec_len = decrypt_cipher.update(ciphertext, &mut plaintext)?;
         dec_len += decrypt_cipher.finalize(&mut plaintext)?;
         plaintext.truncate(dec_len);
@@ -150,7 +151,9 @@ pub fn key_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsErr
 
         let unpadded_size = u32::from_be_bytes(plaintext[4..8].try_into()?) as usize;
 
-        Ok(plaintext[AES_WRAP_PAD_BLOCK_SIZE..(AES_WRAP_PAD_BLOCK_SIZE + unpadded_size)].to_vec())
+        Ok(Zeroizing::from(
+            plaintext[AES_WRAP_PAD_BLOCK_SIZE..(AES_WRAP_PAD_BLOCK_SIZE + unpadded_size)].to_vec(),
+        ))
     }
 }
 
@@ -216,7 +219,7 @@ fn _wrap_64(plain: &[u8], kek: &[u8], iv: Option<u64>) -> Result<Vec<u8>, KmipUt
     Ok(wrapped_key)
 }
 
-fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Vec<u8>), KmipUtilsError> {
+fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>), KmipUtilsError> {
     let n = ciphertext.len();
 
     if n % AES_WRAP_PAD_BLOCK_SIZE != 0 || n < AES_BLOCK_SIZE {
@@ -228,7 +231,7 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Vec<u8>), KmipUtils
     // Number of 64-bit blocks minus 1
     let n = n / 8 - 1;
 
-    let mut blocks = Vec::with_capacity(n + 1);
+    let mut blocks = Zeroizing::from(Vec::with_capacity(n + 1));
     for chunk in ciphertext.chunks(AES_WRAP_PAD_BLOCK_SIZE) {
         blocks.push(u64::from_be_bytes(chunk.try_into()?));
     }
@@ -262,7 +265,7 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Vec<u8>), KmipUtils
             let big_i = (u128::from(icr ^ t) << 64 | u128::from(*block)).to_be_bytes();
             let big_b = big_i.as_slice();
 
-            let mut plaintext = vec![0; big_b.len() + AES_BLOCK_SIZE];
+            let mut plaintext = Zeroizing::from(vec![0; big_b.len() + AES_BLOCK_SIZE]);
             let mut dec_len = decrypt_cipher.update(big_b, &mut plaintext)?;
             dec_len += decrypt_cipher.finalize(&mut plaintext)?;
             plaintext.truncate(dec_len);
@@ -277,7 +280,7 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Vec<u8>), KmipUtils
         }
     }
 
-    let mut unwrapped_key = Vec::with_capacity(blocks.len() - 1);
+    let mut unwrapped_key = Zeroizing::from(Vec::with_capacity((blocks.len() - 1) * 8));
     for block in &blocks[1..] {
         unwrapped_key.extend(block.to_be_bytes());
     }
@@ -287,6 +290,8 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Vec<u8>), KmipUtils
 
 #[cfg(test)]
 mod tests {
+    use zeroize::Zeroizing;
+
     use crate::crypto::wrap::rfc5649::{key_unwrap, key_wrap};
 
     #[test]
@@ -310,7 +315,7 @@ mod tests {
         );
         assert_eq!(
             key_unwrap(&wrapped_key, kek).expect("Fail to unwrap"),
-            key_to_wrap
+            Zeroizing::from(key_to_wrap.to_vec())
         );
 
         const TEST_SIZE_LIMIT: usize = 100;
@@ -319,7 +324,7 @@ mod tests {
             let ciphertext = key_wrap(key_to_wrap, kek).expect("Fail to wrap");
             assert_eq!(
                 key_unwrap(&ciphertext, kek).expect("Fail to unwrap"),
-                key_to_wrap
+                Zeroizing::from(key_to_wrap.to_vec())
             );
         }
     }
@@ -345,7 +350,7 @@ mod tests {
         );
         assert_eq!(
             key_unwrap(&wrapped_key, kek).expect("Fail to unwrap"),
-            key_to_wrap
+            Zeroizing::from(key_to_wrap.to_vec())
         );
     }
 
@@ -368,7 +373,7 @@ mod tests {
         );
         assert_eq!(
             key_unwrap(&wrapped_key, kek).expect("Fail to unwrap"),
-            key_to_wrap
+            Zeroizing::from(key_to_wrap.to_vec())
         );
     }
 

@@ -105,10 +105,10 @@ pub fn unwrap_key_block(
             let (ciphertext, attributes) = object_key_block.key_bytes_and_attributes()?;
             let plain_text = decrypt_bytes(unwrapping_key, &ciphertext)?;
             let key_material: KeyMaterial = match object_key_block.key_format_type {
-                KeyFormatType::TransparentSymmetricKey => {
-                    KeyMaterial::TransparentSymmetricKey { key: plain_text }
-                }
-                _ => KeyMaterial::ByteString(plain_text),
+                KeyFormatType::TransparentSymmetricKey => KeyMaterial::TransparentSymmetricKey {
+                    key: plain_text.to_vec(), // XXX keep zeroizing
+                },
+                _ => KeyMaterial::ByteString(plain_text.to_vec()), // XXX keep zeroizing
             };
             KeyValue {
                 key_material,

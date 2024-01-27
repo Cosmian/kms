@@ -82,7 +82,7 @@ impl WrapKeyAction {
                 derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes())?;
 
             let symmetric_key_object =
-                create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES);
+                create_symmetric_key_kmip_object(key_bytes.as_ref(), CryptographicAlgorithm::AES);
 
             // Print the wrapping key for user. This is the only time that this wrapping key will be printed
             println!(
