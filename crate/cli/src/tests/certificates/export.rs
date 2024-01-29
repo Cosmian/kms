@@ -1,4 +1,4 @@
-use std::{path::PathBuf, process::Command};
+use std::process::Command;
 
 use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kmip::kmip::{
@@ -7,6 +7,7 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, TTLV},
 };
 use openssl::pkcs12::Pkcs12;
+use tempfile::TempDir;
 use uuid::Uuid;
 
 use crate::{
@@ -57,19 +58,25 @@ async fn test_import_export_p12_25519() {
     // export piece by piece
     //
 
+    let tmp_dir = TempDir::new().unwrap();
+    let tmp_exported_sk = tmp_dir.path().join("exported_p12_sk.json");
+    let tmp_exported_cert = tmp_dir.path().join("exported_p12_cert.json");
+    let tmp_exported_cert_attr = tmp_dir.path().join("exported_p12_cert.attributes.json");
+    let tmp_exported_cert_p12 = tmp_dir.path().join("exported_p12_cert.p12");
+
     // export the private key
     export_key(
         &ctx.owner_cli_conf_path,
         "ec",
         &imported_p12_sk,
-        "/tmp/exported_p12_sk.json",
+        tmp_exported_sk.to_str().unwrap(),
         Some(JsonTtlv),
         false,
         None,
         false,
     )
     .unwrap();
-    let sk = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_p12_sk.json")).unwrap();
+    let sk = read_object_from_json_ttlv_file(&tmp_exported_sk).unwrap();
     assert_eq!(
         sk.key_block().unwrap().key_bytes().unwrap().to_vec(),
         parsed_p12.pkey.as_ref().unwrap().raw_private_key().unwrap()
@@ -84,14 +91,13 @@ async fn test_import_export_p12_25519() {
     export_certificate(
         &ctx.owner_cli_conf_path,
         &certificate_id,
-        "/tmp/exported_p12_cert.json",
+        tmp_exported_cert.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
         None,
         true,
     )
     .unwrap();
-    let cert =
-        read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_p12_cert.json")).unwrap();
+    let cert = read_object_from_json_ttlv_file(&tmp_exported_cert).unwrap();
     let cert_x509_der = match &cert {
         Object::Certificate {
             certificate_value, ..
@@ -102,8 +108,7 @@ async fn test_import_export_p12_25519() {
         cert_x509_der.clone(),
         parsed_p12.cert.as_ref().unwrap().to_der().unwrap()
     );
-    let cert_attributes_ttlv: TTLV =
-        read_from_json_file(&PathBuf::from("/tmp/exported_p12_cert.attributes.json")).unwrap();
+    let cert_attributes_ttlv: TTLV = read_from_json_file(&tmp_exported_cert_attr).unwrap();
     let cert_attributes: Attributes = from_ttlv(&cert_attributes_ttlv).unwrap();
     let issuer_id = cert_attributes.get_link(LinkType::CertificateLink).unwrap();
 
@@ -111,14 +116,13 @@ async fn test_import_export_p12_25519() {
     export_certificate(
         &ctx.owner_cli_conf_path,
         &issuer_id,
-        "/tmp/exported_p12_cert.json",
+        tmp_exported_cert.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
         None,
         true, //to get attributes
     )
     .unwrap();
-    let issuer_cert =
-        read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_p12_cert.json")).unwrap();
+    let issuer_cert = read_object_from_json_ttlv_file(&tmp_exported_cert).unwrap();
     let issuer_cert_x509_der = match &issuer_cert {
         Object::Certificate {
             certificate_value, ..
@@ -138,8 +142,7 @@ async fn test_import_export_p12_25519() {
     );
     // this test  is deactivated because another test imports this certificate with the same id
     // and a link to its issuer which may make this test fail. This test passes when run alone.
-    let issuer_cert_attributes_ttlv: TTLV =
-        read_from_json_file(&PathBuf::from("/tmp/exported_p12_cert.attributes.json")).unwrap();
+    let issuer_cert_attributes_ttlv: TTLV = read_from_json_file(&tmp_exported_cert_attr).unwrap();
     let issuer_cert_attributes: Attributes = from_ttlv(&issuer_cert_attributes_ttlv).unwrap();
     assert!(
         issuer_cert_attributes
@@ -151,13 +154,13 @@ async fn test_import_export_p12_25519() {
     export_certificate(
         &ctx.owner_cli_conf_path,
         &imported_p12_sk,
-        "/tmp/exported_p12_cert.p12",
+        tmp_exported_cert_p12.to_str().unwrap(),
         Some(CertificateExportFormat::Pkcs12),
         Some("secret".to_owned()),
         true, //to get attributes
     )
     .unwrap();
-    let p12_bytes = std::fs::read("/tmp/exported_p12_cert.p12").unwrap();
+    let p12_bytes = std::fs::read(tmp_exported_cert_p12).unwrap();
     let p12_ = Pkcs12::from_der(p12_bytes.as_slice()).unwrap();
     let parsed_p12_ = p12_.parse2("secret").unwrap();
 
@@ -226,12 +229,15 @@ async fn test_import_p12_rsa() {
     )
     .unwrap();
 
+    let tmp_dir = TempDir::new().unwrap();
+    let tmp_exported_p12_sk = tmp_dir.path().join("exported_p12_sk.json");
+
     // export the private key
     export_key(
         &ctx.owner_cli_conf_path,
         "ec",
         &imported_p12_sk,
-        "/tmp/exported_p12_sk.json",
+        tmp_exported_p12_sk.to_str().unwrap(),
         Some(JsonTtlv),
         false,
         None,
@@ -239,7 +245,7 @@ async fn test_import_p12_rsa() {
     )
     .unwrap();
     // export object by object
-    let sk = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_p12_sk.json")).unwrap();
+    let sk = read_object_from_json_ttlv_file(&tmp_exported_p12_sk).unwrap();
     assert_eq!(
         sk.key_block().unwrap().key_format_type,
         KeyFormatType::PKCS1
