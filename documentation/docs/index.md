@@ -17,6 +17,25 @@ The Cosmian KMS is designed to [operate in **zero-trust** environments](./zero_t
 
     Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.11.3/).
 
+
+# Table of contents
+
+<!-- toc -->
+
+- [Open source](#open-source)
+- [KMIP 2.1 API](#kmip-21-api)
+- [State-of-the-art authentication](#state-of-the-art-authentication)
+- [High-availability and databases](#high-availability-and-databases)
+- [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-cloud-or-other-zero-trust-environments)
+- [Support for object tagging](#support-for-object-tagging)
+- [Command line interface client](#command-line-interface-client)
+- [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
+- [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
+- [Comprehensive inline help](#comprehensive-inline-help)
+  * [Options help](#options-help)
+
+<!-- tocstop -->
+
 #### Open source
 
 The server's code is open-sourced on [Github](https://github.com/Cosmian/kms) so that it can be audited and improved by anyone.
@@ -166,7 +185,7 @@ Options:
           [default: 0.0.0.0]
 
       --https-p12-file <HTTPS_P12_FILE>
-          The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode.
+          The KMS server optional PKCS#12 Certificates and Key file. If provided, this will start the server in HTTPS mode
 
           [env: KMS_HTTPS_P12_FILE=]
 
@@ -174,7 +193,6 @@ Options:
           The password to open the PKCS#12 Certificates and Key file
 
           [env: KMS_HTTPS_P12_PASSWORD=]
-          [default: ]
 
       --authority-cert-file <AUTHORITY_CERT_FILE>
           The server optional authority X509 certificate in PEM format used to validate the client certificate presented for authentication. If provided, this will require clients to present a certificate signed by this authority for authentication. The server must run in TLS mode for this to be used
@@ -197,7 +215,7 @@ Options:
 
           For Google, this would be `https://www.googleapis.com/oauth2/v3/certs`
 
-          Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` is not set
+          Defaults to `<jwt-issuer-uri>/.well-known/jwks.json` if not set
 
           [env: KMS_JWKS_URI=]
 
@@ -235,6 +253,13 @@ Options:
           Enable the use of encryption by providing a JWK private key as JSON
 
           [env: JWK_PRIVATE_KEY=]
+
+      --google-cse-kacls-url <GOOGLE_CSE_KACLS_URL>
+          This setting enables the Google Workspace Client Side Encryption feature of this KMS server.
+
+          It should contain the external URL of this server as configured in Google Workspace client side encryption settings For instance, if this server is running on domain `cse.my_domain.com`, the URL should be something like <https://cse.my_domain.com/google_cse>
+
+          [env: KMS_GOOGLE_CSE_KACLS_URL=]
 
   -h, --help
           Print help (see a summary with '-h')
