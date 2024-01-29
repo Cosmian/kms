@@ -8,6 +8,7 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_logger::log_utils::log_init;
 use openssl::{nid::Nid, x509::X509};
+use tempfile::TempDir;
 use uuid::Uuid;
 use x509_parser::{der_parser::oid, prelude::*};
 
@@ -150,17 +151,25 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
         Some(&["certify_a_csr_test"]),
     )?;
 
+    let tmp_dir = TempDir::new()?;
+    let tmp_exported = tmp_dir.path().join("exported_cert.json");
+    let tmp_attributes = tmp_dir.path().join("exported_cert.attributes.json");
+    let tmp_intermediate = tmp_dir.path().join("exported_intermediate_cert.json");
+    let tmp_intermediate_attributes = tmp_dir
+        .path()
+        .join("exported_intermediate_cert.attributes.json");
+
     // export the certificate
     export_certificate(
         &ctx.owner_cli_conf_path,
         &certificate_id,
-        "/tmp/exported_cert.json",
+        tmp_exported.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
         None,
         true,
     )
     .unwrap();
-    let cert = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_cert.json")).unwrap();
+    let cert = read_object_from_json_ttlv_file(&tmp_exported).unwrap();
     let cert_x509_der = match &cert {
         Object::Certificate {
             certificate_value, ..
@@ -182,8 +191,7 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
             .unwrap()
             .to_string()
     );
-    let ttlv: TTLV =
-        read_from_json_file(&PathBuf::from("/tmp/exported_cert.attributes.json")).unwrap();
+    let ttlv: TTLV = read_from_json_file(&tmp_attributes).unwrap();
     let attributes: Attributes = from_ttlv(&ttlv).unwrap();
     // check that the attributes contain a certificate link to the intermediate
     let certificate_link = attributes.get_link(LinkType::CertificateLink).unwrap();
@@ -191,16 +199,13 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
     export_certificate(
         &ctx.owner_cli_conf_path,
         &certificate_link,
-        "/tmp/exported_intermediate_cert.json",
+        tmp_intermediate.to_str().unwrap(),
         Some(CertificateExportFormat::Pem),
         None,
         true,
     )?;
     // check that the attributes contain a certificate link to the private key
-    let ttlv: TTLV = read_from_json_file(&PathBuf::from(
-        "/tmp/exported_intermediate_cert.attributes.json",
-    ))
-    .unwrap();
+    let ttlv: TTLV = read_from_json_file(&tmp_intermediate_attributes).unwrap();
     let attributes: Attributes = from_ttlv(&ttlv).unwrap();
     let private_key_link = attributes.get_link(LinkType::PrivateKeyLink).unwrap();
     assert_eq!(private_key_link, issuer_private_key_id);
@@ -257,17 +262,20 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
         Some(&["certify_a_csr_test"]),
     )?;
 
+    let tmp_dir = TempDir::new()?;
+    let tmp_exported = tmp_dir.path().join("exported_cert.json");
+
     // export the certificate
     export_certificate(
         &ctx.owner_cli_conf_path,
         &certificate_id,
-        "/tmp/exported_cert.json",
+        tmp_exported.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
         None,
         true,
     )
     .unwrap();
-    let cert = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_cert.json")).unwrap();
+    let cert = read_object_from_json_ttlv_file(&tmp_exported).unwrap();
     let cert_x509_der = match &cert {
         Object::Certificate {
             certificate_value, ..
@@ -420,17 +428,23 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         None,
     )?;
 
+    let tmp_dir = TempDir::new()?;
+    let tmp_exported = tmp_dir.path().join("exported_cert.json");
+    let tmp_exported_attr = tmp_dir.path().join("exported_cert.attributes.json");
+    let tmp_exported_intermediate = tmp_dir.path().join("exported_intermediate_cert.json");
+    let tmp_exported_pubkey = tmp_dir.path().join("exported_public_key.json");
+
     // export the certificate
     export_certificate(
         &ctx.owner_cli_conf_path,
         &certificate_id,
-        "/tmp/exported_cert.json",
+        tmp_exported.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
         None,
         true,
     )
     .unwrap();
-    let cert = read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_cert.json")).unwrap();
+    let cert = read_object_from_json_ttlv_file(&tmp_exported).unwrap();
     let cert_x509_der = match &cert {
         Object::Certificate {
             certificate_value, ..
@@ -452,8 +466,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
             .unwrap()
             .to_string()
     );
-    let ttlv: TTLV =
-        read_from_json_file(&PathBuf::from("/tmp/exported_cert.attributes.json")).unwrap();
+    let ttlv: TTLV = read_from_json_file(&tmp_exported_attr).unwrap();
     let certificate_attributes: Attributes = from_ttlv(&ttlv).unwrap();
 
     // check that the attributes contain a certificate link to the intermediate
@@ -464,7 +477,7 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
     export_certificate(
         &ctx.owner_cli_conf_path,
         &certificate_link,
-        "/tmp/exported_intermediate_cert.json",
+        tmp_exported_intermediate.to_str().unwrap(),
         Some(CertificateExportFormat::Pem),
         None,
         true,
@@ -478,14 +491,13 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
         &ctx.owner_cli_conf_path,
         "ec",
         &public_key_link,
-        "/tmp/exported_public_key.json",
+        tmp_exported_pubkey.to_str().unwrap(),
         None,
         false,
         None,
         false,
     )?;
-    let public_key =
-        read_object_from_json_ttlv_file(&PathBuf::from("/tmp/exported_public_key.json")).unwrap();
+    let public_key = read_object_from_json_ttlv_file(&tmp_exported_pubkey).unwrap();
     //check that the public key contains a link to the certificate
     let certificate_link = public_key
         .attributes()?
