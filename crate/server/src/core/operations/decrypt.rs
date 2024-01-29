@@ -132,6 +132,7 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
             // recover the cryptographic algorithm from the request or the key block or default to AES
             let cryptographic_alogrithm = request
                 .cryptographic_parameters
+                .as_ref()
                 .and_then(|cp| cp.cryptographic_algorithm)
                 .unwrap_or(
                     key_block
@@ -141,6 +142,7 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
                 );
             let block_cipher_mode = request
                 .cryptographic_parameters
+                .as_ref()
                 .and_then(|cp| cp.block_cipher_mode);
             let key_bytes = key_block.key_bytes()?;
             let aead = AeadCipher::from_algorithm_and_key_size(
@@ -154,11 +156,11 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
             let aad = request
                 .authenticated_encryption_additional_data
                 .as_ref()
-                .unwrap_or_default();
+                .unwrap_or(&'static vec![]);
             let tag = request
                 .authenticated_encryption_tag
                 .as_ref()
-                .unwrap_or_default();
+                .unwrap_or(&vec![]);
             let plaintext = aead_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
             Ok(DecryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id.to_string()),
@@ -215,7 +217,7 @@ fn decrypt_with_pkey(
             request.authenticated_encryption_additional_data.as_deref(),
         )?,
         #[cfg(not(feature = "fips"))]
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(private_key, ciphertext)?,
+        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(private_key, ciphertext)?.to_vec(),
         other => {
             kms_bail!("Decrypt: private key type not supported: {other:?}")
         }
@@ -256,7 +258,9 @@ fn decrypt_with_rsa(
     }
     let plaintext = match algorithm {
         CryptographicAlgorithm::AES => rsa_oaep_aes_gcm_decrypt(private_key, hashing_fn, ct, aad)?,
-        CryptographicAlgorithm::RSA => ckm_rsa_pkcs_oaep_key_unwrap(private_key, hashing_fn, ct)?,
+        CryptographicAlgorithm::RSA => {
+            ckm_rsa_pkcs_oaep_key_unwrap(private_key, hashing_fn, ct)?.to_vec()
+        }
         x => {
             kms_bail!("Unable to decrypt with RSA: algorithm not supported for decrypting: {x:?}")
         }

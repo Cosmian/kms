@@ -97,6 +97,7 @@ pub fn build_decryption_request(
         cryptographic_parameters,
         data: Some(ciphertext),
         iv_counter_nonce: nonce,
+        correlation_value: None,
         init_indicator: None,
         final_indicator: None,
         authenticated_encryption_additional_data: authentication_data,

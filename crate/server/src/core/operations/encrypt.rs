@@ -158,7 +158,7 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
             let aad = request
                 .authenticated_encryption_additional_data
                 .as_ref()
-                .unwrap_or_default();
+                .unwrap_or(&vec![]);
             let (ciphertext, tag) = aead_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
             Ok(EncryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id.to_string()),
