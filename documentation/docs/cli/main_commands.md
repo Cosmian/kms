@@ -5,7 +5,14 @@
 CLI used to manage the Cosmian KMS.
 
 ### Usage
-`ckms <subcommand>`
+`ckms <subcommand> [options]`
+### Arguments
+`--url <URL>` The URL of the KMS
+
+`--accept-invalid-certs <ACCEPT_INVALID_CERTS>` Allow to connect using a self signed cert or untrusted cert chain
+
+Possible values:  `"true", "false"`
+
 
 ### Subcommands
 

@@ -198,15 +198,26 @@ impl CliConf {
         Ok(conf)
     }
 
-    pub fn initialize_kms_client(&self) -> Result<KmsRestClient, CliError> {
+    /// Initialize a KMS REST client.
+    ///
+    /// Parameters `kms_server_url` and `accept_invalid_certs` from the command line
+    /// will override the ones from the configuration file.
+    pub fn initialize_kms_client(
+        &self,
+        kms_server_url: Option<&str>,
+        accept_invalid_certs: Option<bool>,
+    ) -> Result<KmsRestClient, CliError> {
+        let kms_server_url = kms_server_url.unwrap_or(&self.kms_server_url);
+        let accept_invalid_certs = accept_invalid_certs.unwrap_or(self.accept_invalid_certs);
+
         // Instantiate a KMS server REST client with the given configuration
         let kms_rest_client = KmsRestClient::instantiate(
-            &self.kms_server_url,
+            kms_server_url,
             self.kms_access_token.as_deref(),
             self.ssl_client_pkcs12_path.as_deref(),
             self.ssl_client_pkcs12_password.as_deref(),
             self.kms_database_secret.as_deref(),
-            self.accept_invalid_certs,
+            accept_invalid_certs,
             if let Some(certificate) = &self.verified_cert {
                 Some(Certificate(
                     x509_cert::Certificate::from_pem(certificate.as_bytes())?.to_der()?,
@@ -217,10 +228,7 @@ impl CliConf {
             self.jwe_public_key.as_deref(),
         )
         .with_context(|| {
-            format!(
-                "Unable to instantiate a KMS server REST client {}",
-                &self.kms_server_url
-            )
+            format!("Unable to instantiate a KMS server REST client {kms_server_url}")
         })?;
 
         Ok(kms_rest_client)

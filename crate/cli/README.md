@@ -39,13 +39,21 @@ If you wish to use a different configuration file, set its full path in the `KMS
 KMS_CLI_CONF=kms.json ckms --help
 ```
 
-If the server is running without Auth0, you can let `kms_access_token` empty. Indeed, the server is running without authentication in a single-user mode.
+### Localhost without conf file
 
-If the server is running with cached sqlcipher as the KMS database, you also need to specify `kms_database_secret`. The first time, your organization uses the KMS, you will run the following command to get the `kms_database_secret`. Save the output because the KMS won't remember it!
+If the server is running without identity provider (such as Auth0), you can use the CLI without configuration file.
+
+For example, with a local KMS server, just run:
 
 ```sh
-KMS_CLI_CONF=kms.json ckms configure
+# local KMS instance
+ckms --url http://127.0.0.1:9998
+
+# remote KMS instance with self-signed HTTPS (without IdP)
+ckms --url https://my-kms/ --accept-invalid-certs true
 ```
+
+Note that if you provide `KMS_CLI_CONF=kms.json` along `url` parameter, the latter will take precedence.
 
 ### Attribute Based Encryption: CoverCrypt
 

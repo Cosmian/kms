@@ -26,6 +26,17 @@ use cosmian_logger::log_utils::log_init;
 struct Cli {
     #[command(subcommand)]
     command: CliCommands,
+
+    /// The URL of the KMS
+    #[arg(long, action)]
+    pub(crate) url: Option<String>,
+
+    /// Allow to connect using a self signed cert or untrusted cert chain
+    ///
+    /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS KMS server
+    /// running an invalid or insecure SSL certificate
+    #[arg(long)]
+    pub(crate) accept_invalid_certs: Option<bool>,
 }
 
 #[derive(Subcommand)]
@@ -48,6 +59,9 @@ enum CliCommands {
     Sym(SymmetricCommands),
     Login(LoginAction),
     Logout(LogoutAction),
+
+    /// Action to auto-generate doc in Markdown format
+    /// Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
     #[clap(hide = true)]
     Markdown(MarkdownAction),
 }
@@ -72,7 +86,8 @@ async fn main_() -> Result<(), CliError> {
         return Ok(())
     }
 
-    let kms_rest_client = conf.initialize_kms_client()?;
+    let kms_rest_client =
+        conf.initialize_kms_client(opts.url.as_deref(), opts.accept_invalid_certs)?;
 
     match opts.command {
         CliCommands::Locate(action) => action.process(&kms_rest_client).await?,
