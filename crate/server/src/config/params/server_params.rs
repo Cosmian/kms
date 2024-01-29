@@ -1,6 +1,5 @@
 use std::{fmt, fs::File, io::Read, path::PathBuf};
 
-use alcoholic_jwt::JWKS;
 use openssl::x509::X509;
 
 use super::{DbParams, HttpParams};
@@ -17,8 +16,8 @@ pub struct ServerParams {
     // The JWT issuer URI if Auth is enabled
     pub jwt_issuer_uri: Option<String>,
 
-    // The JWKS if Auth is enabled
-    pub jwks: Option<JWKS>,
+    // The JWKS URI if Auth is enabled
+    pub jwks_uri: Option<String>,
 
     pub jwe_config: JWEConfig,
 
@@ -79,7 +78,7 @@ impl ServerParams {
         };
 
         let server_conf = Self {
-            jwks: conf.auth.fetch_jwks().await?,
+            jwks_uri: conf.auth.jwks_uri.clone(),
             jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
             jwe_config: conf.jwe.clone(),
             jwt_audience: conf.auth.jwt_audience.clone(),
@@ -129,7 +128,7 @@ impl fmt::Debug for ServerParams {
             .field("clear_db_on_start", &self.clear_db_on_start);
         let x = if let Some(jwt_issuer_uri) = &self.jwt_issuer_uri {
             x.field("jwt_issuer_uri", &jwt_issuer_uri)
-                .field("jwks", &self.jwks)
+                .field("jwks_uri", &self.jwks_uri)
                 .field("jwt_audience", &self.jwt_audience)
         } else {
             x
@@ -154,7 +153,7 @@ impl Clone for ServerParams {
     fn clone(&self) -> Self {
         Self {
             jwt_issuer_uri: self.jwt_issuer_uri.clone(),
-            jwks: self.jwks.clone(),
+            jwks_uri: self.jwks_uri.clone(),
             jwe_config: self.jwe_config.clone(),
             jwt_audience: self.jwt_audience.clone(),
             default_username: self.default_username.clone(),

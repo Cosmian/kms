@@ -13,7 +13,7 @@ use crate::{error::KmsError, result::KResult, KMSServer};
 mod jwt;
 mod operations;
 
-pub use jwt::{jwt_authorization_config, GoogleCseConfig};
+pub use jwt::{jwt_authorization_config, list_jwks_uri, GoogleCseConfig};
 
 /// Error reply for Google CSE
 ///

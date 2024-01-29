@@ -1,28 +1,42 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
+use std::{collections::HashMap, sync::Arc};
 
-use actix_rt::task;
 use alcoholic_jwt::token_kid;
 
 use crate::{
-    config::JwtAuthConfig,
     error::KmsError,
     kms_ensure,
-    middlewares::{JwtConfig, JwtTokenHeaders, UserClaim},
-    result::{KResult, KResultHelper},
+    middlewares::{JwksManager, JwtConfig, JwtTokenHeaders, UserClaim},
+    result::KResult,
 };
+
+// Default JWT issuer URI
+#[cfg(test)]
+const JWT_ISSUER_URI: &str = "https://accounts.google.com";
+
+// Default JWT Set URI
+#[cfg(test)]
+const JWKS_URI: &str = "https://www.googleapis.com/oauth2/v3/certs";
+
+static APPLICATIONS: &[&str; 2] = &["meet", "drive"];
 
 fn get_jwks_uri(application: &str) -> String {
     std::env::var(format!("KMS_GOOGLE_CSE_{}_JWKS_URI", application.to_uppercase()))
     .unwrap_or(format!("https://www.googleapis.com/service_accounts/v1/jwk/gsuitecse-tokenissuer-{application}@system.gserviceaccount.com"))
 }
 
-/// Fetch the JWT authorization configuration for Google CSE 'drive' or 'meet'
-async fn jwt_authorization_config_application(application: &str) -> KResult<Arc<JwtConfig>> {
-    let jwks_uri = get_jwks_uri(application);
+/// List the possible JWKS URI for all the supported application
+pub fn list_jwks_uri() -> Vec<String> {
+    APPLICATIONS
+        .iter()
+        .map(|app| get_jwks_uri(app))
+        .collect::<Vec<_>>()
+}
 
+/// Fetch the JWT authorization configuration for Google CSE 'drive' or 'meet'
+fn jwt_authorization_config_application(
+    application: &str,
+    jwks_manager: Arc<JwksManager>,
+) -> Arc<JwtConfig> {
     let jwt_issuer_uri = std::env::var(format!(
         "KMS_GOOGLE_CSE_{}_JWT_ISSUER",
         application.to_uppercase()
@@ -34,39 +48,30 @@ async fn jwt_authorization_config_application(application: &str) -> KResult<Arc<
     let jwt_audience =
         Some(std::env::var("KMS_GOOGLE_CSE_AUDIENCE").unwrap_or("cse-authorization".to_string()));
 
-    // Fetch the JWKS for the Google CSE service account
-    let jwks_uri_rq = jwks_uri.clone();
-    let jwks = task::spawn_blocking(move || JwtAuthConfig::request_jwks(&jwks_uri_rq))
-        .await
-        .map_err(|e| KmsError::Unauthorized(format!("cannot request JWKS: {e}")))?
-        .context(&format!("Failed to fetch Google CSE JWKS at: {jwks_uri}"))?;
-
-    Ok(Arc::new(JwtConfig {
+    Arc::new(JwtConfig {
         jwt_issuer_uri,
-        jwks: RwLock::new(jwks),
+        jwks: jwks_manager,
         jwt_audience,
-    }))
+    })
 }
 
 /// Fetch the JWT authorization configuration for Google CSE 'drive' and 'meet'
-pub async fn jwt_authorization_config() -> KResult<HashMap<String, Arc<JwtConfig>>> {
-    Ok(HashMap::from([
-        (
-            "drive".to_string(),
-            jwt_authorization_config_application("drive").await?,
-        ),
-        (
-            "meet".to_string(),
-            jwt_authorization_config_application("meet").await?,
-        ),
-    ]))
+pub fn jwt_authorization_config(jwks_manager: Arc<JwksManager>) -> HashMap<String, Arc<JwtConfig>> {
+    APPLICATIONS
+        .iter()
+        .map(|app| {
+            (
+                app.to_string(),
+                jwt_authorization_config_application(app, jwks_manager.clone()),
+            )
+        })
+        .collect::<HashMap<_, _>>()
 }
 
 /// Decode a json web token (JWT) used for Google CSE
 pub async fn decode_jwt_authorization_token(
     jwt_config: &Arc<JwtConfig>,
     token: &str,
-    application: &str,
 ) -> KResult<(UserClaim, JwtTokenHeaders)> {
     kms_ensure!(
         !token.is_empty(),
@@ -101,40 +106,14 @@ pub async fn decode_jwt_authorization_token(
         .map_err(|_| KmsError::Unauthorized("Failed to decode token headers".to_string()))?
         .ok_or_else(|| KmsError::Unauthorized("No 'kid' claim present in token".to_string()))?;
 
-    tracing::trace!("JWKS:\n{:?}", jwt_config.jwks);
+    tracing::trace!("looking for kid `{kid}` JWKS:\n{:?}", jwt_config.jwks);
 
-    let jwk = {
-        let jwk = jwt_config
-            .jwks
-            .read()
-            .expect("cannot lock jwks for read")
-            .find(&kid)
-            .cloned();
-        match jwk {
-            Some(jwk) => jwk,
-            None => {
-                tracing::trace!("refreshing jwks");
-                let jwks_uri = get_jwks_uri(application);
-
-                // refresh JWKS
-                jwt_config
-                    .refresh_jwk_set(&jwks_uri)
-                    .await
-                    .context(&format!("Failed to fetch Google CSE JWKS at: {jwks_uri}"))?;
-
-                // retry auth
-                let jwks = jwt_config.jwks.read().expect("cannot lock jwks for read");
-                tracing::trace!("find '{kid:?}' in new jwks:\n{jwks:#?}");
-                jwks.find(&kid).cloned().ok_or_else(|| {
-                    KmsError::Unauthorized("Specified key not found in set".to_string())
-                })?
-            }
-        }
-    };
-
+    let jwk = &jwt_config.jwks.find(&kid).ok_or_else(|| {
+        KmsError::Unauthorized("[Google CSE auth] Specified key not found in set".to_string())
+    })?;
     tracing::trace!("JWK has been found:\n{jwk:?}");
 
-    let valid_jwt = alcoholic_jwt::validate(token, &jwk, validations)
+    let valid_jwt = alcoholic_jwt::validate(token, jwk, validations)
         .map_err(|err| KmsError::Unauthorized(format!("Cannot validate token: {err:?}")))?;
 
     tracing::trace!("valid_jwt user claims: {:?}", valid_jwt.claims);
@@ -188,7 +167,7 @@ pub async fn validate_tokens(
         ))
     })?;
     let (authorization_token, jwt_headers) =
-        decode_jwt_authorization_token(jwt_config, authorization_token, application).await?;
+        decode_jwt_authorization_token(jwt_config, authorization_token).await?;
     tracing::trace!("authorization token: {authorization_token:?}");
     tracing::trace!("authorization token headers: {jwt_headers:?}");
 
@@ -234,7 +213,7 @@ pub async fn validate_tokens(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::RwLock;
+    use std::sync::Arc;
 
     use cosmian_logger::log_utils::log_init;
     use serde::Deserialize;
@@ -242,9 +221,12 @@ mod tests {
 
     use crate::{
         config::JwtAuthConfig,
-        middlewares::JwtConfig,
+        middlewares::{JwksManager, JwtConfig},
         routes::google_cse::{
-            jwt::{decode_jwt_authorization_token, jwt_authorization_config},
+            self,
+            jwt::{
+                decode_jwt_authorization_token, jwt_authorization_config, JWKS_URI, JWT_ISSUER_URI,
+            },
             operations::WrapRequest,
         },
     };
@@ -295,21 +277,23 @@ mod tests {
         tracing::debug!("wrap_request: {wrap_request:?}");
         let wrap_request: WrapRequest = serde_json::from_str(&wrap_request).unwrap();
 
+        let uris = {
+            let mut uris = google_cse::list_jwks_uri();
+            uris.push(JwtAuthConfig::uri(JWT_ISSUER_URI, Some(JWKS_URI)));
+            uris
+        };
+        let jwks_manager = Arc::new(JwksManager::new(uris).await.unwrap());
+        jwks_manager.refresh().await.unwrap();
+
         // Test authentication
         let jwt_authentication_config = JwtAuthConfig {
-            jwt_issuer_uri: Some("https://accounts.google.com".to_string()),
-            jwks_uri: Some("https://www.googleapis.com/oauth2/v3/certs".to_string()),
+            jwt_issuer_uri: Some(JWT_ISSUER_URI.to_string()),
+            jwks_uri: Some(JWKS_URI.to_string()),
             jwt_audience: None,
         };
         let jwt_authentication_config = JwtConfig {
             jwt_issuer_uri: jwt_authentication_config.jwt_issuer_uri.clone().unwrap(),
-            jwks: RwLock::new(
-                jwt_authentication_config
-                    .fetch_jwks()
-                    .await
-                    .unwrap()
-                    .unwrap(),
-            ),
+            jwks: jwks_manager.clone(),
             jwt_audience: jwt_authentication_config.jwt_audience.clone(),
         };
 
@@ -336,21 +320,14 @@ mod tests {
         // Test authorization
         // we fake the URLs and use authentication tokens,
         // because we don't know the URL of the Google Drive authorization token API.
-        std::env::set_var(
-            "KMS_GOOGLE_CSE_DRIVE_JWKS_URI",
-            "https://www.googleapis.com/oauth2/v3/certs",
-        );
-        std::env::set_var(
-            "KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER",
-            "https://accounts.google.com", // the token has been issued by Google Accounts (post request)
-        );
-        let jwt_authorization_config = jwt_authorization_config().await.unwrap();
+        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWKS_URI", JWKS_URI);
+        std::env::set_var("KMS_GOOGLE_CSE_DRIVE_JWT_ISSUER", JWT_ISSUER_URI); // the token has been issued by Google Accounts (post request)
+        let jwt_authorization_config = jwt_authorization_config(jwks_manager);
         tracing::trace!("{jwt_authorization_config:#?}");
 
         let (authorization_token, jwt_headers) = decode_jwt_authorization_token(
             jwt_authorization_config.get("drive").unwrap(),
             &wrap_request.authorization,
-            "drive",
         )
         .await
         .unwrap();

@@ -1,4 +1,4 @@
-use std::sync::{mpsc, Arc, RwLock};
+use std::sync::{mpsc, Arc};
 
 use actix_cors::Cors;
 use actix_identity::IdentityMiddleware;
@@ -15,12 +15,13 @@ use openssl::{
 use tracing::info;
 
 use crate::{
-    config::{self, ServerParams},
+    config::{self, JwtAuthConfig, ServerParams},
     core::KMS,
-    kms_bail, kms_error,
+    error::KmsError,
+    kms_bail,
     middlewares::{
         ssl_auth::{extract_peer_certificate, SslAuth},
-        JwtAuth, JwtConfig,
+        JwksManager, JwtAuth, JwtConfig,
     },
     result::{KResult, KResultHelper},
     routes::{
@@ -178,29 +179,39 @@ pub async fn prepare_kms_server(
     kms_server: Arc<KMS>,
     builder: Option<SslAcceptorBuilder>,
 ) -> KResult<actix_web::dev::Server> {
+    // Check if this auth server is enabled for Google Client-Side Encryption
+    let enable_google_cse = kms_server.params.google_cse_kacls_url.is_some();
+    let google_cse_jwks = enable_google_cse.then_some(google_cse::list_jwks_uri());
+
     // Determine if JWT Auth should be used for authentication.
-    let (use_jwt_auth, jwt_config) = if let Some(jwt_issuer_uri) = &kms_server.params.jwt_issuer_uri
+    let (use_jwt_auth, jwt_config, jwks_manager) = if let Some(jwt_issuer_uri) =
+        &kms_server.params.jwt_issuer_uri
     {
+        // Prepare all the needed URIs
+        let jwks_uri = JwtAuthConfig::uri(jwt_issuer_uri, kms_server.params.jwks_uri.as_deref());
+        let uris = google_cse_jwks.map_or_else(
+            || vec![jwks_uri.clone()],
+            |mut google_uris| {
+                google_uris.push(jwks_uri.clone());
+                google_uris
+            },
+        );
+
+        let jwks_manager = Arc::new(JwksManager::new(uris).await?);
+
         (
             true,
             Some(Arc::new(JwtConfig {
                 jwt_issuer_uri: jwt_issuer_uri.clone(),
-                jwks: RwLock::new(
-                    kms_server
-                        .params
-                        .jwks
-                        .as_ref()
-                        .ok_or_else(|| {
-                            kms_error!("The JWKS must be provided when using JWT authentication")
-                        })?
-                        .clone(),
-                ),
+                jwks: jwks_manager.clone(),
                 jwt_audience: kms_server.params.jwt_audience.clone(),
             })),
+            Some(jwks_manager),
         )
     } else {
-        (false, None)
+        (false, None, None)
     };
+
     // Determine if Client Cert Auth should be used for authentication.
     let use_cert_auth = kms_server.params.client_cert.is_some();
 
@@ -213,17 +224,19 @@ pub async fn prepare_kms_server(
     // Determine the address to bind the server to.
     let address = format!("{}:{}", kms_server.params.hostname, kms_server.params.port);
 
-    // Check if this auth server is enabled for Google Client-Side Encryption
-    let enable_google_cse = kms_server.params.google_cse_kacls_url.is_some();
-
     // Get the Google Client-Side Encryption JWT authorization config
     let google_cse_jwt_config = if enable_google_cse {
+        let Some(jwks_manager) = jwks_manager else {
+            return Err(KmsError::ServerError(
+                "No JWKS manager to handle Google CSE JWT authorization".to_string(),
+            ));
+        };
         Some(GoogleCseConfig {
             authentication: jwt_config.clone().context(
                 "When using Google client-side encryption, an identity provider used to \
                  authenticate Google Workspace users must be configured.",
             )?,
-            authorization: google_cse::jwt_authorization_config().await?,
+            authorization: google_cse::jwt_authorization_config(jwks_manager.clone()),
             kacls_url: kms_server.params.google_cse_kacls_url.clone().context(
                 "The Google Workspace Client Side Encryption KACLS URL must be provided",
             )?,
@@ -239,7 +252,7 @@ pub async fn prepare_kms_server(
             .wrap(IdentityMiddleware::default())
             .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
-            .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.;
+            .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
 
         if enable_google_cse {
             // The scope for the Google Client-Side Encryption endpoints served from /google_cse
