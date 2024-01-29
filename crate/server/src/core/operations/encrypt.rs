@@ -132,38 +132,34 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
     let key_block = owm.object.key_block()?;
     match key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
+            // recover the cryptographic algorithm from the request or the key block or default to AES
+            let cryptographic_alogrithm = request
+                .cryptographic_parameters
+                .and_then(|cp| cp.cryptographic_algorithm)
+                .unwrap_or(
+                    key_block
+                        .cryptographic_algorithm()
+                        .cloned()
+                        .unwrap_or(CryptographicAlgorithm::AES),
+                );
+            let block_cipher_mode = request
+                .cryptographic_parameters
+                .and_then(|cp| cp.block_cipher_mode);
             let key_bytes = key_block.key_bytes()?;
-            let aead = match key_block
-                .cryptographic_algorithm()
-                .unwrap_or(&CryptographicAlgorithm::AES)
-            {
-                CryptographicAlgorithm::AES => match key_bytes.len() {
-                    16 => AeadCipher::Aes128Gcm,
-                    32 => AeadCipher::Aes256Gcm,
-                    _ => kms_bail!(KmsError::InvalidRequest(
-                        "AES key must be 16 or 32 bytes long".to_owned()
-                    )),
-                },
-                CryptographicAlgorithm::ChaCha20 => match key_bytes.len() {
-                    32 => AeadCipher::Chacha20Poly1305,
-                    _ => kms_bail!(KmsError::InvalidRequest(
-                        "ChaCha20 key must be 32 bytes long".to_owned()
-                    )),
-                },
-                other => kms_bail!(KmsError::InvalidRequest(format!(
-                    "unsupported cryptographic algorithm: {} for a symmetric key",
-                    other
-                ))),
-            };
+            let aead = AeadCipher::from_algorithm_and_key_size(
+                cryptographic_alogrithm,
+                block_cipher_mode,
+                key_bytes.len(),
+            )?;
             let nonce = request
                 .iv_counter_nonce
                 .clone()
                 .unwrap_or(random_nonce(aead)?);
             let aad = request
                 .authenticated_encryption_additional_data
-                .clone()
+                .as_ref()
                 .unwrap_or_default();
-            let (ciphertext, tag) = aead_encrypt(aead, &key_bytes, &nonce, &aad, plaintext)?;
+            let (ciphertext, tag) = aead_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
             Ok(EncryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id.to_string()),
                 data: Some(ciphertext),
@@ -260,7 +256,7 @@ fn encrypt_with_rsa(
         });
 
     if padding != PaddingMethod::OAEP {
-        kms_bail!("Unable to wrap key with RSA: padding method not supported: {padding:?}")
+        kms_bail!("Unable to encrypt with RSA: padding method not supported: {padding:?}")
     }
     let ciphertext = match algorithm {
         CryptographicAlgorithm::AES => {

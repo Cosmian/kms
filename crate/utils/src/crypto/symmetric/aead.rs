@@ -1,6 +1,7 @@
+use cosmian_kmip::kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm};
 use openssl::symm::{decrypt_aead, encrypt_aead, Cipher};
 
-use crate::error::KmipUtilsError;
+use crate::{error::KmipUtilsError, kmip_utils_bail};
 
 /// The supported AEAD ciphers.
 #[derive(Debug, Clone, Copy)]
@@ -49,6 +50,52 @@ impl AeadCipher {
             AeadCipher::Aes128Gcm => 16,
             #[cfg(not(feature = "fips"))]
             AeadCipher::Chacha20Poly1305 => 32,
+        }
+    }
+
+    pub fn from_algorithm_and_key_size(
+        algorithm: CryptographicAlgorithm,
+        block_cipher_mode: Option<BlockCipherMode>,
+        key_size: usize,
+    ) -> Result<Self, KmipUtilsError> {
+        match algorithm {
+            CryptographicAlgorithm::AES => {
+                if block_cipher_mode.is_some()
+                    && (Some(BlockCipherMode::GCM) != block_cipher_mode
+                        || Some(BlockCipherMode::AEAD) != block_cipher_mode)
+                {
+                    kmip_utils_bail!(KmipUtilsError::NotSupported(
+                        "AES is only supported with GCM mode".to_owned()
+                    ));
+                }
+                match key_size {
+                    16 => Ok(AeadCipher::Aes128Gcm),
+                    32 => Ok(AeadCipher::Aes256Gcm),
+                    _ => kmip_utils_bail!(KmipUtilsError::NotSupported(
+                        "AES key must be 16 or 32 bytes long".to_owned()
+                    )),
+                }
+            }
+            #[cfg(not(feature = "fips"))]
+            CryptographicAlgorithm::ChaCha20 => {
+                if block_cipher_mode.is_some() {
+                    kmip_utils_bail!(KmipUtilsError::NotSupported(
+                        "ChaCha20 is only supported with Pooly1305. Do not specify the Block \
+                         Cipher Mode"
+                            .to_owned()
+                    ));
+                }
+                match key_size {
+                    32 => Ok(AeadCipher::Chacha20Poly1305),
+                    _ => kmip_utils_bail!(KmipUtilsError::NotSupported(
+                        "ChaCha20 key must be 32 bytes long".to_owned()
+                    )),
+                }
+            }
+            other => kmip_utils_bail!(KmipUtilsError::NotSupported(format!(
+                "unsupported cryptographic algorithm: {} for a symmetric key",
+                other
+            ))),
         }
     }
 }
