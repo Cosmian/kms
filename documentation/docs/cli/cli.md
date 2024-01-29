@@ -44,7 +44,7 @@ configuration of the KMS.
 - `verified_cert` contains the verified PEM TLS certificate used for certificate
   pinning
 - `gmail_api_conf` is OPTIONAL and contains information about the configured
-  service account used to fetch Gmail API and handle easily S/MIME elements (identities, keypairs)
+  service account used to fetch Gmail API and handle easily S/MIME elements (identities, key pairs)
   (see [below](#smime-gmail-service-account-configuration))
 
 Here is an example configuration with TLS authentication and a client-side encrypted

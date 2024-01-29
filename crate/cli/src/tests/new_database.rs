@@ -111,7 +111,7 @@ async fn test_multiple_databases() -> Result<(), CliError> {
     )?;
 
     // create a new encrypted database
-    let kms_client = ctx.owner_client_conf.initialize_kms_client()?;
+    let kms_client = ctx.owner_client_conf.initialize_kms_client(None, None)?;
     let new_database_secret = kms_client.new_database().await?;
 
     // update the CLI conf

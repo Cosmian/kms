@@ -48,7 +48,9 @@ fn bench_rsa_create_keypair(c: &mut Criterion) {
             .get_or_try_init(start_default_test_kms_server)
             .await
             .unwrap();
-        ctx.owner_client_conf.initialize_kms_client().unwrap()
+        ctx.owner_client_conf
+            .initialize_kms_client(None, None)
+            .unwrap()
     });
 
     let mut group = c.benchmark_group("RSA tests");
@@ -239,7 +241,10 @@ fn bench_rsa_encrypt(
             .get_or_try_init(start_default_test_kms_server)
             .await
             .unwrap();
-        let kms_rest_client = ctx.owner_client_conf.initialize_kms_client().unwrap();
+        let kms_rest_client = ctx
+            .owner_client_conf
+            .initialize_kms_client(None, None)
+            .unwrap();
         let (sk, pk) = create_rsa_keypair(&kms_rest_client, key_size).await;
         (kms_rest_client, sk, pk)
     });
@@ -271,7 +276,10 @@ fn bench_rsa_decrypt(
             .get_or_try_init(start_default_test_kms_server)
             .await
             .unwrap();
-        let kms_rest_client = ctx.owner_client_conf.initialize_kms_client().unwrap();
+        let kms_rest_client = ctx
+            .owner_client_conf
+            .initialize_kms_client(None, None)
+            .unwrap();
         let (sk, pk) = create_rsa_keypair(&kms_rest_client, key_size).await;
         let ciphertext = encrypt(
             &kms_rest_client,
