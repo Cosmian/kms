@@ -3,7 +3,8 @@ use std::{
     path::PathBuf,
 };
 
-use cloudproof::reexport::{crypto_core::SymmetricKey, findex::Label};
+use cloudproof::reexport::crypto_core::SymmetricKey;
+use cloudproof_findex::Label;
 use url::Url;
 
 use crate::database::redis::REDIS_WITH_FINDEX_MASTER_KEY_LENGTH;
