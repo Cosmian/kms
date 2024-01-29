@@ -9,6 +9,12 @@ CLI used to manage the Cosmian KMS.
 ### Arguments
 `--conf [-c] <CONF>` Configuration file location
 
+`--url <URL>` The URL of the KMS
+
+`--accept-invalid-certs <ACCEPT_INVALID_CERTS>` Allow to connect using a self signed cert or untrusted cert chain
+
+Possible values:  `"true", "false"`
+
 
 ### Subcommands
 
@@ -36,7 +42,7 @@ CLI used to manage the Cosmian KMS.
 
 **`logout`** [[12]](#12-ckms-logout)  Logout from the Identity Provider.
 
-**`markdown`** [[13]](#13-ckms-markdown)  Generate the CLI documentation as markdown
+**`markdown`** [[13]](#13-ckms-markdown)  Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
 
 **`google`** [[14]](#14-ckms-google)  Manage google elements. Handle keypairs and identities from Gmail API
 
@@ -1631,7 +1637,7 @@ Logout from the Identity Provider.
 
 ## 13 ckms markdown
 
-Generate the CLI documentation as markdown
+Action to auto-generate doc in Markdown format Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
 
 ### Usage
 `ckms markdown [options] <MARKDOWN_FILE>

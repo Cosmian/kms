@@ -69,7 +69,7 @@ pub async fn start_test_server_with_options(
 
     // Create a (object owner) conf
     let (owner_client_conf_path, mut owner_client_conf) = generate_owner_conf(&server_params)?;
-    let kms_client = owner_client_conf.initialize_kms_client()?;
+    let kms_client = owner_client_conf.initialize_kms_client(None, None)?;
 
     println!(
         "Starting KMS test server at URL: {} with server params {:?}",

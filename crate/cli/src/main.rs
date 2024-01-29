@@ -35,6 +35,17 @@ struct Cli {
     /// Takes precedence over `KMS_CLI_CONF` env variable.
     #[arg(short, long)]
     conf: Option<PathBuf>,
+
+    /// The URL of the KMS
+    #[arg(long, action)]
+    pub(crate) url: Option<String>,
+
+    /// Allow to connect using a self signed cert or untrusted cert chain
+    ///
+    /// `accept_invalid_certs` is useful if the CLI needs to connect to an HTTPS KMS server
+    /// running an invalid or insecure SSL certificate
+    #[arg(long)]
+    pub(crate) accept_invalid_certs: Option<bool>,
 }
 
 #[derive(Subcommand)]
@@ -58,6 +69,9 @@ enum CliCommands {
     Sym(SymmetricCommands),
     Login(LoginAction),
     Logout(LogoutAction),
+
+    /// Action to auto-generate doc in Markdown format
+    /// Run `cargo run --bin ckms -- markdown documentation/docs/cli/main_commands.md`
     #[clap(hide = true)]
     Markdown(MarkdownAction),
     #[command(subcommand)]
@@ -91,7 +105,8 @@ async fn main_() -> Result<(), CliError> {
         CliCommands::Logout(action) => action.process(&conf_path).await?,
         command => {
             let conf = ClientConf::load(&conf_path)?;
-            let kms_rest_client = conf.initialize_kms_client()?;
+            let kms_rest_client =
+                conf.initialize_kms_client(opts.url.as_deref(), opts.accept_invalid_certs)?;
 
             match command {
                 CliCommands::Locate(action) => action.process(&kms_rest_client).await?,
