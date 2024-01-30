@@ -5,7 +5,10 @@
 CLI used to manage the Cosmian KMS.
 
 ### Usage
-`ckms <subcommand>`
+`ckms <subcommand> [options]`
+### Arguments
+`--conf [-c] <CONF>` Configuration file location
+
 
 ### Subcommands
 

@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::mpsc::{self, Sender},
     thread,
 };
@@ -41,12 +42,12 @@ use crate::{cli_bail, config::CliConf, error::CliError};
 pub struct LoginAction;
 
 impl LoginAction {
-    pub async fn process(&self) -> Result<(), CliError> {
-        let conf_location = CliConf::location()?;
-        let mut conf = CliConf::load()?;
-        let oauth2_conf = conf.oauth2_conf.as_ref().ok_or_else(|| {
-            CliError::Default(format!("No oauth2_conf object in {conf_location:?}"))
-        })?;
+    pub async fn process(&self, conf_path: &PathBuf) -> Result<(), CliError> {
+        let mut conf = CliConf::load(conf_path)?;
+        let oauth2_conf = conf
+            .oauth2_conf
+            .as_ref()
+            .ok_or_else(|| CliError::Default(format!("No oauth2_conf object in {conf_path:?}")))?;
         let login_config = Oauth2LoginConfig {
             client_id: oauth2_conf.client_id.clone(),
             client_secret: oauth2_conf.client_secret.clone(),
@@ -61,11 +62,10 @@ impl LoginAction {
 
         // update the configuration and save it
         conf.kms_access_token = Some(access_token);
-        conf.save()?;
+        conf.save(conf_path)?;
 
         println!(
-            "\nSuccess! The access token was saved in the KMS configuration file: \
-             {conf_location:?}"
+            "\nSuccess! The access token was saved in the KMS configuration file: {conf_path:?}"
         );
 
         Ok(())
