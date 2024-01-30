@@ -92,12 +92,6 @@ impl<const LENGTH: usize> Drop for Secret<LENGTH> {
     }
 }
 
-impl<const LENGTH: usize> AsRef<[u8]> for Secret<LENGTH> {
-    fn as_ref(&self) -> &[u8] {
-        self.0.deref()
-    }
-}
-
 impl<const LENGTH: usize> ZeroizeOnDrop for Secret<LENGTH> {}
 
 #[cfg(feature = "ser")]
