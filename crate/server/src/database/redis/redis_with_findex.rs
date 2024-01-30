@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    ops::Deref,
     path::PathBuf,
     sync::Arc,
 };
@@ -104,13 +103,7 @@ impl RedisWithFindex {
         )?;
 
         let master_secret_key: SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH> =
-            SymmetricKey::try_from_bytes(
-                output_key_material
-                    .deref()
-                    .as_slice()
-                    .try_into()
-                    .expect("Derived key has invalid length."),
-            )?;
+            SymmetricKey::try_from_slice(&output_key_material)?;
 
         Ok(master_secret_key)
     }

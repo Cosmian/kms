@@ -7,9 +7,11 @@ use openssl::{
     rand::rand_bytes,
     symm::{decrypt_aead, encrypt_aead, Cipher},
 };
-use zeroize::Zeroizing;
 
-use crate::{error::KmipUtilsError, kmip_utils_bail, DecryptionSystem, EncryptionSystem};
+use crate::{
+    crypto::secret::Secret, error::KmipUtilsError, kmip_utils_bail, DecryptionSystem,
+    EncryptionSystem,
+};
 
 /// AES 256 GCM key length in bytes.
 pub const AES_256_GCM_KEY_LENGTH: usize = 32;
@@ -20,7 +22,7 @@ pub const AES_256_GCM_MAC_LENGTH: usize = 16;
 
 pub struct AesGcmSystem {
     key_uid: String,
-    symmetric_key: Zeroizing<Vec<u8>>,
+    symmetric_key: Secret<AES_256_GCM_KEY_LENGTH>,
 }
 
 impl AesGcmSystem {
@@ -33,7 +35,8 @@ impl AesGcmSystem {
                 ))
             }
         };
-        let symmetric_key = key_block.key_bytes()?;
+        let mut symmetric_key: [u8; AES_256_GCM_KEY_LENGTH] =
+            key_block.key_bytes()?.to_vec().try_into()?;
 
         if symmetric_key.len() != AES_256_GCM_KEY_LENGTH {
             kmip_utils_bail!("Expected a KMIP Symmetric Key of length {AES_256_GCM_KEY_LENGTH}")
@@ -41,7 +44,7 @@ impl AesGcmSystem {
 
         Ok(Self {
             key_uid: uid.into(),
-            symmetric_key,
+            symmetric_key: Secret::from_unprotected_bytes(&mut symmetric_key),
         })
     }
 }

@@ -4,8 +4,8 @@ use argon2::Argon2;
 use openssl::rand::rand_bytes;
 #[cfg(feature = "fips")]
 use openssl::{hash::MessageDigest, pkcs5::pbkdf2_hmac};
-use zeroize::Zeroizing;
 
+use super::secret::Secret;
 use crate::error::KmipUtilsError;
 #[cfg(feature = "fips")]
 use crate::kmip_utils_bail;
@@ -30,7 +30,7 @@ const FIPS_MIN_ITER: usize = 210_000;
 #[cfg(feature = "fips")]
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
-) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
+) -> Result<Secret<LENGTH>, KmipUtilsError> {
     // Check requested key length is in the authorized bounds.
     if LENGTH < FIPS_MIN_KLEN || LENGTH * 8 > FIPS_MAX_KLEN {
         kmip_utils_bail!(
@@ -39,7 +39,8 @@ pub fn derive_key_from_password<const LENGTH: usize>(
         )
     }
 
-    let mut output_key_material = Zeroizing::from(vec![0u8; LENGTH]);
+    //let mut output_key_material = Zeroizing::from(vec![0u8; LENGTH]);
+    let mut output_key_material = Secret::<LENGTH>::new();
 
     // Generate 128 bits of random salt.
     let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
@@ -53,8 +54,6 @@ pub fn derive_key_from_password<const LENGTH: usize>(
         output_key_material.as_mut(),
     )?;
 
-    output_key_material.truncate(LENGTH);
-
     Ok(output_key_material)
 }
 
@@ -63,8 +62,8 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 /// with SHA512 in FIPS mode.
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
-) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
-    let mut output_key_material = Zeroizing::from(vec![0u8; LENGTH]);
+) -> Result<Secret<LENGTH>, KmipUtilsError> {
+    let mut output_key_material = Secret::<LENGTH>::new();
 
     // Generate 128 bits of random salt
     let mut salt = vec![0u8; FIPS_MIN_SALT_SIZE];
@@ -73,8 +72,6 @@ pub fn derive_key_from_password<const LENGTH: usize>(
     Argon2::default()
         .hash_password_into(password, &salt, output_key_material.as_mut())
         .map_err(|e| KmipUtilsError::Derivation(e.to_string()))?;
-
-    output_key_material.truncate(LENGTH);
 
     Ok(output_key_material)
 }
