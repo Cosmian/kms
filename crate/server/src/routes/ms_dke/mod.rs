@@ -7,6 +7,7 @@ use actix_web::{
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
 use chrono::{Duration, Local};
+use clap::crate_version;
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyMaterial,
     kmip_objects::Object,
@@ -15,7 +16,7 @@ use cosmian_kmip::kmip::{
 };
 use num_bigint_dig::BigUint;
 use serde::{Deserialize, Serialize};
-use tracing::info;
+use tracing::{info, log::trace};
 use url::Url;
 
 use crate::{kms_bail, kms_error, result::KResult, KMSServer};
@@ -78,6 +79,12 @@ pub struct DkePublicKeyCache {
 pub struct KeyData {
     key: DkePublicKey,
     cache: DkePublicKeyCache,
+}
+
+#[get("/version")]
+pub async fn version(req_http: HttpRequest, kms: Data<Arc<KMSServer>>) -> KResult<Json<String>> {
+    info!("GET /version {}", kms.get_user(req_http)?);
+    Ok(Json(crate_version!().to_string()))
 }
 
 #[get("/{key_name}")]
@@ -178,14 +185,11 @@ pub struct EncryptedData {
     pub value: String,
 }
 
-// #[post("/{key_name}/{key_id}/decrypt")]
-// TODO the doc says Decrypt when it is decrypt
-#[post("/{key_id}/decrypt")]
+#[post("/{key_name}/{key_id}/decrypt")]
 pub async fn decrypt(
     req_http: HttpRequest,
     wrap_request: Json<EncryptedData>,
-    // path: Path<(String, String)>,
-    key_id: Path<String>,
+    path: Path<(String, String)>,
     kms: Data<Arc<KMSServer>>,
 ) -> HttpResponse {
     let encrypted_data = wrap_request.into_inner();
@@ -193,10 +197,10 @@ pub async fn decrypt(
         "Encrypted Data : {}",
         serde_json::to_string(&encrypted_data).unwrap()
     );
-    // let (key_name, key_id) = path.into_inner();
-    let _key_id = key_id.into_inner();
-    let key_tag = "ms_dke";
-    // trace!("POST /{}/{}/Decrypt {:?}", key_name, key_id, encrypted_data);
+    let (key_name, key_id) = path.into_inner();
+    // let _key_id = key_id.into_inner();
+    let key_tag = "dke_key";
+    trace!("POST /{}/{}/Decrypt {:?}", key_name, key_id, encrypted_data);
     match _decrypt(key_tag, encrypted_data, req_http, &kms).await {
         Ok(decrypted_data) => HttpResponse::Ok().json(decrypted_data),
         Err(e) => HttpResponse::from_error(e),

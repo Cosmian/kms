@@ -37,7 +37,7 @@ Import the private key with the tag `dke_key`, with a name `ms_dke_priv_key` and
 key ` ms_dke_pub_key`.
 
 ```bash
-cargo run --bin ckms -- ec keys import -f pem -t dke_key -p ms_dke_pub_key crate/server/src/tests/ms_dke/private_key.pkcs8.pem ms_dke_priv_key
+cargo run --bin ckms -- ec keys import -f pem -t dke_key -p ms_dke_priv_key crate/server/src/tests/ms_dke/private_key.pkcs8.pem ms_dke_priv_key
 ```
 
 Import the public key with the tag `dke_key`, with a name `ms_dke_pub_key` and a link to the private
@@ -80,4 +80,16 @@ The response should be similar to the following:
     "exp": "2024-01-17T15:07:06"
   }
 }
+```
+
+
+```json
+{
+  "alg": "RSA-OAEP-256",
+  "value": "SowuwT1RuQalev5OCYFhpGaziwOqiTgzQcRfcITsukcBOsX61SejEF91cnx8vQv/gjmovXW4qEV7PpNBKj2GMszHWmFkt877raP02yxch6w0sPEBMaNdfbLIScpsjaPAOmu/i3MAY3dPaAl4duGE3FJCb1O8G98QamB5eQXpJaKcoUGUCeE4hy4qi5k15rQWMU6EmTZ8qL37ugDGo1gRuSsYZmCriPH+sUdiOIXEBJ/UrRIeR+ENPgjBVRSw46sbfdCIee37iROdBRxffHe2p+Ntx1TGMSLhkOc+DU0p+0+cDEicmVXorUfNZCQc7Rof2pIjpUI4Qi3wBCexTnZXgw=="
+}
+```
+```text
+ ERROR cosmian_kms_server::routes] 500 Internal Server Error - Cryptographic error: Not Supported: error:0200009F:rsa routines:RSA_padding_check_PKCS1_type_2:pkcs decoding error:crypto/rsa/rsa_pk1.c:269:, error:02000072:rsa routines:rsa_ossl_private_decrypt:padding check failed:crypto/rsa/rsa_ossl.c:499:
+
 ```

@@ -93,6 +93,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
     // Perform OAEP encryption.
     let mut ctx = PkeyCtx::new(pub_key)?;
     ctx.encrypt_init()?;
+    ctx.set_rsa_padding(openssl::rsa::Padding::PKCS1_OAEP)?;
     ctx.set_rsa_oaep_md(hash_fn.try_into()?)?;
     Ok((ctx, ciphertext))
 }
@@ -166,6 +167,7 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
     // Perform OAEP encryption.
     let mut ctx = PkeyCtx::new(priv_key)?;
     ctx.decrypt_init()?;
+    ctx.set_rsa_padding(openssl::rsa::Padding::PKCS1_OAEP)?;
     ctx.set_rsa_oaep_md(hash_fn)?;
     Ok((ctx, plaintext))
 }

@@ -2,9 +2,10 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
     kmip_objects::{Object, ObjectType},
-    kmip_operations::{Decrypt, Import, ImportResponse},
+    kmip_operations::{Decrypt, DecryptResponse, Import, ImportResponse},
     kmip_types::{
-        CryptographicAlgorithm, CryptographicParameters, KeyFormatType, UniqueIdentifier,
+        CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
+        PaddingMethod, UniqueIdentifier,
     },
 };
 
@@ -78,7 +79,6 @@ async fn decrypt_data_test() -> KResult<()> {
     };
     let import_response: ImportResponse = test_utils::post(&app, &import_key).await?;
     let key_id = import_response.unique_identifier;
-    println!("key_id: {}", key_id);
 
     // encrypted data
     let encrypted_data: EncryptedData = serde_json::from_str(ENCRYPTED_DATA)?;
@@ -88,14 +88,19 @@ async fn decrypt_data_test() -> KResult<()> {
         unique_identifier: Some(key_id),
         cryptographic_parameters: Some(CryptographicParameters {
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
             ..CryptographicParameters::default()
         }),
         data: Some(ciphertext),
         ..Decrypt::default()
     };
-    let decrypt_response: Vec<u8> = test_utils::post(&app, &decrypt_request).await?;
-    let plaintext = String::from_utf8(decrypt_response)?;
-    println!("plaintext: {}", plaintext);
+    let decrypt_response: DecryptResponse = test_utils::post(&app, &decrypt_request).await?;
+    println!("plaintext: {:?}", decrypt_response.data);
+    println!(
+        "plaintext len: {:?}",
+        decrypt_response.data.as_ref().unwrap().len()
+    );
 
     Ok(())
 }

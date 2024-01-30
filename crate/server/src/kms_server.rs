@@ -272,6 +272,7 @@ pub async fn prepare_kms_server(
             // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
             let ms_dke_scope = web::scope("/ms_dke")
                 .wrap(Cors::permissive())
+                .service(routes::ms_dke::version)
                 .service(routes::ms_dke::get_key)
                 .service(routes::ms_dke::decrypt);
             app = app.service(ms_dke_scope);
