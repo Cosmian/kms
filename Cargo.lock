@@ -386,9 +386,9 @@ dependencies = [
 
 [[package]]
 name = "anstyle"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7079075b41f533b8c61d2a4d073c4676e1f8b249ff94a393b0595db304e0dd87"
+checksum = "2faccea4cc4ab4a667ce676a30e8ec13922a692c99bb8f5b11f1502c72e04220"
 
 [[package]]
 name = "anyhow"
@@ -792,13 +792,14 @@ checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
 [[package]]
 name = "cloudproof"
 version = "2.4.1"
-source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=develop#06a9c6dae2d239ca9e29549189eb4227593e2c79"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3647902963641e2f2baa4da7b6ab75f5ffb28f049cf010b14a13cec2f4e014a7"
 dependencies = [
  "cloudproof_aesgcm",
  "cloudproof_anonymization",
  "cloudproof_cover_crypt",
  "cloudproof_ecies",
- "cloudproof_findex 6.0.0",
+ "cloudproof_findex 6.0.1",
  "cloudproof_fpe",
  "cosmian_crypto_core",
 ]
@@ -869,9 +870,9 @@ dependencies = [
 
 [[package]]
 name = "cloudproof_findex"
-version = "6.0.0"
+version = "6.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "105e770ec9eb97102b2cbe170c7e97d1e28966bc2208931d3b517670255a9a71"
+checksum = "aa79e33386f94fe6b1a620ff8c22335e36c8ab68029e1e4ea39b625893391f94"
 dependencies = [
  "async-trait",
  "cosmian_crypto_core",
@@ -2159,9 +2160,9 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25db6b064527c5d482d0423354fcd07a89a2dfe07b67892e62411946db7f07b0"
+checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
 dependencies = [
  "either",
 ]
@@ -3620,7 +3621,7 @@ version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce81b7bd7c4493975347ef60d8c7e8b742d4694f4c49f93e0a12ea263938176c"
 dependencies = [
- "itertools 0.12.0",
+ "itertools 0.12.1",
  "nom",
  "unicode_categories",
 ]
