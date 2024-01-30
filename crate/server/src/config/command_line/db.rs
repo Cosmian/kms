@@ -1,7 +1,7 @@
 use std::{fmt::Display, path::PathBuf};
 
 use clap::Args;
-use cloudproof::reexport::findex::Label;
+use cloudproof_findex::Label;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
