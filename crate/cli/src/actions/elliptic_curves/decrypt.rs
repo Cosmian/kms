@@ -1,7 +1,6 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kmip::kmip::kmip_operations::DecryptedData;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_decryption_request;
 
@@ -71,12 +70,9 @@ impl DecryptAction {
             .decrypt(decrypt_request)
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
-
-        let metadata_and_cleartext: DecryptedData = decrypt_response
+        let plaintext = decrypt_response
             .data
-            .context("The plain data is empty")?
-            .as_slice()
-            .try_into()?;
+            .context("Decrypt with elliptic curve: the plaintext is empty")?;
 
         // Write the decrypted file
         let output_file = self
@@ -86,7 +82,7 @@ impl DecryptAction {
         let mut buffer =
             File::create(&output_file).with_context(|| "Fail to write the plain file")?;
         buffer
-            .write_all(&metadata_and_cleartext.plaintext)
+            .write_all(&plaintext)
             .with_context(|| "Fail to write the plain file")?;
 
         println!("The decrypted file is available at {output_file:?}");

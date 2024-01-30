@@ -65,9 +65,9 @@ pub fn ecies_decrypt(
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let plaintext = match private_key.id() {
-        Id::EC => standard_curves::ecies_decrypt(&private_key, ciphertext)?,
+        Id::EC => standard_curves::ecies_decrypt(private_key, ciphertext)?,
         #[cfg(not(feature = "fips"))]
-        Id::ED25519 | Id::X25519 => salsa_sealbox::sealbox_decrypt(&private_key, ciphertext)?,
+        Id::ED25519 | Id::X25519 => salsa_sealbox::sealbox_decrypt(private_key, ciphertext)?,
         x => {
             kmip_utils_bail!("private key id not supported yet: {:?}", x);
         }

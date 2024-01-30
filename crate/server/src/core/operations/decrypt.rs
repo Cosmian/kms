@@ -10,11 +10,12 @@ use cosmian_kmip::{
     },
     openssl::kmip_private_key_to_openssl,
 };
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_utils::crypto::elliptic_curves::ecies::ecies_decrypt;
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::{
         cover_crypt::{attributes, decryption::CovercryptDecryption},
-        elliptic_curves::ecies::ecies_decrypt,
         rsa::{
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_unwrap,
             rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt,
@@ -33,6 +34,8 @@ use crate::{
     kms_bail, kms_not_supported,
     result::{KResult, KResultHelper},
 };
+
+const EMPTY_SLICE: &[u8] = &[];
 
 pub async fn decrypt(
     kms: &KMS,
@@ -130,7 +133,7 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
     match key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
             // recover the cryptographic algorithm from the request or the key block or default to AES
-            let cryptographic_alogrithm = request
+            let cryptographic_algorithm = request
                 .cryptographic_parameters
                 .as_ref()
                 .and_then(|cp| cp.cryptographic_algorithm)
@@ -146,7 +149,7 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
                 .and_then(|cp| cp.block_cipher_mode);
             let key_bytes = key_block.key_bytes()?;
             let aead = AeadCipher::from_algorithm_and_key_size(
-                cryptographic_alogrithm,
+                cryptographic_algorithm,
                 block_cipher_mode,
                 key_bytes.len(),
             )?;
@@ -155,12 +158,12 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
             })?;
             let aad = request
                 .authenticated_encryption_additional_data
-                .as_ref()
-                .unwrap_or(&'static vec![]);
+                .as_deref()
+                .unwrap_or(EMPTY_SLICE);
             let tag = request
                 .authenticated_encryption_tag
-                .as_ref()
-                .unwrap_or(&vec![]);
+                .as_deref()
+                .unwrap_or(EMPTY_SLICE);
             let plaintext = aead_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
             Ok(DecryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id.to_string()),
@@ -178,14 +181,14 @@ fn decrypt_with_private_key(
 ) -> KResult<DecryptResponse> {
     let key_block = owm.object.key_block()?;
     match &key_block.key_format_type {
-        KeyFormatType::CoverCryptPublicKey => {
+        KeyFormatType::CoverCryptSecretKey => {
             CovercryptDecryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?
                 .decrypt(request)
                 .map_err(Into::into)
         }
 
-        KeyFormatType::TransparentECPublicKey
-        | KeyFormatType::TransparentRSAPublicKey
+        KeyFormatType::TransparentECPrivateKey
+        | KeyFormatType::TransparentRSAPrivateKey
         | KeyFormatType::PKCS1
         | KeyFormatType::PKCS8 => {
             let ciphertext = request.data.as_ref().ok_or_else(|| {

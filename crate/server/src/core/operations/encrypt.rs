@@ -10,11 +10,12 @@ use cosmian_kmip::{
     },
     openssl::kmip_public_key_to_openssl,
 };
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_utils::crypto::elliptic_curves::ecies::ecies_encrypt;
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::{
         cover_crypt::encryption::CoverCryptEncryption,
-        elliptic_curves::ecies::ecies_encrypt,
         rsa::{
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_wrap,
             rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt,
@@ -37,6 +38,8 @@ use crate::{
     kms_bail, kms_not_supported,
     result::{KResult, KResultHelper},
 };
+
+const EMPTY_SLICE: &[u8] = &[];
 
 pub async fn encrypt(
     kms: &KMS,
@@ -135,6 +138,7 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
             // recover the cryptographic algorithm from the request or the key block or default to AES
             let cryptographic_alogrithm = request
                 .cryptographic_parameters
+                .as_ref()
                 .and_then(|cp| cp.cryptographic_algorithm)
                 .unwrap_or(
                     key_block
@@ -144,6 +148,7 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
                 );
             let block_cipher_mode = request
                 .cryptographic_parameters
+                .as_ref()
                 .and_then(|cp| cp.block_cipher_mode);
             let key_bytes = key_block.key_bytes()?;
             let aead = AeadCipher::from_algorithm_and_key_size(
@@ -157,8 +162,8 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
                 .unwrap_or(random_nonce(aead)?);
             let aad = request
                 .authenticated_encryption_additional_data
-                .as_ref()
-                .unwrap_or(&vec![]);
+                .as_deref()
+                .unwrap_or(EMPTY_SLICE);
             let (ciphertext, tag) = aead_encrypt(aead, &key_bytes, &nonce, aad, plaintext)?;
             Ok(EncryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id.to_string()),

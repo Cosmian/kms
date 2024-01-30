@@ -17,9 +17,10 @@ use openssl::{
 use tracing::debug;
 use zeroize::Zeroizing;
 
+#[cfg(not(feature = "fips"))]
+use crate::crypto::elliptic_curves::ecies::ecies_encrypt;
 use crate::{
     crypto::{
-        elliptic_curves::ecies::ecies_encrypt,
         rsa::{
             ckm_rsa_aes_key_wrap::ckm_rsa_aes_key_wrap,
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_wrap,

@@ -96,7 +96,7 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
     )?;
 
     // Encrypt data using the provided.
-    let (ciphertext, tag) = aead_encrypt(aead, &key, &iv, plaintext, &[])?;
+    let (ciphertext, tag) = aead_encrypt(aead, &key, &iv, &[], plaintext)?;
 
     let R_bytes = R
         .public_key()
@@ -116,11 +116,11 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
 /// key and the ephemeral public key.
 #[allow(non_snake_case)]
 pub fn ecies_decrypt(
-    privkey: &PKey<Private>,
+    private_key: &PKey<Private>,
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let mut ctx = BigNumContext::new_secure()?;
-    let d = privkey.ec_key()?;
+    let d = private_key.ec_key()?;
     let curve = d.group();
     let aead = AeadCipher::Aes128Gcm;
 

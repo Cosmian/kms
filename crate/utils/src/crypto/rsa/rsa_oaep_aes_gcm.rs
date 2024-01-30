@@ -13,9 +13,6 @@ use crate::{
     kmip_utils_bail,
 };
 
-#[cfg(feature = "fips")]
-const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
-
 /// Asymmetrically encrypt data referring to PKCS#11 available at
 /// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html
 ///
@@ -47,8 +44,8 @@ pub fn rsa_oaep_aes_gcm_encrypt(
         AeadCipher::Aes128Gcm,
         &dek,
         &iv,
-        plaintext,
         aad.unwrap_or_default(),
+        plaintext,
     )?;
 
     Ok([c, iv.to_vec(), ciphertext, tag].concat())

@@ -120,8 +120,8 @@ pub fn aead_encrypt(
     aead_cipher: AeadCipher,
     key: &[u8],
     nonce: &[u8],
-    plaintext: &[u8],
     aad: &[u8],
+    plaintext: &[u8],
 ) -> Result<(Vec<u8>, Vec<u8>), KmipUtilsError> {
     // Create buffer for the tag
     let mut tag = vec![0; aead_cipher.tag_size()];
@@ -184,7 +184,7 @@ mod tests {
         rand_bytes(&mut aad).unwrap();
 
         let (ciphertext, tag) =
-            aead_encrypt(AeadCipher::Aes128Gcm, &key, &nonce, &message, &aad).unwrap();
+            aead_encrypt(AeadCipher::Aes128Gcm, &key, &nonce, &aad, &message).unwrap();
 
         let decrypted_data =
             aead_decrypt(AeadCipher::Aes128Gcm, &key, &nonce, &aad, &ciphertext, &tag).unwrap();
@@ -209,7 +209,7 @@ mod tests {
         rand_bytes(&mut aad).unwrap();
 
         let (ciphertext, tag) =
-            aead_encrypt(AeadCipher::Aes256Gcm, &key, &nonce, &message, &aad).unwrap();
+            aead_encrypt(AeadCipher::Aes256Gcm, &key, &nonce, &aad, &message).unwrap();
 
         let decrypted_data =
             aead_decrypt(AeadCipher::Aes256Gcm, &key, &nonce, &aad, &ciphertext, &tag).unwrap();
@@ -231,7 +231,7 @@ mod tests {
         rand_bytes(&mut aad).unwrap();
 
         let (ciphertext, tag) =
-            aead_encrypt(AeadCipher::Chacha20Poly1305, &key, &nonce, &message, &aad).unwrap();
+            aead_encrypt(AeadCipher::Chacha20Poly1305, &key, &nonce, &aad, &message).unwrap();
 
         let decrypted_data = aead_decrypt(
             AeadCipher::Chacha20Poly1305,
