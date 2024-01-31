@@ -6,13 +6,12 @@ use cosmian_kmip::kmip::{
         KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
     },
 };
-use cosmian_kms_utils::KeyPair;
 use num_bigint_dig::BigUint;
 use openssl::{pkey::Private, rsa::Rsa};
 use tracing::trace;
 use zeroize::Zeroizing;
 
-use crate::error::KmsCryptoError;
+use crate::{error::KmsCryptoError, KeyPair};
 #[cfg(feature = "fips")]
 use crate::{kms_crypto_bail, wrap::rsa_oaep_aes_kwp::FIPS_MIN_RSA_MODULUS_LENGTH};
 

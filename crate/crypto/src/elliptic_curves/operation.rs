@@ -7,7 +7,6 @@ use cosmian_kmip::kmip::{
         RecommendedCurve,
     },
 };
-use cosmian_kms_utils::KeyPair;
 use num_bigint_dig::BigUint;
 use openssl::{
     bn::BigNumContext,
@@ -18,7 +17,7 @@ use openssl::{
 use tracing::trace;
 use zeroize::Zeroizing;
 
-use crate::{error::KmsCryptoError, kms_crypto_bail};
+use crate::{error::KmsCryptoError, kms_crypto_bail, KeyPair};
 
 pub const X25519_PRIVATE_KEY_LENGTH: usize = 0x20;
 pub const X25519_PUBLIC_KEY_LENGTH: usize = 0x20;

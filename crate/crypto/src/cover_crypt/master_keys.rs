@@ -14,9 +14,11 @@ use cosmian_kmip::{
         },
     },
 };
-use cosmian_kms_utils::KeyPair;
 
-use crate::cover_crypt::attributes::{policy_from_attributes, upsert_policy_in_attributes};
+use crate::{
+    cover_crypt::attributes::{policy_from_attributes, upsert_policy_in_attributes},
+    KeyPair,
+};
 
 /// Generate a `KeyPair` `(PrivateKey, MasterPublicKey)` from the attributes
 /// of a `CreateKeyPair` operation

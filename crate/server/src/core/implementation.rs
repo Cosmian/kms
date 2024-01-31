@@ -30,12 +30,11 @@ use cosmian_kms_crypto::{
     hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
     rsa::operation::create_rsa_key_pair,
     symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
-    DecryptionSystem, EncryptionSystem,
+    DecryptionSystem, EncryptionSystem, KeyPair,
 };
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     tagging::{check_user_tags, get_tags, remove_tags},
-    KeyPair,
 };
 use openssl::nid::Nid;
 #[cfg(not(feature = "fips"))]
