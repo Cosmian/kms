@@ -8,7 +8,7 @@ use zeroize::Zeroizing;
 
 use crate::error::KmsCryptoError;
 #[cfg(feature = "fips")]
-use crate::kmip_utils_bail;
+use crate::kms_crypto_bail;
 
 const FIPS_MIN_SALT_SIZE: usize = 16;
 #[cfg(feature = "fips")]
@@ -33,7 +33,7 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 ) -> Result<Zeroizing<Vec<u8>>, KmsCryptoError> {
     // Check requested key length is in the authorized bounds.
     if LENGTH < FIPS_MIN_KLEN || LENGTH * 8 > FIPS_MAX_KLEN {
-        kmip_utils_bail!(
+        kms_crypto_bail!(
             "Password derivation error: wrong output length argument, got {}",
             LENGTH,
         )

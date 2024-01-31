@@ -144,7 +144,7 @@ pub fn create_rsa_key_pair(
 ) -> Result<KeyPair, KmsCryptoError> {
     #[cfg(feature = "fips")]
     if key_size_in_bits < FIPS_MIN_RSA_MODULUS_LENGTH * 8 {
-        kmip_utils_bail!(
+        kms_crypto_bail!(
             "FIPS 140 mode requires a minimum key length of {} bits",
             FIPS_MIN_RSA_MODULUS_LENGTH * 8
         )
