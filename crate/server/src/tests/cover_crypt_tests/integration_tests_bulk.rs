@@ -1,11 +1,11 @@
 use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
 use cosmian_kmip::kmip::{
+    extra::tagging::EMPTY_TAGS,
     kmip_messages::{Message, MessageBatchItem, MessageHeader, MessageResponse},
     kmip_operations::Operation,
     kmip_types::{OperationEnumeration, ProtocolVersion, ResultStatusEnumeration},
 };
 use cosmian_kms_crypto::cover_crypt::kmip_requests::build_create_master_keypair_request;
-use cosmian_kms_utils::tagging::EMPTY_TAGS;
 
 use crate::{result::KResult, tests::test_utils};
 

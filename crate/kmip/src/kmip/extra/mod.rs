@@ -1,4 +1,5 @@
 mod certificates;
+pub mod tagging;
 pub mod x509_extensions;
 
 /// The vendor ID to use for Cosmian specific attributes

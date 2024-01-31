@@ -11,7 +11,6 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::tagging::set_tags;
 use strum::IntoEnumIterator;
 
 use crate::error::CliError;
@@ -137,7 +136,7 @@ impl LocateObjectsAction {
         }
 
         if let Some(tags) = opt_tags {
-            set_tags(&mut attributes, tags)?;
+            attributes.set_tags(tags)?;
         }
 
         let locate = Locate {

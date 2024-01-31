@@ -16,7 +16,6 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_client::access::ObjectOperationType;
-use cosmian_kms_utils::tagging::{check_user_tags, remove_tags};
 use openssl::{
     asn1::Asn1Time,
     hash::MessageDigest,
@@ -58,9 +57,9 @@ pub async fn certify(
     ))?;
 
     // Retrieve and update tags
-    let mut tags = remove_tags(&mut attributes).unwrap_or_default();
+    let mut tags = attributes.remove_tags().unwrap_or_default();
     if !tags.is_empty() {
-        check_user_tags(&tags)?;
+        Attributes::check_user_tags(&tags)?;
     }
 
     // Retrieve the issuer certificate id if provided

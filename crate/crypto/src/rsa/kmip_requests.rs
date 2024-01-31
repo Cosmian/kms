@@ -5,7 +5,6 @@ use cosmian_kmip::kmip::{
         Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::tagging::set_tags;
 
 use crate::error::KmsCryptoError;
 
@@ -31,7 +30,7 @@ pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
         ..Attributes::default()
     };
     // add the tags
-    set_tags(&mut attributes, tags)?;
+    attributes.set_tags(tags)?;
     Ok(CreateKeyPair {
         common_attributes: Some(attributes),
         ..CreateKeyPair::default()

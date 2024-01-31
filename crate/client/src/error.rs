@@ -83,6 +83,7 @@ impl From<KmipError> for RestClientError {
             KmipError::KmipError(r, s) => Self::KmipError(r, s),
             KmipError::Default(s) => Self::NotSupported(s),
             KmipError::OpenSSL(s) => Self::NotSupported(s),
+            KmipError::InvalidTag(s) => Self::NotSupported(s),
         }
     }
 }

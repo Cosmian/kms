@@ -19,7 +19,6 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_client::access::{IsWrapped, ObjectOperationType};
 use cosmian_kms_crypto::password_derivation::derive_key_from_password;
-use cosmian_kms_utils::tagging::get_tags;
 use redis::aio::ConnectionManager;
 use tracing::trace;
 use uuid::Uuid;
@@ -546,8 +545,8 @@ impl Database for RedisWithFindex {
     ) -> KResult<Vec<(String, StateEnumeration, Attributes, IsWrapped)>> {
         let mut keywords = {
             if let Some(attributes) = researched_attributes {
-                let tags = get_tags(attributes);
-                trace!("find: tags: {:?}", tags);
+                let tags = attributes.get_tags();
+                trace!("find: tags: {tags:?}");
                 let mut keywords = tags
                     .iter()
                     .map(|tag| Keyword::from(tag.as_bytes()))

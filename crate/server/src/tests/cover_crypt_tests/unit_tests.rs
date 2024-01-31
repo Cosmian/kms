@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
 use cosmian_kmip::kmip::{
+    extra::tagging::EMPTY_TAGS,
     kmip_objects::{Object, ObjectType},
     kmip_operations::{DecryptedData, Get, Import, Locate},
     kmip_types::{
@@ -18,7 +19,6 @@ use cosmian_kms_crypto::{
     },
     generic::kmip_requests::{build_decryption_request, build_encryption_request},
 };
-use cosmian_kms_utils::tagging::EMPTY_TAGS;
 use tracing::debug;
 use uuid::Uuid;
 

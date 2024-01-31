@@ -10,7 +10,6 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::tagging::set_tags;
 
 use crate::{actions::shared::utils::read_bytes_from_file, error::CliError};
 
@@ -122,7 +121,7 @@ impl CertifyAction {
                 Some(UniqueIdentifier::TextString(certificate_id.clone()));
         }
 
-        set_tags(&mut attributes, &self.tags)?;
+        attributes.set_tags(&self.tags)?;
 
         // Using a CSR ?
         let (certificate_request_value, certificate_request_type) =

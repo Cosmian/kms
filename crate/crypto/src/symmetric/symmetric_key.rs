@@ -4,7 +4,6 @@ use cosmian_kmip::kmip::{
     kmip_operations::Create,
     kmip_types::{Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
 };
-use cosmian_kms_utils::tagging::set_tags;
 
 use crate::error::KmsCryptoError;
 
@@ -75,7 +74,7 @@ pub fn symmetric_key_create_request<T: IntoIterator<Item = impl AsRef<str>>>(
         object_type: Some(ObjectType::SymmetricKey),
         ..Attributes::default()
     };
-    set_tags(&mut attributes, tags)?;
+    attributes.set_tags(tags)?;
     Ok(Create {
         object_type: ObjectType::SymmetricKey,
         attributes,

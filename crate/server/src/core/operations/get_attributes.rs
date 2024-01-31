@@ -1,6 +1,6 @@
 use cosmian_kmip::{
     kmip::{
-        extra::VENDOR_ID_COSMIAN,
+        extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{GetAttributes, GetAttributesResponse},
         kmip_types::{
@@ -11,7 +11,6 @@ use cosmian_kmip::{
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 use cosmian_kms_client::access::ObjectOperationType;
-use cosmian_kms_utils::tagging::VENDOR_ATTR_TAG;
 use tracing::{debug, trace};
 
 use crate::{

@@ -56,6 +56,7 @@ impl From<KmipError> for KmsCryptoError {
             KmipError::KmipError(error_reason, value) => Self::Kmip(error_reason, value),
             KmipError::Default(value) => Self::NotSupported(value),
             KmipError::OpenSSL(value) => Self::NotSupported(value),
+            KmipError::InvalidTag(value) => Self::NotSupported(value),
         }
     }
 }

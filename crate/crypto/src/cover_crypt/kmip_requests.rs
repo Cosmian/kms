@@ -8,7 +8,6 @@ use cosmian_kmip::kmip::{
         LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
     },
 };
-use cosmian_kms_utils::tagging::set_tags;
 
 use super::attributes::{
     access_policy_as_vendor_attribute, edit_policy_action_as_vendor_attribute,
@@ -28,7 +27,7 @@ pub fn build_create_master_keypair_request<T: IntoIterator<Item = impl AsRef<str
         vendor_attributes: Some(vec![policy_as_vendor_attribute(policy)?]),
         ..Attributes::default()
     };
-    set_tags(&mut attributes, tags)?;
+    attributes.set_tags(tags)?;
     Ok(CreateKeyPair {
         common_attributes: Some(attributes),
         ..CreateKeyPair::default()
@@ -54,7 +53,7 @@ pub fn build_create_user_decryption_private_key_request<T: IntoIterator<Item = i
         }]),
         ..Attributes::default()
     };
-    set_tags(&mut attributes, tags)?;
+    attributes.set_tags(tags)?;
     Ok(Create {
         attributes,
         object_type: ObjectType::PrivateKey,
@@ -89,7 +88,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
         vendor_attributes: Some(vec![access_policy_as_vendor_attribute(access_policy)?]),
         ..Attributes::default()
     };
-    set_tags(&mut attributes, tags)?;
+    attributes.set_tags(tags)?;
 
     // The key could be:
     //  - already wrapped (is_wrapped is true)
@@ -163,7 +162,7 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
         }]),
         ..Attributes::default()
     };
-    set_tags(&mut attributes, tags)?;
+    attributes.set_tags(tags)?;
 
     // The key could be:
     //  - already wrapped (is_wrapped is true)
@@ -233,7 +232,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
         }]),
         ..Attributes::default()
     };
-    set_tags(&mut attributes, tags)?;
+    attributes.set_tags(tags)?;
 
     Ok(Import {
         unique_identifier: UniqueIdentifier::TextString(unique_identifier.unwrap_or_default()),

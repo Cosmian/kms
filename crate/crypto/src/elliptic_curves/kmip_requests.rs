@@ -6,7 +6,6 @@ use cosmian_kmip::kmip::{
         KeyFormatType, RecommendedCurve, UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::tagging::set_tags;
 
 use crate::{elliptic_curves::operation::Q_LENGTH_BITS, error::KmsCryptoError};
 
@@ -35,7 +34,7 @@ pub fn create_curve_25519_key_pair_request<T: IntoIterator<Item = impl AsRef<str
         ..Attributes::default()
     };
     // add the tags
-    set_tags(&mut attributes, tags)?;
+    attributes.set_tags(tags)?;
     Ok(CreateKeyPair {
         common_attributes: Some(attributes),
         ..CreateKeyPair::default()

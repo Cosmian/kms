@@ -2,6 +2,7 @@ use cloudproof::reexport::cover_crypt::abe_policy::{
     Attribute, DimensionBuilder, EncryptionHint, Policy,
 };
 use cosmian_kmip::kmip::{
+    extra::tagging::EMPTY_TAGS,
     kmip_operations::{
         CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
         EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
@@ -18,7 +19,6 @@ use cosmian_kms_crypto::{
     },
     generic::kmip_requests::{build_decryption_request, build_encryption_request},
 };
-use cosmian_kms_utils::tagging::EMPTY_TAGS;
 
 use crate::{
     result::{KResult, KResultHelper},

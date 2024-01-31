@@ -14,7 +14,9 @@ use cosmian_kmip::{
     kmip::{
         kmip_objects::Object,
         kmip_operations::{Create, CreateKeyPair},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve, StateEnumeration},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, RecommendedCurve, StateEnumeration,
+        },
     },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
@@ -32,7 +34,6 @@ use cosmian_kms_crypto::{
     symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
-use cosmian_kms_utils::tagging::{check_user_tags, get_tags, remove_tags};
 use openssl::nid::Nid;
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
@@ -267,8 +268,8 @@ impl KMS {
         })?;
 
         // recover tags
-        let mut tags = get_tags(attributes);
-        check_user_tags(&tags)?;
+        let mut tags = attributes.get_tags();
+        Attributes::check_user_tags(&tags)?;
         //update the tags
         tags.insert("_kk".to_string());
 
@@ -333,8 +334,8 @@ impl KMS {
         })?;
 
         // recover tags
-        let mut tags = get_tags(attributes);
-        check_user_tags(&tags)?;
+        let mut tags = attributes.get_tags();
+        Attributes::check_user_tags(&tags)?;
         //update the tags
         tags.insert("_uk".to_string());
 
@@ -380,8 +381,8 @@ impl KMS {
         let mut common_attributes = request.common_attributes.unwrap_or_default();
 
         // recover tags and clean them up from the common attributes
-        let tags = remove_tags(&mut common_attributes).unwrap_or_default();
-        check_user_tags(&tags)?;
+        let tags = common_attributes.remove_tags().unwrap_or_default();
+        Attributes::check_user_tags(&tags)?;
         // Update the tags for the private key and the public key.
         let mut sk_tags = tags.clone();
         sk_tags.insert("_sk".to_string());

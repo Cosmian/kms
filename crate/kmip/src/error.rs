@@ -26,6 +26,9 @@ pub enum KmipError {
     #[cfg(feature = "openssl")]
     #[error("OpenSSL Error: {0}")]
     OpenSSL(String),
+
+    #[error("Invalid tag: {0}")]
+    InvalidTag(String),
 }
 
 impl KmipError {
