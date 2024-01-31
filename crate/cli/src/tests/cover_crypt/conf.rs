@@ -43,7 +43,7 @@ pub async fn test_bad_conf() -> Result<(), CliError> {
     ]);
     recover_cmd_logs(&mut cmd);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "Configuration file \"notfound.json\" does not exist",
+        "Configuration file \"notfound.json\" from env var does not exist",
     ));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
