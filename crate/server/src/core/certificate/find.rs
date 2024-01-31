@@ -2,11 +2,11 @@ use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_types::{Attributes, LinkType},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use cosmian_kms_client::access::ObjectOperationType;
 
 use super::add_certificate_tags_to_attributes;
 use crate::{
-    core::KMS,
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
     database::{object_with_metadata::ObjectWithMetadata, retrieve_object_for_operation},
     error::KmsError,
     kms_bail,

@@ -14,10 +14,7 @@ use cosmian_kmip::{
         openssl_private_key_to_kmip, openssl_public_key_to_kmip,
     },
 };
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
-    tagging::{check_user_tags, remove_tags},
-};
+use cosmian_kms_utils::tagging::{check_user_tags, remove_tags};
 use openssl::{
     pkey::{PKey, Private},
     x509::X509,
@@ -26,7 +23,10 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 
 use super::wrapping::unwrap_key;
-use crate::core::certificate::{add_attributes_to_certificate_tags, add_certificate_system_tags};
+use crate::core::{
+    certificate::{add_attributes_to_certificate_tags, add_certificate_system_tags},
+    extra_database_params::ExtraDatabaseParams,
+};
 /// Import a new object
 use crate::{core::KMS, database::AtomicOperation, error::KmsError, kms_bail, result::KResult};
 

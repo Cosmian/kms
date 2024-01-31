@@ -8,10 +8,9 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_crypto::cover_crypt::attributes::attributes_as_vendor_attribute;
-use cosmian_kms_utils::access::ExtraDatabaseParams;
 
 use crate::{
-    core::{operations, KMS},
+    core::{extra_database_params::ExtraDatabaseParams, operations, KMS},
     result::{KResult, KResultHelper},
 };
 

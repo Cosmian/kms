@@ -10,7 +10,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
+use cosmian_kms_client::access::{IsWrapped, ObjectOperationType};
 use serde_json::Value;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
@@ -21,6 +21,7 @@ use uuid::Uuid;
 
 use super::object_with_metadata::ObjectWithMetadata;
 use crate::{
+    core::extra_database_params::ExtraDatabaseParams,
     database::{
         database_trait::AtomicOperation, query_from_attributes, state_from_string, DBObject,
         Database, SqlitePlaceholder, SQLITE_QUERIES,

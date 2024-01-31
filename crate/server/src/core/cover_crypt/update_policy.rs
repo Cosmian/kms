@@ -9,12 +9,14 @@ use cosmian_kms_crypto::cover_crypt::{
     master_keys::update_master_keys,
     user_key::UserDecryptionKeysHandler,
 };
-use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::trace;
 
 use super::KMS;
 use crate::{
-    core::cover_crypt::locate_user_decryption_keys, error::KmsError, kms_bail, result::KResult,
+    core::{cover_crypt::locate_user_decryption_keys, extra_database_params::ExtraDatabaseParams},
+    error::KmsError,
+    kms_bail,
+    result::KResult,
 };
 
 /// `Re_key` a `CoverCrypt` master Key for the given attributes, which in `CoverCrypt` terms

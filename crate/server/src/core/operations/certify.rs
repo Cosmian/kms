@@ -15,10 +15,8 @@ use cosmian_kmip::{
         openssl_certificate_to_kmip,
     },
 };
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
-    tagging::{check_user_tags, remove_tags},
-};
+use cosmian_kms_client::access::ObjectOperationType;
+use cosmian_kms_utils::tagging::{check_user_tags, remove_tags};
 use openssl::{
     asn1::Asn1Time,
     hash::MessageDigest,
@@ -33,6 +31,7 @@ use crate::{
             add_attributes_to_certificate_tags, add_certificate_system_tags,
             retrieve_matching_private_key_and_certificate,
         },
+        extra_database_params::ExtraDatabaseParams,
         KMS,
     },
     database::{retrieve_object_for_operation, AtomicOperation},

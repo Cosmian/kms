@@ -3,11 +3,14 @@ use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_types::{Attributes, LinkType},
 };
+use cosmian_kms_client::access::ObjectOperationType;
 use cosmian_kms_crypto::wrap::unwrap_key_block;
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 
 use crate::{
-    core::{certificate::add_certificate_tags_to_attributes, KMS},
+    core::{
+        certificate::add_certificate_tags_to_attributes,
+        extra_database_params::ExtraDatabaseParams, KMS,
+    },
     database::retrieve_object_for_operation,
     kms_bail,
     result::{KResult, KResultHelper},

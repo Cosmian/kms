@@ -17,11 +17,9 @@ use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},
 };
+use cosmian_kms_client::access::{IsWrapped, ObjectOperationType};
 use cosmian_kms_crypto::password_derivation::derive_key_from_password;
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType},
-    tagging::get_tags,
-};
+use cosmian_kms_utils::tagging::get_tags;
 use redis::aio::ConnectionManager;
 use tracing::trace;
 use uuid::Uuid;
@@ -31,6 +29,7 @@ use super::{
     permissions::PermissionsDB,
 };
 use crate::{
+    core::extra_database_params::ExtraDatabaseParams,
     database::{
         database_trait::AtomicOperation, object_with_metadata::ObjectWithMetadata,
         redis::objects_db::RedisOperation, Database,

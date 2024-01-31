@@ -21,16 +21,15 @@ use cosmian_kmip::kmip::{
     },
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::access::{
-    Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
-    UserAccessResponse,
+use cosmian_kms_client::access::{
+    Access, AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
 };
 use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
     config::{DbParams, ServerParams},
-    core::operations,
+    core::{extra_database_params::ExtraDatabaseParams, operations},
     database::Database,
     error::KmsError,
     kms_bail, kms_error,

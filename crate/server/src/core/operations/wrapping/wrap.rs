@@ -5,11 +5,11 @@ use cosmian_kmip::kmip::{
     kmip_objects::ObjectType,
     kmip_types::{EncodingOption, LinkType, WrappingMethod},
 };
+use cosmian_kms_client::access::ObjectOperationType;
 use cosmian_kms_crypto::wrap::encrypt_bytes;
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 
 use crate::{
-    core::KMS,
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
     database::retrieve_object_for_operation,
     kms_bail,
     result::{KResult, KResultHelper},

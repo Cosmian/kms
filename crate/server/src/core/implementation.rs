@@ -32,10 +32,7 @@ use cosmian_kms_crypto::{
     symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
-    tagging::{check_user_tags, get_tags, remove_tags},
-};
+use cosmian_kms_utils::tagging::{check_user_tags, get_tags, remove_tags};
 use openssl::nid::Nid;
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
@@ -45,7 +42,7 @@ use zeroize::{Zeroize, Zeroizing};
 use super::{cover_crypt::create_user_decryption_key, KMS};
 use crate::{
     config::{DbParams, ServerParams},
-    core::operations::unwrap_key,
+    core::{extra_database_params::ExtraDatabaseParams, operations::unwrap_key},
     database::{
         cached_sqlcipher::CachedSqlCipher,
         mysql::MySqlPool,

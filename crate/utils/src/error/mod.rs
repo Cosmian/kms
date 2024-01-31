@@ -1,4 +1,4 @@
-use cloudproof::reexport::crypto_core::{reexport::pkcs8, CryptoCoreError};
+// use cloudproof::reexport::crypto_core::{reexport::pkcs8, CryptoCoreError};
 use cosmian_kmip::{error::KmipError, kmip::kmip_operations::ErrorReason};
 use thiserror::Error;
 
@@ -59,11 +59,11 @@ impl From<KmipError> for KmipUtilsError {
     }
 }
 
-impl From<CryptoCoreError> for KmipUtilsError {
-    fn from(value: CryptoCoreError) -> Self {
-        Self::Default(value.to_string())
-    }
-}
+// impl From<CryptoCoreError> for KmipUtilsError {
+//     fn from(value: CryptoCoreError) -> Self {
+//         Self::Default(value.to_string())
+//     }
+// }
 
 impl From<serde_json::Error> for KmipUtilsError {
     fn from(e: serde_json::Error) -> Self {
@@ -71,17 +71,17 @@ impl From<serde_json::Error> for KmipUtilsError {
     }
 }
 
-impl From<pkcs8::spki::Error> for KmipUtilsError {
-    fn from(e: pkcs8::spki::Error) -> Self {
-        Self::ConversionError(e.to_string())
-    }
-}
+// impl From<pkcs8::spki::Error> for KmipUtilsError {
+//     fn from(e: pkcs8::spki::Error) -> Self {
+//         Self::ConversionError(e.to_string())
+//     }
+// }
 
-impl From<pkcs8::Error> for KmipUtilsError {
-    fn from(e: pkcs8::Error) -> Self {
-        Self::ConversionError(e.to_string())
-    }
-}
+// impl From<pkcs8::Error> for KmipUtilsError {
+//     fn from(e: pkcs8::Error) -> Self {
+//         Self::ConversionError(e.to_string())
+//     }
+// }
 
 /// Return early with an error if a condition is not satisfied.
 ///

@@ -1,10 +1,13 @@
 use std::collections::HashSet;
 
 use cosmian_kmip::kmip::kmip_types::{Attributes, LinkType, LinkedObjectIdentifier};
-use cosmian_kms_utils::access::ExtraDatabaseParams;
 use openssl::{sha::Sha1, x509::X509};
 
-use crate::{core::KMS, error::KmsError, result::KResult};
+use crate::{
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
+    error::KmsError,
+    result::KResult,
+};
 
 /// Add system tags to the certificate user tags
 ///

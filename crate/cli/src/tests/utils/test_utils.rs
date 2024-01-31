@@ -15,9 +15,9 @@ use cosmian_kms_server::{
     config::{
         ClapConfig, DBConfig, HttpConfig, HttpParams, JWEConfig, Jwk, JwtAuthConfig, ServerParams,
     },
+    core::extra_database_params::ExtraDatabaseParams,
     kms_server::start_kms_server,
 };
-use cosmian_kms_utils::access::ExtraDatabaseParams;
 use rand::SeedableRng;
 use tokio::sync::OnceCell;
 use tracing::trace;

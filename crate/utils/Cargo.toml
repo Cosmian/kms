@@ -7,7 +7,6 @@ license-file = "../../LICENSE.md"
 
 
 [dependencies]
-cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip", features = ["openssl"] }
 openssl = { workspace = true }
 serde = { workspace = true }

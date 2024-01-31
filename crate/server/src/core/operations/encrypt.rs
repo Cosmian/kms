@@ -3,11 +3,11 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
     kmip_types::StateEnumeration,
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use cosmian_kms_client::access::ObjectOperationType;
 use tracing::{debug, trace};
 
 use crate::{
-    core::KMS,
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
     result::{KResult, KResultHelper},

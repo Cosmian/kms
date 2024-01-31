@@ -1213,6 +1213,7 @@ dependencies = [
  "cloudproof",
  "cloudproof_findex 5.0.4",
  "cosmian_kmip",
+ "cosmian_kms_client",
  "cosmian_kms_crypto",
  "cosmian_kms_utils",
  "cosmian_logger",
@@ -1245,7 +1246,6 @@ dependencies = [
 name = "cosmian_kms_utils"
 version = "4.11.3"
 dependencies = [
- "cloudproof",
  "cosmian_kmip",
  "openssl",
  "serde",

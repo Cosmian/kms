@@ -10,11 +10,13 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Destroy, DestroyResponse, ErrorReason},
     kmip_types::{KeyFormatType, LinkType, StateEnumeration},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use cosmian_kms_client::access::ObjectOperationType;
 use tracing::{debug, trace};
 
 use crate::{
-    core::{cover_crypt::destroy_user_decryption_keys, KMS},
+    core::{
+        cover_crypt::destroy_user_decryption_keys, extra_database_params::ExtraDatabaseParams, KMS,
+    },
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
     kms_bail,

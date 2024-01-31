@@ -5,10 +5,12 @@ use cosmian_kmip::kmip::{
 use cosmian_kms_crypto::cover_crypt::{
     attributes::access_policy_from_attributes, locate::compare_cover_crypt_attributes,
 };
-use cosmian_kms_utils::{self, access::ExtraDatabaseParams};
 use tracing::trace;
 
-use crate::{core::KMS, result::KResult};
+use crate::{
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
+    result::KResult,
+};
 
 pub async fn locate(
     kms: &KMS,
