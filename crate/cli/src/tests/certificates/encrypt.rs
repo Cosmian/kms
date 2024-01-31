@@ -427,6 +427,11 @@ async fn test_certificate_encrypt_using_secp384r1() -> Result<(), CliError> {
 }
 
 #[tokio::test]
+async fn test_certificate_encrypt_using_secp521r1() -> Result<(), CliError> {
+    import_encrypt_decrypt("secp521r1").await
+}
+
+#[tokio::test]
 async fn test_certificate_encrypt_using_rsa() -> Result<(), CliError> {
     import_encrypt_decrypt("rsa-2048").await?;
     import_encrypt_decrypt("rsa-3072").await?;
