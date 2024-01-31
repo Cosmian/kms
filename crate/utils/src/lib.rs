@@ -2,30 +2,16 @@
 
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
-    kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
+    // kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
 };
-use error::KmipUtilsError;
+// use error::KmipUtilsError;
 
 pub mod access;
-pub mod crypto;
+// pub mod crypto;
 pub mod error;
-pub mod kmip_utils;
+// pub mod kmip_utils;
 pub mod tagging;
 pub mod tee;
-
-pub trait EncryptionSystem {
-    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError>;
-}
-
-impl<T: EncryptionSystem + ?Sized> EncryptionSystem for Box<T> {
-    fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipUtilsError> {
-        (**self).encrypt(request)
-    }
-}
-
-pub trait DecryptionSystem {
-    fn decrypt(&self, request: &Decrypt) -> Result<DecryptResponse, KmipUtilsError>;
-}
 
 /// A `KeyPair` is a tuple `(Object::PrivateKey, Object::PublicKey)`
 ///

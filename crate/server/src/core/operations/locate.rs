@@ -2,12 +2,10 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Locate, LocateResponse},
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
-    crypto::cover_crypt::{
-        attributes::access_policy_from_attributes, locate::compare_cover_crypt_attributes,
-    },
+use cosmian_kms_crypto::cover_crypt::{
+    attributes::access_policy_from_attributes, locate::compare_cover_crypt_attributes,
 };
+use cosmian_kms_utils::{self, access::ExtraDatabaseParams};
 use tracing::trace;
 
 use crate::{core::KMS, result::KResult};

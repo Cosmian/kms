@@ -10,7 +10,7 @@ use cosmian_kmip::{
     result::KmipResultHelper,
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::{
+use cosmian_kms_crypto::{
     cover_crypt::{
         attributes::EditPolicyAction,
         kmip_requests::{

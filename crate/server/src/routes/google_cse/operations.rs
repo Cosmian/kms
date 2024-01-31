@@ -7,7 +7,7 @@ use cosmian_kmip::kmip::{
     kmip_data_structures::{KeyWrappingData, KeyWrappingSpecification},
     kmip_types::{self, CryptographicAlgorithm, EncodingOption, UniqueIdentifier},
 };
-use cosmian_kms_utils::crypto::symmetric::create_symmetric_key_kmip_object;
+use cosmian_kms_crypto::symmetric::create_symmetric_key_kmip_object;
 use serde::{Deserialize, Serialize};
 
 use super::GoogleCseConfig;

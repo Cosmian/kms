@@ -10,7 +10,7 @@ use cosmian_kmip::kmip::{
         ProtocolVersion, RecommendedCurve, ResultStatusEnumeration, UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::crypto::elliptic_curves::{
+use cosmian_kms_crypto::elliptic_curves::{
     kmip_requests::{
         create_curve_25519_key_pair_request, get_private_key_request, get_public_key_request,
     },

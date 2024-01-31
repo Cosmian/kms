@@ -4,10 +4,10 @@ use cosmian_kmip::kmip::{
     kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
     kmip_types::{CryptographicAlgorithm, KeyFormatType, StateEnumeration},
 };
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
-    crypto::cover_crypt::attributes::{edit_policy_action_from_attributes, policy_from_attributes},
+use cosmian_kms_crypto::cover_crypt::attributes::{
+    edit_policy_action_from_attributes, policy_from_attributes,
 };
+use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::trace;
 
 use crate::{

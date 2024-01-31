@@ -8,7 +8,7 @@ use cosmian_kmip::kmip::{
     },
     kmip_types::{RevocationReason, UniqueIdentifier},
 };
-use cosmian_kms_utils::crypto::{
+use cosmian_kms_crypto::{
     cover_crypt::{
         attributes::EditPolicyAction,
         kmip_requests::{

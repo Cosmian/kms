@@ -2,7 +2,7 @@ use std::{fs::File, io::prelude::*, path::PathBuf};
 
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::generic::kmip_requests::build_encryption_request;
+use cosmian_kms_crypto::generic::kmip_requests::build_encryption_request;
 
 use crate::{
     actions::shared::utils::read_bytes_from_file,

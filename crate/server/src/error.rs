@@ -7,6 +7,7 @@ use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
+use cosmian_kms_crypto::error::KmsCryptoError;
 use cosmian_kms_utils::error::KmipUtilsError;
 use redis::ErrorKind;
 use thiserror::Error;
@@ -170,6 +171,12 @@ impl From<QueryPayloadError> for KmsError {
 
 impl From<KmipUtilsError> for KmsError {
     fn from(e: KmipUtilsError) -> Self {
+        Self::CryptographicError(e.to_string())
+    }
+}
+
+impl From<KmsCryptoError> for KmsError {
+    fn from(e: KmsCryptoError) -> Self {
         Self::CryptographicError(e.to_string())
     }
 }

@@ -2,7 +2,7 @@ use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::symmetric::{
+use cosmian_kms_crypto::symmetric::{
     create_symmetric_key_kmip_object, symmetric_key_create_request,
 };
 

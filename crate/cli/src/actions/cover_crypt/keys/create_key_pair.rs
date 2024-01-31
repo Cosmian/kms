@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::cover_crypt::kmip_requests::build_create_master_keypair_request;
+use cosmian_kms_crypto::cover_crypt::kmip_requests::build_create_master_keypair_request;
 
 use crate::{
     actions::cover_crypt::policy::{policy_from_binary_file, policy_from_specifications_file},

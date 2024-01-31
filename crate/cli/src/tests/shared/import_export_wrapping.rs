@@ -8,8 +8,8 @@ use cosmian_kmip::kmip::{
     kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
 };
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::elliptic_curves::operation::create_x25519_key_pair;
-use cosmian_kms_utils::crypto::{symmetric::create_symmetric_key_kmip_object, wrap::decrypt_bytes};
+use cosmian_kms_crypto::elliptic_curves::operation::create_x25519_key_pair;
+use cosmian_kms_crypto::{symmetric::create_symmetric_key_kmip_object, wrap::decrypt_bytes};
 use tempfile::TempDir;
 #[cfg(not(feature = "fips"))]
 use tracing::debug;

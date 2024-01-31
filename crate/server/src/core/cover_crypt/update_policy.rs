@@ -4,14 +4,12 @@ use cosmian_kmip::kmip::{
     kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
     kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
-    crypto::cover_crypt::{
-        attributes::{policy_from_attributes, EditPolicyAction},
-        master_keys::update_master_keys,
-        user_key::UserDecryptionKeysHandler,
-    },
+use cosmian_kms_crypto::cover_crypt::{
+    attributes::{policy_from_attributes, EditPolicyAction},
+    master_keys::update_master_keys,
+    user_key::UserDecryptionKeysHandler,
 };
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::trace;
 
 use super::KMS;

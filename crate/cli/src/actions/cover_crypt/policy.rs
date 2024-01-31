@@ -10,7 +10,7 @@ use cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, TTLV},
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::cover_crypt::attributes::policy_from_attributes;
+use cosmian_kms_crypto::cover_crypt::attributes::policy_from_attributes;
 use serde::{Deserialize, Serialize};
 
 use crate::{

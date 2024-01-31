@@ -19,22 +19,23 @@ use cosmian_kmip::{
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::elliptic_curves::operation::{
+use cosmian_kms_crypto::elliptic_curves::operation::{
     create_x25519_key_pair, create_x448_key_pair,
+};
+use cosmian_kms_crypto::{
+    cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
+    elliptic_curves::operation::{
+        create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
+    },
+    hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
+    rsa::operation::create_rsa_key_pair,
+    symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
+    DecryptionSystem, EncryptionSystem,
 };
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
-    crypto::{
-        cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
-        elliptic_curves::operation::{
-            create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
-        },
-        hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
-        rsa::operation::create_rsa_key_pair,
-        symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
-    },
     tagging::{check_user_tags, get_tags, remove_tags},
-    DecryptionSystem, EncryptionSystem, KeyPair,
+    KeyPair,
 };
 use openssl::nid::Nid;
 #[cfg(not(feature = "fips"))]
@@ -512,7 +513,7 @@ impl KMS {
             }
             CryptographicAlgorithm::Ed448 => create_ed448_key_pair(private_key_uid, public_key_uid),
             CryptographicAlgorithm::CoverCrypt => {
-                cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
+                cosmian_kms_crypto::cover_crypt::master_keys::create_master_keypair(
                     &Covercrypt::default(),
                     private_key_uid,
                     public_key_uid,

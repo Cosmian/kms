@@ -9,19 +9,16 @@ use cosmian_kmip::kmip::{
         UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::{
-    crypto::{
-        cover_crypt::{
-            attributes::access_policy_as_vendor_attribute,
-            kmip_requests::{
-                build_create_master_keypair_request,
-                build_create_user_decryption_private_key_request,
-            },
+use cosmian_kms_crypto::{
+    cover_crypt::{
+        attributes::access_policy_as_vendor_attribute,
+        kmip_requests::{
+            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
         },
-        generic::kmip_requests::{build_decryption_request, build_encryption_request},
     },
-    tagging::EMPTY_TAGS,
+    generic::kmip_requests::{build_decryption_request, build_encryption_request},
 };
+use cosmian_kms_utils::tagging::EMPTY_TAGS;
 use tracing::debug;
 use uuid::Uuid;
 

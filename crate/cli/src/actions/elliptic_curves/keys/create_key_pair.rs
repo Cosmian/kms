@@ -1,7 +1,7 @@
 use clap::Parser;
 use cosmian_kmip::kmip::kmip_types::RecommendedCurve;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::elliptic_curves::kmip_requests::create_curve_25519_key_pair_request;
+use cosmian_kms_crypto::elliptic_curves::kmip_requests::create_curve_25519_key_pair_request;
 
 use crate::error::{result::CliResultHelper, CliError};
 

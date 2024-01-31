@@ -17,9 +17,9 @@ use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},
 };
+use cosmian_kms_crypto::password_derivation::derive_key_from_password;
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType},
-    crypto::password_derivation::derive_key_from_password,
     tagging::get_tags,
 };
 use redis::aio::ConnectionManager;

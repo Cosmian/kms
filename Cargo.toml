@@ -2,11 +2,12 @@
 members = [
   "crate/cli",
   "crate/client",
+  "crate/crypto",
   "crate/kmip",
+  "crate/logger",
+  "crate/pyo3",
   "crate/server",
   "crate/utils",
-  "crate/pyo3",
-  "crate/logger",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli. For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
 resolver = "2"

@@ -7,9 +7,8 @@ use cosmian_kmip::kmip::{
         StateEnumeration,
     },
 };
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams, crypto::cover_crypt::attributes::attributes_as_vendor_attribute,
-};
+use cosmian_kms_crypto::cover_crypt::attributes::attributes_as_vendor_attribute;
+use cosmian_kms_utils::access::ExtraDatabaseParams;
 
 use crate::{
     core::{operations, KMS},
