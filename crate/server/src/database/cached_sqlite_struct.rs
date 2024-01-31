@@ -8,7 +8,8 @@ use std::{
     time::SystemTime,
 };
 
-use cloudproof::reexport::crypto_core::{reexport::tiny_keccak, SymmetricKey};
+use cloudproof::reexport::crypto_core::reexport::tiny_keccak;
+use cosmian_kms_utils::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 use sqlx::{Pool, Sqlite};
 use tracing::info;
 
@@ -141,7 +142,11 @@ impl KMSSqliteCache {
     /// Get the sqlite handler and tag it as "used"
     ///
     /// The function will return an error if the database is closed or the key is not the right one
-    pub fn get(&self, id: u128, key: &SymmetricKey<32>) -> KResult<Arc<Pool<Sqlite>>> {
+    pub fn get(
+        &self,
+        id: u128,
+        key: &Secret<AES_256_GCM_KEY_LENGTH>,
+    ) -> KResult<Arc<Pool<Sqlite>>> {
         let mut sqlites = self.sqlites.write().expect("Unable to lock for write");
 
         let item = sqlites
@@ -254,7 +259,12 @@ impl KMSSqliteCache {
     /// The handler is considered as used until it is explicitly release.
     ///
     /// This function will call a `flush` if needed to close the oldest unused databases.
-    pub async fn save(&self, id: u128, key: &SymmetricKey<32>, pool: Pool<Sqlite>) -> KResult<()> {
+    pub async fn save(
+        &self,
+        id: u128,
+        key: &Secret<AES_256_GCM_KEY_LENGTH>,
+        pool: Pool<Sqlite>,
+    ) -> KResult<()> {
         // Flush the cache if necessary
         self.flush().await?;
         // If nothing has been flush, allow to exceed max cache size
@@ -483,9 +493,7 @@ impl FreeableSqliteCache {
 mod tests {
     use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
-    use cloudproof::reexport::crypto_core::{
-        reexport::rand_core::SeedableRng, CsRng, RandomFixedSizeCBytes, SymmetricKey,
-    };
+    use cosmian_kms_utils::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
     use sqlx::{
         sqlite::{SqliteConnectOptions, SqlitePoolOptions},
         ConnectOptions,
@@ -707,8 +715,7 @@ mod tests {
         assert_eq!(cache.max_size, 2);
         assert_eq!(cache.current_size.load(Ordering::Relaxed), 0);
 
-        let mut cs_rng = CsRng::from_entropy();
-        let password = SymmetricKey::<32>::new(&mut cs_rng);
+        let password = Secret::<AES_256_GCM_KEY_LENGTH>::new_random().unwrap();
 
         let sqlite = connect().await.expect("Can't create database");
         let sqlite2 = connect().await.expect("Can't create database");
@@ -745,7 +752,11 @@ mod tests {
         assert!(cache.opened(2));
 
         assert!(cache.get(4, &password).is_err());
-        assert!(cache.get(1, &SymmetricKey::<32>::new(&mut cs_rng)).is_err()); // bad &password
+        assert!(
+            cache
+                .get(1, &Secret::<AES_256_GCM_KEY_LENGTH>::new_random().unwrap())
+                .is_err()
+        ); // bad &password
         assert!(cache.get(1, &password).is_ok()); // 2 uses of sqlite1
 
         let sqlite4 = connect().await.expect("Can't create database");

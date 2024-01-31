@@ -1,15 +1,6 @@
-use std::{
-    collections::HashSet,
-    sync::{Arc, Mutex},
-};
+use std::collections::HashSet;
 
-use cloudproof::reexport::{
-    cover_crypt::Covercrypt,
-    crypto_core::{
-        reexport::rand_core::{RngCore, SeedableRng},
-        CsRng, FixedSizeCBytes, SymmetricKey,
-    },
-};
+use cloudproof::reexport::{cover_crypt::Covercrypt, crypto_core::FixedSizeCBytes};
 use cosmian_kmip::{
     kmip::{
         kmip_objects::Object,
@@ -31,12 +22,13 @@ use cosmian_kms_utils::{
         },
         hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
         rsa::operation::create_rsa_key_pair,
+        secret::Secret,
         symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
     },
     tagging::{check_user_tags, get_tags, remove_tags},
     DecryptionSystem, EncryptionSystem, KeyPair,
 };
-use openssl::nid::Nid;
+use openssl::{nid::Nid, rand::rand_bytes};
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
 use tracing::{debug, trace};
@@ -87,9 +79,9 @@ impl KMS {
                     // So we are going to create a "zeroizable" copy which will be passed to Redis with Findex
                     // and zerorize the one in the shared config
                     let new_master_key =
-                        SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::try_from_bytes(
-                            master_key.to_bytes(),
-                        )?;
+                        Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::from_unprotected_bytes(
+                            &mut master_key.to_bytes(),
+                        );
                     master_key.zeroize();
                     Box::new(
                         RedisWithFindex::instantiate(url.as_str(), new_master_key, label).await?,
@@ -103,14 +95,7 @@ impl KMS {
         Ok(Self {
             params: shared_config,
             db,
-            rng: Arc::new(Mutex::new(CsRng::from_entropy())),
         })
-    }
-
-    /// Get the CS-RNG
-    #[must_use]
-    pub fn rng(&self) -> Arc<Mutex<CsRng>> {
-        self.rng.clone()
     }
 
     /// Return an encryption system based on the type of key
@@ -257,7 +242,6 @@ impl KMS {
     ///  - the KMIP cryptographic algorithm in lower case prepended with "_"
     pub(crate) fn create_symmetric_key_and_tags(
         &self,
-        rng: &mut CsRng,
         request: &Create,
     ) -> KResult<(Object, HashSet<String>)> {
         let attributes = &request.attributes;
@@ -295,7 +279,7 @@ impl KMS {
                         .cryptographic_length
                         .map_or(AES_256_GCM_KEY_LENGTH, |v| v as usize / 8);
                     let mut symmetric_key = Zeroizing::from(vec![0; key_len]);
-                    rng.fill_bytes(&mut symmetric_key);
+                    rand_bytes(&mut symmetric_key)?;
                     let object =
                         create_symmetric_key_kmip_object(&symmetric_key, *cryptographic_algorithm);
 

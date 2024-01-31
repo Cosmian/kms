@@ -1,17 +1,20 @@
 use std::{
     collections::{HashMap, HashSet},
+    ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::crypto_core::{RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
+use cosmian_kms_utils::{
+    access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType},
+    crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH},
+};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     ConnectOptions, Pool, Sqlite,
@@ -61,7 +64,7 @@ impl CachedSqlCipher {
     async fn instantiate_group_database(
         &self,
         group_id: u128,
-        key: &SymmetricKey<32>,
+        key: &Secret<AES_256_GCM_KEY_LENGTH>,
     ) -> KResult<Pool<Sqlite>> {
         let path = self
             .filename(group_id)
@@ -69,7 +72,7 @@ impl CachedSqlCipher {
         let options = SqliteConnectOptions::new()
             // create the database file if it doesn't exist
             .create_if_missing(true)
-            .pragma("key", format!("\"x'{}'\"", hex::encode(key.as_bytes())))
+            .pragma("key", format!("\"x'{}'\"", hex::encode(key.deref())))
             .pragma("journal_mode", "OFF")
             .filename(path)
             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.
@@ -119,7 +122,7 @@ impl CachedSqlCipher {
     async fn pre_query(
         &self,
         group_id: u128,
-        key: &SymmetricKey<32>,
+        key: &Secret<AES_256_GCM_KEY_LENGTH>,
     ) -> KResult<Arc<Pool<Sqlite>>> {
         if !self.cache.exists(group_id) {
             let pool = self.instantiate_group_database(group_id, key).await?;

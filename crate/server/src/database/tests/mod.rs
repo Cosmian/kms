@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::SeedableRng, CsRng, RandomFixedSizeCBytes, SymmetricKey,
+use cosmian_kms_utils::{
+    access::ExtraDatabaseParams,
+    crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH},
 };
-use cosmian_kms_utils::access::ExtraDatabaseParams;
 
 use self::{
     additional_redis_findex_tests::{test_corner_case, test_objects_db, test_permissions_db},
@@ -43,8 +43,7 @@ async fn get_sql_cipher() -> KResult<(CachedSqlCipher, Option<ExtraDatabaseParam
     let dir = PathBuf::from("/tmp");
 
     // generate a database key
-    let mut cs_rng = CsRng::from_entropy();
-    let db_key = SymmetricKey::<32>::new(&mut cs_rng);
+    let db_key = Secret::<AES_256_GCM_KEY_LENGTH>::new_random()?;
 
     // SQLCipher uses a directory
     let dir_path = dir.join("test_sqlite_enc.db");
@@ -94,8 +93,7 @@ async fn get_mysql() -> KResult<(MySqlPool, Option<ExtraDatabaseParams>)> {
 async fn get_redis_with_findex() -> KResult<(RedisWithFindex, Option<ExtraDatabaseParams>)> {
     let redis_url = get_redis_url();
     let redis_url = std::option_env!("KMS_REDIS_URL").unwrap_or(&redis_url);
-    let mut rng = CsRng::from_entropy();
-    let master_key = SymmetricKey::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::new(&mut rng);
+    let master_key = Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::new_random()?;
     let redis_findex = RedisWithFindex::instantiate(redis_url, master_key, b"label").await?;
     Ok((redis_findex, None))
 }

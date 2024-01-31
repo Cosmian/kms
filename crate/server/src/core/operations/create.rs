@@ -20,10 +20,7 @@ pub async fn create(
     }
 
     let (object, tags) = match &request.object_type {
-        ObjectType::SymmetricKey => {
-            let mut rng = kms.rng.lock().expect("failed locking the CsRng");
-            kms.create_symmetric_key_and_tags(&mut rng, &request)?
-        }
+        ObjectType::SymmetricKey => kms.create_symmetric_key_and_tags(&request)?,
         ObjectType::PrivateKey => {
             kms.create_private_key_and_tags(&request, owner, params)
                 .await?

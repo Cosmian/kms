@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeSet, HashSet},
     fs,
-    sync::{Arc, Mutex},
 };
 
 use actix_web::{HttpMessage, HttpRequest};
@@ -9,7 +8,6 @@ use base64::{
     engine::general_purpose::{self, STANDARD as b64},
     Engine as _,
 };
-use cloudproof::reexport::crypto_core::{CsRng, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_messages::{Message, MessageResponse},
     kmip_operations::{
@@ -21,9 +19,12 @@ use cosmian_kmip::kmip::{
     },
     kmip_types::{StateEnumeration, UniqueIdentifier},
 };
-use cosmian_kms_utils::access::{
-    Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
-    UserAccessResponse,
+use cosmian_kms_utils::{
+    access::{
+        Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
+        UserAccessResponse,
+    },
+    crypto::secret::Secret,
 };
 use tracing::debug;
 use uuid::Uuid;
@@ -42,7 +43,6 @@ use crate::{
 /// `https://www.oasis-open.org/committees/tc_home.php?wg_abbrev=kmip`
 pub struct KMS {
     pub(crate) params: ServerParams,
-    pub(crate) rng: Arc<Mutex<CsRng>>,
     pub(crate) db: Box<dyn Database + Sync + Send>,
 }
 
@@ -98,14 +98,11 @@ impl KMS {
                 }
             };
 
-            // Generate a new key
-            let key: SymmetricKey<32> = {
-                let mut rng = self.rng.lock().expect("failed locking the RNG");
-                SymmetricKey::<32>::new(&mut *rng)
-            };
-
             // Encode ExtraDatabaseParams
-            let params = ExtraDatabaseParams { group_id: uid, key };
+            let params = ExtraDatabaseParams {
+                group_id: uid,
+                key: Secret::new_random()?,
+            };
 
             let token = b64.encode(serde_json::to_vec(&params)?);
 
