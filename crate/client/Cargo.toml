@@ -8,7 +8,6 @@ license-file = "../../LICENSE.md"
 [dependencies]
 base64 = { workspace = true }
 cosmian_kmip = { path = "../kmip" }
-cosmian_kms_utils = { path = "../utils" }
 http = { workspace = true }
 josekit = { workspace = true }
 log = "0.4"

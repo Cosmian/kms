@@ -79,7 +79,7 @@ async fn process_symmetric_key(
     let mut attributes = request.attributes;
     let mut tags = attributes.remove_tags();
     if let Some(tags) = tags.as_ref() {
-        Attributes::check_user_tags(&tags)?;
+        Attributes::check_user_tags(tags)?;
     }
 
     let mut object = request.object;
@@ -117,7 +117,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
     let mut request_attributes = request.attributes;
     let mut user_tags = request_attributes.remove_tags();
     if let Some(tags) = user_tags.as_ref() {
-        Attributes::check_user_tags(&tags)?;
+        Attributes::check_user_tags(tags)?;
     }
 
     // The specification says that this should be DER bytes
@@ -165,7 +165,7 @@ async fn process_public_key(
     let mut request_attributes = request.attributes;
     let mut tags = request_attributes.remove_tags();
     if let Some(tags) = tags.as_ref() {
-        Attributes::check_user_tags(&tags)?;
+        Attributes::check_user_tags(tags)?;
     }
 
     // unwrap key block if required
@@ -236,7 +236,7 @@ async fn process_private_key(
     let tags = request_attributes.remove_tags();
     // insert the tag corresponding to the object type if tags should be updated
     if let Some(tags) = tags.as_ref() {
-        Attributes::check_user_tags(&tags)?;
+        Attributes::check_user_tags(tags)?;
     }
     // whether the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);

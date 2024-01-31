@@ -1,6 +1,5 @@
 use cloudproof::reexport::crypto_core::{reexport::pkcs8, CryptoCoreError};
 use cosmian_kmip::{error::KmipError, kmip::kmip_operations::ErrorReason};
-use cosmian_kms_utils::error::KmipUtilsError;
 use thiserror::Error;
 
 pub mod result;
@@ -57,20 +56,6 @@ impl From<KmipError> for KmsCryptoError {
             KmipError::Default(value) => Self::NotSupported(value),
             KmipError::OpenSSL(value) => Self::NotSupported(value),
             KmipError::InvalidTag(value) => Self::NotSupported(value),
-        }
-    }
-}
-
-impl From<KmipUtilsError> for KmsCryptoError {
-    fn from(value: KmipUtilsError) -> Self {
-        match value {
-            KmipUtilsError::ConversionError(s) => KmsCryptoError::ConversionError(s),
-            KmipUtilsError::InvalidSize(s) => KmsCryptoError::InvalidSize(s),
-            KmipUtilsError::NotSupported(s) => KmsCryptoError::NotSupported(s),
-            KmipUtilsError::Derivation(s) => KmsCryptoError::Derivation(s),
-            KmipUtilsError::Kmip(er, s) => KmsCryptoError::Kmip(er, s),
-            KmipUtilsError::InvalidTag(s) => KmsCryptoError::InvalidTag(s),
-            KmipUtilsError::Default(s) => KmsCryptoError::Default(s),
         }
     }
 }

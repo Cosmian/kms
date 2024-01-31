@@ -1115,7 +1115,6 @@ dependencies = [
  "cosmian_kms_client",
  "cosmian_kms_crypto",
  "cosmian_kms_server",
- "cosmian_kms_utils",
  "cosmian_logger",
  "der",
  "oauth2",
@@ -1146,7 +1145,6 @@ version = "4.11.3"
 dependencies = [
  "base64 0.21.7",
  "cosmian_kmip",
- "cosmian_kms_utils",
  "http",
  "josekit",
  "log",
@@ -1166,7 +1164,6 @@ dependencies = [
  "argon2",
  "cloudproof",
  "cosmian_kmip",
- "cosmian_kms_utils",
  "cosmian_logger",
  "num-bigint-dig",
  "openssl",
@@ -1215,7 +1212,6 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_crypto",
- "cosmian_kms_utils",
  "cosmian_logger",
  "dotenvy",
  "env_logger",
@@ -1240,17 +1236,6 @@ dependencies = [
  "uuid",
  "x509-parser",
  "zeroize",
-]
-
-[[package]]
-name = "cosmian_kms_utils"
-version = "4.11.3"
-dependencies = [
- "cosmian_kmip",
- "openssl",
- "serde",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]

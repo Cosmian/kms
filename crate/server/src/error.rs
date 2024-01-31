@@ -8,7 +8,6 @@ use cosmian_kmip::{
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
 use cosmian_kms_crypto::error::KmsCryptoError;
-use cosmian_kms_utils::error::KmipUtilsError;
 use redis::ErrorKind;
 use thiserror::Error;
 use x509_parser::prelude::{PEMError, X509Error};
@@ -166,12 +165,6 @@ impl From<cloudproof::reexport::cover_crypt::Error> for KmsError {
 impl From<QueryPayloadError> for KmsError {
     fn from(e: QueryPayloadError) -> Self {
         Self::InvalidRequest(e.to_string())
-    }
-}
-
-impl From<KmipUtilsError> for KmsError {
-    fn from(e: KmipUtilsError) -> Self {
-        Self::CryptographicError(e.to_string())
     }
 }
 
