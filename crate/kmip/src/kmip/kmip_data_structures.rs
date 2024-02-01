@@ -181,18 +181,18 @@ impl KeyBlock {
             },
         }
     }
-    
+
     /// Recover the cryptographic algorithm.
     /// If the cryptographic algorithm is not present in the key block, it will
-    /// be recovered from the key value attributes. 
-    pub  fn cryptographic_algorithm(&self) -> Option<&CryptographicAlgorithm> {
+    /// be recovered from the key value attributes.
+    pub fn cryptographic_algorithm(&self) -> Option<&CryptographicAlgorithm> {
         self.cryptographic_algorithm.as_ref().or_else(|| {
-            self.key_value.attributes.as_ref().and_then(|attributes|{
-                attributes.cryptographic_algorithm.as_ref()       
-            })
+            self.key_value
+                .attributes
+                .as_ref()
+                .and_then(|attributes| attributes.cryptographic_algorithm.as_ref())
         })
     }
-        
 }
 
 /// The Key Value is used only inside a Key Block and is either a Byte String or
