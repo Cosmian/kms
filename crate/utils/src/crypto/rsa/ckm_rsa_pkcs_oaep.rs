@@ -31,7 +31,7 @@ pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 2048;
 ///
 /// The maximum dek length is  k-2-2*hLen where
 ///  - k is the length in octets of the RSA modulus
-///  - hLen is the length in octets of the hash function output for EME-OAEP
+///  - hLen is the length in octets of the hash function output
 /// The output length is the same as the modulus length.
 ///
 /// Arguments:
@@ -54,7 +54,7 @@ pub fn ckm_rsa_pkcs_oaep_key_wrap(
 ///
 /// The maximum plaintext length is  k-2-2*hLen where
 ///  - k is the length in octets of the RSA modulus
-///  - hLen is the length in octets of the hash function output for EME-OAEP
+///  - hLen is the length in octets of the hash function output
 /// The output length is the same as the modulus length.
 ///
 /// Arguments:
@@ -104,7 +104,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
 ///
 /// The wrapped data encryption key (dek) should be of of size k where k is the length in octets of the RSA modulus.
 ///
-/// The data encryption key length is  k-2-2*hLen where hLen is the length in octets of the hash function output for EME-OAEP
+/// The data encryption key length is  k-2-2*hLen where hLen is the length in octets of the hash function output
 ///
 /// Arguments:
 /// - `pubkey`: the public key used to wrap the key
@@ -126,7 +126,7 @@ pub fn ckm_rsa_pkcs_oaep_key_unwrap(
 ///
 /// The ciphertext should be of size k where k is the length in octets of the RSA modulus.
 ///
-/// The plaintext length is  k-2-2*hLen where hLen is the length in octets of the hash function output for EME-OAEP
+/// The plaintext length is  k-2-2*hLen where hLen is the length in octets of the hash function output
 ///
 /// Arguments:
 /// - `pubkey`: the public key used to wrap the key

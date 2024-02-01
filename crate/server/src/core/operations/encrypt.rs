@@ -17,7 +17,7 @@ use cosmian_kms_utils::{
     crypto::{
         cover_crypt::encryption::CoverCryptEncryption,
         rsa::{
-            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_wrap,
+            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt,
             rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt,
         },
         symmetric::aead::{aead_encrypt, random_nonce, AeadCipher},
@@ -268,7 +268,7 @@ fn encrypt_with_rsa(
             rsa_oaep_aes_gcm_encrypt(public_key, hashing_fn, plaintext, aad)?
         }
         CryptographicAlgorithm::RSA => {
-            ckm_rsa_pkcs_oaep_key_wrap(public_key, hashing_fn, plaintext)?
+            ckm_rsa_pkcs_oaep_encrypt(public_key, hashing_fn, plaintext)?
         }
         x => {
             kms_bail!("Unable to encrypt with RSA: algorithm not supported for encrypting: {x:?}")

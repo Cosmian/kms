@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-/// Encrypts a file using the given public key and access policy.
+/// Encrypts a file using the given public key
 pub fn encrypt(
     cli_conf_path: &str,
     input_files: &[&str],

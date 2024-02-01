@@ -17,7 +17,7 @@ use cosmian_kms_utils::{
     crypto::{
         cover_crypt::{attributes, decryption::CovercryptDecryption},
         rsa::{
-            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_unwrap,
+            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt,
             rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt,
         },
         symmetric::aead::{aead_decrypt, AeadCipher},
@@ -262,7 +262,7 @@ fn decrypt_with_rsa(
     let plaintext = match algorithm {
         CryptographicAlgorithm::AES => rsa_oaep_aes_gcm_decrypt(private_key, hashing_fn, ct, aad)?,
         CryptographicAlgorithm::RSA => {
-            ckm_rsa_pkcs_oaep_key_unwrap(private_key, hashing_fn, ct)?.to_vec()
+            ckm_rsa_pkcs_oaep_key_decrypt(private_key, hashing_fn, ct)?.to_vec()
         }
         x => {
             kms_bail!("Unable to decrypt with RSA: algorithm not supported for decrypting: {x:?}")
