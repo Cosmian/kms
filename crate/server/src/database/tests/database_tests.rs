@@ -48,27 +48,21 @@ pub async fn tx_and_list<DB: Database>(
 
     let uid_2 = Uuid::new_v4().to_string();
 
-    let ids = db
-        .create_objects(
-            owner,
-            vec![
-                (
-                    Some(uid_1.clone()),
-                    symmetric_key_1.clone(),
-                    &HashSet::new(),
-                ),
-                (
-                    Some(uid_2.clone()),
-                    symmetric_key_2.clone(),
-                    &HashSet::new(),
-                ),
-            ],
-            db_params,
-        )
-        .await?;
-
-    assert_eq!(&uid_1, &ids[0]);
-    assert_eq!(&uid_2, &ids[1]);
+    let operations = vec![
+        AtomicOperation::Create((
+            uid_1.clone(),
+            symmetric_key_1.clone(),
+            symmetric_key_1.attributes()?.clone(),
+            HashSet::new(),
+        )),
+        AtomicOperation::Create((
+            uid_2.clone(),
+            symmetric_key_2.clone(),
+            symmetric_key_2.attributes()?.clone(),
+            HashSet::new(),
+        )),
+    ];
+    db.atomic(owner, &operations, db_params).await?;
 
     let list = db.find(None, None, owner, true, db_params).await?;
     match list
@@ -144,8 +138,18 @@ pub async fn atomic<DB: Database>(
     db.atomic(
         owner,
         &[
-            AtomicOperation::Create((uid_1.clone(), symmetric_key_1.clone(), HashSet::new())),
-            AtomicOperation::Create((uid_2.clone(), symmetric_key_2.clone(), HashSet::new())),
+            AtomicOperation::Create((
+                uid_1.clone(),
+                symmetric_key_1.clone(),
+                symmetric_key_1.attributes()?.clone(),
+                HashSet::new(),
+            )),
+            AtomicOperation::Create((
+                uid_2.clone(),
+                symmetric_key_2.clone(),
+                symmetric_key_2.attributes()?.clone(),
+                HashSet::new(),
+            )),
         ],
         db_params,
     )
@@ -166,8 +170,18 @@ pub async fn atomic<DB: Database>(
         .atomic(
             owner,
             &[
-                AtomicOperation::Create((uid_1.clone(), symmetric_key_1.clone(), HashSet::new())),
-                AtomicOperation::Create((uid_2.clone(), symmetric_key_2.clone(), HashSet::new())),
+                AtomicOperation::Create((
+                    uid_1.clone(),
+                    symmetric_key_1.clone(),
+                    symmetric_key_1.attributes()?.clone(),
+                    HashSet::new(),
+                )),
+                AtomicOperation::Create((
+                    uid_2.clone(),
+                    symmetric_key_2.clone(),
+                    symmetric_key_2.attributes()?.clone(),
+                    HashSet::new(),
+                )),
             ],
             db_params,
         )
@@ -181,12 +195,14 @@ pub async fn atomic<DB: Database>(
             AtomicOperation::Upsert((
                 uid_1.clone(),
                 symmetric_key_1.clone(),
+                symmetric_key_1.attributes()?.clone(),
                 Some(HashSet::new()),
                 StateEnumeration::Deactivated,
             )),
             AtomicOperation::Upsert((
                 uid_2.clone(),
                 symmetric_key_2.clone(),
+                symmetric_key_2.attributes()?.clone(),
                 Some(HashSet::new()),
                 StateEnumeration::Deactivated,
             )),
@@ -237,6 +253,7 @@ pub async fn upsert<DB: Database>(
         &uid,
         owner,
         &symmetric_key,
+        symmetric_key.attributes()?,
         Some(&HashSet::new()),
         StateEnumeration::Active,
         db_params,
@@ -266,6 +283,7 @@ pub async fn upsert<DB: Database>(
         &uid,
         owner,
         &symmetric_key,
+        symmetric_key.attributes()?,
         Some(&HashSet::new()),
         StateEnumeration::PreActive,
         db_params,
@@ -340,6 +358,7 @@ pub async fn crud<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
             Some(uid.clone()),
             owner,
             &symmetric_key,
+            symmetric_key.attributes()?,
             &HashSet::new(),
             db_params,
         )
@@ -357,7 +376,7 @@ pub async fn crud<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
             assert_eq!(StateEnumeration::Active, objs_[0].state);
             assert_eq!(&symmetric_key, &objs_[0].object);
         }
-        _ => kms_bail!("There should be only one object"),
+        _ => kms_bail!("There should be only one object. Found {}", objs_.len()),
     }
 
     let attributes = symmetric_key.attributes_mut()?;
@@ -366,8 +385,14 @@ pub async fn crud<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
         linked_object_identifier: LinkedObjectIdentifier::TextString("foo".to_string()),
     }]);
 
-    db.update_object(&uid, &symmetric_key, None, db_params)
-        .await?;
+    db.update_object(
+        &uid,
+        &symmetric_key,
+        symmetric_key.attributes()?,
+        None,
+        db_params,
+    )
+    .await?;
 
     let objs_ = db
         .retrieve(&uid, owner, ObjectOperationType::Get, db_params)

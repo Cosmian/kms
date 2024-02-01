@@ -37,6 +37,7 @@ pub async fn owner<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams
         &uid,
         owner,
         &symmetric_key,
+        symmetric_key.attributes()?,
         Some(&HashSet::new()),
         StateEnumeration::Active,
         db_params,

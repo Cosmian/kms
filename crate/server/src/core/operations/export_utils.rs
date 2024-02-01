@@ -4,8 +4,8 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Export, ExportResponse},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, StateEnumeration,
-            UniqueIdentifier,
+            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType,
+            StateEnumeration, UniqueIdentifier,
         },
     },
     openssl::{
@@ -24,8 +24,8 @@ use zeroize::Zeroizing;
 
 use crate::{
     core::{
-        certificate::{add_certificate_tags_to_attributes, retrieve_certificate_for_private_key},
-        operations::{unwrap_key, wrapping::wrap_key},
+        certificate::retrieve_certificate_for_private_key,
+        operations::{import::add_imported_links_to_attributes, unwrap_key, wrapping::wrap_key},
         KMS,
     },
     database::{object_with_metadata::ObjectWithMetadata, retrieve_object_for_operation},
@@ -173,7 +173,7 @@ pub async fn export_get(
                     )
                 }
             }
-            process_certificate(&owm, kms, params).await?
+            owm.attributes
         }
         _ => {
             kms_bail!(
@@ -233,8 +233,15 @@ async fn process_private_key(
         .await
     }
 
-    //make a copy of the existing attributes
-    let attributes = key_block.key_value.attributes.clone();
+    // Make a copy of the existing attributes
+    let mut attributes = object_with_metadata.attributes.clone();
+    add_imported_links_to_attributes(
+        &mut attributes,
+        key_block
+            .key_value
+            .attributes
+            .get_or_insert(Attributes::default()),
+    );
 
     // parse the key to an openssl object
     let openssl_key = kmip_private_key_to_openssl(&object_with_metadata.object)
@@ -252,7 +259,7 @@ async fn process_private_key(
             let mut object = openssl_private_key_to_kmip_default_format(&openssl_key)?;
             // add the attributes back
             let key_block = object.key_block_mut()?;
-            key_block.key_value.attributes = attributes;
+            key_block.key_value.attributes = Some(attributes);
             // wrap the key
             wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
             // reassign the wrapped key
@@ -283,7 +290,7 @@ async fn process_private_key(
     }
     // add the attributes back
     let key_block = object_with_metadata.object.key_block_mut()?;
-    key_block.key_value.attributes = attributes;
+    key_block.key_value.attributes = Some(attributes);
     Ok(())
 }
 
@@ -330,7 +337,14 @@ async fn process_public_key(
     }
 
     //make a copy of the existing attributes
-    let attributes = key_block.key_value.attributes.clone().unwrap_or_default();
+    let mut attributes = object_with_metadata.attributes.clone();
+    add_imported_links_to_attributes(
+        &mut attributes,
+        key_block
+            .key_value
+            .attributes
+            .get_or_insert(Attributes::default()),
+    );
 
     // parse the key to an openssl object
     let openssl_key = kmip_public_key_to_openssl(&object_with_metadata.object)
@@ -569,30 +583,19 @@ async fn post_process_pkcs12_for_private_key(
     let private_key = kmip_private_key_to_openssl(&owm.object)
         .context("export: unable to parse the private key to openssl")?;
 
-    let cert_owm =
+    let mut cert_owm =
         retrieve_certificate_for_private_key(&owm.object, operation_type, kms, user, params)
             .await?;
     let certificate = kmip_certificate_to_openssl(&cert_owm.object)?;
 
     // retrieve the certificate chain
-    let mut child_certificate_id = cert_owm.id.clone();
     let mut chain: Stack<X509> = Stack::new()?;
-    loop {
-        let certificate_tags = kms.db.retrieve_tags(&child_certificate_id, params).await?;
-        let parent_id = match certificate_tags
-            .iter()
-            .find(|tag| tag.starts_with("_cert_issuer="))
-            .map(|tag| tag.replace("_cert_issuer=", ""))
-        {
-            Some(parent_id) => parent_id,
-            None => break,
-        };
+    while let Some(parent_id) = cert_owm.attributes.get_link(LinkType::CertificateLink) {
         // retrieve the parent certificate
-        let cert_owm =
+        cert_owm =
             retrieve_object_for_operation(&parent_id, operation_type, kms, user, params).await?;
         let certificate = kmip_certificate_to_openssl(&cert_owm.object)?;
         chain.push(certificate)?;
-        child_certificate_id = parent_id;
     }
 
     // recover the password
@@ -625,15 +628,4 @@ async fn post_process_pkcs12_for_private_key(
         },
     };
     Ok(())
-}
-
-async fn process_certificate(
-    owm: &ObjectWithMetadata,
-    kms: &KMS,
-    params: Option<&ExtraDatabaseParams>,
-) -> KResult<Attributes> {
-    //TODO: create attributes from tags until https://github.com/Cosmian/kms/issues/88 is fixed
-    let mut attributes = Attributes::default();
-    add_certificate_tags_to_attributes(&mut attributes, &owm.id, kms, params).await?;
-    Ok(attributes)
 }

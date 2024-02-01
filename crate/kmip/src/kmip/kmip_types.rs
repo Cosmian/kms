@@ -2258,7 +2258,7 @@ impl<'de> Deserialize<'de> for Credential {
                         Field::AttestationMeasurement => {
                             if attestation_measurement.is_some() {
                                 return Err(de::Error::duplicate_field(
-                                    "attesattestation_measurementtation_type",
+                                    "attestation_measurement_type",
                                 ))
                             }
                             attestation_measurement = Some(map.next_value()?);

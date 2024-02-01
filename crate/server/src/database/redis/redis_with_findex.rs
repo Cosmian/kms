@@ -238,6 +238,7 @@ impl Database for RedisWithFindex {
         uid: Option<String>,
         owner: &str,
         object: &Object,
+        _attributes: &Attributes,
         tags: &HashSet<String>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<String> {
@@ -249,32 +250,6 @@ impl Database for RedisWithFindex {
         self.objects_db.object_create(&uid, &db_object).await?;
 
         Ok(uid)
-    }
-
-    /// Insert the provided Objects in the database in a transaction
-    ///
-    /// A new UUID will be created if none is supplier.
-    /// This method will fail if a `uid` is supplied
-    /// and an object with the same id already exists
-    async fn create_objects(
-        &self,
-        owner: &str,
-        objects: Vec<(Option<String>, Object, &HashSet<String>)>,
-        _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<String>> {
-        let mut uids = Vec::with_capacity(objects.len());
-        let mut operations = Vec::with_capacity(objects.len());
-
-        for (uid, object, tags) in objects {
-            // If the uid is not provided, generate a new one
-            let uid = uid.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
-            uids.push(uid.clone());
-            operations.push(AtomicOperation::Create((uid, object, tags.clone())));
-        }
-        if !operations.is_empty() {
-            self.atomic(owner, &operations, None).await?;
-        }
-        Ok(uids.into_iter().map(String::from).collect())
     }
 
     /// Retrieve objects from the database.
@@ -330,6 +305,7 @@ impl Database for RedisWithFindex {
                         owner: redis_db_object.owner,
                         state: redis_db_object.state,
                         permissions: vec![],
+                        attributes: Attributes::default(),
                     },
                 );
                 continue
@@ -350,6 +326,7 @@ impl Database for RedisWithFindex {
                         owner: redis_db_object.owner,
                         state: redis_db_object.state,
                         permissions: permissions.into_iter().collect(),
+                        attributes: Attributes::default(),
                     },
                 );
             }
@@ -378,6 +355,7 @@ impl Database for RedisWithFindex {
         &self,
         uid: &str,
         object: &Object,
+        _attributes: &Attributes,
         tags: Option<&HashSet<String>>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
@@ -405,6 +383,7 @@ impl Database for RedisWithFindex {
         uid: &str,
         owner: &str,
         object: &Object,
+        _attributes: &Attributes,
         tags: Option<&HashSet<String>>,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
@@ -642,7 +621,7 @@ impl Database for RedisWithFindex {
         let mut redis_operations: Vec<RedisOperation> = Vec::with_capacity(operations.len());
         for operation in operations {
             match operation {
-                AtomicOperation::Upsert((uid, object, tags, state)) => {
+                AtomicOperation::Upsert((uid, object, _attributes, tags, state)) => {
                     //TODO: this operation contains a non atomic retrieve_tags. It will be hard to make this whole method atomic
                     let db_object = self
                         .prepare_object_for_upsert(
@@ -656,7 +635,7 @@ impl Database for RedisWithFindex {
                         .await?;
                     redis_operations.push(RedisOperation::Upsert(uid.clone(), db_object));
                 }
-                AtomicOperation::Create((uid, object, tags)) => {
+                AtomicOperation::Create((uid, object, _attributes, tags)) => {
                     let (uid, db_object) = self
                         .prepare_object_for_create(Some(uid.clone()), owner, object, tags)
                         .await?;
@@ -665,7 +644,7 @@ impl Database for RedisWithFindex {
                 AtomicOperation::Delete(uid) => {
                     redis_operations.push(RedisOperation::Delete(uid.clone()));
                 }
-                AtomicOperation::UpdateObject((uid, object, tags)) => {
+                AtomicOperation::UpdateObject((uid, object, _attributes, tags)) => {
                     //TODO: this operation contains a non atomic retrieve_object. It will be hard to make this whole method atomic
                     let db_object = self
                         .prepare_object_for_update(uid, object, tags.as_ref())

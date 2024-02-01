@@ -1,10 +1,6 @@
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, LinkType},
-};
+use cosmian_kmip::kmip::{kmip_objects::Object, kmip_types::LinkType};
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 
-use super::add_certificate_tags_to_attributes;
 use crate::{
     core::KMS,
     database::{object_with_metadata::ObjectWithMetadata, retrieve_object_for_operation},
@@ -154,18 +150,26 @@ pub(crate) async fn retrieve_private_key_for_certificate(
     user: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> Result<ObjectWithMetadata, KmsError> {
-    let mut attributes = Attributes::default();
-    add_certificate_tags_to_attributes(&mut attributes, certificate_id, kms, params).await?;
+    let owm = retrieve_object_for_operation(
+        certificate_id,
+        ObjectOperationType::GetAttributes,
+        kms,
+        user,
+        params,
+    )
+    .await?;
 
-    let private_key_id = attributes
+    let private_key_id = owm
+        .attributes
         .get_link(LinkType::PKCS12CertificateLink)
-        .or_else(|| attributes.get_link(LinkType::CertificateLink));
+        .or_else(|| owm.attributes.get_link(LinkType::CertificateLink));
 
     let private_key_id = if let Some(private_key_id) = private_key_id {
         private_key_id
     } else {
         // check if there is a link to a public key
-        let public_key_id = attributes
+        let public_key_id = owm
+            .attributes
             .get_link(LinkType::PublicKeyLink)
             .ok_or_else(|| {
                 KmsError::InvalidRequest(

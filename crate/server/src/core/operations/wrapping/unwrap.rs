@@ -1,7 +1,5 @@
 use cosmian_kmip::kmip::{
-    kmip_data_structures::KeyBlock,
-    kmip_objects::ObjectType,
-    kmip_types::{Attributes, LinkType},
+    kmip_data_structures::KeyBlock, kmip_objects::ObjectType, kmip_types::LinkType,
 };
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
@@ -9,7 +7,7 @@ use cosmian_kms_utils::{
 };
 
 use crate::{
-    core::{certificate::add_certificate_tags_to_attributes, KMS},
+    core::KMS,
     database::retrieve_object_for_operation,
     kms_bail,
     result::{KResult, KResultHelper},
@@ -64,17 +62,7 @@ pub async fn unwrap_key(
                     .attributes()
                     .with_context(|| format!("no attributes found for the {object_type}"))?
                     .clone(),
-                ObjectType::Certificate => {
-                    let mut attributes = Attributes::default();
-                    add_certificate_tags_to_attributes(
-                        &mut attributes,
-                        &unwrapping_key.id,
-                        kms,
-                        params,
-                    )
-                    .await?;
-                    attributes
-                }
+                ObjectType::Certificate => unwrapping_key.attributes,
                 _ => unreachable!("unwrap_key: unsupported object type: {object_type}"),
             };
             let private_key_uid =

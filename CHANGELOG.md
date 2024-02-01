@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [X.Y.Z] - 2024-02-XX
+
+### Features
+
+- Save KMIP Attributes in a proper column of `Objects` table [#166](https://github.com/Cosmian/kms/pull/166).:
+  - Remove all custom tags `_cert_spki`, `_cert_cn`, `_cert_issuer` and `_cert_sk`
+
 ## [4.12.0] - 2024-02-08
 
 ### Features

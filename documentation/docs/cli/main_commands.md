@@ -1064,10 +1064,6 @@ To specify multiple tags, use the option multiple times.
 
 `--certificate-id [-c] <CERTIFICATE_ID>` Locate an object which has a link to this certificate key id
 
-`--certificate-cn <CERTIFICATE_CN>` Locate a certificate which has this Common Name
-
-`--certificate-spki <CERTIFICATE_SPKI>` Locate a certificate which has this Subject Public Key Info. For example: AF:B0:19:F4:09:3E:2F:F4:52:07:54:7F:17:62:9D:74:76:E3:A4:F6 The value will be stripped from the colons and converted to lower case
-
 
 
 ---
