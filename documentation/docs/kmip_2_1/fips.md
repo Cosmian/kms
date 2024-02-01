@@ -71,3 +71,45 @@ or building it from an existing public key.
 The randomness of cryptographic keys is essential for the security of cryptographic applications. Sometimes, passwords may be the only input required from the users who are eligible to access the data. Due to the low entropy and possibly poor randomness of those passwords, they are not suitable to be used directly as cryptographic keys. The KMS addresses this problem by providing methods to derive a password into a secure cryptographic key.
 
 In FIPS mode, passwords are derived using FIPS compliant `PBKDF2_HMAC` with `SHA512` and recommended 210,000 iterations by [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#pbkdf2) which follows FIPS recommendations as well. An additional random 128-bit salt is used.
+
+
+## References
+
+- NIST.FIPS.140-3, Implementation Guidance for FIPS 140-3 and the Cryptographic Module Validation Program, *August 1, 2023*
+  - General information and pointers to other NIST documents concerning the FIPS standard.
+
+- NIST.SP.800-186, Recommendations for Discrete Logarithm-based Cryptography: Elliptic Curve
+Domain Parameters, *February 2023*
+  - Recommended curves for specific usage (ECDH, ECDSA, EdDSA, ...) and associated security strength. Describes each curves parameters in details.
+
+- NIST.SP.800-38F, Recommendation for Block Cipher Modes of Operation: Methods for Key Wrapping, *December 2012*
+  - Description of symmetric key wrapping using AES-KW and AES-KWP. Approving RFC 5649.
+
+- NIST.FIPS.800-132, Recommendation for Password-Based Key Derivation, *December 2010*
+  - Description of low-entropy data derivation into secure master key.
+
+- NIST.SP.800-56Cr2, Recommendation for Key-Derivation Methods in Key-Establishment Schemes, *August 2020*
+  - Description of high-entropy data derivation into secure master key.
+
+- NIST.SP.800-131Ar2, Transitioning the Use of Cryptographic Algorithms and Key Lengths, *March 2019*
+  - Key length specification for different domain parameters, algorithms and cryptographic schemes.
+
+- NIST.SP.800-56Ar3, Recommendation for Pair-Wise Key-Establishment Schemes Using Discrete Logarithm Cryptography, *April 2018*
+  - General information on discrete logarithm parameters.
+
+- NIST.SP.800-56Br2, Recommendation for Pair-Wise Key Establishment Using Integer Factorization Cryptography, *March 2019*
+  - Informations regarding RSA primitive specifications: key length, encryption, decryption and padding to use.
+
+- NIST.FIPS.180-4, Secure Hash Standard (SHS), *August 2015*
+  - Specification regarding SHA family of hash functions.
+
+- NIST.FIPS.202, SHA-3 Standard: Permutation-Based Hash and Extendable-Output Functions, *August 2015*
+  - Specification for SHA3.
+
+- NIST.FIPS.186-5, Digital Signature Standard (DSS), *February 3, 2023*
+
+- NIST.FIPS.800-135r1, Recommendation for Existing Application-Specific Key Derivation Functions, *December 2011*
+  - Information on ECDSA, EdDSA and key generation.
+
+- OpenSSL FIPS 140-2 Security Policy, *26 January 2023*
+  - OpenSSL official document describing the FIPS module for OpenSSL. Among other things, allowed crytographic schemes and algorithms, strength security...
