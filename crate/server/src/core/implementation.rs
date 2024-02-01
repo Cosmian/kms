@@ -32,7 +32,7 @@ use openssl::{nid::Nid, rand::rand_bytes};
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
 use tracing::{debug, trace};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 use super::{cover_crypt::create_user_decryption_key, KMS};
 use crate::{
@@ -82,7 +82,8 @@ impl KMS {
                         Secret::<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>::from_unprotected_bytes(
                             &mut master_key.to_bytes(),
                         );
-                    master_key.zeroize();
+                    // `master_key` implements ZeroizeOnDrop so there is no need
+                    // to manually zeroize.
                     Box::new(
                         RedisWithFindex::instantiate(url.as_str(), new_master_key, label).await?,
                     )
