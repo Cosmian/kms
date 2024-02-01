@@ -53,15 +53,6 @@ impl<const LENGTH: usize> Secret<LENGTH> {
         bytes.zeroize();
         secret
     }
-
-    /// Creates a secret from the given protected bytes.
-    ///
-    /// Do not take ownership of the bytes to avoid stack copying.
-    pub fn from_protected_bytes(bytes: &[u8; LENGTH]) -> Self {
-        let mut secret = Self::new();
-        secret.copy_from_slice(bytes.as_slice());
-        secret
-    }
 }
 
 impl<const LENGTH: usize> Default for Secret<LENGTH> {

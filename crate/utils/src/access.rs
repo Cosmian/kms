@@ -97,10 +97,10 @@ impl<'de> Deserialize<'de> for ExtraDatabaseParams {
             .map_err(|_| serde::de::Error::custom("Could not deserialize ExtraDatabaseParams"))?;
         let group_id = u128::from_be_bytes(group_id_bytes);
 
-        let key_bytes: &[u8; AES_256_GCM_KEY_LENGTH] = &bytes[16..48]
+        let mut key_bytes: [u8; AES_256_GCM_KEY_LENGTH] = bytes[16..48]
             .try_into()
             .map_err(|_| serde::de::Error::custom("Could not deserialize ExtraDatabaseParams"))?;
-        let key = Secret::<AES_256_GCM_KEY_LENGTH>::from_protected_bytes(key_bytes);
+        let key = Secret::<AES_256_GCM_KEY_LENGTH>::from_unprotected_bytes(&mut key_bytes);
         Ok(ExtraDatabaseParams { group_id, key })
     }
 }
