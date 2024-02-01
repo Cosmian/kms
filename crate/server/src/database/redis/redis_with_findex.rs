@@ -6,9 +6,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cloudproof::reexport::crypto_core::{
-    kdf256, FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey,
-};
+use cloudproof::reexport::crypto_core::{kdf256, FixedSizeCBytes, SymmetricKey};
 use cloudproof_findex::{
     implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
     Label, Location,
@@ -19,7 +17,7 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType},
-    crypto::password_derivation::derive_key_from_password,
+    crypto::{password_derivation::derive_key_from_password, secret::Secret},
     tagging::get_tags,
 };
 use redis::aio::ConnectionManager;
@@ -62,7 +60,7 @@ pub struct RedisWithFindex {
 impl RedisWithFindex {
     pub async fn instantiate(
         redis_url: &str,
-        master_key: SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
+        master_key: Secret<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH>,
         label: &[u8],
     ) -> KResult<RedisWithFindex> {
         // derive a Findex Key
@@ -71,14 +69,14 @@ impl RedisWithFindex {
         kdf256!(
             &mut findex_key,
             REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
-            master_key.as_bytes()
+            master_key.deref()
         );
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
             &mut db_key,
             REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
-            master_key.as_bytes()
+            master_key.deref()
         );
 
         let client = redis::Client::open(redis_url)?;
@@ -104,13 +102,7 @@ impl RedisWithFindex {
         )?;
 
         let master_secret_key: SymmetricKey<REDIS_WITH_FINDEX_MASTER_KEY_LENGTH> =
-            SymmetricKey::try_from_bytes(
-                output_key_material
-                    .deref()
-                    .as_slice()
-                    .try_into()
-                    .expect("Derived key has invalid length."),
-            )?;
+            SymmetricKey::try_from_slice(&output_key_material)?;
 
         Ok(master_secret_key)
     }

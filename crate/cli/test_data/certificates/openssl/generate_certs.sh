@@ -47,6 +47,7 @@ gen_ec_cert prime192v1
 gen_ec_cert secp224r1
 gen_ec_cert prime256v1
 gen_ec_cert secp384r1
+gen_ec_cert secp521r1
 
 # Generate revoked certificate
 gen_revoked_cert prime256v1
