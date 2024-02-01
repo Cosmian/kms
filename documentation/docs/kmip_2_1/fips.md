@@ -71,3 +71,30 @@ or building it from an existing public key.
 The randomness of cryptographic keys is essential for the security of cryptographic applications. Sometimes, passwords may be the only input required from the users who are eligible to access the data. Due to the low entropy and possibly poor randomness of those passwords, they are not suitable to be used directly as cryptographic keys. The KMS addresses this problem by providing methods to derive a password into a secure cryptographic key.
 
 In FIPS mode, passwords are derived using FIPS compliant `PBKDF2_HMAC` with `SHA512` and recommended 210,000 iterations by [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#pbkdf2) which follows FIPS recommendations as well. An additional random 128-bit salt is used.
+
+
+## References
+
+- NIST.FIPS.140-3, Implementation Guidance for FIPS 140-3 and the Cryptographic Module Validation Program, *August 1, 2023*
+
+- NIST.SP.800-186, Recommendations for Discrete Logarithm-based Cryptography: Elliptic Curve
+Domain Parameters, *February 2023*
+
+- NIST.SP.800-38F, Recommendation for Block Cipher Modes of Operation: Methods for Key Wrapping, *December 2012*
+
+
+- NIST.FIPS.800-132, Recommendation for Password-Based Key Derivation, *December 2010*
+
+- NIST.SP.800-56Ar3, Recommendation for Pair-Wise Key-Establishment Schemes Using Discrete Logarithm Cryptography, *April 2018*
+
+- NIST.SP.800-131Ar2, Transitioning the Use of Cryptographic Algorithms and Key Lengths, *March 2019*
+
+- NIST.SP.800-56Br2, Recommendation for Pair-Wise Key Establishment Using Integer Factorization Cryptography, *March 2019*
+
+
+- NIST.FIPS.180-4, Secure Hash Standard (SHS), *August 2015*
+- NIST.FIPS.186-5, Digital Signature Standard (DSS), *February 3, 2023*
+- NIST.FIPS.202, SHA-3 Standard: Permutation-Based Hash and Extendable-Output Functions, *August 2015*
+- NIST.FIPS.800-135r1, Recommendation for Existing Application-Specific Key Derivation Functions, *December 2011*
+- NIST.SP.800-56Cr2, Recommendation for Key-Derivation Methods in Key-Establishment Schemes, *August 2020*
+- OpenSSL FIPS 140-2 Security Policy, *26 January 2023*
