@@ -111,7 +111,7 @@ pub(crate) fn unwrap(
         KeyFormatType::TransparentSymmetricKey => {
             // unwrap using rfc_5649
             let unwrap_secret = unwrapping_key_block.key_bytes()?;
-            let plaintext = Zeroizing::from(rfc5649_unwrap(ciphertext, &unwrap_secret)?);
+            let plaintext = rfc5649_unwrap(ciphertext, &unwrap_secret)?;
             Ok(plaintext)
         }
         KeyFormatType::TransparentECPrivateKey | KeyFormatType::TransparentRSAPrivateKey => {

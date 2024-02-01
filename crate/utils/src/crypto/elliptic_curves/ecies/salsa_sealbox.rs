@@ -32,7 +32,7 @@ pub fn sealbox_encrypt(
             let public_key = X25519PublicKey::from_ed25519_public_key(
                 &Ed25519PublicKey::try_from_bytes(public_key_bytes)?,
             );
-            EciesSalsaSealBox::encrypt(&mut rng, &public_key, &plaintext, None)?
+            EciesSalsaSealBox::encrypt(&mut rng, &public_key, plaintext, None)?
         }
         Id::X25519 => {
             trace!("encrypt: X25519");
@@ -41,7 +41,7 @@ pub fn sealbox_encrypt(
             let raw_bytes = public_key.raw_public_key()?;
             let public_key_bytes: [u8; X25519_PUBLIC_KEY_LENGTH] = raw_bytes.try_into()?;
             let public_key = X25519PublicKey::try_from_bytes(public_key_bytes)?;
-            EciesSalsaSealBox::encrypt(&mut rng, &public_key, &plaintext, None)?
+            EciesSalsaSealBox::encrypt(&mut rng, &public_key, plaintext, None)?
         }
         _ => {
             kmip_utils_bail!(

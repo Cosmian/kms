@@ -116,8 +116,6 @@ pub(crate) fn wrap(
         Object::Certificate {
             certificate_value, ..
         } => {
-            // TODO(ECSE): cert should be verified before anything
-            //verify_certificate(certificate_value, kms, owner, params).await?;
             let cert = X509::from_der(certificate_value)
                 .map_err(|e| KmipUtilsError::ConversionError(format!("invalid X509 DER: {e:?}")))?;
             let public_key = cert.public_key().map_err(|e| {
@@ -200,11 +198,9 @@ fn wrap_with_rsa(
         kmip_utils_bail!("Unable to wrap key with RSA: padding method not supported: {padding:?}")
     }
     match algorithm {
-        CryptographicAlgorithm::AES => {
-            ckm_rsa_aes_key_wrap(&pub_key, hashing_fn.into(), key_to_wrap)
-        }
+        CryptographicAlgorithm::AES => ckm_rsa_aes_key_wrap(&pub_key, hashing_fn, key_to_wrap),
         CryptographicAlgorithm::RSA => {
-            ckm_rsa_pkcs_oaep_key_wrap(&pub_key, hashing_fn.into(), key_to_wrap)
+            ckm_rsa_pkcs_oaep_key_wrap(&pub_key, hashing_fn, key_to_wrap)
         }
         x => {
             kmip_utils_bail!(
