@@ -8,6 +8,12 @@ description = "CLI used to manage the Cosmian KMS."
 [[bin]]
 name = "ckms"
 path = "src/main.rs"
+test = false
+
+[lib]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
 
 [features]
 # Staging is used to run tests with the remote kms test server. Otherwise, the test runs a local kms server.

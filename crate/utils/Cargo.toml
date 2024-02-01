@@ -5,6 +5,11 @@ authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 license-file = "../../LICENSE.md"
 
+[lib]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
+
 [features]
 fips = []
 curve25519 = []

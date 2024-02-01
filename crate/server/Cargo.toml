@@ -6,6 +6,16 @@ edition = "2021"
 license-file = "../../LICENSE.md"
 description = "Cosmian Key Management Service"
 
+[[bin]]
+name = "cosmian_kms_server"
+path = "src/main.rs"
+test = false
+
+[lib]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
+
 [features]
 # Do not verify auth0 token expiration date and https ssl is auto-signed (to avoid to be banned by letsencrypt)
 insecure = []
@@ -77,11 +87,3 @@ cosmian_logger = { path = "../logger" }
 
 [build-dependencies]
 time = { workspace = true, features = ["local-offset", "formatting"] }
-
-[[bin]]
-name = "cosmian_kms_server"
-path = "src/main.rs"
-
-[lib]
-name = "cosmian_kms_server"
-path = "src/lib.rs"
