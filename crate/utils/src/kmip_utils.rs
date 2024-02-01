@@ -24,5 +24,6 @@ pub fn unwrap_key_bytes(
 ) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let wrapping_secret =
         derive_key_from_password::<WRAPPING_SECRET_LENGTH>(wrapping_password.as_bytes())?;
-    rfc5649_unwrap(key, wrapping_secret.as_ref()).map_err(|e| KmipUtilsError::Default(e.to_string()))
+    rfc5649_unwrap(key, wrapping_secret.as_ref())
+        .map_err(|e| KmipUtilsError::Default(e.to_string()))
 }

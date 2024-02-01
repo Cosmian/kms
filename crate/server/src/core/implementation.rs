@@ -33,7 +33,7 @@ use openssl::{nid::Nid, rand::rand_bytes};
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
 use tracing::{debug, trace};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use super::{cover_crypt::create_user_decryption_key, KMS};
 use crate::{

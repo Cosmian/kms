@@ -152,14 +152,6 @@ async fn test_certify_a_csr() -> Result<(), CliError> {
         Some(&["certify_a_csr_test"]),
     )?;
 
-    let tmp_dir = TempDir::new()?;
-    let tmp_exported = tmp_dir.path().join("exported_cert.json");
-    let tmp_attributes = tmp_dir.path().join("exported_cert.attributes.json");
-    let tmp_intermediate = tmp_dir.path().join("exported_intermediate_cert.json");
-    let tmp_intermediate_attributes = tmp_dir
-        .path()
-        .join("exported_intermediate_cert.attributes.json");
-
     // export the certificate
     let exported_cert_file = tmp_path.join("exported_cert.json");
     export_certificate(
@@ -267,9 +259,6 @@ async fn test_certify_a_csr_with_extensions() -> Result<(), CliError> {
         Some(PathBuf::from("test_data/certificates/openssl/ext.cnf")),
         Some(&["certify_a_csr_test"]),
     )?;
-
-    let tmp_dir = TempDir::new()?;
-    let tmp_exported = tmp_dir.path().join("exported_cert.json");
 
     // export the certificate
     let exported_cert_file = tmp_path.join("exported_cert.json");

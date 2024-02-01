@@ -294,6 +294,7 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>)
 #[cfg(test)]
 mod tests {
     use zeroize::Zeroizing;
+
     use crate::crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap};
 
     #[test]
@@ -351,8 +352,8 @@ mod tests {
             wrapped_key
         );
         assert_eq!(
-            rfc_5649_unwrap(&wrapped_key, kek).expect("Fail to unwrap"),
-            key_to_wrap
+            rfc5649_unwrap(&wrapped_key, kek).expect("Fail to unwrap"),
+            Zeroizing::from(key_to_wrap.to_vec())
         );
     }
 

@@ -231,9 +231,6 @@ async fn test_import_p12_rsa() {
     )
     .unwrap();
 
-    let tmp_dir = TempDir::new().unwrap();
-    let tmp_exported_p12_sk = tmp_dir.path().join("exported_p12_sk.json");
-
     // export the private key
     let key_file = tmp_path.join("exported_p12_sk.json");
     export_key(
