@@ -16,9 +16,16 @@ lto = true
 strip = true
 
 [profile.dev]
+strip = "debuginfo"
 incremental = false
 
-[profile.dev.package."*"] # external dependencies
+# proc-macros and build-scripts
+[profile.dev.build-override]
+strip = "debuginfo"
+incremental = false
+
+# external dependencies
+[profile.dev.package."*"]
 opt-level = 0
 
 [workspace.dependencies]
