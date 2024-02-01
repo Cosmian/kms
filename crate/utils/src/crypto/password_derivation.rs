@@ -39,7 +39,6 @@ pub fn derive_key_from_password<const LENGTH: usize>(
         )
     }
 
-    //let mut output_key_material = Zeroizing::from(vec![0u8; LENGTH]);
     let mut output_key_material = Secret::<LENGTH>::new();
 
     // Generate 128 bits of random salt.
