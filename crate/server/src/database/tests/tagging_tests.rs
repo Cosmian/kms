@@ -4,7 +4,12 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration};
+use cosmian_kmip::kmip::{
+    kmip_objects::ObjectType,
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration,
+    },
+};
 use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::symmetric::create_symmetric_key_kmip_object,
@@ -16,7 +21,10 @@ use crate::{
     result::KResult,
 };
 
-pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>)) -> KResult<()> {
+pub async fn tags<DB: Database>(
+    db_and_params: &(DB, Option<ExtraDatabaseParams>),
+    verify_attributes: bool,
+) -> KResult<()> {
     // log_init("debug");
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
@@ -38,6 +46,7 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
             Some(uid.clone()),
             owner,
             &symmetric_key,
+            symmetric_key.attributes()?,
             &HashSet::from(["tag1".to_owned(), "tag2".to_owned()]),
             db_params,
         )
@@ -51,6 +60,20 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
         .into_values()
         .collect::<Vec<ObjectWithMetadata>>();
 
+    let expected_attributes: Attributes = Attributes {
+        cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
+        cryptographic_length: Some(256),
+        cryptographic_usage_mask: Some(
+            CryptographicUsageMask::Encrypt
+                | CryptographicUsageMask::Decrypt
+                | CryptographicUsageMask::WrapKey
+                | CryptographicUsageMask::UnwrapKey
+                | CryptographicUsageMask::KeyAgreement,
+        ),
+        key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
+        object_type: Some(ObjectType::SymmetricKey),
+        ..Attributes::default()
+    };
     assert_eq!(res.len(), 1);
     let owm = res[0].clone();
     assert_eq!(StateEnumeration::Active, owm.state);
@@ -76,6 +99,9 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
     let owm = res[0].clone();
     assert_eq!(owm.id, uid);
     assert_eq!(owm.owner, owner);
+    if verify_attributes {
+        assert_eq!(owm.attributes, expected_attributes);
+    }
     assert_eq!(owm.state, StateEnumeration::Active);
     assert_eq!(owm.permissions, vec![]);
     let tags = db.retrieve_tags(&owm.id, db_params).await?;
@@ -98,6 +124,9 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
     let owm = res[0].clone();
     assert_eq!(owm.id, uid);
     assert_eq!(owm.owner, owner);
+    if verify_attributes {
+        assert_eq!(owm.attributes, expected_attributes);
+    }
     assert_eq!(owm.state, StateEnumeration::Active);
     assert_eq!(owm.permissions, vec![]);
     let tags = db.retrieve_tags(&owm.id, db_params).await?;
@@ -120,6 +149,9 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
     let owm = res[0].clone();
     assert_eq!(owm.id, uid);
     assert_eq!(owm.owner, owner);
+    if verify_attributes {
+        assert_eq!(owm.attributes, expected_attributes);
+    }
     assert_eq!(owm.state, StateEnumeration::Active);
     assert_eq!(owm.permissions, vec![]);
     let tags = db.retrieve_tags(&owm.id, db_params).await?;
@@ -184,6 +216,9 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
     let owm = res[0].clone();
     assert_eq!(owm.id, uid);
     assert_eq!(owm.owner, owner);
+    if verify_attributes {
+        assert_eq!(owm.attributes, expected_attributes);
+    }
     assert_eq!(owm.state, StateEnumeration::Active);
     assert_eq!(owm.permissions, vec![ObjectOperationType::Get]);
     let tags = db.retrieve_tags(&owm.id, db_params).await?;
@@ -206,6 +241,9 @@ pub async fn tags<DB: Database>(db_and_params: &(DB, Option<ExtraDatabaseParams>
     let owm = res[0].clone();
     assert_eq!(owm.id, uid);
     assert_eq!(owm.owner, owner);
+    if verify_attributes {
+        assert_eq!(owm.attributes, expected_attributes);
+    }
     assert_eq!(owm.state, StateEnumeration::Active);
     assert_eq!(owm.permissions, vec![ObjectOperationType::Decrypt]);
     let tags = db.retrieve_tags(&owm.id, db_params).await?;

@@ -29,10 +29,7 @@ The response contains all the system and user tags associated with the key. This
 array with value
 
 ```json
-[
-    "MySymmetricKey",
-    "_kk"
-]
+["MySymmetricKey", "_kk"]
 ```
 
 === "Request"
@@ -278,18 +275,7 @@ Please note in the response:
 - the `Link` to the private key
 - the `Link` to the intermediate certificate
 - the presence of all the system and user tags associated with the certificate. This is the hex encoded value of a
-    JSON array with value
-
-```json
-    [
-        "_cert",
-        "_cert_cn=My server",
-        "_cert_spki=655e04099884af3cca3e3b11d908bb8fd27270bc",
-        "MyPKCS12",
-        "_cert_issuer=0c9028bc-c518-40d3-8362-12a1edfddab0",
-        "_cert_sk=bf614d45-5a3e-49b9-95c0-5586d3c0d17b"
-    ]
-```
+  JSON array with value
 
 === "Request"
 

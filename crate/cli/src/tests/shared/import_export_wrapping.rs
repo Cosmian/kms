@@ -263,7 +263,7 @@ fn test_import_export_wrap_private_key(
 
     // test the unwrapping on import
     {
-        // import the wrapped key, un wrapping it on import
+        // import the wrapped key, unwrapping it on import
         let unwrapped_key_id = import_key(
             cli_conf_path,
             sub_command,

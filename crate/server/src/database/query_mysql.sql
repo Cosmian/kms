@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS objects (
         id VARCHAR(40) PRIMARY KEY,
         object json NOT NULL,
+        attributes json NOT NULL,
         state VARCHAR(32),
         owner VARCHAR(255)
 );
@@ -21,7 +22,6 @@ CREATE TABLE IF NOT EXISTS tags (
         UNIQUE (id, tag)
 );
 
-
 -- name: clean-table-objects
 DELETE FROM objects;
 
@@ -32,17 +32,17 @@ DELETE FROM read_access;
 DELETE FROM tags;
 
 -- name: insert-objects
-INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?);
+INSERT INTO objects (id, object, attributes, state, owner) VALUES (?, ?, ?, ?, ?);
 
 -- name: select-object
-SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, read_access.permissions
         FROM objects
         LEFT JOIN read_access
         ON objects.id = read_access.id AND ( read_access.userid=? OR read_access.userid='*' )
         WHERE objects.id=?;
 
 -- name: update-object-with-object
-UPDATE objects SET object=? WHERE id=?;
+UPDATE objects SET object=?, attributes=? WHERE id=?;
 
 -- name: update-object-with-state
 UPDATE objects SET state=? WHERE id=?;
@@ -51,7 +51,7 @@ UPDATE objects SET state=? WHERE id=?;
 DELETE FROM objects WHERE id=? AND owner=?;
 
 -- name: upsert-object
-INSERT INTO objects (id, object, state, owner) VALUES (?, ?, ?, ?)
+INSERT INTO objects (id, object, attributes, state, owner) VALUES (?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
                 object = IF(objects.owner=?, VALUES(object), object),
                 state = IF(objects.owner=?, VALUES(state), state);
@@ -99,7 +99,7 @@ DELETE FROM tags WHERE id=?;
 
 
 -- name: select-from-tags
-SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, read_access.permissions
 FROM objects
 INNER JOIN (
     SELECT id

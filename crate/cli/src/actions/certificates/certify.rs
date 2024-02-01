@@ -124,7 +124,7 @@ impl CertifyAction {
 
         set_tags(&mut attributes, &self.tags)?;
 
-        // Using a CSR ?
+        // Using a CSR?
         let (certificate_request_value, certificate_request_type) =
             if let Some(certificate_signing_request) = &self.certificate_signing_request {
                 let certificate_request_value =

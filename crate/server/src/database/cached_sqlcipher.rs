@@ -147,13 +147,14 @@ impl Database for CachedSqlCipher {
         uid: Option<String>,
         owner: &str,
         object: &Object,
+        attributes: &Attributes,
         tags: &HashSet<String>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<String> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let mut tx = pool.begin().await?;
-            match create_(uid, owner, object, tags, &mut tx).await {
+            match create_(uid, owner, object, attributes, tags, &mut tx).await {
                 Ok(uid) => {
                     tx.commit().await?;
                     self.post_query(params.group_id)?;
@@ -165,36 +166,6 @@ impl Database for CachedSqlCipher {
                     kms_bail!("creation of object failed: {}", e)
                 }
             }
-        }
-
-        kms_bail!("Missing group_id/key for opening SQLCipher")
-    }
-
-    async fn create_objects(
-        &self,
-        owner: &str,
-        objects: Vec<(Option<String>, Object, &HashSet<String>)>,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<String>> {
-        if let Some(params) = params {
-            let pool = self.pre_query(params.group_id, &params.key).await?;
-
-            let mut res = vec![];
-            let mut tx = pool.begin().await?;
-            for (uid, object, tags) in objects {
-                match create_(uid.clone(), owner, &object, tags, &mut tx).await {
-                    Ok(uid) => res.push(uid),
-                    Err(e) => {
-                        tx.rollback().await.context("transaction failed")?;
-                        self.post_query(params.group_id)?;
-                        kms_bail!("creation of objects failed: {}", e);
-                    }
-                };
-            }
-            tx.commit().await?;
-            self.post_query(params.group_id)?;
-
-            return Ok(res)
         }
 
         kms_bail!("Missing group_id/key for opening SQLCipher")
@@ -236,13 +207,14 @@ impl Database for CachedSqlCipher {
         &self,
         uid: &str,
         object: &Object,
+        attributes: &Attributes,
         tags: Option<&HashSet<String>>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let mut tx = pool.begin().await?;
-            match update_object_(uid, object, tags, &mut tx).await {
+            match update_object_(uid, object, attributes, tags, &mut tx).await {
                 Ok(()) => {
                     tx.commit().await?;
                     self.post_query(params.group_id)?;
@@ -290,6 +262,7 @@ impl Database for CachedSqlCipher {
         uid: &str,
         user: &str,
         object: &Object,
+        attributes: &Attributes,
         tags: Option<&HashSet<String>>,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
@@ -297,7 +270,7 @@ impl Database for CachedSqlCipher {
         if let Some(params) = params {
             let pool = self.pre_query(params.group_id, &params.key).await?;
             let mut tx = pool.begin().await?;
-            match upsert_(uid, user, object, tags, state, &mut tx).await {
+            match upsert_(uid, user, object, attributes, tags, state, &mut tx).await {
                 Ok(()) => {
                     tx.commit().await?;
                     self.post_query(params.group_id)?;

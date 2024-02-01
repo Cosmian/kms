@@ -90,11 +90,12 @@ impl Database for PgPool {
         uid: Option<String>,
         user: &str,
         object: &Object,
+        attributes: &Attributes,
         tags: &HashSet<String>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<String> {
         let mut tx = self.pool.begin().await?;
-        let uid = match create_(uid, user, object, tags, &mut tx).await {
+        let uid = match create_(uid, user, object, attributes, tags, &mut tx).await {
             Ok(uid) => uid,
             Err(e) => {
                 tx.rollback().await.context("transaction failed")?;
@@ -103,27 +104,6 @@ impl Database for PgPool {
         };
         tx.commit().await?;
         Ok(uid)
-    }
-
-    async fn create_objects(
-        &self,
-        user: &str,
-        objects: Vec<(Option<String>, Object, &HashSet<String>)>,
-        _params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<String>> {
-        let mut res = vec![];
-        let mut tx = self.pool.begin().await?;
-        for (uid, object, tags) in objects {
-            match create_(uid.clone(), user, &object, tags, &mut tx).await {
-                Ok(uid) => res.push(uid),
-                Err(e) => {
-                    tx.rollback().await.context("transaction failed")?;
-                    kms_bail!("creation of objects failed: {}", e);
-                }
-            };
-        }
-        tx.commit().await?;
-        Ok(res)
     }
 
     async fn retrieve(
@@ -148,11 +128,12 @@ impl Database for PgPool {
         &self,
         uid: &str,
         object: &Object,
+        attributes: &Attributes,
         tags: Option<&HashSet<String>>,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         let mut tx = self.pool.begin().await?;
-        match update_object_(uid, object, tags, &mut tx).await {
+        match update_object_(uid, object, attributes, tags, &mut tx).await {
             Ok(()) => {
                 tx.commit().await?;
                 Ok(())
@@ -188,12 +169,13 @@ impl Database for PgPool {
         uid: &str,
         user: &str,
         object: &Object,
+        attributes: &Attributes,
         tags: Option<&HashSet<String>>,
         state: StateEnumeration,
         _params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()> {
         let mut tx = self.pool.begin().await?;
-        match upsert_(uid, user, object, tags, state, &mut tx).await {
+        match upsert_(uid, user, object, attributes, tags, state, &mut tx).await {
             Ok(()) => {
                 tx.commit().await?;
                 Ok(())
@@ -321,6 +303,7 @@ pub(crate) async fn create_(
     uid: Option<String>,
     owner: &str,
     object: &Object,
+    attributes: &Attributes,
     tags: &HashSet<String>,
     executor: &mut Transaction<'_, Postgres>,
 ) -> KResult<String> {
@@ -330,6 +313,10 @@ pub(crate) async fn create_(
     })
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
+
+    let attributes_json = serde_json::to_value(attributes)
+        .context("failed serializing the attributes to JSON")
+        .reason(ErrorReason::Internal_Server_Error)?;
 
     // If the uid is not provided, generate a new one
     let uid = uid.unwrap_or_else(|| Uuid::new_v4().to_string());
@@ -341,6 +328,7 @@ pub(crate) async fn create_(
     )
     .bind(uid.clone())
     .bind(object_json)
+    .bind(attributes_json)
     .bind(StateEnumeration::Active.to_string())
     .bind(owner)
     .execute(&mut **executor)
@@ -470,6 +458,7 @@ where
 pub(crate) async fn update_object_(
     uid: &str,
     object: &Object,
+    attributes: &Attributes,
     tags: Option<&HashSet<String>>,
     executor: &mut Transaction<'_, Postgres>,
 ) -> KResult<()> {
@@ -480,12 +469,17 @@ pub(crate) async fn update_object_(
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
 
+    let attributes_json = serde_json::to_value(attributes)
+        .context("failed serializing the attributes to JSON")
+        .reason(ErrorReason::Internal_Server_Error)?;
+
     sqlx::query(
         PGSQL_QUERIES
             .get("update-object-with-object")
             .ok_or_else(|| kms_error!("SQL query can't be found"))?,
     )
     .bind(object_json)
+    .bind(attributes_json)
     .bind(uid)
     .execute(&mut **executor)
     .await?;
@@ -571,6 +565,7 @@ pub(crate) async fn upsert_(
     uid: &str,
     owner: &str,
     object: &Object,
+    attributes: &Attributes,
     tags: Option<&HashSet<String>>,
     state: StateEnumeration,
     executor: &mut Transaction<'_, Postgres>,
@@ -582,6 +577,10 @@ pub(crate) async fn upsert_(
     .context("failed serializing the object to JSON")
     .reason(ErrorReason::Internal_Server_Error)?;
 
+    let attributes_json = serde_json::to_value(attributes)
+        .context("failed serializing the attributes to JSON")
+        .reason(ErrorReason::Internal_Server_Error)?;
+
     sqlx::query(
         PGSQL_QUERIES
             .get("upsert-object")
@@ -589,6 +588,7 @@ pub(crate) async fn upsert_(
     )
     .bind(uid)
     .bind(object_json)
+    .bind(attributes_json)
     .bind(state.to_string())
     .bind(owner)
     .execute(&mut **executor)
@@ -848,6 +848,7 @@ where
         user,
         user_must_be_owner,
     )?;
+    trace!("find_: {query:?}");
     let query = sqlx::query(&query);
     let rows = query.fetch_all(executor).await?;
 
@@ -915,13 +916,15 @@ pub(crate) async fn atomic_(
 ) -> KResult<()> {
     for operation in operations {
         match operation {
-            AtomicOperation::Create((uid, object, tags)) => {
-                if let Err(e) = create_(Some(uid.clone()), owner, object, tags, tx).await {
+            AtomicOperation::Create((uid, object, attributes, tags)) => {
+                if let Err(e) =
+                    create_(Some(uid.clone()), owner, object, attributes, tags, tx).await
+                {
                     kms_bail!("creation of object {uid} failed: {e}");
                 }
             }
-            AtomicOperation::UpdateObject((uid, object, tags)) => {
-                if let Err(e) = update_object_(uid, object, tags.as_ref(), tx).await {
+            AtomicOperation::UpdateObject((uid, object, attributes, tags)) => {
+                if let Err(e) = update_object_(uid, object, attributes, tags.as_ref(), tx).await {
                     kms_bail!("update of object {uid} failed: {e}");
                 }
             }
@@ -930,8 +933,10 @@ pub(crate) async fn atomic_(
                     kms_bail!("update of the state of object {uid} failed: {e}");
                 }
             }
-            AtomicOperation::Upsert((uid, object, tags, state)) => {
-                if let Err(e) = upsert_(uid, owner, object, tags.as_ref(), *state, tx).await {
+            AtomicOperation::Upsert((uid, object, attributes, tags, state)) => {
+                if let Err(e) =
+                    upsert_(uid, owner, object, attributes, tags.as_ref(), *state, tx).await
+                {
                     kms_bail!("upsert of object {uid} failed: {e}");
                 }
             }

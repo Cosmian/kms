@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS objects (
         id VARCHAR(40) PRIMARY KEY,
         object json NOT NULL,
+        attributes json NOT NULL,
         state VARCHAR(32),
         owner VARCHAR(255)
 );
@@ -31,18 +32,17 @@ DELETE FROM read_access;
 DELETE FROM tags;
 
 -- name: insert-objects
-INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4);
+INSERT INTO objects (id, object, attributes, state, owner) VALUES ($1, $2, $3, $4, $5);
 
 -- name: select-object
-SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, read_access.permissions
         FROM objects
         LEFT JOIN read_access
         ON objects.id = read_access.id AND ( read_access.userid=$2 OR read_access.userid='*' )
         WHERE objects.id=$1;
 
-
 -- name: update-object-with-object
-UPDATE objects SET object=$1 WHERE id=$2;
+UPDATE objects SET object=$1, attributes=$2 WHERE id=$3;
 
 -- name: update-object-with-state
 UPDATE objects SET state=$1 WHERE id=$2;
@@ -51,10 +51,10 @@ UPDATE objects SET state=$1 WHERE id=$2;
 DELETE FROM objects WHERE id=$1 AND owner=$2;
 
 -- name: upsert-object
-INSERT INTO objects (id, object, state, owner) VALUES ($1, $2, $3, $4)
+INSERT INTO objects (id, object, attributes, state, owner) VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT(id)
-        DO UPDATE SET object=$2, state=$3
-        WHERE objects.owner=$4;
+        DO UPDATE SET object=$2, state=$4
+        WHERE objects.owner=$5;
 
 -- name: select-user-accesses-for-object
 SELECT permissions
@@ -100,7 +100,7 @@ DELETE FROM tags WHERE id=$1;
 
 
 -- name: select-from-tags
-SELECT objects.id, objects.object, objects.owner, objects.state, read_access.permissions
+SELECT objects.id, objects.object, objects.attributes, objects.owner, objects.state, read_access.permissions
 FROM objects
 INNER JOIN (
     SELECT id

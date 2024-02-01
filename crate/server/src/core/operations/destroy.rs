@@ -184,7 +184,13 @@ async fn destroy_key_core(
     }
 
     kms.db
-        .update_object(unique_identifier, object, None, params)
+        .update_object(
+            unique_identifier,
+            object,
+            object.attributes()?,
+            None,
+            params,
+        )
         .await?;
 
     kms.db

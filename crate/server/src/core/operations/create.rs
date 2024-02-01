@@ -32,7 +32,10 @@ pub async fn create(
             )))
         }
     };
-    let uid = kms.db.create(None, owner, &object, &tags, params).await?;
+    let uid = kms
+        .db
+        .create(None, owner, &object, object.attributes()?, &tags, params)
+        .await?;
     debug!(
         "Created KMS Object of type {:?} with id {uid}",
         &object.object_type(),

@@ -1,7 +1,7 @@
 use cosmian_kmip::{
     kmip::{
         extra::VENDOR_ID_COSMIAN,
-        kmip_objects::{Object, ObjectType},
+        kmip_objects::Object,
         kmip_operations::{GetAttributes, GetAttributesResponse},
         kmip_types::{
             AttributeReference, Attributes, KeyFormatType, LinkType, LinkedObjectIdentifier, Tag,
@@ -18,7 +18,6 @@ use tracing::{debug, trace};
 
 use crate::{
     core::{
-        certificate::add_certificate_tags_to_attributes,
         operations::export_utils::{
             openssl_private_key_to_kmip_default_format, openssl_public_key_to_kmip_default_format,
         },
@@ -71,11 +70,8 @@ pub async fn get_attributes(
 
     let attributes = match &owm.object {
         Object::Certificate { .. } => {
-            let mut attributes = Attributes::default();
-            add_certificate_tags_to_attributes(&mut attributes, &owm.id, kms, params).await?;
-            attributes.key_format_type = Some(KeyFormatType::X509);
-            attributes.object_type = Some(ObjectType::Certificate);
-            attributes
+            // KMIP Attributes retrieved from dedicated column `Attributes`
+            owm.attributes
         }
         Object::CertificateRequest { .. }
         | Object::OpaqueObject { .. }

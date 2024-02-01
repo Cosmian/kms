@@ -21,7 +21,7 @@ using confidential VMs and a fully application-level encrypted database.
 
     Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.12.0/).
 
-<!-- TOC -->
+<!-- toc -->
 * [Business source](#business-source)
 * [KMIP 2.1 API](#kmip-21-api)
 * [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
@@ -37,7 +37,7 @@ using confidential VMs and a fully application-level encrypted database.
 * [Comprehensive inline help](#comprehensive-inline-help)
   * [Options help](#options-help)
   * [Using a TOML configuration file](#using-a-toml-configuration-file)
-<!-- TOC -->
+<!-- tocstop -->
 
 #### Business source
 
@@ -109,13 +109,6 @@ In addition, the KMS server will automatically add a system tag based on the obj
 - `_kk`: for a symmetric key
 - `_uk`: for a Covercrypt user decryption key
 - `_cert`: for a X509 certificate
-
-In addition for the X509 certificate, KMIP Certificate object not having a `key block` with `Attributes`, the following
-tags are also added:
-
-- `_cert_uid=<certificate_uid>` added on private key and public key to establish the link with the certificate
-- `_cert_spki=<hash>` added on X509 certificates where the Subject Public Key Identifier is the hash of the public key
-- `_cert_ca=<Subject Common Name>` on CA `Certificate` object
 
 Use the tags to export objects, locate them, or request data encryption and decryption.
 
