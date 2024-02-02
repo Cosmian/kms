@@ -11,10 +11,13 @@ use super::{
 };
 use crate::{error::KmipUtilsError, kmip_utils_bail};
 
+#[cfg(not(feature = "fips"))]
 /// Chacha20-Poly1305 key length in bytes.
 pub const CHACHA20_POLY1305_KEY_LENGTH: usize = 32;
+#[cfg(not(feature = "fips"))]
 /// Chacha20-Poly1305 iv length in bytes.
 pub const CHACHA20_POLY1305_IV_LENGTH: usize = 12;
+#[cfg(not(feature = "fips"))]
 /// Chacha20-Poly1305 tag/mac length in bytes.
 pub const CHACHA20_POLY1305_MAC_LENGTH: usize = 16;
 
@@ -177,7 +180,9 @@ pub fn aead_decrypt(
 
 #[cfg(test)]
 mod tests {
-    use openssl::{provider::Provider, rand::rand_bytes};
+    #[cfg(feature = "fips")]
+    use openssl::provider::Provider;
+    use openssl::rand::rand_bytes;
 
     use crate::crypto::symmetric::aead::{
         aead_decrypt, aead_encrypt, random_key, random_nonce, AeadCipher,
@@ -213,7 +218,7 @@ mod tests {
     fn test_encrypt_decrypt_aes_gcm_256() {
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
+        Provider::load(None, "fips").unwrap();
 
         let mut message = vec![0_u8; 42];
         rand_bytes(&mut message).unwrap();
@@ -241,7 +246,7 @@ mod tests {
         let mut message = vec![0_u8; 42];
         rand_bytes(&mut message).unwrap();
 
-        let key = Zeroizing::from(random_key(AeadCipher::Chacha20Poly1305).unwrap());
+        let key = random_key(AeadCipher::Chacha20Poly1305).unwrap();
 
         let nonce = random_nonce(AeadCipher::Chacha20Poly1305).unwrap();
 
@@ -261,6 +266,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(decrypted_data, message);
+        // `to_vec()` conversion because of Zeroizing<>.
+        assert_eq!(decrypted_data.to_vec(), message);
     }
 }
