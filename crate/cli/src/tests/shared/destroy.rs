@@ -112,7 +112,8 @@ async fn test_destroy_ec_key() -> Result<(), CliError> {
     // destroy via private key
     {
         // syn
-        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+        let (private_key_id, public_key_id) =
+            create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &[])?;
 
         // destroy should not work when not revoked
         assert!(destroy(&ctx.owner_cli_conf_path, "ec", &private_key_id).is_err());
@@ -135,7 +136,8 @@ async fn test_destroy_ec_key() -> Result<(), CliError> {
     // destroy via public key
     {
         // syn
-        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+        let (private_key_id, public_key_id) =
+            create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &[])?;
 
         // destroy should not work when not revoked
         assert!(destroy(&ctx.owner_cli_conf_path, "ec", &public_key_id).is_err());

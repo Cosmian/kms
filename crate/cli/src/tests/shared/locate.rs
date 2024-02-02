@@ -210,7 +210,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
 
     // generate a new key pair
     let (private_key_id, public_key_id) =
-        create_ec_key_pair(&ctx.owner_cli_conf_path, &["test_ec"])?;
+        create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &["test_ec"])?;
 
     // Locate with Tags
     let ids = locate(

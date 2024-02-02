@@ -408,7 +408,8 @@ async fn certify_a_public_key_test() -> Result<(), CliError> {
     )?;
 
     // create a Ed25519 Key Pair
-    let (_private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+    let (_private_key_id, public_key_id) =
+        create_ec_key_pair(&ctx.owner_cli_conf_path, "ed25519", &[])?;
 
     // Certify the public key with the intermediate CA
     let certificate_id = certify(

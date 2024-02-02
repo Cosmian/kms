@@ -17,12 +17,13 @@ use crate::{
 
 pub fn create_ec_key_pair(
     cli_conf_path: &str,
+    curve: &str,
     tags: &[&str],
 ) -> Result<(String, String), CliError> {
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
-    let mut args = vec!["keys", "create"];
+    let mut args = vec!["keys", "create", "--curve", curve];
     // add tags
     for tag in tags {
         args.push("--tag");
@@ -55,6 +56,6 @@ pub fn create_ec_key_pair(
 pub async fn test_create_key_pair() -> Result<(), CliError> {
     // from specs
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
-    create_ec_key_pair(&ctx.owner_cli_conf_path, &["tag1", "tag2"])?;
+    create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &["tag1", "tag2"])?;
     Ok(())
 }

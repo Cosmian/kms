@@ -104,7 +104,8 @@ async fn test_revoke_ec_key() -> Result<(), CliError> {
     // revoke via private key
     {
         // syn
-        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+        let (private_key_id, public_key_id) =
+            create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &[])?;
 
         // revoke via the private key
         revoke(
@@ -122,7 +123,8 @@ async fn test_revoke_ec_key() -> Result<(), CliError> {
     // revoke via public key
     {
         // syn
-        let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+        let (private_key_id, public_key_id) =
+            create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &[])?;
 
         // revoke via the private key
         revoke(

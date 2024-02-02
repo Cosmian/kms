@@ -180,6 +180,7 @@ pub fn aead_decrypt(
 
 #[cfg(test)]
 mod tests {
+
     #[cfg(feature = "fips")]
     use openssl::provider::Provider;
     use openssl::rand::rand_bytes;

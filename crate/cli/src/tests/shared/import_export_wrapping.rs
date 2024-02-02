@@ -72,8 +72,11 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
 
     // test ec
     println!("testing ec keys");
-    let (private_key_id, _public_key_id) =
-        elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+    let (private_key_id, _public_key_id) = elliptic_curve::create_key_pair::create_ec_key_pair(
+        &ctx.owner_cli_conf_path,
+        "nist-p256",
+        &[],
+    )?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
         "ec",
@@ -158,8 +161,11 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     )?;
 
     debug!("testing EC keys");
-    let (private_key_id, _public_key_id) =
-        elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+    let (private_key_id, _public_key_id) = elliptic_curve::create_key_pair::create_ec_key_pair(
+        &ctx.owner_cli_conf_path,
+        "nist-p256",
+        &[],
+    )?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
         "ec",

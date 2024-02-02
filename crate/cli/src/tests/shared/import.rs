@@ -148,7 +148,8 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
     )?;
 
     // Test import/export of an EC Key Pair
-    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+    let (private_key_id, _public_key_id) =
+        create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &[])?;
     export_import_test(
         &ctx.owner_cli_conf_path,
         "ec",
