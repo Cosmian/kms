@@ -4,15 +4,14 @@ use assert_cmd::prelude::CommandCargoExt;
 use tempfile::TempDir;
 
 #[cfg(not(feature = "fips"))]
-use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
+use crate::tests::cover_crypt::{
+    master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
+};
 use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        cover_crypt::{
-            master_key_pair::create_cc_master_key_pair,
-            user_decryption_keys::create_user_decryption_key,
-        },
+        elliptic_curve::create_key_pair::create_ec_key_pair,
         shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
         utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
@@ -51,7 +50,7 @@ fn assert_revoker(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
     assert!(
         export_key(
             cli_conf_path,
-            "cc",
+            "ec",
             key_id,
             tmp_path.join("output.export").to_str().unwrap(),
             None,
@@ -66,7 +65,7 @@ fn assert_revoker(cli_conf_path: &str, key_id: &str) -> Result<(), CliError> {
     assert!(
         export_key(
             cli_conf_path,
-            "cc",
+            "ec",
             key_id,
             tmp_path.join("output.export").to_str().unwrap(),
             None,
@@ -95,7 +94,6 @@ async fn test_revoke_symmetric_key() -> Result<(), CliError> {
     assert_revoker(&ctx.owner_cli_conf_path, &key_id)
 }
 
-#[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn test_revoke_ec_key() -> Result<(), CliError> {
     // init the test server
@@ -142,6 +140,7 @@ async fn test_revoke_ec_key() -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 async fn test_revoke_cover_crypt() -> Result<(), CliError> {
     // init the test server

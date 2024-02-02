@@ -80,6 +80,7 @@ pub fn import_key(
     ))
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_import_cover_crypt() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
