@@ -1,9 +1,9 @@
-use cloudproof::reexport::crypto_core::reexport::zeroize::Zeroizing;
 use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
 use openssl::{
     pkey::{PKey, Private, Public},
     rand::rand_bytes,
 };
+use zeroize::Zeroizing;
 
 use crate::{
     crypto::{

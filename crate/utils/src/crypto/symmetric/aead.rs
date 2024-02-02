@@ -1,7 +1,21 @@
 use cosmian_kmip::kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm};
-use openssl::symm::{decrypt_aead, encrypt_aead, Cipher};
+use openssl::{
+    rand::rand_bytes,
+    symm::{decrypt_aead, encrypt_aead, Cipher},
+};
 
+use super::{
+    AES_128_GCM_IV_LENGTH, AES_128_GCM_KEY_LENGTH, AES_128_GCM_MAC_LENGTH, AES_256_GCM_IV_LENGTH,
+    AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH,
+};
 use crate::{error::KmipUtilsError, kmip_utils_bail};
+
+/// Chacha20-Poly1305 key length in bytes.
+pub const CHACHA20_POLY1305_KEY_LENGTH: usize = 32;
+/// Chacha20-Poly1305 iv length in bytes.
+pub const CHACHA20_POLY1305_IV_LENGTH: usize = 12;
+/// Chacha20-Poly1305 tag/mac length in bytes.
+pub const CHACHA20_POLY1305_MAC_LENGTH: usize = 16;
 
 /// The supported AEAD ciphers.
 #[derive(Debug, Clone, Copy)]
@@ -16,40 +30,40 @@ impl AeadCipher {
     /// Convert to the corresponding OpenSSL cipher.
     fn to_cipher(self) -> Cipher {
         match self {
-            AeadCipher::Aes256Gcm => Cipher::aes_256_gcm(),
             AeadCipher::Aes128Gcm => Cipher::aes_128_gcm(),
+            AeadCipher::Aes256Gcm => Cipher::aes_256_gcm(),
             #[cfg(not(feature = "fips"))]
             AeadCipher::Chacha20Poly1305 => Cipher::chacha20_poly1305(),
         }
     }
 
-    /// Get the tag size in bytes.  
+    /// Get the tag size in bytes.
     pub fn tag_size(&self) -> usize {
         match self {
-            AeadCipher::Aes256Gcm => 16,
-            AeadCipher::Aes128Gcm => 16,
+            AeadCipher::Aes128Gcm => AES_128_GCM_MAC_LENGTH,
+            AeadCipher::Aes256Gcm => AES_256_GCM_MAC_LENGTH,
             #[cfg(not(feature = "fips"))]
-            AeadCipher::Chacha20Poly1305 => 16,
+            AeadCipher::Chacha20Poly1305 => CHACHA20_POLY1305_MAC_LENGTH,
         }
     }
 
     /// Get the nonce size in bytes.
     pub fn nonce_size(&self) -> usize {
         match self {
-            AeadCipher::Aes256Gcm => 12,
-            AeadCipher::Aes128Gcm => 12,
+            AeadCipher::Aes128Gcm => AES_128_GCM_IV_LENGTH,
+            AeadCipher::Aes256Gcm => AES_256_GCM_IV_LENGTH,
             #[cfg(not(feature = "fips"))]
-            AeadCipher::Chacha20Poly1305 => 12,
+            AeadCipher::Chacha20Poly1305 => CHACHA20_POLY1305_IV_LENGTH,
         }
     }
 
     /// Get the key size in bytes.
     pub fn key_size(&self) -> usize {
         match self {
-            AeadCipher::Aes256Gcm => 32,
-            AeadCipher::Aes128Gcm => 16,
+            AeadCipher::Aes128Gcm => AES_128_GCM_KEY_LENGTH,
+            AeadCipher::Aes256Gcm => AES_256_GCM_KEY_LENGTH,
             #[cfg(not(feature = "fips"))]
-            AeadCipher::Chacha20Poly1305 => 32,
+            AeadCipher::Chacha20Poly1305 => CHACHA20_POLY1305_KEY_LENGTH,
         }
     }
 
@@ -69,8 +83,8 @@ impl AeadCipher {
                     ));
                 }
                 match key_size {
-                    16 => Ok(AeadCipher::Aes128Gcm),
-                    32 => Ok(AeadCipher::Aes256Gcm),
+                    AES_128_GCM_KEY_LENGTH => Ok(AeadCipher::Aes128Gcm),
+                    AES_256_GCM_KEY_LENGTH => Ok(AeadCipher::Aes256Gcm),
                     _ => kmip_utils_bail!(KmipUtilsError::NotSupported(
                         "AES key must be 16 or 32 bytes long".to_owned()
                     )),
@@ -103,18 +117,19 @@ impl AeadCipher {
 /// Generate a random nonce for the given AEAD cipher.
 pub fn random_nonce(aead_cipher: AeadCipher) -> Result<Vec<u8>, KmipUtilsError> {
     let mut nonce = vec![0; aead_cipher.nonce_size()];
-    openssl::rand::rand_bytes(&mut nonce)?;
+    rand_bytes(&mut nonce)?;
     Ok(nonce)
 }
 
 /// Generate a random key for the given AEAD cipher.
 pub fn random_key(aead_cipher: AeadCipher) -> Result<Vec<u8>, KmipUtilsError> {
     let mut key = vec![0; aead_cipher.key_size()];
-    openssl::rand::rand_bytes(&mut key)?;
+    rand_bytes(&mut key)?;
     Ok(key)
 }
 
-/// Encrypt the plaintext using the given AEAD cipher, key, nonce and additional authenticated data.
+/// Encrypt the plaintext using the given AEAD cipher, key, nonce and additional
+/// authenticated data.
 /// Return the ciphertext and the tag.
 pub fn aead_encrypt(
     aead_cipher: AeadCipher,
@@ -137,7 +152,8 @@ pub fn aead_encrypt(
     Ok((ciphertext, tag))
 }
 
-/// Decrypt the ciphertext using the given AEAD cipher, key, nonce and additional authenticated data.
+/// Decrypt the ciphertext using the given AEAD cipher, key, nonce and
+/// additional authenticated data.
 /// Return the plaintext.
 pub fn aead_decrypt(
     aead_cipher: AeadCipher,
@@ -160,7 +176,7 @@ pub fn aead_decrypt(
 
 #[cfg(test)]
 mod tests {
-    use openssl::rand::rand_bytes;
+    use openssl::{provider::Provider, rand::rand_bytes};
     use zeroize::Zeroizing;
 
     use crate::crypto::symmetric::aead::{
@@ -171,7 +187,7 @@ mod tests {
     fn test_encrypt_decrypt_aes_gcm_128() {
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
+        Provider::load(None, "fips").unwrap();
 
         let mut message = vec![0_u8; 42];
         rand_bytes(&mut message).unwrap();

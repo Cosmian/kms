@@ -2,7 +2,7 @@
 //! a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 //! http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
 //!
-//! This scheme is part of the NIST 800-56B rev. 2 recommendation available at section 7.2.2  
+//! This scheme is part of the NIST 800-56B rev. 2 recommendation available at section 7.2.2
 //! https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Br2.pdf
 //!
 //! As part of the NIST specification, NIST approved hash functions which can be used for the OAEP scheme are listed in
@@ -10,13 +10,13 @@
 //!  - NIST FIPS 202: SHA3-224, SHA3-256, SHA3-384, SHA3-512 (https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf)
 //!
 //! The scheme can be used for both encryption and key wrapping
-use cloudproof::reexport::crypto_core::reexport::zeroize::Zeroizing;
 use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
 use openssl::{
     md::MdRef,
     pkey::{PKey, Private, Public},
     pkey_ctx::PkeyCtx,
 };
+use zeroize::Zeroizing;
 
 use crate::error::KmipUtilsError;
 #[cfg(feature = "fips")]

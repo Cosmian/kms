@@ -13,6 +13,13 @@ use crate::{
     EncryptionSystem,
 };
 
+/// AES 128 GCM key length in bytes.
+pub const AES_128_GCM_KEY_LENGTH: usize = 16;
+/// AES 128 GCM nonce length in bytes.
+pub const AES_128_GCM_IV_LENGTH: usize = 12;
+/// AES 128 GCM tag/mac length in bytes.
+pub const AES_128_GCM_MAC_LENGTH: usize = 16;
+
 /// AES 256 GCM key length in bytes.
 pub const AES_256_GCM_KEY_LENGTH: usize = 32;
 /// AES 256 GCM nonce length in bytes.
