@@ -80,6 +80,7 @@ impl DecryptAction {
                 .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
             Some(cryptographic_algorithm),
+            None,
         );
 
         tracing::debug!("{decrypt_request:?}");

@@ -15,7 +15,7 @@ use crate::{
     },
 };
 
-pub fn create_rsa_key_pair(
+pub fn create_rsa_4096_bits_key_pair(
     cli_conf_path: &str,
     tags: &[&str],
 ) -> Result<(String, String), CliError> {
@@ -55,6 +55,6 @@ pub async fn test_rsa_create_key_pair() -> Result<(), CliError> {
 
     // from specs
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
-    create_rsa_key_pair(&ctx.owner_cli_conf_path, &["tag1", "tag2"])?;
+    create_rsa_4096_bits_key_pair(&ctx.owner_cli_conf_path, &["tag1", "tag2"])?;
     Ok(())
 }

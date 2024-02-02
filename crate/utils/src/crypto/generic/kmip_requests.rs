@@ -86,9 +86,11 @@ pub fn build_decryption_request(
     authenticated_tag: Option<Vec<u8>>,
     authentication_data: Option<Vec<u8>>,
     cryptographic_algorithm: Option<CryptographicAlgorithm>,
+    hashing_algorithm: Option<HashingAlgorithm>,
 ) -> Decrypt {
     let cryptographic_parameters = cryptographic_algorithm.map(|ca| CryptographicParameters {
         cryptographic_algorithm: Some(ca),
+        hashing_algorithm,
         ..Default::default()
     });
 

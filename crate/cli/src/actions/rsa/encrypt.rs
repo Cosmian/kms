@@ -1,55 +1,28 @@
 use std::{fs::File, io::Write, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::generic::kmip_requests::build_encryption_request;
 
 use crate::{
-    actions::shared::utils::read_bytes_from_file,
+    actions::{
+        rsa::{EncryptionAlgorithm, HashFn},
+        shared::utils::read_bytes_from_file,
+    },
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
 
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
-pub enum HashFn {
-    Sha1,
-    Sha224,
-    Sha256,
-    Sha384,
-    Sha512,
-    Sha3_224,
-    Sha3_256,
-    Sha3_384,
-    Sha3_512,
-}
-
-impl From<HashFn> for HashingAlgorithm {
-    fn from(value: HashFn) -> Self {
-        match value {
-            HashFn::Sha1 => HashingAlgorithm::SHA1,
-            HashFn::Sha224 => HashingAlgorithm::SHA224,
-            HashFn::Sha256 => HashingAlgorithm::SHA256,
-            HashFn::Sha384 => HashingAlgorithm::SHA384,
-            HashFn::Sha512 => HashingAlgorithm::SHA512,
-            HashFn::Sha3_224 => HashingAlgorithm::SHA3224,
-            HashFn::Sha3_256 => HashingAlgorithm::SHA3256,
-            HashFn::Sha3_384 => HashingAlgorithm::SHA3384,
-            HashFn::Sha3_512 => HashingAlgorithm::SHA3512,
-        }
-    }
-}
-
 /// Encrypt a file with the given public key using either
 ///  - CKM_RSA_PKCS_OAEP a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
 ///  - RSA_OAEP AES_128_GCM
-/// By default the hashing function is set to SHA-256
+/// By default the hashing function used with RSA OAEP is set to SHA-256
 ///
 /// When using CKM_RSA_PKCS_OAEP:
 ///  - the authentication data is ignored
 ///  - the maximum plaintext length is k-2-2*hLen where
 ///     - k is the length in octets of the RSA modulus
-///     - hLen is the length in octets of the hash function output for EME-OAEP
+///     - hLen is the length in octets of the hash function output
 ///  - the output length is the same as the RSA modulus length.
 ///
 /// Note: this is not a streaming call: the file is entirely loaded in memory before being sent for encryption.
@@ -65,14 +38,22 @@ pub struct EncryptAction {
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     key_id: Option<String>,
 
-    /// The hashing algorithm
-    #[clap(long = "hashing-algorithm", short = 's', default_value = "sha256")]
-    hash_fn: HashFn,
-
     /// Tag to use to retrieve the key when no key id is specified.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
     tags: Option<Vec<String>>,
+
+    /// The encryption algorithm
+    #[clap(
+        long = "encryption-algorithm",
+        short = 'e',
+        default_value = "ckm-rsa-pkcs-oaep"
+    )]
+    encryption_algorithm: EncryptionAlgorithm,
+
+    /// The hashing algorithm
+    #[clap(long = "hashing-algorithm", short = 's', default_value = "sha256")]
+    hash_fn: HashFn,
 
     /// The encrypted output file path
     #[clap(required = false, long, short = 'o')]
@@ -108,7 +89,7 @@ impl EncryptAction {
             self.authentication_data
                 .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
-            None,
+            Some(self.encryption_algorithm.into()),
             Some(self.hash_fn.into()),
         )?;
 
