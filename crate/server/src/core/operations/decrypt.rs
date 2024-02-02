@@ -26,6 +26,7 @@ use cosmian_kms_utils::{
 };
 use openssl::pkey::{Id, PKey, Private};
 use tracing::trace;
+use zeroize::Zeroizing;
 
 use crate::{
     core::{operations::unwrap_key, KMS},
@@ -167,7 +168,7 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
             let plaintext = aead_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
             Ok(DecryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id.to_string()),
-                data: Some(plaintext),
+                data: Some(plaintext.to_vec()), // TODO: zeroize field in DecryptResponse.
                 correlation_value: request.correlation_value.clone(),
             })
         }
@@ -227,7 +228,7 @@ fn decrypt_with_pkey(
     };
     Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(key_id.to_string()),
-        data: Some(plaintext),
+        data: Some(plaintext.to_vec()), // TODO: zeroize field in DecryptResponse.
         correlation_value: request.correlation_value.clone(),
     })
 }
@@ -237,7 +238,7 @@ fn decrypt_with_rsa(
     cryptographic_parameters: Option<&CryptographicParameters>,
     ct: &[u8],
     aad: Option<&[u8]>,
-) -> KResult<Vec<u8>> {
+) -> KResult<Zeroizing<Vec<u8>>> {
     let (algorithm, padding, hashing_fn) = cryptographic_parameters
         .map(|cp| {
             (
@@ -261,9 +262,7 @@ fn decrypt_with_rsa(
     }
     let plaintext = match algorithm {
         CryptographicAlgorithm::AES => rsa_oaep_aes_gcm_decrypt(private_key, hashing_fn, ct, aad)?,
-        CryptographicAlgorithm::RSA => {
-            ckm_rsa_pkcs_oaep_key_decrypt(private_key, hashing_fn, ct)?.to_vec()
-        }
+        CryptographicAlgorithm::RSA => ckm_rsa_pkcs_oaep_key_decrypt(private_key, hashing_fn, ct)?,
         x => {
             kms_bail!("Unable to decrypt with RSA: algorithm not supported for decrypting: {x:?}")
         }

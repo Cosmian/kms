@@ -1,5 +1,6 @@
 use cosmian_kmip::kmip::kmip_types::HashingAlgorithm;
 use openssl::pkey::{PKey, Private, Public};
+use zeroize::Zeroizing;
 
 use crate::{
     crypto::{
@@ -33,7 +34,7 @@ pub fn rsa_oaep_aes_gcm_encrypt(
     // Generate temporary AES key.
     let dek = random_key(AeadCipher::Aes128Gcm)?;
 
-    //Generate IV
+    // Generate IV.
     let iv = random_nonce(AeadCipher::Aes128Gcm)?;
 
     // Encapsulate it using RSA-OAEP.
@@ -65,7 +66,7 @@ pub fn rsa_oaep_aes_gcm_decrypt(
     hash_fn: HashingAlgorithm,
     ciphertext: &[u8],
     aad: Option<&[u8]>,
-) -> Result<Vec<u8>, KmipUtilsError> {
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let rsa_privkey = p_key.rsa()?;
 
     let encapsulation_bytes_len = rsa_privkey.size() as usize;
@@ -149,7 +150,8 @@ mod tests {
         let decrytped =
             rsa_oaep_aes_gcm_decrypt(&privkey, HashingAlgorithm::SHA256, &ct, Some(b"asdfg"))?;
 
-        assert_eq!(decrytped, plaintext);
+        // `to_vec()` conversion because of Zeroizing<>.
+        assert_eq!(decrytped.to_vec(), plaintext);
 
         Ok(())
     }

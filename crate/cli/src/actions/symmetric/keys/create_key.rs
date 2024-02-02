@@ -91,7 +91,6 @@ impl CreateKeyAction {
                 256 => CryptographicAlgorithm::SHAKE256,
                 _ => cli_bail!("invalid number of bits for shake {}", number_of_bits),
             },
-            _ => cli_bail!("invalid algorithm {:?}", self.algorithm),
         };
 
         let unique_identifier = match key_bytes {

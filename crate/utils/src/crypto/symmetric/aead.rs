@@ -3,6 +3,7 @@ use openssl::{
     rand::rand_bytes,
     symm::{decrypt_aead, encrypt_aead, Cipher},
 };
+use zeroize::Zeroizing;
 
 use super::{
     AES_128_GCM_IV_LENGTH, AES_128_GCM_KEY_LENGTH, AES_128_GCM_MAC_LENGTH, AES_256_GCM_IV_LENGTH,
@@ -122,8 +123,8 @@ pub fn random_nonce(aead_cipher: AeadCipher) -> Result<Vec<u8>, KmipUtilsError> 
 }
 
 /// Generate a random key for the given AEAD cipher.
-pub fn random_key(aead_cipher: AeadCipher) -> Result<Vec<u8>, KmipUtilsError> {
-    let mut key = vec![0; aead_cipher.key_size()];
+pub fn random_key(aead_cipher: AeadCipher) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
+    let mut key = Zeroizing::from(vec![0; aead_cipher.key_size()]);
     rand_bytes(&mut key)?;
     Ok(key)
 }
@@ -162,22 +163,21 @@ pub fn aead_decrypt(
     aad: &[u8],
     ciphertext: &[u8],
     tag: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError> {
-    let plaintext = decrypt_aead(
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
+    let plaintext = Zeroizing::from(decrypt_aead(
         aead_cipher.to_cipher(),
         key,
         Some(nonce),
         aad,
         ciphertext,
         tag,
-    )?;
+    )?);
     Ok(plaintext)
 }
 
 #[cfg(test)]
 mod tests {
     use openssl::{provider::Provider, rand::rand_bytes};
-    use zeroize::Zeroizing;
 
     use crate::crypto::symmetric::aead::{
         aead_decrypt, aead_encrypt, random_key, random_nonce, AeadCipher,
@@ -192,7 +192,7 @@ mod tests {
         let mut message = vec![0_u8; 42];
         rand_bytes(&mut message).unwrap();
 
-        let key = Zeroizing::from(random_key(AeadCipher::Aes128Gcm).unwrap());
+        let key = random_key(AeadCipher::Aes128Gcm).unwrap();
 
         let nonce = random_nonce(AeadCipher::Aes128Gcm).unwrap();
 
@@ -205,7 +205,8 @@ mod tests {
         let decrypted_data =
             aead_decrypt(AeadCipher::Aes128Gcm, &key, &nonce, &aad, &ciphertext, &tag).unwrap();
 
-        assert_eq!(decrypted_data, message);
+        // `to_vec()` conversion because of Zeroizing<>.
+        assert_eq!(decrypted_data.to_vec(), message);
     }
 
     #[test]
@@ -217,7 +218,7 @@ mod tests {
         let mut message = vec![0_u8; 42];
         rand_bytes(&mut message).unwrap();
 
-        let key = Zeroizing::from(random_key(AeadCipher::Aes256Gcm).unwrap());
+        let key = random_key(AeadCipher::Aes256Gcm).unwrap();
 
         let nonce = random_nonce(AeadCipher::Aes256Gcm).unwrap();
 
@@ -230,7 +231,8 @@ mod tests {
         let decrypted_data =
             aead_decrypt(AeadCipher::Aes256Gcm, &key, &nonce, &aad, &ciphertext, &tag).unwrap();
 
-        assert_eq!(decrypted_data, message);
+        // `to_vec()` conversion because of Zeroizing<>.
+        assert_eq!(decrypted_data.to_vec(), message);
     }
 
     #[cfg(not(feature = "fips"))]

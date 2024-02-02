@@ -117,7 +117,7 @@ pub fn ckm_rsa_pkcs_oaep_key_unwrap(
 ) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let (mut ctx, mut plaintext) = init_ckm_rsa_pkcs_oaep_decryption_context(priv_key, hash_fn)?;
     ctx.decrypt_to_vec(wrapped_key, &mut plaintext)?;
-    Ok(Zeroizing::from(plaintext))
+    Ok(plaintext)
 }
 
 /// Decrypt using CKM_RSA_PKCS_OAEP
@@ -136,7 +136,7 @@ pub fn ckm_rsa_pkcs_oaep_key_decrypt(
     priv_key: &PKey<Private>,
     hash_fn: HashingAlgorithm,
     ciphertext: &[u8],
-) -> Result<Vec<u8>, KmipUtilsError> {
+) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let (mut ctx, mut plaintext) = init_ckm_rsa_pkcs_oaep_decryption_context(priv_key, hash_fn)?;
     ctx.decrypt_to_vec(ciphertext, &mut plaintext)?;
     Ok(plaintext)
@@ -145,7 +145,7 @@ pub fn ckm_rsa_pkcs_oaep_key_decrypt(
 fn init_ckm_rsa_pkcs_oaep_decryption_context(
     priv_key: &PKey<Private>,
     hash_fn: HashingAlgorithm,
-) -> Result<(PkeyCtx<Private>, Vec<u8>), KmipUtilsError> {
+) -> Result<(PkeyCtx<Private>, Zeroizing<Vec<u8>>), KmipUtilsError> {
     let rsa_priv_key = priv_key.rsa()?;
     #[cfg(feature = "fips")]
     if priv_key.bits() < FIPS_MIN_RSA_MODULUS_LENGTH {
@@ -162,7 +162,7 @@ fn init_ckm_rsa_pkcs_oaep_decryption_context(
 
     // The ciphertext has the same length as the modulus.
     let plaintext_bytes_len = rsa_priv_key.size() as usize - 2 - 2 * hash_fn.size();
-    let plaintext = Vec::with_capacity(plaintext_bytes_len);
+    let plaintext = Zeroizing::from(Vec::with_capacity(plaintext_bytes_len));
 
     // Perform OAEP encryption.
     let mut ctx = PkeyCtx::new(priv_key)?;
