@@ -16,6 +16,7 @@ jobs:
 
   not-fips-image:
     needs: pyo3
+    name: Not FIPS image build and tests
     uses: ./.github/workflows/build_docker_image.yml
     with:
       features: ''
@@ -23,6 +24,7 @@ jobs:
 
   fips-image:
     needs: pyo3
+    name: FIPS image build and tests
     uses: ./.github/workflows/build_docker_image.yml
     with:
       features: --features=fips

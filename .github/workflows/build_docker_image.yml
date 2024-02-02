@@ -68,7 +68,7 @@ jobs:
           echo ${{ steps.meta.outputs.tags }}${{ inputs.image-suffix }}
 
     outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}${{ inputs.image-suffix }}
+      image-tag: ${{ steps.meta.outputs.version }}${{ inputs.image-suffix }}
 
   python_tests:
     needs:
