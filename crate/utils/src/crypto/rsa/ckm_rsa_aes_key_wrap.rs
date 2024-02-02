@@ -32,8 +32,6 @@ pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
 /// with AES-KWP as specified in RFC5649.
 ///
 /// Send `c|wk` where `|` is the concatenation operator.
-///
-/// TODO - support OAEP for different hashes.
 pub fn ckm_rsa_aes_key_wrap(
     pubkey: &PKey<Public>,
     hash_fn: HashingAlgorithm,
@@ -67,8 +65,6 @@ pub fn ckm_rsa_aes_key_wrap(
 /// First decrypt the key-encryption-key `kek` using RSA-OAEP. Then proceed to
 /// unwrap the key by decrypting `m = dec(wk, kek)` using AES-KWP as specified in
 /// RFC5649.
-///
-/// TODO - support OAEP for different hashes.
 pub fn ckm_rsa_aes_key_unwrap(
     p_key: &PKey<Private>,
     hash_fn: HashingAlgorithm,

@@ -24,7 +24,6 @@ use crate::{
 ///
 /// Send `c|iv|ct|tag` where `|` is the concatenation operator, `iv` the
 /// initialization vector and `tag` the authentication tag.
-///
 pub fn rsa_oaep_aes_gcm_encrypt(
     pubkey: &PKey<Public>,
     hash_fn: HashingAlgorithm,
