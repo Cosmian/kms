@@ -259,7 +259,7 @@ mod tests {
 
         let decrypted_data = aead_decrypt(
             AeadCipher::Chacha20Poly1305,
-            &key,
+            key.as_ref(),
             &nonce,
             &aad,
             &ciphertext,
@@ -267,7 +267,11 @@ mod tests {
         )
         .unwrap();
 
+<<<<<<< HEAD
         // `to_vec()` conversion because of Zeroizing<>.
         assert_eq!(decrypted_data.to_vec(), message);
+=======
+        assert_eq!(decrypted_data.as_ref(), message);
+>>>>>>> b0b0f652 (rebase fix)
     }
 }

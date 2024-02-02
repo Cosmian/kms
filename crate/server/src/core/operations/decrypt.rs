@@ -221,7 +221,7 @@ fn decrypt_with_pkey(
             request.authenticated_encryption_additional_data.as_deref(),
         )?,
         #[cfg(not(feature = "fips"))]
-        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(private_key, ciphertext)?.to_vec(),
+        Id::EC | Id::X25519 | Id::ED25519 => ecies_decrypt(private_key, ciphertext)?,
         other => {
             kms_bail!("Decrypt: private key type not supported: {other:?}")
         }
