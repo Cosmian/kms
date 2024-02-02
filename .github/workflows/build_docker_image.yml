@@ -17,6 +17,7 @@ env:
 
 jobs:
   build-and-push-image:
+    name: Image ${{ inputs.image-suffix }}
     runs-on: ubuntu-22.04
     container: docker:19.03.15
 
@@ -64,8 +65,8 @@ jobs:
 
       - name: Display metadata version ${{ steps.meta.outputs.version }}
         run: |
-          echo ${{ steps.meta.outputs.version }}
-          echo ${{ steps.meta.outputs.tags }}${{ inputs.image-suffix }}
+          echo version: ${{ steps.meta.outputs.version }}${{ inputs.image-suffix }}
+          echo tags: ${{ steps.meta.outputs.tags }}
 
     outputs:
       image-tag: ${{ steps.meta.outputs.version }}${{ inputs.image-suffix }}
