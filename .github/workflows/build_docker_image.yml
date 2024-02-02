@@ -20,8 +20,7 @@ jobs:
 
     strategy:
       matrix:
-        features: ["", "--features=fips"]
-        flavor: ["", "-fips"]
+        features: ['', fips]
 
     steps:
       - name: Display cpuinfo
@@ -59,14 +58,19 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}${{ matrix.flavor }}
+          tags: ${{ steps.meta.outputs.tags }}-${{ matrix.features }}
           labels: ${{ steps.meta.outputs.labels }}
           file: Dockerfile
           network: host
-          build-args: ${{ matrix.features }}
+          build-args: --features=${{ matrix.features }}
+
+      - name: Display metadata version
+        run: |
+          echo ${{ steps.meta.outputs.version }}
+          echo ${{ steps.meta.outputs.tags }}-${{ matrix.features }}
 
     outputs:
-      image-tag: ${{ steps.meta.outputs.version }}
+      image-tag: ${{ steps.meta.outputs.tags }}-${{ matrix.features }}
 
   python_tests:
     needs:
@@ -81,7 +85,6 @@ jobs:
   cloudproof_kms_js:
     needs:
       - build-and-push-image
-      - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_kms_js.yml@develop
     with:
       branch: develop
@@ -90,7 +93,6 @@ jobs:
   cloudproof_java:
     needs:
       - build-and-push-image
-      - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_java_in_docker.yml@develop
     with:
       branch: develop
