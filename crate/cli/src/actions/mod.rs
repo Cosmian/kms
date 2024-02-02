@@ -1,5 +1,6 @@
 pub mod access;
 pub mod certificates;
+#[cfg(not(feature = "fips"))]
 pub mod cover_crypt;
 pub mod elliptic_curves;
 pub mod login;

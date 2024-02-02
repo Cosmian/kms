@@ -38,6 +38,7 @@ The supported encryption algorithms are:
 |------------------------------|---------------------------------------------------------|-------------------------|--------------------------------------------------------------------------------------------------------------------------|
 | Covercrypt                   | Covercrypt                                              | No                      | A fast post-quantum attribute based scheme: [Covercrypt](https://github.com/Cosmian/cover_crypt).                        |
 | AES-128-GCM<br />AES-256-GCM | Symmetric authenticated encryption with additional data | NIST FIPS 197           | The NIST standardized symmetric encryption in [FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf). |
+| ChaCha20-Poly1305            | Symmetric authenticated encryption with additional data | No                      | A popular symmetric encryption algorithm standardised in [RFC-8439](https://www.rfc-editor.org/rfc/rfc8439)              |
 | CKM_RSA_PKCS_OAEP            | RSA encryption                                          | NIST 800-56B rev. 2     | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                                  |
 | RSA OAEP AES 128 GCM         | RSA-AES hybrid encryption                               | NIST SP 800-38F compat. | RSA OAEP NIST approved hashing functions and AES 128 GCM for RSA key size 2048, 3072 or 4096 bits.                       |
 | Salsa Sealed Box             | X25519, Ed25519 and Salsa20 Poly1305                    | No                      | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).          |
@@ -52,12 +53,19 @@ at [ETSI](https://www.etsi.org/) that allows creating ciphertexts for a set of a
 access policies over these
 attributes. User keys are traceable with a unique fingerprint.
 
-### AES
+### AES GCM
 
 AES is described in  [NIST FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf), In Cosmian KMS, as a
 data encryption mechanism (DEM), it is used in Galois
 Counter Mode ([GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)) with a 96 bits nonce, a 128 bits tag with and
 key sizes of 128 or 256 bits.
+
+### ChaCha20-Poly1305
+
+ChaCha20-Poly1305 is a symmetric encryption algorithm that is described
+in [RFC-8439](https://www.rfc-editor.org/rfc/rfc8439).
+The algorithm is not standardized by NIST but is a popular secure alternative to AES-GCM and is used in the same way, in
+particular by Google.
 
 ### AES-KWP
 

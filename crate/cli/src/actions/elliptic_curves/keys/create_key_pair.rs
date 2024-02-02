@@ -1,21 +1,67 @@
 use clap::Parser;
 use cosmian_kmip::kmip::kmip_types::RecommendedCurve;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::elliptic_curves::kmip_requests::create_curve_25519_key_pair_request;
+use cosmian_kms_utils::crypto::elliptic_curves::kmip_requests::create_ec_key_pair_request;
 
 use crate::error::{result::CliResultHelper, CliError};
 
-/// Create a new X25519 key pair
+#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+pub enum Curve {
+    #[cfg(not(feature = "fips"))]
+    NistP192,
+    NistP224,
+    NistP256,
+    NistP384,
+    NistP521,
+    #[cfg(not(feature = "fips"))]
+    X25519,
+    #[cfg(not(feature = "fips"))]
+    Ed25519,
+    #[cfg(not(feature = "fips"))]
+    X448,
+    #[cfg(not(feature = "fips"))]
+    Ed448,
+}
+
+impl From<Curve> for RecommendedCurve {
+    fn from(curve: Curve) -> RecommendedCurve {
+        match curve {
+            #[cfg(not(feature = "fips"))]
+            Curve::NistP192 => RecommendedCurve::P192,
+            Curve::NistP224 => RecommendedCurve::P224,
+            Curve::NistP256 => RecommendedCurve::P256,
+            Curve::NistP384 => RecommendedCurve::P384,
+            Curve::NistP521 => RecommendedCurve::P521,
+            #[cfg(not(feature = "fips"))]
+            Curve::X25519 => RecommendedCurve::CURVE25519,
+            #[cfg(not(feature = "fips"))]
+            Curve::Ed25519 => RecommendedCurve::CURVEED25519,
+            #[cfg(not(feature = "fips"))]
+            Curve::X448 => RecommendedCurve::CURVE448,
+            #[cfg(not(feature = "fips"))]
+            Curve::Ed448 => RecommendedCurve::CURVEED448,
+        }
+    }
+}
+
+/// Create an elliptic curve key pair
 ///
 ///  - The public is used to encrypt
 ///      and can be safely shared.
 ///  - The private key is used to decrypt
 ///      and must be kept secret.
 ///
+/// Run this subcommand with --help to see the list of supported curves.
+/// Defaults to NIST P256
+///
 /// Tags can later be used to retrieve the keys. Tags are optional.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct CreateKeyPairAction {
+    /// The elliptic curve
+    #[clap(long = "curve", short = 'c', default_value = "nist-p256")]
+    curve: Curve,
+
     /// The tag to associate with the master key pair.
     /// To specify multiple tags, use the option multiple times.
     #[clap(long = "tag", short = 't', value_name = "TAG")]
@@ -24,8 +70,7 @@ pub struct CreateKeyPairAction {
 
 impl CreateKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
-        let create_key_pair_request =
-            create_curve_25519_key_pair_request(&self.tags, RecommendedCurve::CURVE25519)?;
+        let create_key_pair_request = create_ec_key_pair_request(&self.tags, self.curve.into())?;
 
         // Query the KMS with your kmip data and get the key pair ids
         let create_key_pair_response = kms_rest_client

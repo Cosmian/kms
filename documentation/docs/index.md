@@ -56,8 +56,8 @@ Check the [KMIP 2.1](./kmip_2_1/index.md) page for details.
 
 #### FIPS Mode
 
-The server exposes all lot of advanced [cryptographic algorithms](algorithms.md) and can also be run in FIPS
-mode.
+The server exposes all lot of advanced [cryptographic algorithms](algorithms.md) and can also be run in [FIPS
+mode](./fips.md).
 In this mode, the server is only built with FIPS 140-2 validated cryptographic libraries and the cryptographic
 operations are performed in a FIPS 140-2 validated mode.
 

@@ -23,7 +23,7 @@ pub const X25519_PRIVATE_KEY_LENGTH: usize = 0x20;
 pub const X25519_PUBLIC_KEY_LENGTH: usize = 0x20;
 pub const ED25519_PRIVATE_KEY_LENGTH: usize = 0x20;
 pub const ED25519_PUBLIC_KEY_LENGTH: usize = 0x20;
-pub const Q_LENGTH_BITS: i32 = 253;
+pub const CURVE_25519_Q_LENGTH_BITS: i32 = 253;
 
 /// Convert to an Elliptic Curve KMIP Public Key.
 /// Supported curves are:

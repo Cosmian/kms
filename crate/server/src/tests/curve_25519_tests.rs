@@ -11,10 +11,8 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_utils::crypto::elliptic_curves::{
-    kmip_requests::{
-        create_curve_25519_key_pair_request, get_private_key_request, get_public_key_request,
-    },
-    operation::{self, to_ec_public_key, Q_LENGTH_BITS},
+    kmip_requests::{create_ec_key_pair_request, get_private_key_request, get_public_key_request},
+    operation::{self, to_ec_public_key, CURVE_25519_Q_LENGTH_BITS},
 };
 
 use crate::{
@@ -33,8 +31,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request =
-        create_curve_25519_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
+    let request = create_ec_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
@@ -69,7 +66,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     );
     assert_eq!(
         sk_key_block.cryptographic_length,
-        Some(operation::Q_LENGTH_BITS)
+        Some(operation::CURVE_25519_Q_LENGTH_BITS)
     );
     assert_eq!(
         sk_key_block.key_format_type,
@@ -128,7 +125,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     );
     assert_eq!(
         pk_key_block.cryptographic_length,
-        Some(operation::Q_LENGTH_BITS)
+        Some(operation::CURVE_25519_Q_LENGTH_BITS)
     );
     assert_eq!(
         pk_key_block.key_format_type,
@@ -163,7 +160,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     assert_eq!(pk_bytes.len(), X25519_PUBLIC_KEY_LENGTH);
     let pk = to_ec_public_key(
         &pk_bytes,
-        Q_LENGTH_BITS as u32,
+        CURVE_25519_Q_LENGTH_BITS as u32,
         sk_uid,
         RecommendedCurve::CURVE25519,
     );
@@ -216,9 +213,10 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             ..Default::default()
         },
         items: vec![
-            MessageBatchItem::new(Operation::CreateKeyPair(
-                create_curve_25519_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?,
-            )),
+            MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::CURVE25519,
+            )?)),
             MessageBatchItem::new(Operation::Locate(
                 cosmian_kmip::kmip::kmip_operations::Locate::default(),
             )),
@@ -239,24 +237,22 @@ async fn test_curve_25519_multiple() -> KResult<()> {
             ..Default::default()
         },
         items: vec![
-            MessageBatchItem::new(Operation::CreateKeyPair(
-                create_curve_25519_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?,
-            )),
-            MessageBatchItem::new(Operation::CreateKeyPair(
-                create_curve_25519_key_pair_request(
-                    &[] as &[&str],
-                    RecommendedCurve::CURVEED25519,
-                )?,
-            )),
-            MessageBatchItem::new(Operation::CreateKeyPair(
-                create_curve_25519_key_pair_request(&[] as &[&str], RecommendedCurve::SECP256K1)?,
-            )),
-            MessageBatchItem::new(Operation::CreateKeyPair(
-                create_curve_25519_key_pair_request(
-                    &[] as &[&str],
-                    RecommendedCurve::CURVEED25519,
-                )?,
-            )),
+            MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::CURVE25519,
+            )?)),
+            MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::CURVEED25519,
+            )?)),
+            MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::SECP256K1,
+            )?)),
+            MessageBatchItem::new(Operation::CreateKeyPair(create_ec_key_pair_request(
+                &[] as &[&str],
+                RecommendedCurve::CURVEED25519,
+            )?)),
         ],
     };
 

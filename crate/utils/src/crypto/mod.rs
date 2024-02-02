@@ -7,4 +7,5 @@ pub mod rsa;
 pub mod secret;
 pub mod symmetric;
 pub mod wrap;
-pub use elliptic_curves::Q_LENGTH_BITS;
+
+pub use elliptic_curves::CURVE_25519_Q_LENGTH_BITS;
