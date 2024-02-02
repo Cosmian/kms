@@ -4,6 +4,8 @@ use assert_cmd::prelude::*;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 
 #[cfg(not(feature = "fips"))]
+use crate::tests::utils::{start_default_test_kms_server, ONCE};
+#[cfg(not(feature = "fips"))]
 use crate::tests::{
     cover_crypt::master_key_pair::create_cc_master_key_pair,
     elliptic_curve::create_key_pair::create_ec_key_pair,
@@ -15,10 +17,7 @@ use crate::{
     error::CliError,
     tests::{
         shared::export::export_key,
-        utils::{
-            extract_uids::extract_imported_key_id, recover_cmd_logs, start_default_test_kms_server,
-            ONCE,
-        },
+        utils::{extract_uids::extract_imported_key_id, recover_cmd_logs},
         PROG_NAME,
     },
 };

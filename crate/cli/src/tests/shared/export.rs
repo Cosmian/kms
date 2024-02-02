@@ -1,13 +1,18 @@
-use std::{path::Path, process::Command};
+#[cfg(not(feature = "fips"))]
+use std::path::Path;
+use std::process::Command;
 
 use assert_cmd::prelude::*;
+use cosmian_kmip::kmip::kmip_types::KeyFormatType;
+#[cfg(not(feature = "fips"))]
 use cosmian_kmip::{
     kmip::{
         kmip_data_structures::KeyMaterial,
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+        kmip_types::{CryptographicAlgorithm, RecommendedCurve},
     },
     openssl::pad_be_bytes,
 };
+#[cfg(not(feature = "fips"))]
 use openssl::pkey::{Id, PKey};
 use tempfile::TempDir;
 
@@ -15,6 +20,10 @@ use tempfile::TempDir;
 use crate::tests::cover_crypt::{
     master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
 };
+#[cfg(not(feature = "fips"))]
+use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
+#[cfg(not(feature = "fips"))]
+use crate::tests::utils::TestsContext;
 use crate::{
     actions::shared::{
         utils::{read_bytes_from_file, read_object_from_json_ttlv_file},
@@ -23,9 +32,8 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        elliptic_curve::create_key_pair::create_ec_key_pair,
         symmetric::create_key::create_symmetric_key,
-        utils::{recover_cmd_logs, start_default_test_kms_server, TestsContext, ONCE},
+        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };

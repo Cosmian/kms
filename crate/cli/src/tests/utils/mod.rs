@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub mod extract_uids;
 mod test_utils;
 

@@ -7,7 +7,6 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        cover_crypt::SUB_COMMAND,
         utils::{generate_invalid_conf, recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
