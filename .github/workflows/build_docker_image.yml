@@ -3,24 +3,23 @@ name: Docker
 
 on:
   workflow_call:
+    inputs:
+      features:
+        required: true
+        type: string
+      image-suffix:
+        required: true
+        type: string
 
 env:
   REGISTRY: ghcr.io
   REGISTRY_IMAGE: ghcr.io/cosmian/kms
 
 jobs:
-  pyo3:
-    uses: ./.github/workflows/maturin.yml
-    with:
-      toolchain: nightly-2024-01-09
-
   build-and-push-image:
+    name: Image ${{ inputs.image-suffix }}
     runs-on: ubuntu-22.04
     container: docker:19.03.15
-
-    strategy:
-      matrix:
-        features: ['', fips]
 
     steps:
       - name: Display cpuinfo
@@ -58,24 +57,23 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}-${{ matrix.features }}
+          tags: ${{ steps.meta.outputs.tags }}${{ inputs.image-suffix }}
           labels: ${{ steps.meta.outputs.labels }}
           file: Dockerfile
           network: host
-          build-args: --features=${{ matrix.features }}
+          build-args: ${{ inputs.features }}
 
-      - name: Display metadata version
+      - name: Display metadata version ${{ steps.meta.outputs.version }}
         run: |
-          echo ${{ steps.meta.outputs.version }}
-          echo ${{ steps.meta.outputs.tags }}-${{ matrix.features }}
+          echo version: ${{ steps.meta.outputs.version }}${{ inputs.image-suffix }}
+          echo tags: ${{ steps.meta.outputs.tags }}
 
     outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}-${{ matrix.features }}
+      image-tag: ${{ steps.meta.outputs.version }}${{ inputs.image-suffix }}
 
   python_tests:
     needs:
       - build-and-push-image
-      - pyo3
     uses: ./.github/workflows/python_tests.yml
     secrets: inherit
     with:
@@ -107,7 +105,6 @@ jobs:
   cloudproof_python:
     needs:
       - build-and-push-image
-      - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@develop
     with:
       branch: develop

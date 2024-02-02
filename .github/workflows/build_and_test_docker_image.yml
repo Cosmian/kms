@@ -1,0 +1,31 @@
+---
+name: Docker
+
+on:
+  workflow_call:
+
+env:
+  REGISTRY: ghcr.io
+  REGISTRY_IMAGE: ghcr.io/cosmian/kms
+
+jobs:
+  pyo3:
+    uses: ./.github/workflows/maturin.yml
+    with:
+      toolchain: nightly-2024-01-09
+
+  not-fips-image:
+    needs: pyo3
+    name: Not FIPS image build and tests
+    uses: ./.github/workflows/build_docker_image.yml
+    with:
+      features: ''
+      image-suffix: ''
+
+  fips-image:
+    needs: pyo3
+    name: FIPS image build and tests
+    uses: ./.github/workflows/build_docker_image.yml
+    with:
+      features: --features=fips
+      image-suffix: -fips
