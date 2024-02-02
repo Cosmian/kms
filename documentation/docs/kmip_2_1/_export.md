@@ -17,7 +17,7 @@ When an object is destroyed, the key material cannot be exported anymore; only t
 
 To be able to export an Object the user must have the `export` permission on the object or be the object owner.
 
-Key wrapping and unwrapping on export is supported for all keys. Please check the [algorithms page](./algorithms.md)
+Key wrapping and unwrapping on export is supported for all keys. Please check the [algorithms page](../algorithms.md)
 for more details.
 
 For the list of supported key formats, please check the [formats page](./formats.md).

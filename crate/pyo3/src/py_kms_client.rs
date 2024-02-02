@@ -641,6 +641,7 @@ impl KmsClient {
             None,
             authentication_data,
             None,
+            None,
         );
 
         let client = self.0.clone();
@@ -855,6 +856,7 @@ impl KmsClient {
             iv_counter_nonce,
             encrypted_data,
             authentication_encryption_tag,
+            None,
             None,
             None,
         );
