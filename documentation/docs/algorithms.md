@@ -79,35 +79,51 @@ A.k.a PKCS #1 RSA OAEP as specified
 in [PKCS#11 v2.40](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895)
 This scheme is part of
 the [NIST 800-56B rev. 2 recommendation](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Br2.pdf)
-available at section 7.2.2
-The maximum dek length is k-2-2*hLen where
+available at section 7.2.2.
 
-- k is the length in octets of the RSA modulus
-- hLen is the length in octets of the hash function output
-  The output length is the same as the modulus length.
-  The default hash function is SHA-256 but any NIST approved hash functions can be used for the OAEP scheme as
-  listed in
-- [NIST FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf): SHA-1, SHA-224, SHA-256,
-  SHA-384,
+The maximum plaintext length is `k-2-2*hLen` where
+
+- `k` is the length in octets of the RSA modulus
+- `hLen` is the length in octets of the hash function output
+
+The output length is the same as the modulus length.
+
+The default hash function is SHA-256 but any NIST approved hash functions can be used for the OAEP scheme as
+listed in
+
+- [NIST FIPS 180-4](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf): SHA-1, SHA-224, SHA-256, SHA-384,
   SHA-512
 - [NIST FIPS 202](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf): SHA3-224, SHA3-256, SHA3-384,
   SHA3-512
 
+Set the corresponding name of the hash function in the `Cryptographic Parameters` when performing a KMIP operation.
+
+To request this algorithm using the KMIP `Encrypt/Decrypt` operation, or key-wrapping as part of the `Import/Export`
+operations, specify the id/tags of an RSA key and set the `Cryptographic Algorithm` to `RSA`.
+
 ### CKM_RSA_AES_KEY_WRAP
 
-A PKCS#11 mechanism that is supported by most HSMs. Asymmetrically wrap keys referring to
-PKCS#11 as
+A PKCS#11 key wrapping mechanism that is supported by most HSMs.
+
+The scheme asymmetrically wrap keys as
 described [here](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908)
-that allows unwrapping keys of any size using asymmetric encryption and the RSA algorithm. Since old
-similar wrapping methods based on RSA used naive RSA encryption and could present some flaws, it aims at a generally
-more secure method to wrap keys. Receive data of the form `c|wk` where `|` is the concatenation operator.
+and allows wrapping keys of any size using using a hybrid RSA/AES scheme.
+
+Since old similar wrapping methods based on RSA used naive RSA encryption and could present some flaws, it aims at a
+generally more secure method to wrap keys:
+
+- Receive data of the form `c|wk` where `|` is the concatenation operator.
 Distinguish `c` and `wk`, respectively the encrypted `kek` and the wrapped key. First decrypt the
 key-encryption-key `kek` using RSA-OAEP, then proceed to unwrap the key by decrypting `m = dec(wk, kek)` using AES-KWP
 as specified in [RFC5649](https://tools.ietf.org/html/rfc5649).
 
-It can be used with any NIST approved hash function described above.
+The algorithm can be used with any NIST approved hash function described above; set the corresponding value in
+the `Cryptographic Parameters` when performing a KMIP operation.
 
-It is also compatible with Google KMS.
+To request this algorithm using key-wrapping as part of the `Import/Export` operations, specify the id of an RSA
+key as the key wrapping key and set the `Cryptographic Algorithm` to `AES`.
+
+This algorithm is compatible with the one used in Google KMS.
 
 ### RSA OAEP AES 128 GCM
 
@@ -116,24 +132,26 @@ AES 128 in Galois Counter Mode (GCM).
 Combined with RSA OAEP to encapsulate the AES key, this scheme is compatible
 with [NIST SP 800-38F](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38F.pdf)
 
+To request this algorithm using the KMIP `Encrypt/Decrypt` operation, specify the id/tags of an RSA key and set
+the `Cryptographic Algorithm` to `AES`.
+
 ### Salsa sealed box
 
 An ECIES scheme that uses X25519 and XSalsa20-Poly1305 and is compatible with
 libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).
 
-A Ed25519 key can be used; it will be converted to X25519 first.
+A Ed25519 key can be used; it will be automatically converted to X25519 first.
 
 ### Ecies with NIST Curves
 
-Although there is no specific FIPS standard for hybrid encryption, we built an ECIES encryption scheme based on FIPS
-compliant cryptographic primitives only. It supports the entire family of NIST P curves with the exception of `P-192`
-and it uses AES-128-GCM for encryption and SHAKE 128 for hashing.
+Although there is no specific FIPS standard for hybrid encryption, the ECIES encryption scheme is based on FIPS
+compliant cryptographic primitives only and uses the same algorith as the Salsa Sealed Boxes. It supports the entire
+family of NIST P curves, with the exception of `P-192`, and uses AES-128-GCM for encryption and SHAKE 128 for hashing.
 
 ## Signature
 
 Signature is only supported via the `Certify` operation, which is used to create a certificate either by signing a
-certificate request,
-or building it from an existing public key.
+certificate request, or building it from an existing public key.
 
 | Algorithm | Signature Key Type                       | Description                                                                                                               |
 |-----------|------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
