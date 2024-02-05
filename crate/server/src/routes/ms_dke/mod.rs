@@ -8,11 +8,17 @@ use actix_web::{
 use base64::{engine::general_purpose::STANDARD, Engine};
 use chrono::{Duration, Local};
 use clap::crate_version;
-use cosmian_kmip::kmip::{
-    kmip_data_structures::KeyMaterial,
-    kmip_objects::Object,
-    kmip_operations::{Decrypt, Get},
-    kmip_types::{KeyFormatType, KeyWrapType, UniqueIdentifier},
+use cosmian_kmip::{
+    error::KmipError::Default,
+    kmip::{
+        kmip_data_structures::KeyMaterial,
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, Get},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
+            KeyWrapType, PaddingMethod, UniqueIdentifier,
+        },
+    },
 };
 use num_bigint_dig::BigUint;
 use serde::{Deserialize, Serialize};
@@ -220,6 +226,12 @@ async fn _decrypt(
             serde_json::to_string(&vec![key_tag, "_sk"]).map_err(|e| kms_error!(e))?,
         )),
         data: Some(STANDARD.decode(encrypted_data.value.as_bytes())?),
+        cryptographic_parameters: Some(CryptographicParameters {
+            cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+            padding_method: Some(PaddingMethod::OAEP),
+            hashing_algorithm: Some(HashingAlgorithm::SHA256),
+            ..Default::default()
+        }),
         ..Default::default()
     };
     let response = kms

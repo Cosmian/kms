@@ -8,7 +8,7 @@ The Cosmian KMS is designed to [operate in **zero-trust** environments](./zero_t
 using confidential VMs and a fully application-level encrypted database.
 
 !!! info "Quick start"
-To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
+    To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
 
     ```sh
     docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.11.3
