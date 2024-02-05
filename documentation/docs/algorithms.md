@@ -141,17 +141,11 @@ Signature is only supported via the `Certify` operation, which is used to create
 
 ## Password-based key derivation
 
-The randomness of cryptographic keys is essential for the security of cryptographic applications. Sometimes, passwords
-may be the only input required from the users who are eligible to access the data. Due to the low entropy and possibly
-poor randomness of those passwords, they are not suitable to be used directly as cryptographic keys. The KMS addresses
-this problem by providing methods to derive a password into a secure cryptographic key.
+The randomness of cryptographic keys is essential for the security of cryptographic applications. Sometimes, passwords may be the only input required from the users who are eligible to access the data. Due to the low entropy and possibly poor randomness of those passwords, they are not suitable to be used directly as cryptographic keys. The KMS addresses this problem by providing methods to derive a password into a secure cryptographic key.
 
-In normal mode, passwords are derived using `Argon2` hash algorithm with a random 128-bit salt. Argon2 has the property
-of being computationally intensive making it significantly harder to crack by brute force only.
+In normal mode, passwords are derived using `Argon2` hash algorithm with a random 128-bit salt. Argon2 has the property of being computationally intensive making it significantly harder to crack by brute force only.
 
-In FIPS mode, passwords are derived using FIPS compliant `PBKDF2_HMAC` with `SHA512` and recommended 210,000 iterations
-by [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#pbkdf2) which follows FIPS
-recommendations as well. An additional random 128-bit salt is used.
+In FIPS mode, passwords are derived using FIPS compliant `PBKDF2_HMAC` with `SHA512` and recommended 210,000 iterations by [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#pbkdf2) which follows FIPS recommendations as well. An additional random 128-bit salt is used.
 
 ## References
 
