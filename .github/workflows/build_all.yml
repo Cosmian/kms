@@ -16,15 +16,13 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: centos7
       commands: |
-        cargo build --release --bin ckms
-        cargo build --release --bin cosmian_kms_server
+        cargo build --release --bins
 
         # Check binaries
         target/release/ckms -h
         target/release/cosmian_kms_server -h
 
         cargo test --release -- --nocapture
-        cargo test --release --bins -- --nocapture
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
@@ -36,15 +34,13 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: fips_centos7
       commands: |
-        cargo build --release --features fips --bin ckms
-        cargo build --release --features fips --bin cosmian_kms_server
+        cargo build --release --bins --features fips
 
         # Check binaries
         target/release/ckms -h
         target/release/cosmian_kms_server -h
 
         cargo test --release --features fips -- --nocapture
-        cargo test --release --features fips --bins -- --nocapture
       artifacts: |
         /usr/local/openssl
         target/release/ckms
@@ -58,15 +54,13 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: ubuntu_20_04
       commands: |
-        cargo build --release --bin ckms
-        cargo build --release --bin cosmian_kms_server
+        cargo build --release --bins
 
         # Check binaries
         target/release/ckms -h
         target/release/cosmian_kms_server -h
 
         cargo test --release -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
-        cargo test --release --bins -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
@@ -79,15 +73,13 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: fips_ubuntu_20_04
       commands: |
-        cargo build --release --features fips --bin ckms
-        cargo build --release --features fips --bin cosmian_kms_server
+        cargo build --release --bins --features fips
 
         # Check binaries
         target/release/ckms -h
         target/release/cosmian_kms_server -h
 
         cargo test --release --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
-        cargo test --release --features fips --bins -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         /usr/local/openssl
         target/release/ckms
@@ -101,15 +93,13 @@ jobs:
       distribution: ubuntu-22.04
       archive-name: ubuntu_22_04
       commands: |
-        cargo build --release --bin ckms
-        cargo build --release --bin cosmian_kms_server
+        cargo build --release --bins
 
         # Check binaries
         target/release/ckms -h
         target/release/cosmian_kms_server -h
 
         cargo test --release -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
-        cargo test --release --bins -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         target/release/ckms
         target/release/cosmian_kms_server
@@ -128,8 +118,7 @@ jobs:
         sudo chown -R $USER /usr/local/openssl
         bash ./scripts/local_ossl_instl.sh /usr/local/openssl cross-compile-windows
 
-        cargo build --release --bin ckms --target x86_64-pc-windows-gnu
-        cargo build --release --bin cosmian_kms_server --target x86_64-pc-windows-gnu
+        cargo build --release --bins --target x86_64-pc-windows-gnu
       artifacts: |
         target/x86_64-pc-windows-gnu/release/ckms.exe
         target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
@@ -142,8 +131,8 @@ jobs:
       archive-name: macos
       commands: |
         rustup target add x86_64-apple-darwin
-        cargo build --release --bin ckms --target x86_64-apple-darwin
-        cargo build --release --bin cosmian_kms_server --target x86_64-apple-darwin
+        cargo build --release --bins --target x86_64-apple-darwin
+
         # Check binaries
         target/x86_64-apple-darwin/release/ckms -h
         target/x86_64-apple-darwin/release/cosmian_kms_server -h
