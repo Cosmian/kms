@@ -87,7 +87,7 @@ jobs:
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
 
       - name: Upload KMS for ${{ inputs.distribution }}
-        if: steps.cargo_cache.outputs.cache-hit != 'true'
+        if: steps.cargo_cache.outputs.cache-hit != 'true' && inputs.artifacts != ''
         uses: actions/upload-artifact@v3
         with:
           name: ${{ inputs.archive-name }}

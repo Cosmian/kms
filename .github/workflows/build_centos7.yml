@@ -107,7 +107,7 @@ jobs:
           set -x
           rm -rf /tmp/sqlite-data /tmp/tmp.json
 
-      - name: Build and tests in release
+      - name: Build and tests
         run: |
           set -x
           ${{ inputs.commands }}
@@ -140,6 +140,7 @@ jobs:
           RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
 
       - name: Upload KMS for Centos7
+        if: inputs.artifacts != ''
         uses: actions/upload-artifact@v3
         with:
           name: ${{ inputs.archive-name }}
