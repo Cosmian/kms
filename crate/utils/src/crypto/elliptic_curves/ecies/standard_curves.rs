@@ -144,7 +144,7 @@ pub fn ecies_decrypt(
     let iv = ecies_get_iv(d.public_key(), &R, curve, aead.nonce_size(), md)?;
     let key = ecies_get_key(&S, curve, aead.key_size(), md)?;
 
-    // we could use ou own aead to offer more DEM options
+    // We could use ou own aead to offer more DEM options.
     let plaintext = aead_decrypt(aead, &key, &iv, &[], ct, tag)?;
 
     Ok(plaintext)

@@ -47,39 +47,23 @@ The supported encryption algorithms are:
 ## Algorithms Details
 
 ### Covercrypt
+[Covercrypt](https://github.com/Cosmian/cover_crypt) is a new post-quantum cryptographic algorithm, being standardized at [ETSI](https://www.etsi.org/) that allows creating ciphertexts for a set of attributes and issuing user keys with access policies over these attributes. User keys are traceable with a unique fingerprint.
 
-[Covercrypt](https://github.com/Cosmian/cover_crypt) is a new post-quantum cryptographic algorithm, being standardized
-at [ETSI](https://www.etsi.org/) that allows creating ciphertexts for a set of attributes and issuing user keys with
-access policies over these
-attributes. User keys are traceable with a unique fingerprint.
 
 ### AES GCM
+AES is described in  [NIST FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf). In Cosmian KMS it is used as a data encryption mechanism (DEM) with the Galois Counter Mode of operation ([GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)) with a 96 bits nonce, a 128 bits tag with and key sizes of 128 or 256 bits.
 
-AES is described in  [NIST FIPS 197](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197.pdf), In Cosmian KMS, as a
-data encryption mechanism (DEM), it is used in Galois
-Counter Mode ([GCM](https://csrc.nist.gov/pubs/sp/800/38/d/final)) with a 96 bits nonce, a 128 bits tag with and
-key sizes of 128 or 256 bits.
 
 ### ChaCha20-Poly1305
+ChaCha20-Poly1305 is a symmetric authenticated encryption algorithm that is described in [RFC-8439](https://www.rfc-editor.org/rfc/rfc8439). The algorithm is not standardized by NIST but is a popular secure alternative to AES-GCM and is used in the same way, in particular by Google.
 
-ChaCha20-Poly1305 is a symmetric encryption algorithm that is described
-in [RFC-8439](https://www.rfc-editor.org/rfc/rfc8439).
-The algorithm is not standardized by NIST but is a popular secure alternative to AES-GCM and is used in the same way, in
-particular by Google.
 
 ### AES-KWP
+Allows to symmetrically wrap keys using [RFC5649](https://tools.ietf.org/html/rfc5649) which is also standardized as PKCS#11 CKM_AES_KEY_WRAP_PAD and described in [NIST SP 800-38F](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38F.pdf).
 
-Allows to symmetrically wrap keys using [RFC5649](https://tools.ietf.org/html/rfc5649) which is also
-standardized as PKCS#11 CKM_AES_KEY_WRAP_PAD and described
-in [NIST SP 800-38F](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38F.pdf).
 
 ### CKM_RSA_PKCS_OAEP
-
-A.k.a PKCS #1 RSA OAEP as specified
-in [PKCS#11 v2.40](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895)
-This scheme is part of
-the [NIST 800-56B rev. 2 recommendation](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Br2.pdf)
-available at section 7.2.2.
+A.k.a PKCS #1 RSA OAEP as specified in [PKCS#11 v2.40](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895). This scheme is part of the [NIST 800-56B rev. 2 recommendation](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-56Br2.pdf) available at section 7.2.2.
 
 The maximum plaintext length is `k-2-2*hLen` where
 
@@ -101,63 +85,56 @@ Set the corresponding name of the hash function in the `Cryptographic Parameters
 To request this algorithm using the KMIP `Encrypt/Decrypt` operation, or key-wrapping as part of the `Import/Export`
 operations, specify the id/tags of an RSA key and set the `Cryptographic Algorithm` to `RSA`.
 
-### CKM_RSA_AES_KEY_WRAP
 
+### CKM_RSA_AES_KEY_WRAP
 A PKCS#11 key wrapping mechanism that is supported by most HSMs.
 
-The scheme asymmetrically wrap keys as
-described [here](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908)
-and allows wrapping keys of any size using using a hybrid RSA/AES scheme.
+The scheme asymmetrically wrap keys as described [here](http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908) and allows wrapping keys of any size using using a hybrid RSA/AES scheme.
 
-Since old similar wrapping methods based on RSA used naive RSA encryption and could present some flaws, it aims at a
-generally more secure method to wrap keys:
+Since old similar wrapping methods based on RSA used naive RSA encryption and could present some flaws, it aims at a generally more secure method to wrap keys:
 
 - Receive data of the form `c|wk` where `|` is the concatenation operator.
-  Distinguish `c` and `wk`, respectively the encrypted `kek` and the wrapped key. First decrypt the
-  key-encryption-key `kek` using RSA-OAEP, then proceed to unwrap the key by decrypting `m = dec(wk, kek)` using AES-KWP
-  as specified in [RFC5649](https://tools.ietf.org/html/rfc5649).
+Distinguish `c` and `wk`, respectively the encrypted `kek` and the wrapped key. First decrypt the key-encryption-key `kek` using RSA-OAEP, then proceed to unwrap the key by decrypting `m = dec(wk, kek)` using AES-KWP as specified in [RFC5649](https://tools.ietf.org/html/rfc5649).
 
-The algorithm can be used with any NIST approved hash function described above; set the corresponding value in
-the `Cryptographic Parameters` when performing a KMIP operation.
+The algorithm can be used with any NIST approved hash function described above; set the corresponding value in the `Cryptographic Parameters` when performing a KMIP operation.
 
-To request this algorithm using key-wrapping as part of the `Import/Export` operations, specify the id of an RSA
-key as the key wrapping key and set the `Cryptographic Algorithm` to `AES`.
+To request this algorithm using key-wrapping as part of the `Import/Export` operations, specify the id of an RSA key as the key wrapping key and set the `Cryptographic Algorithm` to `AES`.
 
 This algorithm is compatible with the one used in Google KMS.
 
+
 ### RSA OAEP AES 128 GCM
+CKM_RSA_AES_KEY_WRAP can only be used for key wrapping and not for encryption. This scheme adds authentication by using AES 128 in Galois Counter Mode (GCM). Combined with RSA OAEP to encapsulate the AES key, this scheme is compatible with [NIST SP 800-38F](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38F.pdf).
 
-CKM_RSA_AES_KEY_WRAP can only be used for key wrapping and not for encryption. This scheme adds authentication by using
-AES 128 in Galois Counter Mode (GCM).
-Combined with RSA OAEP to encapsulate the AES key, this scheme is compatible
-with [NIST SP 800-38F](https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-38F.pdf)
+To request this algorithm using the KMIP `Encrypt/Decrypt` operation, specify the id/tags of an RSA key and set the `Cryptographic Algorithm` to `AES`.
 
-To request this algorithm using the KMIP `Encrypt/Decrypt` operation, specify the id/tags of an RSA key and set
-the `Cryptographic Algorithm` to `AES`.
 
 ### Salsa sealed box
-
 An ECIES scheme that uses X25519 and XSalsa20-Poly1305 and is compatible with
 libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes).
 
-A Ed25519 key can be used; it will be automatically converted to X25519 first.
+An Ed25519 key can be used; it will be automatically converted to X25519 first.
+
 
 ### Ecies with NIST Curves
+Although there is no specific FIPS standard for hybrid encryption, the ECIES encryption scheme is based on FIPS compliant cryptographic primitives only and uses the same algorithm as the Salsa Sealed Boxes. It supports the entire family of NIST P curves, with the exception of `P-192` in FIPS mode, and uses AES-128-GCM and SHAKE128 for curves with security strength $s \leq 128$ bits:
 
-Although there is no specific FIPS standard for hybrid encryption, the ECIES encryption scheme is based on FIPS
-compliant cryptographic primitives only and uses the same algorith as the Salsa Sealed Boxes. It supports the entire
-family of NIST P curves, with the exception of `P-192`, and uses SHAKE 128 for hashing uses AES-128-GCM for encryption 
-and .
+- `P-192`
+- `P-224`
+- `P-256`
+
+and AES-256-GCM and SHAKE256 for curves with security strength $s > 128$ bits:
+
+- `P-384`
+- `P-512`
 
 ## Signature
+Signature is only supported via the `Certify` operation, which is used to create a certificate either by signing a certificate request, or building it from an existing public key.
 
-Signature is only supported via the `Certify` operation, which is used to create a certificate either by signing a
-certificate request, or building it from an existing public key.
-
-| Algorithm | Signature Key Type                       | Description                                                                                                               |
-|-----------|------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
-| ECDSA     | P-192, P-224, P-256, P-384, X25519, X448 | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
-| EdDSA     | Ed25519, Ed448                           | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
+| Algorithm | Signature Key Type                       | FIPS mode | Description                                                                                                               |
+|-----------|------------------------------------------|------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
+| ECDSA     | P-192, P-224, P-256, P-384, P384, P-521, X25519, X448 | **Restricted** to curves P-224, P-256, P-384, P384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
+| EdDSA     | Ed25519, Ed448                           | Yes | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
 
 - `ECDSA` performs digital signatures on elliptic curves `P-192`, `P-224`, `P-256`, `P-384`, `P-512` and `X25519`.
 - `EdDSA` performs digital signatures on Edwards curves `Ed25519`.
@@ -214,9 +191,9 @@ recommendations as well. An additional random 128-bit salt is used.
     - Specification for SHA3.
 
 - NIST.FIPS.186-5, Digital Signature Standard (DSS), *February 3, 2023*
+    - Information on ECDSA, EdDSA and key generation.
 
 - NIST.FIPS.800-135r1, Recommendation for Existing Application-Specific Key Derivation Functions, *December 2011*
-    - Information on ECDSA, EdDSA and key generation.
 
 - OpenSSL FIPS 140-2 Security Policy, *26 January 2023*
     - OpenSSL official docu
