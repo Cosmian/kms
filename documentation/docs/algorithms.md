@@ -133,11 +133,11 @@ Signature is only supported via the `Certify` operation, which is used to create
 
 | Algorithm | Signature Key Type                       | FIPS mode | Description                                                                                                               |
 |-----------|------------------------------------------|------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
-| ECDSA     | P-192, P-224, P-256, P-384, P384, P-521, X25519, X448 | **Restricted** to curves P-224, P-256, P-384, P384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
+| ECDSA     | P-192, P-224, P-256, P-384, P384, P-521, X25519, X448 | **Restricted** to curves P-224, P-256, P-384 and P-521. | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf) and NIST.SP.800-186 - Section 3.1.2 table 2. |
 | EdDSA     | Ed25519, Ed448                           | Yes | See [FIPS-186.5](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.186-5.pdf).                                             |
 
-- `ECDSA` performs digital signatures on elliptic curves `P-192`, `P-224`, `P-256`, `P-384`, `P-512` and `X25519`.
-- `EdDSA` performs digital signatures on Edwards curves `Ed25519`.
+- `ECDSA` performs digital signatures on elliptic curves `P-192`, `P-224`, `P-256`, `P-384`, `P-512`, `X25519` and `X448`.
+- `EdDSA` performs digital signatures on Edwards curves `Ed25519` and `Ed448`.
 
 ## Password-based key derivation
 
