@@ -22,7 +22,7 @@ The supported key-wrapping algorithms are:
 | CKM_RSA_PKCS_OAEP    | RSA key wrapping                     | NIST 800-56B rev. 2 | RSA OAEP with NIST approved hashing functions for RSA key size 2048, 3072 or 4096 bits.                         |
 | CKM_RSA_AES_KEY_WRAP | RSA-AES hybrid key wrapping          | NIST SP 800-38F     | RSA OAEP with NIST approved hashing functions and AES-KWP for RSA key size 2048, 3072 or 4096 bits.             |
 | Salsa Sealed Box     | X25519, Ed25519 and Salsa20 Poly1305 | No                  | ECIES compatible with libsodium [Sealed Boxes](https://doc.libsodium.org/public-key_cryptography/sealed_boxes). |
-| ECIES                | P-192, P-224, P-256, P-384, P-521    | No                  | ECIES with a NIST curve and using SHAKE 128 and AES-128-GCM.                                                    |
+| ECIES                | P-192, P-224, P-256, P-384, P-521    | No                  | ECIES with a NIST curve and using SHAKE 128 and AES 128 GCM (P-192, P-224, P-256) AES 256 GCM otherwise.        |
 
 ## Encryption schemes
 
@@ -113,9 +113,9 @@ Since old similar wrapping methods based on RSA used naive RSA encryption and co
 generally more secure method to wrap keys:
 
 - Receive data of the form `c|wk` where `|` is the concatenation operator.
-Distinguish `c` and `wk`, respectively the encrypted `kek` and the wrapped key. First decrypt the
-key-encryption-key `kek` using RSA-OAEP, then proceed to unwrap the key by decrypting `m = dec(wk, kek)` using AES-KWP
-as specified in [RFC5649](https://tools.ietf.org/html/rfc5649).
+  Distinguish `c` and `wk`, respectively the encrypted `kek` and the wrapped key. First decrypt the
+  key-encryption-key `kek` using RSA-OAEP, then proceed to unwrap the key by decrypting `m = dec(wk, kek)` using AES-KWP
+  as specified in [RFC5649](https://tools.ietf.org/html/rfc5649).
 
 The algorithm can be used with any NIST approved hash function described above; set the corresponding value in
 the `Cryptographic Parameters` when performing a KMIP operation.
@@ -146,7 +146,8 @@ A Ed25519 key can be used; it will be automatically converted to X25519 first.
 
 Although there is no specific FIPS standard for hybrid encryption, the ECIES encryption scheme is based on FIPS
 compliant cryptographic primitives only and uses the same algorith as the Salsa Sealed Boxes. It supports the entire
-family of NIST P curves, with the exception of `P-192`, and uses AES-128-GCM for encryption and SHAKE 128 for hashing.
+family of NIST P curves, with the exception of `P-192`, and uses SHAKE 128 for hashing uses AES-128-GCM for encryption 
+and .
 
 ## Signature
 

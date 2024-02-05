@@ -3,13 +3,14 @@ use openssl::{
     bn::BigNumContext,
     ec::{EcGroupRef, EcKey, EcPoint, EcPointRef, PointConversionForm},
     hash::{Hasher, MessageDigest},
+    nid::Nid,
     pkey::{PKey, Private, Public},
 };
 use zeroize::Zeroizing;
 
 use crate::{
     crypto::symmetric::aead::{aead_decrypt, aead_encrypt, AeadCipher},
-    error::KmipUtilsError,
+    error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail,
 };
 
@@ -75,7 +76,7 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
     let mut ctx = BigNumContext::new_secure()?;
     let Q = pubkey.ec_key()?;
     let curve = Q.group();
-    let aead = AeadCipher::Aes128Gcm;
+    let (aead, md) = aead_and_digest(curve)?;
 
     // Generating random ephemeral private key `r` and associated public key
     // `R`.
@@ -86,14 +87,8 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
     let mut S = EcPoint::new(curve)?;
     S.mul(curve, Q.public_key(), r.private_key(), &ctx)?;
 
-    let key = ecies_get_key(&S, curve, aead.key_size(), MessageDigest::shake_128())?;
-    let iv = ecies_get_iv(
-        Q.public_key(),
-        R.public_key(),
-        curve,
-        aead.nonce_size(),
-        MessageDigest::shake_128(),
-    )?;
+    let key = ecies_get_key(&S, curve, aead.key_size(), md)?;
+    let iv = ecies_get_iv(Q.public_key(), R.public_key(), curve, aead.nonce_size(), md)?;
 
     // Encrypt data using the provided.
     let (ciphertext, tag) = aead_encrypt(aead, &key, &iv, &[], plaintext)?;
@@ -122,7 +117,7 @@ pub fn ecies_decrypt(
     let mut ctx = BigNumContext::new_secure()?;
     let d = private_key.ec_key()?;
     let curve = d.group();
-    let aead = AeadCipher::Aes128Gcm;
+    let (aead, md) = aead_and_digest(curve)?;
 
     // OpenSSL stored compressed coordinates with one extra byte for some
     // reason hence the + 1 at the end.
@@ -146,19 +141,24 @@ pub fn ecies_decrypt(
     let mut S = EcPoint::new(curve)?;
     S.mul(curve, &R, d.private_key(), &ctx)?;
 
-    let iv = ecies_get_iv(
-        d.public_key(),
-        &R,
-        curve,
-        aead.nonce_size(),
-        MessageDigest::shake_128(),
-    )?;
-    let key = ecies_get_key(&S, curve, aead.key_size(), MessageDigest::shake_128())?;
+    let iv = ecies_get_iv(d.public_key(), &R, curve, aead.nonce_size(), md)?;
+    let key = ecies_get_key(&S, curve, aead.key_size(), md)?;
 
     // we could use ou own aead to offer more DEM options
-    let plaintext = Zeroizing::from(aead_decrypt(aead, &key, &iv, &[], ct, tag)?);
+    let plaintext = aead_decrypt(aead, &key, &iv, &[], ct, tag)?;
 
     Ok(plaintext)
+}
+
+fn aead_and_digest(curve: &EcGroupRef) -> Result<(AeadCipher, MessageDigest), KmipUtilsError> {
+    let (aead, md) = match curve.curve_name().context("Unsupported curve")? {
+        Nid::SECP384R1 | Nid::SECP521R1 => (AeadCipher::Aes256Gcm, MessageDigest::shake_256()),
+        Nid::X9_62_PRIME256V1 | Nid::SECP224R1 | Nid::X9_62_PRIME192V1 => {
+            (AeadCipher::Aes128Gcm, MessageDigest::shake_128())
+        }
+        num_bigint_dig => kmip_utils_bail!("Unsupported curve: {:?}", num_bigint_dig),
+    };
+    Ok((aead, md))
 }
 
 #[cfg(test)]

@@ -31,7 +31,6 @@ pub fn ecies_encrypt(
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let ciphertext = match public_key.id() {
         Id::EC => standard_curves::ecies_encrypt(public_key, plaintext)?,
-        #[cfg(not(feature = "fips"))]
         Id::ED25519 | Id::X25519 => salsa_sealbox::sealbox_encrypt(public_key, plaintext)?,
         _ => {
             kmip_utils_bail!(
