@@ -93,3 +93,14 @@ The response should be similar to the following:
  ERROR cosmian_kms_server::routes] 500 Internal Server Error - Cryptographic error: Not Supported: error:0200009F:rsa routines:RSA_padding_check_PKCS1_type_2:pkcs decoding error:crypto/rsa/rsa_pk1.c:269:, error:02000072:rsa routines:rsa_ossl_private_decrypt:padding check failed:crypto/rsa/rsa_ossl.c:499:
 
 ```
+
+## JWT
+
+### JWKS
+https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens#validate-the-signing-key-issuer
+"jwks_uri": "https://login.microsoftonline.com/{example-tenant-id}/discovery/v2.0/keys",
+https://login.microsoftonline.com/0388f871-53ca-4599-b1f4-642974299c20/discovery/v2.0/keys
+
+
+https://login.microsoftonline.com/0388f871-53ca-4599-b1f4-642974299c20
+https://login.microsoftonline.com/{example-tenant-id}
