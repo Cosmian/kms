@@ -1,12 +1,6 @@
 use std::collections::HashSet;
 
-use cloudproof::reexport::{
-    cover_crypt::Covercrypt,
-    crypto_core::{
-        reexport::rand_core::{RngCore, SeedableRng},
-        CsRng, FixedSizeCBytes, SymmetricKey,
-    },
-};
+use cloudproof::reexport::{cover_crypt::Covercrypt, crypto_core::FixedSizeCBytes};
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{Create, CreateKeyPair},
@@ -24,16 +18,16 @@ use cosmian_kms_utils::{
         },
         rsa::operation::create_rsa_key_pair,
         secret::Secret,
-        symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
+        symmetric::{create_symmetric_key_kmip_object, AES_256_GCM_KEY_LENGTH},
     },
     tagging::{check_user_tags, get_tags, remove_tags},
     KeyPair,
 };
 use openssl::{nid::Nid, rand::rand_bytes};
+use tracing::trace;
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
-use tracing::{debug, trace};
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 use super::{cover_crypt::create_user_decryption_key, KMS};
 use crate::{
