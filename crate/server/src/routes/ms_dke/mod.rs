@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{default::Default, sync::Arc};
 
 use actix_web::{
     get, post,
@@ -8,16 +8,13 @@ use actix_web::{
 use base64::{engine::general_purpose::STANDARD, Engine};
 use chrono::{Duration, Local};
 use clap::crate_version;
-use cosmian_kmip::{
-    error::KmipError::Default,
-    kmip::{
-        kmip_data_structures::KeyMaterial,
-        kmip_objects::Object,
-        kmip_operations::{Decrypt, Get},
-        kmip_types::{
-            CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
-            KeyWrapType, PaddingMethod, UniqueIdentifier,
-        },
+use cosmian_kmip::kmip::{
+    kmip_data_structures::KeyMaterial,
+    kmip_objects::Object,
+    kmip_operations::{Decrypt, Get},
+    kmip_types::{
+        CryptographicAlgorithm, CryptographicParameters, HashingAlgorithm, KeyFormatType,
+        KeyWrapType, PaddingMethod, UniqueIdentifier,
     },
 };
 use num_bigint_dig::BigUint;
@@ -230,9 +227,9 @@ async fn _decrypt(
             cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
             padding_method: Some(PaddingMethod::OAEP),
             hashing_algorithm: Some(HashingAlgorithm::SHA256),
-            ..Default::default()
+            ..CryptographicParameters::default()
         }),
-        ..Default::default()
+        ..Decrypt::default()
     };
     let response = kms
         .decrypt(decrypt_request, &user, database_params.as_ref())

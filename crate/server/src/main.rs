@@ -11,6 +11,7 @@ use dotenvy::dotenv;
 #[cfg(feature = "timeout")]
 use tracing::warn;
 use tracing::{debug, info};
+
 #[cfg(feature = "timeout")]
 mod expiry;
 
@@ -90,4 +91,85 @@ async fn main() -> KResult<()> {
     Box::pin(start_kms_server(server_params, None)).await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use cosmian_kms_server::config::{
+        ClapConfig, DBConfig, HttpConfig, JWEConfig, JwtAuthConfig, WorkspaceConfig,
+    };
+
+    #[test]
+    fn test_toml() {
+        let config = ClapConfig {
+            db: DBConfig {
+                database_type: Some("[redis-findex, postgresql,...]".to_string()),
+                database_url: Some("[redis urls]".to_string()),
+                sqlite_path: PathBuf::from("[sqlite path]"),
+                redis_master_password: Some("[redis master password]".to_string()),
+                redis_findex_label: Some("[redis findex label]".to_string()),
+                clear_database: false,
+            },
+            http: HttpConfig {
+                port: 443,
+                hostname: "[hostname]".to_string(),
+                https_p12_file: Some(PathBuf::from("[https p12 file]")),
+                https_p12_password: Some("[https p12 password]".to_string()),
+                authority_cert_file: Some(PathBuf::from("[authority cert file]")),
+            },
+            auth: JwtAuthConfig {
+                jwt_issuer_uri: Some("[jwt issuer uri]".to_string()),
+                jwks_uri: Some("[jwks uri]".to_string()),
+                jwt_audience: Some("[jwt audience]".to_string()),
+            },
+            workspace: WorkspaceConfig {
+                root_data_path: PathBuf::from("[root data path]"),
+                tmp_path: PathBuf::from("[tmp path]"),
+            },
+            default_username: "[default username]".to_string(),
+            force_default_username: false,
+            jwe: JWEConfig {
+                jwk_private_key: None,
+            },
+            google_cse_kacls_url: Some("[google cse kacls url]".to_string()),
+            ms_dke_service_url: Some("[ms dke service url]".to_string()),
+        };
+
+        let toml_string = r#"
+default_username = "[default username]"
+force_default_username = false
+google_cse_kacls_url = "[google cse kacls url]"
+ms_dke_service_url = "[ms dke service url]"
+
+[db]
+database_type = "[redis-findex, postgresql,...]"
+database_url = "[redis urls]"
+sqlite_path = "[sqlite path]"
+redis_master_password = "[redis master password]"
+redis_findex_label = "[redis findex label]"
+clear_database = false
+
+[http]
+port = 443
+hostname = "[hostname]"
+https_p12_file = "[https p12 file]"
+https_p12_password = "[https p12 password]"
+authority_cert_file = "[authority cert file]"
+
+[auth]
+jwt_issuer_uri = "[jwt issuer uri]"
+jwks_uri = "[jwks uri]"
+jwt_audience = "[jwt audience]"
+
+[workspace]
+root_data_path = "[root data path]"
+tmp_path = "[tmp path]"
+
+[jwe]
+"#;
+
+        assert_eq!(toml_string.trim(), toml::to_string(&config).unwrap().trim());
+    }
 }

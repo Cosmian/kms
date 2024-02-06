@@ -7,3 +7,6 @@ and using the [Redis-Findex](./high_availability_mode.md) database to store the 
 Cosmian provides pre-built Cosmian VM image with the KMS server and Redis-Findex database pre-installed for various
 cloud providers.
 
+A typical architecture for Google Workspace Client Side Encryption, with the KMS running on GCP, is shown below:
+
+![google_cse_architecture](./images/google_cse.drawio.svg)
