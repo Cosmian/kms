@@ -6,7 +6,7 @@ use actix_web::{
     HttpRequest, HttpResponse,
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
-use chrono::{Duration, Local};
+use chrono::{Duration, Utc};
 use clap::crate_version;
 use cosmian_kmip::kmip::{
     kmip_data_structures::KeyMaterial,
@@ -155,9 +155,8 @@ async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMSServer>) ->
                     cache: DkePublicKeyCache {
                         expiration: {
                             // make the key valid for one day
-                            let now = Local::now();
-                            // let later = now + Duration::days(1);
-                            let later = now + Duration::minutes(1);
+                            let now = Utc::now();
+                            let later = now + Duration::days(1);
                             let formatted = later.format("%Y-%m-%dT%H:%M:%S").to_string();
                             formatted
                         },
@@ -202,9 +201,8 @@ pub async fn decrypt(
     );
     let (key_name, key_id) = path.into_inner();
     // let _key_id = key_id.into_inner();
-    let key_tag = "dke_key";
     trace!("POST /{}/{}/Decrypt {:?}", key_name, key_id, encrypted_data);
-    match _decrypt(key_tag, encrypted_data, req_http, &kms).await {
+    match _decrypt(&key_name, encrypted_data, req_http, &kms).await {
         Ok(decrypted_data) => HttpResponse::Ok().json(decrypted_data),
         Err(e) => HttpResponse::from_error(e),
     }
@@ -254,12 +252,13 @@ fn big_uint_to_u32(bu: &BigUint) -> u32 {
 
 #[cfg(test)]
 mod tests {
+    use chrono::{DateTime, Utc};
     use num_bigint_dig::BigUint;
 
     use crate::routes::ms_dke::big_uint_to_u32;
 
     #[test]
-    fn test() {
+    fn test_big_uint() {
         let bu = BigUint::from(12_u8);
         assert_eq!(1, bu.to_bytes_be().len());
         assert_eq!(12, big_uint_to_u32(&bu));
@@ -271,5 +270,14 @@ mod tests {
         let bu = BigUint::from(1_u64 << 32);
         assert_eq!(5, bu.to_bytes_be().len());
         assert_eq!(0, big_uint_to_u32(&bu));
+    }
+
+    #[test]
+    fn test_date_format() {
+        let date_time: DateTime<Utc> = "2020-11-21T21:15:55Z".parse().unwrap();
+        assert_eq!(
+            "2020-11-21T21:15:55",
+            date_time.format("%Y-%m-%dT%H:%M:%S").to_string()
+        );
     }
 }

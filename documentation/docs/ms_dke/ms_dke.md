@@ -26,7 +26,7 @@ From a cryptographic standpoint, the feature works as follows:
 Before saving an encrypted document, the Office client will:
 
 1. Generate an ephemeral 128-bit AES key and use it to encrypt the document
-2. Call the Cosmian KMS to get your 2048-bit RSA public key
+2. Call the Cosmian KMS to get your 2048-bit RSA public key (the office client will cache the key for 24 hours)
 3. Use that key to wrap the AES key using the PKCS#11 CKM_RSA_PKCS_OAEP (NIST 800 56B Rev2) algorithm; the hashing
    algorithm is set to SHA-256 (see [the list of supported algorithms](../algorithms.md) for details)
 4. Send the wrapped AES key and the encrypted document to Microsoft servers, where Azure RMS will also wrap the

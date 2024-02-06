@@ -9,8 +9,10 @@ All notable changes to this project will be documented in this file.
 - Generalize the refresh of JWKS in the middleware [#150](https://github.com/Cosmian/kms/pull/150).
 - CI speed up [#173](https://github.com/Cosmian/kms/pull/173).
 - Add support for Microsoft Double Key Encryption (DKE) endpoints
-- Re-organized crypto package by algorithm, removed duplicate code
-- Add sui
+- Re-organized crypto package by algorithm, removed duplicated code
+- Add support for FIPS mode for the ckms client
+- Documented TOML configuration file for the KMS server
+- Overall improvements to the documentation on algorithms and FIPS mode
 
 ## [4.11.3] - 2024-01-26
 
