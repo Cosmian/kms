@@ -139,6 +139,10 @@ jobs:
           # Speeds up Ristretto 25519 multiplication x 2
           RUSTFLAGS: --cfg curve25519_dalek_backend="simd" -C target-cpu=native
 
+      - name: Remove large files before saving cache
+        run: |
+          find target/ -type f -size +40M -delete
+
       - name: Upload KMS for Centos7
         if: inputs.artifacts != ''
         uses: actions/upload-artifact@v3

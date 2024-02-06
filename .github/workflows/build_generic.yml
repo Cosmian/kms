@@ -86,6 +86,10 @@ jobs:
           TEST_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.TEST_GOOGLE_OAUTH_CLIENT_SECRET }}
           TEST_GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.TEST_GOOGLE_OAUTH_REFRESH_TOKEN }}
 
+      - name: Remove large files before saving cache
+        run: |
+          find target/ -type f -size +40M -delete
+
       - name: Upload KMS for ${{ inputs.distribution }}
         if: steps.cargo_cache.outputs.cache-hit != 'true' && inputs.artifacts != ''
         uses: actions/upload-artifact@v3
