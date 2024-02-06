@@ -30,7 +30,7 @@ use crate::{
 /// see `cover_crypt_create_user_decryption_key_object` for the reverse operation
 pub(crate) fn unwrap_user_decryption_key_object(
     user_decryption_key: &Object,
-) -> Result<(Zeroizing<Vec<u8>>, AccessPolicy, Attributes), KmipError> {
+) -> Result<(Zeroizing<Vec<u8>>, Attributes), KmipError> {
     let key_block = match &user_decryption_key {
         Object::PrivateKey { key_block } => key_block.clone(),
         _ => {
@@ -61,12 +61,7 @@ pub(crate) fn unwrap_user_decryption_key_object(
             format!("The CoverCrypt Master private key should have attributes: {e}"),
         )
     })?;
-    let access_policy = access_policy_from_attributes(attributes)?;
-    Ok((
-        bytes,
-        AccessPolicy::from_boolean_expression(access_policy.as_str())?,
-        attributes.clone(),
-    ))
+    Ok((bytes, attributes.clone()))
 }
 
 /// Handles operations on user keys, caching the engine
@@ -112,7 +107,6 @@ impl UserDecryptionKeysHandler {
         //
         // Generate a fresh user decryption key
         //
-        // let access_policy = AccessPolicy::try_from(access_policy_str)?;
         let access_policy = AccessPolicy::from_boolean_expression(access_policy_str)?;
 
         let uk = self
@@ -162,9 +156,9 @@ impl UserDecryptionKeysHandler {
     pub fn refresh_user_decryption_key_object(
         &self,
         user_decryption_key: &Object,
-        preserve_access_to_old_partitions: bool,
+        keep_old_rights: bool,
     ) -> Result<Object, KmipError> {
-        let (usk_key_bytes, usk_access_policy, usk_attributes) =
+        let (usk_key_bytes, usk_attributes) =
             unwrap_user_decryption_key_object(user_decryption_key)?;
         let mut usk = UserSecretKey::deserialize(&usk_key_bytes).map_err(|e| {
             KmipError::KmipError(
@@ -174,13 +168,7 @@ impl UserDecryptionKeysHandler {
         })?;
 
         self.cover_crypt
-            .refresh_user_secret_key(
-                &mut usk,
-                &usk_access_policy,
-                &self.master_private_key,
-                &self.policy,
-                preserve_access_to_old_partitions,
-            )
+            .refresh_user_secret_key(&mut usk, &self.master_private_key, keep_old_rights)
             .map_err(|e| {
                 KmipError::KmipError(
                     ErrorReason::Cryptographic_Failure,
@@ -188,7 +176,7 @@ impl UserDecryptionKeysHandler {
                 )
             })?;
 
-        trace!("Refreshed  user decryption key {usk:?} with access policy: {usk_access_policy:?}");
+        trace!("Refreshed user decryption key {usk:?}");
 
         let user_decryption_key_bytes = usk.serialize().map_err(|e| {
             KmipError::KmipError(

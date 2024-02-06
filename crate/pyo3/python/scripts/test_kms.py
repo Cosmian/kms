@@ -192,18 +192,19 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
             self.pub_key_uid,
         )
 
+        user_access_policy = 'Department::HR && Security Level::Top Secret'
         # Generate user key
         user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
-            'Department::HR && Security Level::Top Secret',
+            user_access_policy,
             self.priv_key_uid,
         )
 
-        # Rekey
+        # Rekey all keys related to `Department::HR`
         (
             new_pub_key_uid,
             new_priv_key_uid,
-        ) = await self.client.rotate_cover_crypt_attributes(
-            ['Department::HR'],
+        ) = await self.client.rekey_cover_crypt_access_policy(
+            'Department::HR',
             self.priv_key_uid,
         )
         self.assertEqual(self.pub_key_uid, new_pub_key_uid)
@@ -211,7 +212,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
 
         new_message = b'My secret data part 2'
         new_ciphertext = await self.client.cover_crypt_encryption(
-            'Department::HR && Security Level::Top Secret',
+            user_access_policy,
             new_message,
             self.pub_key_uid,
         )
@@ -230,12 +231,12 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(bytes(plaintext), new_message)
 
-        # Clear old rotations
+        # Prune old keys
         (
             new_pub_key_uid,
             new_priv_key_uid,
-        ) = await self.client.clear_cover_crypt_attributes_rotations(
-            ['Department::HR'],
+        ) = await self.client.prune_cover_crypt_access_policy(
+            'Department::HR',
             self.priv_key_uid,
         )
 

@@ -151,37 +151,32 @@ class KmsClient:
         Returns:
             Future[str]: the unique identifier of the key
         """
-    def rotate_cover_crypt_attributes(
+    def rekey_cover_crypt_access_policy(
         self,
-        attributes: List[Union[Attribute, str]],
+        access_policy_str: str,
         master_secret_key_identifier: UidOrTags,
     ) -> Future[Tuple[str, str]]:
-        """Rotate the given policy attributes. This will rekey in the KMS:
-            - the Master Keys
-            - all User Decryption Keys that contain one of these attributes in their policy and are not rotated.
+        """Generate new keys associated to the given access policy in the master keys.
 
         Args:
-            attributes (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
-            master_secret_key_identifier (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+            - `access_policy_str` (str): describe the keys to renew
+            - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 
         Returns:
             Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
         """
-    async def clear_cover_crypt_attributes_rotations(
+    async def prune_cover_crypt_access_policy(
         self,
-        attributes: List[Union[Attribute, str]],
+        attributes: str,
         master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
-        Remove old rotations from the specified policy attributes.
-
-        This will rekey in the KMS:
-        - the Master Keys
-        - all User Decryption Keys that contain one of these attributes in their policy.
-
+        Removes old keys associated to the given master keys from the master
+        keys. This will permanently remove access to old ciphers.
+    
         Args:
-            attributes (List[Union[Attribute, str]): Attributes to rotate e.g. ["Department::HR"]
-            master_secret_key_identifier (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+            - `access_policy_str` (str): describe the keys to renew
+            - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 
         Returns:
             Tuple[str, str]: (Public key UID, Master secret key UID)

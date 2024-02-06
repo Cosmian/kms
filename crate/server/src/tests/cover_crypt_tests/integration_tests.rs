@@ -4,7 +4,7 @@ use cloudproof::reexport::cover_crypt::abe_policy::{
 use cosmian_kmip::{
     crypto::{
         cover_crypt::{
-            attributes::EditPolicyAction,
+            attributes::RekeyEditAction,
             kmip_requests::{
                 build_create_master_keypair_request,
                 build_create_user_decryption_private_key_request, build_destroy_key_request,
@@ -234,12 +234,11 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     .await?;
 
     //
-    // Rekey all key pairs with matching ABE attributes
-    let abe_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
-
+    // Rekey all key pairs with matching access policy
+    let ap_to_edit = "Department::MKG".to_string();
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        EditPolicyAction::RotateAttributes(abe_policy_attributes.clone()),
+        RekeyEditAction::RekeyAccessPolicy(ap_to_edit.clone()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
@@ -314,7 +313,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // Clear old rotations for ABE Attribute
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        EditPolicyAction::ClearOldAttributeValues(abe_policy_attributes.clone()),
+        RekeyEditAction::PruneAccessPolicy(ap_to_edit),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -347,7 +346,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     ];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        EditPolicyAction::AddAttribute(new_policy_attributes),
+        RekeyEditAction::AddAttribute(new_policy_attributes),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -377,7 +376,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     )];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        EditPolicyAction::RenameAttribute(rename_policy_attributes_pair),
+        RekeyEditAction::RenameAttribute(rename_policy_attributes_pair),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -401,9 +400,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Disable ABE Attribute
+    let disable_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        EditPolicyAction::DisableAttribute(abe_policy_attributes.clone()),
+        RekeyEditAction::DisableAttribute(disable_policy_attributes),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -428,10 +428,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Delete attribute
-    let remove_policy_attributes_pair = vec![Attribute::from(("Department", "HumanResources"))];
+    let remove_policy_attributes = vec![Attribute::from(("Department", "HumanResources"))];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        EditPolicyAction::RemoveAttribute(remove_policy_attributes_pair),
+        RekeyEditAction::RemoveAttribute(remove_policy_attributes),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;

@@ -1,6 +1,7 @@
-use cloudproof::reexport::cover_crypt::abe_policy::{self, EncryptionHint, Policy};
+use cloudproof::reexport::cover_crypt::abe_policy::{self, AccessPolicy, EncryptionHint, Policy};
 use serde::{Deserialize, Serialize};
 
+use super::master_keys::MasterKeysUpdateMethod;
 use crate::{
     error::KmipError,
     kmip::{
@@ -154,18 +155,45 @@ pub fn upsert_access_policy_in_attributes(
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum EditPolicyAction {
-    RotateAttributes(Vec<abe_policy::Attribute>),
-    ClearOldAttributeValues(Vec<abe_policy::Attribute>),
+// TODO: make AccessPolicy serializable
+pub enum RekeyEditAction {
+    RekeyAccessPolicy(String),
+    PruneAccessPolicy(String),
     RemoveAttribute(Vec<abe_policy::Attribute>),
     DisableAttribute(Vec<abe_policy::Attribute>),
     AddAttribute(Vec<(abe_policy::Attribute, EncryptionHint)>),
     RenameAttribute(Vec<(abe_policy::Attribute, String)>),
 }
 
-/// Convert an edit policy action to a vendor attribute
-pub fn edit_policy_action_as_vendor_attribute(
-    action: EditPolicyAction,
+impl RekeyEditAction {
+    pub fn update_user_keys(&self) -> bool {
+        match self {
+            Self::RekeyAccessPolicy(_) | Self::PruneAccessPolicy(_) | Self::RemoveAttribute(_) => {
+                true
+            }
+            Self::DisableAttribute(_) | Self::AddAttribute(_) | Self::RenameAttribute(_) => false,
+        }
+    }
+
+    pub fn get_update_method(&self) -> MasterKeysUpdateMethod {
+        match self {
+            Self::RekeyAccessPolicy(ap) => MasterKeysUpdateMethod::RekeyAccessPolicy(
+                AccessPolicy::from_boolean_expression(ap).unwrap(),
+            ),
+            Self::PruneAccessPolicy(ap) => MasterKeysUpdateMethod::PruneAccessPolicy(
+                AccessPolicy::from_boolean_expression(ap).unwrap(),
+            ),
+            Self::RemoveAttribute(_)
+            | Self::DisableAttribute(_)
+            | Self::AddAttribute(_)
+            | Self::RenameAttribute(_) => MasterKeysUpdateMethod::ReloadPolicy,
+        }
+    }
+}
+
+/// Convert an edit action to a vendor attribute
+pub fn rekey_edit_action_as_vendor_attribute(
+    action: RekeyEditAction,
 ) -> Result<VendorAttribute, KmipError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
@@ -183,23 +211,23 @@ pub fn edit_policy_action_as_vendor_attribute(
 ///
 /// If Covercrypt attributes are specified without an `EditPolicyAction`,
 /// a `RotateAttributes` action is returned by default to keep backward compatibility.
-pub fn edit_policy_action_from_attributes(
+pub fn rekey_edit_action_from_attributes(
     attributes: &Attributes,
-) -> Result<EditPolicyAction, KmipError> {
+) -> Result<RekeyEditAction, KmipError> {
     if let Some(bytes) = attributes.get_vendor_attribute_value(
         VENDOR_ID_COSMIAN,
         VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION,
     ) {
-        serde_json::from_slice::<EditPolicyAction>(bytes).map_err(|e| {
+        serde_json::from_slice::<RekeyEditAction>(bytes).map_err(|e| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
                 format!("failed reading the CoverCrypt action from the attribute bytes: {e}"),
             )
         })
     } else {
-        // Backward compatibility
-        Ok(EditPolicyAction::RotateAttributes(
-            attributes_from_attributes(attributes)?,
+        Err(KmipError::InvalidKmipObject(
+            ErrorReason::Missing_Data,
+            "Missing VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION".to_string(),
         ))
     }
 }

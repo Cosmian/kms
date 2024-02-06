@@ -26,7 +26,7 @@ pub struct RotateAttributesAction {
     /// The policy attributes to rotate.
     /// Example: `department::marketing level::confidential`
     #[clap(required = true)]
-    attributes: Vec<String>,
+    access_policy: String,
 
     /// The private master key unique identifier stored in the KMS
     /// If not specified, tags should be specified
@@ -41,13 +41,6 @@ pub struct RotateAttributesAction {
 
 impl RotateAttributesAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
-        // Parse the attributes
-        let ats = self
-            .attributes
-            .iter()
-            .map(|s| Attribute::try_from(s.as_str()).map_err(Into::into))
-            .collect::<Result<Vec<Attribute>, CliError>>()?;
-
         let id = if let Some(key_id) = &self.secret_key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {
@@ -57,8 +50,10 @@ impl RotateAttributesAction {
         };
 
         // Create the kmip query
-        let rotate_query =
-            build_rekey_keypair_request(&id, EditPolicyAction::RotateAttributes(ats))?;
+        let rotate_query = build_rekey_keypair_request(
+            &id,
+            RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
+        )?;
 
         // Query the KMS with your kmip data
         let rotate_response = kms_rest_client
@@ -67,10 +62,11 @@ impl RotateAttributesAction {
             .with_context(|| "failed rotating the master keys")?;
 
         println!(
-            "The master private key {} and master public key {} were rotated for attributes {:?}",
+            "The master private key {} and master public key {} were rekeyed for the access \
+             policy {:?}",
             &rotate_response.private_key_unique_identifier,
             &rotate_response.public_key_unique_identifier,
-            &self.attributes
+            &self.access_policy
         );
         Ok(())
     }
