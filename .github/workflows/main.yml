@@ -1,7 +1,11 @@
 ---
 name: CI checks
 
-on: push
+on:
+  push:
+  schedule:
+    # every day at 3 AM
+    - cron:  '00 3 * * *'
 
 jobs:
   cargo-audit:
@@ -29,8 +33,18 @@ jobs:
   build:
     uses: ./.github/workflows/build_all.yml
     secrets: inherit
+    if: github.event.schedule == '00 3 * * *' || startsWith(github.ref, 'refs/tags')
     with:
       toolchain: nightly-2024-01-09
+      release: true
+
+  build_tests:
+    uses: ./.github/workflows/build_all.yml
+    secrets: inherit
+    if: github.event.schedule != '00 3 * * *' && !startsWith(github.ref, 'refs/tags')
+    with:
+      toolchain: nightly-2024-01-09
+      release: false
 
   cargo-doc:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-doc.yml@develop
@@ -39,12 +53,13 @@ jobs:
 
   python_and_docker:
     uses: ./.github/workflows/build_and_test_docker_image.yml
+    if: github.event.schedule == '00 3 * * *' || startsWith(github.ref, 'refs/tags')
 
   ckms_gui:
     runs-on: ubuntu-latest
+    if: github.event.schedule == '00 3 * * *' || startsWith(github.ref, 'refs/tags')
     steps:
       - name: Build ckms_gui on tags
-        if: startsWith(github.ref, 'refs/tags')
         uses: benc-uk/workflow-dispatch@v1
         with:
           workflow: main.yml
@@ -55,6 +70,7 @@ jobs:
 
   clean_env_test:
     name: ${{ matrix.archive_name }} -> Launch binary in a clean env. -> ${{ matrix.os }}
+    if: github.event.schedule != '00 3 * * *' || startsWith(github.ref, 'refs/tags')
     needs:
       - build
     runs-on: ${{ matrix.os }}
@@ -121,6 +137,7 @@ jobs:
   ##############################################################################
   release:
     name: release
+    if: github.event.schedule != '00 3 * * *' || startsWith(github.ref, 'refs/tags')
     needs:
       - cargo-audit
       - cargo-udeps
@@ -173,6 +190,7 @@ jobs:
 
   python_publish:
     name: python publish
+    if: github.event.schedule != '00 3 * * *' || startsWith(github.ref, 'refs/tags')
     needs:
       - python_and_docker
     runs-on: ubuntu-22.04
@@ -213,6 +231,7 @@ jobs:
           password: ${{ secrets.PYPI_API_TOKEN }}
 
   cleanup:
+    if: github.event.schedule != '00 3 * * *' || startsWith(github.ref, 'refs/tags')
     needs:
       - release
       - python_publish

@@ -46,6 +46,6 @@ jobs:
         run: cargo fmt --all -- --check --color always
 
       - name: Static analysis
-        run: cargo clippy --workspace --all-targets --all-features --release -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
         env:
           OPENSSL_DIR: ${{ env.OPENSSL_DIR }}
