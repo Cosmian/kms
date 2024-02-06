@@ -1,4 +1,4 @@
-use std::clone::Clone;
+use std::{clone::Clone, ops::Deref};
 
 use num_bigint_dig::BigUint;
 use serde::{
@@ -60,8 +60,8 @@ impl KeyBlock {
     /// Other keys are not supported.
     pub fn key_bytes(&self) -> Result<Zeroizing<Vec<u8>>, KmipError> {
         match &self.key_value.key_material {
-            KeyMaterial::ByteString(v) => Ok(Zeroizing::new(v.clone())),
-            KeyMaterial::TransparentSymmetricKey { key } => Ok(Zeroizing::new(key.clone())),
+            KeyMaterial::ByteString(v) => Ok(v.clone()),
+            KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
             KeyMaterial::TransparentECPrivateKey {
                 d,
                 recommended_curve,
@@ -365,7 +365,7 @@ impl Default for KeyWrappingSpecification {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum KeyMaterial {
-    ByteString(Vec<u8>),
+    ByteString(Zeroizing<Vec<u8>>),
     TransparentDHPrivateKey {
         p: BigUint,
         q: Option<BigUint>,
@@ -393,7 +393,7 @@ pub enum KeyMaterial {
         y: BigUint,
     },
     TransparentSymmetricKey {
-        key: Vec<u8>,
+        key: Zeroizing<Vec<u8>>,
     },
     TransparentRSAPublicKey {
         modulus: BigUint,
@@ -439,12 +439,12 @@ impl Serialize for KeyMaterial {
         match self {
             Self::ByteString(bytes) => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
-                st.serialize_field("ByteString", bytes)?;
+                st.serialize_field("ByteString", bytes.deref())?;
                 st.end()
             }
             Self::TransparentSymmetricKey { key } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
-                st.serialize_field("Key", key)?;
+                st.serialize_field("Key", key.deref())?;
                 st.end()
             }
             Self::TransparentDHPrivateKey { p, q, g, j, x } => {
@@ -737,9 +737,11 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                 }
 
                 if let Some(key) = key {
-                    Ok(KeyMaterial::TransparentSymmetricKey { key })
+                    Ok(KeyMaterial::TransparentSymmetricKey {
+                        key: Zeroizing::from(key),
+                    })
                 } else if let Some(bytestring) = bytestring {
-                    Ok(KeyMaterial::ByteString(bytestring))
+                    Ok(KeyMaterial::ByteString(Zeroizing::from(bytestring)))
                 } else {
                     Ok(match key_type_ser {
                         Some(KeyTypeSer::DH) => {

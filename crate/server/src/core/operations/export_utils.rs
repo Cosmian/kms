@@ -20,6 +20,7 @@ use openssl::{
     x509::X509,
 };
 use tracing::{debug, trace};
+use zeroize::Zeroizing;
 
 use crate::{
     core::{
@@ -69,7 +70,7 @@ pub async fn export_get(
             {
                 let key_block = owm.object.key_block_mut()?;
                 key_block.key_value = KeyValue {
-                    key_material: KeyMaterial::ByteString(vec![]),
+                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
                     attributes: None,
                 };
                 key_block.key_format_type = KeyFormatType::Opaque;
@@ -115,7 +116,7 @@ pub async fn export_get(
             {
                 let key_block = owm.object.key_block_mut()?;
                 key_block.key_value = KeyValue {
-                    key_material: KeyMaterial::ByteString(vec![]),
+                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
                     attributes: None,
                 };
                 key_block.key_format_type = KeyFormatType::Opaque;
@@ -143,7 +144,7 @@ pub async fn export_get(
             {
                 let key_block = owm.object.key_block_mut()?;
                 key_block.key_value = KeyValue {
-                    key_material: KeyMaterial::ByteString(vec![]),
+                    key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
                     attributes: None,
                 };
                 key_block.key_format_type = KeyFormatType::Opaque;
@@ -614,7 +615,7 @@ async fn post_process_pkcs12_for_private_key(
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
             key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(pkcs12.to_der()?),
+                key_material: KeyMaterial::ByteString(Zeroizing::from(pkcs12.to_der()?)),
                 // attributes are added later
                 attributes: None,
             },

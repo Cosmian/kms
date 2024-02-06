@@ -8,6 +8,7 @@ use cosmian_kmip::kmip::{
         LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
     },
 };
+use zeroize::Zeroizing;
 
 use super::attributes::{
     access_policy_as_vendor_attribute, edit_policy_action_as_vendor_attribute,
@@ -95,11 +96,11 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
     //  - to wrap (wrapping_password is some)
     //  - or not wrapped (otherwise)
     let is_wrapped = is_wrapped || wrapping_password.is_some();
-    let key = if let Some(wrapping_password) = wrapping_password {
+    let key = Zeroizing::from(if let Some(wrapping_password) = wrapping_password {
         wrap_key_bytes(private_key, &wrapping_password)?
     } else {
         private_key.to_vec()
-    };
+    });
 
     Ok(Import {
         unique_identifier: UniqueIdentifier::TextString(unique_identifier.unwrap_or_default()),
@@ -169,11 +170,11 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
     //  - to wrapped (wrapping_password is some)
     //  - or not wrapped (otherwise)
     let is_wrapped = is_wrapped || wrapping_password.is_some();
-    let key = if let Some(wrapping_password) = wrapping_password {
+    let key = Zeroizing::from(if let Some(wrapping_password) = wrapping_password {
         wrap_key_bytes(private_key, &wrapping_password)?
     } else {
         private_key.to_vec()
-    };
+    });
 
     Ok(Import {
         unique_identifier: UniqueIdentifier::TextString(unique_identifier.unwrap_or_default()),
@@ -246,7 +247,7 @@ pub fn build_import_public_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
                 key_format_type: KeyFormatType::CoverCryptPublicKey,
                 key_compression_type: None,
                 key_value: KeyValue {
-                    key_material: KeyMaterial::ByteString(public_key.to_vec()),
+                    key_material: KeyMaterial::ByteString(Zeroizing::from(public_key.to_vec())),
                     attributes: Some(attributes),
                 },
                 cryptographic_length: Some(public_key.len() as i32 * 8),
