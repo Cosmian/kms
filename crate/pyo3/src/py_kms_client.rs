@@ -25,6 +25,24 @@ use cosmian_kmip::{
     result::KmipResultHelper,
 };
 use cosmian_kms_client::KmsRestClient;
+<<<<<<< HEAD
+=======
+use cosmian_kms_utils::crypto::{
+    cover_crypt::{
+        attributes::RekeyEditAction,
+        kmip_requests::{
+            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
+            build_destroy_key_request, build_import_decryption_private_key_request,
+            build_import_private_key_request, build_import_public_key_request,
+            build_rekey_keypair_request,
+        },
+    },
+    generic::kmip_requests::{
+        build_decryption_request, build_encryption_request, build_revoke_key_request,
+    },
+    symmetric::symmetric_key_create_request,
+};
+>>>>>>> c27b1648 (feat: replace attribute rotation to access policy rekey)
 use openssl::x509::X509;
 use pyo3::{
     exceptions::{PyException, PyTypeError},
@@ -310,56 +328,59 @@ impl KmsClient {
         })
     }
 
-    /// Rotate the given policy attributes. This will rekey in the KMS:
-    /// - the Master Keys
-    /// - all User Decryption Keys that contain one of these attributes in their
-    ///   policy and are not rotated.
+    /// Generate new keys associated to the given access policy in the master keys.
+    /// This will rekey in the KMS:
+    /// - the master keys
+    /// - any user key associated to the access policy.
     ///
     /// Args:
-    ///     - `attributes` (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
+    ///     - `access_policy_str` (str): describe the keys to renew
     ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
-    pub fn rotate_cover_crypt_attributes<'p>(
+    pub fn rekey_cover_crypt_access_policy<'p>(
         &'p self,
-        attributes: Vec<&str>,
+        access_policy_str: String,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
+        let empty: Vec<Attribute> = vec![];
         rekey_keypair!(
             self,
-            attributes,
+            empty,
             master_secret_key_identifier.0,
-            policy_attributes,
-            EditPolicyAction::RotateAttributes(policy_attributes),
+            _policy_attributes,
+            RekeyEditAction::RekeyAccessPolicy(access_policy_str),
             py
         )
     }
 
-    /// Remove old rotations from the specified policy attributes.
+    /// Removes old keys associated to the given master keys from the master
+    /// keys. This will permanently remove access to old ciphers.
     /// This will rekey in the KMS:
-    /// - the Master Keys
-    /// - any user key which associated access policy covers one of these attributes
+    /// - the master keys
+    /// - any user key associated to the access policy
     ///
     /// Args:
-    ///     - `attributes` (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
+    ///     - `access_policy_str` (str): describe the keys to renew
     ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
-    pub fn clear_cover_crypt_attributes_rotations<'p>(
+    pub fn prune_cover_crypt_access_policy<'p>(
         &'p self,
-        attributes: Vec<&str>,
+        access_policy_str: String,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
+        let empty: Vec<Attribute> = vec![];
         rekey_keypair!(
             self,
-            attributes,
+            empty,
             master_secret_key_identifier.0,
-            policy_attributes,
-            EditPolicyAction::ClearOldAttributeValues(policy_attributes),
+            _policy_attributes,
+            RekeyEditAction::PruneAccessPolicy(access_policy_str),
             py
         )
     }
@@ -408,7 +429,7 @@ impl KmsClient {
             vec![attribute],
             master_secret_key_identifier.0,
             policy_attributes,
-            EditPolicyAction::DisableAttribute(policy_attributes),
+            RekeyEditAction::DisableAttribute(policy_attributes),
             py
         )
     }
@@ -434,7 +455,7 @@ impl KmsClient {
             vec![attribute],
             master_secret_key_identifier.0,
             policy_attributes,
-            EditPolicyAction::AddAttribute(
+            RekeyEditAction::AddAttribute(
                 policy_attributes
                     .into_iter()
                     .map(|attr| (attr, EncryptionHint::new(is_hybridized)))

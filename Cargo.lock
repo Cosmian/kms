@@ -791,9 +791,8 @@ checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
 
 [[package]]
 name = "cloudproof"
-version = "2.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3647902963641e2f2baa4da7b6ab75f5ffb28f049cf010b14a13cec2f4e014a7"
+version = "2.4.0"
+source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=feature/covercrypt_rekey#29bbccd33e32c34a065c3b455eefdbe2eb6c9dc6"
 dependencies = [
  "cloudproof_aesgcm",
  "cloudproof_anonymization",
@@ -801,7 +800,6 @@ dependencies = [
  "cloudproof_ecies",
  "cloudproof_findex 6.0.1",
  "cloudproof_fpe",
- "cosmian_crypto_core",
 ]
 
 [[package]]
@@ -834,8 +832,7 @@ dependencies = [
 [[package]]
 name = "cloudproof_cover_crypt"
 version = "13.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "456048e7ff7b874425675ef14365e4e7e11d9e3aae8013e4810e805babf39ddd"
+source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=feature/covercrypt_rekey#29bbccd33e32c34a065c3b455eefdbe2eb6c9dc6"
 dependencies = [
  "cosmian_cover_crypt",
  "cosmian_crypto_core",
@@ -980,9 +977,8 @@ checksum = "06ea2b9bc92be3c2baa9334a323ebca2d6f074ff852cd1d7b11064035cd3868f"
 
 [[package]]
 name = "cosmian_cover_crypt"
-version = "13.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10df4c34e0d5da7060a5ed1eb9ec9364b2c366d84903ed28ab017aa50aae78f6"
+version = "13.1.0"
+source = "git+https://github.com/Cosmian/cover_crypt.git?branch=develop#33229dfbb64976366291520debc9dbe2c2967f7e"
 dependencies = [
  "cosmian_crypto_core",
  "pqc_kyber",

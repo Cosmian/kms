@@ -2,8 +2,8 @@ use cloudproof::reexport::cover_crypt::abe_policy::Policy;
 use zeroize::Zeroizing;
 
 use super::attributes::{
-    access_policy_as_vendor_attribute, edit_policy_action_as_vendor_attribute,
-    policy_as_vendor_attribute, EditPolicyAction,
+    access_policy_as_vendor_attribute, policy_as_vendor_attribute,
+    rekey_edit_action_as_vendor_attribute, RekeyEditAction,
 };
 #[cfg(feature = "openssl")]
 use crate::{
@@ -296,7 +296,7 @@ pub fn build_destroy_key_request(unique_identifier: &str) -> Result<Destroy, Kmi
 /// The routine will then locate and renew all user decryption keys with those `CoverCrypt` attributes
 pub fn build_rekey_keypair_request(
     master_private_key_unique_identifier: &str,
-    action: EditPolicyAction,
+    action: RekeyEditAction,
 ) -> Result<ReKeyKeyPair, KmipError> {
     Ok(ReKeyKeyPair {
         private_key_unique_identifier: Some(UniqueIdentifier::TextString(
@@ -306,7 +306,7 @@ pub fn build_rekey_keypair_request(
             object_type: Some(ObjectType::PrivateKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::CoverCrypt),
             key_format_type: Some(KeyFormatType::CoverCryptSecretKey),
-            vendor_attributes: Some(vec![edit_policy_action_as_vendor_attribute(action)?]),
+            vendor_attributes: Some(vec![rekey_edit_action_as_vendor_attribute(action)?]),
             ..Attributes::default()
         }),
         ..ReKeyKeyPair::default()
