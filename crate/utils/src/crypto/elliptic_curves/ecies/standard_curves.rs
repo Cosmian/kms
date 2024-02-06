@@ -156,7 +156,7 @@ fn aead_and_digest(curve: &EcGroupRef) -> Result<(AeadCipher, MessageDigest), Km
         Nid::X9_62_PRIME256V1 | Nid::SECP224R1 | Nid::X9_62_PRIME192V1 => {
             (AeadCipher::Aes128Gcm, MessageDigest::shake_128())
         }
-        num_bigint_dig => kmip_utils_bail!("Unsupported curve: {:?}", num_bigint_dig),
+        other => kmip_utils_bail!("Unsupported curve: {:?}", other),
     };
     Ok((aead, md))
 }
