@@ -429,6 +429,7 @@ async fn test_certificate_encrypt_using_secp384r1() -> Result<(), CliError> {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "fips"))]
 async fn test_certificate_encrypt_using_secp521r1() -> Result<(), CliError> {
     import_encrypt_decrypt("secp521r1").await
 }
