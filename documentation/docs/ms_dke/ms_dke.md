@@ -65,6 +65,15 @@ corresponding entry in the server TOML configuration file.
       one should make sure to use OS-level firewalling and not rely on the cloud provider's firewalling capabilities,
       particularly if running on Azure.
 
+#### Create an RSA key with tag `ms_dke`
+
+Using the `ckms` command line tool, create a 2048-bit RSA key with the tag `dke_key`:
+
+```shell
+ckms rsa keys create --tag dke_key --size_in_bits 2048
+```
+
+
 ## Configuring Microsoft DKE in Purview
 
 Please follow the [main documentation](https://learn.microsoft.com/en-us/purview/double-key-encryption-setup)
