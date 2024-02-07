@@ -1,23 +1,26 @@
 use std::sync::Arc;
 
 use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Get, Import},
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType,
-        LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, WrappingMethod,
-    },
-};
-use cosmian_kms_crypto::{
-    elliptic_curves::{
-        kmip_requests::{
-            create_curve_25519_key_pair_request, get_private_key_request, get_public_key_request,
+use cosmian_kmip::{
+    crypto::{
+        elliptic_curves::{
+            kmip_requests::{
+                create_curve_25519_key_pair_request, get_private_key_request,
+                get_public_key_request,
+            },
+            operation::{to_ec_public_key, Q_LENGTH_BITS},
         },
-        operation::{to_ec_public_key, Q_LENGTH_BITS},
+        symmetric::symmetric_key_create_request,
     },
-    symmetric::symmetric_key_create_request,
+    kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Get, Import},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType,
+            LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, WrappingMethod,
+        },
+    },
 };
 use cosmian_logger::log_utils::log_init;
 use tracing::trace;

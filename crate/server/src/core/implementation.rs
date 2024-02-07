@@ -10,7 +10,24 @@ use cloudproof::reexport::{
         CsRng, FixedSizeCBytes, SymmetricKey,
     },
 };
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::crypto::elliptic_curves::operation::{
+    create_x25519_key_pair, create_x448_key_pair,
+};
 use cosmian_kmip::{
+    crypto::{
+        cover_crypt::{
+            decryption::CovercryptDecryption, encryption::CoverCryptEncryption,
+            master_keys::create_master_keypair,
+        },
+        elliptic_curves::operation::{
+            create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
+        },
+        hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
+        rsa::operation::create_rsa_key_pair,
+        symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
+        DecryptionSystem, EncryptionSystem, KeyPair,
+    },
     kmip::{
         kmip_objects::Object,
         kmip_operations::{Create, CreateKeyPair},
@@ -19,20 +36,6 @@ use cosmian_kmip::{
         },
     },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
-};
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_crypto::elliptic_curves::operation::{
-    create_x25519_key_pair, create_x448_key_pair,
-};
-use cosmian_kms_crypto::{
-    cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
-    elliptic_curves::operation::{
-        create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
-    },
-    hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
-    rsa::operation::create_rsa_key_pair,
-    symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
-    DecryptionSystem, EncryptionSystem, KeyPair,
 };
 use openssl::nid::Nid;
 #[cfg(not(feature = "fips"))]
@@ -509,17 +512,15 @@ impl KMS {
                 create_ed25519_key_pair(private_key_uid, public_key_uid)
             }
             CryptographicAlgorithm::Ed448 => create_ed448_key_pair(private_key_uid, public_key_uid),
-            CryptographicAlgorithm::CoverCrypt => {
-                cosmian_kms_crypto::cover_crypt::master_keys::create_master_keypair(
-                    &Covercrypt::default(),
-                    private_key_uid,
-                    public_key_uid,
-                    Some(common_attributes),
-                    request.private_key_attributes,
-                    request.public_key_attributes,
-                )
-                .map_err(Into::into)
-            }
+            CryptographicAlgorithm::CoverCrypt => create_master_keypair(
+                &Covercrypt::default(),
+                private_key_uid,
+                public_key_uid,
+                Some(common_attributes),
+                request.private_key_attributes,
+                request.public_key_attributes,
+            )
+            .map_err(Into::into),
             other => kms_not_supported!(
                 "The creation of a key pair for algorithm: {other:?} is not supported"
             ),

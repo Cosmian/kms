@@ -4,11 +4,13 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::kmip::kmip_types::{
-    CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, StateEnumeration,
+use cosmian_kmip::{
+    crypto::symmetric::create_symmetric_key_kmip_object,
+    kmip::kmip_types::{
+        CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier, StateEnumeration,
+    },
 };
 use cosmian_kms_client::access::ObjectOperationType;
-use cosmian_kms_crypto::symmetric::create_symmetric_key_kmip_object;
 use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
 

@@ -1,17 +1,19 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::kmip::{
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Create, CreateKeyPair, ErrorReason, Get},
-    kmip_types::{Attributes, KeyFormatType, StateEnumeration},
+use cosmian_kmip::{
+    crypto::{
+        cover_crypt::{
+            attributes::{access_policy_from_attributes, policy_from_attributes},
+            user_key::UserDecryptionKeysHandler,
+        },
+        KeyPair,
+    },
+    kmip::{
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Create, CreateKeyPair, ErrorReason, Get},
+        kmip_types::{Attributes, KeyFormatType, StateEnumeration},
+    },
 };
 use cosmian_kms_client::access::ObjectOperationType;
-use cosmian_kms_crypto::{
-    cover_crypt::{
-        attributes::{access_policy_from_attributes, policy_from_attributes},
-        user_key::UserDecryptionKeysHandler,
-    },
-    KeyPair,
-};
 
 use super::KMS;
 use crate::{

@@ -3,6 +3,21 @@ use cloudproof::reexport::{
     crypto_core::bytes_ser_de::Deserializer,
 };
 use cosmian_kmip::{
+    crypto::{
+        cover_crypt::{
+            attributes::EditPolicyAction,
+            kmip_requests::{
+                build_create_master_keypair_request,
+                build_create_user_decryption_private_key_request, build_destroy_key_request,
+                build_import_decryption_private_key_request, build_import_private_key_request,
+                build_import_public_key_request, build_rekey_keypair_request,
+            },
+        },
+        generic::kmip_requests::{
+            build_decryption_request, build_encryption_request, build_revoke_key_request,
+        },
+        symmetric::symmetric_key_create_request,
+    },
     kmip::{
         kmip_operations::Get,
         kmip_types::{CryptographicAlgorithm, RevocationReason},
@@ -10,21 +25,6 @@ use cosmian_kmip::{
     result::KmipResultHelper,
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_crypto::{
-    cover_crypt::{
-        attributes::EditPolicyAction,
-        kmip_requests::{
-            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
-            build_destroy_key_request, build_import_decryption_private_key_request,
-            build_import_private_key_request, build_import_public_key_request,
-            build_rekey_keypair_request,
-        },
-    },
-    generic::kmip_requests::{
-        build_decryption_request, build_encryption_request, build_revoke_key_request,
-    },
-    symmetric::symmetric_key_create_request,
-};
 use openssl::x509::X509;
 use pyo3::{
     exceptions::{PyException, PyTypeError},

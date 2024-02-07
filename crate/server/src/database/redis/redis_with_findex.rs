@@ -13,12 +13,14 @@ use cloudproof_findex::{
     implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
     Label, Location,
 };
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, StateEnumeration},
+use cosmian_kmip::{
+    crypto::password_derivation::derive_key_from_password,
+    kmip::{
+        kmip_objects::Object,
+        kmip_types::{Attributes, StateEnumeration},
+    },
 };
 use cosmian_kms_client::access::{IsWrapped, ObjectOperationType};
-use cosmian_kms_crypto::password_derivation::derive_key_from_password;
 use redis::aio::ConnectionManager;
 use tracing::trace;
 use uuid::Uuid;

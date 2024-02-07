@@ -3,11 +3,13 @@ use std::sync::Arc;
 use actix_web::HttpRequest;
 use base64::{engine::general_purpose, Engine};
 use clap::crate_version;
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyWrappingData, KeyWrappingSpecification},
-    kmip_types::{self, CryptographicAlgorithm, EncodingOption, UniqueIdentifier},
+use cosmian_kmip::{
+    crypto::symmetric::create_symmetric_key_kmip_object,
+    kmip::{
+        kmip_data_structures::{KeyWrappingData, KeyWrappingSpecification},
+        kmip_types::{self, CryptographicAlgorithm, EncodingOption, UniqueIdentifier},
+    },
 };
-use cosmian_kms_crypto::symmetric::create_symmetric_key_kmip_object;
 use serde::{Deserialize, Serialize};
 
 use super::GoogleCseConfig;

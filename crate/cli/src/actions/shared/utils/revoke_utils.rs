@@ -1,6 +1,7 @@
-use cosmian_kmip::kmip::kmip_types::RevocationReason;
+use cosmian_kmip::{
+    crypto::generic::kmip_requests::build_revoke_key_request, kmip::kmip_types::RevocationReason,
+};
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_crypto::generic::kmip_requests::build_revoke_key_request;
 
 use crate::{
     cli_bail,

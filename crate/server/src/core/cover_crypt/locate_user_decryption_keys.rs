@@ -1,13 +1,15 @@
 use cloudproof::reexport::cover_crypt::abe_policy::Attribute;
-use cosmian_kmip::kmip::{
-    kmip_objects::ObjectType,
-    kmip_operations::Locate,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-        StateEnumeration,
+use cosmian_kmip::{
+    crypto::cover_crypt::attributes::attributes_as_vendor_attribute,
+    kmip::{
+        kmip_objects::ObjectType,
+        kmip_operations::Locate,
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, StateEnumeration,
+        },
     },
 };
-use cosmian_kms_crypto::cover_crypt::attributes::attributes_as_vendor_attribute;
 
 use crate::{
     core::{extra_database_params::ExtraDatabaseParams, operations, KMS},

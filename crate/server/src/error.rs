@@ -7,7 +7,6 @@ use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
-use cosmian_kms_crypto::error::KmsCryptoError;
 use redis::ErrorKind;
 use thiserror::Error;
 use x509_parser::prelude::{PEMError, X509Error};
@@ -168,12 +167,6 @@ impl From<QueryPayloadError> for KmsError {
     }
 }
 
-impl From<KmsCryptoError> for KmsError {
-    fn from(e: KmsCryptoError) -> Self {
-        Self::CryptographicError(e.to_string())
-    }
-}
-
 impl From<TryFromSliceError> for KmsError {
     fn from(e: TryFromSliceError) -> Self {
         Self::ConversionError(e.to_string())
@@ -188,9 +181,12 @@ impl From<KmipError> for KmsError {
             KmipError::KmipNotSupported(_, s) => Self::NotSupported(s),
             KmipError::NotSupported(s) => Self::NotSupported(s),
             KmipError::KmipError(r, s) => Self::KmipError(r, s),
-            KmipError::Default(e) => Self::NotSupported(e),
-            KmipError::OpenSSL(e) => Self::NotSupported(e),
-            KmipError::InvalidTag(e) => Self::NotSupported(e),
+            KmipError::Default(s) => Self::NotSupported(s),
+            KmipError::OpenSSL(s) => Self::NotSupported(s),
+            KmipError::InvalidTag(s) => Self::NotSupported(s),
+            KmipError::InvalidSize(s) => Self::NotSupported(s),
+            KmipError::Derivation(s) => Self::NotSupported(s),
+            KmipError::ConversionError(s) => Self::NotSupported(s),
         }
     }
 }

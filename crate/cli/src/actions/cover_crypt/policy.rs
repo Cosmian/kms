@@ -5,12 +5,14 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    ttlv::{deserializer::from_ttlv, TTLV},
+use cosmian_kmip::{
+    crypto::cover_crypt::attributes::policy_from_attributes,
+    kmip::{
+        kmip_objects::Object,
+        ttlv::{deserializer::from_ttlv, TTLV},
+    },
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_crypto::cover_crypt::attributes::policy_from_attributes;
 use serde::{Deserialize, Serialize};
 
 use crate::{

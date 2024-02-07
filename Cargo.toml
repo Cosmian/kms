@@ -2,7 +2,6 @@
 members = [
   "crate/cli",
   "crate/client",
-  "crate/crypto",
   "crate/kmip",
   "crate/logger",
   "crate/pyo3",

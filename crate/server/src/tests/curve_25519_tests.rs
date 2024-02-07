@@ -1,20 +1,22 @@
 use std::sync::Arc;
 
 use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
-use cosmian_kmip::kmip::{
-    kmip_messages::{Message, MessageBatchItem, MessageHeader},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{ErrorReason, Import, Operation},
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-        ProtocolVersion, RecommendedCurve, ResultStatusEnumeration, UniqueIdentifier,
+use cosmian_kmip::{
+    crypto::elliptic_curves::{
+        kmip_requests::{
+            create_curve_25519_key_pair_request, get_private_key_request, get_public_key_request,
+        },
+        operation::{self, to_ec_public_key, Q_LENGTH_BITS},
     },
-};
-use cosmian_kms_crypto::elliptic_curves::{
-    kmip_requests::{
-        create_curve_25519_key_pair_request, get_private_key_request, get_public_key_request,
+    kmip::{
+        kmip_messages::{Message, MessageBatchItem, MessageHeader},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{ErrorReason, Import, Operation},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+            ProtocolVersion, RecommendedCurve, ResultStatusEnumeration, UniqueIdentifier,
+        },
     },
-    operation::{self, to_ec_public_key, Q_LENGTH_BITS},
 };
 use cosmian_logger::log_utils::log_init;
 

@@ -1,11 +1,13 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use cosmian_kmip::kmip::{
-    kmip_objects::ObjectType,
-    kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
-    kmip_types::{KeyFormatType, StateEnumeration},
+use cosmian_kmip::{
+    crypto::cover_crypt::attributes,
+    kmip::{
+        kmip_objects::ObjectType,
+        kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
+        kmip_types::{KeyFormatType, StateEnumeration},
+    },
 };
 use cosmian_kms_client::access::ObjectOperationType;
-use cosmian_kms_crypto::cover_crypt::attributes;
 use tracing::trace;
 
 use crate::{

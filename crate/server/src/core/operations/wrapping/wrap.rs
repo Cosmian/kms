@@ -1,12 +1,14 @@
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{
-        KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
+use cosmian_kmip::{
+    crypto::wrap::encrypt_bytes,
+    kmip::{
+        kmip_data_structures::{
+            KeyBlock, KeyMaterial, KeyValue, KeyWrappingData, KeyWrappingSpecification,
+        },
+        kmip_objects::ObjectType,
+        kmip_types::{EncodingOption, LinkType, WrappingMethod},
     },
-    kmip_objects::ObjectType,
-    kmip_types::{EncodingOption, LinkType, WrappingMethod},
 };
 use cosmian_kms_client::access::ObjectOperationType;
-use cosmian_kms_crypto::wrap::encrypt_bytes;
 
 use crate::{
     core::{extra_database_params::ExtraDatabaseParams, KMS},

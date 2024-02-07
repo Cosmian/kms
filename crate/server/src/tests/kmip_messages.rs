@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
-use cosmian_kmip::kmip::{
-    kmip_messages::{Message, MessageBatchItem, MessageHeader},
-    kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
-    kmip_types::{
-        OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
-        UniqueIdentifier,
+use cosmian_kmip::{
+    crypto::elliptic_curves::kmip_requests::create_curve_25519_key_pair_request,
+    kmip::{
+        kmip_messages::{Message, MessageBatchItem, MessageHeader},
+        kmip_operations::{Decrypt, ErrorReason, Locate, Operation},
+        kmip_types::{
+            OperationEnumeration, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
+            UniqueIdentifier,
+        },
     },
 };
-use cosmian_kms_crypto::elliptic_curves::kmip_requests::create_curve_25519_key_pair_request;
 
 use crate::{
     config::ServerParams, result::KResult, tests::test_utils::https_clap_config, KMSServer,

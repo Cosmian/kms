@@ -1,9 +1,11 @@
-use cosmian_kmip::kmip::{
-    kmip_operations::{Locate, LocateResponse},
-    kmip_types::{StateEnumeration, UniqueIdentifier},
-};
-use cosmian_kms_crypto::cover_crypt::{
-    attributes::access_policy_from_attributes, locate::compare_cover_crypt_attributes,
+use cosmian_kmip::{
+    crypto::cover_crypt::{
+        attributes::access_policy_from_attributes, locate::compare_cover_crypt_attributes,
+    },
+    kmip::{
+        kmip_operations::{Locate, LocateResponse},
+        kmip_types::{StateEnumeration, UniqueIdentifier},
+    },
 };
 use tracing::trace;
 
