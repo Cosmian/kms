@@ -4,11 +4,10 @@ name: CI release
 on:
   push:
     # any tags, including tags with / like v1.0/alpha
-    tags:
-      '**'
+    tags: '**'
   schedule:
     # every day at 3 AM
-    - cron:  '00 3 * * *'
+    - cron: 00 3 * * *
 
 jobs:
   cargo-audit:
@@ -44,7 +43,7 @@ jobs:
     secrets: inherit
     with:
       toolchain: nightly-2024-01-09
-    
+
   cargo-doc:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-doc.yml@develop
     with:

@@ -39,3 +39,6 @@ jobs:
     uses: Cosmian/reusable_workflows/.github/workflows/cargo-doc.yml@develop
     with:
       toolchain: nightly-2024-01-09
+
+  python_and_docker:
+    uses: ./.github/workflows/build_and_test_docker_image.yml

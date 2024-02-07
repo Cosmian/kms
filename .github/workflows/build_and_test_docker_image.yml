@@ -15,7 +15,6 @@ jobs:
       toolchain: nightly-2024-01-09
 
   not-fips-image:
-    needs: pyo3
     name: Not FIPS image build and tests
     uses: ./.github/workflows/build_docker_image.yml
     with:
@@ -23,7 +22,6 @@ jobs:
       image-suffix: ''
 
   fips-image:
-    needs: pyo3
     name: FIPS image build and tests
     uses: ./.github/workflows/build_docker_image.yml
     with:
