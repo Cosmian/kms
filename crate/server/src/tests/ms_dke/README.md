@@ -5,22 +5,22 @@
 Follow the instructions in the main Documentation to configure the tenant for DKE.
 
 Create a sensitivity label in the Microsoft Purview compliance portal, and publish it to the tenant.
-The sensitivity label must be configured to uaw Double Key Encryption with an URL set to
-`https://dke.acme.com/ms_dke/dke_key` where
+The sensitivity label must be configured to use Double Key Encryption with an URL set to
+`https://dke.cosmian.com/ms_dke/dke_key` where
 
-- `dke.acme.com` is the address of the comsian KMS server.
+- `dke.cosmian.com` is the address of the Cosmian KMS server (please replace your server name).
 - `ms_dke` is the root of REST path for the DKE services.
 - `dke_key` is the name of a tag set for the RSA key pair to use for DKE.
 
 ## Start the Cosmian KMS server
 
-The cosmian KMS server must be started behind a reverse proxy that exposes a valid TLS certificate on `dke.acme.com`
+The cosmian KMS server must be started behind a reverse proxy that exposes a valid TLS certificate on `dke.cosmian.com`
 and which maps the path `/ms_dke` to the corresponding path of the Cosmian KMS server.
 
 Enable DKE in the Cosmian KMS server by setting the `--ms-dke` flag.
 
 ```bash
-RUST_LOG="cosmian_kms_server=trace" cargo run --bin cosmian_kms_server -- --ms-dke-service-url https://dke.acme.com/ms_dke
+RUST_LOG="cosmian_kms_server=trace" cargo run --bin cosmian_kms_server -- --ms-dke-service-url https://dke.cosmian.com/ms_dke
 ```
 
 ## Generate a RSA key pair for DKE
@@ -82,25 +82,3 @@ The response should be similar to the following:
 }
 ```
 
-
-```json
-{
-  "alg": "RSA-OAEP-256",
-  "value": "SowuwT1RuQalev5OCYFhpGaziwOqiTgzQcRfcITsukcBOsX61SejEF91cnx8vQv/gjmovXW4qEV7PpNBKj2GMszHWmFkt877raP02yxch6w0sPEBMaNdfbLIScpsjaPAOmu/i3MAY3dPaAl4duGE3FJCb1O8G98QamB5eQXpJaKcoUGUCeE4hy4qi5k15rQWMU6EmTZ8qL37ugDGo1gRuSsYZmCriPH+sUdiOIXEBJ/UrRIeR+ENPgjBVRSw46sbfdCIee37iROdBRxffHe2p+Ntx1TGMSLhkOc+DU0p+0+cDEicmVXorUfNZCQc7Rof2pIjpUI4Qi3wBCexTnZXgw=="
-}
-```
-```text
- ERROR cosmian_kms_server::routes] 500 Internal Server Error - Cryptographic error: Not Supported: error:0200009F:rsa routines:RSA_padding_check_PKCS1_type_2:pkcs decoding error:crypto/rsa/rsa_pk1.c:269:, error:02000072:rsa routines:rsa_ossl_private_decrypt:padding check failed:crypto/rsa/rsa_ossl.c:499:
-
-```
-
-## JWT
-
-### JWKS
-https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens#validate-the-signing-key-issuer
-"jwks_uri": "https://login.microsoftonline.com/{example-tenant-id}/discovery/v2.0/keys",
-https://login.microsoftonline.com/0388f871-53ca-4599-b1f4-642974299c20/discovery/v2.0/keys
-
-
-https://login.microsoftonline.com/0388f871-53ca-4599-b1f4-642974299c20
-https://login.microsoftonline.com/{example-tenant-id}

@@ -1,0 +1,12 @@
+{
+  "key": {
+    "kty": "RSA",
+    "n": "jczTNoUDYX3VDu4UzPRf2uGTXwgZyKUz+lUbxzS3AO0/GbftvqMwu8yp3lxlwH7O9My32tNMAJXJtBSf+DiaD3xIA6HTdOa4dHvIZlIxrNeRyQLuUEu2+qdc5/x1FJmEkuG33xunFeeAUU3CNSO5X+IZ3nS3rdOIL6wwASVJKBPgM9AH95xqmxXQNOFpmbriv/c5VAqd7Ih83H8KBzowsYRNYiWqIJvFVP224p2UNNqpr0WX+QPkgoQYH5hKGRR8bj3BVYhzlEE+4/BQLp2ECfSYCe1kRYqlfSpBRHrrKhZ+VcEsYg/9zbAKPmLc4fRMR66KaG5ANpe7OseVFLHyNQ==",
+    "e": 65537,
+    "alg": "RS256",
+    "kid": "https://dke.acme.com/ms_dke/dke_key/ms_dke_pub_key"
+  },
+  "cache": {
+    "exp": "2024-02-08T07:10:54"
+  }
+}

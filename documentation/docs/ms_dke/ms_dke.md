@@ -65,13 +65,26 @@ corresponding entry in the server TOML configuration file.
       one should make sure to use OS-level firewalling and not rely on the cloud provider's firewalling capabilities,
       particularly if running on Azure.
 
-#### Create an RSA key with tag `ms_dke`
+#### Create an RSA key with tag `dke_key`
 
 Using the `ckms` command line tool, create a 2048-bit RSA key with the tag `dke_key`:
 
 ```shell
 ckms rsa keys create --tag dke_key --size_in_bits 2048
 ```
+
+The tag can be changed to any value, but it must be used in the URL of the sensitivity label in the Microsoft Purview
+compliance portal. See [Create a sensitivity label for encryption](#create-a-sensitivity-label-for-encryption) for details.
+
+#### Rotate the DKE key
+
+If later on you need to rotate the DKE key, you can use the `ckms` command line tool to create a new key with a new tag.
+You must then create a new sensitivity label where the Double Key Encryption URL ends with the new tag value.
+See [Create a sensitivity label for encryption](#create-a-sensitivity-label-for-encryption) for details.
+
+Users should now select the new label when creating new documents.
+As long as the old key is available in the Cosmian KMS, users will still be able to open documents encrypted with the
+old key.
 
 
 ## Configuring Microsoft DKE in Purview
@@ -171,8 +184,17 @@ Navigate to [Purview](https://compliance.microsoft.com/homepage) then `Solutions
 
 Follow [these instructions](https://learn.microsoft.com/en-gb/purview/create-sensitivity-labels#create-and-configure-sensitivity-labels)
 to create the label.
-Select `Double Key Encryption` on the encryption configuration screen and make sure
+Select `Use Double Key Encryption` on the encryption configuration screen and make sure
 you do not activate co-authoring.
+
+!!! important "Use the correct URL"
+      The URL must be set to a form similar to `https://dke.acme.com/ms_dke/dke_key` where
+
+      - `dke.acme.com` is the address of the Cosmian KMS server. A valid certificate must be installed on the server.
+      - `ms_dke` is the root of REST path for the DKE services.
+      - `dke_key` is the tag set for the RSA key pair to use for this label.
+
+
 ![Sensitivity Label](./sensitivity_label.png)
 
 Activating the label (scope) for meetings does not seem to work.

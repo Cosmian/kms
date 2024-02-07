@@ -101,7 +101,14 @@ pub async fn get_key(
         key_name = "dke_key".to_string();
     }
     match _get_key(&key_name, req_http, &kms).await {
-        Ok(key_data) => HttpResponse::Ok().json(key_data),
+        Ok(key_data) => {
+            trace!(
+                "GET KEY /{} {:?}",
+                key_name,
+                serde_json::to_string(&key_data)
+            );
+            HttpResponse::Ok().json(key_data)
+        }
         Err(e) => HttpResponse::from_error(e),
     }
 }
