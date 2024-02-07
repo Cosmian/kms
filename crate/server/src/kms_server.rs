@@ -25,8 +25,9 @@ use crate::{
     },
     result::{KResult, KResultHelper},
     routes::{
-        self,
+        access, add_new_database, get_version,
         google_cse::{self, GoogleCseConfig},
+        kmip, ms_dke,
     },
     KMSServer,
 };
@@ -272,9 +273,9 @@ pub async fn prepare_kms_server(
             // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
             let ms_dke_scope = web::scope("/ms_dke")
                 .wrap(Cors::permissive())
-                .service(routes::ms_dke::version)
-                .service(routes::ms_dke::get_key)
-                .service(routes::ms_dke::decrypt);
+                .service(ms_dke::version)
+                .service(ms_dke::get_key)
+                .service(ms_dke::decrypt);
             app = app.service(ms_dke_scope);
         }
 
@@ -290,17 +291,17 @@ pub async fn prepare_kms_server(
             // CORS middleware is the last one so that the auth middlewares do not run on
             // preflight (OPTION) requests.
             .wrap(Cors::permissive())
-            .service(routes::kmip::kmip)
-            .service(routes::access::list_owned_objects)
-            .service(routes::access::list_access_rights_obtained)
-            .service(routes::access::list_accesses)
-            .service(routes::access::grant_access)
-            .service(routes::access::revoke_access)
-            .service(routes::get_version);
+            .service(kmip::kmip)
+            .service(access::list_owned_objects)
+            .service(access::list_access_rights_obtained)
+            .service(access::list_accesses)
+            .service(access::grant_access)
+            .service(access::revoke_access)
+            .service(get_version);
 
         // The default scope is extended with the /new_database endpoint if the application is using an encrypted SQLite database.
         let default_scope = if is_using_sqlite_enc {
-            default_scope.service(routes::add_new_database)
+            default_scope.service(add_new_database)
         } else {
             default_scope
         };
