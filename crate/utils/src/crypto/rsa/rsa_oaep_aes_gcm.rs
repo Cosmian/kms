@@ -48,7 +48,7 @@ pub fn rsa_oaep_aes_gcm_encrypt(
         plaintext,
     )?;
 
-    Ok([c, iv.to_vec(), ciphertext, tag].concat())
+    Ok([c, iv.clone(), ciphertext, tag].concat())
 }
 
 /// Asymmetrically unwrap keys referring to PKCS#11 available at

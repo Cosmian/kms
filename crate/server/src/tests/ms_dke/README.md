@@ -1,4 +1,4 @@
-<h1>Testing Microsoft Double Key Encryption</h1>
+# Testing Microsoft Double Key Encryption
 
 ## Prerequisites
 
@@ -29,19 +29,19 @@ Use the provided script to generate a RSA key pair for DKE.
 
 ```bash
 ./generate_dke_key.sh
-``` 
+```
 
 ## Import the key pair with the proper tags
 
 Import the private key with the tag `dke_key`, with a name `ms_dke_priv_key` and a link to the (future) public
-key ` ms_dke_pub_key`.
+key `ms_dke_pub_key`.
 
 ```bash
 cargo run --bin ckms -- ec keys import -f pem -t dke_key -p ms_dke_priv_key crate/server/src/tests/ms_dke/private_key.pkcs8.pem ms_dke_priv_key
 ```
 
 Import the public key with the tag `dke_key`, with a name `ms_dke_pub_key` and a link to the private
-key ` ms_dke_priv_key`
+key `ms_dke_priv_key`
 
 ```bash
 cargo run --bin ckms -- ec keys import -f pem -t dke_key -k ms_dke_priv_key crate/server/src/tests/ms_dke/public_key.pkcs8.pem ms_dke_pub_key
@@ -81,4 +81,3 @@ The response should be similar to the following:
   }
 }
 ```
-

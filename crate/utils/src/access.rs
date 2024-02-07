@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeSet, HashSet},
     fmt,
-    ops::Deref,
     str::FromStr,
 };
 
@@ -79,7 +78,7 @@ impl Serialize for ExtraDatabaseParams {
         S: serde::Serializer,
     {
         serializer.serialize_bytes(
-            [&self.group_id.to_be_bytes(), self.key.deref()]
+            [&self.group_id.to_be_bytes(), &*self.key]
                 .concat()
                 .as_slice(),
         )

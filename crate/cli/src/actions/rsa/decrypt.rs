@@ -14,11 +14,11 @@ use crate::{
 };
 
 /// Decrypt a file with the given public key using either
-///  - CKM_RSA_PKCS_OAEP a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
-///  - RSA_OAEP AES_128_GCM
+///  - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
+///  - `RSA_OAEP` `AES_128_GCM`
 /// By default the hashing function used with RSA OAEP is set to SHA-256
 ///
-/// When using CKM_RSA_PKCS_OAEP:
+/// When using `CKM_RSA_PKCS_OAEP`:
 ///  - the authentication data is ignored
 ///  - the maximum plaintext length is k-2-2*hLen where
 ///     - k is the length in octets of the RSA modulus

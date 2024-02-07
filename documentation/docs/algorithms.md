@@ -176,7 +176,7 @@ In FIPS mode, passwords are derived using FIPS compliant `PBKDF2_HMAC` with `SHA
 
 - NIST.SP.800-56Br2, Recommendation for Pair-Wise Key Establishment Using Integer Factorization Cryptography, *March
   2019*
-    - Informations regarding RSA primitive specifications: key length, encryption, decryption and padding to use.
+    - Information regarding RSA primitive specifications: key length, encryption, decryption and padding to use.
 
 - NIST.FIPS.180-4, Secure Hash Standard (SHS), *August 2015*
     - Specification regarding SHA family of hash functions.
@@ -190,4 +190,4 @@ In FIPS mode, passwords are derived using FIPS compliant `PBKDF2_HMAC` with `SHA
 - NIST.FIPS.800-135r1, Recommendation for Existing Application-Specific Key Derivation Functions, *December 2011*
 
 - OpenSSL FIPS 140-2 Security Policy, *26 January 2023*
-    - OpenSSL official docu
+    - OpenSSL official documentation

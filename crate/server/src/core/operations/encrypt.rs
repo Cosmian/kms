@@ -136,14 +136,14 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
     match key_block.key_format_type {
         KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
             // recover the cryptographic algorithm from the request or the key block or default to AES
-            let cryptographic_alogrithm = request
+            let cryptographic_algorithm = request
                 .cryptographic_parameters
                 .as_ref()
                 .and_then(|cp| cp.cryptographic_algorithm)
                 .unwrap_or(
                     key_block
                         .cryptographic_algorithm()
-                        .cloned()
+                        .copied()
                         .unwrap_or(CryptographicAlgorithm::AES),
                 );
             let block_cipher_mode = request
@@ -152,7 +152,7 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
                 .and_then(|cp| cp.block_cipher_mode);
             let key_bytes = key_block.key_bytes()?;
             let aead = AeadCipher::from_algorithm_and_key_size(
-                cryptographic_alogrithm,
+                cryptographic_algorithm,
                 block_cipher_mode,
                 key_bytes.len(),
             )?;

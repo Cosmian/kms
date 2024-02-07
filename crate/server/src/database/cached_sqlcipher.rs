@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -72,7 +71,7 @@ impl CachedSqlCipher {
         let options = SqliteConnectOptions::new()
             // create the database file if it doesn't exist
             .create_if_missing(true)
-            .pragma("key", format!("\"x'{}'\"", hex::encode(key.deref())))
+            .pragma("key", format!("\"x'{}'\"", hex::encode(&**key)))
             .pragma("journal_mode", "OFF")
             .filename(path)
             // Sets a timeout value to wait when the database is locked, before returning a busy timeout error.

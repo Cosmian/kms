@@ -172,7 +172,7 @@ Then run the entrypoint script.
 
 The `etc/app/server.toml` file contains:
 
-```
+```toml
 [http]
 port = 3000
 hostname = "0.0.0.0"

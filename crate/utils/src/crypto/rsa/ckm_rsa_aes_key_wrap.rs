@@ -17,7 +17,7 @@ use crate::{
 #[cfg(feature = "fips")]
 pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
 
-/// Asymmetrically wrap keys referring to PKCS#11 CKM_RSA_AES_KEY_WRAP available at
+/// Asymmetrically wrap keys referring to PKCS#11 `CKM_RSA_AES_KEY_WRAP` available at
 /// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908
 ///
 /// This document describes how to wrap keys of any size using asymmetric
@@ -50,7 +50,7 @@ pub fn ckm_rsa_aes_key_wrap(
     Ok([encapsulation, wk].concat())
 }
 
-/// Asymmetrically unwrap keys referring to PKCS#11 CKM_RSA_AES_KEY_WRAP available at
+/// Asymmetrically unwrap keys referring to PKCS#11 `CKM_RSA_AES_KEY_WRAP` available at
 /// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908
 ///
 /// This document describes how to unwrap keys of any size using asymmetric

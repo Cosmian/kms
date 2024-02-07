@@ -67,8 +67,8 @@ Grant another user one or multiple access rights to an object
 
 ### Usage
 `ckms access-rights grant [options] <USER>
-<OBJECT_UID>
-<OPERATIONS>...
+ <OBJECT_UID>
+ <OPERATIONS>...
 `
 ### Arguments
 ` <USER>` The user identifier to allow
@@ -87,8 +87,8 @@ Revoke another user one or multiple access rights to an object
 
 ### Usage
 `ckms access-rights revoke [options] <USER>
-<OBJECT_UID>
-<OPERATIONS>...
+ <OBJECT_UID>
+ <OPERATIONS>...
 `
 ### Arguments
 ` <USER>` The user to revoke access to
@@ -207,7 +207,7 @@ Create a new user decryption key given an access policy expressed as a boolean e
 
 ### Usage
 `ckms cc keys create-user-key [options] <MASTER_PRIVATE_KEY_ID>
-<ACCESS_POLICY>
+ <ACCESS_POLICY>
 `
 ### Arguments
 ` <MASTER_PRIVATE_KEY_ID>` The master private key unique identifier
@@ -236,15 +236,15 @@ Export a key from the KMS
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
-- `json-ttlv` [default]. It should be the format to use to later re-import the key
-- `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
-- `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
-- `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
-- `spki-pem` and `spki-der` only apply to RSA and EC public keys
-- `raw` returns the raw bytes of
-    - symmetric keys
-    - Covercrypt keys
-    - wrapped keys
+ - `json-ttlv` [default]. It should be the format to use to later re-import the key
+ - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+ - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
+ - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+ - `spki-pem` and `spki-der` only apply to RSA and EC public keys
+ - `raw` returns the raw bytes of
+      - symmetric keys
+      - Covercrypt keys
+      - wrapped keys
 
 Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
 
@@ -270,7 +270,7 @@ Import a private or public key in the KMS.
 
 ### Usage
 `ckms cc keys import [options] <KEY_FILE>
-[KEY_ID]
+ [KEY_ID]
 `
 ### Arguments
 ` <KEY_FILE>` The KMIP JSON TTLV key file
@@ -307,7 +307,7 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ### Usage
 `ckms cc keys wrap [options] <KEY_FILE_IN>
-[KEY_FILE_OUT]
+ [KEY_FILE_OUT]
 `
 ### Arguments
 ` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
@@ -332,7 +332,7 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ### Usage
 `ckms cc keys unwrap [options] <KEY_FILE_IN>
-[KEY_FILE_OUT]
+ [KEY_FILE_OUT]
 `
 ### Arguments
 ` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
@@ -495,7 +495,7 @@ Encrypt a file using Covercrypt
 
 ### Usage
 `ckms cc encrypt [options] <FILE>...
-<ENCRYPTION_POLICY>
+ <ENCRYPTION_POLICY>
 `
 ### Arguments
 ` <FILE>` The files to encrypt
@@ -687,7 +687,7 @@ Import one of the following:
 
 ### Usage
 `ckms certificates import [options] [CERTIFICATE_FILE]
-[CERTIFICATE_ID]
+ [CERTIFICATE_ID]
 `
 ### Arguments
 ` <CERTIFICATE_FILE>` The input file in PEM, KMIP-JSON-TTLV or PKCS#12 format
@@ -827,15 +827,15 @@ Export a key from the KMS
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
-- `json-ttlv` [default]. It should be the format to use to later re-import the key
-- `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
-- `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
-- `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
-- `spki-pem` and `spki-der` only apply to RSA and EC public keys
-- `raw` returns the raw bytes of
-    - symmetric keys
-    - Covercrypt keys
-    - wrapped keys
+ - `json-ttlv` [default]. It should be the format to use to later re-import the key
+ - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+ - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
+ - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+ - `spki-pem` and `spki-der` only apply to RSA and EC public keys
+ - `raw` returns the raw bytes of
+      - symmetric keys
+      - Covercrypt keys
+      - wrapped keys
 
 Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
 
@@ -861,7 +861,7 @@ Import a private or public key in the KMS.
 
 ### Usage
 `ckms ec keys import [options] <KEY_FILE>
-[KEY_ID]
+ [KEY_ID]
 `
 ### Arguments
 ` <KEY_FILE>` The KMIP JSON TTLV key file
@@ -898,7 +898,7 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ### Usage
 `ckms ec keys wrap [options] <KEY_FILE_IN>
-[KEY_FILE_OUT]
+ [KEY_FILE_OUT]
 `
 ### Arguments
 ` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
@@ -923,7 +923,7 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ### Usage
 `ckms ec keys unwrap [options] <KEY_FILE_IN>
-[KEY_FILE_OUT]
+ [KEY_FILE_OUT]
 `
 ### Arguments
 ` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
@@ -1095,15 +1095,15 @@ Manage RSA keys
 
 **`encrypt`** [[8.2]](#82-ckms-rsa-encrypt)  Encrypt a file with the given public key using either
 
-- CKM_RSA_PKCS_OAEP a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
-- RSA_OAEP AES_128_GCM
+ - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
+ - `RSA_OAEP` `AES_128_GCM`
 
 By default the hashing function used with RSA OAEP is set to SHA-256
 
 **`decrypt`** [[8.3]](#83-ckms-rsa-decrypt)  Decrypt a file with the given public key using either
 
-- CKM_RSA_PKCS_OAEP a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
-- RSA_OAEP AES_128_GCM
+ - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
+ - `RSA_OAEP` `AES_128_GCM`
 
 By default the hashing function used with RSA OAEP is set to SHA-256
 
@@ -1165,15 +1165,15 @@ Export a key from the KMS
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
-- `json-ttlv` [default]. It should be the format to use to later re-import the key
-- `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
-- `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
-- `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
-- `spki-pem` and `spki-der` only apply to RSA and EC public keys
-- `raw` returns the raw bytes of
-    - symmetric keys
-    - Covercrypt keys
-    - wrapped keys
+ - `json-ttlv` [default]. It should be the format to use to later re-import the key
+ - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+ - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
+ - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+ - `spki-pem` and `spki-der` only apply to RSA and EC public keys
+ - `raw` returns the raw bytes of
+      - symmetric keys
+      - Covercrypt keys
+      - wrapped keys
 
 Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
 
@@ -1199,7 +1199,7 @@ Import a private or public key in the KMS.
 
 ### Usage
 `ckms rsa keys import [options] <KEY_FILE>
-[KEY_ID]
+ [KEY_ID]
 `
 ### Arguments
 ` <KEY_FILE>` The KMIP JSON TTLV key file
@@ -1236,7 +1236,7 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ### Usage
 `ckms rsa keys wrap [options] <KEY_FILE_IN>
-[KEY_FILE_OUT]
+ [KEY_FILE_OUT]
 `
 ### Arguments
 ` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
@@ -1261,7 +1261,7 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ### Usage
 `ckms rsa keys unwrap [options] <KEY_FILE_IN>
-[KEY_FILE_OUT]
+ [KEY_FILE_OUT]
 `
 ### Arguments
 ` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
@@ -1316,8 +1316,8 @@ Destroy a public or private key
 
 Encrypt a file with the given public key using either
 
-- CKM_RSA_PKCS_OAEP a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
-- RSA_OAEP AES_128_GCM
+ - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
+ - `RSA_OAEP` `AES_128_GCM`
 
 By default the hashing function used with RSA OAEP is set to SHA-256
 
@@ -1351,8 +1351,8 @@ Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "
 
 Decrypt a file with the given public key using either
 
-- CKM_RSA_PKCS_OAEP a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
-- RSA_OAEP AES_128_GCM
+ - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
+ - `RSA_OAEP` `AES_128_GCM`
 
 By default the hashing function used with RSA OAEP is set to SHA-256
 
@@ -1472,15 +1472,15 @@ Export a key from the KMS
 
 `--key-format [-f] <KEY_FORMAT>` The format of the key
 
-- `json-ttlv` [default]. It should be the format to use to later re-import the key
-- `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
-- `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
-- `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
-- `spki-pem` and `spki-der` only apply to RSA and EC public keys
-- `raw` returns the raw bytes of
-    - symmetric keys
-    - Covercrypt keys
-    - wrapped keys
+ - `json-ttlv` [default]. It should be the format to use to later re-import the key
+ - `sec1-pem` and `sec1-der`only apply to NIST EC private keys (Not Curve25519 or X448)
+ - `pkcs1-pem` and `pkcs1-der` only apply to RSA private and public keys
+ - `pkcs8-pem` and `pkcs8-der` only apply to RSA and EC private keys
+ - `spki-pem` and `spki-der` only apply to RSA and EC public keys
+ - `raw` returns the raw bytes of
+      - symmetric keys
+      - Covercrypt keys
+      - wrapped keys
 
 Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der", "pkcs8-pem", "pkcs8-der", "spki-pem", "spki-der", "raw"` [default: `"json-ttlv"`]
 
@@ -1506,7 +1506,7 @@ Import a private or public key in the KMS.
 
 ### Usage
 `ckms sym keys import [options] <KEY_FILE>
-[KEY_ID]
+ [KEY_ID]
 `
 ### Arguments
 ` <KEY_FILE>` The KMIP JSON TTLV key file
@@ -1543,7 +1543,7 @@ Locally wrap a key in KMIP JSON TTLV format.
 
 ### Usage
 `ckms sym keys wrap [options] <KEY_FILE_IN>
-[KEY_FILE_OUT]
+ [KEY_FILE_OUT]
 `
 ### Arguments
 ` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to wrap
@@ -1568,7 +1568,7 @@ Locally unwrap a key in KMIP JSON TTLV format.
 
 ### Usage
 `ckms sym keys unwrap [options] <KEY_FILE_IN>
-[KEY_FILE_OUT]
+ [KEY_FILE_OUT]
 `
 ### Arguments
 ` <KEY_FILE_IN>` The KMIP JSON TTLV input key file to unwrap
@@ -1693,3 +1693,7 @@ Generate the CLI documentation as markdown
 `
 ### Arguments
 ` <MARKDOWN_FILE>` The file to export the markdown to
+
+
+
+

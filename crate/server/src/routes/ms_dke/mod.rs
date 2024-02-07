@@ -150,7 +150,7 @@ async fn _get_key(key_tag: &str, req_http: HttpRequest, kms: &Arc<KMSServer>) ->
                 if existing_path.ends_with('/') {
                     existing_path.pop();
                 }
-                dke_service_url.set_path(&format!("{}/{}/{}", existing_path, key_tag, key_id));
+                dke_service_url.set_path(&format!("{existing_path}/{key_tag}/{key_id}"));
                 Ok(KeyData {
                     key: DkePublicKey {
                         key_type: KeyType::RSA,

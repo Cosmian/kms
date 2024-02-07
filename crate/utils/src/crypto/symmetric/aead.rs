@@ -42,6 +42,7 @@ impl AeadCipher {
     }
 
     /// Get the tag size in bytes.
+    #[must_use]
     pub fn tag_size(&self) -> usize {
         match self {
             AeadCipher::Aes128Gcm => AES_128_GCM_MAC_LENGTH,
@@ -52,6 +53,7 @@ impl AeadCipher {
     }
 
     /// Get the nonce size in bytes.
+    #[must_use]
     pub fn nonce_size(&self) -> usize {
         match self {
             AeadCipher::Aes128Gcm => AES_128_GCM_IV_LENGTH,
@@ -62,6 +64,7 @@ impl AeadCipher {
     }
 
     /// Get the key size in bytes.
+    #[must_use]
     pub fn key_size(&self) -> usize {
         match self {
             AeadCipher::Aes128Gcm => AES_128_GCM_KEY_LENGTH,
@@ -111,8 +114,7 @@ impl AeadCipher {
                 }
             }
             other => kmip_utils_bail!(KmipUtilsError::NotSupported(format!(
-                "unsupported cryptographic algorithm: {} for a symmetric key",
-                other
+                "unsupported cryptographic algorithm: {other} for a symmetric key"
             ))),
         }
     }

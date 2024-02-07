@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use cosmian_kmip::{
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
@@ -61,7 +59,7 @@ pub fn unwrap_key_block(
         EncodingOption::TTLVEncoding => {
             let ciphertext = object_key_block.key_bytes()?;
             let plaintext = unwrap(unwrapping_key, key_wrapping_data, ciphertext.as_slice())?;
-            serde_json::from_slice::<KeyValue>(plaintext.deref())?
+            serde_json::from_slice::<KeyValue>(&plaintext)?
         }
         EncodingOption::NoEncoding => {
             let (ciphertext, attributes) = object_key_block.key_bytes_and_attributes()?;

@@ -103,7 +103,7 @@ Run PowerShell as Admin
 
  ```powershell
  Install-Module -Name AIPService
- ``` 
+ ```
 
 In case of troubles with the execution policy, try
 
@@ -200,6 +200,3 @@ you do not activate co-authoring.
 Activating the label (scope) for meetings does not seem to work.
 
 ![label scope](./label_scope.png)
-
-
-

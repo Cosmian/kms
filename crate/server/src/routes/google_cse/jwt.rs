@@ -25,6 +25,7 @@ fn get_jwks_uri(application: &str) -> String {
 }
 
 /// List the possible JWKS URI for all the supported application
+#[must_use]
 pub fn list_jwks_uri() -> Vec<String> {
     APPLICATIONS
         .iter()
@@ -61,7 +62,7 @@ pub fn jwt_authorization_config(jwks_manager: Arc<JwksManager>) -> HashMap<Strin
         .iter()
         .map(|app| {
             (
-                app.to_string(),
+                (*app).to_string(),
                 jwt_authorization_config_application(app, jwks_manager.clone()),
             )
         })

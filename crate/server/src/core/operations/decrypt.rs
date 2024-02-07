@@ -141,7 +141,7 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
                 .unwrap_or(
                     key_block
                         .cryptographic_algorithm()
-                        .cloned()
+                        .copied()
                         .unwrap_or(CryptographicAlgorithm::AES),
                 );
             let block_cipher_mode = request

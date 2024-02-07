@@ -1,4 +1,4 @@
-//! Implements the RSA Key Encryption Mechanism CKM_RSA_PKCS_OAEP
+//! Implements the RSA Key Encryption Mechanism `CKM_RSA_PKCS_OAEP`
 //! a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 //! http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
 //!
@@ -25,7 +25,7 @@ use crate::kmip_utils_bail;
 #[cfg(feature = "fips")]
 pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 2048;
 
-/// Key Wrap using CKM_RSA_PKCS_OAEP
+/// Key Wrap using `CKM_RSA_PKCS_OAEP`
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 /// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
 ///
@@ -48,7 +48,7 @@ pub fn ckm_rsa_pkcs_oaep_key_wrap(
     Ok(ciphertext)
 }
 
-/// Encryption using CKM_RSA_PKCS_OAEP
+/// Encryption using `CKM_RSA_PKCS_OAEP`
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 /// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
 ///
@@ -98,7 +98,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
     Ok((ctx, ciphertext))
 }
 
-/// Key Unwrap using CKM_RSA_PKCS_OAEP
+/// Key Unwrap using `CKM_RSA_PKCS_OAEP`
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 /// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
 ///
@@ -109,7 +109,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
 /// Arguments:
 /// - `pubkey`: the public key used to wrap the key
 /// - `hash_fn`: the hash function to use for OAEP
-/// - `wrapped_key`: the wrapped_key of the key to unwrap
+/// - `wrapped_key`: the `wrapped_key` of the key to unwrap
 pub fn ckm_rsa_pkcs_oaep_key_unwrap(
     priv_key: &PKey<Private>,
     hash_fn: HashingAlgorithm,
@@ -120,7 +120,7 @@ pub fn ckm_rsa_pkcs_oaep_key_unwrap(
     Ok(plaintext)
 }
 
-/// Decrypt using CKM_RSA_PKCS_OAEP
+/// Decrypt using `CKM_RSA_PKCS_OAEP`
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at
 /// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
 ///

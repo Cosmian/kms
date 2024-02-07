@@ -11,7 +11,7 @@ use cosmian_kmip::kmip::{
 
 use crate::{kms_error, result::KResult, routes::ms_dke::EncryptedData, tests::test_utils};
 
-const RSA_PRIVATE_KEY: &str = r#"
+const RSA_PRIVATE_KEY: &str = r"
 -----BEGIN PRIVATE KEY-----
 MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCNzNM2hQNhfdUO
 7hTM9F/a4ZNfCBnIpTP6VRvHNLcA7T8Zt+2+ozC7zKneXGXAfs70zLfa00wAlcm0
@@ -40,7 +40,7 @@ KLNVGWKs8oqvZIgRXhp3Yu4Kw41PKyQYPyQ91TAUbSvahkrNOwALmabx9OovNGtD
 3IvcjbcH8hlJ1MmqxObwe4Hun4A3/ekv0G08kIRpkBgVeVhY3MJ2uKo+3LIk5AMf
 jRuCab6FPsJq5BTA5QYDjR8=
 -----END PRIVATE KEY-----
-"#;
+";
 
 const ENCRYPTED_DATA: &str = r#"{
     "alg":"RSA-OAEP-256",
@@ -58,7 +58,7 @@ async fn decrypt_data_test() -> KResult<()> {
         .map_err(|e| kms_error!(format!("cannot parse RSA private key: {}", e)))?;
 
     let import_key = Import {
-        unique_identifier: UniqueIdentifier::TextString("".to_string()),
+        unique_identifier: UniqueIdentifier::TextString(String::new()),
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(true),
         key_wrap_type: None,

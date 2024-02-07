@@ -21,6 +21,7 @@ impl<const LENGTH: usize> Secret<LENGTH> {
     ///
     /// All bytes are initially set to 0.
     #[inline(always)]
+    #[must_use]
     pub fn new() -> Self {
         Self(Box::pin([0; LENGTH]))
     }
@@ -81,14 +82,14 @@ impl<const LENGTH: usize> DerefMut for Secret<LENGTH> {
 impl<const LENGTH: usize> Zeroize for Secret<LENGTH> {
     #[inline(always)]
     fn zeroize(&mut self) {
-        self.0.deref_mut().zeroize()
+        self.0.deref_mut().zeroize();
     }
 }
 
 impl<const LENGTH: usize> Drop for Secret<LENGTH> {
     #[inline(always)]
     fn drop(&mut self) {
-        self.zeroize()
+        self.zeroize();
     }
 }
 

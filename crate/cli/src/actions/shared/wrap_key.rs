@@ -1,4 +1,4 @@
-use std::{ops::Deref, path::PathBuf};
+use std::path::PathBuf;
 
 use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
@@ -89,7 +89,7 @@ impl WrapKeyAction {
             // Print the wrapping key for user. This is the only time that this wrapping key will be printed
             println!(
                 "Wrapping key: {}",
-                general_purpose::STANDARD.encode(key_bytes.deref())
+                general_purpose::STANDARD.encode(&*key_bytes)
             );
             symmetric_key_object
         } else if let Some(key_id) = &self.wrap_key_id {
