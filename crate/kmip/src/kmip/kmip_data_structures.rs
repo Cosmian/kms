@@ -1,4 +1,4 @@
-use std::{clone::Clone, ops::Deref};
+use std::clone::Clone;
 
 use num_bigint_dig::BigUint;
 use serde::{
@@ -439,12 +439,12 @@ impl Serialize for KeyMaterial {
         match self {
             Self::ByteString(bytes) => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
-                st.serialize_field("ByteString", bytes.deref())?;
+                st.serialize_field("ByteString", &**bytes)?;
                 st.end()
             }
             Self::TransparentSymmetricKey { key } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 1)?;
-                st.serialize_field("Key", key.deref())?;
+                st.serialize_field("Key", &**key)?;
                 st.end()
             }
             Self::TransparentDHPrivateKey { p, q, g, j, x } => {

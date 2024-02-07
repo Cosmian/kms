@@ -7,7 +7,6 @@ use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::wrap::wrap_key_block,
 };
-use zeroize::Zeroizing;
 
 use crate::{
     core::KMS,

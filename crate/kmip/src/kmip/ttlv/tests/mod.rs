@@ -225,7 +225,7 @@ fn test_serialization_deserialization() {
 
 #[test]
 fn test_ser_int() {
-    log_init("info,hyper=info,reqwest=info");
+    // log_init("info,hyper=info,reqwest=info");
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -245,7 +245,7 @@ fn test_ser_int() {
 
 #[test]
 fn test_ser_array() {
-    log_init("info,hyper=info,reqwest=info");
+    // log_init("info,hyper=info,reqwest=info");
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -263,7 +263,7 @@ fn test_ser_array() {
 
 #[test]
 fn test_ser_big_int() {
-    log_init("info,hyper=info,reqwest=info");
+    // log_init("info,hyper=info,reqwest=info");
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -402,7 +402,7 @@ fn test_key_material_vec_deserialization() {
     //log_init("info,hyper=info,reqwest=info");
     let bytes = Zeroizing::from(vec![
         116, 104, 105, 115, 95, 105, 115, 95, 97, 95, 116, 101, 115, 116,
-    ];
+    ]);
     let ttlv = TTLV {
         tag: "KeyMaterial".to_string(),
         value: TTLValue::Structure(vec![TTLV {

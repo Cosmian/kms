@@ -66,9 +66,9 @@ pub fn unwrap_key_block(
             let plain_text = unwrap(unwrapping_key, key_wrapping_data, &ciphertext)?;
             let key_material: KeyMaterial = match object_key_block.key_format_type {
                 KeyFormatType::TransparentSymmetricKey => KeyMaterial::TransparentSymmetricKey {
-                    key: plain_text.to_vec(),
+                    key: plain_text.to_vec().into(),
                 },
-                _ => KeyMaterial::ByteString(plain_text.to_vec()),
+                _ => KeyMaterial::ByteString(plain_text.to_vec().into()),
             };
             KeyValue {
                 key_material,
