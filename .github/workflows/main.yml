@@ -41,7 +41,7 @@ jobs:
   build_tests:
     uses: ./.github/workflows/build_all.yml
     secrets: inherit
-    if: github.event.schedule != '00 3 * * *' && !startsWith(github.ref, 'refs/tags')
+    if: github.event.schedule != '00 3 * * *' && !startsWith(github.ref, 'refs/tags') && github.ref != 'refs/heads/main'
     with:
       toolchain: nightly-2024-01-09
       release: false
