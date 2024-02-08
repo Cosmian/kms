@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_cli"
-version = "4.11.3"
+version = "4.12.0"
 edition = "2021"
 license-file = "../../LICENSE.md"
 description = "CLI used to manage the Cosmian KMS."

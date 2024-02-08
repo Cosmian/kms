@@ -4,7 +4,8 @@ name: CI release
 on:
   push:
     # any tags, including tags with / like v1.0/alpha
-    tags: '**'
+    tags:
+      - '**'
   schedule:
     # every day at 3 AM
     - cron: '00 3 * * *'
