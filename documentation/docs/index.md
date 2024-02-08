@@ -1,6 +1,10 @@
-The Cosmian Key Management System (KMS) is a high-performance, [**open-source**](#open-source), server application written in [**Rust**](https://www.rust-lang.org/) that provides a [**KMIP**](#kmip-21-api) REST API to store and manage keys used in many standard (AES, ECIES,...) cryptographic stacks as well as Cosmian cryptographic stacks ([**Covercrypt**](https://github.com/Cosmian/cover_crypt), [**Findex**](https://github.com/Cosmian/findex)). The KMS can also be used to perform encryption and decryption operations.
+The Cosmian Key Management System (KMS) is a high-performance, [**open-source**](https://github.com/Cosmian/kms), server application
+written in [**Rust**](https://www.rust-lang.org/) that provides a [**KMIP**](#kmip-21-api) REST API to store and manage
+keys used in many standard (AES, ECIES,...) cryptographic stacks as well as Cosmian cryptographic stacks ([**Covercrypt**](https://github.com/Cosmian/cover_crypt), [**Findex**](https://github.com/Cosmian/findex)). The KMS can also be used
+to perform encryption and decryption operations.
 
-The Cosmian KMS is designed to [operate in **zero-trust** environments](./zero_trust.md), such as the public cloud, using confidential VMs and a fully application-level encrypted database.
+The Cosmian KMS is designed to [operate in **zero-trust** environments](./zero_trust.md), such as the public cloud,
+using confidential VMs and a fully application-level encrypted database.
 
 !!! info "Quick start"
     To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
@@ -17,46 +21,70 @@ The Cosmian KMS is designed to [operate in **zero-trust** environments](./zero_t
 
     Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.11.3/).
 
-
-# Table of contents
-
-<!-- toc -->
-
-- [Open source](#open-source)
-- [KMIP 2.1 API](#kmip-21-api)
-- [State-of-the-art authentication](#state-of-the-art-authentication)
-- [High-availability and databases](#high-availability-and-databases)
-- [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-cloud-or-other-zero-trust-environments)
-- [Support for object tagging](#support-for-object-tagging)
-- [Command line interface client](#command-line-interface-client)
-- [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
-- [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
-- [Comprehensive inline help](#comprehensive-inline-help)
+<!-- TOC -->
+* [Business source](#business-source)
+* [KMIP 2.1 API](#kmip-21-api)
+* [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
+* [Supports Microsoft Double Key Encryption](#supports-microsoft-double-key-encryption)
+* [FIPS Mode](#fips-mode)
+* [State-of-the-art authentication](#state-of-the-art-authentication)
+* [High-availability and databases](#high-availability-and-databases)
+* [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-cloud-or-other-zero-trust-environments)
+* [Support for object tagging](#support-for-object-tagging)
+* [Command line interface client](#command-line-interface-client)
+* [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
+* [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
+* [Comprehensive inline help](#comprehensive-inline-help)
   * [Options help](#options-help)
+  * [Using a TOML configuration file](#using-a-toml-configuration-file)
+<!-- TOC -->
 
-<!-- tocstop -->
+#### Business source
 
-#### Open source
-
-The server's code is open-sourced on [Github](https://github.com/Cosmian/kms) so that it can be audited and improved by anyone.
+The server's source code is fully available on [Github](https://github.com/Cosmian/kms) so that it can be audited and
+improved by anyone.
 
 #### KMIP 2.1 API
 
-The Cosmian KMS server exposes a **KMIP 2.1** REST API on the `/kmip_2_1` endpoint that follows the [JSON profile](https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/os/kmip-profiles-v2.1-os.html#_Toc32324415) of the OASIS-normalized [KMIP 2.1 specifications](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html).
+The Cosmian KMS server exposes a **KMIP 2.1** REST API on the `/kmip_2_1` endpoint that follows
+the [JSON profile](https://docs.oasis-open.org/kmip/kmip-profiles/v2.1/os/kmip-profiles-v2.1-os.html#_Toc32324415) of
+the
+OASIS-normalized [KMIP 2.1 specifications](https://docs.oasis-open.org/kmip/kmip-spec/v2.1/cs01/kmip-spec-v2.1-cs01.html).
 
 Check the [KMIP 2.1](./kmip_2_1/index.md) page for details.
 
+#### Supports Google Workspace Client Side Encryption
+
+The KMS server can be used as a Key Management System for the Google Workspace Client Side Encryption feature.
+Please check the [Google Workspace Client Side Encryption](./google_cse/google_cse.md) page for details.
+
+#### Supports Microsoft Double Key Encryption
+
+The KMS server can be used as a Key Management System for the Microsoft Double Key Encryption feature.
+Please check the [Microsoft Double Key Encryption](./ms_dke/ms_dke.md) page for details.
+
+#### FIPS Mode
+
+The server exposes all lot of advanced [cryptographic algorithms](algorithms.md) and can also be run in [FIPS
+mode](./fips.md).
+In this mode, the server is only built with FIPS 140-2 validated cryptographic libraries and the cryptographic
+operations are performed in a FIPS 140-2 validated mode.
+
 #### State-of-the-art authentication
 
-State-of-the-art authentication facilitates integration with existing IT infrastructure and allows single sign-on scenarios.
+State-of-the-art authentication facilitates integration with existing IT infrastructure and allows single sign-on
+scenarios.
 
-Server access is secured using native TLS combined with [Open ID-compliant](https://openid.net/) JWT access tokens or TLS client certificates.
+Server access is secured using native TLS combined with [Open ID-compliant](https://openid.net/) JWT access tokens or
+TLS client certificates.
 
-Check the enabling [TLS documentation](./tls.md) as well as the [authentication documentation](./authentication.md) for details.
+Check the enabling [TLS documentation](./tls.md) as well as the [authentication documentation](./authentication.md) for
+details.
 
 #### High-availability and databases
 
-The Cosmian KMS may be deployed either in [single-server mode](./single_server_mode.md) or for [high availability](./high_availability_mode.md)
+The Cosmian KMS may be deployed either in [single-server mode](./single_server_mode.md) or
+for [high availability](./high_availability_mode.md)
 using simple horizontal scaling of the servers.
 
 For additional security, the server supports concurrent user encrypted databases in single-server mode
@@ -82,7 +110,8 @@ In addition, the KMS server will automatically add a system tag based on the obj
 - `_uk`: for a Covercrypt user decryption key
 - `_cert`: for a X509 certificate
 
-In addition for the X509 certificate, KMIP Certificate object not having a `key block` with `Attributes`, the following tags are also added:
+In addition for the X509 certificate, KMIP Certificate object not having a `key block` with `Attributes`, the following
+tags are also added:
 
 - `_cert_uid=<certificate_uid>` added on private key and public key to establish the link with the certificate
 - `_cert_spki=<hash>` added on X509 certificates where the Subject Public Key Identifier is the hash of the public key
@@ -94,20 +123,23 @@ Use the tags to export objects, locate them, or request data encryption and decr
 
 The KMS has an easy-to-use command line interface client built for many operating systems.
 
- The **`ckms`** CLI can manage the server, and the keys and perform operations such as encryption or decryption.
+The **`ckms`** CLI can manage the server, and the keys and perform operations such as encryption or decryption.
 
- Check the [ckms documentation](./cli/cli.md) for details.
+Check the [ckms documentation](./cli/cli.md) for details.
 
 #### Easy to deploy: Docker image and pre-built binaries
 
-The KMS server is available as a Docker image on the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
+The KMS server is available as a Docker image on
+the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
-Raw binaries for multiple operating systems are also available on the [Cosmian public packages repository](https://package.cosmian.com/kms/4.11.3/)
+Raw binaries for multiple operating systems are also available on
+the [Cosmian public packages repository](https://package.cosmian.com/kms/4.11.3/)
 
 #### Integrated with Cloudproof libraries
 
 To build the next generation of privacy-by-design applications with end-to-end encryption,
-the KMS server is integrated with the [**Cloudproof**](https://docs.cosmian.com/cloudproof_encryption/how_it_works/) libraries
+the KMS server is integrated with the [**Cloudproof**](https://docs.cosmian.com/cloudproof_encryption/how_it_works/)
+libraries
 to deliver keys and secrets to the client-side cryptographic stacks or perform delegated encryption and decryption.
 
 The libraries are available in many languages, including Javascript, Java, Dart, and Python.
@@ -261,9 +293,58 @@ Options:
 
           [env: KMS_GOOGLE_CSE_KACLS_URL=]
 
+      --ms-dke-service-url <MS_DKE_SERVICE_URL>
+          This setting enables the Microsoft Double Key Encryption service feature of this server.
+
+          It should contain the external URL of this server as configured in Azure App Registrations
+          as the DKE Service (https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store)
+
+          The URL should be something like <https://cse.my_domain.com/ms_dke>
+
+          [env: KMS_MS_DKE_SERVICE_URL=]
+
   -h, --help
           Print help (see a summary with '-h')
 
   -V, --version
           Print version
+```
+
+##### Using a TOML configuration file
+
+If a file is found at /etc/cosmian_kms/server.toml, the KMS server will use it to configure itself.
+The location of the file can be changed using the `COSMIAN_KMS_CONF` environment variable.
+
+The file should be a TOML file with the following structure:
+
+
+```toml
+default_username = "[default username]"
+force_default_username = false
+google_cse_kacls_url = "[google cse kacls url]"
+ms_dke_service_url = "[ms dke service url]"
+
+[db]
+database_type = "[redis-findex, postgresql,...]"
+database_url = "[redis urls]"
+sqlite_path = "[sqlite path]"
+redis_master_password = "[redis master password]"
+redis_findex_label = "[redis findex label]"
+clear_database = false
+
+[http]
+port = 443
+hostname = "[hostname]"
+https_p12_file = "[https p12 file]"
+https_p12_password = "[https p12 password]"
+authority_cert_file = "[authority cert file]"
+
+[auth]
+jwt_issuer_uri = "[jwt issuer uri]"
+jwks_uri = "[jwks uri]"
+jwt_audience = "[jwt audience]"
+
+[workspace]
+root_data_path = "[root data path]"
+tmp_path = "[tmp path]"
 ```

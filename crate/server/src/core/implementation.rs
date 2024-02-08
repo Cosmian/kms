@@ -1,13 +1,10 @@
 use std::collections::HashSet;
 
 use cloudproof::reexport::{cover_crypt::Covercrypt, crypto_core::FixedSizeCBytes};
-use cosmian_kmip::{
-    kmip::{
-        kmip_objects::Object,
-        kmip_operations::{Create, CreateKeyPair},
-        kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve, StateEnumeration},
-    },
-    openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_operations::{Create, CreateKeyPair},
+    kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_utils::crypto::elliptic_curves::operation::{
@@ -16,32 +13,28 @@ use cosmian_kms_utils::crypto::elliptic_curves::operation::{
 use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
     crypto::{
-        cover_crypt::{decryption::CovercryptDecryption, encryption::CoverCryptEncryption},
         elliptic_curves::operation::{
             create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
         },
-        hybrid_encryption::{HybridDecryptionSystem, HybridEncryptionSystem},
         rsa::operation::create_rsa_key_pair,
         secret::Secret,
-        symmetric::{create_symmetric_key_kmip_object, AesGcmSystem, AES_256_GCM_KEY_LENGTH},
+        symmetric::{create_symmetric_key_kmip_object, AES_256_GCM_KEY_LENGTH},
     },
     tagging::{check_user_tags, get_tags, remove_tags},
-    DecryptionSystem, EncryptionSystem, KeyPair,
+    KeyPair,
 };
 use openssl::{nid::Nid, rand::rand_bytes};
+use tracing::trace;
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
-use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
 use super::{cover_crypt::create_user_decryption_key, KMS};
 use crate::{
     config::{DbParams, ServerParams},
-    core::operations::unwrap_key,
     database::{
         cached_sqlcipher::CachedSqlCipher,
         mysql::MySqlPool,
-        object_with_metadata::ObjectWithMetadata,
         pgsql::PgPool,
         redis::{RedisWithFindex, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH},
         sqlite::SqlitePool,
@@ -97,144 +90,6 @@ impl KMS {
             params: shared_config,
             db,
         })
-    }
-
-    /// Return an encryption system based on the type of key
-    pub async fn get_encryption_system(
-        &self,
-        mut owm: ObjectWithMetadata,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Box<dyn EncryptionSystem>> {
-        trace!("get_encryption_system: entering: object id: {}", owm.id);
-        // the key must be active
-        if owm.state != StateEnumeration::Active {
-            kms_bail!(KmsError::InconsistentOperation(
-                "the server can't encrypt: the key is not active".to_owned()
-            ));
-        }
-
-        // unwrap if wrapped
-        match &owm.object {
-            Object::Certificate { .. } => {}
-            _ => {
-                if owm.object.key_wrapping_data().is_some() {
-                    let key_block = owm.object.key_block_mut()?;
-                    unwrap_key(key_block, self, &owm.owner, params).await?;
-                }
-            }
-        }
-        trace!("get_encryption_system: unwrap done (if required)");
-
-        let encryption_system = match &owm.object {
-            Object::SymmetricKey { key_block } => match &key_block.key_format_type {
-                KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
-                    match &key_block.cryptographic_algorithm {
-                        Some(CryptographicAlgorithm::AES) => {
-                            Ok(Box::new(AesGcmSystem::instantiate(&owm.id, &owm.object)?)
-                                as Box<dyn EncryptionSystem>)
-                        }
-                        other => {
-                            kms_not_supported!(
-                                "symmetric encryption with algorithm: {}",
-                                other.map_or("[N/A]".to_string(), |alg| alg.to_string())
-                            )
-                        }
-                    }
-                }
-                other => kms_not_supported!("encryption with keys of format: {other}"),
-            },
-            Object::PublicKey { key_block } => match &key_block.key_format_type {
-                KeyFormatType::CoverCryptPublicKey => Ok(Box::new(
-                    CoverCryptEncryption::instantiate(Covercrypt::default(), &owm.id, &owm.object)?,
-                )
-                    as Box<dyn EncryptionSystem>),
-                KeyFormatType::TransparentECPublicKey
-                | KeyFormatType::TransparentRSAPublicKey
-                | KeyFormatType::PKCS1
-                | KeyFormatType::PKCS8 => {
-                    trace!(
-                        "get_encryption_system: matching on key format type: {:?}",
-                        key_block.key_format_type
-                    );
-                    let public_key = kmip_public_key_to_openssl(&owm.object)?;
-                    trace!(
-                        "get_encryption_system: OpenSSL Public Key instantiated before encryption"
-                    );
-                    Ok(
-                        Box::new(HybridEncryptionSystem::new(&owm.id, public_key, false))
-                            as Box<dyn EncryptionSystem>,
-                    )
-                }
-                other => kms_not_supported!("encryption with public keys of format: {other}"),
-            },
-            Object::Certificate {
-                certificate_value, ..
-            } => Ok(
-                Box::new(HybridEncryptionSystem::instantiate_with_certificate(
-                    &owm.id,
-                    certificate_value,
-                    false,
-                )?) as Box<dyn EncryptionSystem>,
-            ),
-            other => kms_not_supported!("encryption with keys of type: {}", other.object_type()),
-        };
-        trace!("get_encryption_system: exiting");
-        encryption_system
-    }
-
-    /// Return a decryption system based on the type of key
-    pub(crate) async fn get_decryption_system(
-        &self,
-        cover_crypt: Covercrypt,
-        mut owm: ObjectWithMetadata,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Box<dyn DecryptionSystem>> {
-        debug!("get_decryption_system: entering");
-        // unwrap if wrapped
-        if owm.object.key_wrapping_data().is_some() {
-            let key_block = owm.object.key_block_mut()?;
-            unwrap_key(key_block, self, &owm.owner, params).await?;
-        }
-
-        trace!(
-            "get_decryption_system: matching on object: {:?}",
-            owm.object
-        );
-        match &owm.object {
-            Object::PrivateKey { key_block } => match &key_block.key_format_type {
-                KeyFormatType::CoverCryptSecretKey => Ok(Box::new(
-                    CovercryptDecryption::instantiate(cover_crypt, &owm.id, &owm.object)?,
-                )),
-                KeyFormatType::PKCS8
-                | KeyFormatType::PKCS1
-                | KeyFormatType::TransparentRSAPrivateKey
-                | KeyFormatType::TransparentECPrivateKey => {
-                    let p_key = kmip_private_key_to_openssl(&owm.object)?;
-                    Ok(
-                        Box::new(HybridDecryptionSystem::new(Some(owm.id), p_key, false))
-                            as Box<dyn DecryptionSystem>,
-                    )
-                }
-                other => kms_not_supported!("decryption with keys of format: {other}"),
-            },
-            Object::SymmetricKey { key_block } => match &key_block.key_format_type {
-                KeyFormatType::TransparentSymmetricKey | KeyFormatType::Raw => {
-                    match &key_block.cryptographic_algorithm {
-                        Some(CryptographicAlgorithm::AES) => {
-                            Ok(Box::new(AesGcmSystem::instantiate(&owm.id, &owm.object)?))
-                        }
-                        other => {
-                            kms_not_supported!(
-                                "symmetric decryption with algorithm: {}",
-                                other.map_or("[N/A]".to_string(), |alg| alg.to_string())
-                            )
-                        }
-                    }
-                }
-                other => kms_not_supported!("decryption with keys of format: {other}"),
-            },
-            other => kms_not_supported!("decryption with keys of type: {}", other.object_type()),
-        }
     }
 
     /// Create a new symmetric key and the corresponding system tags

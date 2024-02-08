@@ -42,3 +42,18 @@ jobs:
 
   python_and_docker:
     uses: ./.github/workflows/build_and_test_docker_image.yml
+
+  public_documentation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Deploy documentation in staging
+        if: ${{ github.ref_name == 'develop' }}
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: staging.yml
+          repo: Cosmian/public_documentation
+          ref: develop
+          token: ${{ secrets.PAT_TOKEN }}

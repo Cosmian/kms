@@ -776,7 +776,7 @@ where
     let perms = list_user_access_rights_on_object_(uid, userid, true, executor)
         .await?
         .difference(&operation_types)
-        .cloned()
+        .copied()
         .collect::<HashSet<_>>();
 
     // No remaining permissions, delete the row

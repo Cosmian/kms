@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    ops::Deref,
     path::PathBuf,
     sync::Arc,
 };
@@ -69,14 +68,14 @@ impl RedisWithFindex {
         kdf256!(
             &mut findex_key,
             REDIS_WITH_FINDEX_MASTER_FINDEX_KEY_DERIVATION_SALT,
-            master_key.deref()
+            &*master_key
         );
         // derive a DB Key
         let mut db_key = SymmetricKey::<DB_KEY_LENGTH>::default();
         kdf256!(
             &mut db_key,
             REDIS_WITH_FINDEX_MASTER_DB_KEY_DERIVATION_SALT,
-            master_key.deref()
+            &*master_key
         );
 
         let client = redis::Client::open(redis_url)?;

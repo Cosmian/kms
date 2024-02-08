@@ -42,6 +42,8 @@ plugins:
   - meta-descriptions
 nav:
   - Getting started with the Cosmian KMS: index.md
+  - FIPS mode: fips.md
+  - Cryptographic algorithms: algorithms.md
   - Enabling TLS: tls.md
   - Deploying in single server mode: single_server_mode.md
   - Deploying for high-availability: high_availability_mode.md
@@ -55,8 +57,6 @@ nav:
   - KMIP 2.1:
       - Introduction: kmip_2_1/index.md
       - Supported Objects: kmip_2_1/objects.md
-      - Supported algorithms: kmip_2_1/algorithms.md
-      - FIPS mode: kmip_2_1/fips.md
       - Supported Formats: kmip_2_1/formats.md
       - Objects Tagging: kmip_2_1/tagging.md
       - Attributes Extensions: kmip_2_1/attributes.md
@@ -76,8 +76,9 @@ nav:
       - Locate: kmip_2_1/_locate.md
       - Re-Key Key Pair: kmip_2_1/_re-key_key_pair.md
       - Revoke: kmip_2_1/_revoke.md
-  - Google workspace client-side encryption:
+  - Google workspace client-side encryption (CSE):
       - Getting started with Google Workspace CSE: google_cse/google_cse.md
       - Setting up a well-known file web server: google_cse/configuring-the-well-known-server.md
       - Configuring the well-known file: google_cse/configuring-the-well-known-file.md
+  - Microsoft double key encryption (DKE): ms_dke/ms_dke.md
   - Zeroization: zeroization.md

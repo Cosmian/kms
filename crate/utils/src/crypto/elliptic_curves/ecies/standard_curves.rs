@@ -1,36 +1,36 @@
 use num_bigint_dig::algorithms::idiv_ceil;
-#[cfg(feature = "fips")]
-use openssl::nid::Nid;
 use openssl::{
     bn::BigNumContext,
     ec::{EcGroupRef, EcKey, EcPoint, EcPointRef, PointConversionForm},
     hash::{Hasher, MessageDigest},
+    nid::Nid,
     pkey::{PKey, Private, Public},
-    symm::{decrypt_aead, encrypt_aead, Cipher},
 };
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::symmetric::{AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH},
-    error::KmipUtilsError,
+    crypto::symmetric::aead::{aead_decrypt, aead_encrypt, AeadCipher},
+    error::{result::CryptoResultHelper, KmipUtilsError},
     kmip_utils_bail,
 };
 
-/// Derive a 128-byte initialization vector from recipient public key `Q` and
-/// ephemeral public key `R` using SHAKE128.
+/// Derive an initialization vector from recipient public key `Q` and
+/// ephemeral public key `R` using the supplied hashing algorithm.
 #[allow(non_snake_case)]
 fn ecies_get_iv(
     Q: &EcPointRef,
     R: &EcPointRef,
     curve: &EcGroupRef,
+    iv_size: usize,
+    message_digest: MessageDigest,
 ) -> Result<Vec<u8>, KmipUtilsError> {
     let mut ctx = BigNumContext::new_secure()?;
     let Q_bytes = Q.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
     let R_bytes = R.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
 
-    let mut iv = vec![0; AES_256_GCM_IV_LENGTH];
+    let mut iv = vec![0; iv_size];
 
-    let mut hasher = Hasher::new(MessageDigest::shake_128())?;
+    let mut hasher = Hasher::new(message_digest)?;
     hasher.update(&R_bytes)?;
     hasher.update(&Q_bytes)?;
     hasher.finish_xof(&mut iv)?;
@@ -38,22 +38,28 @@ fn ecies_get_iv(
     Ok(iv)
 }
 
-/// Derive S into the 256-bit symmetric secret key using SHAKE128.
+/// Derive S into the symmetric secret key using SHAKE128.
 #[allow(non_snake_case)]
-fn ecies_get_key(S: &EcPointRef, curve: &EcGroupRef) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
+fn ecies_get_key(
+    S: &EcPointRef,
+    curve: &EcGroupRef,
+    key_size: usize,
+    message_digest: MessageDigest,
+) -> Result<Vec<u8>, KmipUtilsError> {
     let mut ctx = BigNumContext::new_secure()?;
-    let S_bytes = Zeroizing::from(S.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?);
+    let S_bytes = S.to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
 
-    let mut key = Zeroizing::from(vec![0; AES_256_GCM_KEY_LENGTH]);
+    let mut key = vec![0; key_size];
 
-    let mut hasher = Hasher::new(MessageDigest::shake_128())?;
+    let mut hasher = Hasher::new(message_digest)?;
     hasher.update(&S_bytes)?;
     hasher.finish_xof(&mut key)?;
 
     Ok(key)
 }
 
-/// Encrypt `plaintext` data using `pubkey` public key following ECIES.
+/// When using standard curves, the hashing algorithm is SHAKE128, the
+/// AEAD is AES 128 GCM and the following ECIES algorithm is used:
 ///
 /// Generate a random `r` and compute `R = rG` with `G` the curve generator.
 /// Using target pubic key `pubkey` we will call `Q`, compute `S = rQ`. `S` is
@@ -70,11 +76,7 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
     let mut ctx = BigNumContext::new_secure()?;
     let Q = pubkey.ec_key()?;
     let curve = Q.group();
-
-    #[cfg(feature = "fips")]
-    if curve.curve_name() == Some(Nid::X9_62_PRIME192V1) {
-        kmip_utils_bail!("ECIES: Curve P-192 not allowed in FIPS mode.")
-    }
+    let (aead, md) = aead_and_digest(curve)?;
 
     // Generating random ephemeral private key `r` and associated public key
     // `R`.
@@ -85,55 +87,42 @@ pub fn ecies_encrypt(pubkey: &PKey<Public>, plaintext: &[u8]) -> Result<Vec<u8>,
     let mut S = EcPoint::new(curve)?;
     S.mul(curve, Q.public_key(), r.private_key(), &ctx)?;
 
-    let key = ecies_get_key(&S, curve)?;
-    let iv = ecies_get_iv(Q.public_key(), R.public_key(), curve)?;
+    let key = ecies_get_key(&S, curve, aead.key_size(), md)?;
+    let iv = ecies_get_iv(Q.public_key(), R.public_key(), curve, aead.nonce_size(), md)?;
 
-    let mut tag = vec![0; AES_256_GCM_MAC_LENGTH];
-
-    let ct: Vec<u8> = encrypt_aead(
-        Cipher::aes_256_gcm(),
-        &key,
-        Some(&iv),
-        &[],
-        plaintext,
-        tag.as_mut(),
-    )?;
+    // Encrypt data using the provided.
+    let (ciphertext, tag) = aead_encrypt(aead, &key, &iv, &[], plaintext)?;
 
     let R_bytes = R
         .public_key()
         .to_bytes(curve, PointConversionForm::COMPRESSED, &mut ctx)?;
 
-    Ok([R_bytes, ct, tag].concat())
+    Ok([R_bytes, ciphertext, tag].concat())
 }
 
-/// Decrypt `ciphertext` data using `privkey` private key following ECIES.
+/// When using standard curves, the hashing algorithm is SHAKE128, the
+/// AEAD is AES 128 GCM and the following ECIES algorithm is used:
 ///
-/// `ciphertext` is a concatanation of `R | ct | tag` with `|` the concatenation
+/// `ciphertext` is a concatenation of `R | ct | tag` with `|` the concatenation
 /// operator, `R` the ephemeral public key on the curve, `ct` the encrypted data
 /// and `tag` the authentication tag forged during encryption.
 ///
 /// The IV for decryption is computed by taking the hash of the recipient public
 /// key and the ephemeral public key.
-///
-/// Return the plaintext.
 #[allow(non_snake_case)]
 pub fn ecies_decrypt(
-    privkey: &PKey<Private>,
+    private_key: &PKey<Private>,
     ciphertext: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let mut ctx = BigNumContext::new_secure()?;
-    let d = privkey.ec_key()?;
+    let d = private_key.ec_key()?;
     let curve = d.group();
-
-    #[cfg(feature = "fips")]
-    if curve.curve_name() == Some(Nid::X9_62_PRIME192V1) {
-        kmip_utils_bail!("ECIES: Curve P-192 not allowed in FIPS mode.")
-    }
+    let (aead, md) = aead_and_digest(curve)?;
 
     // OpenSSL stored compressed coordinates with one extra byte for some
     // reason hence the + 1 at the end.
     let pubkey_vec_size = idiv_ceil(curve.order_bits() as usize, 8) + 1;
-    if ciphertext.len() <= pubkey_vec_size + AES_256_GCM_MAC_LENGTH {
+    if ciphertext.len() <= pubkey_vec_size + aead.tag_size() {
         kmip_utils_bail!("ECIES: Decryption error: invalid ciphertext.")
     }
 
@@ -141,7 +130,7 @@ pub fn ecies_decrypt(
     // and `ct` of variable size and `tag` of size 128 bits.
     let R_bytes = &ciphertext[..pubkey_vec_size];
 
-    let ct_offset = ciphertext.len() - AES_256_GCM_MAC_LENGTH;
+    let ct_offset = ciphertext.len() - aead.tag_size();
     let ct = &ciphertext[pubkey_vec_size..ct_offset];
 
     let tag = &ciphertext[ct_offset..];
@@ -152,29 +141,35 @@ pub fn ecies_decrypt(
     let mut S = EcPoint::new(curve)?;
     S.mul(curve, &R, d.private_key(), &ctx)?;
 
-    let iv = ecies_get_iv(d.public_key(), &R, curve)?;
-    let key = ecies_get_key(&S, curve)?;
+    let iv = ecies_get_iv(d.public_key(), &R, curve, aead.nonce_size(), md)?;
+    let key = ecies_get_key(&S, curve, aead.key_size(), md)?;
 
-    let plaintext = Zeroizing::from(decrypt_aead(
-        Cipher::aes_256_gcm(),
-        &key,
-        Some(&iv),
-        &[],
-        ct,
-        tag,
-    )?);
+    // We could use ou own aead to offer more DEM options.
+    let plaintext = aead_decrypt(aead, &key, &iv, &[], ct, tag)?;
 
     Ok(plaintext)
 }
 
+fn aead_and_digest(curve: &EcGroupRef) -> Result<(AeadCipher, MessageDigest), KmipUtilsError> {
+    let (aead, md) = match curve.curve_name().context("Unsupported curve")? {
+        Nid::SECP384R1 | Nid::SECP521R1 => (AeadCipher::Aes256Gcm, MessageDigest::shake_256()),
+        Nid::X9_62_PRIME256V1 | Nid::SECP224R1 | Nid::X9_62_PRIME192V1 => {
+            (AeadCipher::Aes128Gcm, MessageDigest::shake_128())
+        }
+        other => kmip_utils_bail!("Unsupported curve: {:?}", other),
+    };
+    Ok((aead, md))
+}
+
 #[cfg(test)]
 mod tests {
+    use std::ops::Deref;
+
     use openssl::{
         ec::{EcGroup, EcKey},
         nid::Nid,
         pkey::PKey,
     };
-    use zeroize::Zeroizing;
 
     use super::{ecies_decrypt, ecies_encrypt};
 
@@ -186,12 +181,12 @@ mod tests {
         let pubkey = PKey::from_ec_key(ec_pubkey).unwrap();
         let privkey = PKey::from_ec_key(ec_privkey).unwrap();
 
-        let plaintext = Zeroizing::from("i love pancakes".as_bytes().to_vec());
+        let plaintext = "i love pancakes".as_bytes();
 
-        let ct = ecies_encrypt(&pubkey, &plaintext).unwrap();
+        let ct = ecies_encrypt(&pubkey, plaintext).unwrap();
         let pt = ecies_decrypt(&privkey, &ct).unwrap();
 
-        assert_eq!(plaintext, pt);
+        assert_eq!(plaintext, pt.deref());
     }
 
     #[test]

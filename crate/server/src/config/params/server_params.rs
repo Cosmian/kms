@@ -53,6 +53,15 @@ pub struct ServerParams {
     /// For instance, if this server is running on domain `cse.my_domain.com`,
     /// the URL should be something like <https://cse.my_domain.com/google_cse>
     pub google_cse_kacls_url: Option<String>,
+
+    /// This setting enables the Microsoft Double Key Encryption service feature of this server.
+    ///
+    /// It should contain the external URL of this server as configured in
+    /// App Registrations of Azure as the DKE Service.
+    /// Check this link: https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store
+    ///
+    /// The URL should be something like <https://cse.my_domain.com/ms_dke>
+    pub ms_dke_service_url: Option<String>,
 }
 
 impl ServerParams {
@@ -91,6 +100,7 @@ impl ServerParams {
             force_default_username: conf.force_default_username,
             client_cert: verify_cert,
             google_cse_kacls_url: conf.google_cse_kacls_url.clone(),
+            ms_dke_service_url: conf.ms_dke_service_url.clone(),
         };
         Ok(server_conf)
     }
@@ -142,6 +152,12 @@ impl fmt::Debug for ServerParams {
             .field("default_username", &self.default_username)
             .field("force_default_username", &self.force_default_username);
         let x = x.field("http_params", &self.http_params);
+        let x = if let Some(google_cse_kacls_url) = &self.google_cse_kacls_url {
+            x.field("google_cse_kacls_url", &google_cse_kacls_url)
+        } else {
+            x
+        };
+        let x = x.field("ms_dke_service_url", &self.ms_dke_service_url);
         x.finish()
     }
 }
@@ -165,6 +181,7 @@ impl Clone for ServerParams {
             http_params: HttpParams::Http,
             client_cert: self.client_cert.clone(),
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
+            ms_dke_service_url: self.ms_dke_service_url.clone(),
         }
     }
 }

@@ -3,16 +3,18 @@ use std::process::Command;
 use assert_cmd::prelude::*;
 
 #[cfg(not(feature = "fips"))]
-use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
+use crate::tests::{
+    access::{grant_access, revoke_access},
+    cover_crypt::{
+        master_key_pair::create_cc_master_key_pair,
+        user_decryption_keys::create_user_decryption_key,
+    },
+};
 use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        access::{grant_access, revoke_access},
-        cover_crypt::{
-            master_key_pair::create_cc_master_key_pair,
-            user_decryption_keys::create_user_decryption_key,
-        },
+        elliptic_curve::create_key_pair::create_ec_key_pair,
         symmetric::create_key::create_symmetric_key,
         utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
@@ -61,6 +63,7 @@ pub fn locate(
     ))
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     // init the test server
@@ -202,7 +205,6 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     Ok(())
 }
 
-#[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     // init the test server
@@ -210,7 +212,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
 
     // generate a new key pair
     let (private_key_id, public_key_id) =
-        create_ec_key_pair(&ctx.owner_cli_conf_path, &["test_ec"])?;
+        create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &["test_ec"])?;
 
     // Locate with Tags
     let ids = locate(
@@ -358,6 +360,7 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_locate_grant() -> Result<(), CliError> {
     // init the test server

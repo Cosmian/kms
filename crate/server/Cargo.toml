@@ -56,10 +56,11 @@ hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
 josekit = { workspace = true }
 lazy_static = "1.4"
+num-bigint-dig = { workspace = true }
 openssl = { workspace = true }
 rawsql = "0.1"
 redis = { workspace = true }
-reqwest = { workspace = true, features = ["blocking"] }
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { version = "0.7.3", default-features = false, features = [
@@ -83,7 +84,7 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = "3.4"
-cosmian_logger = { path = "../logger" }
+pem = "3.0.3"
 
 [build-dependencies]
 time = { workspace = true, features = ["local-offset", "formatting"] }

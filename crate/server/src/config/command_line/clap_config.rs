@@ -18,6 +18,7 @@ impl Default for ClapConfig {
             force_default_username: false,
             jwe: JWEConfig::default(),
             google_cse_kacls_url: None,
+            ms_dke_service_url: None,
         }
     }
 }
@@ -57,6 +58,15 @@ pub struct ClapConfig {
     /// the URL should be something like <https://cse.my_domain.com/google_cse>
     #[clap(long, env = "KMS_GOOGLE_CSE_KACLS_URL")]
     pub google_cse_kacls_url: Option<String>,
+
+    /// This setting enables the Microsoft Double Key Encryption service feature of this server.
+    ///
+    /// It should contain the external URL of this server as configured in Azure App Registrations
+    /// as the DKE Service (https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store)
+    ///
+    /// The URL should be something like <https://cse.my_domain.com/ms_dke>
+    #[clap(verbatim_doc_comment, long, env = "KMS_MS_DKE_SERVICE_URL")]
+    pub ms_dke_service_url: Option<String>,
 }
 
 impl fmt::Debug for ClapConfig {
@@ -75,6 +85,10 @@ impl fmt::Debug for ClapConfig {
         let x = x.field(
             "Google Workspace CSE, KACLS Url",
             &self.google_cse_kacls_url,
+        );
+        let x = x.field(
+            "Microsoft Double Key Encryption URL",
+            &self.ms_dke_service_url,
         );
         x.finish()
     }

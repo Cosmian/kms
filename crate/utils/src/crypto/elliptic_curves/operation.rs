@@ -23,7 +23,7 @@ pub const X25519_PRIVATE_KEY_LENGTH: usize = 0x20;
 pub const X25519_PUBLIC_KEY_LENGTH: usize = 0x20;
 pub const ED25519_PRIVATE_KEY_LENGTH: usize = 0x20;
 pub const ED25519_PUBLIC_KEY_LENGTH: usize = 0x20;
-pub const Q_LENGTH_BITS: i32 = 253;
+pub const CURVE_25519_Q_LENGTH_BITS: i32 = 253;
 
 /// Convert to an Elliptic Curve KMIP Public Key.
 /// Supported curves are:
@@ -313,7 +313,6 @@ mod tests {
     #[cfg(not(feature = "fips"))]
     use cosmian_kmip::openssl::pad_be_bytes;
     use cosmian_kmip::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
-    use cosmian_logger::log_utils::log_init;
     use openssl::nid::Nid;
     #[cfg(not(feature = "fips"))]
     use openssl::pkey::{Id, PKey};
@@ -321,6 +320,7 @@ mod tests {
     use super::{create_approved_ecc_key_pair, create_ed25519_key_pair};
     #[cfg(not(feature = "fips"))]
     use super::{create_x25519_key_pair, create_x448_key_pair};
+
     #[cfg(not(feature = "fips"))]
     const X25519_PRIVATE_KEY_LENGTH: usize = 0x20;
     #[cfg(not(feature = "fips"))]
@@ -328,7 +328,6 @@ mod tests {
 
     #[test]
     fn test_ed25519_keypair_generation() {
-        log_init("trace");
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
@@ -430,7 +429,6 @@ mod tests {
 
     #[test]
     fn test_approved_ecc_keypair_generation() {
-        log_init("trace");
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();

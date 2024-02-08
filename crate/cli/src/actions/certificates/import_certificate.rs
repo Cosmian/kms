@@ -10,6 +10,7 @@ use cosmian_kms_client::KmsRestClient;
 use der::{Decode, DecodePem, Encode};
 use tracing::{debug, trace};
 use x509_cert::Certificate;
+use zeroize::Zeroizing;
 
 use crate::{
     actions::shared::{
@@ -243,7 +244,7 @@ impl ImportCertificateAction {
 
     /// Import the certificate, the chain and the associated private key
     async fn import_pkcs12(&self, kms_rest_client: &KmsRestClient) -> Result<String, CliError> {
-        let pkcs12_bytes = read_bytes_from_file(&self.get_certificate_file()?)?;
+        let pkcs12_bytes = Zeroizing::from(read_bytes_from_file(&self.get_certificate_file()?)?);
 
         // Create a KMIP private key from the PKCS12 private key
         let private_key = build_private_key_from_der_bytes(KeyFormatType::PKCS12, pkcs12_bytes);

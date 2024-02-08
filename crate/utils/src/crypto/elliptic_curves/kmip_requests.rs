@@ -7,23 +7,19 @@ use cosmian_kmip::kmip::{
     },
 };
 
-use crate::{
-    crypto::elliptic_curves::operation::Q_LENGTH_BITS, error::KmipUtilsError, tagging::set_tags,
-};
+use crate::{error::KmipUtilsError, tagging::set_tags};
 
-/// Build a `CreateKeyPairRequest` for a curve 25519 key pair
-pub fn create_curve_25519_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
+/// Build a `CreateKeyPairRequest` for an  elliptic curve
+pub fn create_ec_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
     recommended_curve: RecommendedCurve,
 ) -> Result<CreateKeyPair, KmipUtilsError> {
     let mut attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
-        cryptographic_length: Some(Q_LENGTH_BITS),
         cryptographic_domain_parameters: Some(CryptographicDomainParameters {
-            q_length: Some(Q_LENGTH_BITS),
             recommended_curve: Some(recommended_curve),
+            ..CryptographicDomainParameters::default()
         }),
-        cryptographic_parameters: None,
         cryptographic_usage_mask: Some(
             CryptographicUsageMask::Encrypt
                 | CryptographicUsageMask::Decrypt

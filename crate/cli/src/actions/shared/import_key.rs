@@ -9,6 +9,7 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_client::KmsRestClient;
+use zeroize::Zeroizing;
 
 use super::utils::objects_from_pem;
 use crate::{
@@ -107,7 +108,7 @@ pub struct ImportKeyAction {
 impl ImportKeyAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // read the key file
-        let bytes = read_bytes_from_file(&self.key_file)?;
+        let bytes = Zeroizing::from(read_bytes_from_file(&self.key_file)?);
         let object = match &self.key_format {
             ImportKeyFormat::JsonTtlv => read_object_from_json_ttlv_bytes(&bytes)?,
             ImportKeyFormat::Pem => read_key_from_pem(&bytes)?,
@@ -211,7 +212,7 @@ fn read_key_from_pem(bytes: &[u8]) -> Result<Object, CliError> {
 
 pub(crate) fn build_private_key_from_der_bytes(
     key_format_type: KeyFormatType,
-    bytes: Vec<u8>,
+    bytes: Zeroizing<Vec<u8>>,
 ) -> Object {
     Object::PrivateKey {
         key_block: KeyBlock {
@@ -232,7 +233,12 @@ pub(crate) fn build_private_key_from_der_bytes(
     }
 }
 
-fn build_public_key_from_der_bytes(key_format_type: KeyFormatType, bytes: Vec<u8>) -> Object {
+// Here the zeroizing type on public key bytes is overkill but it aligns with
+// other methods dealing with private components.
+fn build_public_key_from_der_bytes(
+    key_format_type: KeyFormatType,
+    bytes: Zeroizing<Vec<u8>>,
+) -> Object {
     Object::PublicKey {
         key_block: KeyBlock {
             key_format_type,
@@ -254,7 +260,7 @@ fn build_public_key_from_der_bytes(key_format_type: KeyFormatType, bytes: Vec<u8
 
 fn build_symmetric_key_from_bytes(
     cryptographic_algorithm: CryptographicAlgorithm,
-    bytes: Vec<u8>,
+    bytes: Zeroizing<Vec<u8>>,
 ) -> Object {
     let len = bytes.len() as i32 * 8;
     Object::SymmetricKey {

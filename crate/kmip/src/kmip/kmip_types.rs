@@ -10,6 +10,10 @@ use std::{
     vec::Vec,
 };
 
+use openssl::{
+    hash::MessageDigest,
+    md::{Md, MdRef},
+};
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeStruct,
@@ -18,7 +22,7 @@ use serde::{
 use strum::{Display, EnumIter, EnumString};
 
 use super::kmip_objects::ObjectType;
-use crate::error::KmipError;
+use crate::{error::KmipError, kmip_bail};
 
 /// 4.7
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).
@@ -130,6 +134,10 @@ pub enum CryptographicAlgorithm {
     DES = 0x0000_0001,
     THREE_DES = 0x0000_0002,
     AES = 0x0000_0003,
+    /// This is CKM_RSA_PKCS_OAEP from PKCS#11
+    /// see https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226895
+    /// To use  CKM_RSA_AES_KEY_WRAP from PKCS#11, use and RSA key with AES as the algorithm
+    /// See https://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908
     RSA = 0x0000_0004,
     DSA = 0x0000_0005,
     ECDSA = 0x0000_0006,
@@ -1603,6 +1611,50 @@ pub enum HashingAlgorithm {
     SHA3256 = 0x0000_000F,
     SHA3384 = 0x0000_0010,
     SHA3512 = 0x0000_0011,
+}
+
+impl TryFrom<HashingAlgorithm> for &'static MdRef {
+    type Error = KmipError;
+
+    fn try_from(hashing_algorithm: HashingAlgorithm) -> Result<Self, Self::Error> {
+        match hashing_algorithm {
+            HashingAlgorithm::SHA1 => Ok(Md::sha1()),
+            HashingAlgorithm::SHA224 => Ok(Md::sha224()),
+            HashingAlgorithm::SHA256 => Ok(Md::sha256()),
+            HashingAlgorithm::SHA384 => Ok(Md::sha384()),
+            HashingAlgorithm::SHA512 => Ok(Md::sha512()),
+            HashingAlgorithm::SHA3224 => Ok(Md::sha3_224()),
+            HashingAlgorithm::SHA3256 => Ok(Md::sha3_256()),
+            HashingAlgorithm::SHA3384 => Ok(Md::sha3_384()),
+            HashingAlgorithm::SHA3512 => Ok(Md::sha3_512()),
+            h => kmip_bail!(
+                "Unsupported hash function: {:?} for the openssl provider",
+                h
+            ),
+        }
+    }
+}
+
+impl TryFrom<HashingAlgorithm> for MessageDigest {
+    type Error = KmipError;
+
+    fn try_from(hashing_algorithm: HashingAlgorithm) -> Result<Self, Self::Error> {
+        match hashing_algorithm {
+            HashingAlgorithm::SHA1 => Ok(MessageDigest::sha1()),
+            HashingAlgorithm::SHA224 => Ok(MessageDigest::sha224()),
+            HashingAlgorithm::SHA256 => Ok(MessageDigest::sha256()),
+            HashingAlgorithm::SHA384 => Ok(MessageDigest::sha384()),
+            HashingAlgorithm::SHA512 => Ok(MessageDigest::sha512()),
+            HashingAlgorithm::SHA3224 => Ok(MessageDigest::sha3_224()),
+            HashingAlgorithm::SHA3256 => Ok(MessageDigest::sha3_256()),
+            HashingAlgorithm::SHA3384 => Ok(MessageDigest::sha3_384()),
+            HashingAlgorithm::SHA3512 => Ok(MessageDigest::sha3_512()),
+            h => kmip_bail!(
+                "Unsupported hash function: {:?} for the openssl Message Digest provider",
+                h
+            ),
+        }
+    }
 }
 
 #[allow(non_camel_case_types)]

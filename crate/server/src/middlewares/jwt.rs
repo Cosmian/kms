@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use alcoholic_jwt::token_kid;
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
 use super::JwksManager;
 use crate::{error::KmsError, kms_ensure, result::KResult};
@@ -71,7 +72,7 @@ impl JwtConfig {
 
         let mut validations = vec![
             #[cfg(not(test))]
-            alcoholic_jwt::Validation::Issuer(self.jwt_issuer_uri.to_string()),
+            // alcoholic_jwt::Validation::Issuer(self.jwt_issuer_uri.to_string()),
             alcoholic_jwt::Validation::SubjectPresent,
             #[cfg(not(feature = "insecure"))]
             alcoholic_jwt::Validation::NotExpired,
@@ -102,6 +103,8 @@ impl JwtConfig {
 
         let payload = serde_json::from_value(valid_jwt.claims)
             .map_err(|err| KmsError::Unauthorized(format!("JWT claims is malformed: {err:?}")))?;
+
+        debug!("JWT payload: {payload:?}");
 
         Ok(payload)
     }

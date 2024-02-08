@@ -14,23 +14,9 @@ use crate::{database::KMSServer, error::KmsError, result::KResult};
 pub mod access;
 pub mod google_cse;
 pub mod kmip;
+pub mod ms_dke;
 
 impl actix_web::error::ResponseError for KmsError {
-    fn error_response(&self) -> HttpResponse {
-        let status_code = self.status_code();
-        let message = self.to_string();
-
-        if status_code >= StatusCode::INTERNAL_SERVER_ERROR {
-            error!("{status_code} - {message}");
-        } else {
-            warn!("{status_code} - {message}");
-        }
-
-        HttpResponseBuilder::new(status_code)
-            .insert_header((header::CONTENT_TYPE, "text/html; charset=utf-8"))
-            .body(message)
-    }
-
     fn status_code(&self) -> StatusCode {
         match self {
             KmsError::RouteNotFound(_) => StatusCode::NOT_FOUND,
@@ -55,6 +41,21 @@ impl actix_web::error::ResponseError for KmsError {
             | KmsError::ItemNotFound(_)
             | KmsError::UrlError(_) => StatusCode::UNPROCESSABLE_ENTITY,
         }
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        let status_code = self.status_code();
+        let message = self.to_string();
+
+        if status_code >= StatusCode::INTERNAL_SERVER_ERROR {
+            error!("{status_code} - {message}");
+        } else {
+            warn!("{status_code} - {message}");
+        }
+
+        HttpResponseBuilder::new(status_code)
+            .insert_header((header::CONTENT_TYPE, "text/html; charset=utf-8"))
+            .body(message)
     }
 }
 

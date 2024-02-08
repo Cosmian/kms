@@ -250,11 +250,15 @@ Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der"
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
+Possible values:  `"true", "false"` [default: `"false"`]
+
 `--wrap-key-id [-w] <WRAP_KEY_ID>` The id of the key/certificate to use to wrap this key before export
 
 `--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed keys.
 The user must be the owner of the key.
 Destroyed keys have their key material removed.
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 
@@ -285,7 +289,11 @@ Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8
 
 `--unwrap [-u] <UNWRAP>` In the case of a JSON TTLV key, unwrap the key if it is wrapped before storing it
 
+Possible values:  `"true", "false"` [default: `"false"`]
+
 `--replace [-r] <REPLACE_EXISTING>` Replace an existing key under the same id
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
 
@@ -406,6 +414,8 @@ View the policy of an existing public or private master key.
 `--key-file [-f] <KEY_FILE>` If `key-id` is not provided, the file containing the public or private master key in TTLV format
 
 `--detailed [-d] <DETAILED>` Show all the policy details rather than just the specifications
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 
@@ -660,6 +670,8 @@ Possible values:  `"json-ttlv", "pem", "pkcs12"` [default: `"json-ttlv"`]
 The user must be the owner of the certificate.
 Destroyed objects have their key material removed.
 
+Possible values:  `"true", "false"` [default: `"false"`]
+
 
 
 ---
@@ -697,6 +709,8 @@ Possible values:  `"json-ttlv", "pem", "der", "chain", "ccadb", "pkcs12"` [defau
 `--pkcs12-password [-p] <PKCS12_PASSWORD>` PKCS12 password: only available for PKCS12 format
 
 `--replace [-r] <REPLACE_EXISTING>` Replace an existing certificate under the same id
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 `--tag [-t] <TAG>` The tag to associate with the certificate. To specify multiple tags, use the option multiple times
 
@@ -764,7 +778,7 @@ Create, destroy, import, and export elliptic curve key pairs
 
 ### Subcommands
 
-**`create`** [[4.1.1]](#411-ckms-ec-keys-create)  Create a new X25519 key pair
+**`create`** [[4.1.1]](#411-ckms-ec-keys-create)  Create an elliptic curve key pair
 
 **`export`** [[4.1.2]](#412-ckms-ec-keys-export)  Export a key from the KMS
 
@@ -782,11 +796,15 @@ Create, destroy, import, and export elliptic curve key pairs
 
 ## 4.1.1 ckms ec keys create
 
-Create a new X25519 key pair
+Create an elliptic curve key pair
 
 ### Usage
 `ckms ec keys create [options]`
 ### Arguments
+`--curve [-c] <CURVE>` The elliptic curve
+
+Possible values:  `"nist-p192", "nist-p224", "nist-p256", "nist-p384", "nist-p521", "x25519", "ed25519", "x448", "ed448"` [default: `"nist-p256"`]
+
 `--tag [-t] <TAG>` The tag to associate with the master key pair. To specify multiple tags, use the option multiple times
 
 
@@ -823,11 +841,15 @@ Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der"
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
+Possible values:  `"true", "false"` [default: `"false"`]
+
 `--wrap-key-id [-w] <WRAP_KEY_ID>` The id of the key/certificate to use to wrap this key before export
 
 `--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed keys.
 The user must be the owner of the key.
 Destroyed keys have their key material removed.
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 
@@ -858,7 +880,11 @@ Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8
 
 `--unwrap [-u] <UNWRAP>` In the case of a JSON TTLV key, unwrap the key if it is wrapped before storing it
 
+Possible values:  `"true", "false"` [default: `"false"`]
+
 `--replace [-r] <REPLACE_EXISTING>` Replace an existing key under the same id
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
 
@@ -1067,9 +1093,19 @@ Manage RSA keys
 
 **`keys`** [[8.1]](#81-ckms-rsa-keys)  Create, destroy, import, and export RSA key pairs
 
-**`encrypt`** [[8.2]](#82-ckms-rsa-encrypt)  Encrypt a file with the given public key using RSA-OAEP-AES-KWP
+**`encrypt`** [[8.2]](#82-ckms-rsa-encrypt)  Encrypt a file with the given public key using either
 
-**`decrypt`** [[8.3]](#83-ckms-rsa-decrypt)  Decrypts a file with the given private key using RSA-OAEP-AES-KWP
+ - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
+ - `RSA_OAEP` `AES_128_GCM`
+
+By default the hashing function used with RSA OAEP is set to SHA-256
+
+**`decrypt`** [[8.3]](#83-ckms-rsa-decrypt)  Decrypt a file with the given public key using either
+
+ - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
+ - `RSA_OAEP` `AES_128_GCM`
+
+By default the hashing function used with RSA OAEP is set to SHA-256
 
 ---
 
@@ -1143,11 +1179,15 @@ Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der"
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
+Possible values:  `"true", "false"` [default: `"false"`]
+
 `--wrap-key-id [-w] <WRAP_KEY_ID>` The id of the key/certificate to use to wrap this key before export
 
 `--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed keys.
 The user must be the owner of the key.
 Destroyed keys have their key material removed.
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 
@@ -1178,7 +1218,11 @@ Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8
 
 `--unwrap [-u] <UNWRAP>` In the case of a JSON TTLV key, unwrap the key if it is wrapped before storing it
 
+Possible values:  `"true", "false"` [default: `"false"`]
+
 `--replace [-r] <REPLACE_EXISTING>` Replace an existing key under the same id
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
 
@@ -1270,7 +1314,12 @@ Destroy a public or private key
 
 ## 8.2 ckms rsa encrypt
 
-Encrypt a file with the given public key using RSA-OAEP-AES-KWP
+Encrypt a file with the given public key using either
+
+ - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
+ - `RSA_OAEP` `AES_128_GCM`
+
+By default the hashing function used with RSA OAEP is set to SHA-256
 
 ### Usage
 `ckms rsa encrypt [options] <FILE>
@@ -1282,6 +1331,14 @@ Encrypt a file with the given public key using RSA-OAEP-AES-KWP
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
+`--encryption-algorithm [-e] <ENCRYPTION_ALGORITHM>` The encryption algorithm
+
+Possible values:  `"ckm-rsa-pkcs-oaep", "rsa-oaep-aes128-gcm"` [default: `"ckm-rsa-pkcs-oaep"`]
+
+`--hashing-algorithm [-s] <HASH_FN>` The hashing algorithm
+
+Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"` [default: `"sha256"`]
+
 `--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
 
 `--authentication-data [-a] <AUTHENTICATION_DATA>` Optional authentication data. This data needs to be provided back for decryption
@@ -1292,7 +1349,12 @@ Encrypt a file with the given public key using RSA-OAEP-AES-KWP
 
 ## 8.3 ckms rsa decrypt
 
-Decrypts a file with the given private key using RSA-OAEP-AES-KWP
+Decrypt a file with the given public key using either
+
+ - `CKM_RSA_PKCS_OAEP` a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40
+ - `RSA_OAEP` `AES_128_GCM`
+
+By default the hashing function used with RSA OAEP is set to SHA-256
 
 ### Usage
 `ckms rsa decrypt [options] <FILE>
@@ -1303,6 +1365,14 @@ Decrypts a file with the given private key using RSA-OAEP-AES-KWP
 `--key-id [-k] <KEY_ID>` The private key unique identifier If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+`--encryption-algorithm [-e] <ENCRYPTION_ALGORITHM>` The encryption algorithm
+
+Possible values:  `"ckm-rsa-pkcs-oaep", "rsa-oaep-aes128-gcm"` [default: `"ckm-rsa-pkcs-oaep"`]
+
+`--hashing-algorithm [-s] <HASH_FN>` The hashing algorithm
+
+Possible values:  `"sha1", "sha224", "sha256", "sha384", "sha512", "sha3-224", "sha3-256", "sha3-384", "sha3-512"` [default: `"sha256"`]
 
 `--output-file [-o] <OUTPUT_FILE>` The encrypted output file path
 
@@ -1378,7 +1448,7 @@ Create a new symmetric key
 
 `--algorithm [-a] <ALGORITHM>` The algorithm
 
-Possible values:  `"aes", "chacha20", "sha3", "shake"` [default: `"aes"`]
+Possible values:  `"chacha20", "aes", "sha3", "shake"` [default: `"aes"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
 
@@ -1416,11 +1486,15 @@ Possible values:  `"json-ttlv", "sec1-pem", "sec1-der", "pkcs1-pem", "pkcs1-der"
 
 `--unwrap [-u] <UNWRAP>` Unwrap the key if it is wrapped before export
 
+Possible values:  `"true", "false"` [default: `"false"`]
+
 `--wrap-key-id [-w] <WRAP_KEY_ID>` The id of the key/certificate to use to wrap this key before export
 
 `--allow-revoked [-i] <ALLOW_REVOKED>` Allow exporting revoked and destroyed keys.
 The user must be the owner of the key.
 Destroyed keys have their key material removed.
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 
 
@@ -1451,7 +1525,11 @@ Possible values:  `"json-ttlv", "pem", "sec1", "pkcs1-priv", "pkcs1-pub", "pkcs8
 
 `--unwrap [-u] <UNWRAP>` In the case of a JSON TTLV key, unwrap the key if it is wrapped before storing it
 
+Possible values:  `"true", "false"` [default: `"false"`]
+
 `--replace [-r] <REPLACE_EXISTING>` Replace an existing key under the same id
+
+Possible values:  `"true", "false"` [default: `"false"`]
 
 `--tag [-t] <TAG>` The tag to associate with the key. To specify multiple tags, use the option multiple times
 

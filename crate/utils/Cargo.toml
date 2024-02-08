@@ -18,7 +18,6 @@ curve25519 = []
 argon2 = "0.5"
 cloudproof = { workspace = true }
 cosmian_kmip = { path = "../kmip", features = ["openssl"] }
-cosmian_logger = { path = "../logger" }
 num-bigint-dig = { workspace = true }
 openssl = { workspace = true }
 serde = { workspace = true }

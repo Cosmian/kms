@@ -1,4 +1,6 @@
-use std::{path::Path, process::Command};
+#[cfg(not(feature = "fips"))]
+use std::path::Path;
+use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kmip::kmip::kmip_types::KeyFormatType;
@@ -15,7 +17,13 @@ use openssl::pkey::{Id, PKey};
 use tempfile::TempDir;
 
 #[cfg(not(feature = "fips"))]
+use crate::tests::cover_crypt::{
+    master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
+};
+#[cfg(not(feature = "fips"))]
 use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
+#[cfg(not(feature = "fips"))]
+use crate::tests::utils::TestsContext;
 use crate::{
     actions::shared::{
         utils::{read_bytes_from_file, read_object_from_json_ttlv_file},
@@ -24,12 +32,8 @@ use crate::{
     config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        cover_crypt::{
-            master_key_pair::create_cc_master_key_pair,
-            user_decryption_keys::create_user_decryption_key,
-        },
         symmetric::create_key::create_symmetric_key,
-        utils::{recover_cmd_logs, start_default_test_kms_server, TestsContext, ONCE},
+        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
     },
 };
@@ -174,6 +178,7 @@ pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_export_covercrypt() -> Result<(), CliError> {
     // create a temp dir
@@ -259,6 +264,7 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
     Ok(())
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
     // create a temp dir
@@ -316,7 +322,8 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new key pair
-    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+    let (private_key_id, public_key_id) =
+        create_ec_key_pair(&ctx.owner_cli_conf_path, "x25519", &[])?;
 
     //
     // Private Key

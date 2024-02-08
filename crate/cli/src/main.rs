@@ -1,11 +1,12 @@
 use std::{path::PathBuf, process};
 
 use clap::{CommandFactory, Parser, Subcommand};
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_cli::actions::cover_crypt::CovercryptCommands;
 use cosmian_kms_cli::{
     actions::{
         access::AccessAction,
         certificates::CertificatesCommands,
-        cover_crypt::CovercryptCommands,
         elliptic_curves::EllipticCurveCommands,
         login::LoginAction,
         logout::LogoutAction,
@@ -39,6 +40,7 @@ struct Cli {
 enum CliCommands {
     #[command(subcommand)]
     AccessRights(AccessAction),
+    #[cfg(not(feature = "fips"))]
     #[command(subcommand)]
     Cc(CovercryptCommands),
     #[command(subcommand)]
@@ -89,6 +91,7 @@ async fn main_() -> Result<(), CliError> {
 
             match command {
                 CliCommands::Locate(action) => action.process(&kms_rest_client).await?,
+                #[cfg(not(feature = "fips"))]
                 CliCommands::Cc(action) => action.process(&kms_rest_client).await?,
                 CliCommands::Ec(action) => action.process(&kms_rest_client).await?,
                 CliCommands::Rsa(action) => action.process(&kms_rest_client).await?,

@@ -15,6 +15,7 @@ use cosmian_kmip::{
 };
 use serde::{Deserialize, Serialize};
 use tracing::{debug, trace};
+use zeroize::Zeroizing;
 
 use crate::crypto::cover_crypt::attributes::{
     access_policy_as_vendor_attribute, policy_from_attributes,
@@ -49,7 +50,7 @@ pub fn wrapped_secret_key(
 
     let cryptographic_length = sk.encrypted_symmetric_key.len() as i32 * 8;
     let key_value = KeyValue {
-        key_material: KeyMaterial::ByteString(sk.encrypted_symmetric_key),
+        key_material: KeyMaterial::ByteString(Zeroizing::from(sk.encrypted_symmetric_key)),
         attributes: Some(wrapped_key_attributes),
     };
     let key_wrapping_data = KeyWrappingData {

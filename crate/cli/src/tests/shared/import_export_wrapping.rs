@@ -3,15 +3,15 @@ use cloudproof::reexport::crypto_core::{
     CsRng,
 };
 use cosmian_kmip::kmip::{
-    kmip_data_structures::KeyValue,
     kmip_objects::Object,
     kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
 };
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_utils::crypto::elliptic_curves::operation::create_x25519_key_pair;
-use cosmian_kms_utils::crypto::{symmetric::create_symmetric_key_kmip_object, wrap::decrypt_bytes};
+use cosmian_kms_utils::crypto::{
+    symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block,
+};
 use tempfile::TempDir;
-#[cfg(not(feature = "fips"))]
 use tracing::debug;
 
 use crate::{
@@ -72,8 +72,11 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
 
     // test ec
     println!("testing ec keys");
-    let (private_key_id, _public_key_id) =
-        elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+    let (private_key_id, _public_key_id) = elliptic_curve::create_key_pair::create_ec_key_pair(
+        &ctx.owner_cli_conf_path,
+        "nist-p256",
+        &[],
+    )?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
         "ec",
@@ -105,6 +108,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
+    // log_init("debug");
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -157,8 +161,11 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     )?;
 
     debug!("testing EC keys");
-    let (private_key_id, _public_key_id) =
-        elliptic_curve::create_key_pair::create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+    let (private_key_id, _public_key_id) = elliptic_curve::create_key_pair::create_ec_key_pair(
+        &ctx.owner_cli_conf_path,
+        "nist-p256",
+        &[],
+    )?;
     test_import_export_wrap_private_key(
         &ctx.owner_cli_conf_path,
         "ec",
@@ -225,7 +232,7 @@ fn test_import_export_wrap_private_key(
 
     // test the exported private key with wrapping
     {
-        let wrapped_private_key = read_object_from_json_ttlv_file(&wrapped_private_key_file)?;
+        let mut wrapped_private_key = read_object_from_json_ttlv_file(&wrapped_private_key_file)?;
         let wrapped_key_wrapping_data = wrapped_private_key.key_wrapping_data().unwrap();
         assert_eq!(
             wrapped_key_wrapping_data.wrapping_method,
@@ -247,12 +254,10 @@ fn test_import_export_wrap_private_key(
                 .cryptographic_parameters
                 .is_none()
         );
-        let wrapped_key_bytes = wrapped_private_key.key_block()?.key_bytes()?;
-        let plaintext = decrypt_bytes(unwrapping_key, &wrapped_key_bytes)?;
-        let key_value = serde_json::from_slice::<KeyValue>(&plaintext)?;
+        unwrap_key_block(wrapped_private_key.key_block_mut()?, unwrapping_key)?;
         assert_eq!(
-            key_value.key_material,
-            private_key.key_block()?.key_value.key_material
+            wrapped_private_key.key_block()?.key_value,
+            private_key.key_block()?.key_value
         );
     }
 

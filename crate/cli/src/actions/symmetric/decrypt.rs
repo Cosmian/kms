@@ -73,6 +73,7 @@ impl DecryptAction {
                 .as_deref()
                 .map(|s| s.as_bytes().to_vec()),
             None,
+            None,
         );
 
         // Query the KMS with your kmip data and get the key pair ids

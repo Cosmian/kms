@@ -32,7 +32,6 @@ cosmian_logger = { path = "../logger" }
 der = { workspace = true }
 oauth2 = "4.4"
 pem = "3.0"
-rand = "0.8"
 reqwest = { workspace = true }
 rustls = { workspace = true }
 serde = { workspace = true }

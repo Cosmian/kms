@@ -1,13 +1,16 @@
-/*
- * Symmetrically wrap keys using RFC 5649 available at:
- * -> https://datatracker.ietf.org/doc/html/rfc5649
- *
- * This RFC is an improvement of RFC 3394 and allows to wrap keys of any size.
- * This is done by introducing an Integrity Check Register (ICR) of 64 bits. The
- * encryption algorithm is fed blocks of 64 bits concatenated to the ICR for a
- * total of 128 bits blocks. AES in ECB mode is used since padding and integrity
- * check are done manually following the RFC.
- */
+//! Symmetrically wrap keys using RFC 5649 available at:
+//! -> https://datatracker.ietf.org/doc/html/rfc5649
+//!
+//! This RFC is an improvement of RFC 3394 and allows to wrap keys of any size.
+//! This is done by introducing an Integrity Check Register (ICR) of 64 bits. The
+//! encryption algorithm is fed blocks of 64 bits concatenated to the ICR for a
+//! total of 128 bits blocks. AES in ECB mode is used since padding and integrity
+//! check are done manually following the RFC.
+//!
+//! OpenSSL unfortunately does not provide a way to use AES-KWP directly.
+//! See: https://github.com/openssl/openssl/issues/10605
+//! Google provides a patch : https://cloud.google.com/kms/docs/configuring-openssl-for-manual-key-wrapping
+//! and so does AWS: https://repost.aws/en/knowledge-center/patch-openssl-cloudhsm
 
 use openssl::symm::{encrypt, Cipher, Crypter, Mode};
 use zeroize::Zeroizing;
@@ -48,7 +51,7 @@ fn check_iv(iv: u64, data: &[u8]) -> bool {
 /// KEK stands for `Key-Encryption Key`
 /// The function name matches the one used in the RFC and has no link to the
 /// unwrap function in Rust.
-pub fn key_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
+pub fn rfc5649_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
     let n = plain.len();
     let n_bytes_key = n % 8;
 
@@ -93,7 +96,7 @@ pub fn key_wrap(plain: &[u8], kek: &[u8]) -> Result<Vec<u8>, KmipUtilsError> {
 ///
 /// The function name matches the one used in the RFC and has no link to the
 /// unwrap function in Rust.
-pub fn key_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
+pub fn rfc5649_unwrap(ciphertext: &[u8], kek: &[u8]) -> Result<Zeroizing<Vec<u8>>, KmipUtilsError> {
     let n = ciphertext.len();
 
     if n % AES_WRAP_PAD_BLOCK_SIZE != 0 || n < AES_BLOCK_SIZE {
@@ -292,7 +295,7 @@ fn _unwrap_64(ciphertext: &[u8], kek: &[u8]) -> Result<(u64, Zeroizing<Vec<u8>>)
 mod tests {
     use zeroize::Zeroizing;
 
-    use crate::crypto::wrap::rfc5649::{key_unwrap, key_wrap};
+    use crate::crypto::symmetric::rfc5649::{rfc5649_unwrap, rfc5649_wrap};
 
     #[test]
     pub fn test_wrap1() {
@@ -310,20 +313,20 @@ mod tests {
         ];
 
         assert_eq!(
-            key_wrap(key_to_wrap, kek).expect("Fail to wrap"),
+            rfc5649_wrap(key_to_wrap, kek).expect("Fail to wrap"),
             wrapped_key
         );
         assert_eq!(
-            key_unwrap(&wrapped_key, kek).expect("Fail to unwrap"),
+            rfc5649_unwrap(&wrapped_key, kek).expect("Fail to unwrap"),
             Zeroizing::from(key_to_wrap.to_vec())
         );
 
         const TEST_SIZE_LIMIT: usize = 100;
         for size in 1..=TEST_SIZE_LIMIT {
             let key_to_wrap = &[0u8; TEST_SIZE_LIMIT][..size];
-            let ciphertext = key_wrap(key_to_wrap, kek).expect("Fail to wrap");
+            let ciphertext = rfc5649_wrap(key_to_wrap, kek).expect("Fail to wrap");
             assert_eq!(
-                key_unwrap(&ciphertext, kek).expect("Fail to unwrap"),
+                rfc5649_unwrap(&ciphertext, kek).expect("Fail to unwrap"),
                 Zeroizing::from(key_to_wrap.to_vec())
             );
         }
@@ -345,11 +348,11 @@ mod tests {
         ];
 
         assert_eq!(
-            key_wrap(key_to_wrap, kek).expect("Fail to wrap"),
+            rfc5649_wrap(key_to_wrap, kek).expect("Fail to wrap"),
             wrapped_key
         );
         assert_eq!(
-            key_unwrap(&wrapped_key, kek).expect("Fail to unwrap"),
+            rfc5649_unwrap(&wrapped_key, kek).expect("Fail to unwrap"),
             Zeroizing::from(key_to_wrap.to_vec())
         );
     }
@@ -368,11 +371,11 @@ mod tests {
         ];
 
         assert_eq!(
-            key_wrap(key_to_wrap, kek).expect("Fail to wrap"),
+            rfc5649_wrap(key_to_wrap, kek).expect("Fail to wrap"),
             wrapped_key
         );
         assert_eq!(
-            key_unwrap(&wrapped_key, kek).expect("Fail to unwrap"),
+            rfc5649_unwrap(&wrapped_key, kek).expect("Fail to unwrap"),
             Zeroizing::from(key_to_wrap.to_vec())
         );
     }
@@ -391,8 +394,8 @@ mod tests {
             0x4f,
         ];
 
-        assert!(key_wrap(key_to_wrap, kek).is_err());
-        assert!(key_unwrap(&wrapped_key, kek).is_err());
+        assert!(rfc5649_wrap(key_to_wrap, kek).is_err());
+        assert!(rfc5649_unwrap(&wrapped_key, kek).is_err());
 
         // Large input
         let kek = b"\x00";
@@ -404,8 +407,8 @@ mod tests {
             0xfa, 0x54, 0x3b, 0x6a,
         ];
 
-        assert!(key_wrap(key_to_wrap, kek).is_err());
-        assert!(key_unwrap(&wrapped_key, kek).is_err());
+        assert!(rfc5649_wrap(key_to_wrap, kek).is_err());
+        assert!(rfc5649_unwrap(&wrapped_key, kek).is_err());
     }
 
     #[test]
@@ -419,7 +422,7 @@ mod tests {
             0xaf, 0xbe, 0xb0, 0xf0, 0x7d, 0xfb, 0xf5, 0x41, 0x92, 0x0, 0xf2, 0xcc, 0xb5, 0xb, 0xb2,
         ];
 
-        assert!(key_unwrap(&wrapped_key, kek).is_err());
+        assert!(rfc5649_unwrap(&wrapped_key, kek).is_err());
     }
 
     #[test]
@@ -434,7 +437,7 @@ mod tests {
             0x4a,
         ];
 
-        assert!(key_unwrap(&wrapped_key, kek).is_err());
+        assert!(rfc5649_unwrap(&wrapped_key, kek).is_err());
 
         let wrapped_key = [
             0x13, 0x8b, 0xde, 0xaa, 0x9b, 0x8f, 0xa7, 0xfc, 0x61, 0xf9, 0x77, 0x42, 0xe7, 0x22,
@@ -442,6 +445,6 @@ mod tests {
             0xfa, 0x54, 0x3b, 0x6b,
         ];
 
-        assert!(key_unwrap(&wrapped_key, kek).is_err());
+        assert!(rfc5649_unwrap(&wrapped_key, kek).is_err());
     }
 }

@@ -18,7 +18,6 @@ use cosmian_kms_utils::crypto::{
     },
     generic::kmip_requests::{build_decryption_request, build_encryption_request},
 };
-use cosmian_logger::log_utils::log_init;
 
 use crate::{
     error::KmsError,
@@ -39,7 +38,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
     let create_key_pair_response: CreateKeyPairResponse =
         test_utils::post(&app, &create_key_pair).await?;
 
-    log_init("cosmian_kms_server=debug");
+    // log_init("cosmian_kms_server=debug");
     let private_key_unique_identifier = &create_key_pair_response.private_key_unique_identifier;
     let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
@@ -70,6 +69,7 @@ async fn test_re_key_with_tags() -> KResult<()> {
         data.to_vec(),
         None,
         Some(authentication_data.clone()),
+        None,
         None,
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
@@ -104,7 +104,7 @@ fn policy() -> Result<Policy, KmsError> {
 
 #[tokio::test]
 async fn integration_tests_with_tags() -> KResult<()> {
-    log_init("cosmian_kms_server=debug");
+    // log_init("cosmian_kms_server=debug");
 
     let app = test_utils::test_app().await;
 
@@ -133,6 +133,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         Some(header_metadata.clone()),
         Some(authentication_data.clone()),
         None,
+        None,
     )?;
 
     let encrypt_response: EncryptResponse = test_utils::post(&app, request).await?;
@@ -156,6 +157,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         encrypted_data,
         None,
         Some(authentication_data.clone()),
+        None,
         None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, request).await?;
@@ -183,6 +185,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         data.to_vec(),
         None,
         Some(authentication_data.clone()),
+        None,
         None,
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
@@ -216,6 +219,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         None,
         Some(authentication_data.clone()),
         None,
+        None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
 
@@ -236,6 +240,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         encrypted_data,
         None,
         Some(authentication_data.clone()),
+        None,
         None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
@@ -290,6 +295,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         None,
         Some(authentication_data.clone()),
         None,
+        None,
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
     let encrypted_data = encrypt_response
@@ -304,6 +310,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         None,
         Some(authentication_data.clone()),
         None,
+        None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
     assert!(post_ttlv_decrypt.is_err());
@@ -315,6 +322,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         encrypted_data,
         None,
         Some(authentication_data.clone()),
+        None,
         None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;

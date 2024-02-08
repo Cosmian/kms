@@ -40,5 +40,4 @@ zeroize = { workspace = true }
 ignored = ["rust-ini"]
 
 [dev-dependencies]
-cosmian_logger = { path = "../logger" }
 x509-parser = "0.15"

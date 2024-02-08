@@ -80,6 +80,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         Some(header_metadata.clone()),
         Some(authentication_data.clone()),
         Some(CryptographicAlgorithm::CoverCrypt),
+        None,
     )?;
 
     let encrypt_response: EncryptResponse = test_utils::post(&app, request).await?;
@@ -108,6 +109,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
         Some(authentication_data.clone()),
         None,
+        None,
     );
 
     let decrypt_response: DecryptResponse = test_utils::post(&app, request).await?;
@@ -135,6 +137,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         data.to_vec(),
         None,
         Some(authentication_data.clone()),
+        None,
         None,
     )?;
 
@@ -180,6 +183,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
         Some(authentication_data.clone()),
         None,
+        None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
 
@@ -200,6 +204,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         encrypted_data.clone(),
         None,
         Some(authentication_data.clone()),
+        None,
         None,
     );
 
@@ -264,6 +269,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
         Some(authentication_data.clone()),
         Some(CryptographicAlgorithm::CoverCrypt),
+        None,
     )?;
     let encrypt_response: EncryptResponse = test_utils::post(&app, &request).await?;
     let new_encrypted_data = encrypt_response
@@ -278,6 +284,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
         Some(authentication_data.clone()),
         None,
+        None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
     assert!(post_ttlv_decrypt.is_err());
@@ -289,6 +296,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         new_encrypted_data,
         None,
         Some(authentication_data.clone()),
+        None,
         None,
     );
     let decrypt_response: DecryptResponse = test_utils::post(&app, &request).await?;
@@ -319,6 +327,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         encrypted_data,
         None,
         Some(authentication_data.clone()),
+        None,
         None,
     );
     let post_ttlv_decrypt: KResult<DecryptResponse> = test_utils::post(&app, &request).await;
@@ -355,6 +364,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
         Some(authentication_data.clone()),
         Some(CryptographicAlgorithm::CoverCrypt),
+        None,
     )?;
     let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
     assert!(encrypt_response.is_ok());
@@ -384,6 +394,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
         Some(authentication_data.clone()),
         Some(CryptographicAlgorithm::CoverCrypt),
+        None,
     )?;
     let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
     assert!(encrypt_response.is_ok());
@@ -410,6 +421,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
         Some(authentication_data.clone()),
         Some(CryptographicAlgorithm::CoverCrypt),
+        None,
     )?;
     let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
     assert!(encrypt_response.is_err());
@@ -436,6 +448,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         None,
         Some(authentication_data.clone()),
         Some(CryptographicAlgorithm::CoverCrypt),
+        None,
     )?;
     let encrypt_response: KResult<EncryptResponse> = test_utils::post(&app, &request).await;
     assert!(encrypt_response.is_err());

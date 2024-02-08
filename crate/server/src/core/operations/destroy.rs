@@ -12,6 +12,7 @@ use cosmian_kmip::kmip::{
 };
 use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
 use tracing::{debug, trace};
+use zeroize::Zeroizing;
 
 use crate::{
     core::{cover_crypt::destroy_user_decryption_keys, KMS},
@@ -177,7 +178,7 @@ async fn destroy_key_core(
     } else {
         let key_block = object.key_block_mut()?;
         key_block.key_value = KeyValue {
-            key_material: KeyMaterial::ByteString(vec![]),
+            key_material: KeyMaterial::ByteString(Zeroizing::from(vec![])),
             attributes: key_block.key_value.attributes.clone(),
         };
     }

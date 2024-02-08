@@ -52,6 +52,7 @@ repos:
     hooks:
       - id: markdown-link-check
         args: [-q]
+        exclude: documentation/docs/ms_dke/ms_dke.md
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.2
@@ -108,6 +109,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
+        exclude: crate/server/src/tests/ms_dke
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
       - id: file-contents-sorter

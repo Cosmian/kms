@@ -13,15 +13,15 @@ use cosmian_kmip::kmip::{
 use cosmian_kms_utils::crypto::{
     elliptic_curves::{
         kmip_requests::{
-            create_curve_25519_key_pair_request, get_private_key_request, get_public_key_request,
+            create_ec_key_pair_request, get_private_key_request, get_public_key_request,
         },
-        operation::{to_ec_public_key, Q_LENGTH_BITS},
+        operation::{to_ec_public_key, CURVE_25519_Q_LENGTH_BITS},
     },
     symmetric::symmetric_key_create_request,
 };
-use cosmian_logger::log_utils::log_init;
 use tracing::trace;
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use crate::{
     config::ServerParams,
@@ -39,8 +39,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request =
-        create_curve_25519_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
+    let request = create_ec_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
     let response = kms.create_key_pair(request, owner, None).await?;
     // check that the private and public key exist
     // check secret key
@@ -73,7 +72,10 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         sk_key_block.cryptographic_algorithm,
         Some(CryptographicAlgorithm::ECDH),
     );
-    assert_eq!(sk_key_block.cryptographic_length, Some(Q_LENGTH_BITS));
+    assert_eq!(
+        sk_key_block.cryptographic_length,
+        Some(CURVE_25519_Q_LENGTH_BITS)
+    );
     assert_eq!(
         sk_key_block.key_format_type,
         KeyFormatType::TransparentECPrivateKey
@@ -128,7 +130,10 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         pk_key_block.cryptographic_algorithm,
         Some(CryptographicAlgorithm::ECDH),
     );
-    assert_eq!(pk_key_block.cryptographic_length, Some(Q_LENGTH_BITS));
+    assert_eq!(
+        pk_key_block.cryptographic_length,
+        Some(CURVE_25519_Q_LENGTH_BITS)
+    );
     assert_eq!(
         pk_key_block.key_format_type,
         KeyFormatType::TransparentECPublicKey
@@ -161,7 +166,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     assert_eq!(pk_bytes.len(), X25519_PUBLIC_KEY_LENGTH);
     let pk = to_ec_public_key(
         &pk_bytes,
-        Q_LENGTH_BITS as u32,
+        CURVE_25519_Q_LENGTH_BITS as u32,
         sk_uid,
         RecommendedCurve::CURVE25519,
     );
@@ -207,7 +212,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     let wrapped_symmetric_key = [0_u8; 32];
     let aesgcm_nonce = [0_u8; 12];
 
-    let key_material = KeyMaterial::ByteString(wrapped_symmetric_key.to_vec());
+    let key_material = KeyMaterial::ByteString(Zeroizing::from(wrapped_symmetric_key.to_vec()));
 
     let symmetric_key = Object::SymmetricKey {
         key_block: KeyBlock {
@@ -253,7 +258,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
 
 #[tokio::test]
 async fn test_create_transparent_symmetric_key() -> KResult<()> {
-    log_init("info");
+    // log_init("info");
 
     let clap_config = https_clap_config();
 
@@ -297,7 +302,7 @@ async fn test_create_transparent_symmetric_key() -> KResult<()> {
 
 #[tokio::test]
 async fn test_database_user_tenant() -> KResult<()> {
-    log_init("info");
+    // log_init("info");
 
     let clap_config = https_clap_config();
 
@@ -305,8 +310,7 @@ async fn test_database_user_tenant() -> KResult<()> {
     let owner = "eyJhbGciOiJSUzI1Ni";
 
     // request key pair creation
-    let request =
-        create_curve_25519_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
+    let request = create_ec_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
     let response = kms.create_key_pair(request, owner, None).await?;
 
     // check that we can get the private and public key
