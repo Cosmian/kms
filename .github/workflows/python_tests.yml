@@ -15,7 +15,7 @@ jobs:
   pyo3-test-linux:
     services:
       kms:
-        image: ghcr.io/cosmian/kms:${{ inputs.kms-version }}
+        image: ${{ inputs.kms-version }}
         env:
           COSMIAN_SERVER_URL: http://localhost:9998
         ports:
@@ -25,7 +25,7 @@ jobs:
     steps:
       - name: Docker check container
         run: |
-          docker run --rm ghcr.io/cosmian/kms:${{ inputs.kms-version }} --help
+          docker run --rm ${{ inputs.kms-version }} --help
 
       - uses: actions/checkout@v3
         with:
