@@ -65,8 +65,8 @@ jobs:
 
       - name: Display metadata version ${{ steps.meta.outputs.version }}
         run: |
-          echo version: ${{ steps.meta.outputs.version }}${{ inputs.image-suffix }}
-          echo tags: ${{ steps.meta.outputs.tags }}
+          echo version: "${{ steps.meta.outputs.version }}${{ inputs.image-suffix }}"
+          echo tags: "${{ steps.meta.outputs.tags }}"
 
     outputs:
       image-tag: ${{ steps.meta.outputs.version }}${{ inputs.image-suffix }}
