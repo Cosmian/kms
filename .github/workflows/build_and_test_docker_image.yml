@@ -6,7 +6,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  REGISTRY_IMAGE: ghcr.io/cosmian/kms
 
 jobs:
   pyo3:
@@ -18,12 +17,14 @@ jobs:
     name: Not FIPS image build and tests
     uses: ./.github/workflows/build_docker_image.yml
     with:
+      prefix: ''
       features: ''
-      image-suffix: ''
+      registry-image: ghcr.io/cosmian/kms
 
   fips-image:
     name: FIPS image build and tests
     uses: ./.github/workflows/build_docker_image.yml
     with:
+      prefix: FIPS
       features: --features=fips
-      image-suffix: -fips
+      registry-image: ghcr.io/cosmian/kms-fips

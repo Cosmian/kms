@@ -4,20 +4,22 @@ name: Docker
 on:
   workflow_call:
     inputs:
+      prefix:
+        required: true
+        type: string
       features:
         required: true
         type: string
-      image-suffix:
+      registry-image:
         required: true
         type: string
 
 env:
   REGISTRY: ghcr.io
-  REGISTRY_IMAGE: ghcr.io/cosmian/kms
 
 jobs:
   build-and-push-image:
-    name: Image ${{ inputs.image-suffix }}
+    name: ${{ inputs.prefix }} Image
     runs-on: ubuntu-22.04
     container: docker:19.03.15
 
@@ -42,7 +44,7 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: |
-            ${{ env.REGISTRY_IMAGE }}
+            ${{ inputs.registry-image }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -57,7 +59,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}${{ inputs.image-suffix }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           file: Dockerfile
           network: host
@@ -65,13 +67,14 @@ jobs:
 
       - name: Display metadata version ${{ steps.meta.outputs.version }}
         run: |
-          echo version: "${{ steps.meta.outputs.version }}${{ inputs.image-suffix }}"
+          echo version: "${{ steps.meta.outputs.version }}"
           echo tags: "${{ steps.meta.outputs.tags }}"
 
     outputs:
-      image-tag: ${{ steps.meta.outputs.version }}${{ inputs.image-suffix }}
+      image-tag: ${{ inputs.registry-image }}:${{ steps.meta.outputs.version }}
 
   python_tests:
+    name: ${{ inputs.prefix }} unit python tests
     needs:
       - build-and-push-image
     uses: ./.github/workflows/python_tests.yml
@@ -81,6 +84,7 @@ jobs:
       branch: develop
 
   cloudproof_kms_js:
+    name: ${{ inputs.prefix }} KMS JS tests
     needs:
       - build-and-push-image
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_kms_js.yml@develop
@@ -89,6 +93,7 @@ jobs:
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
 
   cloudproof_java:
+    name: ${{ inputs.prefix }} Java tests
     needs:
       - build-and-push-image
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_java_in_docker.yml@develop
@@ -103,6 +108,7 @@ jobs:
       copy_fresh_build: false
 
   cloudproof_python:
+    name: ${{ inputs.prefix }} cloudproof_python tests
     needs:
       - build-and-push-image
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@develop
