@@ -68,7 +68,7 @@ async fn decrypt_data_test() -> KResult<()> {
                 key_format_type: KeyFormatType::PKCS8,
                 key_compression_type: None,
                 key_value: KeyValue {
-                    key_material: KeyMaterial::ByteString(pem.contents().to_vec()),
+                    key_material: KeyMaterial::ByteString(pem.contents().to_vec().into()),
                     attributes: None,
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),

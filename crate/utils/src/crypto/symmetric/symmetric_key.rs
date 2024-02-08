@@ -4,6 +4,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::Create,
     kmip_types::{Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType},
 };
+use zeroize::Zeroizing;
 
 use crate::{error::KmipUtilsError, tagging::set_tags};
 
@@ -43,7 +44,7 @@ pub fn create_symmetric_key_kmip_object(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentSymmetricKey {
-                    key: key_bytes.to_vec(),
+                    key: Zeroizing::from(key_bytes.to_vec()),
                 },
                 attributes: Some(attributes),
             },

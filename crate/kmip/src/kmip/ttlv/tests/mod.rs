@@ -1,6 +1,7 @@
 use num_bigint_dig::BigUint;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use time::OffsetDateTime;
+use zeroize::Zeroizing;
 
 use crate::{
     error::KmipError,
@@ -27,7 +28,7 @@ use crate::{
 
 pub fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
     KeyMaterial::TransparentSymmetricKey {
-        key: key_value.to_vec(),
+        key: Zeroizing::from(key_value.to_vec()),
     }
 }
 
@@ -224,7 +225,7 @@ fn test_serialization_deserialization() {
 
 #[test]
 fn test_ser_int() {
-    //log_init("info,hyper=info,reqwest=info");
+    // log_init("info,hyper=info,reqwest=info");
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -244,7 +245,7 @@ fn test_ser_int() {
 
 #[test]
 fn test_ser_array() {
-    //log_init("info,hyper=info,reqwest=info");
+    // log_init("info,hyper=info,reqwest=info");
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -262,7 +263,7 @@ fn test_ser_array() {
 
 #[test]
 fn test_ser_big_int() {
-    //log_init("info,hyper=info,reqwest=info");
+    // log_init("info,hyper=info,reqwest=info");
     #[derive(Serialize)]
     #[serde(rename_all = "PascalCase")]
     struct Test {
@@ -399,14 +400,14 @@ fn test_des_enum() {
 #[test]
 fn test_key_material_vec_deserialization() {
     //log_init("info,hyper=info,reqwest=info");
-    let bytes = vec![
+    let bytes = Zeroizing::from(vec![
         116, 104, 105, 115, 95, 105, 115, 95, 97, 95, 116, 101, 115, 116,
-    ];
+    ]);
     let ttlv = TTLV {
         tag: "KeyMaterial".to_string(),
         value: TTLValue::Structure(vec![TTLV {
             tag: "Key".to_string(),
-            value: TTLValue::ByteString(bytes.clone()),
+            value: TTLValue::ByteString(bytes.to_vec()),
         }]),
     };
     let km_: KeyMaterial = from_ttlv(&ttlv).unwrap();
@@ -636,7 +637,7 @@ fn test_byte_string_key_material() {
     //log_init("info");
     let key_bytes: &[u8] = b"this_is_a_test";
     let key_value = KeyValue {
-        key_material: KeyMaterial::ByteString(key_bytes.to_vec()),
+        key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
         attributes: Some(Attributes {
             object_type: Some(ObjectType::SymmetricKey),
             ..Attributes::default()
@@ -763,10 +764,12 @@ fn get_key_block() -> KeyBlock {
         key_compression_type: None,
         key_value: KeyValue {
             key_material: KeyMaterial::TransparentSymmetricKey {
-                key: hex::decode(
-                    b"EC189A82797F0AED1E5AEF9EB0D232E6079A1D3E5C00526DDEE59BCA16242604",
-                )
-                .unwrap(),
+                key: Zeroizing::from(
+                    hex::decode(
+                        b"EC189A82797F0AED1E5AEF9EB0D232E6079A1D3E5C00526DDEE59BCA16242604",
+                    )
+                    .unwrap(),
+                ),
             },
             //TODO:: Empty attributes used to cause a deserialization issue for `Object`; `None` works
             attributes: Some(Attributes::default()),

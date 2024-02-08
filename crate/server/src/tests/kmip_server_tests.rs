@@ -21,6 +21,7 @@ use cosmian_kms_utils::crypto::{
 };
 use tracing::trace;
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use crate::{
     config::ServerParams,
@@ -211,7 +212,7 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
     let wrapped_symmetric_key = [0_u8; 32];
     let aesgcm_nonce = [0_u8; 12];
 
-    let key_material = KeyMaterial::ByteString(wrapped_symmetric_key.to_vec());
+    let key_material = KeyMaterial::ByteString(Zeroizing::from(wrapped_symmetric_key.to_vec()));
 
     let symmetric_key = Object::SymmetricKey {
         key_block: KeyBlock {

@@ -18,6 +18,7 @@ use cosmian_kmip::{
     },
 };
 use tracing::trace;
+use zeroize::Zeroizing;
 
 use crate::crypto::cover_crypt::attributes::{
     access_policy_from_attributes, policy_from_attributes, upsert_access_policy_in_attributes,
@@ -29,7 +30,7 @@ use crate::crypto::cover_crypt::attributes::{
 /// see `cover_crypt_create_user_decryption_key_object` for the reverse operation
 pub(crate) fn unwrap_user_decryption_key_object(
     user_decryption_key: &Object,
-) -> Result<(Vec<u8>, AccessPolicy, Attributes), KmipError> {
+) -> Result<(Zeroizing<Vec<u8>>, AccessPolicy, Attributes), KmipError> {
     let key_block = match &user_decryption_key {
         Object::PrivateKey { key_block } => key_block.clone(),
         _ => {
@@ -148,7 +149,7 @@ impl UserDecryptionKeysHandler {
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: KeyValue {
-                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes.to_vec()),
+                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
                     attributes: Some(attributes),
                 },
                 cryptographic_length: Some(user_decryption_key_len as i32 * 8),
@@ -203,7 +204,7 @@ impl UserDecryptionKeysHandler {
                 key_format_type: KeyFormatType::CoverCryptSecretKey,
                 key_compression_type: None,
                 key_value: KeyValue {
-                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes.to_vec()),
+                    key_material: KeyMaterial::ByteString(user_decryption_key_bytes),
                     attributes: Some(usk_attributes),
                 },
                 cryptographic_length: Some(user_decryption_key_len),

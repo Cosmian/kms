@@ -85,7 +85,7 @@ pub fn wrap_key_block(
             let key_to_wrap = Zeroizing::from(serde_json::to_vec(&object_key_block.key_value)?);
             let ciphertext = wrap(wrapping_key, &key_wrapping_data, &key_to_wrap)?;
             object_key_block.key_value = KeyValue {
-                key_material: KeyMaterial::ByteString(ciphertext),
+                key_material: KeyMaterial::ByteString(ciphertext.into()),
                 // not clear whether this should be filled or not
                 attributes: object_key_block.key_value.attributes.clone(),
             };
@@ -93,7 +93,7 @@ pub fn wrap_key_block(
         EncodingOption::NoEncoding => {
             let key_to_wrap = object_key_block.key_bytes()?;
             let ciphertext = wrap(wrapping_key, &key_wrapping_data, &key_to_wrap)?;
-            object_key_block.key_value.key_material = KeyMaterial::ByteString(ciphertext);
+            object_key_block.key_value.key_material = KeyMaterial::ByteString(ciphertext.into());
         }
     };
 

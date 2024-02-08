@@ -11,6 +11,7 @@ use cosmian_kmip::{
     },
 };
 use tracing::{debug, trace};
+use zeroize::Zeroizing;
 
 use super::user_key::unwrap_user_decryption_key_object;
 use crate::{error::KmipUtilsError, DecryptionSystem};
@@ -20,7 +21,7 @@ use crate::{error::KmipUtilsError, DecryptionSystem};
 pub struct CovercryptDecryption {
     cover_crypt: Covercrypt,
     user_decryption_key_uid: String,
-    user_decryption_key_bytes: Vec<u8>,
+    user_decryption_key_bytes: Zeroizing<Vec<u8>>,
 }
 
 impl CovercryptDecryption {
