@@ -109,7 +109,9 @@ fn key_block(key_format_type: KeyFormatType, bytes: Vec<u8>) -> KeyBlock {
         key_format_type,
         key_compression_type: None,
         key_value: KeyValue {
-            key_material: KeyMaterial::ByteString(bytes),
+            // No need to specify zeroizing as parameter type for this function
+            // seems to only deal with public components.
+            key_material: KeyMaterial::ByteString(Zeroizing::from(bytes)),
             attributes: None,
         },
         // According to the KMIP spec, the cryptographic algorithm is not required

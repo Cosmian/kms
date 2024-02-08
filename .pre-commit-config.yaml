@@ -7,7 +7,7 @@
 
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
-exclude: crate/cli/test_data|crate/cli/demo.sh|scripts/deploy_sgx.sh|documentation/pandoc|documentation/overrides|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml|.github/workflows/python_and_docker.yml|sgx|crate/server/src/routes/google_cse/jwt.rs|documentation/docs/google_cse
+exclude: crate/cli/test_data|documentation/pandoc|documentation/overrides|enclave|crate/server/src/tests/test_utils.rs|crate/cli/src/tests/utils/test_utils.rs|crate/client/src/lib.rs|crate/cli/src/tests/certificates/openssl.rs|crate/client/src/kms_rest_client.rs|.pre-commit-config.yaml|crate/server/src/routes/google_cse/jwt.rs|documentation/docs/google_cse
 repos:
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v2.1.1
@@ -52,12 +52,14 @@ repos:
     hooks:
       - id: markdown-link-check
         args: [-q]
+        exclude: documentation/docs/ms_dke/ms_dke.md
 
   - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
     rev: 0.2.2
     hooks:
       - id: yamlfmt
         args: [--mapping, "2", --sequence, "4", --offset, "2"]
+        exclude: .github/workflows/main_release.yml
 
   - repo: https://github.com/crate-ci/typos
     rev: v1.13.1
@@ -107,6 +109,7 @@ repos:
       - id: debug-statements
       - id: destroyed-symlinks
       - id: detect-private-key
+        exclude: crate/server/src/tests/ms_dke
       - id: double-quote-string-fixer
       - id: end-of-file-fixer
       - id: file-contents-sorter

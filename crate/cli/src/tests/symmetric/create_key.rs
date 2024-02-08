@@ -93,7 +93,7 @@ pub async fn test_create_symmetric_key() -> Result<(), CliError> {
         )?;
     }
 
-    // AChaCha20
+    #[cfg(not(feature = "fips"))]
     {
         // ChaCha20 256 bit key
         create_symmetric_key(

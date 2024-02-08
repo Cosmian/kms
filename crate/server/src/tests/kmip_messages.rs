@@ -8,7 +8,7 @@ use cosmian_kmip::kmip::{
         UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::crypto::elliptic_curves::kmip_requests::create_curve_25519_key_pair_request;
+use cosmian_kms_utils::crypto::elliptic_curves::kmip_requests::create_ec_key_pair_request;
 
 use crate::{
     config::ServerParams, result::KResult, tests::test_utils::https_clap_config, KMSServer,
@@ -16,7 +16,7 @@ use crate::{
 
 #[tokio::test]
 async fn test_kmip_messages() -> KResult<()> {
-    cosmian_logger::log_utils::log_init("info,hyper=info,reqwest=info");
+    // cosmian_logger::log_utils::log_init("info,hyper=info,reqwest=info");
 
     let clap_config = https_clap_config();
 
@@ -25,7 +25,7 @@ async fn test_kmip_messages() -> KResult<()> {
 
     // request key pair creation
     let ec_create_request =
-        create_curve_25519_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
+        create_ec_key_pair_request(&[] as &[&str], RecommendedCurve::CURVE25519)?;
 
     // prepare and send the single message
     let items = vec![

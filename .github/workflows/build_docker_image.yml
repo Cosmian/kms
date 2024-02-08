@@ -3,18 +3,21 @@ name: Docker
 
 on:
   workflow_call:
+    inputs:
+      features:
+        required: true
+        type: string
+      image-suffix:
+        required: true
+        type: string
 
 env:
   REGISTRY: ghcr.io
   REGISTRY_IMAGE: ghcr.io/cosmian/kms
 
 jobs:
-  pyo3:
-    uses: ./.github/workflows/maturin.yml
-    with:
-      toolchain: nightly-2024-01-09
-
   build-and-push-image:
+    name: Image ${{ inputs.image-suffix }}
     runs-on: ubuntu-22.04
     container: docker:19.03.15
 
@@ -54,18 +57,23 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ steps.meta.outputs.tags }}${{ inputs.image-suffix }}
           labels: ${{ steps.meta.outputs.labels }}
           file: Dockerfile
           network: host
+          build-args: ${{ inputs.features }}
+
+      - name: Display metadata version ${{ steps.meta.outputs.version }}
+        run: |
+          echo version: ${{ steps.meta.outputs.version }}${{ inputs.image-suffix }}
+          echo tags: ${{ steps.meta.outputs.tags }}
 
     outputs:
-      image-tag: ${{ steps.meta.outputs.version }}
+      image-tag: ${{ steps.meta.outputs.version }}${{ inputs.image-suffix }}
 
   python_tests:
     needs:
       - build-and-push-image
-      - pyo3
     uses: ./.github/workflows/python_tests.yml
     secrets: inherit
     with:
@@ -75,7 +83,6 @@ jobs:
   cloudproof_kms_js:
     needs:
       - build-and-push-image
-      - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_kms_js.yml@develop
     with:
       branch: develop
@@ -84,10 +91,9 @@ jobs:
   cloudproof_java:
     needs:
       - build-and-push-image
-      - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_java_in_docker.yml@develop
     with:
-      branch: fix/kmip_serialization
+      branch: develop
       target: x86_64-unknown-linux-gnu
       extension: so
       destination: linux-x86-64
@@ -99,10 +105,9 @@ jobs:
   cloudproof_python:
     needs:
       - build-and-push-image
-      - pyo3
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@develop
     with:
-      branch: feature/kms-generics
+      branch: develop
       target: x86_64-unknown-linux-gnu
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       copy_fresh_build: true

@@ -1,6 +1,7 @@
 mod destroy_utils;
 mod encodings;
 mod export_utils;
+#[allow(dead_code)]
 mod file_utils;
 mod import_utils;
 mod revoke_utils;

@@ -1,8 +1,13 @@
 [package]
 name = "cosmian_kmip"
-version = "4.11.3"
+version = "4.12.0"
 edition = "2021"
 license-file = "../../LICENSE.md"
+
+[lib]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
 
 [features]
 default = []
@@ -35,5 +40,4 @@ zeroize = { workspace = true }
 ignored = ["rust-ini"]
 
 [dev-dependencies]
-cosmian_logger = { path = "../logger" }
 x509-parser = "0.15"

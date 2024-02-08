@@ -2,9 +2,9 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
-#[cfg(not(feature = "fips"))]
-use cosmian_logger::log_utils::log_init;
 
+#[cfg(not(feature = "fips"))]
+use crate::tests::utils::{start_default_test_kms_server, ONCE};
 #[cfg(not(feature = "fips"))]
 use crate::tests::{
     cover_crypt::master_key_pair::create_cc_master_key_pair,
@@ -17,10 +17,7 @@ use crate::{
     error::CliError,
     tests::{
         shared::export::export_key,
-        utils::{
-            extract_uids::extract_imported_key_id, recover_cmd_logs, start_default_test_kms_server,
-            ONCE,
-        },
+        utils::{extract_uids::extract_imported_key_id, recover_cmd_logs},
         PROG_NAME,
     },
 };
@@ -82,6 +79,7 @@ pub fn import_key(
     ))
 }
 
+#[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_import_cover_crypt() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
@@ -132,7 +130,7 @@ pub async fn test_import_cover_crypt() -> Result<(), CliError> {
 #[cfg(not(feature = "fips"))]
 #[tokio::test]
 pub async fn test_generate_export_import() -> Result<(), CliError> {
-    log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
+    // log_init("cosmian_kms_server=debug,cosmian_kms_utils=debug");
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // Covercrypt import/export test
@@ -150,7 +148,8 @@ pub async fn test_generate_export_import() -> Result<(), CliError> {
     )?;
 
     // Test import/export of an EC Key Pair
-    let (private_key_id, _public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+    let (private_key_id, _public_key_id) =
+        create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &[])?;
     export_import_test(
         &ctx.owner_cli_conf_path,
         "ec",

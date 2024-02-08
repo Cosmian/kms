@@ -1,0 +1,259 @@
+---
+name: CI release
+
+on:
+  push:
+    # any tags, including tags with / like v1.0/alpha
+    tags:
+      - '**'
+  schedule:
+    # every day at 3 AM
+    - cron: '00 3 * * *'
+
+jobs:
+  cargo-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v3
+        with:
+          path: ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-audit-v0.15.2
+      - uses: rustsec/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  cargo-udeps:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-udeps.yml@develop
+
+  cargo-lint:
+    uses: ./.github/workflows/clippy.yml
+    with:
+      toolchain: nightly-2024-01-09
+
+  build:
+    uses: ./.github/workflows/build_all_release.yml
+    secrets: inherit
+    with:
+      toolchain: nightly-2024-01-09
+
+  build_tests:
+    uses: ./.github/workflows/build_all.yml
+    secrets: inherit
+    with:
+      toolchain: nightly-2024-01-09
+
+  cargo-doc:
+    uses: Cosmian/reusable_workflows/.github/workflows/cargo-doc.yml@develop
+    with:
+      toolchain: nightly-2024-01-09
+
+  python_and_docker:
+    uses: ./.github/workflows/build_and_test_docker_image.yml
+
+  ckms_gui:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags')
+    steps:
+      - name: Build ckms_gui on tags
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: main.yml
+          repo: Cosmian/ckms_gui
+          ref: main
+          token: ${{ secrets.PAT_TOKEN }}
+          inputs: '{ "kms_version": "${{ github.ref_name }}" }'
+
+  clean_env_test:
+    name: ${{ matrix.archive_name }} -> Launch binary in a clean env. -> ${{ matrix.os }}
+    needs:
+      - build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - archive_name: centos7
+            kms_path: .
+            os: ubuntu-20.04
+          - archive_name: fips_centos7
+            kms_path: __w/kms/kms/target/release
+            os: ubuntu-20.04
+          - archive_name: ubuntu_20_04
+            kms_path: .
+            os: ubuntu-20.04
+          - archive_name: fips_ubuntu_20_04
+            kms_path: home/runner/work/kms/kms/target/release
+            os: ubuntu-20.04
+          - archive_name: ubuntu_22_04
+            kms_path: .
+            os: ubuntu-22.04
+          - archive_name: macos
+            kms_path: .
+            os: macos-12
+          - archive_name: windows
+            kms_path: .
+            os: windows-2019
+
+    steps:
+      - uses: actions/download-artifact@v3
+
+      - run: find .
+        if: contains(runner.os, 'linux')
+
+      - name: Launch ckms and cosmian_kms_server
+        if: contains(runner.os, 'Linux') || contains(runner.os, 'macos')
+        run: |
+          set -ex
+
+          chmod u+x ./${{ matrix.archive_name }}/${{ matrix.kms_path }}/ckms
+          chmod u+x ./${{ matrix.archive_name }}/${{ matrix.kms_path }}/cosmian_kms_server
+
+          ./${{ matrix.archive_name }}/${{ matrix.kms_path }}/ckms -V
+
+          # Copy openssl build for FIPS mode
+          if [ -d "${{ matrix.archive_name }}/usr/local/openssl" ]; then
+            sudo mkdir /usr/local/openssl
+            sudo chown -R $USER /usr/local/openssl
+            rsync -ru ${{ matrix.archive_name }}/usr/local/openssl/ /usr/local/openssl/
+            chmod u+x /usr/local/openssl/lib64/ossl-modules/fips.so
+            ldd /usr/local/openssl/lib64/ossl-modules/fips.so
+          fi
+          ./${{ matrix.archive_name }}/${{ matrix.kms_path }}/cosmian_kms_server -V
+
+      - name: Launch ckms and cosmian_kms_server
+        if: contains(runner.os, 'windows')
+        run: |
+          ${{ matrix.archive_name }}/${{ matrix.kms_path }}/ckms.exe -V
+          ${{ matrix.archive_name }}/${{ matrix.kms_path }}/cosmian_kms_server.exe -V
+
+  ##############################################################################
+  ### Releases
+  ##############################################################################
+  release:
+    name: release
+    needs:
+      - cargo-audit
+      - cargo-udeps
+      - cargo-lint
+      - cargo-doc
+      - build
+      - python_and_docker
+      - clean_env_test
+      - ckms_gui
+    runs-on: [self-hosted, not-sgx]
+    env:
+      ARCHIVE_NAMES: centos7 fips_centos7 ubuntu_20_04 fips_ubuntu_20_04 ubuntu_22_04 macos windows kms_python_linux kms_python_macos kms_python_windows
+
+    steps:
+      - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos centos7
+      - uses: actions/download-artifact@v3
+      - run: find .
+
+      - name: Creating zip to be attached to release
+        run: |
+          sudo apt-get install -y zip
+          for archive_name in $ARCHIVE_NAMES; do
+            zip -r "$archive_name".zip "$archive_name"
+          done
+
+      - name: Push to package.cosmian.com
+        run: |
+          set -x
+          DESTINATION_DIR=/mnt/package/kms/last_build/$VERSION
+          ssh cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
+          scp *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
+        env:
+          VERSION: ${{ github.head_ref }}
+
+      - name: Push to package.cosmian.com - tags
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -x
+          DESTINATION_DIR=/mnt/package/kms/$VERSION
+          ssh cosmian@package.cosmian.com mkdir -p $DESTINATION_DIR
+          scp *.zip cosmian@package.cosmian.com:$DESTINATION_DIR/
+        env:
+          VERSION: ${{ github.ref_name }}
+
+      - name: Release on tags, attach asset on release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./*.zip
+
+  python_publish:
+    name: python publish
+    needs:
+      - python_and_docker
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - archive_name: kms_python_linux
+          - archive_name: kms_python_macos
+          - archive_name: kms_python_windows
+
+    steps:
+      - uses: actions/download-artifact@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.7
+
+      - name: List directory
+        if: contains(runner.os, 'Linux')
+        run: find .
+
+      - name: Install requirements
+        run: |
+          pip install twine
+
+      - name: Create folder dist
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          mkdir -p dist
+          cp ${{ matrix.archive_name }}/*.whl dist/
+
+      - name: Publish package to PyPi
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://upload.pypi.org/legacy/
+          print-hash: true
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  cleanup:
+    needs:
+      - release
+      - python_publish
+    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
+    secrets: inherit
+
+  public_documentation:
+    needs:
+      - cleanup
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Deploy documentation in staging
+        if: ${{ github.ref_name == 'develop' }}
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: staging.yml
+          repo: Cosmian/public_documentation
+          ref: develop
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Deploy documentation in prod
+        if: startsWith(github.ref, 'refs/tags')
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: prod.yml
+          repo: Cosmian/public_documentation
+          ref: main
+          token: ${{ secrets.PAT_TOKEN }}

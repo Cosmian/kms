@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
-use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
+use cosmian_kmip::kmip::{
+    kmip_data_structures::KeyWrappingSpecification, kmip_types::CryptographicAlgorithm,
+};
 use cosmian_kms_client::KmsRestClient;
 use cosmian_kms_utils::crypto::{
     password_derivation::derive_key_from_password, symmetric::create_symmetric_key_kmip_object,
@@ -82,12 +84,12 @@ impl WrapKeyAction {
                 derive_key_from_password::<SYMMETRIC_WRAPPING_KEY_SIZE>(password.as_bytes())?;
 
             let symmetric_key_object =
-                create_symmetric_key_kmip_object(&key_bytes, CryptographicAlgorithm::AES);
+                create_symmetric_key_kmip_object(key_bytes.as_ref(), CryptographicAlgorithm::AES);
 
             // Print the wrapping key for user. This is the only time that this wrapping key will be printed
             println!(
                 "Wrapping key: {}",
-                general_purpose::STANDARD.encode(key_bytes)
+                general_purpose::STANDARD.encode(&*key_bytes)
             );
             symmetric_key_object
         } else if let Some(key_id) = &self.wrap_key_id {
@@ -100,7 +102,11 @@ impl WrapKeyAction {
             cli_bail!("one of the wrapping options must be specified");
         };
 
-        wrap_key_block(object.key_block_mut()?, &wrapping_key, None)?;
+        wrap_key_block(
+            object.key_block_mut()?,
+            &wrapping_key,
+            &KeyWrappingSpecification::default(),
+        )?;
 
         // set the output file path to the input file path if not specified
         let output_file = self

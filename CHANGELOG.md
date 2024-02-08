@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.12.0] - 2024-02-08
+
+### Features
+
+- Generalize the refresh of JWKS in the middleware [#150](https://github.com/Cosmian/kms/pull/150).
+- CI speed up [#173](https://github.com/Cosmian/kms/pull/173).
+- Add support for Microsoft Double Key Encryption (DKE) endpoints [#170](https://github.com/Cosmian/kms/pull/170).
+- Re-organized crypto package by algorithm, removed duplicated code [#170](https://github.com/Cosmian/kms/pull/170).
+- Add support for FIPS mode for the ckms client [#170](https://github.com/Cosmian/kms/pull/170).
+- Documented TOML configuration file for the KMS server [#170](https://github.com/Cosmian/kms/pull/170).
+- Overall improvements to the documentation on algorithms and FIPS mode [#170](https://github.com/Cosmian/kms/pull/170).
+
 ## [4.11.3] - 2024-01-26
 
 ### Features
@@ -38,7 +50,7 @@ All notable changes to this project will be documented in this file.
 ### Features
 
 - X509 v3 extensions support [#120](https://github.com/Cosmian/kms/issues/120)
-- Dynamic salt for password derivation, resolving issue #124 [#128](https://github.com/Cosmian/kms/issues/128)
+- Dynamic salt for password derivation, resolving issue [#124](https://github.com/Cosmian/kms/issues/124) [#128](https://github.com/Cosmian/kms/issues/128)
 - Support Cosmian VM [#129](https://github.com/Cosmian/kms/issues/129)
 - Make rsa oaep aes a generalized encryption system for use in all kms and not only for key wrapping [#130](https://github.com/Cosmian/kms/issues/130)
 - ECIES implementation for Hybrid Encryption [#134](https://github.com/Cosmian/kms/issues/134)

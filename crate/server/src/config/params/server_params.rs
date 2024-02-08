@@ -1,6 +1,5 @@
 use std::{fmt, fs::File, io::Read, path::PathBuf};
 
-use alcoholic_jwt::JWKS;
 use openssl::x509::X509;
 
 use super::{DbParams, HttpParams};
@@ -17,8 +16,8 @@ pub struct ServerParams {
     // The JWT issuer URI if Auth is enabled
     pub jwt_issuer_uri: Option<String>,
 
-    // The JWKS if Auth is enabled
-    pub jwks: Option<JWKS>,
+    // The JWKS URI if Auth is enabled
+    pub jwks_uri: Option<String>,
 
     pub jwe_config: JWEConfig,
 
@@ -54,6 +53,15 @@ pub struct ServerParams {
     /// For instance, if this server is running on domain `cse.my_domain.com`,
     /// the URL should be something like <https://cse.my_domain.com/google_cse>
     pub google_cse_kacls_url: Option<String>,
+
+    /// This setting enables the Microsoft Double Key Encryption service feature of this server.
+    ///
+    /// It should contain the external URL of this server as configured in
+    /// App Registrations of Azure as the DKE Service.
+    /// Check this link: https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store
+    ///
+    /// The URL should be something like <https://cse.my_domain.com/ms_dke>
+    pub ms_dke_service_url: Option<String>,
 }
 
 impl ServerParams {
@@ -79,7 +87,7 @@ impl ServerParams {
         };
 
         let server_conf = Self {
-            jwks: conf.auth.fetch_jwks().await?,
+            jwks_uri: conf.auth.jwks_uri.clone(),
             jwt_issuer_uri: conf.auth.jwt_issuer_uri.clone(),
             jwe_config: conf.jwe.clone(),
             jwt_audience: conf.auth.jwt_audience.clone(),
@@ -92,6 +100,7 @@ impl ServerParams {
             force_default_username: conf.force_default_username,
             client_cert: verify_cert,
             google_cse_kacls_url: conf.google_cse_kacls_url.clone(),
+            ms_dke_service_url: conf.ms_dke_service_url.clone(),
         };
         Ok(server_conf)
     }
@@ -129,7 +138,7 @@ impl fmt::Debug for ServerParams {
             .field("clear_db_on_start", &self.clear_db_on_start);
         let x = if let Some(jwt_issuer_uri) = &self.jwt_issuer_uri {
             x.field("jwt_issuer_uri", &jwt_issuer_uri)
-                .field("jwks", &self.jwks)
+                .field("jwks_uri", &self.jwks_uri)
                 .field("jwt_audience", &self.jwt_audience)
         } else {
             x
@@ -143,6 +152,12 @@ impl fmt::Debug for ServerParams {
             .field("default_username", &self.default_username)
             .field("force_default_username", &self.force_default_username);
         let x = x.field("http_params", &self.http_params);
+        let x = if let Some(google_cse_kacls_url) = &self.google_cse_kacls_url {
+            x.field("google_cse_kacls_url", &google_cse_kacls_url)
+        } else {
+            x
+        };
+        let x = x.field("ms_dke_service_url", &self.ms_dke_service_url);
         x.finish()
     }
 }
@@ -154,7 +169,7 @@ impl Clone for ServerParams {
     fn clone(&self) -> Self {
         Self {
             jwt_issuer_uri: self.jwt_issuer_uri.clone(),
-            jwks: self.jwks.clone(),
+            jwks_uri: self.jwks_uri.clone(),
             jwe_config: self.jwe_config.clone(),
             jwt_audience: self.jwt_audience.clone(),
             default_username: self.default_username.clone(),
@@ -166,6 +181,7 @@ impl Clone for ServerParams {
             http_params: HttpParams::Http,
             client_cert: self.client_cert.clone(),
             google_cse_kacls_url: self.google_cse_kacls_url.clone(),
+            ms_dke_service_url: self.ms_dke_service_url.clone(),
         }
     }
 }

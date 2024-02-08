@@ -58,6 +58,7 @@ pub fn test_aes() {
             }),
             data: Some(enc_res.data.unwrap()),
             iv_counter_nonce: Some(enc_res.iv_counter_nonce.unwrap()),
+            correlation_value: None,
             init_indicator: None,
             final_indicator: None,
             authenticated_encryption_additional_data: Some(uid.clone()),

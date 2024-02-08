@@ -10,7 +10,7 @@ use cosmian_kms_utils::{
 
 use crate::{result::KResult, tests::test_utils};
 
-#[actix_web::test]
+#[tokio::test]
 async fn integration_tests_bulk() -> KResult<()> {
     // cosmian_logger::log_utils::log_init("trace,hyper=info,reqwest=info");
 

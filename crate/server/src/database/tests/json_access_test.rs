@@ -14,7 +14,6 @@ use cosmian_kms_utils::{
     access::{ExtraDatabaseParams, ObjectOperationType},
     crypto::symmetric::create_symmetric_key_kmip_object,
 };
-use cosmian_logger::log_utils::log_init;
 use uuid::Uuid;
 
 use crate::{
@@ -26,7 +25,7 @@ use crate::{
 pub async fn json_access<DB: Database>(
     db_and_params: &(DB, Option<ExtraDatabaseParams>),
 ) -> KResult<()> {
-    log_init("debug");
+    // log_init("debug");
     let db = &db_and_params.0;
     let db_params = db_and_params.1.as_ref();
 

@@ -1,4 +1,3 @@
-use cloudproof::reexport::crypto_core::{FixedSizeCBytes, RandomFixedSizeCBytes, SymmetricKey};
 use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
@@ -9,7 +8,17 @@ use openssl::{
     symm::{decrypt_aead, encrypt_aead, Cipher},
 };
 
-use crate::{error::KmipUtilsError, DecryptionSystem, EncryptionSystem};
+use crate::{
+    crypto::secret::Secret, error::KmipUtilsError, kmip_utils_bail, DecryptionSystem,
+    EncryptionSystem,
+};
+
+/// AES 128 GCM key length in bytes.
+pub const AES_128_GCM_KEY_LENGTH: usize = 16;
+/// AES 128 GCM nonce length in bytes.
+pub const AES_128_GCM_IV_LENGTH: usize = 12;
+/// AES 128 GCM tag/mac length in bytes.
+pub const AES_128_GCM_MAC_LENGTH: usize = 16;
 
 /// AES 256 GCM key length in bytes.
 pub const AES_256_GCM_KEY_LENGTH: usize = 32;
@@ -20,7 +29,7 @@ pub const AES_256_GCM_MAC_LENGTH: usize = 16;
 
 pub struct AesGcmSystem {
     key_uid: String,
-    symmetric_key: SymmetricKey<{ AES_256_GCM_KEY_LENGTH }>,
+    symmetric_key: Secret<AES_256_GCM_KEY_LENGTH>,
 }
 
 impl AesGcmSystem {
@@ -33,18 +42,16 @@ impl AesGcmSystem {
                 ))
             }
         };
-        let symmetric_key_bytes: [u8; AES_256_GCM_KEY_LENGTH] =
-            key_block.key_bytes()?.as_slice().try_into().map_err(|_| {
-                KmipUtilsError::NotSupported(format!(
-                    "Expected a KMIP Symmetric Key of length {AES_256_GCM_KEY_LENGTH}"
-                ))
-            })?;
-        let symmetric_key = SymmetricKey::try_from_bytes(symmetric_key_bytes)
-            .map_err(|e| KmipUtilsError::NotSupported(e.to_string()))?;
+        let mut symmetric_key: [u8; AES_256_GCM_KEY_LENGTH] =
+            key_block.key_bytes()?.to_vec().try_into()?;
+
+        if symmetric_key.len() != AES_256_GCM_KEY_LENGTH {
+            kmip_utils_bail!("Expected a KMIP Symmetric Key of length {AES_256_GCM_KEY_LENGTH}")
+        }
 
         Ok(Self {
             key_uid: uid.into(),
-            symmetric_key,
+            symmetric_key: Secret::from_unprotected_bytes(&mut symmetric_key),
         })
     }
 }
@@ -97,10 +104,16 @@ impl EncryptionSystem for AesGcmSystem {
         // Create buffer for GCM tag (MAC).
         let mut tag = vec![0; AES_256_GCM_MAC_LENGTH];
 
+        if self.symmetric_key.len() != AES_256_GCM_KEY_LENGTH {
+            kmip_utils_bail!(
+                "Encrypt: Expected a KMIP Symmetric Key of length {AES_256_GCM_KEY_LENGTH}"
+            )
+        }
+
         // Encryption.
         let ciphertext = encrypt_aead(
             Cipher::aes_256_gcm(),
-            self.symmetric_key.as_bytes(),
+            &self.symmetric_key,
             Some(&nonce),
             &aad,
             plaintext,
@@ -161,9 +174,15 @@ impl DecryptionSystem for AesGcmSystem {
             }
         }
 
+        if self.symmetric_key.len() != AES_256_GCM_KEY_LENGTH {
+            kmip_utils_bail!(
+                "Decrypt: Expected a KMIP Symmetric Key of length {AES_256_GCM_KEY_LENGTH}"
+            )
+        }
+
         let plaintext = decrypt_aead(
             Cipher::aes_256_gcm(),
-            self.symmetric_key.as_bytes(),
+            &self.symmetric_key,
             Some(&nonce),
             &aad,
             ciphertext,

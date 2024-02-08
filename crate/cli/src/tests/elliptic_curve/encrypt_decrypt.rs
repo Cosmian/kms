@@ -93,7 +93,8 @@ async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
 
-    let (private_key_id, public_key_id) = create_ec_key_pair(&ctx.owner_cli_conf_path, &[])?;
+    let (private_key_id, public_key_id) =
+        create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &[])?;
 
     encrypt(
         &ctx.owner_cli_conf_path,
@@ -135,7 +136,7 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
     assert!(!output_file.exists());
 
     let (_private_key_id, _public_key_id) =
-        create_ec_key_pair(&ctx.owner_cli_conf_path, &["tag_ec"])?;
+        create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &["tag_ec"])?;
 
     encrypt(
         &ctx.owner_cli_conf_path,

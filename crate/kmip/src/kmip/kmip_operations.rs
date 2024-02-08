@@ -973,6 +973,12 @@ pub struct Decrypt {
     /// nonce to be used (where appropriate)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iv_counter_nonce: Option<Vec<u8>>,
+    /// Specifies the existing stream or by-
+    /// parts cryptographic operation (as
+    /// returned from a previous call to this
+    /// operation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_value: Option<Vec<u8>>,
     /// Initial operation as Boolean
     #[serde(skip_serializing_if = "Option::is_none")]
     pub init_indicator: Option<bool>,

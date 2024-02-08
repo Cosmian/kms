@@ -29,7 +29,7 @@ error if there is more than one valid certificate chain.
 The `Get` operation allows exporting `Active` objects only.
 When an object is `Destroyed` or `Deactivated`, the `Export` operation must be used instead.
 
-Key wrapping and unwrapping on export is supported for all keys. Please check the [algorithms page](./algorithms.md)
+Key wrapping and unwrapping on export is supported for all keys. Please check the [algorithms page](../algorithms.md)
 for more details.
 
 For the list of supported key formats, please check the [formats page](./formats.md).

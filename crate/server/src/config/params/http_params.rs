@@ -2,7 +2,10 @@ use std::{fmt, fs::File, io::Read};
 
 use openssl::pkcs12::{ParsedPkcs12_2, Pkcs12};
 
-use crate::{config::ClapConfig, result::KResult};
+use crate::{
+    config::ClapConfig,
+    result::{KResult, KResultHelper},
+};
 
 /// The HTTP parameters of the API server
 pub enum HttpParams {
@@ -22,7 +25,9 @@ impl HttpParams {
             file.read_to_end(&mut der_bytes)?;
             // Parse the byte vector as a PKCS#12 object
             let sealed_p12 = Pkcs12::from_der(der_bytes.as_slice())?;
-            let p12 = sealed_p12.parse2(p12_password)?;
+            let p12 = sealed_p12
+                .parse2(p12_password)
+                .context("HTTPS configuration")?;
             Ok(Self::Https(p12))
         // else start in HTTP mode which is the default
         } else {

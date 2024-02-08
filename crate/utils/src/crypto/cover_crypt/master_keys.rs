@@ -14,6 +14,7 @@ use cosmian_kmip::{
         },
     },
 };
+use zeroize::Zeroizing;
 
 use crate::{
     crypto::cover_crypt::attributes::{policy_from_attributes, upsert_policy_in_attributes},
@@ -112,7 +113,7 @@ fn create_master_private_key_object(
             key_format_type: KeyFormatType::CoverCryptSecretKey,
             key_compression_type: None,
             key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(key.to_vec()),
+                key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
                 attributes: Some(attributes),
             },
             cryptographic_length: Some(key.len() as i32 * 8),
@@ -149,7 +150,7 @@ fn create_master_public_key_object(
             key_format_type: KeyFormatType::CoverCryptPublicKey,
             key_compression_type: None,
             key_value: KeyValue {
-                key_material: KeyMaterial::ByteString(key.to_vec()),
+                key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
                 attributes: Some(attributes),
             },
             cryptographic_length: Some(key.len() as i32 * 8),

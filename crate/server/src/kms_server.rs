@@ -1,4 +1,4 @@
-use std::sync::{mpsc, Arc, RwLock};
+use std::sync::{mpsc, Arc};
 
 use actix_cors::Cors;
 use actix_identity::IdentityMiddleware;
@@ -15,17 +15,19 @@ use openssl::{
 use tracing::info;
 
 use crate::{
-    config::{self, ServerParams},
+    config::{self, JwtAuthConfig, ServerParams},
     core::KMS,
-    kms_bail, kms_error,
+    error::KmsError,
+    kms_bail,
     middlewares::{
         ssl_auth::{extract_peer_certificate, SslAuth},
-        JwtAuth, JwtConfig,
+        JwksManager, JwtAuth, JwtConfig,
     },
     result::{KResult, KResultHelper},
     routes::{
-        self,
+        access, add_new_database, get_version,
         google_cse::{self, GoogleCseConfig},
+        kmip, ms_dke,
     },
     KMSServer,
 };
@@ -178,29 +180,39 @@ pub async fn prepare_kms_server(
     kms_server: Arc<KMS>,
     builder: Option<SslAcceptorBuilder>,
 ) -> KResult<actix_web::dev::Server> {
+    // Check if this auth server is enabled for Google Client-Side Encryption
+    let enable_google_cse = kms_server.params.google_cse_kacls_url.is_some();
+    let google_cse_jwks = enable_google_cse.then_some(google_cse::list_jwks_uri());
+
     // Determine if JWT Auth should be used for authentication.
-    let (use_jwt_auth, jwt_config) = if let Some(jwt_issuer_uri) = &kms_server.params.jwt_issuer_uri
+    let (use_jwt_auth, jwt_config, jwks_manager) = if let Some(jwt_issuer_uri) =
+        &kms_server.params.jwt_issuer_uri
     {
+        // Prepare all the needed URIs
+        let jwks_uri = JwtAuthConfig::uri(jwt_issuer_uri, kms_server.params.jwks_uri.as_deref());
+        let uris = google_cse_jwks.map_or_else(
+            || vec![jwks_uri.clone()],
+            |mut google_uris| {
+                google_uris.push(jwks_uri.clone());
+                google_uris
+            },
+        );
+
+        let jwks_manager = Arc::new(JwksManager::new(uris).await?);
+
         (
             true,
             Some(Arc::new(JwtConfig {
                 jwt_issuer_uri: jwt_issuer_uri.clone(),
-                jwks: RwLock::new(
-                    kms_server
-                        .params
-                        .jwks
-                        .as_ref()
-                        .ok_or_else(|| {
-                            kms_error!("The JWKS must be provided when using JWT authentication")
-                        })?
-                        .clone(),
-                ),
+                jwks: jwks_manager.clone(),
                 jwt_audience: kms_server.params.jwt_audience.clone(),
             })),
+            Some(jwks_manager),
         )
     } else {
-        (false, None)
+        (false, None, None)
     };
+
     // Determine if Client Cert Auth should be used for authentication.
     let use_cert_auth = kms_server.params.client_cert.is_some();
 
@@ -213,17 +225,19 @@ pub async fn prepare_kms_server(
     // Determine the address to bind the server to.
     let address = format!("{}:{}", kms_server.params.hostname, kms_server.params.port);
 
-    // Check if this auth server is enabled for Google Client-Side Encryption
-    let enable_google_cse = kms_server.params.google_cse_kacls_url.is_some();
-
     // Get the Google Client-Side Encryption JWT authorization config
     let google_cse_jwt_config = if enable_google_cse {
+        let Some(jwks_manager) = jwks_manager else {
+            return Err(KmsError::ServerError(
+                "No JWKS manager to handle Google CSE JWT authorization".to_string(),
+            ));
+        };
         Some(GoogleCseConfig {
             authentication: jwt_config.clone().context(
                 "When using Google client-side encryption, an identity provider used to \
                  authenticate Google Workspace users must be configured.",
             )?,
-            authorization: google_cse::jwt_authorization_config().await?,
+            authorization: google_cse::jwt_authorization_config(jwks_manager.clone()),
             kacls_url: kms_server.params.google_cse_kacls_url.clone().context(
                 "The Google Workspace Client Side Encryption KACLS URL must be provided",
             )?,
@@ -232,6 +246,9 @@ pub async fn prepare_kms_server(
         None
     };
 
+    // Should we enable the MS DKE Service ?
+    let enable_ms_dke = kms_server.params.ms_dke_service_url.is_some();
+
     // Create the `HttpServer` instance.
     let server = HttpServer::new(move || {
         // Create an `App` instance and configure the passed data and the various scopes
@@ -239,17 +256,27 @@ pub async fn prepare_kms_server(
             .wrap(IdentityMiddleware::default())
             .app_data(Data::new(kms_server.clone())) // Set the shared reference to the `KMS` instance.
             .app_data(PayloadConfig::new(10_000_000_000)) // Set the maximum size of the request payload.
-            .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.;
+            .app_data(JsonConfig::default().limit(10_000_000_000)); // Set the maximum size of the JSON request payload.
 
         if enable_google_cse {
             // The scope for the Google Client-Side Encryption endpoints served from /google_cse
             let google_cse_scope = web::scope("/google_cse")
                 .app_data(Data::new(google_cse_jwt_config.clone()))
                 .wrap(Cors::permissive())
-                .service(routes::google_cse::get_status)
-                .service(routes::google_cse::wrap)
-                .service(routes::google_cse::unwrap);
+                .service(google_cse::get_status)
+                .service(google_cse::wrap)
+                .service(google_cse::unwrap);
             app = app.service(google_cse_scope);
+        }
+
+        if enable_ms_dke {
+            // The scope for the Microsoft Double Key Encryption endpoints served from /ms_dke
+            let ms_dke_scope = web::scope("/ms_dke")
+                .wrap(Cors::permissive())
+                .service(ms_dke::version)
+                .service(ms_dke::get_key)
+                .service(ms_dke::decrypt);
+            app = app.service(ms_dke_scope);
         }
 
         // The default scope serves from the root / the KMIP, permissions and tee endpoints
@@ -264,17 +291,17 @@ pub async fn prepare_kms_server(
             // CORS middleware is the last one so that the auth middlewares do not run on
             // preflight (OPTION) requests.
             .wrap(Cors::permissive())
-            .service(routes::kmip::kmip)
-            .service(routes::access::list_owned_objects)
-            .service(routes::access::list_access_rights_obtained)
-            .service(routes::access::list_accesses)
-            .service(routes::access::grant_access)
-            .service(routes::access::revoke_access)
-            .service(routes::get_version);
+            .service(kmip::kmip)
+            .service(access::list_owned_objects)
+            .service(access::list_access_rights_obtained)
+            .service(access::list_accesses)
+            .service(access::grant_access)
+            .service(access::revoke_access)
+            .service(get_version);
 
         // The default scope is extended with the /new_database endpoint if the application is using an encrypted SQLite database.
         let default_scope = if is_using_sqlite_enc {
-            default_scope.service(routes::add_new_database)
+            default_scope.service(add_new_database)
         } else {
             default_scope
         };

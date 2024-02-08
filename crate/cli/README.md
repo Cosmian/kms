@@ -39,12 +39,18 @@ If you wish to use a different configuration file, set its full path in the `KMS
 KMS_CLI_CONF=kms.json ckms --help
 ```
 
+or you can specify the path as a command line argument, like:
+
+```sh
+ckms --conf /some/path/kms.json --help
+```
+
 If the server is running without Auth0, you can let `kms_access_token` empty. Indeed, the server is running without authentication in a single-user mode.
 
 If the server is running with cached sqlcipher as the KMS database, you also need to specify `kms_database_secret`. The first time, your organization uses the KMS, you will run the following command to get the `kms_database_secret`. Save the output because the KMS won't remember it!
 
 ```sh
-KMS_CLI_CONF=kms.json ckms configure
+KMS_CLI_CONF=kms.json ckms new-database
 ```
 
 ### Attribute Based Encryption: CoverCrypt

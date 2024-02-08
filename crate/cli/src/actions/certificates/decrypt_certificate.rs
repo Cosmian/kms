@@ -1,10 +1,7 @@
 use std::{fs::File, io::prelude::*, path::PathBuf};
 
 use clap::Parser;
-use cosmian_kmip::kmip::{
-    kmip_operations::{Decrypt, DecryptedData},
-    kmip_types::UniqueIdentifier,
-};
+use cosmian_kmip::kmip::{kmip_operations::Decrypt, kmip_types::UniqueIdentifier};
 use cosmian_kms_client::KmsRestClient;
 
 use crate::{
@@ -71,12 +68,9 @@ impl DecryptCertificateAction {
             .decrypt(decrypt_request)
             .await
             .with_context(|| "Can't execute the query on the kms server")?;
-
-        let metadata_and_cleartext: DecryptedData = decrypt_response
+        let plaintext = decrypt_response
             .data
-            .context("The plain data are empty")?
-            .as_slice()
-            .try_into()?;
+            .context("Decrypt with certificate: the plaintext is empty")?;
 
         // Write the decrypted file
         let output_file = self
@@ -84,10 +78,10 @@ impl DecryptCertificateAction {
             .clone()
             .unwrap_or_else(|| self.input_file.clone().with_extension(".plain"));
         let mut buffer =
-            File::create(&output_file).with_context(|| "Fail to write the plain file")?;
+            File::create(&output_file).with_context(|| "Fail to write the plaintext file")?;
         buffer
-            .write_all(&metadata_and_cleartext.plaintext)
-            .with_context(|| "Fail to write the plain file")?;
+            .write_all(&plaintext)
+            .with_context(|| "Fail to write the plaintext file")?;
 
         println!("The decrypted file is available at {:?}", &output_file);
 

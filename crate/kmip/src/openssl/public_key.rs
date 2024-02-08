@@ -7,6 +7,7 @@ use openssl::{
     rsa::Rsa,
 };
 use tracing::trace;
+use zeroize::Zeroizing;
 
 use crate::{
     error::KmipError,
@@ -176,9 +177,9 @@ pub fn openssl_public_key_to_kmip(
             KeyBlock {
                 key_format_type,
                 key_value: KeyValue {
-                    key_material: KeyMaterial::ByteString(
+                    key_material: KeyMaterial::ByteString(Zeroizing::from(
                         rsa_public_key.public_key_to_der_pkcs1()?,
-                    ),
+                    )),
                     attributes: Some(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                         cryptographic_length: Some(rsa_public_key.size() as i32),
@@ -194,7 +195,7 @@ pub fn openssl_public_key_to_kmip(
             }
         }
         KeyFormatType::PKCS8 => {
-            let spki_der = public_key.public_key_to_der()?;
+            let spki_der = Zeroizing::from(public_key.public_key_to_der()?);
             let cryptographic_algorithm = match public_key.id() {
                 Id::RSA => Some(CryptographicAlgorithm::RSA),
                 Id::EC => Some(CryptographicAlgorithm::ECDH),
@@ -489,7 +490,7 @@ mod tests {
         assert_eq!(public_key_.id(), id);
         assert_eq!(public_key_.bits(), keysize);
         if kft == KeyFormatType::PKCS8 {
-            assert_eq!(public_key_.public_key_to_der().unwrap(), key_value);
+            assert_eq!(public_key_.public_key_to_der().unwrap(), key_value.to_vec());
         } else {
             assert_eq!(
                 public_key_
@@ -497,13 +498,13 @@ mod tests {
                     .unwrap()
                     .public_key_to_der_pkcs1()
                     .unwrap(),
-                key_value
+                key_value.to_vec()
             );
         }
         let public_key_ = kmip_public_key_to_openssl(&object_).unwrap();
         assert_eq!(public_key_.bits(), keysize);
         if kft == KeyFormatType::PKCS8 {
-            assert_eq!(public_key_.public_key_to_der().unwrap(), key_value);
+            assert_eq!(public_key_.public_key_to_der().unwrap(), key_value.to_vec());
         } else {
             assert_eq!(
                 public_key_
@@ -511,7 +512,7 @@ mod tests {
                     .unwrap()
                     .public_key_to_der_pkcs1()
                     .unwrap(),
-                key_value
+                key_value.to_vec()
             );
         }
     }

@@ -12,6 +12,15 @@ use crate::{
     error::{result::CliResultHelper, CliError},
 };
 
+#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+pub enum SymmetricAlgorithm {
+    #[cfg(not(feature = "fips"))]
+    Chacha20,
+    Aes,
+    Sha3,
+    Shake,
+}
+
 /// Create a new symmetric key
 ///
 /// When the `--bytes-b64` option is specified, the key will be created from the provided bytes;
@@ -37,8 +46,13 @@ pub struct CreateKeyAction {
     wrap_key_b64: Option<String>,
 
     /// The algorithm
-    #[clap(long = "algorithm", short = 'a', required = false, default_value = "aes", value_parser(["aes", "chacha20", "sha3", "shake"]))]
-    algorithm: String,
+    #[clap(
+        long = "algorithm",
+        short = 'a',
+        required = false,
+        default_value = "aes"
+    )]
+    algorithm: SymmetricAlgorithm,
 
     /// The tag to associate with the key.
     /// To specify multiple tags, use the option multiple times.
@@ -60,10 +74,11 @@ impl CreateKeyAction {
             self.number_of_bits.unwrap_or(256)
         };
 
-        let algorithm = match self.algorithm.as_str() {
-            "aes" => CryptographicAlgorithm::AES,
-            "chacha20" => CryptographicAlgorithm::ChaCha20,
-            "sha3" => match number_of_bits {
+        let algorithm = match self.algorithm {
+            SymmetricAlgorithm::Aes => CryptographicAlgorithm::AES,
+            #[cfg(not(feature = "fips"))]
+            SymmetricAlgorithm::Chacha20 => CryptographicAlgorithm::ChaCha20,
+            SymmetricAlgorithm::Sha3 => match number_of_bits {
                 224 => CryptographicAlgorithm::SHA3224,
                 256 => CryptographicAlgorithm::SHA3256,
                 384 => CryptographicAlgorithm::SHA3384,
@@ -71,12 +86,11 @@ impl CreateKeyAction {
                 _ => cli_bail!("invalid number of bits for sha3 {}", number_of_bits),
             },
 
-            "shake" => match number_of_bits {
+            SymmetricAlgorithm::Shake => match number_of_bits {
                 128 => CryptographicAlgorithm::SHAKE128,
                 256 => CryptographicAlgorithm::SHAKE256,
                 _ => cli_bail!("invalid number of bits for shake {}", number_of_bits),
             },
-            _ => cli_bail!("invalid algorithm {}", self.algorithm),
         };
 
         let unique_identifier = match key_bytes {

@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_cli"
-version = "4.11.3"
+version = "4.12.0"
 edition = "2021"
 license-file = "../../LICENSE.md"
 description = "CLI used to manage the Cosmian KMS."
@@ -8,6 +8,12 @@ description = "CLI used to manage the Cosmian KMS."
 [[bin]]
 name = "ckms"
 path = "src/main.rs"
+test = false
+
+[lib]
+# doc test linking as a separate binary is extremely slow
+# and is not needed for internal lib
+doctest = false
 
 [features]
 # Staging is used to run tests with the remote kms test server. Otherwise, the test runs a local kms server.
@@ -26,7 +32,6 @@ cosmian_logger = { path = "../logger" }
 der = { workspace = true }
 oauth2 = "4.4"
 pem = "3.0"
-rand = "0.8"
 reqwest = { workspace = true }
 rustls = { workspace = true }
 serde = { workspace = true }
