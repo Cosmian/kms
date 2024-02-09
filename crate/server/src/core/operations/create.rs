@@ -3,10 +3,14 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Create, CreateResponse},
     kmip_types::UniqueIdentifier,
 };
-use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, trace};
 
-use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
 pub async fn create(
     kms: &KMS,

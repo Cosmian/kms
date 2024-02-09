@@ -1,15 +1,7 @@
 use std::sync::Arc;
 
 use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
-use cosmian_kmip::kmip::{
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{DecryptedData, Get, Import, Locate},
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
-        UniqueIdentifier,
-    },
-};
-use cosmian_kms_utils::{
+use cosmian_kmip::{
     crypto::{
         cover_crypt::{
             attributes::access_policy_as_vendor_attribute,
@@ -20,7 +12,15 @@ use cosmian_kms_utils::{
         },
         generic::kmip_requests::{build_decryption_request, build_encryption_request},
     },
-    tagging::EMPTY_TAGS,
+    kmip::{
+        extra::tagging::EMPTY_TAGS,
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{DecryptedData, Get, Import, Locate},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, UniqueIdentifier,
+        },
+    },
 };
 use tracing::debug;
 use uuid::Uuid;

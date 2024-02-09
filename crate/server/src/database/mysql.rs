@@ -10,7 +10,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
+use cosmian_kms_client::access::{IsWrapped, ObjectOperationType};
 use serde_json::Value;
 use sqlx::{
     mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow},
@@ -24,6 +24,7 @@ use super::{
     Database, MySqlPlaceholder, MYSQL_QUERIES,
 };
 use crate::{
+    core::extra_database_params::ExtraDatabaseParams,
     database::database_trait::AtomicOperation,
     kms_bail, kms_error,
     result::{KResult, KResultHelper},

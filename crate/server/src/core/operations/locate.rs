@@ -1,16 +1,18 @@
-use cosmian_kmip::kmip::{
-    kmip_operations::{Locate, LocateResponse},
-    kmip_types::{StateEnumeration, UniqueIdentifier},
-};
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
+use cosmian_kmip::{
     crypto::cover_crypt::{
         attributes::access_policy_from_attributes, locate::compare_cover_crypt_attributes,
+    },
+    kmip::{
+        kmip_operations::{Locate, LocateResponse},
+        kmip_types::{StateEnumeration, UniqueIdentifier},
     },
 };
 use tracing::trace;
 
-use crate::{core::KMS, result::KResult};
+use crate::{
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
+    result::KResult,
+};
 
 pub async fn locate(
     kms: &KMS,

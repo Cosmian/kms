@@ -1,27 +1,26 @@
 use std::collections::HashSet;
 
 use cloudproof::reexport::{cover_crypt::Covercrypt, crypto_core::FixedSizeCBytes};
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_operations::{Create, CreateKeyPair},
-    kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
-};
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::elliptic_curves::operation::{
+use cosmian_kmip::crypto::elliptic_curves::operation::{
     create_x25519_key_pair, create_x448_key_pair,
 };
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
+use cosmian_kmip::{
     crypto::{
+        cover_crypt::master_keys::create_master_keypair,
         elliptic_curves::operation::{
             create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
         },
         rsa::operation::create_rsa_key_pair,
         secret::Secret,
         symmetric::{create_symmetric_key_kmip_object, AES_256_GCM_KEY_LENGTH},
+        KeyPair,
     },
-    tagging::{check_user_tags, get_tags, remove_tags},
-    KeyPair,
+    kmip::{
+        kmip_objects::Object,
+        kmip_operations::{Create, CreateKeyPair},
+        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+    },
 };
 use openssl::{nid::Nid, rand::rand_bytes};
 use tracing::trace;
@@ -29,7 +28,9 @@ use tracing::trace;
 use tracing::warn;
 use zeroize::Zeroizing;
 
-use super::{cover_crypt::create_user_decryption_key, KMS};
+use super::{
+    cover_crypt::create_user_decryption_key, extra_database_params::ExtraDatabaseParams, KMS,
+};
 use crate::{
     config::{DbParams, ServerParams},
     database::{
@@ -110,8 +111,8 @@ impl KMS {
         })?;
 
         // recover tags
-        let mut tags = get_tags(attributes);
-        check_user_tags(&tags)?;
+        let mut tags = attributes.get_tags();
+        Attributes::check_user_tags(&tags)?;
         //update the tags
         tags.insert("_kk".to_string());
 
@@ -176,8 +177,8 @@ impl KMS {
         })?;
 
         // recover tags
-        let mut tags = get_tags(attributes);
-        check_user_tags(&tags)?;
+        let mut tags = attributes.get_tags();
+        Attributes::check_user_tags(&tags)?;
         //update the tags
         tags.insert("_uk".to_string());
 
@@ -223,8 +224,8 @@ impl KMS {
         let mut common_attributes = request.common_attributes.unwrap_or_default();
 
         // recover tags and clean them up from the common attributes
-        let tags = remove_tags(&mut common_attributes).unwrap_or_default();
-        check_user_tags(&tags)?;
+        let tags = common_attributes.remove_tags().unwrap_or_default();
+        Attributes::check_user_tags(&tags)?;
         // Update the tags for the private key and the public key.
         let mut sk_tags = tags.clone();
         sk_tags.insert("_sk".to_string());
@@ -351,17 +352,15 @@ impl KMS {
                 create_ed25519_key_pair(private_key_uid, public_key_uid)
             }
             CryptographicAlgorithm::Ed448 => create_ed448_key_pair(private_key_uid, public_key_uid),
-            CryptographicAlgorithm::CoverCrypt => {
-                cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
-                    &Covercrypt::default(),
-                    private_key_uid,
-                    public_key_uid,
-                    Some(common_attributes),
-                    request.private_key_attributes,
-                    request.public_key_attributes,
-                )
-                .map_err(Into::into)
-            }
+            CryptographicAlgorithm::CoverCrypt => create_master_keypair(
+                &Covercrypt::default(),
+                private_key_uid,
+                public_key_uid,
+                Some(common_attributes),
+                request.private_key_attributes,
+                request.public_key_attributes,
+            )
+            .map_err(Into::into),
             other => kms_not_supported!(
                 "The creation of a key pair for algorithm: {other:?} is not supported"
             ),

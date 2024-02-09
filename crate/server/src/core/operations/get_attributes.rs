@@ -1,6 +1,6 @@
 use cosmian_kmip::{
     kmip::{
-        extra::VENDOR_ID_COSMIAN,
+        extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
         kmip_objects::Object,
         kmip_operations::{GetAttributes, GetAttributesResponse},
         kmip_types::{
@@ -10,14 +10,12 @@ use cosmian_kmip::{
     },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
-    tagging::VENDOR_ATTR_TAG,
-};
+use cosmian_kms_client::access::ObjectOperationType;
 use tracing::{debug, trace};
 
 use crate::{
     core::{
+        extra_database_params::ExtraDatabaseParams,
         operations::export_utils::{
             openssl_private_key_to_kmip_default_format, openssl_public_key_to_kmip_default_format,
         },

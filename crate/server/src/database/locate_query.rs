@@ -1,7 +1,6 @@
 use cosmian_kmip::kmip::kmip_types::{
     Attributes, LinkedObjectIdentifier::TextString, StateEnumeration,
 };
-use cosmian_kms_utils::tagging::get_tags;
 
 use crate::result::KResult;
 
@@ -155,7 +154,7 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
         }
 
         // tags
-        let tags = get_tags(attributes);
+        let tags = attributes.get_tags();
         let tags_len = tags.len();
         if tags_len > 0 {
             let tags_string = tags

@@ -26,7 +26,7 @@ timeout = []
 staging = ["insecure"]
 
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
-fips = ["cosmian_kms_utils/fips"]
+fips = ["cosmian_kmip/fips"]
 
 # No features (insecure, timeout or staging) and contain non FIPS approved libraries (e.g. Rust Crypto)
 default = []
@@ -47,8 +47,8 @@ chrono = { workspace = true }
 clap = { workspace = true }
 cloudproof = { workspace = true }
 cloudproof_findex = { workspace = true }
-cosmian_kmip = { path = "../kmip", features = ["openssl"] }
-cosmian_kms_utils = { path = "../utils", features = ["curve25519"] }
+cosmian_kms_client = { path = "../client" }
+cosmian_kmip = { path = "../kmip", features = ["openssl", "curve25519"] }
 dotenvy = "0.15"
 env_logger = "0.10"
 futures = "0.3"

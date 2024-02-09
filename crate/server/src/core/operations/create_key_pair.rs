@@ -2,11 +2,16 @@ use cosmian_kmip::kmip::{
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
     kmip_types::UniqueIdentifier,
 };
-use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, trace};
 use uuid::Uuid;
 
-use crate::{core::KMS, database::AtomicOperation, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
+    database::AtomicOperation,
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
 pub async fn create_key_pair(
     kms: &KMS,

@@ -6,14 +6,14 @@ use std::{
 };
 
 use async_trait::async_trait;
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, StateEnumeration},
-};
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType},
+use cosmian_kmip::{
     crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH},
+    kmip::{
+        kmip_objects::Object,
+        kmip_types::{Attributes, StateEnumeration},
+    },
 };
+use cosmian_kms_client::access::{IsWrapped, ObjectOperationType};
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
     ConnectOptions, Pool, Sqlite,
@@ -30,6 +30,7 @@ use super::{
     },
 };
 use crate::{
+    core::extra_database_params::ExtraDatabaseParams,
     database::{
         database_trait::AtomicOperation,
         sqlite::{atomic_, retrieve_tags_},

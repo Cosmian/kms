@@ -13,7 +13,7 @@ use cosmian_kmip::{
         openssl_private_key_to_kmip, openssl_public_key_to_kmip,
     },
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use cosmian_kms_client::access::ObjectOperationType;
 use openssl::{
     pkey::{Id, PKey, Private, Public},
     stack::Stack,
@@ -25,6 +25,7 @@ use zeroize::Zeroizing;
 use crate::{
     core::{
         certificate::retrieve_certificate_for_private_key,
+        extra_database_params::ExtraDatabaseParams,
         operations::{import::add_imported_links_to_attributes, unwrap_key, wrapping::wrap_key},
         KMS,
     },

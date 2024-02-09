@@ -13,10 +13,12 @@ doctest = false
 default = []
 openssl = ["dep:openssl"]
 pyo3 = ["dep:pyo3"]
+curve25519 = []
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
 fips = []
 
 [dependencies]
+argon2 = "0.5"
 base58 = "0.2"
 bitflags = { workspace = true }
 chrono = { workspace = true }

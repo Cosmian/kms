@@ -15,10 +15,7 @@ use cosmian_kmip::{
         openssl_certificate_to_kmip,
     },
 };
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
-    tagging::{check_user_tags, remove_tags},
-};
+use cosmian_kms_client::access::ObjectOperationType;
 use openssl::{
     asn1::Asn1Time,
     hash::MessageDigest,
@@ -28,7 +25,10 @@ use openssl::{
 use tracing::trace;
 
 use crate::{
-    core::{certificate::retrieve_matching_private_key_and_certificate, KMS},
+    core::{
+        certificate::retrieve_matching_private_key_and_certificate,
+        extra_database_params::ExtraDatabaseParams, KMS,
+    },
     database::{retrieve_object_for_operation, AtomicOperation},
     error::KmsError,
     kms_bail,
@@ -53,9 +53,9 @@ pub async fn certify(
     ))?;
 
     // Retrieve and update tags
-    let mut tags = remove_tags(&mut attributes).unwrap_or_default();
+    let mut tags = attributes.remove_tags().unwrap_or_default();
     if !tags.is_empty() {
-        check_user_tags(&tags)?;
+        Attributes::check_user_tags(&tags)?;
     }
 
     // Retrieve the issuer certificate id if provided

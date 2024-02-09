@@ -1077,6 +1077,7 @@ dependencies = [
 name = "cosmian_kmip"
 version = "4.12.0"
 dependencies = [
+ "argon2",
  "base58",
  "bitflags 2.4.2",
  "chrono",
@@ -1113,7 +1114,6 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_server",
- "cosmian_kms_utils",
  "cosmian_logger",
  "der",
  "oauth2",
@@ -1143,7 +1143,6 @@ version = "4.12.0"
 dependencies = [
  "base64 0.21.7",
  "cosmian_kmip",
- "cosmian_kms_utils",
  "http",
  "josekit",
  "log",
@@ -1163,7 +1162,6 @@ dependencies = [
  "cloudproof",
  "cosmian_kmip",
  "cosmian_kms_client",
- "cosmian_kms_utils",
  "openssl",
  "pyo3",
  "pyo3-asyncio",
@@ -1192,7 +1190,7 @@ dependencies = [
  "cloudproof",
  "cloudproof_findex 5.0.4",
  "cosmian_kmip",
- "cosmian_kms_utils",
+ "cosmian_kms_client",
  "dotenvy",
  "env_logger",
  "futures",
@@ -1217,22 +1215,6 @@ dependencies = [
  "url",
  "uuid",
  "x509-parser",
- "zeroize",
-]
-
-[[package]]
-name = "cosmian_kms_utils"
-version = "4.12.0"
-dependencies = [
- "argon2",
- "cloudproof",
- "cosmian_kmip",
- "num-bigint-dig",
- "openssl",
- "serde",
- "serde_json",
- "thiserror",
- "tracing",
  "zeroize",
 ]
 

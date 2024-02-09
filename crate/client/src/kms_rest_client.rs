@@ -16,9 +16,6 @@ use cosmian_kmip::kmip::{
     },
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use cosmian_kms_utils::access::{
-    Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse, UserAccessResponse,
-};
 use http::{HeaderMap, HeaderValue, StatusCode};
 use josekit::{
     jwe::{alg::ecdh_es::EcdhEsJweAlgorithm, serialize_compact, JweHeader},
@@ -30,6 +27,10 @@ use rustls::{client::WebPkiVerifier, Certificate};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    access::{
+        Access, AccessRightsObtainedResponse, ObjectOwnedResponse, SuccessResponse,
+        UserAccessResponse,
+    },
     certificate_verifier::{LeafCertificateVerifier, NoVerifier},
     error::RestClientError,
 };

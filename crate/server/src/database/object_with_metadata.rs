@@ -3,7 +3,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration},
 };
-use cosmian_kms_utils::access::ObjectOperationType;
+use cosmian_kms_client::access::ObjectOperationType;
 use serde_json::Value;
 use sqlx::{mysql::MySqlRow, postgres::PgRow, sqlite::SqliteRow, Row};
 

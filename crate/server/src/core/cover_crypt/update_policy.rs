@@ -1,22 +1,24 @@
 use cloudproof::reexport::cover_crypt::{abe_policy::Policy, Covercrypt};
-use cosmian_kmip::kmip::{
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
-    kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
-};
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
+use cosmian_kmip::{
     crypto::cover_crypt::{
         attributes::{policy_from_attributes, EditPolicyAction},
         master_keys::update_master_keys,
         user_key::UserDecryptionKeysHandler,
+    },
+    kmip::{
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
+        kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
     },
 };
 use tracing::trace;
 
 use super::KMS;
 use crate::{
-    core::cover_crypt::locate_user_decryption_keys, error::KmsError, kms_bail, result::KResult,
+    core::{cover_crypt::locate_user_decryption_keys, extra_database_params::ExtraDatabaseParams},
+    error::KmsError,
+    kms_bail,
+    result::KResult,
 };
 
 /// `Re_key` a `CoverCrypt` master Key for the given attributes, which in `CoverCrypt` terms

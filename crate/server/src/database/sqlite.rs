@@ -10,7 +10,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::ErrorReason,
     kmip_types::{Attributes, StateEnumeration},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
+use cosmian_kms_client::access::{IsWrapped, ObjectOperationType};
 use serde_json::Value;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
@@ -21,6 +21,7 @@ use uuid::Uuid;
 
 use super::object_with_metadata::ObjectWithMetadata;
 use crate::{
+    core::extra_database_params::ExtraDatabaseParams,
     database::{
         database_trait::AtomicOperation, query_from_attributes, state_from_string, DBObject,
         Database, SqlitePlaceholder, SQLITE_QUERIES,
@@ -721,7 +722,7 @@ where
     .fetch_optional(executor)
     .await?;
 
-    row.map_or(Ok(HashSet::new()), |row| {
+    row.map_or(Ok(HashSet::<ObjectOperationType>::new()), |row| {
         let perms_raw = row.get::<Vec<u8>, _>(0);
         serde_json::from_slice(&perms_raw)
             .context("failed deserializing the permissions")

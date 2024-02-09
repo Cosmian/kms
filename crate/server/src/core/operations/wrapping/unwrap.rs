@@ -1,13 +1,11 @@
-use cosmian_kmip::kmip::{
-    kmip_data_structures::KeyBlock, kmip_objects::ObjectType, kmip_types::LinkType,
-};
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
+use cosmian_kmip::{
     crypto::wrap::unwrap_key_block,
+    kmip::{kmip_data_structures::KeyBlock, kmip_objects::ObjectType, kmip_types::LinkType},
 };
+use cosmian_kms_client::access::ObjectOperationType;
 
 use crate::{
-    core::KMS,
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
     database::retrieve_object_for_operation,
     kms_bail,
     result::{KResult, KResultHelper},

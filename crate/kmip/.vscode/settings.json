@@ -1,3 +1,14 @@
 {
-  "cSpell.words": ["Deserialization", "Kmip"]
+  "cSpell.words": [
+    "keypair",
+    "kmip",
+    "mcfe",
+    "newtype",
+    "PKCS",
+    "serializers",
+    "thiserror",
+    "Ttlv",
+    "Deserialization",
+    "Kmip"
+  ]
 }
