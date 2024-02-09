@@ -11,7 +11,7 @@ name = "cosmian_kms"
 
 [dependencies]
 cloudproof = { workspace = true }
-cosmian_kmip = { path = "../kmip", features = ["pyo3", "default"] }
+cosmian_kmip = { path = "../kmip", features = ["pyo3", "openssl"] }
 cosmian_kms_client = { path = "../client" }
 openssl = { workspace = true }
 pyo3 = { version = "0.20", features = [
