@@ -7,7 +7,7 @@ use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::elliptic_curves::operation::{
+    crypto::elliptic_curves::{
         ED25519_PRIVATE_KEY_LENGTH, ED25519_PUBLIC_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
         X25519_PUBLIC_KEY_LENGTH,
     },

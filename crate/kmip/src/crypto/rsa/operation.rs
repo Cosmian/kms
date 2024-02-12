@@ -4,7 +4,9 @@ use tracing::trace;
 use zeroize::Zeroizing;
 
 #[cfg(feature = "fips")]
-use crate::{crypto::rsa::ckm_rsa_aes_key_wrap::FIPS_MIN_RSA_MODULUS_LENGTH, kmip_bail};
+use super::FIPS_MIN_RSA_MODULUS_LENGTH;
+#[cfg(feature = "fips")]
+use crate::kmip_bail;
 use crate::{
     crypto::KeyPair,
     error::KmipError,

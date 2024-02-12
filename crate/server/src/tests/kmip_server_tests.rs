@@ -7,7 +7,8 @@ use cosmian_kmip::{
             kmip_requests::{
                 create_ec_key_pair_request, get_private_key_request, get_public_key_request,
             },
-            operation::{to_ec_public_key, CURVE_25519_Q_LENGTH_BITS},
+            operation::to_ec_public_key,
+            CURVE_25519_Q_LENGTH_BITS,
         },
         symmetric::symmetric_key_create_request,
     },

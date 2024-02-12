@@ -23,12 +23,6 @@ use crate::{
     kmip_bail,
 };
 
-pub const X25519_PRIVATE_KEY_LENGTH: usize = 0x20;
-pub const X25519_PUBLIC_KEY_LENGTH: usize = 0x20;
-pub const ED25519_PRIVATE_KEY_LENGTH: usize = 0x20;
-pub const ED25519_PUBLIC_KEY_LENGTH: usize = 0x20;
-pub const CURVE_25519_Q_LENGTH_BITS: i32 = 253;
-
 /// Convert to an Elliptic Curve KMIP Public Key.
 /// Supported curves are:
 /// X25519, Ed25519, X448, Ed448, P-192, P-224, P-256, P-384, P-521.
@@ -320,15 +314,12 @@ mod tests {
     #[cfg(not(feature = "fips"))]
     use super::{create_x25519_key_pair, create_x448_key_pair};
     #[cfg(not(feature = "fips"))]
+    use crate::crypto::elliptic_curves::{X25519_PRIVATE_KEY_LENGTH, X448_PRIVATE_KEY_LENGTH};
+    #[cfg(not(feature = "fips"))]
     use crate::kmip::kmip_data_structures::KeyMaterial;
     #[cfg(not(feature = "fips"))]
     use crate::openssl::pad_be_bytes;
     use crate::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
-
-    #[cfg(not(feature = "fips"))]
-    const X25519_PRIVATE_KEY_LENGTH: usize = 0x20;
-    #[cfg(not(feature = "fips"))]
-    const X448_PRIVATE_KEY_LENGTH: usize = 0x38;
 
     #[test]
     fn test_ed25519_keypair_generation() {

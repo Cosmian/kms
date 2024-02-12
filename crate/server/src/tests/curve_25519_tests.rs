@@ -6,7 +6,8 @@ use cosmian_kmip::{
         kmip_requests::{
             create_ec_key_pair_request, get_private_key_request, get_public_key_request,
         },
-        operation::{self, to_ec_public_key, CURVE_25519_Q_LENGTH_BITS},
+        operation::{self, to_ec_public_key},
+        CURVE_25519_Q_LENGTH_BITS,
     },
     kmip::{
         kmip_messages::{Message, MessageBatchItem, MessageHeader},
@@ -70,7 +71,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     );
     assert_eq!(
         sk_key_block.cryptographic_length,
-        Some(operation::CURVE_25519_Q_LENGTH_BITS)
+        Some(CURVE_25519_Q_LENGTH_BITS)
     );
     assert_eq!(
         sk_key_block.key_format_type,
@@ -129,7 +130,7 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
     );
     assert_eq!(
         pk_key_block.cryptographic_length,
-        Some(operation::CURVE_25519_Q_LENGTH_BITS)
+        Some(CURVE_25519_Q_LENGTH_BITS)
     );
     assert_eq!(
         pk_key_block.key_format_type,

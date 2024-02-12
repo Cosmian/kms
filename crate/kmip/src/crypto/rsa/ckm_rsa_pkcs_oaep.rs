@@ -18,11 +18,10 @@ use openssl::{
 use zeroize::Zeroizing;
 
 #[cfg(feature = "fips")]
+use super::FIPS_MIN_RSA_MODULUS_LENGTH;
+#[cfg(feature = "fips")]
 use crate::kmip_bail;
 use crate::{error::KmipError, kmip::kmip_types::HashingAlgorithm};
-
-#[cfg(feature = "fips")]
-pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 2048;
 
 /// Key Wrap using `CKM_RSA_PKCS_OAEP`
 /// a.k.a PKCS #1 RSA OAEP as specified in PKCS#11 v2.40 available at

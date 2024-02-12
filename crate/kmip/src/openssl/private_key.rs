@@ -9,6 +9,10 @@ use openssl::{
 use zeroize::Zeroizing;
 
 use crate::{
+    crypto::elliptic_curves::{
+        ED25519_PRIVATE_KEY_LENGTH, ED448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
+        X448_PRIVATE_KEY_LENGTH,
+    },
     error::KmipError,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -21,11 +25,6 @@ use crate::{
     kmip_bail,
     result::KmipResultHelper,
 };
-
-const X25519_PRIVATE_KEY_LENGTH: usize = 32;
-const ED25519_PRIVATE_KEY_LENGTH: usize = 32;
-const X448_PRIVATE_KEY_LENGTH: usize = 56;
-const ED448_PRIVATE_KEY_LENGTH: usize = 57;
 
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
     while bytes.len() != size {

@@ -3,6 +3,7 @@ use openssl::{
     symm::{decrypt_aead, encrypt_aead, Cipher},
 };
 
+use super::{AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH};
 use crate::{
     crypto::{secret::Secret, DecryptionSystem, EncryptionSystem},
     error::KmipError,
@@ -13,20 +14,6 @@ use crate::{
     },
     kmip_bail,
 };
-
-/// AES 128 GCM key length in bytes.
-pub const AES_128_GCM_KEY_LENGTH: usize = 16;
-/// AES 128 GCM nonce length in bytes.
-pub const AES_128_GCM_IV_LENGTH: usize = 12;
-/// AES 128 GCM tag/mac length in bytes.
-pub const AES_128_GCM_MAC_LENGTH: usize = 16;
-
-/// AES 256 GCM key length in bytes.
-pub const AES_256_GCM_KEY_LENGTH: usize = 32;
-/// AES 256 GCM nonce length in bytes.
-pub const AES_256_GCM_IV_LENGTH: usize = 12;
-/// AES 256 GCM tag/mac length in bytes.
-pub const AES_256_GCM_MAC_LENGTH: usize = 16;
 
 pub struct AesGcmSystem {
     key_uid: String,
