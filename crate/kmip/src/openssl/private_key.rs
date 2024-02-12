@@ -9,9 +9,12 @@ use openssl::{
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::elliptic_curves::{
-        ED25519_PRIVATE_KEY_LENGTH, ED448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
-        X448_PRIVATE_KEY_LENGTH,
+    crypto::{
+        elliptic_curves::{
+            ED25519_PRIVATE_KEY_LENGTH, ED448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
+            X448_PRIVATE_KEY_LENGTH,
+        },
+        secret::SafeBigUint,
     },
     error::KmipError,
     kmip::{
@@ -242,13 +245,13 @@ pub fn openssl_private_key_to_kmip(
                 key_value: KeyValue {
                     key_material: KeyMaterial::TransparentRSAPrivateKey {
                         modulus,
-                        private_exponent: Some(private_exponent),
+                        private_exponent: Some(SafeBigUint::from(private_exponent)),
                         public_exponent: Some(public_exponent),
-                        p,
-                        q,
-                        prime_exponent_p,
-                        prime_exponent_q,
-                        crt_coefficient,
+                        p: p.map(SafeBigUint::from),
+                        q: q.map(SafeBigUint::from),
+                        prime_exponent_p: prime_exponent_p.map(SafeBigUint::from),
+                        prime_exponent_q: prime_exponent_q.map(SafeBigUint::from),
+                        crt_coefficient: crt_coefficient.map(SafeBigUint::from),
                     },
                     attributes: Some(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
@@ -325,7 +328,7 @@ pub fn openssl_private_key_to_kmip(
                 key_value: KeyValue {
                     key_material: KeyMaterial::TransparentECPrivateKey {
                         recommended_curve,
-                        d,
+                        d: SafeBigUint::from(d),
                     },
                     attributes: Some(Attributes {
                         activation_date: None,

@@ -59,6 +59,7 @@ num-bigint-dig = { version = "0.8", default-features = false, features = [
   "std",
   "rand",
   "serde",
+  "zeroize",
 ] }
 openssl = { version = "0.10" }
 ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }

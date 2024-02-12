@@ -52,7 +52,7 @@ impl CovercryptDecryption {
         encrypted_bytes: &[u8],
         aead: Option<&[u8]>,
         user_decryption_key: &UserSecretKey,
-    ) -> Result<(CleartextHeader, Vec<u8>), KmipError> {
+    ) -> Result<(CleartextHeader, Zeroizing<Vec<u8>>), KmipError> {
         let mut de = Deserializer::new(encrypted_bytes);
         let encrypted_header = EncryptedHeader::read(&mut de).map_err(|e| {
             KmipError::KmipError(
@@ -66,10 +66,11 @@ impl CovercryptDecryption {
             .decrypt(&self.cover_crypt, user_decryption_key, aead)
             .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string()))?;
 
-        let cleartext = self
-            .cover_crypt
-            .decrypt(&header.symmetric_key, &encrypted_block, aead)
-            .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string()))?;
+        let cleartext = Zeroizing::from(
+            self.cover_crypt
+                .decrypt(&header.symmetric_key, &encrypted_block, aead)
+                .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string()))?,
+        );
 
         debug!(
             "Decrypted data with user key {} of len (CT/Enc): {}/{}",
@@ -110,7 +111,7 @@ impl CovercryptDecryption {
         encrypted_bytes: &[u8],
         aead: Option<&[u8]>,
         user_decryption_key: &UserSecretKey,
-    ) -> Result<(CleartextHeader, Vec<u8>), KmipError> {
+    ) -> Result<(CleartextHeader, Zeroizing<Vec<u8>>), KmipError> {
         let mut de = Deserializer::new(encrypted_bytes);
         let mut ser = Serializer::new();
 
@@ -172,7 +173,7 @@ impl CovercryptDecryption {
             )
         })?;
 
-        Ok((cleartext_header, ser.finalize().to_vec()))
+        Ok((cleartext_header, ser.finalize()))
     }
 }
 

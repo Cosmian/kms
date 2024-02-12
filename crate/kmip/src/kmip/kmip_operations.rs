@@ -6,6 +6,7 @@ use serde::{
     Deserialize, Serialize,
 };
 use strum::Display;
+use zeroize::Zeroizing;
 
 use super::{
     kmip_data_structures::KeyWrappingSpecification,
@@ -524,7 +525,7 @@ pub struct DerivationParameters {
     initialization_vector: Option<Vec<u8>>,
     /// Mandatory unless the Unique Identifier of a Secret Data object is
     /// provided. May be repeated.
-    derivation_data: Option<Vec<u8>>,
+    derivation_data: Option<Zeroizing<Vec<u8>>>,
     /// Mandatory if Derivation method is PBKDF2.
     salt: Option<Vec<u8>>,
     /// Mandatory if derivation method is PBKDF2.
@@ -885,7 +886,7 @@ pub struct Encrypt {
     pub cryptographic_parameters: Option<CryptographicParameters>,
     /// The data to be encrypted
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
+    pub data: Option<Vec<u8>>, // TODO - zeroize it!
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -968,7 +969,7 @@ pub struct Decrypt {
     pub cryptographic_parameters: Option<CryptographicParameters>,
     /// The data to be decrypted.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
+    pub data: Option<Vec<u8>>, // TODO - zeroize it!
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1016,7 +1017,7 @@ pub struct Decrypt {
 /// 3. data decrypted
 pub struct DecryptedData {
     pub metadata: Vec<u8>,
-    pub plaintext: Vec<u8>,
+    pub plaintext: Zeroizing<Vec<u8>>,
 }
 
 impl TryInto<Vec<u8>> for DecryptedData {
@@ -1042,7 +1043,7 @@ impl TryFrom<&[u8]> for DecryptedData {
         let metadata = de.read_vec()?;
 
         // Remaining is the decrypted plaintext
-        let plaintext = de.finalize();
+        let plaintext = Zeroizing::from(de.finalize());
 
         Ok(Self {
             metadata,
@@ -1060,7 +1061,7 @@ pub struct DecryptResponse {
     pub unique_identifier: UniqueIdentifier,
     /// The decrypted data
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>,
+    pub data: Option<Vec<u8>>, // TODO - zeroize it!
     /// Specifies the stream or by-parts value
     /// to be provided in subsequent calls to
     /// this operation for performing

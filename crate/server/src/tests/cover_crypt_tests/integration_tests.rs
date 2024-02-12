@@ -194,7 +194,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(&data, &decrypted_data.plaintext);
+    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
 
     // test user2 can decrypt
@@ -217,7 +217,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(&data, &decrypted_data.plaintext);
+    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
 
     // Revoke key of user 1
@@ -307,7 +307,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(&data, &decrypted_data.plaintext);
+    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
 
     //

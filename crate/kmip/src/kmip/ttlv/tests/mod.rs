@@ -4,6 +4,7 @@ use time::OffsetDateTime;
 use zeroize::Zeroizing;
 
 use crate::{
+    crypto::secret::SafeBigUint,
     error::KmipError,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -448,7 +449,7 @@ fn test_key_material_big_int_deserialization() {
         q: Some(BigUint::from(1_u64)),
         g: BigUint::from(2_u32),
         j: None,
-        x: BigUint::from(u128::MAX),
+        x: SafeBigUint::from(BigUint::from(u128::MAX)),
     };
     let ttlv_ = to_ttlv(&km).unwrap();
     assert_eq!(ttlv, ttlv_);
@@ -463,7 +464,7 @@ fn test_big_int_deserialization() {
         q: Some(BigUint::from(1_u64)),
         g: BigUint::from(2_u32),
         j: None,
-        x: BigUint::from(u128::MAX - 1),
+        x: SafeBigUint::from(BigUint::from(u128::MAX - 1)),
     };
     let j = serde_json::to_value(&km).unwrap();
     let km_: KeyMaterial = serde_json::from_value(j).unwrap();
