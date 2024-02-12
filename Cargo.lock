@@ -792,7 +792,6 @@ checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
 [[package]]
 name = "cloudproof"
 version = "2.4.1"
-source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=feature/covercrypt_rekey#c11d496857307754c0436fd3f9263c282bbd93e3"
 dependencies = [
  "cloudproof_aesgcm",
  "cloudproof_anonymization",
@@ -833,7 +832,6 @@ dependencies = [
 [[package]]
 name = "cloudproof_cover_crypt"
 version = "13.0.1"
-source = "git+https://github.com/Cosmian/cloudproof_rust.git?branch=feature/covercrypt_rekey#c11d496857307754c0436fd3f9263c282bbd93e3"
 dependencies = [
  "cosmian_cover_crypt",
  "cosmian_crypto_core",
@@ -979,7 +977,6 @@ checksum = "06ea2b9bc92be3c2baa9334a323ebca2d6f074ff852cd1d7b11064035cd3868f"
 [[package]]
 name = "cosmian_cover_crypt"
 version = "13.1.0"
-source = "git+https://github.com/Cosmian/cover_crypt.git?branch=feature/policy_parser#51b487ee45854b1da81e193d32ba3138abbb5f36"
 dependencies = [
  "cosmian_crypto_core",
  "pqc_kyber",

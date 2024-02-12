@@ -14,7 +14,7 @@ use crate::{
 pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
 pub const VENDOR_ATTR_COVER_CRYPT_POLICY: &str = "cover_crypt_policy";
 pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_policy";
-pub const VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION: &str = "cover_crypt_policy_edit_action";
+pub const VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION: &str = "cover_crypt_rekey_action";
 
 /// Convert an policy to a vendor attribute
 pub fn policy_as_vendor_attribute(policy: &Policy) -> Result<VendorAttribute, KmipError> {
@@ -190,7 +190,7 @@ pub fn rekey_edit_action_as_vendor_attribute(
 ) -> Result<VendorAttribute, KmipError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-        attribute_name: VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION.to_owned(),
+        attribute_name: VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION.to_owned(),
         attribute_value: serde_json::to_vec(&action).map_err(|e| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
@@ -207,10 +207,9 @@ pub fn rekey_edit_action_as_vendor_attribute(
 pub fn rekey_edit_action_from_attributes(
     attributes: &Attributes,
 ) -> Result<RekeyEditAction, KmipError> {
-    if let Some(bytes) = attributes.get_vendor_attribute_value(
-        VENDOR_ID_COSMIAN,
-        VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION,
-    ) {
+    if let Some(bytes) = attributes
+        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION)
+    {
         serde_json::from_slice::<RekeyEditAction>(bytes).map_err(|e| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
@@ -220,7 +219,7 @@ pub fn rekey_edit_action_from_attributes(
     } else {
         Err(KmipError::InvalidKmipObject(
             ErrorReason::Missing_Data,
-            "Missing VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION".to_string(),
+            "Missing VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION".to_string(),
         ))
     }
 }
