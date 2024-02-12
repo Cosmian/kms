@@ -1,14 +1,20 @@
+<<<<<<< HEAD:crate/server/src/core/cover_crypt/update_keys.rs
 use cloudproof::reexport::cover_crypt::{abe_policy::Policy, Covercrypt};
 use cosmian_kmip::{
+=======
+use cloudproof::reexport::cover_crypt::Covercrypt;
+use cosmian_kmip::kmip::{
+    kmip_objects::{Object, ObjectType},
+    kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
+    kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
+};
+use cosmian_kms_utils::{
+    access::ExtraDatabaseParams,
+>>>>>>> 2b30289a (refacto: move policy and rekey action in dedicated files):crate/server/src/core/cover_crypt/rekey_keys.rs
     crypto::cover_crypt::{
-        attributes::{
-            policy_from_attributes,
-            RekeyEditAction::{
-                self, AddAttribute, DisableAttribute, PruneAccessPolicy, RekeyAccessPolicy,
-                RemoveAttribute, RenameAttribute,
-            },
-        },
-        master_keys::{update_master_keys, MasterKeysUpdateMethod},
+        attributes::{policy_from_attributes, RekeyEditAction},
+        master_keys::update_master_keys,
+        update_keys_policy::MasterKeysUpdater,
         user_key::UserDecryptionKeysHandler,
     },
     kmip::{
@@ -65,16 +71,16 @@ pub async fn rekey_keypair_cover_crypt(
     // Edit the policy according to the requested action
     let private_key_attributes = master_private_key.attributes()?;
     let mut policy = policy_from_attributes(private_key_attributes)?;
-    update_policy(&action, &mut policy)?;
+
+    let mut updater = MasterKeysUpdater::new(&action, &mut policy, &cover_crypt);
+    updater.update_policy()?;
 
     // Rekey the master keys
     let master_public_key_uid = rekey_master_keys(
-        &cover_crypt,
-        &action.get_update_method(),
+        &updater,
         kmip_server,
         master_private_key_uid,
         &master_private_key,
-        &policy,
         owner,
         params,
     )
@@ -100,54 +106,14 @@ pub async fn rekey_keypair_cover_crypt(
     })
 }
 
-/// Update a Covercrypt policy based on the specified action.
-///
-/// # Parameters
-///
-/// - `action`: An `EditPolicyAction` enum.
-/// - `policy`: the master private key Policy.
-fn update_policy(action: &RekeyEditAction, policy: &mut Policy) -> KResult<()> {
-    match action {
-        RekeyAccessPolicy(_) | PruneAccessPolicy(_) => Ok(()),
-        RemoveAttribute(attrs) => attrs
-            .iter()
-            .try_for_each(|attr| policy.remove_attribute(attr)), // TODO: revoke existing keys with deleted attribute?
-        DisableAttribute(attrs) => attrs
-            .iter()
-            .try_for_each(|attr| policy.disable_attribute(attr)),
-        RenameAttribute(pairs_attr_name) => pairs_attr_name
-            .iter()
-            .try_for_each(|(attr, new_name)| policy.rename_attribute(attr, new_name.clone())),
-        AddAttribute(attrs_properties) => {
-            attrs_properties
-                .iter()
-                .try_for_each(|(attr, encryption_hint)| {
-                    policy.add_attribute(attr.clone(), *encryption_hint)
-                })
-        }
-    }
-    .map_err(|e| {
-        KmsError::KmipError(
-            ErrorReason::Unsupported_Cryptographic_Parameters,
-            e.to_string(),
-        )
-    })?;
-
-    trace!("The new policy is : {policy:#?}");
-    //Ok(attributes_to_update)
-    Ok(())
-}
-
 /// Rekey the Master keys given the provided Private Master Key and Policy
 /// Return the Public Mater Key Identifier
 #[allow(clippy::too_many_arguments)]
 async fn rekey_master_keys(
-    cover_crypt: &Covercrypt,
-    update_method: &MasterKeysUpdateMethod,
+    updater: &MasterKeysUpdater<'_>,
     kmip_server: &KMS,
     master_private_key_uid: &str,
     master_private_key: &Object,
-    policy: &Policy,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<String> {
@@ -178,9 +144,7 @@ async fn rekey_master_keys(
 
     // update the master keys
     let (updated_private_key, updated_public_key) = update_master_keys(
-        cover_crypt,
-        policy,
-        update_method,
+        updater,
         master_private_key,
         master_private_key_uid,
         &master_public_key,
@@ -240,7 +204,7 @@ async fn update_user_secret_keys(
             cover_crypt,
             master_private_key_uid,
             unique_identifiers,
-            true, // new keys will keep access to old keys, TODO: do we want make this a parameter ?
+            true, // new keys will keep access to old keys, TODO: do we want make this a parameter?
             owner,
             params,
         )

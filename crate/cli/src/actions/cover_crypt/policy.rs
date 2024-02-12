@@ -23,96 +23,6 @@ use crate::{
     error::{result::CliResultHelper, CliError},
 };
 
-// TODO: move to covercrypt
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct PolicySpecifications(HashMap<String, Vec<String>>);
-
-impl PolicySpecifications {
-    /// Create a `Policy` from `PolicySpecifications`
-    pub fn to_policy(&self) -> Result<Policy, CliError> {
-        let mut policy = Policy::new();
-        for (axis, attributes) in &self.0 {
-            // Split the axis into axis name and hierarchy flag
-            let (axis_name, hierarchical) = match axis.split_once("::") {
-                Some((name, specs)) => {
-                    // If the axis contains the hierarchy flag, parse it
-                    let hierarchical = match specs {
-                        "<" => true,
-                        x => cli_bail!("unknown axis spec {}", x),
-                    };
-                    (name, hierarchical)
-                }
-                // If there is no hierarchy flag, assume the axis is non-hierarchical
-                None => (axis.as_str(), false),
-            };
-
-            let mut attributes_properties: Vec<(&str, EncryptionHint)> =
-                Vec::with_capacity(attributes.len());
-
-            // Parse each attribute and its encryption hint
-            for att in attributes {
-                let (att_name, encryption_hint) = match att.split_once("::") {
-                    Some((name, specs)) => {
-                        let encryption_hint = match specs {
-                            "+" => EncryptionHint::Hybridized,
-                            x => cli_bail!("unknown attribute spec {}", x),
-                        };
-                        (name, encryption_hint)
-                    }
-                    // If there is no encryption hint, assume the attribute is non-hybridized
-                    None => (att.as_str(), EncryptionHint::Classic),
-                };
-                attributes_properties.push((att_name, encryption_hint));
-            }
-
-            // Add the axis to the policy
-            policy.add_dimension(DimensionBuilder::new(
-                axis_name,
-                attributes_properties,
-                hierarchical,
-            ))?;
-        }
-        Ok(policy)
-    }
-
-    /// Read a JSON policy specification from a file
-    pub fn from_json_file(file: &impl AsRef<Path>) -> Result<Self, CliError> {
-        read_from_json_file(file)
-    }
-}
-
-impl TryInto<Policy> for PolicySpecifications {
-    type Error = CliError;
-
-    fn try_into(self) -> Result<Policy, Self::Error> {
-        self.to_policy()
-    }
-}
-
-impl TryFrom<Policy> for PolicySpecifications {
-    type Error = CliError;
-
-    fn try_from(policy: Policy) -> Result<Self, Self::Error> {
-        let mut result: HashMap<String, Vec<String>> = HashMap::with_capacity(1); //policy.dimensions.len());
-        /*for (dim_name, dimension) in policy.dimensions {
-            let dim_full_name = dim_name + if dimension.order.is_some() { "::+" } else { "" };
-            let attributes = dimension
-                .attributes_properties()
-                .into_iter()
-                .map(|(name, enc_hint)| {
-                    name + match enc_hint {
-                        EncryptionHint::Hybridized => "::+",
-                        EncryptionHint::Classic => "",
-                    }
-                })
-                .collect();
-            result.insert(dim_full_name, attributes);
-        }*/
-        Ok(Self(result))
-    }
-}
-
 pub fn policy_from_binary_file(bin_filename: &impl AsRef<Path>) -> Result<Policy, CliError> {
     let policy_buffer = read_bytes_from_file(bin_filename)?;
     Policy::parse_and_convert(policy_buffer.as_slice()).with_context(|| {
@@ -123,11 +33,14 @@ pub fn policy_from_binary_file(bin_filename: &impl AsRef<Path>) -> Result<Policy
     })
 }
 
-pub fn policy_from_specifications_file(
-    specs_filename: &impl AsRef<Path>,
-) -> Result<Policy, CliError> {
-    let policy_specs: PolicySpecifications = read_from_json_file(&specs_filename)?;
-    policy_specs.to_policy()
+pub fn policy_from_json_file(specs_filename: &impl AsRef<Path>) -> Result<Policy, CliError> {
+    let policy_specs: HashMap<String, Vec<String>> = read_from_json_file(&specs_filename)?;
+    policy_specs.try_into().with_context(|| {
+        format!(
+            "JSON policy is malformed {}",
+            specs_filename.as_ref().display()
+        )
+    })
 }
 
 /// Extract or view policies of existing keys,
@@ -205,10 +118,7 @@ pub struct CreateAction {
 impl CreateAction {
     pub async fn run(&self) -> Result<(), CliError> {
         // Parse the json policy file
-        let specs = PolicySpecifications::from_json_file(&self.policy_specifications_file)?;
-
-        // create the policy
-        let policy = specs.to_policy()?;
+        let policy = policy_from_json_file(&self.policy_specifications_file)?;
 
         // write the binary file
         write_json_object_to_file(&policy, &self.policy_binary_file)
@@ -279,7 +189,7 @@ impl SpecsAction {
             kms_rest_client,
         )
         .await?;
-        let specs = PolicySpecifications::try_from(policy)?;
+        let specs: HashMap<String, Vec<String>> = policy.try_into()?;
         // save the policy to the specifications file
         write_json_object_to_file(&specs, &self.policy_specs_file)
     }
@@ -362,7 +272,7 @@ impl ViewAction {
         let json = if self.detailed {
             serde_json::to_string_pretty(&policy)?
         } else {
-            let specs = PolicySpecifications::try_from(policy)?;
+            let specs: HashMap<String, Vec<String>> = policy.try_into()?;
             serde_json::to_string_pretty(&specs)?
         };
         println!("{json}");
@@ -374,9 +284,7 @@ impl ViewAction {
 mod tests {
     use std::path::PathBuf;
 
-
     use super::policy_from_binary_file;
-    use crate::{actions::cover_crypt::policy::PolicySpecifications, error::CliError};
 
     #[test]
     pub fn test_policy_bin_from_file() {
@@ -417,66 +325,5 @@ mod tests {
                 .to_string()
                 .starts_with(&format!("policy binary is malformed {DUPLICATED_POLICIES}"))
         );
-    }
-
-    #[test]
-    pub fn test_create_policy() -> Result<(), CliError> {
-        let json = r#"
-    {
-        "Security Level::<": [
-            "Protected",
-            "Confidential",
-            "Top Secret::+"
-        ],
-        "Department": [
-            "R&D",
-            "HR",
-            "MKG",
-            "FIN"
-        ]
-    }
-    "#;
-
-        let policy_json: PolicySpecifications = serde_json::from_str(json).unwrap();
-        let policy = policy_json.to_policy()?;
-        /*assert_eq!(policy.dimensions.len(), 2);
-        assert!(
-            policy
-                .dimensions
-                .get("Security Level")
-                .unwrap()
-                .order
-                .is_some()
-        );
-        //assert!(policy.dimensions.get("Department").unwrap().order.is_none());
-        assert_eq!(
-            policy
-                .dimensions
-                .get("Security Level")
-                .unwrap()
-                .attributes()
-                .len(),
-            3
-        );
-        assert_eq!(
-            policy
-                .attribute_hybridization_hint(&Attribute::new("Department", "MKG"))
-                .unwrap(),
-            EncryptionHint::Classic
-        );
-        assert_eq!(
-            policy
-                .attribute_hybridization_hint(&Attribute::new("Security Level", "Protected"))
-                .unwrap(),
-            EncryptionHint::Classic
-        );
-        assert_eq!(
-            policy
-                .attribute_hybridization_hint(&Attribute::new("Security Level", "Top Secret"))
-                .unwrap(),
-            EncryptionHint::Hybridized
-        );*/
-
-        Ok(())
     }
 }

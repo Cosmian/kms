@@ -155,7 +155,6 @@ pub fn upsert_access_policy_in_attributes(
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-// TODO: make AccessPolicy serializable
 pub enum RekeyEditAction {
     RekeyAccessPolicy(String),
     PruneAccessPolicy(String),
@@ -175,19 +174,13 @@ impl RekeyEditAction {
         }
     }
 
-    pub fn get_update_method(&self) -> MasterKeysUpdateMethod {
-        match self {
-            Self::RekeyAccessPolicy(ap) => MasterKeysUpdateMethod::RekeyAccessPolicy(
-                AccessPolicy::from_boolean_expression(ap).unwrap(),
-            ),
-            Self::PruneAccessPolicy(ap) => MasterKeysUpdateMethod::PruneAccessPolicy(
-                AccessPolicy::from_boolean_expression(ap).unwrap(),
-            ),
-            Self::RemoveAttribute(_)
-            | Self::DisableAttribute(_)
-            | Self::AddAttribute(_)
-            | Self::RenameAttribute(_) => MasterKeysUpdateMethod::ReloadPolicy,
-        }
+    pub fn deserialize_access_policy(ap: &str) -> Result<AccessPolicy, KmipError> {
+        AccessPolicy::from_boolean_expression(ap).map_err(|e| {
+            KmipError::InvalidKmipValue(
+                ErrorReason::Invalid_Attribute_Value,
+                format!("failed to read Access Policy string from the request: {e}"),
+            )
+        })
     }
 }
 
