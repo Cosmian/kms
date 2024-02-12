@@ -9,9 +9,7 @@ use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::cover_crypt::attributes::{
-        access_policy_from_attributes, policy_from_attributes, upsert_access_policy_in_attributes,
-    },
+    crypto::cover_crypt::attributes::{policy_from_attributes, upsert_access_policy_in_attributes},
     error::KmipError,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},

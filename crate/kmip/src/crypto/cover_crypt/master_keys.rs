@@ -1,8 +1,5 @@
 use cloudproof::reexport::{
-    cover_crypt::{
-        abe_policy::{AccessPolicy, Policy},
-        Covercrypt, MasterPublicKey, MasterSecretKey,
-    },
+    cover_crypt::{abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey},
     crypto_core::bytes_ser_de::Serializable,
 };
 use zeroize::Zeroizing;
@@ -162,18 +159,10 @@ fn create_master_public_key_object(
     })
 }
 
-pub enum MasterKeysUpdateMethod {
-    ReloadPolicy,
-    RekeyAccessPolicy(AccessPolicy),
-    PruneAccessPolicy(AccessPolicy),
-}
-
 /// Update the master key with a new Policy
-/// (after rotation of some attributes typically)
+/// (after editing the policy of some attributes typically)
 pub fn update_master_keys(
-    cover_crypt: &Covercrypt,
-    policy: &Policy,
-    update_method: &MasterKeysUpdateMethod,
+    updater: &MasterKeysUpdater,
     master_private_key: &Object,
     master_private_key_uid: &str,
     master_public_key: &Object,
@@ -202,23 +191,7 @@ pub fn update_master_keys(
     })?;
 
     // Update the keys
-    match update_method {
-        MasterKeysUpdateMethod::ReloadPolicy => {
-            cover_crypt.update_master_keys(policy, &mut msk, &mut mpk)
-        }
-        MasterKeysUpdateMethod::RekeyAccessPolicy(ap) => {
-            cover_crypt.rekey_master_keys(ap, policy, &mut msk, &mut mpk)
-        }
-        MasterKeysUpdateMethod::PruneAccessPolicy(ap) => {
-            cover_crypt.prune_master_secret_key(ap, policy, &mut msk)
-        }
-    }
-    .map_err(|e| {
-        KmipError::KmipError(
-            ErrorReason::Cryptographic_Failure,
-            format!("Failed updating the CoverCrypt Master Keys: {e}"),
-        )
-    })?;
+    updater.update_master_keys(&mut msk, &mut mpk)?;
 
     // Recreate the KMIP objects
     let updated_master_private_key_bytes = &msk.serialize().map_err(|e| {
@@ -229,7 +202,7 @@ pub fn update_master_keys(
     })?;
     let updated_master_private_key = create_master_private_key_object(
         updated_master_private_key_bytes,
-        policy,
+        updater.policy,
         Some(msk_attributes),
         master_public_key_uid,
     )?;
@@ -241,7 +214,7 @@ pub fn update_master_keys(
     })?;
     let updated_master_public_key = create_master_public_key_object(
         updated_master_public_key_bytes,
-        policy,
+        updater.policy,
         Some(mpk_attributes),
         master_private_key_uid,
     )?;
