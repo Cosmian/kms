@@ -28,7 +28,7 @@ async fn test_view_policy() -> Result<(), CliError> {
     recover_cmd_logs(&mut cmd);
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Security Level::+"))
+        .stdout(predicate::str::contains("Security Level::<"))
         .stdout(predicate::str::contains("Top Secret::+"))
         .stdout(predicate::str::contains("R&D"));
 
