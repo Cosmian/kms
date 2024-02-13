@@ -886,7 +886,7 @@ pub struct Encrypt {
     pub cryptographic_parameters: Option<CryptographicParameters>,
     /// The data to be encrypted
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>, // TODO - zeroize it!
+    pub data: Option<Zeroizing<Vec<u8>>>,
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -969,7 +969,7 @@ pub struct Decrypt {
     pub cryptographic_parameters: Option<CryptographicParameters>,
     /// The data to be decrypted.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>, // TODO - zeroize it!
+    pub data: Option<Vec<u8>>,
     /// The initialization vector, counter or
     /// nonce to be used (where appropriate)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1061,7 +1061,7 @@ pub struct DecryptResponse {
     pub unique_identifier: UniqueIdentifier,
     /// The decrypted data
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Vec<u8>>, // TODO - zeroize it!
+    pub data: Option<Zeroizing<Vec<u8>>>,
     /// Specifies the stream or by-parts value
     /// to be provided in subsequent calls to
     /// this operation for performing

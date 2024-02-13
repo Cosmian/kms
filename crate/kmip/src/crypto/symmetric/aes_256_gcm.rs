@@ -2,6 +2,7 @@ use openssl::{
     rand::rand_bytes,
     symm::{decrypt_aead, encrypt_aead, Cipher},
 };
+use zeroize::Zeroizing;
 
 use super::{AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH};
 use crate::{
@@ -173,14 +174,14 @@ impl DecryptionSystem for AesGcmSystem {
             )
         }
 
-        let plaintext = decrypt_aead(
+        let plaintext = Zeroizing::from(decrypt_aead(
             Cipher::aes_256_gcm(),
             &self.symmetric_key,
             Some(&nonce),
             &aad,
             ciphertext,
             &tag,
-        )?;
+        )?);
 
         Ok(DecryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),

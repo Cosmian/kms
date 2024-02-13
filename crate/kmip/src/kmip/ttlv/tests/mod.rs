@@ -816,7 +816,7 @@ pub fn test_message_request() {
             ephemeral: None,
             unique_batch_item_id: None,
             request_payload: Operation::Encrypt(Encrypt {
-                data: Some(b"to be enc".to_vec()),
+                data: Some(Zeroizing::from(b"to be enc".to_vec())),
                 ..Default::default()
             }),
             message_extension: Some(vec![MessageExtension {
@@ -835,7 +835,7 @@ pub fn test_message_request() {
             req_.items[0]
         );
     };
-    assert_eq!(encrypt.data, Some(b"to be enc".to_vec()));
+    assert_eq!(encrypt.data, Some(Zeroizing::from(b"to be enc".to_vec())));
     assert_eq!(req, req_);
 }
 
@@ -885,7 +885,7 @@ pub fn test_message_response() {
                 unique_batch_item_id: Some(1235),
                 response_payload: Some(Operation::DecryptResponse(DecryptResponse {
                     unique_identifier: UniqueIdentifier::TextString("id_12345".to_string()),
-                    data: Some(b"decrypted_data".to_vec()),
+                    data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
                     correlation_value: Some(vec![9_u8, 13]),
                 })),
                 message_extension: Some(MessageExtension {
@@ -917,7 +917,10 @@ pub fn test_message_response() {
     let Some(Operation::DecryptResponse(decrypt)) = &res_.items[1].response_payload else {
         panic!("not a decrypt operation's response payload");
     };
-    assert_eq!(decrypt.data, Some(b"decrypted_data".to_vec()));
+    assert_eq!(
+        decrypt.data,
+        Some(Zeroizing::from(b"decrypted_data".to_vec()))
+    );
     assert_eq!(
         decrypt.unique_identifier,
         UniqueIdentifier::TextString("id_12345".to_string())
@@ -1005,7 +1008,7 @@ pub fn test_message_enforce_enum() {
             // mismatch operation regarding the enum
             request_payload: Operation::DecryptResponse(DecryptResponse {
                 unique_identifier: UniqueIdentifier::TextString("id_12345".to_string()),
-                data: Some(b"decrypted_data".to_vec()),
+                data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
                 correlation_value: None,
             }),
             message_extension: None,

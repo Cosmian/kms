@@ -607,7 +607,7 @@ impl<'de> Deserialize<'de> for KeyMaterial {
             where
                 V: MapAccess<'de>,
             {
-                let mut bytestring: Option<Vec<u8>> = None;
+                let mut bytestring: Option<Zeroizing<Vec<u8>>> = None;
                 let mut key_type_ser: Option<KeyTypeSer> = None;
                 let mut p: Option<BigUint> = None;
                 let mut q: Option<BigUint> = None;
@@ -615,7 +615,7 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                 let mut j: Option<BigUint> = None;
                 let mut x: Option<BigUint> = None;
                 let mut y: Option<BigUint> = None;
-                let mut key: Option<Vec<u8>> = None;
+                let mut key: Option<Zeroizing<Vec<u8>>> = None;
                 let mut modulus: Option<BigUint> = None;
                 let mut public_exponent: Option<BigUint> = None;
                 let mut private_exponent: Option<BigUint> = None;
@@ -740,11 +740,9 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                 }
 
                 if let Some(key) = key {
-                    Ok(KeyMaterial::TransparentSymmetricKey {
-                        key: Zeroizing::from(key),
-                    })
+                    Ok(KeyMaterial::TransparentSymmetricKey { key })
                 } else if let Some(bytestring) = bytestring {
-                    Ok(KeyMaterial::ByteString(Zeroizing::from(bytestring)))
+                    Ok(KeyMaterial::ByteString(bytestring))
                 } else {
                     Ok(match key_type_ser {
                         Some(KeyTypeSer::DH) => {
