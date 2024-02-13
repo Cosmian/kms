@@ -166,7 +166,7 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
             let plaintext = aead_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
             Ok(DecryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id.to_string()),
-                data: Some(plaintext),
+                data: Some(plaintext.to_vec()),
                 correlation_value: request.correlation_value.clone(),
             })
         }
@@ -226,7 +226,7 @@ fn decrypt_with_pkey(
     };
     Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(key_id.to_string()),
-        data: Some(plaintext),
+        data: Some(plaintext.to_vec()),
         correlation_value: request.correlation_value.clone(),
     })
 }
