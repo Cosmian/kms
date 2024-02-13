@@ -20,23 +20,20 @@ use crate::{
     },
 };
 
-pub async fn rotate(
+pub async fn rekey(
     cli_conf_path: &str,
     master_private_key_id: &str,
-    attributes: &[&str],
+    access_policy: &str,
 ) -> Result<(), CliError> {
     ONCE.get_or_init(start_default_test_kms_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
-    let mut args = vec!["rotate", "--key-id", master_private_key_id];
-    args.extend_from_slice(attributes);
+    let args = vec!["rekey", "--key-id", master_private_key_id, access_policy];
     cmd.arg(SUB_COMMAND).args(args);
     let output = recover_cmd_logs(&mut cmd);
-    if output.status.success()
-        && std::str::from_utf8(&output.stdout)?.contains("were rotated for attributes")
-    {
+    if output.status.success() && std::str::from_utf8(&output.stdout)?.contains("were rekeyed") {
         return Ok(())
     }
     Err(CliError::Default(
@@ -45,7 +42,7 @@ pub async fn rotate(
 }
 
 #[tokio::test]
-async fn test_rotate() -> Result<(), CliError> {
+async fn test_rekey() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new master key pair
@@ -62,10 +59,10 @@ async fn test_rotate() -> Result<(), CliError> {
         &[],
     );
 
-    rotate(
+    rekey(
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
-        &["Department::MKG", "Department::FIN"],
+        "Department::MKG || Department::FIN",
     )
     .await?;
 
@@ -73,7 +70,7 @@ async fn test_rotate() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_rotate_error() -> Result<(), CliError> {
+async fn test_rekey_error() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new master key pair
@@ -92,10 +89,10 @@ async fn test_rotate_error() -> Result<(), CliError> {
 
     // bad attributes
     assert!(
-        rotate(
+        rekey(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
-            &["bad_attribute"]
+            "bad_access_policy"
         )
         .await
         .is_err()
@@ -103,10 +100,10 @@ async fn test_rotate_error() -> Result<(), CliError> {
 
     // bad keys
     assert!(
-        rotate(
+        rekey(
             &ctx.owner_cli_conf_path,
             "bad_key",
-            &["Department::MKG", "Department::FIN"]
+            "Department::MKG || Department::FIN"
         )
         .await
         .is_err()
@@ -144,10 +141,10 @@ async fn test_rotate_error() -> Result<(), CliError> {
     )?;
     // Rotate is not allowed for wrapped keys
     assert!(
-        rotate(
+        rekey(
             &ctx.owner_cli_conf_path,
             &wrapped_key_id,
-            &["Department::MKG", "Department::FIN"]
+            "Department::MKG || Department::FIN"
         )
         .await
         .is_err()
@@ -214,10 +211,10 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
     )?;
 
     //rotate the attributes
-    rotate(
+    rekey(
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
-        &["Department::MKG", "Department::FIN"],
+        "Department::MKG || Department::FIN",
     )
     .await?;
 
