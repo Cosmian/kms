@@ -885,7 +885,7 @@ pub fn test_message_response() {
                 unique_batch_item_id: Some(1235),
                 response_payload: Some(Operation::DecryptResponse(DecryptResponse {
                     unique_identifier: UniqueIdentifier::TextString("id_12345".to_string()),
-                    data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
+                    data: Some(Zeroizing::from(b"decrypted_data".to_vec()).to_vec()),
                     correlation_value: Some(vec![9_u8, 13]),
                 })),
                 message_extension: Some(MessageExtension {
@@ -919,7 +919,7 @@ pub fn test_message_response() {
     };
     assert_eq!(
         decrypt.data,
-        Some(Zeroizing::from(b"decrypted_data".to_vec()))
+        Some(Zeroizing::from(b"decrypted_data".to_vec()).to_vec())
     );
     assert_eq!(
         decrypt.unique_identifier,
@@ -1008,7 +1008,7 @@ pub fn test_message_enforce_enum() {
             // mismatch operation regarding the enum
             request_payload: Operation::DecryptResponse(DecryptResponse {
                 unique_identifier: UniqueIdentifier::TextString("id_12345".to_string()),
-                data: Some(Zeroizing::from(b"decrypted_data".to_vec())),
+                data: Some(Zeroizing::from(b"decrypted_data".to_vec()).to_vec()),
                 correlation_value: None,
             }),
             message_extension: None,

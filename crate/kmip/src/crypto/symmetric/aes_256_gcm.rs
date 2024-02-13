@@ -185,7 +185,7 @@ impl DecryptionSystem for AesGcmSystem {
 
         Ok(DecryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.key_uid.clone()),
-            data: Some(plaintext),
+            data: Some(plaintext.to_vec()),
             correlation_value,
         })
     }

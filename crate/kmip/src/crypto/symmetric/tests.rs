@@ -68,5 +68,5 @@ pub fn test_aes() {
         })
         .unwrap();
 
-    assert_eq!(&data.clone(), &dec_res.data.unwrap());
+    assert_eq!(&data.clone().to_vec(), &dec_res.data.unwrap());
 }

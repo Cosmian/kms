@@ -216,13 +216,13 @@ impl DecryptionSystem for CovercryptDecryption {
         // a unique pointer to data on the heap.
         let decrypted_data: Vec<u8> = DecryptedData {
             metadata: header.metadata.unwrap_or_default(),
-            plaintext,
+            plaintext: plaintext.to_vec(),
         }
         .try_into()?;
 
         Ok(DecryptResponse {
             unique_identifier: UniqueIdentifier::TextString(self.user_decryption_key_uid.clone()),
-            data: Some(Zeroizing::from(decrypted_data)),
+            data: Some(Zeroizing::from(decrypted_data).to_vec()),
             correlation_value: None,
         })
     }

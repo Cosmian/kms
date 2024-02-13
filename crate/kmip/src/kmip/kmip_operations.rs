@@ -1017,7 +1017,8 @@ pub struct Decrypt {
 /// 3. data decrypted
 pub struct DecryptedData {
     pub metadata: Vec<u8>,
-    pub plaintext: Zeroizing<Vec<u8>>,
+    pub plaintext: Vec<u8>,
+    //pub plaintext: Zeroizing<Vec<u8>>,
 }
 
 impl TryInto<Vec<u8>> for DecryptedData {
@@ -1043,7 +1044,7 @@ impl TryFrom<&[u8]> for DecryptedData {
         let metadata = de.read_vec()?;
 
         // Remaining is the decrypted plaintext
-        let plaintext = Zeroizing::from(de.finalize());
+        let plaintext = Zeroizing::from(de.finalize()).to_vec();
 
         Ok(Self {
             metadata,
@@ -1061,7 +1062,8 @@ pub struct DecryptResponse {
     pub unique_identifier: UniqueIdentifier,
     /// The decrypted data
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Zeroizing<Vec<u8>>>,
+    pub data: Option<Vec<u8>>,
+    //pub data: Option<Zeroizing<Vec<u8>>>,
     /// Specifies the stream or by-parts value
     /// to be provided in subsequent calls to
     /// this operation for performing
