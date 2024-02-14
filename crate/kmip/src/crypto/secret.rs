@@ -5,6 +5,7 @@ use std::{
 
 use num_bigint_dig::BigUint;
 use openssl::rand::rand_bytes;
+use serde::Deserialize;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "ser")]
@@ -14,7 +15,7 @@ use crate::error::KmipError;
 /// Holds a big integer secret information. Wraps around `BigUint` type which is
 /// essentially a pointer on the heap. Guarantees to be zeroized on drop with
 /// feature `zeroize` enabled from `num_bigint_dig` crate.
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, Deserialize)]
 pub struct SafeBigUint(BigUint);
 
 impl SafeBigUint {

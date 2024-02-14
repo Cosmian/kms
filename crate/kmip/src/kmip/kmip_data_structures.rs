@@ -609,21 +609,24 @@ impl<'de> Deserialize<'de> for KeyMaterial {
             {
                 let mut bytestring: Option<Zeroizing<Vec<u8>>> = None;
                 let mut key_type_ser: Option<KeyTypeSer> = None;
+                // Here `p` and `q` describes either a public value for DH or
+                // a prime secret factor for RSA. Kept as `BigUint`` and wrapped
+                // as `SafeBigUint` in RSA.
                 let mut p: Option<BigUint> = None;
                 let mut q: Option<BigUint> = None;
                 let mut g: Option<BigUint> = None;
                 let mut j: Option<BigUint> = None;
-                let mut x: Option<BigUint> = None;
                 let mut y: Option<BigUint> = None;
+                let mut x: Option<SafeBigUint> = None;
                 let mut key: Option<Zeroizing<Vec<u8>>> = None;
                 let mut modulus: Option<BigUint> = None;
                 let mut public_exponent: Option<BigUint> = None;
-                let mut private_exponent: Option<BigUint> = None;
-                let mut prime_exponent_p: Option<BigUint> = None;
-                let mut prime_exponent_q: Option<BigUint> = None;
-                let mut crt_coefficient: Option<BigUint> = None;
+                let mut private_exponent: Option<SafeBigUint> = None;
+                let mut prime_exponent_p: Option<SafeBigUint> = None;
+                let mut prime_exponent_q: Option<SafeBigUint> = None;
+                let mut crt_coefficient: Option<SafeBigUint> = None;
                 let mut recommended_curve: Option<RecommendedCurve> = None;
-                let mut d: Option<BigUint> = None;
+                let mut d: Option<SafeBigUint> = None;
                 let mut q_string: Option<Vec<u8>> = None;
 
                 while let Some(field) = map.next_key()? {
@@ -749,13 +752,7 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                             let p = p.ok_or_else(|| de::Error::missing_field("P for DH key"))?;
                             let g = g.ok_or_else(|| de::Error::missing_field("G for DH key"))?;
                             if let Some(x) = x {
-                                KeyMaterial::TransparentDHPrivateKey {
-                                    p,
-                                    q,
-                                    g,
-                                    j,
-                                    x: SafeBigUint::from(x),
-                                }
+                                KeyMaterial::TransparentDHPrivateKey { p, q, g, j, x }
                             } else {
                                 let y = y.ok_or_else(|| {
                                     de::Error::missing_field("Y for DH public key")
@@ -768,12 +765,7 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                             let g = g.ok_or_else(|| de::Error::missing_field("G for DSA key"))?;
                             let q = q.ok_or_else(|| de::Error::missing_field("Q for DSA key"))?;
                             if let Some(x) = x {
-                                KeyMaterial::TransparentDSAPrivateKey {
-                                    p,
-                                    q,
-                                    g,
-                                    x: SafeBigUint::from(x),
-                                }
+                                KeyMaterial::TransparentDSAPrivateKey { p, q, g, x }
                             } else {
                                 let y = y.ok_or_else(|| {
                                     de::Error::missing_field("Y for DSA public key")
@@ -800,12 +792,12 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                             KeyMaterial::TransparentRSAPrivateKey {
                                 modulus,
                                 public_exponent,
-                                private_exponent: private_exponent.map(SafeBigUint::from),
+                                private_exponent,
                                 p: p.map(SafeBigUint::from),
                                 q: q.map(SafeBigUint::from),
-                                prime_exponent_p: prime_exponent_p.map(SafeBigUint::from),
-                                prime_exponent_q: prime_exponent_q.map(SafeBigUint::from),
-                                crt_coefficient: crt_coefficient.map(SafeBigUint::from),
+                                prime_exponent_p,
+                                prime_exponent_q,
+                                crt_coefficient,
                             }
                         }
                         Some(KeyTypeSer::EC) => {
@@ -815,7 +807,7 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                             if let Some(d) = d {
                                 KeyMaterial::TransparentECPrivateKey {
                                     recommended_curve,
-                                    d: SafeBigUint::from(d),
+                                    d,
                                 }
                             } else {
                                 let q_string = q_string.ok_or_else(|| {
