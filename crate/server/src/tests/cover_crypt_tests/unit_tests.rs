@@ -3,12 +3,8 @@ use std::sync::Arc;
 use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
 use cosmian_kmip::{
     crypto::{
-        cover_crypt::{
-            attributes::access_policy_as_vendor_attribute,
-            kmip_requests::{
-                build_create_master_keypair_request,
-                build_create_user_decryption_private_key_request,
-            },
+        cover_crypt::kmip_requests::{
+            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
         },
         generic::kmip_requests::{build_decryption_request, build_encryption_request},
     },
