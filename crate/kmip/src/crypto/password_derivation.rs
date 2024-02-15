@@ -33,10 +33,7 @@ pub fn derive_key_from_password<const LENGTH: usize>(
 ) -> Result<Secret<LENGTH>, KmipError> {
     // Check requested key length is in the authorized bounds.
     if LENGTH < FIPS_MIN_KLEN || LENGTH * 8 > FIPS_MAX_KLEN {
-        kmip_bail!(
-            "Password derivation error: wrong output length argument, got {}",
-            LENGTH,
-        )
+        kmip_bail!("Password derivation error: wrong output length argument, got {LENGTH}")
     }
 
     let mut output_key_material = Secret::<LENGTH>::new();
@@ -56,9 +53,9 @@ pub fn derive_key_from_password<const LENGTH: usize>(
     Ok(output_key_material)
 }
 
-#[cfg(not(feature = "fips"))]
 /// Derive a key into a LENGTH bytes key using Argon 2 by default, and PBKDF2
 /// with SHA512 in FIPS mode.
+#[cfg(not(feature = "fips"))]
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
 ) -> Result<Secret<LENGTH>, KmipError> {
@@ -90,7 +87,6 @@ fn test_password_derivation() {
 #[test]
 #[cfg(feature = "fips")]
 fn test_password_derivation_bad_size() {
-    #[cfg(feature = "fips")]
     // Load FIPS provider module from OpenSSL.
     openssl::provider::Provider::load(None, "fips").unwrap();
 

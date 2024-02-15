@@ -17,7 +17,7 @@ jobs:
       archive-name: centos7_tests
       commands: |
         cargo build --bins
-        cargo test -- --nocapture
+        cargo test --workspace -- --nocapture
       artifacts: ''
 
   fips-centos7-test:
@@ -28,7 +28,7 @@ jobs:
       archive-name: fips_centos7_tests
       commands: |
         cargo build --bins --features fips
-        cargo test --features fips -- --nocapture
+        cargo test --workspace --features fips -- --nocapture
       artifacts: ''
 
   ubuntu-20-tests:
@@ -40,7 +40,7 @@ jobs:
       archive-name: ubuntu_20_04_tests
       commands: |
         cargo build --bins
-        cargo test -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: ''
 
   fips-ubuntu-20-tests:
@@ -52,7 +52,7 @@ jobs:
       archive-name: fips_ubuntu_20_04_tests
       commands: |
         cargo build --bins --features fips
-        cargo test --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test --workspace --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: ''
 
   ubuntu-22-tests:
@@ -64,5 +64,5 @@ jobs:
       archive-name: ubuntu_22_04_tests
       commands: |
         cargo build --bins
-        cargo test -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: ''
