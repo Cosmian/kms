@@ -72,6 +72,16 @@ pub enum CliError {
     UrlParsing(#[from] url::ParseError),
 }
 
+impl CliError {
+    #[must_use]
+    pub fn reason(&self, reason: ErrorReason) -> Self {
+        match self {
+            Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
+            e => Self::KmipError(reason, e.to_string()),
+        }
+    }
+}
+
 impl From<&KmipError> for CliError {
     fn from(e: &KmipError) -> Self {
         Self::KmipError(ErrorReason::Invalid_Attribute, e.to_string())
@@ -194,16 +204,6 @@ impl From<std::fmt::Error> for CliError {
     }
 }
 
-impl CliError {
-    #[must_use]
-    pub fn reason(&self, reason: ErrorReason) -> Self {
-        match self {
-            Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
-            e => Self::KmipError(reason, e.to_string()),
-        }
-    }
-}
-
 /// Return early with an error if a condition is not satisfied.
 ///
 /// This macro is equivalent to `if !$cond { return Err(From::from($err)); }`.
@@ -211,7 +211,7 @@ impl CliError {
 macro_rules! cli_ensure {
     ($cond:expr, $msg:literal $(,)?) => {
         if !$cond {
-            return ::core::result::Result::Err($crate::error::CliError::Default($msg.to_owned()));
+            return ::core::result::Result::Err($crate::cli_error!($msg));
         }
     };
     ($cond:expr, $err:expr $(,)?) => {
@@ -221,7 +221,7 @@ macro_rules! cli_ensure {
     };
     ($cond:expr, $fmt:expr, $($arg:tt)*) => {
         if !$cond {
-            return ::core::result::Result::Err($crate::error::CliError::Default(format!($fmt, $($arg)*)));
+            return ::core::result::Result::Err($crate::cli_error!($fmt, $($arg)*));
         }
     };
 }
@@ -230,13 +230,13 @@ macro_rules! cli_ensure {
 #[macro_export]
 macro_rules! cli_error {
     ($msg:literal) => {
-        $crate::error::CliError::Default(format!($msg))
+        $crate::error::CliError::Default(::core::format_args!($msg).to_string())
     };
     ($err:expr $(,)?) => ({
         $crate::error::CliError::Default($err.to_string())
     });
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::error::CliError::Default(format!($fmt, $($arg)*))
+        $crate::error::CliError::Default(::core::format_args!($fmt, $($arg)*).to_string())
     };
 }
 
@@ -244,12 +244,44 @@ macro_rules! cli_error {
 #[macro_export]
 macro_rules! cli_bail {
     ($msg:literal) => {
-        return ::core::result::Result::Err( $crate::error::CliError::Default(format!($msg)))
+        return ::core::result::Result::Err($crate::cli_error!($msg))
     };
     ($err:expr $(,)?) => {
         return ::core::result::Result::Err($err)
     };
     ($fmt:expr, $($arg:tt)*) => {
-        return ::core::result::Result::Err($crate::error::CliError::Default(format!($fmt, $($arg)*)))
+        return ::core::result::Result::Err($crate::cli_error!($fmt, $($arg)*))
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CliError;
+
+    #[test]
+    fn test_cli_error_interpolation() {
+        let var = 42;
+        let err = cli_error!("interpolate {var}");
+        assert_eq!("interpolate 42", err.to_string());
+
+        let err = bail();
+        assert_eq!("interpolate 43", err.unwrap_err().to_string());
+
+        let err = ensure();
+        assert_eq!("interpolate 44", err.unwrap_err().to_string());
+    }
+
+    fn bail() -> Result<(), CliError> {
+        let var = 43;
+        if true {
+            cli_bail!("interpolate {var}");
+        }
+        Ok(())
+    }
+
+    fn ensure() -> Result<(), CliError> {
+        let var = 44;
+        cli_ensure!(false, "interpolate {var}");
+        Ok(())
+    }
 }
