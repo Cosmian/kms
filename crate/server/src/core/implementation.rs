@@ -243,13 +243,13 @@ impl KMS {
             })?;
 
         // Check that the cryptographic algorithm is specified.
-        let cryptographic_algorithm = &any_attributes.cryptographic_algorithm.ok_or_else(|| {
+        let cryptographic_algorithm = any_attributes.cryptographic_algorithm.ok_or_else(|| {
             KmsError::InvalidRequest(
                 "the cryptographic algorithm must be specified for key pair creation".to_string(),
             )
         })?;
 
-        let key_pair = match &cryptographic_algorithm {
+        let key_pair = match cryptographic_algorithm {
             CryptographicAlgorithm::ECDH => {
                 let dp = any_attributes
                     .cryptographic_domain_parameters
@@ -266,43 +266,64 @@ impl KMS {
                         private_key_uid,
                         public_key_uid,
                         Nid::X9_62_PRIME192V1,
+                        any_attributes.cryptographic_algorithm,
+                        any_attributes.cryptographic_usage_mask,
                     ),
                     RecommendedCurve::P224 => create_approved_ecc_key_pair(
                         private_key_uid,
                         public_key_uid,
                         Nid::SECP224R1,
+                        any_attributes.cryptographic_algorithm,
+                        any_attributes.cryptographic_usage_mask,
                     ),
                     RecommendedCurve::P256 => create_approved_ecc_key_pair(
                         private_key_uid,
                         public_key_uid,
                         Nid::X9_62_PRIME256V1,
+                        any_attributes.cryptographic_algorithm,
+                        any_attributes.cryptographic_usage_mask,
                     ),
                     RecommendedCurve::P384 => create_approved_ecc_key_pair(
                         private_key_uid,
                         public_key_uid,
                         Nid::SECP384R1,
+                        any_attributes.cryptographic_algorithm,
+                        any_attributes.cryptographic_usage_mask,
                     ),
                     RecommendedCurve::P521 => create_approved_ecc_key_pair(
                         private_key_uid,
                         public_key_uid,
                         Nid::SECP521R1,
+                        any_attributes.cryptographic_algorithm,
+                        any_attributes.cryptographic_usage_mask,
                     ),
 
                     #[cfg(not(feature = "fips"))]
-                    RecommendedCurve::CURVE25519 => {
-                        create_x25519_key_pair(private_key_uid, public_key_uid)
-                    }
+                    RecommendedCurve::CURVE25519 => create_x25519_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        any_attributes.cryptographic_algorithm,
+                        any_attributes.cryptographic_usage_mask,
+                    ),
                     #[cfg(not(feature = "fips"))]
-                    RecommendedCurve::CURVE448 => {
-                        create_x448_key_pair(private_key_uid, public_key_uid)
-                    }
+                    RecommendedCurve::CURVE448 => create_x448_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        any_attributes.cryptographic_algorithm,
+                        any_attributes.cryptographic_usage_mask,
+                    ),
                     #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED25519 => {
                         warn!(
                             "An Edwards Keypair on curve 25519 should not be requested to perform \
                              ECDH. Creating anyway."
                         );
-                        create_ed25519_key_pair(private_key_uid, public_key_uid)
+                        create_ed25519_key_pair(
+                            private_key_uid,
+                            public_key_uid,
+                            any_attributes.cryptographic_algorithm,
+                            any_attributes.cryptographic_usage_mask,
+                        )
                     }
 
                     #[cfg(feature = "fips")]
@@ -320,7 +341,12 @@ impl KMS {
                             "An Edwards Keypair on curve 448 should not be requested to perform \
                              ECDH. Creating anyway."
                         );
-                        create_ed448_key_pair(private_key_uid, public_key_uid)
+                        create_ed448_key_pair(
+                            private_key_uid,
+                            public_key_uid,
+                            any_attributes.cryptographic_algorithm,
+                            any_attributes.cryptographic_usage_mask,
+                        )
                     }
                     #[cfg(feature = "fips")]
                     // Ed448 not allowed for ECDH.
@@ -348,10 +374,18 @@ impl KMS {
 
                 create_rsa_key_pair(key_size_in_bits, public_key_uid, private_key_uid)
             }
-            CryptographicAlgorithm::Ed25519 => {
-                create_ed25519_key_pair(private_key_uid, public_key_uid)
-            }
-            CryptographicAlgorithm::Ed448 => create_ed448_key_pair(private_key_uid, public_key_uid),
+            CryptographicAlgorithm::Ed25519 => create_ed25519_key_pair(
+                private_key_uid,
+                public_key_uid,
+                any_attributes.cryptographic_algorithm,
+                any_attributes.cryptographic_usage_mask,
+            ),
+            CryptographicAlgorithm::Ed448 => create_ed448_key_pair(
+                private_key_uid,
+                public_key_uid,
+                any_attributes.cryptographic_algorithm,
+                any_attributes.cryptographic_usage_mask,
+            ),
             CryptographicAlgorithm::CoverCrypt => create_master_keypair(
                 &Covercrypt::default(),
                 private_key_uid,

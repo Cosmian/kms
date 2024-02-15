@@ -22,6 +22,32 @@ use crate::{
     kmip_bail,
 };
 
+#[cfg(feature = "fips")]
+/// Check that `mask` only contains `flags` and not something else.
+///
+/// If `mask` is None, raise error.
+fn confront_mask_with_flags(
+    mask: Option<CryptographicUsageMask>,
+    flags: CryptographicUsageMask,
+) -> Result<(), KmipError> {
+    if let Some(mask_) = mask {
+        if (mask_ & !flags).bits() != 0 {
+            kmip_bail!(
+                "Invalid CryptographicUsageMask value, expected {} in FIPS mode.",
+                flags.bits()
+            )
+        }
+
+        Ok(())
+    } else {
+        // Mask is None but FIPS mode is restrictive so it's considered too permissive.
+        kmip_bail!(
+            "Invalid CryptographicUsageMask value, got None but expected {} in FIPS mode.",
+            flags.bits()
+        )
+    }
+}
+
 /// Convert to an Elliptic Curve KMIP Public Key.
 /// Supported curves are:
 /// X25519, Ed25519, X448, Ed448, P-192, P-224, P-256, P-384, P-521.
@@ -36,6 +62,8 @@ pub fn to_ec_public_key(
     pkey_bits_number: u32,
     private_key_uid: &str,
     curve: RecommendedCurve,
+    algorithm: Option<CryptographicAlgorithm>,
+    mask: Option<CryptographicUsageMask>,
 ) -> Object {
     let cryptographic_length_in_bits = bytes.len() as i32 * 8;
     trace!(
@@ -46,7 +74,7 @@ pub fn to_ec_public_key(
 
     Object::PublicKey {
         key_block: KeyBlock {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+            cryptographic_algorithm: algorithm,
             key_format_type: KeyFormatType::TransparentECPublicKey,
             key_compression_type: None,
             key_value: KeyValue {
@@ -56,13 +84,13 @@ pub fn to_ec_public_key(
                 },
                 attributes: Some(Attributes {
                     object_type: Some(ObjectType::PublicKey),
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                    cryptographic_algorithm: algorithm,
                     cryptographic_length: Some(cryptographic_length_in_bits),
-                    cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
+                    cryptographic_usage_mask: mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                     cryptographic_parameters: Some(CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                        cryptographic_algorithm: algorithm,
                         ..CryptographicParameters::default()
                     }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
@@ -98,6 +126,8 @@ pub fn to_ec_private_key(
     pkey_bits_number: u32,
     public_key_uid: &str,
     curve: RecommendedCurve,
+    algorithm: Option<CryptographicAlgorithm>,
+    mask: Option<CryptographicUsageMask>,
 ) -> Object {
     let cryptographic_length_in_bits = bytes.len() as i32 * 8;
 
@@ -109,7 +139,7 @@ pub fn to_ec_private_key(
 
     Object::PrivateKey {
         key_block: KeyBlock {
-            cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+            cryptographic_algorithm: algorithm,
             key_format_type: KeyFormatType::TransparentECPrivateKey,
             key_compression_type: None,
             key_value: KeyValue {
@@ -119,13 +149,13 @@ pub fn to_ec_private_key(
                 },
                 attributes: Some(Attributes {
                     object_type: Some(ObjectType::PrivateKey),
-                    cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                    cryptographic_algorithm: algorithm,
                     cryptographic_length: Some(cryptographic_length_in_bits),
-                    cryptographic_usage_mask: Some(CryptographicUsageMask::Decrypt),
+                    cryptographic_usage_mask: mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
                     cryptographic_parameters: Some(CryptographicParameters {
-                        cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
+                        cryptographic_algorithm: algorithm,
                         ..CryptographicParameters::default()
                     }),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
@@ -152,6 +182,8 @@ pub fn to_ec_private_key(
 pub fn create_x25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
+    algorithm: Option<CryptographicAlgorithm>,
+    mask: Option<CryptographicUsageMask>,
 ) -> Result<KeyPair, KmipError> {
     let private_key = PKey::generate_x25519()?;
 
@@ -160,6 +192,8 @@ pub fn create_x25519_key_pair(
         private_key.bits(),
         private_key_uid,
         RecommendedCurve::CURVE25519,
+        algorithm,
+        mask,
     );
 
     let private_key = to_ec_private_key(
@@ -167,6 +201,8 @@ pub fn create_x25519_key_pair(
         private_key.bits(),
         public_key_uid,
         RecommendedCurve::CURVE25519,
+        algorithm,
+        mask,
     );
 
     Ok(KeyPair::new(private_key, public_key))
@@ -177,6 +213,8 @@ pub fn create_x25519_key_pair(
 pub fn create_x448_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
+    algorithm: Option<CryptographicAlgorithm>,
+    mask: Option<CryptographicUsageMask>,
 ) -> Result<KeyPair, KmipError> {
     let private_key = PKey::generate_x448()?;
 
@@ -185,6 +223,8 @@ pub fn create_x448_key_pair(
         private_key.bits(),
         private_key_uid,
         RecommendedCurve::CURVE448,
+        algorithm,
+        mask,
     );
 
     let private_key = to_ec_private_key(
@@ -192,6 +232,8 @@ pub fn create_x448_key_pair(
         private_key.bits(),
         public_key_uid,
         RecommendedCurve::CURVE448,
+        algorithm,
+        mask,
     );
 
     Ok(KeyPair::new(private_key, public_key))
@@ -206,7 +248,28 @@ pub fn create_x448_key_pair(
 pub fn create_ed25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
+    algorithm: Option<CryptographicAlgorithm>,
+    mask: Option<CryptographicUsageMask>,
 ) -> Result<KeyPair, KmipError> {
+    #[cfg(feature = "fips")]
+    // Validate FIPS usage.
+    confront_mask_with_flags(
+        mask,
+        CryptographicUsageMask::Sign
+            | CryptographicUsageMask::Verify
+            | CryptographicUsageMask::CertificateSign
+            | CryptographicUsageMask::CRLSign
+            | CryptographicUsageMask::Authenticate,
+    )?;
+
+    #[cfg(feature = "fips")]
+    // Validate FIPS algorithms.
+    if let Some(algorithm_) = algorithm {
+        if algorithm_ != CryptographicAlgorithm::Ed25519 {
+            kmip_bail!("Invalid CryptographicAlgorithm value, expected Ed25519 in FIPS mode.")
+        }
+    }
+
     let private_key = PKey::generate_ed25519()?;
     trace!("create_ed25519_key_pair: keypair OK");
 
@@ -215,6 +278,8 @@ pub fn create_ed25519_key_pair(
         private_key.bits(),
         private_key_uid,
         RecommendedCurve::CURVEED25519,
+        algorithm,
+        mask,
     );
     trace!("create_ed25519_key_pair: public_key OK");
 
@@ -223,6 +288,8 @@ pub fn create_ed25519_key_pair(
         private_key.bits(),
         public_key_uid,
         RecommendedCurve::CURVEED25519,
+        algorithm,
+        mask,
     );
     trace!("create_ed25519_key_pair: private_key OK");
 
@@ -238,7 +305,28 @@ pub fn create_ed25519_key_pair(
 pub fn create_ed448_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
+    algorithm: Option<CryptographicAlgorithm>,
+    mask: Option<CryptographicUsageMask>,
 ) -> Result<KeyPair, KmipError> {
+    #[cfg(feature = "fips")]
+    // Validate FIPS usage.
+    confront_mask_with_flags(
+        mask,
+        CryptographicUsageMask::Sign
+            | CryptographicUsageMask::Verify
+            | CryptographicUsageMask::CertificateSign
+            | CryptographicUsageMask::CRLSign
+            | CryptographicUsageMask::Authenticate,
+    )?;
+
+    #[cfg(feature = "fips")]
+    // Validate FIPS algorithms.
+    if let Some(algorithm_) = algorithm {
+        if algorithm_ != CryptographicAlgorithm::Ed448 {
+            kmip_bail!("Invalid CryptographicAlgorithm value, expected Ed448 in FIPS mode.")
+        }
+    }
+
     let private_key = PKey::generate_ed448()?;
     trace!("create_ed448_key_pair: keypair OK");
 
@@ -247,6 +335,8 @@ pub fn create_ed448_key_pair(
         private_key.bits(),
         private_key_uid,
         RecommendedCurve::CURVEED448,
+        algorithm,
+        mask,
     );
     trace!("create_ed448_key_pair: public_key OK");
 
@@ -255,6 +345,8 @@ pub fn create_ed448_key_pair(
         private_key.bits(),
         public_key_uid,
         RecommendedCurve::CURVEED448,
+        algorithm,
+        mask,
     );
     trace!("create_ed448_key_pair: private_key OK");
 
@@ -265,7 +357,33 @@ pub fn create_approved_ecc_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
     curve_nid: Nid,
+    algorithm: Option<CryptographicAlgorithm>,
+    mask: Option<CryptographicUsageMask>,
 ) -> Result<KeyPair, KmipError> {
+    #[cfg(feature = "fips")]
+    // Validate FIPS usage.
+    confront_mask_with_flags(
+        mask,
+        CryptographicUsageMask::Sign
+            | CryptographicUsageMask::Verify
+            | CryptographicUsageMask::KeyAgreement
+            | CryptographicUsageMask::CertificateSign
+            | CryptographicUsageMask::CRLSign
+            | CryptographicUsageMask::Authenticate,
+    )?;
+
+    #[cfg(feature = "fips")]
+    // Validate FIPS algorithms.
+    if let Some(algorithm_) = algorithm {
+        // todo factorize in function ?
+        if algorithm_ != CryptographicAlgorithm::ECDSA
+            && algorithm_ != CryptographicAlgorithm::ECDH
+            && algorithm_ != CryptographicAlgorithm::EC
+        {
+            kmip_bail!("Invalid CryptographicAlgorithm value, expected Ed25519 in FIPS mode.")
+        }
+    }
+
     let curve = EcGroup::from_curve_name(curve_nid)?;
     let kmip_curve = match curve_nid {
         // P-CURVES
@@ -286,6 +404,8 @@ pub fn create_approved_ecc_key_pair(
         ec_private_key.private_key().num_bits() as u32,
         public_key_uid,
         kmip_curve,
+        algorithm,
+        mask,
     );
     trace!("create_approved_ecc_key_pair: private key converted OK");
 
@@ -297,6 +417,8 @@ pub fn create_approved_ecc_key_pair(
         ec_private_key.private_key().num_bits() as u32,
         private_key_uid,
         kmip_curve,
+        algorithm,
+        mask,
     );
     trace!("create_approved_ecc_key_pair: public key converted OK");
 
@@ -318,7 +440,10 @@ mod tests {
     use crate::kmip::kmip_data_structures::KeyMaterial;
     #[cfg(not(feature = "fips"))]
     use crate::openssl::pad_be_bytes;
-    use crate::openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl};
+    use crate::{
+        kmip::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask},
+        openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
+    };
 
     #[test]
     fn test_ed25519_keypair_generation() {
@@ -326,8 +451,10 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keypair1 = create_ed25519_key_pair("sk_uid1", "pk_uid1").unwrap();
-        let keypair2 = create_ed25519_key_pair("sk_uid2", "pk_uid2").unwrap();
+        let algorithm = Some(CryptographicAlgorithm::Ed25519);
+        let mask = Some(CryptographicUsageMask::Unrestricted);
+        let keypair1 = create_ed25519_key_pair("sk_uid1", "pk_uid1", algorithm, mask).unwrap();
+        let keypair2 = create_ed25519_key_pair("sk_uid2", "pk_uid2", algorithm, mask).unwrap();
 
         let privkey1 = kmip_private_key_to_openssl(keypair1.private_key()).unwrap();
         let privkey2 = kmip_private_key_to_openssl(keypair2.private_key()).unwrap();
@@ -356,7 +483,9 @@ mod tests {
         // Create a Key pair
         // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
         // - the public key is a TransparentEcPublicKey where the key value is the bytes of the Montgomery point
-        let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid")
+        let algorithm = Some(CryptographicAlgorithm::EC);
+        let mask = Some(CryptographicUsageMask::Unrestricted);
+        let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid", algorithm, mask)
             .expect("failed to create x25519 key pair in test_x25519_conversions");
 
         //
@@ -395,8 +524,12 @@ mod tests {
     }
 
     fn keypair_generation(curve_nid: Nid) {
-        let keypair1 = create_approved_ecc_key_pair("sk_uid1", "pk_uid1", curve_nid).unwrap();
-        let keypair2 = create_approved_ecc_key_pair("sk_uid2", "pk_uid2", curve_nid).unwrap();
+        let algorithm = Some(CryptographicAlgorithm::EC);
+        let mask = Some(CryptographicUsageMask::Unrestricted);
+        let keypair1 =
+            create_approved_ecc_key_pair("sk_uid1", "pk_uid1", curve_nid, algorithm, mask).unwrap();
+        let keypair2 =
+            create_approved_ecc_key_pair("sk_uid2", "pk_uid2", curve_nid, algorithm, mask).unwrap();
 
         let privkey1 = kmip_private_key_to_openssl(keypair1.private_key()).unwrap();
         let privkey2 = kmip_private_key_to_openssl(keypair2.private_key()).unwrap();

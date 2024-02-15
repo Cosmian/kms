@@ -8,7 +8,10 @@ use cosmian_kmip::{
     crypto::{symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block},
     kmip::{
         kmip_objects::Object,
-        kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicUsageMask, LinkType, UniqueIdentifier,
+            WrappingMethod,
+        },
     },
 };
 use tempfile::TempDir;
@@ -117,7 +120,12 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     // Generate a symmetric wrapping key
     let wrap_private_key_uid = "wrap_private_key_uid";
     let wrap_public_key_uid = "wrap_public_key_uid";
-    let wrap_key_pair = create_x25519_key_pair(wrap_private_key_uid, wrap_public_key_uid)?;
+    let wrap_key_pair = create_x25519_key_pair(
+        wrap_private_key_uid,
+        wrap_public_key_uid,
+        Some(CryptographicAlgorithm::EC),
+        Some(CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt),
+    )?;
     // Write the private key to a file and import it
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
     write_kmip_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;

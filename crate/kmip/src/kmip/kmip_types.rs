@@ -318,7 +318,7 @@ pub enum KeyCompressionType {
     // Extensions 8XXXXXXX
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct CryptographicUsageMask(u32);
 
