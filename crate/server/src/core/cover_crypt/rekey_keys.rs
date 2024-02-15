@@ -108,7 +108,6 @@ pub async fn rekey_keypair_cover_crypt(
 
 /// Rekey the Master keys given the provided Private Master Key and Policy
 /// Return the Public Mater Key Identifier
-#[allow(clippy::too_many_arguments)]
 async fn rekey_master_keys(
     updater: &MasterKeysUpdater<'_>,
     kmip_server: &KMS,
