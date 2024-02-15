@@ -30,7 +30,7 @@ use crate::{
     core::{extra_database_params::ExtraDatabaseParams, operations::unwrap_key, KMS},
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
-    kms_bail, kms_not_supported,
+    kms_bail,
     result::{KResult, KResultHelper},
 };
 
@@ -54,10 +54,10 @@ pub async fn decrypt(
     match &owm.object {
         Object::SymmetricKey { .. } => decrypt_with_aead(&request, &owm),
         Object::PrivateKey { .. } => decrypt_with_private_key(&request, &owm),
-        other => kms_not_supported!(
+        other => kms_bail!(KmsError::NotSupported(format!(
             "decrypt: decryption with keys of type: {} is not supported",
             other.object_type()
-        ),
+        ))),
     }
 }
 
@@ -170,7 +170,9 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
                 correlation_value: request.correlation_value.clone(),
             })
         }
-        other => kms_not_supported!("symmetric decryption with keys of format: {other}"),
+        other => Err(KmsError::NotSupported(format!(
+            "symmetric decryption with keys of format: {other}"
+        ))),
     }
 }
 
@@ -201,7 +203,9 @@ fn decrypt_with_private_key(
             trace!("get_decryption_system: OpenSSL Private Key instantiated before decryption");
             decrypt_with_pkey(request, &owm.id, ciphertext, &private_key)
         }
-        other => kms_not_supported!("decryption with private keys of format: {other}"),
+        other => Err(KmsError::NotSupported(format!(
+            "decryption with private keys of format: {other}"
+        ))),
     }
 }
 

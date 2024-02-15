@@ -33,7 +33,7 @@ use crate::{
     core::{extra_database_params::ExtraDatabaseParams, operations::unwrap_key, KMS},
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
-    kms_bail, kms_not_supported,
+    kms_bail,
     result::{KResult, KResultHelper},
 };
 
@@ -56,10 +56,10 @@ pub async fn encrypt(
         Object::Certificate {
             certificate_value, ..
         } => encrypt_with_certificate(&request, &owm.id, certificate_value),
-        other => kms_not_supported!(
+        other => kms_bail!(KmsError::NotSupported(format!(
             "encrypt: encryption with keys of type: {} is not supported",
             other.object_type()
-        ),
+        ))),
     }
 }
 
@@ -171,7 +171,9 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
                 authenticated_encryption_tag: Some(tag),
             })
         }
-        other => kms_not_supported!("symmetric encryption with keys of format: {other}"),
+        other => Err(KmsError::NotSupported(format!(
+            "symmetric encryption with keys of format: {other}"
+        ))),
     }
 }
 
@@ -186,7 +188,6 @@ fn encrypt_with_public_key(
                 .encrypt(request)
                 .map_err(Into::into)
         }
-
         KeyFormatType::TransparentECPublicKey
         | KeyFormatType::TransparentRSAPublicKey
         | KeyFormatType::PKCS1
@@ -202,7 +203,9 @@ fn encrypt_with_public_key(
             trace!("get_encryption_system: OpenSSL Public Key instantiated before encryption");
             encrypt_with_pkey(request, &owm.id, plaintext, &public_key)
         }
-        other => kms_not_supported!("encryption with public keys of format: {other}"),
+        other => Err(KmsError::NotSupported(format!(
+            "encryption with public keys of format: {other}"
+        ))),
     }
 }
 
