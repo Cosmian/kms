@@ -7,6 +7,7 @@
 pub mod error;
 mod id;
 pub use id::id;
+pub mod crypto;
 pub mod kmip;
 pub mod result;
 

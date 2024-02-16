@@ -10,15 +10,14 @@ use cloudproof_findex::{
     implementations::redis::FindexRedis, parameters::MASTER_KEY_LENGTH, IndexedValue, Keyword,
     Label, Location,
 };
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, StateEnumeration},
-};
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType},
+use cosmian_kmip::{
     crypto::{password_derivation::derive_key_from_password, secret::Secret},
-    tagging::get_tags,
+    kmip::{
+        kmip_objects::Object,
+        kmip_types::{Attributes, StateEnumeration},
+    },
 };
+use cosmian_kms_client::access::{IsWrapped, ObjectOperationType};
 use redis::aio::ConnectionManager;
 use tracing::trace;
 use uuid::Uuid;
@@ -28,6 +27,7 @@ use super::{
     permissions::PermissionsDB,
 };
 use crate::{
+    core::extra_database_params::ExtraDatabaseParams,
     database::{
         database_trait::AtomicOperation, object_with_metadata::ObjectWithMetadata,
         redis::objects_db::RedisOperation, Database,
@@ -517,8 +517,8 @@ impl Database for RedisWithFindex {
     ) -> KResult<Vec<(String, StateEnumeration, Attributes, IsWrapped)>> {
         let mut keywords = {
             if let Some(attributes) = researched_attributes {
-                let tags = get_tags(attributes);
-                trace!("find: tags: {:?}", tags);
+                let tags = attributes.get_tags();
+                trace!("find: tags: {tags:?}");
                 let mut keywords = tags
                     .iter()
                     .map(|tag| Keyword::from(tag.as_bytes()))

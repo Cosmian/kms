@@ -8,30 +8,29 @@ use base64::{
     engine::general_purpose::{self, STANDARD as b64},
     Engine as _,
 };
-use cosmian_kmip::kmip::{
-    kmip_messages::{Message, MessageResponse},
-    kmip_operations::{
-        Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
-        Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
-        ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
-        ImportResponse, Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke,
-        RevokeResponse,
-    },
-    kmip_types::{StateEnumeration, UniqueIdentifier},
-};
-use cosmian_kms_utils::{
-    access::{
-        Access, AccessRightsObtainedResponse, ExtraDatabaseParams, ObjectOwnedResponse,
-        UserAccessResponse,
-    },
+use cosmian_kmip::{
     crypto::secret::Secret,
+    kmip::{
+        kmip_messages::{Message, MessageResponse},
+        kmip_operations::{
+            Certify, CertifyResponse, Create, CreateKeyPair, CreateKeyPairResponse, CreateResponse,
+            Decrypt, DecryptResponse, Destroy, DestroyResponse, Encrypt, EncryptResponse, Export,
+            ExportResponse, Get, GetAttributes, GetAttributesResponse, GetResponse, Import,
+            ImportResponse, Locate, LocateResponse, ReKeyKeyPair, ReKeyKeyPairResponse, Revoke,
+            RevokeResponse,
+        },
+        kmip_types::{StateEnumeration, UniqueIdentifier},
+    },
+};
+use cosmian_kms_client::access::{
+    Access, AccessRightsObtainedResponse, ObjectOwnedResponse, UserAccessResponse,
 };
 use tracing::debug;
 use uuid::Uuid;
 
 use crate::{
     config::{DbParams, ServerParams},
-    core::operations,
+    core::{extra_database_params::ExtraDatabaseParams, operations},
     database::Database,
     error::KmsError,
     kms_bail, kms_error,

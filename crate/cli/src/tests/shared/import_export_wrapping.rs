@@ -2,14 +2,14 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
-};
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::elliptic_curves::operation::create_x25519_key_pair;
-use cosmian_kms_utils::crypto::{
-    symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block,
+use cosmian_kmip::crypto::elliptic_curves::operation::create_x25519_key_pair;
+use cosmian_kmip::{
+    crypto::{symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block},
+    kmip::{
+        kmip_objects::Object,
+        kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
+    },
 };
 use tempfile::TempDir;
 use tracing::debug;

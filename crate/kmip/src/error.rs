@@ -1,4 +1,4 @@
-use cloudproof::reexport::crypto_core::CryptoCoreError;
+use cloudproof::reexport::crypto_core::{reexport::pkcs8, CryptoCoreError};
 use thiserror::Error;
 
 use crate::kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError};
@@ -11,6 +11,15 @@ pub enum KmipError {
     #[error("Invalid KMIP Object: {0}: {1}")]
     InvalidKmipObject(ErrorReason, String),
 
+    #[error("Invalid size: {0}")]
+    InvalidSize(String),
+
+    #[error("Invalid tag: {0}")]
+    InvalidTag(String),
+
+    #[error("Derivation error: {0}")]
+    Derivation(String),
+
     #[error("Kmip Not Supported: {0}: {1}")]
     KmipNotSupported(ErrorReason, String),
 
@@ -19,6 +28,9 @@ pub enum KmipError {
 
     #[error("{0}: {1}")]
     KmipError(ErrorReason, String),
+
+    #[error("Conversion Error: {0}")]
+    ConversionError(String),
 
     #[error("{0}")]
     Default(String),
@@ -35,6 +47,18 @@ impl KmipError {
             Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
             e => Self::KmipError(reason, e.to_string()),
         }
+    }
+}
+
+impl From<Vec<u8>> for KmipError {
+    fn from(value: Vec<u8>) -> Self {
+        Self::ConversionError(format!("Failed converting Vec<u8>: {value:?}"))
+    }
+}
+
+impl From<std::array::TryFromSliceError> for KmipError {
+    fn from(value: std::array::TryFromSliceError) -> Self {
+        Self::ConversionError(value.to_string())
     }
 }
 
@@ -79,6 +103,18 @@ impl From<KmipError> for pyo3::PyErr {
 impl From<openssl::error::ErrorStack> for KmipError {
     fn from(e: openssl::error::ErrorStack) -> Self {
         Self::OpenSSL(e.to_string())
+    }
+}
+
+impl From<pkcs8::spki::Error> for KmipError {
+    fn from(e: pkcs8::spki::Error) -> Self {
+        Self::ConversionError(e.to_string())
+    }
+}
+
+impl From<pkcs8::Error> for KmipError {
+    fn from(e: pkcs8::Error) -> Self {
+        Self::ConversionError(e.to_string())
     }
 }
 

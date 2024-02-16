@@ -17,6 +17,7 @@ pyo3 = ["dep:pyo3"]
 fips = []
 
 [dependencies]
+argon2 = "0.5"
 base58 = "0.2"
 bitflags = { workspace = true }
 chrono = { workspace = true }

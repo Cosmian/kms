@@ -10,6 +10,7 @@ use zeroize::Zeroizing;
 
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};
 use crate::{
+    crypto::secret::SafeBigUint,
     error::KmipError,
     kmip::{
         kmip_operations::ErrorReason,
@@ -364,6 +365,8 @@ impl Default for KeyWrappingSpecification {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Private fields are represented using a Zeroizing object: either array of
+/// bytes, or `SafeBigUint` type.
 pub enum KeyMaterial {
     ByteString(Zeroizing<Vec<u8>>),
     TransparentDHPrivateKey {
@@ -371,7 +374,7 @@ pub enum KeyMaterial {
         q: Option<BigUint>,
         g: BigUint,
         j: Option<BigUint>,
-        x: BigUint,
+        x: SafeBigUint,
     },
     TransparentDHPublicKey {
         p: BigUint,
@@ -384,7 +387,7 @@ pub enum KeyMaterial {
         p: BigUint,
         q: BigUint,
         g: BigUint,
-        x: BigUint,
+        x: SafeBigUint,
     },
     TransparentDSAPublicKey {
         p: BigUint,
@@ -401,18 +404,18 @@ pub enum KeyMaterial {
     },
     TransparentRSAPrivateKey {
         modulus: BigUint,
-        private_exponent: Option<BigUint>,
+        private_exponent: Option<SafeBigUint>,
         public_exponent: Option<BigUint>,
-        p: Option<BigUint>,
-        q: Option<BigUint>,
-        prime_exponent_p: Option<BigUint>,
-        prime_exponent_q: Option<BigUint>,
-        crt_coefficient: Option<BigUint>,
+        p: Option<SafeBigUint>,
+        q: Option<SafeBigUint>,
+        prime_exponent_p: Option<SafeBigUint>,
+        prime_exponent_q: Option<SafeBigUint>,
+        crt_coefficient: Option<SafeBigUint>,
     },
     TransparentECPrivateKey {
         recommended_curve: RecommendedCurve,
         // big int in big endian format
-        d: BigUint,
+        d: SafeBigUint,
     },
     TransparentECPublicKey {
         recommended_curve: RecommendedCurve,
@@ -458,7 +461,7 @@ impl Serialize for KeyMaterial {
                 if let Some(j) = j {
                     st.serialize_field("J", j)?;
                 };
-                st.serialize_field("X", x)?;
+                st.serialize_field("X", &**x)?;
                 st.end()
             }
             Self::TransparentDHPublicKey { p, q, g, j, y } => {
@@ -481,7 +484,7 @@ impl Serialize for KeyMaterial {
                 st.serialize_field("P", p)?;
                 st.serialize_field("Q", q)?;
                 st.serialize_field("G", g)?;
-                st.serialize_field("X", x)?;
+                st.serialize_field("X", &**x)?;
                 st.end()
             }
             Self::TransparentDSAPublicKey { p, q, g, y } => {
@@ -507,25 +510,25 @@ impl Serialize for KeyMaterial {
                 st.serialize_field("KeyTypeSer", &KeyTypeSer::RsaPrivate)?;
                 st.serialize_field("Modulus", modulus)?;
                 if let Some(private_exponent) = private_exponent {
-                    st.serialize_field("PrivateExponent", private_exponent)?;
+                    st.serialize_field("PrivateExponent", &**private_exponent)?;
                 };
                 if let Some(public_exponent) = public_exponent {
                     st.serialize_field("PublicExponent", public_exponent)?;
                 };
                 if let Some(p) = p {
-                    st.serialize_field("P", p)?;
+                    st.serialize_field("P", &**p)?;
                 };
                 if let Some(q) = q {
-                    st.serialize_field("Q", q)?;
+                    st.serialize_field("Q", &**q)?;
                 };
                 if let Some(prime_exponent_p) = prime_exponent_p {
-                    st.serialize_field("PrimeExponentP", prime_exponent_p)?;
+                    st.serialize_field("PrimeExponentP", &**prime_exponent_p)?;
                 };
                 if let Some(prime_exponent_q) = prime_exponent_q {
-                    st.serialize_field("PrimeExponentQ", prime_exponent_q)?;
+                    st.serialize_field("PrimeExponentQ", &**prime_exponent_q)?;
                 };
                 if let Some(crt_coefficient) = crt_coefficient {
-                    st.serialize_field("CrtCoefficient", crt_coefficient)?;
+                    st.serialize_field("CrtCoefficient", &**crt_coefficient)?;
                 };
                 st.end()
             }
@@ -546,7 +549,7 @@ impl Serialize for KeyMaterial {
                 let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
                 st.serialize_field("KeyTypeSer", &KeyTypeSer::EC)?;
                 st.serialize_field("RecommendedCurve", recommended_curve)?;
-                st.serialize_field("D", d)?;
+                st.serialize_field("D", &**d)?;
                 st.end()
             }
             Self::TransparentECPublicKey {
@@ -604,23 +607,26 @@ impl<'de> Deserialize<'de> for KeyMaterial {
             where
                 V: MapAccess<'de>,
             {
-                let mut bytestring: Option<Vec<u8>> = None;
+                let mut bytestring: Option<Zeroizing<Vec<u8>>> = None;
                 let mut key_type_ser: Option<KeyTypeSer> = None;
+                // Here `p` and `q` describes either a public value for DH or
+                // a prime secret factor for RSA. Kept as `BigUint`` and wrapped
+                // as `SafeBigUint` in RSA.
                 let mut p: Option<BigUint> = None;
                 let mut q: Option<BigUint> = None;
                 let mut g: Option<BigUint> = None;
                 let mut j: Option<BigUint> = None;
-                let mut x: Option<BigUint> = None;
                 let mut y: Option<BigUint> = None;
-                let mut key: Option<Vec<u8>> = None;
+                let mut x: Option<SafeBigUint> = None;
+                let mut key: Option<Zeroizing<Vec<u8>>> = None;
                 let mut modulus: Option<BigUint> = None;
                 let mut public_exponent: Option<BigUint> = None;
-                let mut private_exponent: Option<BigUint> = None;
-                let mut prime_exponent_p: Option<BigUint> = None;
-                let mut prime_exponent_q: Option<BigUint> = None;
-                let mut crt_coefficient: Option<BigUint> = None;
+                let mut private_exponent: Option<SafeBigUint> = None;
+                let mut prime_exponent_p: Option<SafeBigUint> = None;
+                let mut prime_exponent_q: Option<SafeBigUint> = None;
+                let mut crt_coefficient: Option<SafeBigUint> = None;
                 let mut recommended_curve: Option<RecommendedCurve> = None;
-                let mut d: Option<BigUint> = None;
+                let mut d: Option<SafeBigUint> = None;
                 let mut q_string: Option<Vec<u8>> = None;
 
                 while let Some(field) = map.next_key()? {
@@ -737,11 +743,9 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                 }
 
                 if let Some(key) = key {
-                    Ok(KeyMaterial::TransparentSymmetricKey {
-                        key: Zeroizing::from(key),
-                    })
+                    Ok(KeyMaterial::TransparentSymmetricKey { key })
                 } else if let Some(bytestring) = bytestring {
-                    Ok(KeyMaterial::ByteString(Zeroizing::from(bytestring)))
+                    Ok(KeyMaterial::ByteString(bytestring))
                 } else {
                     Ok(match key_type_ser {
                         Some(KeyTypeSer::DH) => {
@@ -789,8 +793,8 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                                 modulus,
                                 public_exponent,
                                 private_exponent,
-                                p,
-                                q,
+                                p: p.map(SafeBigUint::from),
+                                q: q.map(SafeBigUint::from),
                                 prime_exponent_p,
                                 prime_exponent_q,
                                 crt_coefficient,

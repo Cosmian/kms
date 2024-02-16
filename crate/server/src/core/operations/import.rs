@@ -18,10 +18,6 @@ use cosmian_kmip::{
         openssl_private_key_to_kmip, openssl_public_key_to_kmip,
     },
 };
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
-    tagging::{check_user_tags, remove_tags},
-};
 use openssl::{
     pkey::{PKey, Private},
     x509::X509,
@@ -30,9 +26,15 @@ use tracing::{debug, trace};
 use uuid::Uuid;
 
 use super::wrapping::unwrap_key;
-/// Import a new object
-use crate::{core::KMS, database::AtomicOperation, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
+    database::AtomicOperation,
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
+/// Import a new object
 pub async fn import(
     kms: &KMS,
     request: Import,
@@ -81,9 +83,9 @@ async fn process_symmetric_key(
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
     let mut attributes = request.attributes;
-    let mut tags = remove_tags(&mut attributes);
+    let mut tags = attributes.remove_tags();
     if let Some(tags) = tags.as_ref() {
-        check_user_tags(tags)?;
+        Attributes::check_user_tags(tags)?;
     }
 
     let mut object = request.object;
@@ -125,9 +127,9 @@ async fn process_symmetric_key(
 fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
     let mut request_attributes = request.attributes;
-    let mut user_tags = remove_tags(&mut request_attributes);
+    let mut user_tags = request_attributes.remove_tags();
     if let Some(tags) = user_tags.as_ref() {
-        check_user_tags(tags)?;
+        Attributes::check_user_tags(tags)?;
     }
 
     // The specification says that this should be DER bytes
@@ -189,9 +191,9 @@ async fn process_public_key(
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
     let mut request_attributes = request.attributes;
-    let mut tags = remove_tags(&mut request_attributes);
+    let mut tags = request_attributes.remove_tags();
     if let Some(tags) = tags.as_ref() {
-        check_user_tags(tags)?;
+        Attributes::check_user_tags(tags)?;
     }
 
     // unwrap key block if required
@@ -265,10 +267,10 @@ async fn process_private_key(
 ) -> Result<(String, Vec<AtomicOperation>), KmsError> {
     // recover user tags
     let mut request_attributes = request.attributes;
-    let tags = remove_tags(&mut request_attributes);
+    let tags = request_attributes.remove_tags();
     // insert the tag corresponding to the object type if tags should be updated
     if let Some(tags) = tags.as_ref() {
-        check_user_tags(tags)?;
+        Attributes::check_user_tags(tags)?;
     }
     // whether the object will be replaced if it already exists
     let replace_existing = request.replace_existing.unwrap_or(false);

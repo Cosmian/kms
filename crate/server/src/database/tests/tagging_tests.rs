@@ -4,19 +4,21 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::kmip::{
-    kmip_objects::ObjectType,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, StateEnumeration,
+use cosmian_kmip::{
+    crypto::symmetric::create_symmetric_key_kmip_object,
+    kmip::{
+        kmip_objects::ObjectType,
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
+            StateEnumeration,
+        },
     },
 };
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
-    crypto::symmetric::create_symmetric_key_kmip_object,
-};
+use cosmian_kms_client::access::ObjectOperationType;
 use uuid::Uuid;
 
 use crate::{
+    core::extra_database_params::ExtraDatabaseParams,
     database::{object_with_metadata::ObjectWithMetadata, Database},
     result::KResult,
 };
@@ -60,7 +62,7 @@ pub async fn tags<DB: Database>(
         .into_values()
         .collect::<Vec<ObjectWithMetadata>>();
 
-    let expected_attributes: Attributes = Attributes {
+    let expected_attributes = Attributes {
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         cryptographic_length: Some(256),
         cryptographic_usage_mask: Some(

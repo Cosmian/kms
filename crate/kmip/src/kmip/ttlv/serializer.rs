@@ -6,6 +6,7 @@ use serde::{
     Serialize,
 };
 use tracing::{debug, trace};
+use zeroize::Zeroizing;
 
 use super::{error::TtlvError, TTLVEnumeration, TTLValue, TTLV};
 use crate::kmip::kmip_objects::{Object, ObjectType};
@@ -241,6 +242,12 @@ impl<'a> ser::Serializer for &'a mut TTLVSerializer {
             fn detect(&self) -> Detected {
                 trace!("handling a byte string");
                 Detected::ByteString((*self).clone())
+            }
+        }
+        impl Detect for &Zeroizing<Vec<u8>> {
+            fn detect(&self) -> Detected {
+                trace!("handling a byte string");
+                Detected::ByteString((*self).to_vec())
             }
         }
         impl Detect for &BigUint {
@@ -639,6 +646,12 @@ impl<'a> ser::SerializeStruct for &'a mut TTLVSerializer {
         impl Detect for &Vec<u8> {
             fn detect(&self) -> Detected {
                 Detected::ByteString((*self).clone())
+            }
+        }
+        impl Detect for &Zeroizing<Vec<u8>> {
+            fn detect(&self) -> Detected {
+                trace!("handling a byte string");
+                Detected::ByteString((*self).to_vec())
             }
         }
         impl Detect for &BigUint {

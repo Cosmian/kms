@@ -1,5 +1,16 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_decrypt;
 use cosmian_kmip::{
+    crypto::{
+        cover_crypt::{attributes, decryption::CovercryptDecryption},
+        rsa::{
+            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt,
+            rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt,
+        },
+        symmetric::aead::{aead_decrypt, AeadCipher},
+        DecryptionSystem,
+    },
     kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
@@ -10,26 +21,13 @@ use cosmian_kmip::{
     },
     openssl::kmip_private_key_to_openssl,
 };
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::elliptic_curves::ecies::ecies_decrypt;
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
-    crypto::{
-        cover_crypt::{attributes, decryption::CovercryptDecryption},
-        rsa::{
-            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt,
-            rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt,
-        },
-        symmetric::aead::{aead_decrypt, AeadCipher},
-    },
-    DecryptionSystem,
-};
+use cosmian_kms_client::access::ObjectOperationType;
 use openssl::pkey::{Id, PKey, Private};
 use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{operations::unwrap_key, KMS},
+    core::{extra_database_params::ExtraDatabaseParams, operations::unwrap_key, KMS},
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
     kms_bail, kms_not_supported,
@@ -168,7 +166,7 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
             let plaintext = aead_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
             Ok(DecryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id.to_string()),
-                data: Some(plaintext.to_vec()), // TODO: zeroize field in DecryptResponse.
+                data: Some(plaintext),
                 correlation_value: request.correlation_value.clone(),
             })
         }
@@ -228,7 +226,7 @@ fn decrypt_with_pkey(
     };
     Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(key_id.to_string()),
-        data: Some(plaintext.to_vec()), // TODO: zeroize field in DecryptResponse.
+        data: Some(plaintext),
         correlation_value: request.correlation_value.clone(),
     })
 }

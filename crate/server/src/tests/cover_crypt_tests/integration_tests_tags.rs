@@ -1,22 +1,25 @@
 use cloudproof::reexport::cover_crypt::abe_policy::{
     Attribute, DimensionBuilder, EncryptionHint, Policy,
 };
-use cosmian_kmip::kmip::{
-    kmip_operations::{
-        CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
-        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
-    },
-    kmip_types::{RevocationReason, UniqueIdentifier},
-};
-use cosmian_kms_utils::crypto::{
-    cover_crypt::{
-        attributes::EditPolicyAction,
-        kmip_requests::{
-            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
-            build_destroy_key_request, build_rekey_keypair_request,
+use cosmian_kmip::{
+    crypto::{
+        cover_crypt::{
+            attributes::EditPolicyAction,
+            kmip_requests::{
+                build_create_master_keypair_request,
+                build_create_user_decryption_private_key_request, build_destroy_key_request,
+                build_rekey_keypair_request,
+            },
         },
+        generic::kmip_requests::{build_decryption_request, build_encryption_request},
     },
-    generic::kmip_requests::{build_decryption_request, build_encryption_request},
+    kmip::{
+        kmip_operations::{
+            CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
+            EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        },
+        kmip_types::{RevocationReason, UniqueIdentifier},
+    },
 };
 
 use crate::{
@@ -230,7 +233,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(&data, &decrypted_data.plaintext);
+    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
 
     // test user2 can decrypt
@@ -252,7 +255,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(&data, &decrypted_data.plaintext);
+    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
 
     // Revoke key of user 1
@@ -333,7 +336,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(&data, &decrypted_data.plaintext);
+    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
 
     //

@@ -1,7 +1,9 @@
 use clap::Parser;
 use cosmian_kmip::kmip::kmip_types::UniqueIdentifier;
-use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::access::{Access, ObjectOperationType};
+use cosmian_kms_client::{
+    access::{Access, ObjectOperationType},
+    KmsRestClient,
+};
 
 use crate::error::{result::CliResultHelper, CliError};
 

@@ -9,11 +9,13 @@ use cosmian_kmip::kmip::{
         UniqueIdentifier,
     },
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use cosmian_kms_client::access::ObjectOperationType;
 use tracing::debug;
 
 use crate::{
-    core::{cover_crypt::revoke_user_decryption_keys, KMS},
+    core::{
+        cover_crypt::revoke_user_decryption_keys, extra_database_params::ExtraDatabaseParams, KMS,
+    },
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
     kms_bail,

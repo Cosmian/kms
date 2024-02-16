@@ -7,7 +7,6 @@ use cosmian_kmip::{
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
 use cosmian_kms_client::RestClientError;
-use cosmian_kms_utils::error::KmipUtilsError;
 use pem::PemError;
 use thiserror::Error;
 
@@ -71,12 +70,6 @@ pub enum CliError {
     // Url parsing errors
     #[error(transparent)]
     UrlParsing(#[from] url::ParseError),
-}
-
-impl From<KmipUtilsError> for CliError {
-    fn from(e: KmipUtilsError) -> Self {
-        Self::Cryptographic(e.to_string())
-    }
 }
 
 impl From<&KmipError> for CliError {
@@ -169,6 +162,10 @@ impl From<KmipError> for CliError {
             KmipError::KmipError(r, s) => Self::KmipError(r, s),
             KmipError::Default(s) => Self::NotSupported(s),
             KmipError::OpenSSL(s) => Self::NotSupported(s),
+            KmipError::InvalidSize(s) => Self::NotSupported(s),
+            KmipError::InvalidTag(s) => Self::NotSupported(s),
+            KmipError::Derivation(s) => Self::NotSupported(s),
+            KmipError::ConversionError(s) => Self::NotSupported(s),
         }
     }
 }

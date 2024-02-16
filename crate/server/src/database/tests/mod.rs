@@ -1,9 +1,6 @@
 use std::path::PathBuf;
 
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
-    crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH},
-};
+use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 
 use self::{
     additional_redis_findex_tests::{test_corner_case, test_objects_db, test_permissions_db},
@@ -21,7 +18,10 @@ use super::{
     redis::{RedisWithFindex, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH},
     sqlite::SqlitePool,
 };
-use crate::{database::tests::database_tests::atomic, result::KResult};
+use crate::{
+    core::extra_database_params::ExtraDatabaseParams, database::tests::database_tests::atomic,
+    result::KResult,
+};
 
 mod additional_redis_findex_tests;
 mod database_tests;

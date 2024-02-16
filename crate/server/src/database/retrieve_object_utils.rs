@@ -1,9 +1,12 @@
 use cosmian_kmip::kmip::kmip_types::StateEnumeration;
-use cosmian_kms_utils::access::{ExtraDatabaseParams, ObjectOperationType};
+use cosmian_kms_client::access::ObjectOperationType;
 use tracing::trace;
 
 use crate::{
-    core::KMS, database::object_with_metadata::ObjectWithMetadata, error::KmsError, result::KResult,
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
+    database::object_with_metadata::ObjectWithMetadata,
+    error::KmsError,
+    result::KResult,
 };
 
 /// Retrieve a single object for a given operation type
