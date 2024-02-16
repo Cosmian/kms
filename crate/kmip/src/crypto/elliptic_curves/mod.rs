@@ -1,4 +1,4 @@
-#[cfg(not(feature = "fips"))]
+#[cfg(all(not(feature = "fips"), feature = "openssl"))]
 pub mod ecies;
 pub mod kmip_requests;
 pub mod operation;

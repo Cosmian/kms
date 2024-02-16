@@ -2,7 +2,7 @@ use base58::ToBase58;
 #[cfg(feature = "openssl")]
 use openssl::hash::{hash, MessageDigest};
 #[cfg(not(feature = "openssl"))]
-use sha3::Digest;
+use sha3::{self, Digest};
 
 use crate::error::KmipError;
 
