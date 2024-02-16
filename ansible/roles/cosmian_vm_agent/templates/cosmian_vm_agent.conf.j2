@@ -1,0 +1,8 @@
+[program:cosmian_vm_agent]
+command=cosmian_vm_agent
+directory=/usr/sbin
+autostart=true
+autorestart=true
+user=root
+stderr_logfile=/var/log/cosmian_vm/agent.err.log
+stdout_logfile=/var/log/cosmian_vm/agent.out.log
