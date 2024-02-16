@@ -22,7 +22,7 @@ use cosmian_kmip::{
         kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
     },
 };
-use openssl::{nid::Nid, rand::rand_bytes};
+use openssl::rand::rand_bytes;
 use tracing::trace;
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
@@ -250,12 +250,16 @@ impl KMS {
         })?;
 
         let key_pair = match cryptographic_algorithm {
-            CryptographicAlgorithm::ECDH => {
-                let dp = any_attributes
+            // EC, ECDSA and ECDH posses the same FIPS restrictions for curves.
+            CryptographicAlgorithm::EC
+            | CryptographicAlgorithm::ECDH
+            | CryptographicAlgorithm::ECDSA => {
+                let domain_parameters = any_attributes
                     .cryptographic_domain_parameters
                     .unwrap_or_default();
-                match dp.recommended_curve.unwrap_or_default() {
-                    // P-CURVES
+                let curve = domain_parameters.recommended_curve.unwrap_or_default();
+
+                match curve {
                     #[cfg(not(feature = "fips"))]
                     // Generate a P-192 Key Pair. Not FIPS-140-3 compliant. **This curve is for
                     // legacy-use only** as it provides less than 112 bits of security.
@@ -265,39 +269,20 @@ impl KMS {
                     RecommendedCurve::P192 => create_approved_ecc_key_pair(
                         private_key_uid,
                         public_key_uid,
-                        Nid::X9_62_PRIME192V1,
+                        curve,
                         any_attributes.cryptographic_algorithm,
                         any_attributes.cryptographic_usage_mask,
                     ),
-                    RecommendedCurve::P224 => create_approved_ecc_key_pair(
+                    RecommendedCurve::P224
+                    | RecommendedCurve::P256
+                    | RecommendedCurve::P384
+                    | RecommendedCurve::P521 => create_approved_ecc_key_pair(
                         private_key_uid,
                         public_key_uid,
-                        Nid::SECP224R1,
+                        curve,
                         any_attributes.cryptographic_algorithm,
                         any_attributes.cryptographic_usage_mask,
                     ),
-                    RecommendedCurve::P256 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::X9_62_PRIME256V1,
-                        any_attributes.cryptographic_algorithm,
-                        any_attributes.cryptographic_usage_mask,
-                    ),
-                    RecommendedCurve::P384 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::SECP384R1,
-                        any_attributes.cryptographic_algorithm,
-                        any_attributes.cryptographic_usage_mask,
-                    ),
-                    RecommendedCurve::P521 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::SECP521R1,
-                        any_attributes.cryptographic_algorithm,
-                        any_attributes.cryptographic_usage_mask,
-                    ),
-
                     #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVE25519 => create_x25519_key_pair(
                         private_key_uid,
@@ -314,9 +299,14 @@ impl KMS {
                     ),
                     #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED25519 => {
+                        if cryptographic_algorithm == CryptographicAlgorithm::ECDSA
+                            || cryptographic_algorithm == CryptographicAlgorithm::EC
+                        {
+                            kms_not_supported!("Edwards curve can't be created for EC or ECDSA")
+                        }
                         warn!(
-                            "An Edwards Keypair on curve 25519 should not be requested to perform \
-                             ECDH. Creating anyway."
+                            "A keypair on Ed25519 should not be requested to perform ECDH. \
+                             Creating anyway."
                         );
                         create_ed25519_key_pair(
                             private_key_uid,
@@ -325,21 +315,25 @@ impl KMS {
                             any_attributes.cryptographic_usage_mask,
                         )
                     }
-
                     #[cfg(feature = "fips")]
-                    // Ed25519 not allowed for ECDH.
+                    // Ed25519 not allowed for ECDH nor ECDSA.
                     // see NIST.SP.800-186 - Section 3.1.2 table 2.
                     RecommendedCurve::CURVEED25519 => {
                         kms_not_supported!(
-                            "An Edwards Keypair on curve 25519 should not be requested to perform \
-                             ECDH in FIPS mode."
+                            "A keypair on Ed25519 should not be requested to perform ECDH nor \
+                             ECDSA in FIPS mode."
                         )
                     }
                     #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED448 => {
+                        if cryptographic_algorithm == CryptographicAlgorithm::ECDSA
+                            || cryptographic_algorithm == CryptographicAlgorithm::EC
+                        {
+                            kms_not_supported!("Edwards curve can't be created for EC or ECDSA")
+                        }
                         warn!(
-                            "An Edwards Keypair on curve 448 should not be requested to perform \
-                             ECDH. Creating anyway."
+                            "A keypair on Ed448 should not be requested to perform ECDH. Creating \
+                             anyway."
                         );
                         create_ed448_key_pair(
                             private_key_uid,
@@ -349,12 +343,12 @@ impl KMS {
                         )
                     }
                     #[cfg(feature = "fips")]
-                    // Ed448 not allowed for ECDH.
+                    // Ed448 not allowed for ECDH nor ECDSA.
                     // see NIST.SP.800-186 - Section 3.1.2 table 2.
                     RecommendedCurve::CURVEED448 => {
                         kms_not_supported!(
-                            "An Edwards Keypair on curve 448 should not be requested to perform \
-                             ECDH in FIPS mode."
+                            "A keypair on Ed448 should not be requested to perform ECDH in FIPS \
+                             mode."
                         )
                     }
                     other => kms_not_supported!(

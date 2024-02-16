@@ -75,7 +75,7 @@ fn init_ckm_rsa_pkcs_oaep_encryption_context(
 ) -> Result<(PkeyCtx<Public>, Vec<u8>), KmipError> {
     let rsa_pub_key = pub_key.rsa()?;
     #[cfg(feature = "fips")]
-    if pub_key.bits() < FIPS_MIN_RSA_MODULUS_LENGTH {
+    if pub_key.bits() < FIPS_MIN_RSA_MODULUS_LENGTH * 8 {
         kmip_bail!(
             "CKM_RSA_OAEP encryption error: RSA key has insufficient size: expected >= {} bits \
              and got {} bits",

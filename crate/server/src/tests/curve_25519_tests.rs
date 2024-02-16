@@ -203,8 +203,6 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 
 #[tokio::test]
 async fn test_curve_25519_multiple() -> KResult<()> {
-    // log_init("debug,hyper=info,reqwest=info");
-
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(&clap_config).await?).await?);

@@ -231,7 +231,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         Some(&["test_ec"]),
-        Some("EcDH"),
+        Some("Ec"),
         None,
         None,
     )?;
@@ -263,7 +263,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     let ids = locate(
         &ctx.owner_cli_conf_path,
         Some(&["test_ec"]),
-        Some("ECDH"),
+        Some("eC"),
         None,
         Some("TransparentECPrivateKey"),
     )?;

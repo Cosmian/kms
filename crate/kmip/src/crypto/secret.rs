@@ -58,7 +58,12 @@ impl<const LENGTH: usize> Secret<LENGTH> {
     #[inline(always)]
     #[must_use]
     pub fn new() -> Self {
-        Self(Box::pin([0; LENGTH]))
+        // heap-allocate and turn into `Box` but looses `LENGTH`-constraint in type
+        let data = vec![0u8; LENGTH].into_boxed_slice();
+        // cast the raw pointer back to our fixed-length type
+        // it is considered safe because `data` is initialized in the previous line
+        let data = unsafe { Box::from_raw(Box::into_raw(data) as *mut [u8; LENGTH]) };
+        Self(Pin::new(data))
     }
 
     /// Creates a new random secret.

@@ -34,6 +34,8 @@ use crate::{
 #[test]
 fn test_wrap_unwrap() -> Result<(), KmipError> {
     // the symmetric wrapping key
+
+    use crate::kmip::kmip_types::CryptographicUsageMask;
     let mut sym_wrapping_key_bytes = vec![0; 32];
     rand_bytes(&mut sym_wrapping_key_bytes).unwrap();
     let sym_wrapping_key = create_symmetric_key_kmip_object(
@@ -49,10 +51,22 @@ fn test_wrap_unwrap() -> Result<(), KmipError> {
         CryptographicAlgorithm::AES,
     );
 
-    let wrapping_key_pair =
-        create_x25519_key_pair("wrapping_private_key_uid", "wrapping_public_key_uid")?;
-    let mut key_pair_to_wrap =
-        create_x25519_key_pair("private_key_to_wrap_uid", "public_key_to_wrap_uid")?;
+    let algorithm = Some(CryptographicAlgorithm::EC);
+    let mask_wp = Some(CryptographicUsageMask::WrapKey | CryptographicUsageMask::UnwrapKey);
+    let mask = Some(CryptographicUsageMask::Unrestricted);
+
+    let wrapping_key_pair = create_x25519_key_pair(
+        "wrapping_private_key_uid",
+        "wrapping_public_key_uid",
+        algorithm,
+        mask_wp,
+    )?;
+    let mut key_pair_to_wrap = create_x25519_key_pair(
+        "private_key_to_wrap_uid",
+        "public_key_to_wrap_uid",
+        algorithm,
+        mask,
+    )?;
 
     // wrap the symmetric key with a symmetric key
     wrap_test(&sym_wrapping_key, &sym_wrapping_key, &mut sym_key_to_wrap)?;
@@ -154,7 +168,12 @@ fn test_encrypt_decrypt_rfc_5649() {
 #[test]
 #[cfg(not(feature = "fips"))]
 fn test_encrypt_decrypt_rfc_ecies_x25519() {
-    let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid").unwrap();
+    use crate::kmip::kmip_types::CryptographicUsageMask;
+
+    let algorithm = Some(CryptographicAlgorithm::EC);
+    let mask = Some(CryptographicUsageMask::Unrestricted);
+
+    let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid", algorithm, mask).unwrap();
     let plaintext = b"plaintext";
     let ciphertext = wrap(
         wrap_key_pair.public_key(),

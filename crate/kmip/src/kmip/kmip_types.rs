@@ -227,7 +227,7 @@ impl Default for CryptographicDomainParameters {
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
 pub enum RecommendedCurve {
     P192 = 0x0000_0001,
     K163 = 0x0000_0002,
@@ -303,6 +303,13 @@ pub enum RecommendedCurve {
 }
 
 impl Default for RecommendedCurve {
+    #[cfg(feature = "fips")]
+    /// Defaulting to highest security FIPS compliant curve.
+    fn default() -> Self {
+        Self::P521
+    }
+
+    #[cfg(not(feature = "fips"))]
     fn default() -> Self {
         Self::CURVE25519
     }
