@@ -24,7 +24,7 @@ pub fn test_aes() {
     rand_bytes(&mut symmetric_key).unwrap();
     let key = create_symmetric_key_kmip_object(&symmetric_key, CryptographicAlgorithm::AES);
     let aes = AesGcmSystem::instantiate("blah", &key).unwrap();
-    let mut data = vec![0_u8; 42];
+    let mut data = zeroize::Zeroizing::from(vec![0_u8; 42]);
     rand_bytes(&mut data).unwrap();
     let mut uid = vec![0_u8; 32];
     rand_bytes(&mut uid).unwrap();

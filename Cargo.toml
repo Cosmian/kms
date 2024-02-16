@@ -59,6 +59,7 @@ num-bigint-dig = { version = "0.8", default-features = false, features = [
   "std",
   "rand",
   "serde",
+  "zeroize",
 ] }
 openssl = { version = "0.10" }
 ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
@@ -100,4 +101,4 @@ uuid = { version = "1.6", features = ["v4"] }
 webpki-roots = "0.22"
 x509-cert = { version = "0.2", features = ["pem"] }
 x509-parser = { version = "0.15.1", features = ["verify"] }
-zeroize = { version = "1.7", features = ["zeroize_derive"] }
+zeroize = { version = "1.7", features = ["zeroize_derive", "serde"] }

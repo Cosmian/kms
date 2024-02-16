@@ -3,12 +3,47 @@ use std::{
     pin::Pin,
 };
 
+use num_bigint_dig::BigUint;
 use openssl::rand::rand_bytes;
+use serde::Deserialize;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 #[cfg(feature = "ser")]
 use crate::bytes_ser_de::Serializable;
 use crate::error::KmipError;
+
+/// Holds a big integer secret information. Wraps around `BigUint` type which is
+/// essentially a pointer on the heap. Guarantees to be zeroized on drop with
+/// feature `zeroize` enabled from `num_bigint_dig` crate.
+#[derive(Debug, Eq, PartialEq, Clone, Deserialize)]
+pub struct SafeBigUint(BigUint);
+
+impl SafeBigUint {
+    /// Creates a new `SafeBigUint` from raw bytes encoded in big endian.
+    pub fn from_bytes_be(bytes: &[u8]) -> Self {
+        Self(BigUint::from_bytes_be(bytes))
+    }
+}
+
+impl Drop for SafeBigUint {
+    fn drop(&mut self) {
+        self.0.zeroize()
+    }
+}
+
+impl From<BigUint> for SafeBigUint {
+    fn from(value: BigUint) -> Self {
+        Self(value)
+    }
+}
+
+impl Deref for SafeBigUint {
+    type Target = BigUint;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 /// Holds a secret information of `LENGTH` bytes.
 ///
@@ -26,7 +61,7 @@ impl<const LENGTH: usize> Secret<LENGTH> {
         Self(Box::pin([0; LENGTH]))
     }
 
-    /// Creates a new random secret using the given RNG.
+    /// Creates a new random secret.
     pub fn new_random() -> Result<Self, KmipError> {
         let mut secret = Self::new();
         rand_bytes(&mut secret)?;

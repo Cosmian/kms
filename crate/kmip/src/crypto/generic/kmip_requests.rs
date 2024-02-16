@@ -1,3 +1,5 @@
+use zeroize::Zeroizing;
+
 use super::data_to_encrypt::DataToEncrypt;
 use crate::{
     error::KmipError,
@@ -41,7 +43,7 @@ pub fn build_encryption_request(
     cryptographic_algorithm: Option<CryptographicAlgorithm>,
     hashing_algorithm: Option<HashingAlgorithm>,
 ) -> Result<Encrypt, KmipError> {
-    let data_to_encrypt = if encryption_policy.is_some() {
+    let data_to_encrypt = Zeroizing::from(if encryption_policy.is_some() {
         DataToEncrypt {
             encryption_policy,
             header_metadata,
@@ -51,7 +53,7 @@ pub fn build_encryption_request(
         .map_err(|e| KmipError::KmipError(ErrorReason::Invalid_Message, e.to_string()))?
     } else {
         plaintext
-    };
+    });
 
     let cryptographic_parameters = cryptographic_algorithm.map(|ca| CryptographicParameters {
         cryptographic_algorithm: Some(ca),

@@ -8,7 +8,7 @@ use super::FIPS_MIN_RSA_MODULUS_LENGTH;
 #[cfg(feature = "fips")]
 use crate::kmip_bail;
 use crate::{
-    crypto::KeyPair,
+    crypto::{secret::SafeBigUint, KeyPair},
     error::KmipError,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -20,7 +20,7 @@ use crate::{
     },
 };
 
-/// convert to RSA KMIP Public Key
+/// Convert to RSA KMIP Public Key.
 pub fn to_rsa_public_key(
     private_key: &Rsa<Private>,
     pkey_bits_number: u32,
@@ -73,7 +73,7 @@ pub fn to_rsa_public_key(
     output
 }
 
-/// convert to RSA KMIP Private Key
+/// Convert to RSA KMIP Private Key.
 pub fn to_rsa_private_key(
     private_key: &Rsa<Private>,
     pkey_bits_number: u32,
@@ -95,25 +95,25 @@ pub fn to_rsa_private_key(
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentRSAPrivateKey {
                     modulus: BigUint::from_bytes_be(&private_key.n().to_vec()),
-                    private_exponent: Some(BigUint::from_bytes_be(&Zeroizing::from(
+                    private_exponent: Some(SafeBigUint::from_bytes_be(&Zeroizing::from(
                         private_key.d().to_vec(),
                     ))),
                     public_exponent: Some(BigUint::from_bytes_be(&private_key.e().to_vec())),
                     p: private_key
                         .p()
-                        .map(|p| BigUint::from_bytes_be(&Zeroizing::from(p.to_vec()))),
+                        .map(|p| SafeBigUint::from_bytes_be(&Zeroizing::from(p.to_vec()))),
                     q: private_key
                         .q()
-                        .map(|q| BigUint::from_bytes_be(&Zeroizing::from(q.to_vec()))),
+                        .map(|q| SafeBigUint::from_bytes_be(&Zeroizing::from(q.to_vec()))),
                     prime_exponent_p: private_key
                         .dmp1()
-                        .map(|dmp1| BigUint::from_bytes_be(&Zeroizing::from(dmp1.to_vec()))),
+                        .map(|dmp1| SafeBigUint::from_bytes_be(&Zeroizing::from(dmp1.to_vec()))),
                     prime_exponent_q: private_key
                         .dmq1()
-                        .map(|dmq1| BigUint::from_bytes_be(&Zeroizing::from(dmq1.to_vec()))),
+                        .map(|dmq1| SafeBigUint::from_bytes_be(&Zeroizing::from(dmq1.to_vec()))),
                     crt_coefficient: private_key
                         .iqmp()
-                        .map(|iqmp| BigUint::from_bytes_be(&Zeroizing::from(iqmp.to_vec()))),
+                        .map(|iqmp| SafeBigUint::from_bytes_be(&Zeroizing::from(iqmp.to_vec()))),
                 },
                 attributes: Some(Attributes {
                     object_type: Some(ObjectType::PrivateKey),

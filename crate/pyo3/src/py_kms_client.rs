@@ -868,7 +868,11 @@ impl KmsClient {
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
 
-            Ok(response.data)
+            if let Some(plaintext) = response.data {
+                Ok(Some(plaintext.to_vec()))
+            } else {
+                Ok(None)
+            }
         })
     }
 }

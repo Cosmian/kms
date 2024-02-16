@@ -6,7 +6,7 @@ use cosmian_kmip::{
         kmip_requests::{
             create_ec_key_pair_request, get_private_key_request, get_public_key_request,
         },
-        operation::{self, to_ec_public_key},
+        operation::to_ec_public_key,
         CURVE_25519_Q_LENGTH_BITS,
     },
     kmip::{

@@ -1,4 +1,3 @@
-use num_bigint_dig::BigUint;
 use openssl::{
     bn::BigNumContext,
     ec::{EcGroup, EcKey, PointConversionForm},
@@ -9,7 +8,7 @@ use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    crypto::KeyPair,
+    crypto::{secret::SafeBigUint, KeyPair},
     error::KmipError,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -116,7 +115,7 @@ pub fn to_ec_private_key(
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentECPrivateKey {
                     recommended_curve: curve,
-                    d: BigUint::from_bytes_be(bytes),
+                    d: SafeBigUint::from_bytes_be(bytes),
                 },
                 attributes: Some(Attributes {
                     object_type: Some(ObjectType::PrivateKey),
