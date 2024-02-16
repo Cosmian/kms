@@ -58,7 +58,7 @@ impl<const LENGTH: usize> Secret<LENGTH> {
     #[inline(always)]
     #[must_use]
     pub fn new() -> Self {
-        // heap-allocate and turn into `Box` but looses `LENGTH`-constraint  in type
+        // heap-allocate and turn into `Box` but looses `LENGTH`-constraint in type
         let data = vec![0u8; LENGTH].into_boxed_slice();
         // cast the raw pointer back to our fixed-length type
         // it is considered safe because `data` is initialized in the previous line
