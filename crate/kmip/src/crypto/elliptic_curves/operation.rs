@@ -63,8 +63,11 @@ fn check_algorithm_compliance(
         if !allowed.contains(&algorithm_) {
             kmip_bail!("Invalid CryptographicAlgorithm value in FIPS mode.")
         }
+
+        Ok(())
+    } else {
+        kmip_bail!("Invalid CryptographicAlgorithm value, got None but expected precise algorithm.")
     }
-    kmip_bail!("Invalid CryptographicAlgorithm value, got None but expected precise algorithm.")
 }
 
 /// Convert to an Elliptic Curve KMIP Public Key.

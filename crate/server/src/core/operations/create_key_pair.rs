@@ -27,8 +27,6 @@ pub async fn create_key_pair(
         kms_bail!(KmsError::UnsupportedPlaceholder)
     }
 
-    println!("{:?}", request.common_attributes);
-
     // generate uids and create the key pair and tags
     let sk_uid = Uuid::new_v4().to_string();
     let pk_uid = Uuid::new_v4().to_string();
