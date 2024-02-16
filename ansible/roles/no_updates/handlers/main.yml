@@ -1,0 +1,13 @@
+---
+# handlers file for no_updates
+- name: Restart APT service
+  service:
+    name: apt-daily.timer
+    state: restarted
+  when: "'ubuntu' in tags"
+
+- name: Restart DNF service
+  service:
+    name: dnf-automatic.timer
+    state: restarted
+  when: "'redhat' in tags"
