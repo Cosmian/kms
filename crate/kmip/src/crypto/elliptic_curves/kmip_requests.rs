@@ -1,5 +1,5 @@
 #[cfg(feature = "fips")]
-use super::{FIPS_ECC_USAGE_MASK, FIPS_ECC_USAGE_MASK_WITH_DH};
+use super::{FIPS_ECC_USAGE_MASK_SIGN, FIPS_ECC_USAGE_MASK_SIGN_AND_DH};
 #[cfg(feature = "fips")]
 use crate::kmip_bail;
 use crate::{
@@ -30,8 +30,8 @@ fn build_mask_from_curve(curve: RecommendedCurve) -> Result<CryptographicUsageMa
         | RecommendedCurve::P224
         | RecommendedCurve::P256
         | RecommendedCurve::P384
-        | RecommendedCurve::P521 => FIPS_ECC_USAGE_MASK_WITH_DH,
-        RecommendedCurve::CURVEED25519 | RecommendedCurve::CURVEED448 => FIPS_ECC_USAGE_MASK,
+        | RecommendedCurve::P521 => FIPS_ECC_USAGE_MASK_SIGN_AND_DH,
+        RecommendedCurve::CURVEED25519 | RecommendedCurve::CURVEED448 => FIPS_ECC_USAGE_MASK_SIGN,
         other => kmip_bail!(
             "Building mask from unsupported curve in FIPS mode: curve {}",
             other

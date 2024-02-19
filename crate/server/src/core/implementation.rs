@@ -320,8 +320,8 @@ impl KMS {
                     // see NIST.SP.800-186 - Section 3.1.2 table 2.
                     RecommendedCurve::CURVEED25519 => {
                         kms_not_supported!(
-                            "A keypair on Ed25519 should not be requested to perform ECDH nor \
-                             ECDSA in FIPS mode."
+                            "A keypair on Ed25519 should not be requested to perform Elliptic \
+                             Curves operations in FIPS mode"
                         )
                     }
                     #[cfg(not(feature = "fips"))]
