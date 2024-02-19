@@ -98,7 +98,7 @@ jobs:
       - build-and-push-image
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_java_in_docker.yml@develop
     with:
-      branch: develop
+      branch: feature/covercrypt_rekey
       target: x86_64-unknown-linux-gnu
       extension: so
       destination: linux-x86-64
