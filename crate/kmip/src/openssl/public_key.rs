@@ -138,8 +138,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, K
             ),
         },
         f => kmip_bail!(
-            "Unsupported key format type: {:?}, for tr transforming a {} to openssl",
-            f,
+            "Unsupported key format type: {f:?}, for tr transforming a {} to openssl",
             public_key.object_type()
         ),
     };
@@ -423,16 +422,10 @@ pub fn openssl_public_key_to_kmip(
                         key_compression_type: None,
                     }
                 }
-                x => kmip_bail!(
-                    "Unsupported curve key id: {:?} for a Transparent EC Public Key",
-                    x
-                ),
+                x => kmip_bail!("Unsupported curve key id: {x:?} for a Transparent EC Public Key"),
             }
         }
-        kft => kmip_bail!(
-            "Unsupported target key format type: {:?}, for an openssl public key",
-            kft
-        ),
+        kft => kmip_bail!("Unsupported target key format type: {kft:?}, for an openssl public key"),
     };
 
     Ok(Object::PublicKey { key_block })

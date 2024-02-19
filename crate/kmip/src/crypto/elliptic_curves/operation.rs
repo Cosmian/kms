@@ -408,6 +408,7 @@ pub fn create_approved_ecc_key_pair(
 
     let group = EcGroup::from_curve_name(curve_nid)?;
     let ec_private_key = EcKey::generate(&group)?;
+
     trace!("create_approved_ecc_key_pair: ec key OK");
 
     let private_key = to_ec_private_key(

@@ -64,10 +64,7 @@ pub fn wrap_key_block(
             // ok
         }
         x => {
-            kmip_bail!(
-                "Unable to wrap the key: wrapping method is not supported: {:?}",
-                x
-            )
+            kmip_bail!("Unable to wrap the key: wrapping method is not supported: {x:?}")
         }
     }
 
@@ -88,7 +85,6 @@ pub fn wrap_key_block(
         ..KeyWrappingData::default()
     };
 
-    // wrap the key based on the encoding
     // wrap the key based on the encoding
     match encoding {
         EncodingOption::TTLVEncoding => {
@@ -151,7 +147,7 @@ pub(crate) fn wrap(
                     Ok(ciphertext)
                 }
                 KeyFormatType::TransparentECPublicKey | KeyFormatType::TransparentRSAPublicKey => {
-                    //convert to transparent key and wrap
+                    // convert to transparent key and wrap
                     // note: when moving to full openssl this double conversion will be unnecessary
                     let p_key = kmip_public_key_to_openssl(wrapping_key)?;
                     wrap_with_public_key(p_key, key_wrapping_data, key_to_wrap)
@@ -164,8 +160,7 @@ pub(crate) fn wrap(
                 x => {
                     kmip_bail!(
                         "Unable to wrap key: wrapping key: key format not supported for wrapping: \
-                         {:?}",
-                        x
+                         {x:?}"
                     )
                 }
             }?;
@@ -187,12 +182,9 @@ fn wrap_with_public_key(
         Id::RSA => wrap_with_rsa(public_key, key_wrapping_data, key_to_wrap),
         #[cfg(not(feature = "fips"))]
         Id::EC | Id::X25519 | Id::ED25519 => ecies_encrypt(&public_key, key_to_wrap),
-        other => {
-            kmip_bail!(
-                "Unable to wrap key: wrapping public key type not supported: {:?}",
-                other
-            )
-        }
+        other => Err(kmip_error!(
+            "Unable to wrap key: wrapping public key type not supported: {other:?}"
+        )),
     }
 }
 
@@ -203,21 +195,15 @@ fn wrap_with_rsa(
 ) -> Result<Vec<u8>, KmipError> {
     let (algorithm, padding, hashing_fn) = rsa_parameters(key_wrapping_data);
     if padding != PaddingMethod::OAEP {
-        kmip_bail!(
-            "Unable to wrap key with RSA: padding method not supported: {:?}",
-            padding
-        )
+        kmip_bail!("Unable to wrap key with RSA: padding method not supported: {padding:?}")
     }
     match algorithm {
         CryptographicAlgorithm::AES => ckm_rsa_aes_key_wrap(&pub_key, hashing_fn, key_to_wrap),
         CryptographicAlgorithm::RSA => {
             ckm_rsa_pkcs_oaep_key_wrap(&pub_key, hashing_fn, key_to_wrap)
         }
-        x => {
-            kmip_bail!(
-                "Unable to wrap key with RSA: algorithm not supported for wrapping: {:?}",
-                x
-            )
-        }
+        x => Err(kmip_error!(
+            "Unable to wrap key with RSA: algorithm not supported for wrapping: {x:?}"
+        )),
     }
 }

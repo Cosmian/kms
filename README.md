@@ -9,6 +9,9 @@ Cosmian KMS is an open-source implementation of a high-performance, massively sc
 - support for object tagging to easily manage keys and secrets
 - a full-featured command line interface ([CLI](https://docs.cosmian.com/cosmian_key_management_system/cli/cli/))
 - Python, Javascript, Dart, Rust, C/C++ and Java clients (see the `cloudproof` libraries on [Cosmian Github](https://github.com/Cosmian))
+- FIPS 140-2 mode gated behind the feature `fips`
+- support of Google Client Side Encryption (CSE)
+- support of Microsoft Double Key Encryption (DKE)
 
 It has extensive [documentation](https://docs.cosmian.com/cosmian_key_management_system/) and is also available packaged as docker images (`docker pull ghcr.io/cosmian/kms`) to get you started quickly.
 

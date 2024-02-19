@@ -174,6 +174,7 @@ fn test_encrypt_decrypt_rfc_ecies_x25519() {
     let mask = Some(CryptographicUsageMask::Unrestricted);
 
     let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid", algorithm, mask).unwrap();
+
     let plaintext = b"plaintext";
     let ciphertext = wrap(
         wrap_key_pair.public_key(),

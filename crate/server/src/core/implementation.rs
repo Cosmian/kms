@@ -42,7 +42,7 @@ use crate::{
         Database,
     },
     error::KmsError,
-    kms_bail, kms_not_supported,
+    kms_bail, kms_not_supported
     result::KResult,
 };
 
@@ -126,9 +126,9 @@ impl KMS {
             | CryptographicAlgorithm::SHA3512
             | CryptographicAlgorithm::SHAKE128
             | CryptographicAlgorithm::SHAKE256 => match attributes.key_format_type {
-                None => kms_bail!(KmsError::InvalidRequest(
+                None => Err(KmsError::InvalidRequest(
                     "Unable to create a symmetric key, the format type is not specified"
-                        .to_string()
+                        .to_string(),
                 )),
                 Some(KeyFormatType::TransparentSymmetricKey) => {
                     // create the key
@@ -143,13 +143,13 @@ impl KMS {
                     //return the object and the tags
                     Ok((object, tags))
                 }
-                Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
+                Some(other) => Err(KmsError::InvalidRequest(format!(
                     "unable to generate a symmetric key for format: {other}"
                 ))),
             },
-            other => kms_not_supported!(
+            other => Err(KmsError::NotSupported(format!(
                 "the creation of secret key for algorithm: {other:?} is not supported"
-            ),
+            ))),
         }
     }
 
@@ -194,9 +194,9 @@ impl KMS {
                 .await?;
                 Ok((object, tags))
             }
-            other => kms_not_supported!(
+            other => Err(KmsError::NotSupported(format!(
                 "the creation of a private key for algorithm: {other:?} is not supported"
-            ),
+            ))),
         }
     }
 
@@ -351,9 +351,9 @@ impl KMS {
                              mode."
                         )
                     }
-                    other => kms_not_supported!(
+                    other => kms_bail!(KmsError::NotSupported(format!(
                         "Generation of Key Pair for curve: {other:?}, is not supported"
-                    ),
+                    ))),
                 }
             }
             CryptographicAlgorithm::RSA => {
@@ -361,10 +361,7 @@ impl KMS {
                     .cryptographic_length
                     .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_string()))?
                     as u32;
-                trace!(
-                    "RSA key pair generation: size in bits: {}",
-                    key_size_in_bits
-                );
+                trace!("RSA key pair generation: size in bits: {key_size_in_bits}");
 
                 create_rsa_key_pair(key_size_in_bits, public_key_uid, private_key_uid)
             }
@@ -391,7 +388,7 @@ impl KMS {
             .map_err(Into::into),
             other => kms_not_supported!(
                 "The creation of a key pair for algorithm: {other:?} is not supported"
-            ),
+            ))),
         }?;
         Ok((key_pair, sk_tags, pk_tags))
     }

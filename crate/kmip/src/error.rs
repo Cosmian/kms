@@ -125,7 +125,7 @@ impl From<pkcs8::Error> for KmipError {
 macro_rules! kmip_ensure {
     ($cond:expr, $msg:literal $(,)?) => {
         if !$cond {
-            return ::core::result::Result::Err($crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, $msg.to_owned()));
+            return ::core::result::Result::Err($crate::kmip_error!($msg));
         }
     };
     ($cond:expr, $err:expr $(,)?) => {
@@ -135,7 +135,7 @@ macro_rules! kmip_ensure {
     };
     ($cond:expr, $fmt:expr, $($arg:tt)*) => {
         if !$cond {
-            return ::core::result::Result::Err($crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, format!($fmt, $($arg)*)));
+            return ::core::result::Result::Err($crate::kmip_error!($fmt, $($arg)*));
         }
     };
 }
@@ -144,13 +144,13 @@ macro_rules! kmip_ensure {
 #[macro_export]
 macro_rules! kmip_error {
     ($msg:literal) => {
-        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, $msg.to_owned())
+        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, ::core::format_args!($msg).to_string())
     };
     ($err:expr $(,)?) => ({
         $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, $err.to_string())
     });
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, format!($fmt, $($arg)*))
+        $crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, ::core::format_args!($fmt, $($arg)*).to_string())
     };
 }
 
@@ -158,12 +158,50 @@ macro_rules! kmip_error {
 #[macro_export]
 macro_rules! kmip_bail {
     ($msg:literal) => {
-        return ::core::result::Result::Err($crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, $msg.to_owned()))
+        return ::core::result::Result::Err($crate::kmip_error!($msg))
     };
     ($err:expr $(,)?) => {
         return ::core::result::Result::Err($err)
     };
     ($fmt:expr, $($arg:tt)*) => {
-        return ::core::result::Result::Err($crate::error::KmipError::KmipError($crate::kmip::kmip_operations::ErrorReason::General_Failure, format!($fmt, $($arg)*)))
+        return ::core::result::Result::Err($crate::kmip_error!($fmt, $($arg)*))
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::KmipError;
+
+    #[test]
+    fn test_kmip_error_interpolation() {
+        let var = 42;
+        let err = kmip_error!("interpolate {var}");
+        assert_eq!("General_Failure: interpolate 42", err.to_string());
+
+        let err = bail();
+        assert_eq!(
+            "General_Failure: interpolate 43",
+            err.unwrap_err().to_string()
+        );
+
+        let err = ensure();
+        assert_eq!(
+            "General_Failure: interpolate 44",
+            err.unwrap_err().to_string()
+        );
+    }
+
+    fn bail() -> Result<(), KmipError> {
+        let var = 43;
+        if true {
+            kmip_bail!("interpolate {var}");
+        }
+        Ok(())
+    }
+
+    fn ensure() -> Result<(), KmipError> {
+        let var = 44;
+        kmip_ensure!(false, "interpolate {var}");
+        Ok(())
+    }
 }
