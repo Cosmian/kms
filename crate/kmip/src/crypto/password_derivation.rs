@@ -53,7 +53,6 @@ pub fn derive_key_from_password<const LENGTH: usize>(
     Ok(output_key_material)
 }
 
-
 /// Derive a key into a LENGTH bytes key using Argon 2 by default, and PBKDF2
 /// with SHA512 in FIPS mode.
 #[cfg(not(feature = "fips"))]
