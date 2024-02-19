@@ -59,7 +59,7 @@ impl RekeyAction {
         let rekey_response = kms_rest_client
             .rekey_keypair(rekey_query)
             .await
-            .with_context(|| "failed rotating the master keys")?;
+            .with_context(|| "failed rekeying the master keys")?;
 
         println!(
             "The master private key {} and master public key {} were rekeyed for the access \

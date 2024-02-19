@@ -1,8 +1,15 @@
+<<<<<<< HEAD
 <<<<<<< HEAD:crate/server/src/core/cover_crypt/update_keys.rs
 use cloudproof::reexport::cover_crypt::{abe_policy::Policy, Covercrypt};
 use cosmian_kmip::{
 =======
 use cloudproof::reexport::cover_crypt::Covercrypt;
+=======
+use cloudproof::reexport::{
+    cover_crypt::{abe_policy::Policy, Covercrypt},
+    crypto_core::reexport::x509_cert::request::attributes,
+};
+>>>>>>> 83492acd (refacto: master keys rekey)
 use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
@@ -12,9 +19,14 @@ use cosmian_kms_utils::{
     access::ExtraDatabaseParams,
 >>>>>>> 2b30289a (refacto: move policy and rekey action in dedicated files):crate/server/src/core/cover_crypt/rekey_keys.rs
     crypto::cover_crypt::{
-        attributes::{policy_from_attributes, RekeyEditAction},
-        master_keys::update_master_keys,
-        update_keys_policy::MasterKeysUpdater,
+        attributes::{
+            policy_from_attributes, RekeyEditAction,
+            RekeyEditAction::{
+                AddAttribute, DisableAttribute, PruneAccessPolicy, RekeyAccessPolicy,
+                RemoveAttribute, RenameAttribute,
+            },
+        },
+        master_keys::{update_master_keys, update_policy},
         user_key::UserDecryptionKeysHandler,
     },
     kmip::{
@@ -56,37 +68,34 @@ pub async fn rekey_keypair_cover_crypt(
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair CoverCrypt");
 
-    // Recover the master private key
-    let master_private_key = kmip_server
-        .get(Get::from(master_private_key_uid), owner, params)
-        .await?
-        .object;
+    let (master_private_key, master_public_key_uid, master_public_key, mut policy) =
+        get_master_keys_and_policy(kmip_server, master_private_key_uid, owner, params).await?;
 
-    if master_private_key.key_wrapping_data().is_some() {
-        kms_bail!(KmsError::InconsistentOperation(
-            "The server can't rekey: the key is wrapped".to_owned()
-        ));
-    }
-
-    // Edit the policy according to the requested action
-    let private_key_attributes = master_private_key.attributes()?;
-    let mut policy = policy_from_attributes(private_key_attributes)?;
-
-    let mut updater = MasterKeysUpdater::new(&action, &mut policy, &cover_crypt);
-    updater.update_policy()?;
+    update_policy(&mut policy, &action)?;
 
     // Rekey the master keys
-    let master_public_key_uid = rekey_master_keys(
-        &updater,
+    let (updated_private_key, updated_public_key) = update_master_keys(
+        &cover_crypt,
+        &policy,
+        &action,
+        &master_private_key,
+        master_private_key_uid,
+        &master_public_key,
+        &master_public_key_uid,
+    )?;
+
+    import_rekeyed_master_keys(
         kmip_server,
         master_private_key_uid,
-        &master_private_key,
+        updated_private_key,
+        &master_public_key_uid,
+        updated_public_key,
         owner,
         params,
     )
     .await?;
 
-    if action.update_user_keys() {
+    if action.induce_user_keys_refreshing() {
         // Rekey the user secret keys if needed
         update_user_secret_keys(
             kmip_server,
@@ -106,18 +115,30 @@ pub async fn rekey_keypair_cover_crypt(
     })
 }
 
-/// Rekey the Master keys given the provided Private Master Key and Policy
-/// Return the Public Mater Key Identifier
-async fn rekey_master_keys(
-    updater: &MasterKeysUpdater<'_>,
+async fn get_master_keys_and_policy(
     kmip_server: &KMS,
     master_private_key_uid: &str,
-    master_private_key: &Object,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
-) -> KResult<String> {
+) -> KResult<(Object, String, Object, Policy)> {
+    // Recover the master private key
+    let master_private_key = kmip_server
+        .get(Get::from(master_private_key_uid), owner, params)
+        .await?
+        .object;
+
+    if master_private_key.key_wrapping_data().is_some() {
+        kms_bail!(KmsError::InconsistentOperation(
+            "The server can't rekey: the key is wrapped".to_owned()
+        ));
+    }
+
+    // Get policy associated with the master private key
+    let private_key_attributes = master_private_key.attributes()?;
+    let policy = policy_from_attributes(private_key_attributes)?;
+
     // Recover the Master Public Key
-    let key_block = match master_private_key {
+    let key_block = match &master_private_key {
         Object::PrivateKey { key_block } => key_block,
         _ => {
             return Err(KmsError::KmipError(
@@ -141,15 +162,23 @@ async fn rekey_master_keys(
         .await?
         .object;
 
-    // update the master keys
-    let (updated_private_key, updated_public_key) = update_master_keys(
-        updater,
+    Ok((
         master_private_key,
-        master_private_key_uid,
-        &master_public_key,
-        &master_public_key_uid,
-    )?;
+        master_public_key_uid,
+        master_public_key,
+        policy,
+    ))
+}
 
+async fn import_rekeyed_master_keys(
+    kmip_server: &KMS,
+    master_private_key_uid: &str,
+    updated_private_key: Object,
+    master_public_key_uid: &str,
+    updated_public_key: Object,
+    owner: &str,
+    params: Option<&ExtraDatabaseParams>,
+) -> KResult<()> {
     // re_import it
     let import_request = Import {
         unique_identifier: UniqueIdentifier::TextString(master_private_key_uid.to_string()),
@@ -164,7 +193,7 @@ async fn rekey_master_keys(
     // Update Master Public Key Policy and re-import the key
     // re_import it
     let import_request = Import {
-        unique_identifier: UniqueIdentifier::TextString(master_public_key_uid.clone()),
+        unique_identifier: UniqueIdentifier::TextString(master_public_key_uid.to_string()),
         object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,
@@ -173,7 +202,7 @@ async fn rekey_master_keys(
     };
     let _import_response = kmip_server.import(import_request, owner, params).await?;
 
-    Ok(master_public_key_uid)
+    Ok(())
 }
 
 /// Updates user secret keys for actions like rekeying or pruning.

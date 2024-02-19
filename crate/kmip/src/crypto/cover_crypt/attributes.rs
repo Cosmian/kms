@@ -154,6 +154,15 @@ pub fn upsert_access_policy_in_attributes(
     Ok(())
 }
 
+pub fn deserialize_access_policy(ap: &str) -> Result<AccessPolicy, KmipError> {
+    AccessPolicy::from_boolean_expression(ap).map_err(|e| {
+        KmipError::InvalidKmipValue(
+            ErrorReason::Invalid_Attribute_Value,
+            format!("failed to read Access Policy string from the request: {e}"),
+        )
+    })
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum RekeyEditAction {
     RekeyAccessPolicy(String),
@@ -165,22 +174,13 @@ pub enum RekeyEditAction {
 }
 
 impl RekeyEditAction {
-    pub fn update_user_keys(&self) -> bool {
+    pub fn induce_user_keys_refreshing(&self) -> bool {
         match self {
             Self::RekeyAccessPolicy(_) | Self::PruneAccessPolicy(_) | Self::RemoveAttribute(_) => {
                 true
             }
             Self::DisableAttribute(_) | Self::AddAttribute(_) | Self::RenameAttribute(_) => false,
         }
-    }
-
-    pub fn deserialize_access_policy(ap: &str) -> Result<AccessPolicy, KmipError> {
-        AccessPolicy::from_boolean_expression(ap).map_err(|e| {
-            KmipError::InvalidKmipValue(
-                ErrorReason::Invalid_Attribute_Value,
-                format!("failed to read Access Policy string from the request: {e}"),
-            )
-        })
     }
 }
 
