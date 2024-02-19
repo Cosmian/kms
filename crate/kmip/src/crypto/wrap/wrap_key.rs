@@ -28,7 +28,7 @@ use crate::{
             CryptographicAlgorithm, EncodingOption, KeyFormatType, PaddingMethod, WrappingMethod,
         },
     },
-    kmip_bail,
+    kmip_bail, kmip_error,
     openssl::kmip_public_key_to_openssl,
 };
 

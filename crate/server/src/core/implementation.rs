@@ -42,7 +42,7 @@ use crate::{
         Database,
     },
     error::KmsError,
-    kms_bail, kms_not_supported
+    kms_bail,
     result::KResult,
 };
 
@@ -302,11 +302,13 @@ impl KMS {
                         if cryptographic_algorithm == CryptographicAlgorithm::ECDSA
                             || cryptographic_algorithm == CryptographicAlgorithm::EC
                         {
-                            kms_not_supported!("Edwards curve can't be created for EC or ECDSA")
+                            kms_bail!(KmsError::NotSupported(
+                                "Edwards curve can't be created for EC or ECDSA".to_string()
+                            ))
                         }
                         warn!(
-                            "A keypair on Ed25519 should not be requested to perform ECDH. \
-                             Creating anyway."
+                            "An Edwards Keypair on curve 25519 should not be requested to perform \
+                             ECDH. Creating anyway."
                         );
                         create_ed25519_key_pair(
                             private_key_uid,
@@ -319,21 +321,24 @@ impl KMS {
                     // Ed25519 not allowed for ECDH nor ECDSA.
                     // see NIST.SP.800-186 - Section 3.1.2 table 2.
                     RecommendedCurve::CURVEED25519 => {
-                        kms_not_supported!(
-                            "A keypair on Ed25519 should not be requested to perform Elliptic \
-                             Curves operations in FIPS mode"
-                        )
+                        kms_bail!(KmsError::NotSupported(
+                            "An Edwards Keypair on curve 25519 should not be requested to perform \
+                             Elliptic Curves operations in FIPS mode"
+                                .to_string()
+                        ))
                     }
                     #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED448 => {
                         if cryptographic_algorithm == CryptographicAlgorithm::ECDSA
                             || cryptographic_algorithm == CryptographicAlgorithm::EC
                         {
-                            kms_not_supported!("Edwards curve can't be created for EC or ECDSA")
+                            kms_bail!(KmsError::NotSupported(
+                                "Edwards curve can't be created for EC or ECDSA".to_string()
+                            ))
                         }
                         warn!(
-                            "A keypair on Ed448 should not be requested to perform ECDH. Creating \
-                             anyway."
+                            "An Edwards Keypair on curve 448 should not be requested to perform \
+                             ECDH. Creating anyway."
                         );
                         create_ed448_key_pair(
                             private_key_uid,
@@ -346,10 +351,11 @@ impl KMS {
                     // Ed448 not allowed for ECDH nor ECDSA.
                     // see NIST.SP.800-186 - Section 3.1.2 table 2.
                     RecommendedCurve::CURVEED448 => {
-                        kms_not_supported!(
-                            "A keypair on Ed448 should not be requested to perform ECDH in FIPS \
-                             mode."
-                        )
+                        kms_bail!(KmsError::NotSupported(
+                            "An Edwards Keypair on curve 448 should not be requested to perform \
+                             ECDH in FIPS mode."
+                                .to_string()
+                        ))
                     }
                     other => kms_bail!(KmsError::NotSupported(format!(
                         "Generation of Key Pair for curve: {other:?}, is not supported"
@@ -386,9 +392,11 @@ impl KMS {
                 request.public_key_attributes,
             )
             .map_err(Into::into),
-            other => kms_not_supported!(
-                "The creation of a key pair for algorithm: {other:?} is not supported"
-            ))),
+            other => {
+                kms_bail!(KmsError::NotSupported(format!(
+                    "The creation of a key pair for algorithm: {other:?} is not supported"
+                )))
+            }
         }?;
         Ok((key_pair, sk_tags, pk_tags))
     }
