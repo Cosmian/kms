@@ -55,20 +55,7 @@ use crate::py_kms_object::{KmsEncryptResponse, KmsObject};
 /// Create a Rekey Keypair request from `PyO3` arguments
 /// Returns a `PyO3` Future
 macro_rules! rekey_keypair {
-    (
-        $self:ident,
-        $attributes:expr,
-        $master_secret_key_identifier:expr,
-        $policy_attributes:ident,
-        $action:expr,
-        $py:ident
-    ) => {{
-        let $policy_attributes = $attributes
-            .into_iter()
-            .map(Attribute::try_from)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| PyTypeError::new_err(e.to_string()))?;
-
+    ($self:ident, $master_secret_key_identifier:expr, $action:expr, $py:ident) => {{
         let request = build_rekey_keypair_request(&$master_secret_key_identifier, $action)
             .map_err(|e| PyException::new_err(e.to_string()))?;
 
@@ -331,11 +318,11 @@ impl KmsClient {
     /// Generate new keys associated to the given access policy in the master keys.
     /// This will rekey in the KMS:
     /// - the master keys
-    /// - any user key associated to the access policy.
+    /// - any user key associated to the access policy
     ///
     /// Args:
     ///     - `access_policy_str` (str): describe the keys to renew
-    ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+    ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
@@ -345,12 +332,9 @@ impl KmsClient {
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let empty: Vec<Attribute> = vec![];
         rekey_keypair!(
             self,
-            empty,
             master_secret_key_identifier.0,
-            _policy_attributes,
             RekeyEditAction::RekeyAccessPolicy(access_policy_str),
             py
         )
@@ -364,7 +348,7 @@ impl KmsClient {
     ///
     /// Args:
     ///     - `access_policy_str` (str): describe the keys to renew
-    ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+    ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
@@ -374,12 +358,9 @@ impl KmsClient {
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        let empty: Vec<Attribute> = vec![];
         rekey_keypair!(
             self,
-            empty,
             master_secret_key_identifier.0,
-            _policy_attributes,
             RekeyEditAction::PruneAccessPolicy(access_policy_str),
             py
         )
@@ -389,32 +370,31 @@ impl KmsClient {
     ///
     /// Args:
     ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
-    ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+    ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn remove_cover_crypt_attribute<'p>(
         &'p self,
-        _attribute: &str,
-        _master_secret_key_identifier: ToUniqueIdentifier,
-        _py: Python<'p>,
+        attribute: &str,
+        master_secret_key_identifier: ToUniqueIdentifier,
+        py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        /*rekey_keypair!(
+        let attr: Attribute =
+            Attribute::try_from(attribute).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        rekey_keypair!(
             self,
-            vec![attribute],
             master_secret_key_identifier.0,
-            policy_attributes,
-            EditPolicyAction::RemoveAttribute(policy_attributes),
+            RekeyEditAction::RemoveAttribute(vec![attr]),
             py
-        )*/
-        Err(PyException::new_err("Not supported yet"))
+        )
     }
 
     /// Disable a specific attribute for a keypair.
     ///
     /// Args:
     ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
-    ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+    ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
@@ -424,22 +404,22 @@ impl KmsClient {
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
+        let attr =
+            Attribute::try_from(attribute).map_err(|e| PyTypeError::new_err(e.to_string()))?;
         rekey_keypair!(
             self,
-            vec![attribute],
             master_secret_key_identifier.0,
-            policy_attributes,
-            RekeyEditAction::DisableAttribute(policy_attributes),
+            RekeyEditAction::DisableAttribute(vec![attr]),
             py
         )
     }
 
-    /// Add a specific attribute to a keypair's policy.
+    /// Add a new attribute to a keypair's policy.
     ///
     /// Args:
     ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
     ///     - `is_hybridized` (bool): hint for encryption
-    ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+    ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
@@ -450,17 +430,12 @@ impl KmsClient {
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
+        let attr =
+            Attribute::try_from(attribute).map_err(|e| PyTypeError::new_err(e.to_string()))?;
         rekey_keypair!(
             self,
-            vec![attribute],
             master_secret_key_identifier.0,
-            policy_attributes,
-            RekeyEditAction::AddAttribute(
-                policy_attributes
-                    .into_iter()
-                    .map(|attr| (attr, EncryptionHint::new(is_hybridized)))
-                    .collect()
-            ),
+            RekeyEditAction::AddAttribute(vec![(attr, EncryptionHint::new(is_hybridized))]),
             py
         )
     }
@@ -470,31 +445,25 @@ impl KmsClient {
     /// Args:
     ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
     ///     - `new_name` (str): the new name for the attribute
-    ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+    ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn rename_cover_crypt_attribute<'p>(
         &'p self,
-        _attribute: &str,
-        _new_name: &str,
-        _master_secret_key_identifier: ToUniqueIdentifier,
-        _py: Python<'p>,
+        attribute: &str,
+        new_name: &str,
+        master_secret_key_identifier: ToUniqueIdentifier,
+        py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        /*rekey_keypair!(
+        let attr =
+            Attribute::try_from(attribute).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        rekey_keypair!(
             self,
-            vec![attribute],
             master_secret_key_identifier.0,
-            policy_attributes,
-            EditPolicyAction::RenameAttribute(
-                policy_attributes
-                    .into_iter()
-                    .map(|attr| (attr, new_name.to_string()))
-                    .collect()
-            ),
+            RekeyEditAction::RenameAttribute(vec![(attr, new_name.to_string())]),
             py
-        )*/
-        Err(PyException::new_err("Not supported yet"))
+        )
     }
 
     /// Generate a user secret key.

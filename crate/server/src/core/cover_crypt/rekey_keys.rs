@@ -1,31 +1,7 @@
-<<<<<<< HEAD
-<<<<<<< HEAD:crate/server/src/core/cover_crypt/update_keys.rs
 use cloudproof::reexport::cover_crypt::{abe_policy::Policy, Covercrypt};
 use cosmian_kmip::{
-=======
-use cloudproof::reexport::cover_crypt::Covercrypt;
-=======
-use cloudproof::reexport::{
-    cover_crypt::{abe_policy::Policy, Covercrypt},
-    crypto_core::reexport::x509_cert::request::attributes,
-};
->>>>>>> 83492acd (refacto: master keys rekey)
-use cosmian_kmip::kmip::{
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{ErrorReason, Get, Import, ReKeyKeyPairResponse},
-    kmip_types::{LinkType, StateEnumeration, UniqueIdentifier},
-};
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
->>>>>>> 2b30289a (refacto: move policy and rekey action in dedicated files):crate/server/src/core/cover_crypt/rekey_keys.rs
     crypto::cover_crypt::{
-        attributes::{
-            policy_from_attributes, RekeyEditAction,
-            RekeyEditAction::{
-                AddAttribute, DisableAttribute, PruneAccessPolicy, RekeyAccessPolicy,
-                RemoveAttribute, RenameAttribute,
-            },
-        },
+        attributes::{policy_from_attributes, RekeyEditAction},
         master_keys::{update_master_keys, update_policy},
         user_key::UserDecryptionKeysHandler,
     },
@@ -52,12 +28,6 @@ use crate::{
 /// - `DisableAttribute`: Disable attributes in the policy.
 /// - `AddAttribute`: Add new attributes in the policy.
 /// - `RenameAttribute`: Rename attributes in the policy.
-///
-/// Steps:
-/// - retrieve current master keys and policy
-/// - update existing policy if the action requires it
-/// - update master keys if the policy was updated
-/// - update user keys depending on the action
 pub async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,

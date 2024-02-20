@@ -16,6 +16,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         self.client = KmsClient('http://localhost:9998')
 
         # Create Policy
+        # Warning: the policy bytes format depends on the last released version of covercrypt on PyPI
         self.policy = Policy()
         self.policy.add_axis(
             PolicyAxis(
@@ -255,20 +256,62 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bytes(plaintext), new_message)
 
     async def test_policy_edit_encryption_decryption(self) -> None:
-        # Encryption
-        message = b'My secret data part 1'
+        # Generate user key
+        fin_user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
+            'Department::FIN && Security Level::Top Secret',
+            self.priv_key_uid,
+        )
+        message = b'My secret data'
+
+        # Rename attribute "FIN"
+        await self.client.rename_cover_crypt_attribute(
+            'Department::FIN',
+            'Finance',
+            self.priv_key_uid,
+        )
+
+        # Add attribute "R&D"
+        (
+            new_pub_key_uid,
+            new_priv_key_uid,
+        ) = await self.client.add_cover_crypt_attribute(
+            'Department::R&D',
+            False,
+            self.priv_key_uid,
+        )
+
+        # Adding attribute to ordered dimension is not supported
+        with self.assertRaises(Exception):
+            await self.client.add_cover_crypt_attribute('Security Level::New', False, self.priv_key_uid)
+
+        # Encrypt for new and renamed attribute
+        message = b'My secret data part 2'
         ciphertext = await self.client.cover_crypt_encryption(
-            'Department::HR && Security Level::Confidential',
+            '(Department::Finance || Department::R&D) && Security Level::Protected',
             message,
             self.pub_key_uid,
         )
 
         # Generate user key
-        user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
-            'Department::HR && Security Level::Top Secret',
+        rd_user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
+            'Department::R&D && Security Level::Protected',
             self.priv_key_uid,
         )
 
+        # Decryption with finance user
+        plaintext, _ = await self.client.cover_crypt_decryption(
+            ciphertext,
+            fin_user_key_uid,
+        )
+        self.assertEqual(bytes(plaintext), message)
+
+        # Decryption with R&D user
+        plaintext, _ = await self.client.cover_crypt_decryption(
+            ciphertext,
+            rd_user_key_uid,
+        )
+        self.assertEqual(bytes(plaintext), message)
+        
         # Disable attribute "Confidential"
         (
             new_pub_key_uid,
@@ -281,7 +324,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         # Confidential message can still be decrypted
         plaintext, _ = await self.client.cover_crypt_decryption(
             ciphertext,
-            user_key_uid,
+            fin_user_key_uid,
         )
         self.assertEqual(bytes(plaintext), message)
 
@@ -293,44 +336,32 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
                 self.pub_key_uid,
             )
 
-        # Rename attribute "FIN"
-        # await self.client.rename_cover_crypt_attribute(
-        #     'Department::FIN',
-        #     'Finance',
-        #     self.priv_key_uid,
-        # )
-
-        # Add attribute "R&D"
+        # Remove attribute "Finance"
         (
             new_pub_key_uid,
             new_priv_key_uid,
-        ) = await self.client.add_cover_crypt_attribute(
-            'Department::R&D',
-            False,
+        ) = await self.client.remove_cover_crypt_attribute(
+            'Department::Finance',
             self.priv_key_uid,
         )
 
-        # Encrypt for new and renamed attribute
-        message = b'My secret data part 2'
-        ciphertext = await self.client.cover_crypt_encryption(
-            '(Department::FIN || Department::R&D) && Security Level::Protected',
-            message,
-            self.pub_key_uid,
-        )
+        # Finance users can no longer decrypt ciphertext
+        with self.assertRaises(Exception):
+            await self.client.cover_crypt_decryption(
+                ciphertext,
+                fin_user_key_uid,
+            )
 
-        # Generate user key
-        user_key_uid = await self.client.create_cover_crypt_user_decryption_key(
-            'Department::R&D && Security Level::Protected',
-            self.priv_key_uid,
-        )
-
-        # Decryption as usual
+        # R&D users can still decrypt its ciphertext
         plaintext, _ = await self.client.cover_crypt_decryption(
             ciphertext,
-            user_key_uid,
+            rd_user_key_uid,
         )
         self.assertEqual(bytes(plaintext), message)
 
+        # Removing attribute from ordered dimension is not supported
+        with self.assertRaises(Exception):
+            await self.client.remove_cover_crypt_attribute('Security Level::Confidential', self.priv_key_uid)
 
 class TestGenericKMS(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
