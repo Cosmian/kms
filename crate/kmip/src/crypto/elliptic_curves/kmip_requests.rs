@@ -17,20 +17,17 @@ use crate::{
     },
 };
 
-// `unused_variables` is on because when FIPS features is disabled, `curve` and
-// `is_private_mask` are unused.
-#[allow(unused_variables)]
 /// Builds correct usage mask depending on the curve. In FIPS mode, curves are
 /// restricted to certain usage.
 ///
 /// For more information see documents
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
+#[cfg(feature = "fips")]
 fn build_mask_from_curve(
     curve: RecommendedCurve,
     is_private_mask: bool,
 ) -> Result<CryptographicUsageMask, KmipError> {
-    #[cfg(feature = "fips")]
     let mask = match (is_private_mask, curve) {
         (
             true,
@@ -59,10 +56,22 @@ fn build_mask_from_curve(
             other
         ),
     };
-    #[cfg(not(feature = "fips"))]
-    let mask = CryptographicUsageMask::Unrestricted;
 
     Ok(mask)
+}
+
+/// Builds correct usage mask depending on the curve. In non-FIPS mode, curves
+/// are not restricted to any usage.
+///
+/// For more information see documents
+/// - NIST.SP.800-186 - Section 3.1.2 table 2.
+/// - NIST.FIPS.186-5
+#[cfg(not(feature = "fips"))]
+fn build_mask_from_curve(
+    curve: RecommendedCurve,
+    is_private_mask: bool,
+) -> Result<CryptographicUsageMask, KmipError> {
+    Ok(CryptographicUsageMask::Unrestricted)
 }
 
 /// Builds correct algorithm depending on the curve. In FIPS mode, curves are
