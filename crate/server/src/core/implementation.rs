@@ -385,7 +385,14 @@ impl KMS {
                     as u32;
                 trace!("RSA key pair generation: size in bits: {key_size_in_bits}");
 
-                create_rsa_key_pair(key_size_in_bits, public_key_uid, private_key_uid)
+                create_rsa_key_pair(
+                    key_size_in_bits,
+                    public_key_uid,
+                    private_key_uid,
+                    any_attributes.cryptographic_algorithm,
+                    private_key_mask,
+                    public_key_mask,
+                )
             }
             CryptographicAlgorithm::Ed25519 => create_ed25519_key_pair(
                 private_key_uid,
