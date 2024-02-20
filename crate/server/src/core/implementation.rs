@@ -242,6 +242,17 @@ impl KMS {
                 )
             })?;
 
+        let private_key_mask = request
+            .private_key_attributes
+            .as_ref()
+            .and_then(|attr| attr.cryptographic_usage_mask);
+
+        let public_key_mask = request
+            .public_key_attributes
+            .as_ref()
+            .as_ref()
+            .and_then(|attr| attr.cryptographic_usage_mask);
+
         // Check that the cryptographic algorithm is specified.
         let cryptographic_algorithm = any_attributes.cryptographic_algorithm.ok_or_else(|| {
             KmsError::InvalidRequest(
@@ -271,7 +282,8 @@ impl KMS {
                         public_key_uid,
                         curve,
                         any_attributes.cryptographic_algorithm,
-                        any_attributes.cryptographic_usage_mask,
+                        private_key_mask,
+                        public_key_mask,
                     ),
                     RecommendedCurve::P224
                     | RecommendedCurve::P256
@@ -281,21 +293,24 @@ impl KMS {
                         public_key_uid,
                         curve,
                         any_attributes.cryptographic_algorithm,
-                        any_attributes.cryptographic_usage_mask,
+                        private_key_mask,
+                        public_key_mask,
                     ),
                     #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVE25519 => create_x25519_key_pair(
                         private_key_uid,
                         public_key_uid,
                         any_attributes.cryptographic_algorithm,
-                        any_attributes.cryptographic_usage_mask,
+                        private_key_mask,
+                        public_key_mask,
                     ),
                     #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVE448 => create_x448_key_pair(
                         private_key_uid,
                         public_key_uid,
                         any_attributes.cryptographic_algorithm,
-                        any_attributes.cryptographic_usage_mask,
+                        private_key_mask,
+                        public_key_mask,
                     ),
                     #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED25519 => {
@@ -314,7 +329,8 @@ impl KMS {
                             private_key_uid,
                             public_key_uid,
                             any_attributes.cryptographic_algorithm,
-                            any_attributes.cryptographic_usage_mask,
+                            private_key_mask,
+                            public_key_mask,
                         )
                     }
                     #[cfg(feature = "fips")]
@@ -344,7 +360,8 @@ impl KMS {
                             private_key_uid,
                             public_key_uid,
                             any_attributes.cryptographic_algorithm,
-                            any_attributes.cryptographic_usage_mask,
+                            private_key_mask,
+                            public_key_mask,
                         )
                     }
                     #[cfg(feature = "fips")]
@@ -375,13 +392,15 @@ impl KMS {
                 private_key_uid,
                 public_key_uid,
                 any_attributes.cryptographic_algorithm,
-                any_attributes.cryptographic_usage_mask,
+                private_key_mask,
+                public_key_mask,
             ),
             CryptographicAlgorithm::Ed448 => create_ed448_key_pair(
                 private_key_uid,
                 public_key_uid,
                 any_attributes.cryptographic_algorithm,
-                any_attributes.cryptographic_usage_mask,
+                private_key_mask,
+                public_key_mask,
             ),
             CryptographicAlgorithm::CoverCrypt => create_master_keypair(
                 &Covercrypt::default(),

@@ -124,7 +124,8 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
         wrap_private_key_uid,
         wrap_public_key_uid,
         Some(CryptographicAlgorithm::EC),
-        Some(CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt),
+        Some(CryptographicUsageMask::Decrypt),
+        Some(CryptographicUsageMask::Encrypt),
     )?;
     // Write the private key to a file and import it
     let wrap_private_key_path = tmp_path.join("wrap.private.key");

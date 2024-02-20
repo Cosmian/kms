@@ -9,7 +9,8 @@ use zeroize::Zeroizing;
 
 #[cfg(feature = "fips")]
 use crate::crypto::elliptic_curves::{
-    FIPS_ECC_USAGE_MASK_DH, FIPS_ECC_USAGE_MASK_SIGN, FIPS_ECC_USAGE_MASK_SIGN_AND_DH,
+    FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
+    FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
 };
 use crate::{
     crypto::{secret::SafeBigUint, KeyPair},
@@ -36,7 +37,10 @@ fn confront_ecc_mask_with_flags(
     flags: CryptographicUsageMask,
 ) -> Result<(), KmipError> {
     if (flags & CryptographicUsageMask::Unrestricted).bits() != 0 {
-        kmip_bail!("Unrestricted usage for elliptic curves is too permissive for FIPS mode.")
+        kmip_bail!(
+            "Unrestricted CryptographicUsageMask for elliptic curves is too permissive for FIPS \
+             mode."
+        )
     }
 
     if let Some(mask_) = mask {
@@ -61,31 +65,36 @@ fn confront_ecc_mask_with_flags(
 #[cfg(feature = "fips")]
 /// Check that
 /// - `algorithm` is among `allowed` algorithms.
-/// - `algorithm` is compliant with usage mask provided. For example `ECDH` and
-/// `Sign | Verify` are incompatible together since ECDH is for key agreement.
+/// - `algorithm` is compliant with usage mask provided for private and public
+/// key components. For example `ECDH` and `Sign` are incompatible together
+/// since ECDH is for key agreement.
 ///
 /// If `algorithm` is None, raise error.
 fn check_ecc_mask_algorithm_compliance(
-    mask: Option<CryptographicUsageMask>,
+    private_key_mask: Option<CryptographicUsageMask>,
+    public_key_mask: Option<CryptographicUsageMask>,
     algorithm: Option<CryptographicAlgorithm>,
-    allowed: Vec<CryptographicAlgorithm>,
+    allowed_algorithms: Vec<CryptographicAlgorithm>,
 ) -> Result<(), KmipError> {
     if let Some(algorithm_) = algorithm {
-        if !allowed.contains(&algorithm_) {
+        if !allowed_algorithms.contains(&algorithm_) {
             kmip_bail!("Fordidden CryptographicAlgorithm value in FIPS mode.")
         }
 
         match algorithm_ {
             CryptographicAlgorithm::ECDH => {
-                confront_ecc_mask_with_flags(mask, FIPS_ECC_USAGE_MASK_DH)?
+                confront_ecc_mask_with_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_ECDH)?;
+                confront_ecc_mask_with_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_ECDH)?
             }
             CryptographicAlgorithm::ECDSA
             | CryptographicAlgorithm::Ed25519
             | CryptographicAlgorithm::Ed448 => {
-                confront_ecc_mask_with_flags(mask, FIPS_ECC_USAGE_MASK_SIGN)?
+                confront_ecc_mask_with_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_SIGN)?;
+                confront_ecc_mask_with_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_SIGN)?
             }
             CryptographicAlgorithm::EC => {
-                confront_ecc_mask_with_flags(mask, FIPS_ECC_USAGE_MASK_SIGN_AND_DH)?
+                confront_ecc_mask_with_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH)?;
+                confront_ecc_mask_with_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH)?
             }
             // If `allowed` parameter is set correctly, should never fall in
             // this case.
@@ -117,7 +126,7 @@ pub fn to_ec_public_key(
     private_key_uid: &str,
     curve: RecommendedCurve,
     algorithm: Option<CryptographicAlgorithm>,
-    mask: Option<CryptographicUsageMask>,
+    public_key_mask: Option<CryptographicUsageMask>,
 ) -> Object {
     let cryptographic_length_in_bits = bytes.len() as i32 * 8;
     trace!(
@@ -140,7 +149,7 @@ pub fn to_ec_public_key(
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: algorithm,
                     cryptographic_length: Some(cryptographic_length_in_bits),
-                    cryptographic_usage_mask: mask,
+                    cryptographic_usage_mask: public_key_mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPublicKey),
                     cryptographic_parameters: Some(CryptographicParameters {
@@ -181,7 +190,7 @@ pub fn to_ec_private_key(
     public_key_uid: &str,
     curve: RecommendedCurve,
     algorithm: Option<CryptographicAlgorithm>,
-    mask: Option<CryptographicUsageMask>,
+    private_key_mask: Option<CryptographicUsageMask>,
 ) -> Object {
     let cryptographic_length_in_bits = bytes.len() as i32 * 8;
 
@@ -205,7 +214,7 @@ pub fn to_ec_private_key(
                     object_type: Some(ObjectType::PrivateKey),
                     cryptographic_algorithm: algorithm,
                     cryptographic_length: Some(cryptographic_length_in_bits),
-                    cryptographic_usage_mask: mask,
+                    cryptographic_usage_mask: private_key_mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
                     cryptographic_parameters: Some(CryptographicParameters {
@@ -237,7 +246,8 @@ pub fn create_x25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
     algorithm: Option<CryptographicAlgorithm>,
-    mask: Option<CryptographicUsageMask>,
+    private_key_mask: Option<CryptographicUsageMask>,
+    public_key_mask: Option<CryptographicUsageMask>,
 ) -> Result<KeyPair, KmipError> {
     let private_key = PKey::generate_x25519()?;
 
@@ -247,7 +257,7 @@ pub fn create_x25519_key_pair(
         private_key_uid,
         RecommendedCurve::CURVE25519,
         algorithm,
-        mask,
+        public_key_mask,
     );
 
     let private_key = to_ec_private_key(
@@ -256,7 +266,7 @@ pub fn create_x25519_key_pair(
         public_key_uid,
         RecommendedCurve::CURVE25519,
         algorithm,
-        mask,
+        private_key_mask,
     );
 
     Ok(KeyPair::new(private_key, public_key))
@@ -268,7 +278,8 @@ pub fn create_x448_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
     algorithm: Option<CryptographicAlgorithm>,
-    mask: Option<CryptographicUsageMask>,
+    private_key_mask: Option<CryptographicUsageMask>,
+    public_key_mask: Option<CryptographicUsageMask>,
 ) -> Result<KeyPair, KmipError> {
     let private_key = PKey::generate_x448()?;
 
@@ -278,7 +289,7 @@ pub fn create_x448_key_pair(
         private_key_uid,
         RecommendedCurve::CURVE448,
         algorithm,
-        mask,
+        public_key_mask,
     );
 
     let private_key = to_ec_private_key(
@@ -287,7 +298,7 @@ pub fn create_x448_key_pair(
         public_key_uid,
         RecommendedCurve::CURVE448,
         algorithm,
-        mask,
+        private_key_mask,
     );
 
     Ok(KeyPair::new(private_key, public_key))
@@ -303,11 +314,17 @@ pub fn create_ed25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
     algorithm: Option<CryptographicAlgorithm>,
-    mask: Option<CryptographicUsageMask>,
+    private_key_mask: Option<CryptographicUsageMask>,
+    public_key_mask: Option<CryptographicUsageMask>,
 ) -> Result<KeyPair, KmipError> {
     #[cfg(feature = "fips")]
     // Validate FIPS algorithm and mask.
-    check_ecc_mask_algorithm_compliance(mask, algorithm, vec![CryptographicAlgorithm::Ed25519])?;
+    check_ecc_mask_algorithm_compliance(
+        private_key_mask,
+        public_key_mask,
+        algorithm,
+        vec![CryptographicAlgorithm::Ed25519],
+    )?;
 
     let private_key = PKey::generate_ed25519()?;
     trace!("create_ed25519_key_pair: keypair OK");
@@ -318,7 +335,7 @@ pub fn create_ed25519_key_pair(
         private_key_uid,
         RecommendedCurve::CURVEED25519,
         algorithm,
-        mask,
+        public_key_mask,
     );
     trace!("create_ed25519_key_pair: public_key OK");
 
@@ -328,7 +345,7 @@ pub fn create_ed25519_key_pair(
         public_key_uid,
         RecommendedCurve::CURVEED25519,
         algorithm,
-        mask,
+        private_key_mask,
     );
     trace!("create_ed25519_key_pair: private_key OK");
 
@@ -345,11 +362,17 @@ pub fn create_ed448_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
     algorithm: Option<CryptographicAlgorithm>,
-    mask: Option<CryptographicUsageMask>,
+    private_key_mask: Option<CryptographicUsageMask>,
+    public_key_mask: Option<CryptographicUsageMask>,
 ) -> Result<KeyPair, KmipError> {
     #[cfg(feature = "fips")]
     // Validate FIPS algorithm and mask.
-    check_ecc_mask_algorithm_compliance(mask, algorithm, vec![CryptographicAlgorithm::Ed448])?;
+    check_ecc_mask_algorithm_compliance(
+        private_key_mask,
+        public_key_mask,
+        algorithm,
+        vec![CryptographicAlgorithm::Ed448],
+    )?;
 
     let private_key = PKey::generate_ed448()?;
     trace!("create_ed448_key_pair: keypair OK");
@@ -360,7 +383,7 @@ pub fn create_ed448_key_pair(
         private_key_uid,
         RecommendedCurve::CURVEED448,
         algorithm,
-        mask,
+        public_key_mask,
     );
     trace!("create_ed448_key_pair: public_key OK");
 
@@ -370,7 +393,7 @@ pub fn create_ed448_key_pair(
         public_key_uid,
         RecommendedCurve::CURVEED448,
         algorithm,
-        mask,
+        private_key_mask,
     );
     trace!("create_ed448_key_pair: private_key OK");
 
@@ -382,12 +405,14 @@ pub fn create_approved_ecc_key_pair(
     public_key_uid: &str,
     curve: RecommendedCurve,
     algorithm: Option<CryptographicAlgorithm>,
-    mask: Option<CryptographicUsageMask>,
+    private_key_mask: Option<CryptographicUsageMask>,
+    public_key_mask: Option<CryptographicUsageMask>,
 ) -> Result<KeyPair, KmipError> {
     #[cfg(feature = "fips")]
     // Validate FIPS algorithms and mask.
     check_ecc_mask_algorithm_compliance(
-        mask,
+        private_key_mask,
+        public_key_mask,
         algorithm,
         vec![
             CryptographicAlgorithm::EC,
@@ -417,7 +442,7 @@ pub fn create_approved_ecc_key_pair(
         public_key_uid,
         curve,
         algorithm,
-        mask,
+        private_key_mask,
     );
     trace!("create_approved_ecc_key_pair: private key converted OK");
 
@@ -430,7 +455,7 @@ pub fn create_approved_ecc_key_pair(
         private_key_uid,
         curve,
         algorithm,
-        mask,
+        public_key_mask,
     );
     trace!("create_approved_ecc_key_pair: public key converted OK");
 
@@ -450,7 +475,11 @@ mod tests {
     #[cfg(feature = "fips")]
     use crate::crypto::elliptic_curves::{
         operation::create_ed448_key_pair,
-        {FIPS_ECC_USAGE_MASK_SIGN, FIPS_ECC_USAGE_MASK_SIGN_AND_DH},
+        {
+            FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN,
+            FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
+            FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+        },
     };
     #[cfg(not(feature = "fips"))]
     use crate::crypto::elliptic_curves::{X25519_PRIVATE_KEY_LENGTH, X448_PRIVATE_KEY_LENGTH};
@@ -470,9 +499,25 @@ mod tests {
         openssl::provider::Provider::load(None, "fips").unwrap();
 
         let algorithm = Some(CryptographicAlgorithm::Ed25519);
-        let mask = Some(CryptographicUsageMask::Sign | CryptographicUsageMask::Verify);
-        let keypair1 = create_ed25519_key_pair("sk_uid1", "pk_uid1", algorithm, mask).unwrap();
-        let keypair2 = create_ed25519_key_pair("sk_uid2", "pk_uid2", algorithm, mask).unwrap();
+        let private_key_mask = Some(CryptographicUsageMask::Sign);
+        let public_key_mask = Some(CryptographicUsageMask::Verify);
+
+        let keypair1 = create_ed25519_key_pair(
+            "sk_uid1",
+            "pk_uid1",
+            algorithm,
+            private_key_mask,
+            public_key_mask,
+        )
+        .unwrap();
+        let keypair2 = create_ed25519_key_pair(
+            "sk_uid2",
+            "pk_uid2",
+            algorithm,
+            private_key_mask,
+            public_key_mask,
+        )
+        .unwrap();
 
         let privkey1 = kmip_private_key_to_openssl(keypair1.private_key()).unwrap();
         let privkey2 = kmip_private_key_to_openssl(keypair2.private_key()).unwrap();
@@ -502,9 +547,16 @@ mod tests {
         // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
         // - the public key is a TransparentEcPublicKey where the key value is the bytes of the Montgomery point
         let algorithm = Some(CryptographicAlgorithm::EC);
-        let mask = Some(CryptographicUsageMask::Unrestricted);
-        let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid", algorithm, mask)
-            .expect("failed to create x25519 key pair in test_x25519_conversions");
+        let private_key_mask = Some(CryptographicUsageMask::Unrestricted);
+        let public_key_mask = Some(CryptographicUsageMask::Unrestricted);
+        let wrap_key_pair = create_x25519_key_pair(
+            "sk_uid",
+            "pk_uid",
+            algorithm,
+            private_key_mask,
+            public_key_mask,
+        )
+        .expect("failed to create x25519 key pair in test_x25519_conversions");
 
         //
         // public key
@@ -543,11 +595,27 @@ mod tests {
 
     fn keypair_generation(curve: RecommendedCurve) {
         let algorithm = Some(CryptographicAlgorithm::EC);
-        let mask = Some(CryptographicUsageMask::Sign | CryptographicUsageMask::Verify);
-        let keypair1 =
-            create_approved_ecc_key_pair("sk_uid1", "pk_uid1", curve, algorithm, mask).unwrap();
-        let keypair2 =
-            create_approved_ecc_key_pair("sk_uid2", "pk_uid2", curve, algorithm, mask).unwrap();
+        let private_key_mask = Some(CryptographicUsageMask::Sign);
+        let public_key_mask = Some(CryptographicUsageMask::Verify);
+
+        let keypair1 = create_approved_ecc_key_pair(
+            "sk_uid1",
+            "pk_uid1",
+            curve,
+            algorithm,
+            private_key_mask,
+            public_key_mask,
+        )
+        .unwrap();
+        let keypair2 = create_approved_ecc_key_pair(
+            "sk_uid2",
+            "pk_uid2",
+            curve,
+            algorithm,
+            private_key_mask,
+            public_key_mask,
+        )
+        .unwrap();
 
         let privkey1 = kmip_private_key_to_openssl(keypair1.private_key()).unwrap();
         let privkey2 = kmip_private_key_to_openssl(keypair2.private_key()).unwrap();
@@ -596,9 +664,16 @@ mod tests {
         // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
         // - the public key is a TransparentEcPublicKey where the key value is the bytes of the Montgomery point
         let algorithm = Some(CryptographicAlgorithm::Ed448);
-        let mask = Some(CryptographicUsageMask::Sign | CryptographicUsageMask::Verify);
-        let wrap_key_pair = create_x448_key_pair("sk_uid", "pk_uid", algorithm, mask)
-            .expect("failed to create x25519 key pair in test_x448_conversions");
+        let private_key_mask = Some(CryptographicUsageMask::Sign);
+        let public_key_mask = Some(CryptographicUsageMask::Verify);
+        let wrap_key_pair = create_x448_key_pair(
+            "sk_uid",
+            "pk_uid",
+            algorithm,
+            private_key_mask,
+            public_key_mask,
+        )
+        .expect("failed to create x25519 key pair in test_x448_conversions");
 
         //
         // public key
@@ -681,9 +756,8 @@ mod tests {
 
     #[test]
     #[cfg(feature = "fips")]
-    /// This test should fail for unrestricted should not happen in FIPS mode.
     fn test_mask_flags_all() {
-        let mask = FIPS_ECC_USAGE_MASK_SIGN;
+        let mask = FIPS_PRIVATE_ECC_MASK_SIGN;
 
         let flags = CryptographicUsageMask::Sign
             | CryptographicUsageMask::Verify
@@ -706,22 +780,40 @@ mod tests {
 
     #[test]
     #[cfg(feature = "fips")]
-    /// This test should fail for unrestricted should not happen in FIPS mode.
-    fn test_mask_flags_fips() {
-        let mask = CryptographicUsageMask::Sign | CryptographicUsageMask::Verify;
+    fn test_mask_flags_fips_sign() {
+        let mask = CryptographicUsageMask::Sign;
+        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_SIGN);
 
-        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_ECC_USAGE_MASK_SIGN);
+        assert!(res.is_ok());
+
+        let mask = CryptographicUsageMask::Verify;
+        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_SIGN);
 
         assert!(res.is_ok())
     }
 
     #[test]
     #[cfg(feature = "fips")]
-    /// This test should fail for unrestricted should not happen in FIPS mode.
     fn test_mask_flags_fips_dh() {
         let mask = CryptographicUsageMask::KeyAgreement;
+        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_ECDH);
 
-        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_ECC_USAGE_MASK_SIGN_AND_DH);
+        assert!(res.is_ok());
+
+        let mask = CryptographicUsageMask::KeyAgreement;
+        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_ECDH);
+
+        assert!(res.is_ok());
+
+        let mask = CryptographicUsageMask::CRLSign
+            | CryptographicUsageMask::CertificateSign
+            | CryptographicUsageMask::KeyAgreement;
+        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_SIGN_ECDH);
+
+        assert!(res.is_ok());
+
+        let mask = CryptographicUsageMask::Verify | CryptographicUsageMask::KeyAgreement;
+        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_SIGN_ECDH);
 
         assert!(res.is_ok())
     }
@@ -798,10 +890,16 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_check_ecc_algo_none() {
-        let mask = CryptographicUsageMask::Sign | CryptographicUsageMask::Verify;
+        let private_key_mask = CryptographicUsageMask::Sign;
+        let public_key_mask = CryptographicUsageMask::Verify;
 
         let allowed = vec![CryptographicAlgorithm::Ed25519];
-        let res = check_ecc_mask_algorithm_compliance(Some(mask), None, allowed);
+        let res = check_ecc_mask_algorithm_compliance(
+            Some(private_key_mask),
+            Some(public_key_mask),
+            None,
+            allowed,
+        );
 
         assert!(res.is_err())
     }
@@ -809,7 +907,8 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_check_ecc_algo_contains() {
-        let mask = CryptographicUsageMask::KeyAgreement;
+        let private_key_mask = CryptographicUsageMask::KeyAgreement;
+        let public_key_mask = CryptographicUsageMask::KeyAgreement;
 
         let algorithm = CryptographicAlgorithm::ECDH;
         let allowed = vec![
@@ -817,7 +916,12 @@ mod tests {
             CryptographicAlgorithm::ECDSA,
             CryptographicAlgorithm::EC,
         ];
-        let res = check_ecc_mask_algorithm_compliance(Some(mask), Some(algorithm), allowed);
+        let res = check_ecc_mask_algorithm_compliance(
+            Some(private_key_mask),
+            Some(public_key_mask),
+            Some(algorithm),
+            allowed,
+        );
 
         assert!(res.is_ok())
     }
@@ -825,11 +929,17 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_check_ecc_algo_not_contains() {
-        let mask = CryptographicUsageMask::KeyAgreement;
+        let private_key_mask = CryptographicUsageMask::KeyAgreement;
+        let public_key_mask = CryptographicUsageMask::KeyAgreement;
 
         let algorithm = CryptographicAlgorithm::ECDH;
         let allowed = vec![CryptographicAlgorithm::ECDSA, CryptographicAlgorithm::EC];
-        let res = check_ecc_mask_algorithm_compliance(Some(mask), Some(algorithm), allowed);
+        let res = check_ecc_mask_algorithm_compliance(
+            Some(private_key_mask),
+            Some(public_key_mask),
+            Some(algorithm),
+            allowed,
+        );
 
         assert!(res.is_err())
     }
@@ -838,45 +948,69 @@ mod tests {
     #[cfg(feature = "fips")]
     fn test_create_ecc_keys_bad_mask() {
         let algorithm = CryptographicAlgorithm::EC;
-        let mask = CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt;
+        let private_key_mask = CryptographicUsageMask::Decrypt;
+        let public_key_mask = CryptographicUsageMask::Encrypt;
         let res = create_approved_ecc_key_pair(
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
             Some(algorithm),
-            Some(mask),
+            Some(private_key_mask),
+            Some(public_key_mask),
         );
 
         assert!(res.is_err());
 
         let algorithm = CryptographicAlgorithm::ECDSA;
-        let mask = CryptographicUsageMask::Unrestricted;
+        let private_key_mask = CryptographicUsageMask::Unrestricted;
+        let public_key_mask = CryptographicUsageMask::Unrestricted;
         let res = create_approved_ecc_key_pair(
             "pubkey02",
             "privkey02",
             RecommendedCurve::P384,
             Some(algorithm),
-            Some(mask),
+            Some(private_key_mask),
+            Some(public_key_mask),
         );
 
         assert!(res.is_err());
 
         let algorithm = CryptographicAlgorithm::ECDH;
+        let public_key_mask = CryptographicUsageMask::KeyAgreement;
         let res = create_approved_ecc_key_pair(
             "pubkey03",
             "privkey03",
             RecommendedCurve::P521,
             Some(algorithm),
             None,
+            Some(public_key_mask),
+        );
+
+        assert!(res.is_err());
+
+        let algorithm = CryptographicAlgorithm::ECDH;
+        let private_key_mask = CryptographicUsageMask::KeyAgreement;
+        let res = create_approved_ecc_key_pair(
+            "pubkey04",
+            "privkey04",
+            RecommendedCurve::P521,
+            Some(algorithm),
+            Some(private_key_mask),
+            None,
         );
 
         assert!(res.is_err());
 
         let algorithm = CryptographicAlgorithm::Ed448;
-        let mask = CryptographicUsageMask::Sign
-            | CryptographicUsageMask::Verify
-            | CryptographicUsageMask::KeyAgreement;
-        let res = create_ed448_key_pair("pubkey04", "privkey04", Some(algorithm), Some(mask));
+        let private_key_mask = CryptographicUsageMask::Sign;
+        let public_key_mask = CryptographicUsageMask::Verify | CryptographicUsageMask::KeyAgreement;
+        let res = create_ed448_key_pair(
+            "pubkey05",
+            "privkey05",
+            Some(algorithm),
+            Some(private_key_mask),
+            Some(public_key_mask),
+        );
 
         assert!(res.is_err())
     }
@@ -885,31 +1019,43 @@ mod tests {
     #[cfg(feature = "fips")]
     fn test_create_ecc_keys_bad_algorithm() {
         let algorithm = CryptographicAlgorithm::Ed25519;
-        let mask = CryptographicUsageMask::Sign | CryptographicUsageMask::Verify;
+        let private_key_mask = CryptographicUsageMask::Sign;
+        let public_key_mask = CryptographicUsageMask::Verify;
         let res = create_approved_ecc_key_pair(
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
             Some(algorithm),
-            Some(mask),
+            Some(private_key_mask),
+            Some(public_key_mask),
         );
 
         assert!(res.is_err());
 
-        let mask = CryptographicUsageMask::Sign | CryptographicUsageMask::Verify;
+        let private_key_mask = CryptographicUsageMask::Sign;
+        let public_key_mask = CryptographicUsageMask::Verify;
+
         let res = create_approved_ecc_key_pair(
             "pubkey02",
             "privkey02",
             RecommendedCurve::P256,
             None,
-            Some(mask),
+            Some(private_key_mask),
+            Some(public_key_mask),
         );
 
         assert!(res.is_err());
 
         let algorithm = CryptographicAlgorithm::Ed25519;
-        let mask = CryptographicUsageMask::Sign | CryptographicUsageMask::Verify;
-        let res = create_ed448_key_pair("pubkey01", "privkey01", Some(algorithm), Some(mask));
+        let private_key_mask = CryptographicUsageMask::Sign;
+        let public_key_mask = CryptographicUsageMask::Verify;
+        let res = create_ed448_key_pair(
+            "pubkey01",
+            "privkey01",
+            Some(algorithm),
+            Some(private_key_mask),
+            Some(public_key_mask),
+        );
 
         assert!(res.is_err());
     }
@@ -919,8 +1065,10 @@ mod tests {
     fn test_create_ecc_keys_incorrect_mask_and_algorithm_ecdh() {
         // ECDH algorithm should not have Sign and Verify masks;
         let algorithm = CryptographicAlgorithm::ECDH;
-        let mask = CryptographicUsageMask::Sign
-            | CryptographicUsageMask::Verify
+        let private_key_mask = CryptographicUsageMask::Sign
+            | CryptographicUsageMask::KeyAgreement
+            | CryptographicUsageMask::DeriveKey;
+        let public_key_mask = CryptographicUsageMask::Verify
             | CryptographicUsageMask::KeyAgreement
             | CryptographicUsageMask::DeriveKey;
         let res = create_approved_ecc_key_pair(
@@ -928,7 +1076,8 @@ mod tests {
             "privkey01",
             RecommendedCurve::P256,
             Some(algorithm),
-            Some(mask),
+            Some(private_key_mask),
+            Some(public_key_mask),
         );
 
         assert!(res.is_err())
@@ -939,15 +1088,51 @@ mod tests {
     fn test_create_ecc_keys_incorrect_mask_and_algorithm_ecdsa() {
         // ECDSA algorithm should not have KeyAgreement mask;
         let algorithm = CryptographicAlgorithm::ECDSA;
-        let mask = CryptographicUsageMask::Sign
-            | CryptographicUsageMask::Verify
-            | CryptographicUsageMask::KeyAgreement;
+        let private_key_mask = CryptographicUsageMask::Sign;
+        let public_key_mask = CryptographicUsageMask::Verify | CryptographicUsageMask::KeyAgreement;
         let res = create_approved_ecc_key_pair(
             "pubkey01",
             "privkey01",
             RecommendedCurve::P256,
             Some(algorithm),
-            Some(mask),
+            Some(private_key_mask),
+            Some(public_key_mask),
+        );
+
+        assert!(res.is_err())
+    }
+
+    #[test]
+    #[cfg(feature = "fips")]
+    fn test_create_ecc_keys_incorrect_private_mask() {
+        let algorithm = CryptographicAlgorithm::ECDSA;
+        let private_key_mask = CryptographicUsageMask::Sign | CryptographicUsageMask::Verify;
+        let public_key_mask = CryptographicUsageMask::Verify;
+        let res = create_approved_ecc_key_pair(
+            "pubkey01",
+            "privkey01",
+            RecommendedCurve::P256,
+            Some(algorithm),
+            Some(private_key_mask),
+            Some(public_key_mask),
+        );
+
+        assert!(res.is_err())
+    }
+
+    #[test]
+    #[cfg(feature = "fips")]
+    fn test_create_ecc_keys_incorrect_public_mask() {
+        let algorithm = CryptographicAlgorithm::ECDSA;
+        let private_key_mask = CryptographicUsageMask::Sign;
+        let public_key_mask = CryptographicUsageMask::Sign;
+        let res = create_approved_ecc_key_pair(
+            "pubkey01",
+            "privkey01",
+            RecommendedCurve::P256,
+            Some(algorithm),
+            Some(private_key_mask),
+            Some(public_key_mask),
         );
 
         assert!(res.is_err())
