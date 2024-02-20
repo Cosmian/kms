@@ -32,7 +32,7 @@ use crate::{
 /// in `mask` is not set in `flags`, raise an error.
 ///
 /// If `mask` is None, raise error.
-fn confront_ecc_mask_with_flags(
+fn check_ecc_mask_against_flags(
     mask: Option<CryptographicUsageMask>,
     flags: CryptographicUsageMask,
 ) -> Result<(), KmipError> {
@@ -43,23 +43,22 @@ fn confront_ecc_mask_with_flags(
         )
     }
 
-    if let Some(mask_) = mask {
-        if (mask_ & !flags).bits() != 0 {
-            kmip_bail!(
-                "Fordidden CryptographicUsageMask flag set, expected among {} in FIPS mode.",
-                flags.bits()
-            )
-        }
-
-        Ok(())
-    } else {
-        // Mask is None but FIPS mode is restrictive so it's considered too
+    let Some(mask) = mask else {
+        // Mask is `None` but FIPS mode is restrictive so it's considered too
         // permissive.
         kmip_bail!(
             "Fordidden CryptographicUsageMask value, got None but expected among {} in FIPS mode.",
             flags.bits()
         )
+    };
+
+    if (mask & !flags).bits() != 0 {
+        kmip_bail!(
+            "Fordidden CryptographicUsageMask flag set, expected among {} in FIPS mode.",
+            flags.bits()
+        )
     }
+    Ok(())
 }
 
 #[cfg(feature = "fips")]
@@ -76,39 +75,34 @@ fn check_ecc_mask_algorithm_compliance(
     algorithm: Option<CryptographicAlgorithm>,
     allowed_algorithms: Vec<CryptographicAlgorithm>,
 ) -> Result<(), KmipError> {
-    if let Some(algorithm_) = algorithm {
-        if !allowed_algorithms.contains(&algorithm_) {
-            kmip_bail!("Fordidden CryptographicAlgorithm value in FIPS mode.")
-        }
-
-        match algorithm_ {
-            CryptographicAlgorithm::ECDH => {
-                confront_ecc_mask_with_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_ECDH)?;
-                confront_ecc_mask_with_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_ECDH)?
-            }
-            CryptographicAlgorithm::ECDSA
-            | CryptographicAlgorithm::Ed25519
-            | CryptographicAlgorithm::Ed448 => {
-                confront_ecc_mask_with_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_SIGN)?;
-                confront_ecc_mask_with_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_SIGN)?
-            }
-            CryptographicAlgorithm::EC => {
-                confront_ecc_mask_with_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH)?;
-                confront_ecc_mask_with_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH)?
-            }
-            // If `allowed` parameter is set correctly, should never fall in
-            // this case.
-            _ => kmip_bail!("Invalid CryptographicAlgorithm value."),
-        }
-
-        Ok(())
-    } else {
-        // Algorithm is None but FIPS mode is restrictive so it's considered too
-        // permissive.
+    let Some(algorithm) = algorithm else {
+        // Algorithm is None but FIPS mode is restrictive so it's considered too permissive.
         kmip_bail!(
-            "Fordidden CryptographicAlgorithm value, got None but expected precise algorithm."
+            "Fordidden CryptographicAlgorithm value, got `None` but expected precise algorithm."
         )
+    };
+    if !allowed_algorithms.contains(&algorithm) {
+        kmip_bail!("Fordidden CryptographicAlgorithm value in FIPS mode.")
     }
+    match algorithm {
+        CryptographicAlgorithm::ECDH => {
+            check_ecc_mask_against_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_ECDH)?;
+            check_ecc_mask_against_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_ECDH)?;
+        }
+        CryptographicAlgorithm::ECDSA
+        | CryptographicAlgorithm::Ed25519
+        | CryptographicAlgorithm::Ed448 => {
+            check_ecc_mask_against_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_SIGN)?;
+            check_ecc_mask_against_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_SIGN)?;
+        }
+        CryptographicAlgorithm::EC => {
+            check_ecc_mask_against_flags(private_key_mask, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH)?;
+            check_ecc_mask_against_flags(public_key_mask, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH)?;
+        }
+        // If `allowed` parameter is set correctly, should never fall in this case.
+        _ => kmip_bail!("Invalid CryptographicAlgorithm value."),
+    }
+    Ok(())
 }
 
 /// Convert to an Elliptic Curve KMIP Public Key.
@@ -468,7 +462,7 @@ mod tests {
     use openssl::pkey::{Id, PKey};
 
     #[cfg(feature = "fips")]
-    use super::{check_ecc_mask_algorithm_compliance, confront_ecc_mask_with_flags};
+    use super::{check_ecc_mask_against_flags, check_ecc_mask_algorithm_compliance};
     use super::{create_approved_ecc_key_pair, create_ed25519_key_pair};
     #[cfg(not(feature = "fips"))]
     use super::{create_x25519_key_pair, create_x448_key_pair};
@@ -723,7 +717,7 @@ mod tests {
             | CryptographicUsageMask::Encrypt
             | CryptographicUsageMask::Decrypt;
 
-        let res = confront_ecc_mask_with_flags(Some(mask), flags);
+        let res = check_ecc_mask_against_flags(Some(mask), flags);
 
         assert!(res.is_ok())
     }
@@ -739,7 +733,7 @@ mod tests {
             | CryptographicUsageMask::CRLSign
             | CryptographicUsageMask::Authenticate;
 
-        let res = confront_ecc_mask_with_flags(Some(mask), flags);
+        let res = check_ecc_mask_against_flags(Some(mask), flags);
 
         assert!(res.is_ok())
     }
@@ -749,7 +743,7 @@ mod tests {
     fn test_mask_flags_none() {
         let flags = CryptographicUsageMask::Unrestricted;
 
-        let res = confront_ecc_mask_with_flags(None, flags);
+        let res = check_ecc_mask_against_flags(None, flags);
 
         assert!(res.is_err())
     }
@@ -773,7 +767,7 @@ mod tests {
             | CryptographicUsageMask::CRLSign
             | CryptographicUsageMask::Authenticate;
 
-        let res = confront_ecc_mask_with_flags(Some(mask), flags);
+        let res = check_ecc_mask_against_flags(Some(mask), flags);
 
         assert!(res.is_ok())
     }
@@ -782,12 +776,12 @@ mod tests {
     #[cfg(feature = "fips")]
     fn test_mask_flags_fips_sign() {
         let mask = CryptographicUsageMask::Sign;
-        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_SIGN);
+        let res = check_ecc_mask_against_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_SIGN);
 
         assert!(res.is_ok());
 
         let mask = CryptographicUsageMask::Verify;
-        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_SIGN);
+        let res = check_ecc_mask_against_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_SIGN);
 
         assert!(res.is_ok())
     }
@@ -796,24 +790,24 @@ mod tests {
     #[cfg(feature = "fips")]
     fn test_mask_flags_fips_dh() {
         let mask = CryptographicUsageMask::KeyAgreement;
-        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_ECDH);
+        let res = check_ecc_mask_against_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_ECDH);
 
         assert!(res.is_ok());
 
         let mask = CryptographicUsageMask::KeyAgreement;
-        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_ECDH);
+        let res = check_ecc_mask_against_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_ECDH);
 
         assert!(res.is_ok());
 
         let mask = CryptographicUsageMask::CRLSign
             | CryptographicUsageMask::CertificateSign
             | CryptographicUsageMask::KeyAgreement;
-        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_SIGN_ECDH);
+        let res = check_ecc_mask_against_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_SIGN_ECDH);
 
         assert!(res.is_ok());
 
         let mask = CryptographicUsageMask::Verify | CryptographicUsageMask::KeyAgreement;
-        let res = confront_ecc_mask_with_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_SIGN_ECDH);
+        let res = check_ecc_mask_against_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_SIGN_ECDH);
 
         assert!(res.is_ok())
     }
@@ -825,7 +819,7 @@ mod tests {
         let mask = CryptographicUsageMask::Unrestricted;
         let flags = CryptographicUsageMask::Unrestricted;
 
-        let res = confront_ecc_mask_with_flags(Some(mask), flags);
+        let res = check_ecc_mask_against_flags(Some(mask), flags);
 
         assert!(res.is_err())
     }
@@ -840,7 +834,7 @@ mod tests {
             | CryptographicUsageMask::Decrypt;
         let flags = CryptographicUsageMask::Unrestricted;
 
-        let res = confront_ecc_mask_with_flags(Some(mask), flags);
+        let res = check_ecc_mask_against_flags(Some(mask), flags);
 
         assert!(res.is_err())
     }
@@ -852,7 +846,7 @@ mod tests {
         let mask = CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt;
         let flags = CryptographicUsageMask::Encrypt;
 
-        let res = confront_ecc_mask_with_flags(Some(mask), flags);
+        let res = check_ecc_mask_against_flags(Some(mask), flags);
 
         assert!(res.is_err())
     }
@@ -864,7 +858,7 @@ mod tests {
         let mask = CryptographicUsageMask::WrapKey;
         let flags = CryptographicUsageMask::UnwrapKey;
 
-        let res = confront_ecc_mask_with_flags(Some(mask), flags);
+        let res = check_ecc_mask_against_flags(Some(mask), flags);
 
         assert!(res.is_err())
     }
@@ -882,7 +876,7 @@ mod tests {
             | CryptographicUsageMask::CRLSign
             | CryptographicUsageMask::Decrypt;
 
-        let res = confront_ecc_mask_with_flags(Some(mask), flags);
+        let res = check_ecc_mask_against_flags(Some(mask), flags);
 
         assert!(res.is_err())
     }
