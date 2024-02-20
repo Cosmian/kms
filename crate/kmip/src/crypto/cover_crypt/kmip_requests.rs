@@ -5,16 +5,21 @@ use super::attributes::{
     access_policy_as_vendor_attribute, edit_policy_action_as_vendor_attribute,
     policy_as_vendor_attribute, EditPolicyAction,
 };
+#[cfg(feature = "openssl")]
 use crate::{
     crypto::wrap::wrap_key_bytes,
+    kmip::kmip_data_structures::KeyWrappingData,
+    kmip::kmip_types::{KeyWrapType, WrappingMethod},
+};
+use crate::{
     error::KmipError,
     kmip::{
-        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, Link, LinkType,
-            LinkedObjectIdentifier, UniqueIdentifier, WrappingMethod,
+            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, UniqueIdentifier,
         },
     },
 };
@@ -69,6 +74,7 @@ pub fn build_create_user_decryption_private_key_request<T: IntoIterator<Item = i
 ///
 /// A unique identifier will be generated if none is supplied
 #[allow(clippy::too_many_arguments)]
+#[cfg(feature = "openssl")]
 pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     private_key: &[u8],
     unique_identifier: Option<String>,
@@ -143,6 +149,7 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
 ///
 /// A unique identifier will be generated if none is supplied
 #[allow(clippy::too_many_arguments)]
+#[cfg(feature = "openssl")]
 pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>(
     private_key: &[u8],
     unique_identifier: Option<String>,

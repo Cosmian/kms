@@ -131,10 +131,7 @@ pub(crate) fn unwrap(
             unwrap_with_private_key(p_key, key_wrapping_data, ciphertext)
         }
         x => {
-            kmip_bail!(
-                "Unable to unwrap key: unwrapping key: format not supported for unwrapping: {:?}",
-                x
-            )
+            kmip_bail!("Unable to unwrap key: format not supported for unwrapping: {x:?}")
         }
     }?;
     Ok(plaintext)

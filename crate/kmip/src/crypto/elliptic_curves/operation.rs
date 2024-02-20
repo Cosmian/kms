@@ -1,3 +1,4 @@
+#[cfg(feature = "openssl")]
 use openssl::{
     bn::BigNumContext,
     ec::{EcGroup, EcKey, PointConversionForm},
@@ -5,6 +6,7 @@ use openssl::{
     pkey::PKey,
 };
 use tracing::trace;
+#[cfg(feature = "openssl")]
 use zeroize::Zeroizing;
 
 #[cfg(feature = "fips")]
@@ -13,8 +15,7 @@ use crate::crypto::elliptic_curves::{
     FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
 };
 use crate::{
-    crypto::{secret::SafeBigUint, KeyPair},
-    error::KmipError,
+    crypto::secret::SafeBigUint,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -24,8 +25,9 @@ use crate::{
             LinkedObjectIdentifier, RecommendedCurve,
         },
     },
-    kmip_bail,
 };
+#[cfg(feature = "openssl")]
+use crate::{crypto::KeyPair, error::KmipError, kmip_bail};
 
 #[cfg(feature = "fips")]
 /// Check that bits set in `mask` are only bits set in `flags`. If any bit set
@@ -235,7 +237,7 @@ pub fn to_ec_private_key(
 }
 
 /// Generate an X25519 Key Pair. Not FIPS 140-3 compliant.
-#[cfg(not(feature = "fips"))]
+#[cfg(all(not(feature = "fips"), feature = "openssl"))]
 pub fn create_x25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -267,7 +269,7 @@ pub fn create_x25519_key_pair(
 }
 
 /// Generate an X448 Key Pair. Not FIPS 140-3 compliant.
-#[cfg(not(feature = "fips"))]
+#[cfg(all(not(feature = "fips"), feature = "openssl"))]
 pub fn create_x448_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -304,6 +306,7 @@ pub fn create_x448_key_pair(
 /// Sources:
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
+#[cfg(feature = "openssl")]
 pub fn create_ed25519_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -352,6 +355,7 @@ pub fn create_ed25519_key_pair(
 /// Sources:
 /// - NIST.SP.800-186 - Section 3.1.2 table 2.
 /// - NIST.FIPS.186-5
+#[cfg(feature = "openssl")]
 pub fn create_ed448_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -394,6 +398,7 @@ pub fn create_ed448_key_pair(
     Ok(KeyPair::new(private_key, public_key))
 }
 
+#[cfg(feature = "openssl")]
 pub fn create_approved_ecc_key_pair(
     private_key_uid: &str,
     public_key_uid: &str,
@@ -456,7 +461,7 @@ pub fn create_approved_ecc_key_pair(
     Ok(KeyPair::new(private_key, public_key))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "openssl"))]
 mod tests {
     #[cfg(not(feature = "fips"))]
     use openssl::pkey::{Id, PKey};
