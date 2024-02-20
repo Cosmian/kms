@@ -250,7 +250,6 @@ impl KMS {
         let public_key_mask = request
             .public_key_attributes
             .as_ref()
-            .as_ref()
             .and_then(|attr| attr.cryptographic_usage_mask);
 
         // Check that the cryptographic algorithm is specified.
