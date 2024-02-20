@@ -10,6 +10,7 @@ use std::{
     vec::Vec,
 };
 
+#[cfg(feature = "openssl")]
 use openssl::{
     hash::MessageDigest,
     md::{Md, MdRef},
@@ -22,7 +23,9 @@ use serde::{
 use strum::{Display, EnumIter, EnumString};
 
 use super::kmip_objects::ObjectType;
-use crate::{error::KmipError, kmip_bail};
+use crate::error::KmipError;
+#[cfg(feature = "openssl")]
+use crate::kmip_error;
 
 /// 4.7
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).
@@ -1620,6 +1623,7 @@ pub enum HashingAlgorithm {
     SHA3512 = 0x0000_0011,
 }
 
+#[cfg(feature = "openssl")]
 impl TryFrom<HashingAlgorithm> for &'static MdRef {
     type Error = KmipError;
 
@@ -1634,14 +1638,14 @@ impl TryFrom<HashingAlgorithm> for &'static MdRef {
             HashingAlgorithm::SHA3256 => Ok(Md::sha3_256()),
             HashingAlgorithm::SHA3384 => Ok(Md::sha3_384()),
             HashingAlgorithm::SHA3512 => Ok(Md::sha3_512()),
-            h => kmip_bail!(
-                "Unsupported hash function: {:?} for the openssl provider",
-                h
-            ),
+            h => Err(kmip_error!(
+                "Unsupported hash function: {h:?} for the openssl provider"
+            )),
         }
     }
 }
 
+#[cfg(feature = "openssl")]
 impl TryFrom<HashingAlgorithm> for MessageDigest {
     type Error = KmipError;
 
@@ -1656,10 +1660,9 @@ impl TryFrom<HashingAlgorithm> for MessageDigest {
             HashingAlgorithm::SHA3256 => Ok(MessageDigest::sha3_256()),
             HashingAlgorithm::SHA3384 => Ok(MessageDigest::sha3_384()),
             HashingAlgorithm::SHA3512 => Ok(MessageDigest::sha3_512()),
-            h => kmip_bail!(
-                "Unsupported hash function: {:?} for the openssl Message Digest provider",
-                h
-            ),
+            h => Err(kmip_error!(
+                "Unsupported hash function: {h:?} for the openssl Message Digest provider"
+            )),
         }
     }
 }

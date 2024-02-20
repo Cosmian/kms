@@ -68,8 +68,8 @@ fn build_mask_from_curve(
 /// - NIST.FIPS.186-5
 #[cfg(not(feature = "fips"))]
 fn build_mask_from_curve(
-    curve: RecommendedCurve,
-    is_private_mask: bool,
+    _curve: RecommendedCurve,
+    _is_private_mask: bool,
 ) -> Result<CryptographicUsageMask, KmipError> {
     Ok(CryptographicUsageMask::Unrestricted)
 }
