@@ -9,6 +9,8 @@ use serde::{
 use zeroize::Zeroizing;
 
 use super::kmip_types::{LinkType, LinkedObjectIdentifier};
+#[cfg(feature = "openssl")]
+use crate::openssl::pad_be_bytes;
 use crate::{
     crypto::secret::SafeBigUint,
     error::KmipError,
@@ -20,7 +22,6 @@ use crate::{
             WrappingMethod,
         },
     },
-    openssl::pad_be_bytes,
 };
 
 /// A Key Block object is a structure used to encapsulate all of the information
@@ -63,6 +64,7 @@ impl KeyBlock {
         match &self.key_value.key_material {
             KeyMaterial::ByteString(v) => Ok(v.clone()),
             KeyMaterial::TransparentSymmetricKey { key } => Ok(key.clone()),
+            #[cfg(feature = "openssl")]
             KeyMaterial::TransparentECPrivateKey {
                 d,
                 recommended_curve,
