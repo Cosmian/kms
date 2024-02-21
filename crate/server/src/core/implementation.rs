@@ -260,7 +260,7 @@ impl KMS {
         })?;
 
         let key_pair = match cryptographic_algorithm {
-            // EC, ECDSA and ECDH posses the same FIPS restrictions for curves.
+            // EC, ECDSA and ECDH possess the same FIPS restrictions for curves.
             CryptographicAlgorithm::EC
             | CryptographicAlgorithm::ECDH
             | CryptographicAlgorithm::ECDSA => {
