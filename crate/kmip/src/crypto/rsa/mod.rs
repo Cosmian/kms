@@ -12,7 +12,8 @@ pub mod operation;
 pub mod rsa_oaep_aes_gcm;
 
 #[cfg(feature = "fips")]
-pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 256;
+/// FIPS minimum modulus length in bits.
+pub const FIPS_MIN_RSA_MODULUS_LENGTH: u32 = 2048;
 
 #[cfg(feature = "fips")]
 /// RSA private key mask usage for FIPS mode: signing, auth and encryption.

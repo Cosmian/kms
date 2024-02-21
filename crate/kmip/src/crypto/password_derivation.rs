@@ -10,13 +10,16 @@ use crate::error::KmipError;
 #[cfg(feature = "fips")]
 use crate::kmip_bail;
 
+/// Minimum random salt size in bytes to use when deriving keys.
 const FIPS_MIN_SALT_SIZE: usize = 16;
 #[cfg(feature = "fips")]
+/// Output size in bits of the hash function used in PBKDF2.
 const FIPS_HLEN_BITS: usize = 512;
 #[cfg(feature = "fips")]
-const FIPS_MIN_KLEN: usize = 14;
+/// Minimum key length in bits to be derived in FIPS mode.
+const FIPS_MIN_KLEN: usize = 112;
 #[cfg(feature = "fips")]
-/// Max key length authorized is (2^32 - 1) x hLen.
+/// Max key length in bits authorized is (2^32 - 1) x hLen.
 /// Source: NIST.FIPS.800-132 - Section 5.3.
 const FIPS_MAX_KLEN: usize = ((1 << 32) - 1) * FIPS_HLEN_BITS;
 
@@ -31,8 +34,8 @@ const FIPS_MIN_ITER: usize = 210_000;
 pub fn derive_key_from_password<const LENGTH: usize>(
     password: &[u8],
 ) -> Result<Secret<LENGTH>, KmipError> {
-    // Check requested key length is in the authorized bounds.
-    if LENGTH < FIPS_MIN_KLEN || LENGTH * 8 > FIPS_MAX_KLEN {
+    // Check requested key length converted in bits is in the authorized bounds.
+    if LENGTH * 8 < FIPS_MIN_KLEN || LENGTH * 8 > FIPS_MAX_KLEN {
         kmip_bail!("Password derivation error: wrong output length argument, got {LENGTH}")
     }
 
