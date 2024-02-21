@@ -7,8 +7,9 @@ use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 
 #[cfg(not(feature = "fips"))]
 use crate::kmip::{
-    kmip_data_structures::KeyWrappingSpecification, kmip_objects::Object,
-    kmip_types::EncodingOption,
+    kmip_data_structures::KeyWrappingSpecification,
+    kmip_objects::Object,
+    kmip_types::{CryptographicUsageMask, EncodingOption},
 };
 #[cfg(not(feature = "fips"))]
 use crate::{
@@ -35,7 +36,6 @@ use crate::{
 fn test_wrap_unwrap() -> Result<(), KmipError> {
     // the symmetric wrapping key
 
-    use crate::kmip::kmip_types::CryptographicUsageMask;
     let mut sym_wrapping_key_bytes = vec![0; 32];
     rand_bytes(&mut sym_wrapping_key_bytes).unwrap();
     let sym_wrapping_key = create_symmetric_key_kmip_object(
@@ -173,8 +173,6 @@ fn test_encrypt_decrypt_rfc_5649() {
 #[test]
 #[cfg(not(feature = "fips"))]
 fn test_encrypt_decrypt_rfc_ecies_x25519() {
-    use crate::kmip::kmip_types::CryptographicUsageMask;
-
     let algorithm = Some(CryptographicAlgorithm::EC);
     let private_key_mask = Some(CryptographicUsageMask::Unrestricted);
     let public_key_mask = Some(CryptographicUsageMask::Unrestricted);

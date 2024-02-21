@@ -465,6 +465,9 @@ pub fn create_approved_ecc_key_pair(
 mod tests {
     #[cfg(not(feature = "fips"))]
     use openssl::pkey::{Id, PKey};
+    // Load FIPS provider module from OpenSSL.
+    #[cfg(feature = "fips")]
+    use openssl::provider::Provider;
 
     #[cfg(feature = "fips")]
     use super::{check_ecc_mask_against_flags, check_ecc_mask_algorithm_compliance};
@@ -495,7 +498,7 @@ mod tests {
     fn test_ed25519_keypair_generation() {
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
+        Provider::load(None, "fips").unwrap();
 
         let algorithm = Some(CryptographicAlgorithm::Ed25519);
         let private_key_mask = Some(CryptographicUsageMask::Sign);
@@ -538,10 +541,6 @@ mod tests {
     #[test]
     #[cfg(not(feature = "fips"))]
     fn test_x25519_conversions() {
-        #[cfg(feature = "fips")]
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         // Create a Key pair
         // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
         // - the public key is a TransparentEcPublicKey where the key value is the bytes of the Montgomery point
@@ -643,7 +642,7 @@ mod tests {
     fn test_approved_ecc_keypair_generation() {
         #[cfg(feature = "fips")]
         // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
+        Provider::load(None, "fips").unwrap();
 
         // P-CURVES
         keypair_generation(RecommendedCurve::P224);
@@ -655,10 +654,6 @@ mod tests {
     #[test]
     #[cfg(not(feature = "fips"))]
     fn test_x448_conversions() {
-        #[cfg(feature = "fips")]
-        // Load FIPS provider module from OpenSSL.
-        openssl::provider::Provider::load(None, "fips").unwrap();
-
         // Create a Key pair
         // - the private key is a TransparentEcPrivateKey where the key value is the bytes of the scalar
         // - the public key is a TransparentEcPublicKey where the key value is the bytes of the Montgomery point
@@ -712,6 +707,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_mask_flags_exact() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let mask = CryptographicUsageMask::Sign
             | CryptographicUsageMask::Verify
             | CryptographicUsageMask::Encrypt
@@ -730,6 +728,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_mask_flags_correct() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let mask = CryptographicUsageMask::Authenticate;
 
         let flags = CryptographicUsageMask::Sign
@@ -746,6 +747,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_mask_flags_none() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let flags = CryptographicUsageMask::Unrestricted;
 
         let res = check_ecc_mask_against_flags(None, flags);
@@ -756,6 +760,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_mask_flags_all() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let mask = FIPS_PRIVATE_ECC_MASK_SIGN;
 
         let flags = CryptographicUsageMask::Sign
@@ -780,6 +787,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_mask_flags_fips_sign() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let mask = CryptographicUsageMask::Sign;
         let res = check_ecc_mask_against_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_SIGN);
 
@@ -794,6 +804,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_mask_flags_fips_dh() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let mask = CryptographicUsageMask::KeyAgreement;
         let res = check_ecc_mask_against_flags(Some(mask), FIPS_PRIVATE_ECC_MASK_ECDH);
 
@@ -821,6 +834,9 @@ mod tests {
     #[cfg(feature = "fips")]
     /// This test should fail for unrestricted should not happen in FIPS mode.
     fn test_mask_flags_unrestricted1() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let mask = CryptographicUsageMask::Unrestricted;
         let flags = CryptographicUsageMask::Unrestricted;
 
@@ -833,6 +849,9 @@ mod tests {
     #[cfg(feature = "fips")]
     /// This test should fail for unrestricted should not happen in FIPS mode.
     fn test_mask_flags_unrestricted2() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let mask = CryptographicUsageMask::Sign
             | CryptographicUsageMask::Verify
             | CryptographicUsageMask::Encrypt
@@ -848,6 +867,9 @@ mod tests {
     #[cfg(feature = "fips")]
     /// This test should fail for unrestricted should not happen in FIPS mode.
     fn test_mask_flags_incorrect1() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let mask = CryptographicUsageMask::Encrypt | CryptographicUsageMask::Decrypt;
         let flags = CryptographicUsageMask::Encrypt;
 
@@ -860,6 +882,9 @@ mod tests {
     #[cfg(feature = "fips")]
     /// This test should fail for unrestricted should not happen in FIPS mode.
     fn test_mask_flags_incorrect2() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let mask = CryptographicUsageMask::WrapKey;
         let flags = CryptographicUsageMask::UnwrapKey;
 
@@ -872,6 +897,9 @@ mod tests {
     #[cfg(feature = "fips")]
     /// This test should fail for unrestricted should not happen in FIPS mode.
     fn test_mask_flags_incorrect3() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let mask = CryptographicUsageMask::Sign
             | CryptographicUsageMask::Verify
             | CryptographicUsageMask::Encrypt
@@ -889,6 +917,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_check_ecc_algo_none() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let private_key_mask = CryptographicUsageMask::Sign;
         let public_key_mask = CryptographicUsageMask::Verify;
 
@@ -906,6 +937,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_check_ecc_algo_contains() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let private_key_mask = CryptographicUsageMask::KeyAgreement;
         let public_key_mask = CryptographicUsageMask::KeyAgreement;
 
@@ -928,6 +962,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_check_ecc_algo_not_contains() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let private_key_mask = CryptographicUsageMask::KeyAgreement;
         let public_key_mask = CryptographicUsageMask::KeyAgreement;
 
@@ -946,6 +983,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_create_ecc_keys_bad_mask() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let algorithm = CryptographicAlgorithm::EC;
         let private_key_mask = CryptographicUsageMask::Decrypt;
         let public_key_mask = CryptographicUsageMask::Encrypt;
@@ -1017,6 +1057,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_create_ecc_keys_bad_algorithm() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let algorithm = CryptographicAlgorithm::Ed25519;
         let private_key_mask = CryptographicUsageMask::Sign;
         let public_key_mask = CryptographicUsageMask::Verify;
@@ -1062,6 +1105,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_create_ecc_keys_incorrect_mask_and_algorithm_ecdh() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         // ECDH algorithm should not have Sign and Verify masks;
         let algorithm = CryptographicAlgorithm::ECDH;
         let private_key_mask = CryptographicUsageMask::Sign
@@ -1085,6 +1131,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_create_ecc_keys_incorrect_mask_and_algorithm_ecdsa() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         // ECDSA algorithm should not have KeyAgreement mask;
         let algorithm = CryptographicAlgorithm::ECDSA;
         let private_key_mask = CryptographicUsageMask::Sign;
@@ -1104,6 +1153,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_create_ecc_keys_incorrect_private_mask() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let algorithm = CryptographicAlgorithm::ECDSA;
         let private_key_mask = CryptographicUsageMask::Sign | CryptographicUsageMask::Verify;
         let public_key_mask = CryptographicUsageMask::Verify;
@@ -1122,6 +1174,9 @@ mod tests {
     #[test]
     #[cfg(feature = "fips")]
     fn test_create_ecc_keys_incorrect_public_mask() {
+        // Load FIPS provider module from OpenSSL.
+        Provider::load(None, "fips").unwrap();
+
         let algorithm = CryptographicAlgorithm::ECDSA;
         let private_key_mask = CryptographicUsageMask::Sign;
         let public_key_mask = CryptographicUsageMask::Sign;
