@@ -230,6 +230,9 @@ pub fn create_rsa_key_pair(
 #[test]
 #[cfg(feature = "fips")]
 fn test_create_rsa_incorrect_mask() {
+    // Load FIPS provider module from OpenSSL.
+    openssl::provider::Provider::load(None, "fips").unwrap();
+
     let private_key_mask = Some(CryptographicUsageMask::Sign);
     let public_key_mask = Some(CryptographicUsageMask::Sign | CryptographicUsageMask::Verify);
 
@@ -262,6 +265,9 @@ fn test_create_rsa_incorrect_mask() {
 #[test]
 #[cfg(feature = "fips")]
 fn test_create_rsa_incorrect_mask_unrestricted() {
+    // Load FIPS provider module from OpenSSL.
+    openssl::provider::Provider::load(None, "fips").unwrap();
+
     let private_key_mask = Some(CryptographicUsageMask::Unrestricted);
     let public_key_mask = Some(CryptographicUsageMask::Verify);
 
@@ -294,6 +300,9 @@ fn test_create_rsa_incorrect_mask_unrestricted() {
 #[test]
 #[cfg(feature = "fips")]
 fn test_create_rsa_fips_mask() {
+    // Load FIPS provider module from OpenSSL.
+    openssl::provider::Provider::load(None, "fips").unwrap();
+
     let algorithm = Some(CryptographicAlgorithm::RSA);
 
     let res = create_rsa_key_pair(
@@ -311,6 +320,9 @@ fn test_create_rsa_fips_mask() {
 #[test]
 #[cfg(feature = "fips")]
 fn test_create_rsa_incorrect_algorithm() {
+    // Load FIPS provider module from OpenSSL.
+    openssl::provider::Provider::load(None, "fips").unwrap();
+
     let private_key_mask = Some(CryptographicUsageMask::Sign);
     let public_key_mask = Some(CryptographicUsageMask::Verify);
 
