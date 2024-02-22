@@ -57,7 +57,7 @@ pub async fn rekey_keypair_cover_crypt(
     import_rekeyed_master_keys(
         kmip_server,
         master_private_key_uid,
-        updated_private_key,
+        updated_private_key.clone(),
         &master_public_key_uid,
         updated_public_key,
         owner,
@@ -71,6 +71,7 @@ pub async fn rekey_keypair_cover_crypt(
             kmip_server,
             cover_crypt,
             master_private_key_uid,
+            &updated_private_key,
             owner,
             params,
         )
@@ -180,6 +181,7 @@ async fn update_user_secret_keys(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     master_private_key_uid: &str,
+    master_private_key: &Object,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()> {
@@ -201,8 +203,8 @@ async fn update_user_secret_keys(
             kmip_server,
             cover_crypt,
             master_private_key_uid,
+            master_private_key,
             unique_identifiers,
-            true, // new keys will keep access to old keys, TODO: do we want make this a parameter?
             owner,
             params,
         )
@@ -215,9 +217,9 @@ async fn update_user_secret_keys(
 async fn refresh_user_decryption_keys(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
-    master_private_key_uid: &str,
+    _master_private_key_uid: &str,
+    master_private_key: &Object,
     user_decryption_key_unique_identifiers: &[String],
-    keep_old_rights: bool,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()> {
@@ -226,13 +228,13 @@ async fn refresh_user_decryption_keys(
     );
 
     // Recover the updated master private key
-    let master_private_key = kmip_server
+    /*let master_private_key2 = kmip_server
         .get(Get::from(master_private_key_uid), owner, params)
         .await?
         .object;
-
+    println!("has master key: {:?}", master_private_key2);*/
     //instantiate a CoverCrypt User Key Handler
-    let handler = UserDecryptionKeysHandler::instantiate(cover_crypt, &master_private_key)?;
+    let handler = UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?;
 
     // Renew user decryption key previously found
     for user_decryption_key_unique_identifier in user_decryption_key_unique_identifiers {
@@ -248,7 +250,7 @@ async fn refresh_user_decryption_keys(
 
         // Generate a fresh User Decryption Key
         let updated_user_decryption_key =
-            handler.refresh_user_decryption_key_object(&user_decryption_key, keep_old_rights)?;
+            handler.refresh_user_decryption_key_object(&user_decryption_key, true)?;
         let import_request = Import {
             unique_identifier: get_response.unique_identifier,
             object_type: get_response.object_type,
