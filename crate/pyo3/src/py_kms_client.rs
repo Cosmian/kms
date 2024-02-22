@@ -340,7 +340,7 @@ impl KmsClient {
         )
     }
 
-    /// Removes old keys associated to the given master keys from the master
+    /// Removes old keys associated to the given access policy from the master
     /// keys. This will permanently remove access to old ciphers.
     /// This will rekey in the KMS:
     /// - the master keys
@@ -367,6 +367,7 @@ impl KmsClient {
     }
 
     /// Remove a specific attribute from a keypair's policy.
+    /// Permanently removes the ability to encrypt new ciphers and decrypt all existing ciphers associated with this attribute.
     ///
     /// Args:
     ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
@@ -391,6 +392,7 @@ impl KmsClient {
     }
 
     /// Disable a specific attribute for a keypair.
+    /// Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphers.
     ///
     /// Args:
     ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"

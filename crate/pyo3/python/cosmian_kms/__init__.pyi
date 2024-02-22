@@ -157,6 +157,7 @@ class KmsClient:
         master_secret_key_identifier: UidOrTags,
     ) -> Future[Tuple[str, str]]:
         """Generate new keys associated to the given access policy in the master keys.
+        This will automatically refresh the corresponding user keys.
 
         Args:
             - `access_policy_str` (str): describe the keys to renew
@@ -171,8 +172,9 @@ class KmsClient:
         master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
-        Removes old keys associated to the given master keys from the master
-        keys. This will permanently remove access to old ciphers.
+        Removes old keys associated to the access policy from the master keys.
+        This will automatically refresh the corresponding user keys.
+        This will permanently remove access to old ciphers.
     
         Args:
             - `access_policy_str` (str): describe the keys to renew
@@ -183,18 +185,19 @@ class KmsClient:
         """
     async def remove_cover_crypt_attribute(
         self,
-        attribute: Union[Attribute, str],
+        attribute: str,
         master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Remove a specific attribute from a keypair's policy.
+        Permanently removes the ability to encrypt new ciphers and decrypt all existing ciphers associated with this attribute.
 
         This will rekey in the KMS:
-        - the Master Keys
-        - all User Decryption Keys that contain one of these attributes in their policy.
+        - the master keys
+        - all user decryption keys that contain one of these attributes in their policy.
 
         Args:
-            attributes (List[Union[Attribute, str]): Attributes to remove e.g. "Department::HR"
+            attributes (Union[Attribute, str]): Attributes to remove e.g. "Department::HR"
             master_secret_key_identifier (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 
         Returns:
@@ -202,18 +205,18 @@ class KmsClient:
         """
     async def disable_cover_crypt_attribute(
         self,
-        attribute: Union[Attribute, str],
+        attribute: str,
         master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Disable a specific attribute from a keypair's policy.
+        Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphers.
 
         This will rekey in the KMS:
-        - the Master Keys
-        - all User Decryption Keys that contain one of these attributes in their policy.
+        - the master keys
 
         Args:
-            attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
+            attributes (Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
             master_secret_key_identifier (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 
         Returns:
@@ -221,7 +224,7 @@ class KmsClient:
         """
     async def add_cover_crypt_attribute(
         self,
-        attribute: Union[Attribute, str],
+        attribute: str,
         is_hybridized: bool,
         master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
@@ -229,11 +232,10 @@ class KmsClient:
         Add a specific attribute to a keypair's policy.
 
         This will rekey in the KMS:
-        - the Master Keys
-        - all User Decryption Keys that contain one of these attributes in their policy.
+        - the master keys
 
         Args:
-            attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
+            attributes (Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
             is_hybridized (bool): hint for encryption
             master_secret_key_identifier (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 
@@ -243,19 +245,15 @@ class KmsClient:
         """
     async def rename_cover_crypt_attribute(
         self,
-        attribute: Union[Attribute, str],
+        attribute: str,
         new_name: str,
         master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Add a specific attribute to a keypair's policy.
 
-        This will rekey in the KMS:
-        - the Master Keys
-        - all User Decryption Keys that contain one of these attributes in their policy.
-
         Args:
-            attributes (List[Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
+            attributes (Union[Attribute, str]): Attributes to disable e.g. "Department::HR"
             new_name (str): the new name for the attribute
             master_secret_key_identifier (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 

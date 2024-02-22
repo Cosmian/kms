@@ -211,7 +211,8 @@ pub fn update_master_keys(
 
     // Update the keys
     match action {
-        RemoveAttribute(_) | DisableAttribute(_) | AddAttribute(_) | RenameAttribute(_) => {
+        RenameAttribute(_) => Ok(()),
+        RemoveAttribute(_) | DisableAttribute(_) | AddAttribute(_) => {
             cover_crypt.update_master_keys(policy, &mut msk, &mut mpk)
         }
         RekeyAccessPolicy(ap) => cover_crypt.rekey_master_keys(

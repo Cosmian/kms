@@ -31,7 +31,6 @@ use crate::{
 #[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // log_init("cosmian_kms_server=info");
-
     let app = test_utils::test_app().await;
 
     let mut policy = Policy::new();
@@ -256,7 +255,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         public_key_unique_identifier
     );
 
-    // ReEncrypt with same ABE attribute (which has been previously incremented)
+    // ReEncrypt with same ABE attribute (which has been previously rekeyed)
     let authentication_data = b"cc the uid".to_vec();
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";
@@ -310,7 +309,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     assert!(decrypted_data.metadata.is_empty());
 
     //
-    // Clear old rotations for ABE Attribute
+    // Prune old keys associated to the access policy
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
         RekeyEditAction::PruneAccessPolicy(ap_to_edit),
