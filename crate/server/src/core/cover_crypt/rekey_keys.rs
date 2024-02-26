@@ -196,74 +196,61 @@ async fn update_user_secret_keys(
     )
     .await?;
 
+    // TODO: bug when getting the updated master private key
+    /* let _ = kmip_server
+    .get(Get::from(master_private_key_uid), owner, params)
+    .await?
+    .object; */
+
     // Refresh the User Decryption Key that were found
     if let Some(unique_identifiers) = &locate_response {
-        // refresh the user keys
-        refresh_user_decryption_keys(
-            kmip_server,
-            cover_crypt,
-            master_private_key_uid,
-            master_private_key,
-            unique_identifiers,
-            owner,
-            params,
-        )
-        .await?;
+        //instantiate a CoverCrypt User Key Handler
+        let handler = UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?;
+
+        // Renew user decryption key previously found
+        for user_decryption_key_uid in unique_identifiers {
+            refresh_user_decryption_key(
+                &handler,
+                user_decryption_key_uid,
+                kmip_server,
+                owner,
+                params,
+            )
+            .await?;
+        }
     }
 
     Ok(())
 }
 
-async fn refresh_user_decryption_keys(
+async fn refresh_user_decryption_key(
+    handler: &UserDecryptionKeysHandler,
+    user_decryption_key_uid: &str,
     kmip_server: &KMS,
-    cover_crypt: Covercrypt,
-    _master_private_key_uid: &str,
-    master_private_key: &Object,
-    user_decryption_key_unique_identifiers: &[String],
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()> {
-    trace!(
-        "Rekeying the following user decryption keys: {user_decryption_key_unique_identifiers:?}"
-    );
+    //fetch the user decryption key
+    let get_response = kmip_server
+        .get(Get::from(user_decryption_key_uid), owner, params)
+        .await?;
+    let user_decryption_key = get_response.object;
 
-    // Recover the updated master private key
-    /*let master_private_key2 = kmip_server
-        .get(Get::from(master_private_key_uid), owner, params)
-        .await?
-        .object;
-    println!("has master key: {:?}", master_private_key2);*/
-    //instantiate a CoverCrypt User Key Handler
-    let handler = UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?;
-
-    // Renew user decryption key previously found
-    for user_decryption_key_unique_identifier in user_decryption_key_unique_identifiers {
-        //fetch the user decryption key
-        let get_response = kmip_server
-            .get(
-                Get::from(user_decryption_key_unique_identifier),
-                owner,
-                params,
-            )
-            .await?;
-        let user_decryption_key = get_response.object;
-
-        // Generate a fresh User Decryption Key
-        let updated_user_decryption_key =
-            handler.refresh_user_decryption_key_object(&user_decryption_key, true)?;
-        let import_request = Import {
-            unique_identifier: get_response.unique_identifier,
-            object_type: get_response.object_type,
-            replace_existing: Some(true),
-            key_wrap_type: None,
-            attributes: updated_user_decryption_key
-                .attributes()
-                .map_err(|e| KmsError::KmipError(ErrorReason::Attribute_Not_Found, e.to_string()))?
-                .clone(),
-            object: updated_user_decryption_key,
-        };
-        let _import_response = kmip_server.import(import_request, owner, params).await?;
-    }
+    // Generate a fresh User Decryption Key
+    let updated_user_decryption_key =
+        handler.refresh_user_decryption_key_object(&user_decryption_key, true)?;
+    let import_request = Import {
+        unique_identifier: get_response.unique_identifier,
+        object_type: get_response.object_type,
+        replace_existing: Some(true),
+        key_wrap_type: None,
+        attributes: updated_user_decryption_key
+            .attributes()
+            .map_err(|e| KmsError::KmipError(ErrorReason::Attribute_Not_Found, e.to_string()))?
+            .clone(),
+        object: updated_user_decryption_key,
+    };
+    let _import_response = kmip_server.import(import_request, owner, params).await?;
 
     Ok(())
 }
