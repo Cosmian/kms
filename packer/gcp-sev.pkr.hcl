@@ -111,7 +111,7 @@ build {
   sources = ["sources.googlecompute.ubuntu"]
 
   provisioner "shell" {
-    script      = "../resources/scripts/install_kms_ubuntu.sh"
+    script      = "../scripts/install_kms_ubuntu.sh"
   }
 }
 
@@ -119,6 +119,6 @@ build {
   sources = ["sources.googlecompute.redhat"]
 
   provisioner "shell" {
-    script      = "../resources/scripts/install_kms_redhat.sh"
+    script      = "../scripts/install_kms_redhat.sh"
   }
 }
