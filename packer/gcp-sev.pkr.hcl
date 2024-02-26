@@ -118,7 +118,6 @@ build {
   provisioner "shell" {
     inline = [
       "chmod +x /tmp/install_kms_ubuntu.sh",
-      "sudo -E /bin/bash '{{.Path}}'",
       "./tmp/install_kms_ubuntu.sh"
     ]    
   }
@@ -135,7 +134,6 @@ build {
   provisioner "shell" {
     inline = [
       "chmod +x /tmp/install_kms_redhat.sh",
-      "sudo -E /bin/bash '{{.Path}}'",
       "./tmp/install_kms_redhat.sh"
     ]       
   }
