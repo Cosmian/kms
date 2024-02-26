@@ -1,9 +1,0 @@
----
-- name: "Setup Cosmian VM"
-  hosts: all
-  become: true
-  roles:
-    - configure_ima
-    - tpm
-    - cosmian_vm_agent
-    - no_updates
