@@ -31,16 +31,14 @@ fn build_mask_from_curve(
     let mask = match (is_private_mask, curve) {
         (
             true,
-            RecommendedCurve::P192
-            | RecommendedCurve::P224
+            RecommendedCurve::P224
             | RecommendedCurve::P256
             | RecommendedCurve::P384
             | RecommendedCurve::P521,
         ) => FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
         (
             false,
-            RecommendedCurve::P192
-            | RecommendedCurve::P224
+            RecommendedCurve::P224
             | RecommendedCurve::P256
             | RecommendedCurve::P384
             | RecommendedCurve::P521,
