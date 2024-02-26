@@ -1,8 +1,8 @@
 variable "prefix" {}
 
 locals {
-  ubuntu_ami_name = "${var.prefix}-cosmian-vm-sev-ubuntu-{{timestamp}}"
-  redhat_ami_name = "${var.prefix}-cosmian-vm-sev-redhat-{{timestamp}}"
+  ubuntu_ami_name = "${var.prefix}-cosmian-vm-kms-sev-ubuntu-{{timestamp}}"
+  redhat_ami_name = "${var.prefix}-cosmian-vm-kms-sev-redhat-{{timestamp}}"
 }
 
 variable "project_id" {
@@ -12,22 +12,22 @@ variable "project_id" {
 
 variable "ubuntu_source_image" {
   type    = string
-  default = "ubuntu-2204-jammy-v20231030"
+  default = "release-1-0-1-cosmian-vm-sev-ubuntu-1707317295"
 }
 
 variable "ubuntu_source_image_family" {
   type    = string
-  default = "ubuntu-2204-lts"
+  default = ""
 }
 
 variable "redhat_source_image" {
   type    = string
-  default = "rhel-9-v20231115"
+  default = "release-1-0-1-cosmian-vm-sev-redhat-1707317295"
 }
 
 variable "redhat_source_image_family" {
   type    = string
-  default = "rhel-9"
+  default = ""
 }
 
 variable "zone" {
@@ -110,69 +110,15 @@ source "googlecompute" "redhat" {
 build {
   sources = ["sources.googlecompute.ubuntu"]
 
-  provisioner "file" {
-    source      = "../resources/conf/ima-policy"
-    destination = "/tmp/ima-policy"
-  }
-
-  provisioner "file" {
-    source      = "../resources/conf/agent.toml"
-    destination = "/tmp/agent.toml"
-  }
-
-  provisioner "file" {
-    source      = "../resources/scripts/cosmian_fstool"
-    destination = "/tmp/cosmian_fstool"
-  }
-
-  provisioner "file" {
-    source      = "./target/release/cosmian_vm_agent"
-    destination = "/tmp/"
-  }
-
-  provisioner "file" {
-    source      = "./target/release/cosmian_certtool"
-    destination = "/tmp/"
-  }
-
-  provisioner "ansible" {
-    playbook_file = "../ansible/cosmian_vm_playbook.yml"
-    local_port    = 22
-    use_proxy     = false
+  provisioner "shell" {
+    script      = "../resources/script/install_kms_ubuntu.sh"
   }
 }
 
 build {
   sources = ["sources.googlecompute.redhat"]
 
-  provisioner "file" {
-    source      = "../resources/conf/ima-policy-selinux"
-    destination = "/tmp/ima-policy"
-  }
-
-  provisioner "file" {
-    source      = "../resources/conf/agent.toml"
-    destination = "/tmp/agent.toml"
-  }
-
-  provisioner "file" {
-    source      = "../resources/scripts/cosmian_fstool"
-    destination = "/tmp/cosmian_fstool"
-  }
-
-  provisioner "file" {
-    source      = "./target/release/cosmian_vm_agent"
-    destination = "/tmp/"
-  }
-
-  provisioner "file" {
-    source      = "./target/release/cosmian_certtool"
-    destination = "/tmp/"
-  }
-
-  provisioner "ansible" {
-    playbook_file = "../ansible/cosmian_vm_playbook.yml"
-    local_port    = 22
-    use_proxy     = false
+  provisioner "shell" {
+    script      = "../resources/script/install_kms_redhat.sh"
   }
 }

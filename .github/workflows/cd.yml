@@ -1,0 +1,72 @@
+name: Build and Publish VM Image
+
+on:
+  # Only run when pull request is closed and merged into main
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed
+  # Do not run on push except on tags
+  push:
+    branches:
+      - "**"
+    # branches-ignore:
+    #   - "**"
+    tags:
+      - "**"
+
+jobs:
+
+
+  deploy-sev-cosmian-vm-image:
+    name: Build KMS in Cosmian VM Image for SEV
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: ./packer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup `packer`
+        uses: hashicorp/setup-packer@main
+
+      - name: Run `packer init`
+        run: packer init -machine-readable gcp-sev.pkr.hcl
+
+      - name: Install plugins
+        run: |
+          packer plugins install github.com/hashicorp/amazon
+          packer plugins install github.com/hashicorp/googlecompute
+
+      - name: Authenticate to AWS project
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-west-1
+
+      - name: Authenticate to Google Cloud project
+        uses: "google-github-actions/auth@v1"
+        with:
+          credentials_json: "${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}"
+
+
+      - name: Build GCP images - main
+        if: ${{ !startsWith(github.ref, 'refs/tags') }}
+        run: |
+          packer build -var "prefix=alpha" gcp-sev.pkr.hcl
+
+      - name: Build GCP images - release
+        if: startsWith(github.ref, 'refs/tags')
+        run: |
+          packer build -var "prefix=release-${GITHUB_REF_NAME//./-}" gcp-sev.pkr.hcl  
+
+  
+  cleanup:
+    needs:
+      - deploy-sev-cosmian-vm-image
+    uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
+    secrets: inherit
