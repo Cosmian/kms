@@ -110,28 +110,38 @@ source "googlecompute" "redhat" {
 build {
   sources = ["sources.googlecompute.ubuntu"]
 
+  provisioner "file" {
+    source      = "../scripts/install_kms_ubuntu.sh"
+    destination = "/tmp/install_kms_ubuntu.sh"
+  }
+
   provisioner "shell" {
     inline = [
-      "chmod +x ../scripts/install_kms_ubuntu.sh",
+      "chmod +x /tmp/install_kms_ubuntu.sh",
       "sudo -E /bin/bash '{{.Path}}'"
     ]    
   }
 
   provisioner "shell" {
-    script      = "../scripts/install_kms_ubuntu.sh"   
+    script      = "/tmp/install_kms_ubuntu.sh"   
   }
 }
 
 build {
   sources = ["sources.googlecompute.redhat"]
 
+  provisioner "file" {
+    source      = "../scripts/install_kms_redhat.sh"
+    destination = "/tmp/install_kms_redhat.sh"
+  }
+
   provisioner "shell" {
     inline = [
-      "chmod +x ../scripts/install_kms_redhat.sh",
+      "chmod +x /tmp/install_kms_redhat.sh",
       "sudo -E /bin/bash '{{.Path}}'"
     ]       
   }
-    provisioner "shell" {
-      script      = "../scripts/install_kms_redhat.sh"
-}
+  provisioner "shell" {
+      script      = "/tmp/install_kms_redhat.sh"
+  }
 }
