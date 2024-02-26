@@ -109,8 +109,12 @@ source "googlecompute" "redhat" {
 
 build {
   sources = ["sources.googlecompute.ubuntu"]
-
+  
   provisioner "shell" {
+    inline = [
+      "chmod +x ../scripts/install_kms_ubuntu.sh",
+      "sudo -E /bin/bash '{{.Path}}'"
+    ]    
     script      = "../scripts/install_kms_ubuntu.sh"
   }
 }
@@ -119,6 +123,10 @@ build {
   sources = ["sources.googlecompute.redhat"]
 
   provisioner "shell" {
+    inline = [
+      "chmod +x ../scripts/install_kms_redhat.sh",
+      "sudo -E /bin/bash '{{.Path}}'"
+    ]    
     script      = "../scripts/install_kms_redhat.sh"
   }
 }
