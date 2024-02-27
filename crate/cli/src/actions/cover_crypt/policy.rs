@@ -4,7 +4,7 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
+use cloudproof::reexport::cover_crypt::abe_policy::Policy;
 use cosmian_kmip::{
     crypto::cover_crypt::attributes::policy_from_attributes,
     kmip::{
@@ -13,7 +13,6 @@ use cosmian_kmip::{
     },
 };
 use cosmian_kms_client::KmsRestClient;
-use serde::{Deserialize, Serialize};
 
 use crate::{
     actions::shared::utils::{
