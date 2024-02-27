@@ -1,7 +1,6 @@
 use clap::Parser;
-use cloudproof::reexport::cover_crypt::abe_policy::Attribute;
 use cosmian_kmip::crypto::cover_crypt::{
-    attributes::EditPolicyAction, kmip_requests::build_rekey_keypair_request,
+    attributes::RekeyEditAction, kmip_requests::build_rekey_keypair_request,
 };
 use cosmian_kms_client::KmsRestClient;
 
