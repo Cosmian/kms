@@ -25,9 +25,6 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  cargo-udeps:
-    uses: Cosmian/reusable_workflows/.github/workflows/cargo-udeps.yml@develop
-
   cargo-lint:
     uses: ./.github/workflows/clippy.yml
     with:
@@ -136,7 +133,6 @@ jobs:
     name: release
     needs:
       - cargo-audit
-      - cargo-udeps
       - cargo-lint
       - cargo-doc
       - build
