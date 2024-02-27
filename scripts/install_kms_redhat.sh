@@ -6,7 +6,7 @@ set +x
 yum update -y && yum install -y unzip
 
 # Download KMS zip file
-curl -o kms-redhat.zip https://package.cosmian.com/kms/4.12.0/redhat.zip
+curl -o kms-redhat.zip https://package.cosmian.com/kms/4.12.0/centos7.zip
 
 # Extract content and copy the executable
 unzip kms-redhat.zip && cp redhat/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms && rm -rf kms-redhat.zip redhat/
