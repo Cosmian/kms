@@ -2,14 +2,15 @@
 
 set +x
 
+
 # Update packages and install unzip
 yum update -y && yum install -y unzip
 
 # Download KMS zip file
-curl -o kms-redhat.zip https://package.cosmian.com/kms/4.12.0/centos7.zip
+curl -o kms-centos7.zip https://package.cosmian.com/kms/4.12.0/centos7.zip
 
 # Extract content and copy the executable
-unzip kms-redhat.zip && cp kms-redhat/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms && rm -rf kms-redhat.zip kms-redhat/
+unzip kms-centos7.zip && cp centos7/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms && rm -rf centos7.zip centos7/
 
 # Configure Supervisor
 cat > /etc/supervisord.d/cosmian_kms.ini <<EOF
