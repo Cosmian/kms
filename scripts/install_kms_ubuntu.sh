@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set +x
+
 export DEBIAN_FRONTEND=noninteractive
 
 # Update packages and install unzip

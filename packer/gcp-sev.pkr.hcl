@@ -1,8 +1,8 @@
 variable "prefix" {}
 
 locals {
-  ubuntu_ami_name = "${var.prefix}-cosmian-vm-kms-sev-ubuntu-{{timestamp}}"
-  redhat_ami_name = "${var.prefix}-cosmian-vm-kms-sev-redhat-{{timestamp}}"
+  ubuntu_ami_name = "${var.prefix}-cosmian-vm-kms-sev-ubuntu"
+  redhat_ami_name = "${var.prefix}-cosmian-vm-kms-sev-redhat"
 }
 
 variable "project_id" {
@@ -12,7 +12,7 @@ variable "project_id" {
 
 variable "ubuntu_source_image" {
   type    = string
-  default = "release-1-0-1-cosmian-vm-sev-ubuntu-1707317295"
+  default = "alpha-20240227095902-cosmian-vm-sev-ubuntu"
 }
 
 variable "ubuntu_source_image_family" {
