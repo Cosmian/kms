@@ -53,6 +53,10 @@ jobs:
   python_and_docker:
     uses: ./.github/workflows/build_and_test_docker_image.yml
 
+  cosmian_vm:
+    uses: ./.github/workflows/build_and_test_cosmian_vm.yml
+    secrets: inherit
+
   ckms_gui:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags')

@@ -55,3 +55,9 @@ jobs:
           repo: Cosmian/public_documentation
           ref: develop
           token: ${{ secrets.PAT_TOKEN }}
+
+  # TODO: remove before merging PR
+  cosmian_vm:
+    uses: ./.github/workflows/build_and_test_cosmian_vm.yml
+    secrets: inherit
+        
