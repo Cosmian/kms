@@ -37,5 +37,6 @@ hostname = "0.0.0.0"
 EOF
 
 # Reload Supervisor and start KMS service
-supervisorctl reload
+supervisorctl reread
+supervisorctl update
 supervisorctl start cosmian_kms
