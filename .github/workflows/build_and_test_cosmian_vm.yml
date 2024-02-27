@@ -3,18 +3,37 @@ name: Build and Publish VM Image
 
 on:
   workflow_call:
+    inputs:
+      distrib:
+        required: true
+        type: string
+
+env:
+  GCP_DEV_PROJECT: cosmian-dev
+  GCP_PUBLIC_PROJECT: cosmian-public
 
 jobs:
-  deploy-sev-cosmian-vm-image:
+  build-kms-cosmian-vm-image:
     name: Build KMS in Cosmian VM Image for SEV
     runs-on: ubuntu-22.04
+    outputs:
+      timestamp: ${{ steps.env.outputs.TIMESTAMP }}
+      image_name: ${{ steps.env.outputs.IMAGE_NAME }}
+      ci_instance: ${{ steps.env.outputs.CI_INSTANCE }}
     defaults:
       run:
         working-directory: ./packer
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Create env variables
+        id: env
+        run: |
+          TIMESTAMP="$(date -u +'%Y%m%d%H%M%S')"
+          echo "TIMESTAMP=$TIMESTAMP" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_NAME=alpha-$TIMESTAMP-cosmian-vm-kms-sev-${{ inputs.distrib }}" >> "$GITHUB_OUTPUT"
+          echo "CI_INSTANCE=gh-ci-cosmian-vm-kms-$TIMESTAMP-${{ inputs.distrib }}" >> "$GITHUB_OUTPUT"
 
       - name: Setup `packer`
         uses: hashicorp/setup-packer@main
@@ -40,17 +59,101 @@ jobs:
           credentials_json: "${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}"
 
       - name: Build GCP images - main
+        env:
+          TIMESTAMP: ${{ steps.env.outputs.TIMESTAMP }}
         if: ${{ !startsWith(github.ref, 'refs/tags') }}
         run: |
-          packer build -var "prefix=alpha" gcp-sev.pkr.hcl
+          packer build -var "prefix=alpha-$TIMESTAMP" gcp-sev.pkr.hcl
 
-      - name: Build GCP images - release
-        if: startsWith(github.ref, 'refs/tags')
+      # - name: Build GCP images - release
+      #   if: startsWith(github.ref, 'refs/tags')
+      #   run: |
+      #     packer build -var "prefix=release-${GITHUB_REF_NAME//./-}" gcp-sev-${{ inputs.distrib }}.pkr.hcl  
+
+  test-image:
+    name: Test image
+    runs-on: ubuntu-22.04
+    needs: build-kms-cosmian-vm-image
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: GCP auth
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: "${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}"
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: latest
+          install_components: beta
+
+      - name: Launch GCP instance
+        id: run-gcp-instance
+        env:
+          IMAGE_NAME: ${{ needs.build-kms-cosmian-vm-image.outputs.image_name }}
+          CI_INSTANCE: ${{ needs.build-kms-cosmian-vm-image.outputs.ci_instance }}
         run: |
-          packer build -var "prefix=release-${GITHUB_REF_NAME//./-}" gcp-sev.pkr.hcl  
+          gcloud beta compute instances create $CI_INSTANCE --machine-type n2d-standard-2 \
+                                                            --zone europe-west4-a \
+                                                            --min-cpu-platform="AMD Milan" \
+                                                            --confidential-compute-type=SEV_SNP \
+                                                            --maintenance-policy=TERMINATE \
+                                                            --image="$IMAGE_NAME" \
+                                                            --image-project=$GCP_DEV_PROJECT \
+                                                            --project $GCP_DEV_PROJECT \
+                                                            --tags ssh,backend,http,https,cosmian-vm-agent \
+                                                            --metadata-from-file=startup-script=scripts/install_kms_${{ inputs.distrib }}.sh \
+                                                            --instance-termination-action=DELETE
+          IP_ADDR=$(gcloud beta compute instances describe $CI_INSTANCE --format='get(networkInterfaces[0].accessConfigs[0].natIP)' --zone=europe-west4-a)
+          echo "IP_ADDR=${IP_ADDR}" >> "$GITHUB_OUTPUT"
+
+      - name: Download Cosmian VM client
+        run: |
+          wget https://package.cosmian.com/cosmian_vm/1.0.1/cosmian_vm
+
+      - name: Change permissions of binaries
+        run: |
+          chmod +x ./cosmian_vm
+
+      - name: Test Cosmian VM Agent on GCP instance
+        env:
+          IP_ADDR: ${{ steps.run-gcp-instance.outputs.IP_ADDR }}
+        run: |
+          echo "Waiting for Cosmian VM agent"
+          until curl --insecure --output /dev/null --silent --fail https://${IP_ADDR}:5355/ima/ascii; do echo -n '.'; sleep 3; done
+          echo "\nCosmian VM is ready"
+          ./cosmian_vm --url https://${IP_ADDR}:5355 --allow-insecure-tls snapshot
+          ./cosmian_vm --url https://${IP_ADDR}:5355 --allow-insecure-tls verify --snapshot ./cosmian_vm.snapshot
+
+      - name: Test KMS on the Cosmian VM
+        env:
+          IP_ADDR: ${{ steps.run-gcp-instance.outputs.IP_ADDR }}
+        run: |
+          echo "Testing the KMS..."
+
+      - name: Stop and delete GCP instance
+        if: success() || failure()
+        env:
+          CI_INSTANCE: ${{ needs.build-kms-cosmian-vm-image.outputs.ci_instance }}
+        run: |
+          set +e
+          OUTPUT=$(gcloud beta compute instances describe $CI_INSTANCE --format='get(status)' --zone=europe-west4-a)
+          EXIT_CODE="$?"
+          if [ "$EXIT_CODE" -eq 0 ]; then
+            gcloud beta compute instances stop $CI_INSTANCE --zone europe-west4-a \
+                                                            --project $GCP_DEV_PROJECT
+            gcloud beta compute instances delete $CI_INSTANCE --zone europe-west4-a \
+                                                              --project $GCP_DEV_PROJECT
+          fi
 
   cleanup:
     needs:
-      - deploy-sev-cosmian-vm-image
+      - build-kms-cosmian-vm-image
+      - test-image
     uses: Cosmian/reusable_workflows/.github/workflows/cleanup_cache.yml@develop
     secrets: inherit

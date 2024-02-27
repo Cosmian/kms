@@ -55,7 +55,13 @@ jobs:
 
   cosmian_vm:
     uses: ./.github/workflows/build_and_test_cosmian_vm.yml
+    strategy:
+      matrix:
+        distrib: [ubuntu] #, rhel]
+    name: GCP KMS Cosmian VM image (${{ matrix.distrib }})
     secrets: inherit
+    with:
+      distrib: ${{ matrix.distrib }}
 
   ckms_gui:
     runs-on: ubuntu-latest
@@ -148,6 +154,7 @@ jobs:
       - cargo-doc
       - build
       - python_and_docker
+      - cosmian_vm
       - clean_env_test
     runs-on: [self-hosted, not-sgx]
     env:
