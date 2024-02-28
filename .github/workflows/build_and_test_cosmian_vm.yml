@@ -20,6 +20,9 @@ jobs:
       timestamp: ${{ steps.env.outputs.TIMESTAMP }}
       image_name: ${{ steps.env.outputs.IMAGE_NAME }}
       ci_instance: ${{ steps.env.outputs.CI_INSTANCE }}
+    permissions:
+      contents: 'read'
+      id-token: 'write'
     defaults:
       run:
         working-directory: ./packer
