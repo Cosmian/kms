@@ -49,15 +49,15 @@ jobs:
           packer plugins install github.com/hashicorp/amazon
           packer plugins install github.com/hashicorp/googlecompute
 
-      - name: Authenticate to AWS project
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-west-1
+      # - name: Authenticate to AWS project
+      #   uses: aws-actions/configure-aws-credentials@v1
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-region: eu-west-1
 
       - name: Authenticate to Google Cloud project
-        uses: "google-github-actions/auth@v1"
+        uses: "google-github-actions/auth@v2"
         with:
           credentials_json: "${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}"
 
@@ -85,7 +85,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: GCP auth
-        uses: google-github-actions/auth@v1
+        uses: google-github-actions/auth@v2
         with:
           credentials_json: "${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}"
 
@@ -110,8 +110,7 @@ jobs:
                                                             --image-project=$GCP_DEV_PROJECT \
                                                             --project $GCP_DEV_PROJECT \
                                                             --tags ssh-full,backend,http-server,https-server,cosmian-vm-agent \
-                                                            --metadata-from-file=startup-script=scripts/install_kms_${{ inputs.distrib }}.sh \
-                                                            --max-run-duration=380m \
+                                                            --max-run-duration=20d \
                                                             --instance-termination-action=DELETE
           IP_ADDR=$(gcloud beta compute instances describe $CI_INSTANCE --format='get(networkInterfaces[0].accessConfigs[0].natIP)' --zone=europe-west4-a)
           echo "IP_ADDR=${IP_ADDR}" >> "$GITHUB_OUTPUT"
