@@ -1,7 +1,6 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use predicates::prelude::*;
 use tempfile::TempDir;
 
 use crate::{
@@ -44,11 +43,13 @@ pub fn encrypt(
         args.push(authentication_data);
     }
     cmd.arg(SUB_COMMAND).args(args);
-    recover_cmd_logs(&mut cmd);
-    cmd.assert().success().stdout(predicate::str::contains(
-        "The encrypted file is available at",
-    ));
-    Ok(())
+    let output = recover_cmd_logs(&mut cmd);
+    if output.status.success() {
+        return Ok(())
+    }
+    Err(CliError::Default(
+        std::str::from_utf8(&output.stderr)?.to_owned(),
+    ))
 }
 
 /// Decrypt a file using the given private key

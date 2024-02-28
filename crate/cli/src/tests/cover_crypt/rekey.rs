@@ -66,10 +66,6 @@ pub async fn prune(
     ];
     cmd.arg(SUB_COMMAND).args(args);
     let output = recover_cmd_logs(&mut cmd);
-    println!(
-        "DEBUG prune: {}",
-        std::str::from_utf8(&output.stdout).unwrap()
-    );
     if output.status.success() && std::str::from_utf8(&output.stdout)?.contains("were pruned") {
         return Ok(())
     }
@@ -148,7 +144,7 @@ async fn test_rekey_error() -> Result<(), CliError> {
         false,
         true,
     )?;
-    // Rotate is not allowed for wrapped keys
+    // Rekeying wrapped keys is not allowed
     assert!(
         rekey(
             &ctx.owner_cli_conf_path,
@@ -227,7 +223,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
     )
     .await?;
 
-    // encrypt again after the rotation
+    // encrypt again after rekeying
     encrypt(
         &ctx.owner_cli_conf_path,
         &[input_file.to_str().unwrap()],
