@@ -59,6 +59,7 @@ pub async fn test_app()
     );
 
     // --max-run-duration=10m \
+    // --instance-termination-action=DELETE
     test::init_service(
         App::new()
             .app_data(Data::new(kms_server.clone()))
