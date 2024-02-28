@@ -2,7 +2,6 @@ pub(crate) mod decrypt;
 pub(crate) mod encrypt;
 pub(crate) mod keys;
 pub(crate) mod policy;
-pub(crate) mod rekey;
 
 use clap::Parser;
 use cosmian_kms_client::KmsRestClient;
@@ -10,7 +9,6 @@ use cosmian_kms_client::KmsRestClient;
 use crate::{
     actions::cover_crypt::{
         decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands, policy::PolicyCommands,
-        rekey::RekeyAction,
     },
     error::CliError,
 };
@@ -22,7 +20,6 @@ pub enum CovercryptCommands {
     Keys(KeysCommands),
     #[command(subcommand)]
     Policy(PolicyCommands),
-    Rekey(RekeyAction),
     Encrypt(EncryptAction),
     Decrypt(DecryptAction),
 }
@@ -32,7 +29,7 @@ impl CovercryptCommands {
         match self {
             Self::Policy(command) => command.process(kms_rest_client).await?,
             Self::Keys(command) => command.process(kms_rest_client).await?,
-            Self::Rekey(action) => action.run(kms_rest_client).await?,
+            //Self::Rekey(action) => action.run(kms_rest_client).await?,
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
             Self::Decrypt(action) => action.run(kms_rest_client).await?,
         };

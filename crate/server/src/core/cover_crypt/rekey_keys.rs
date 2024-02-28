@@ -196,12 +196,6 @@ async fn update_user_secret_keys(
     )
     .await?;
 
-    // TODO: bug when getting the updated master private key
-    /* let _ = kmip_server
-    .get(Get::from(master_private_key_uid), owner, params)
-    .await?
-    .object; */
-
     // Refresh the User Decryption Key that were found
     if let Some(unique_identifiers) = &locate_response {
         //instantiate a CoverCrypt User Key Handler
