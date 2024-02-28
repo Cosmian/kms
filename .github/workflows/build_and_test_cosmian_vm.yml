@@ -107,7 +107,7 @@ jobs:
                                                             --confidential-compute-type=SEV_SNP \
                                                             --maintenance-policy=TERMINATE \
                                                             --image="$IMAGE_NAME" \
-                                                            --image-project=$GCP_DEV_PROJECT \
+                                                            --image-project=$GCP_PUBLIC_PROJECT \
                                                             --project $GCP_DEV_PROJECT \
                                                             --tags ssh-full,backend,http-server,https-server,cosmian-vm-agent \
                                                             --max-run-duration=20d \
