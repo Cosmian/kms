@@ -4,9 +4,12 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use cloudproof::reexport::cover_crypt::abe_policy::Policy;
+use cloudproof::reexport::cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy};
 use cosmian_kmip::{
-    crypto::cover_crypt::attributes::policy_from_attributes,
+    crypto::cover_crypt::{
+        attributes::{policy_from_attributes, RekeyEditAction},
+        kmip_requests::build_rekey_keypair_request,
+    },
     kmip::{
         kmip_objects::Object,
         ttlv::{deserializer::from_ttlv, TTLV},
@@ -50,6 +53,10 @@ pub enum PolicyCommands {
     Specs(SpecsAction),
     Binary(BinaryAction),
     Create(CreateAction),
+    AddAttribute(AddAttributeAction),
+    RemoveAttribute(RemoveAttributeAction),
+    DisableAttribute(DisableAttributeAction),
+    RenameAttribute(RenameAttributeAction),
 }
 
 impl PolicyCommands {
@@ -59,6 +66,10 @@ impl PolicyCommands {
             Self::Specs(action) => action.run(kms_rest_client).await?,
             Self::Binary(action) => action.run(kms_rest_client).await?,
             Self::Create(action) => action.run().await?,
+            Self::AddAttribute(action) => action.run(kms_rest_client).await?,
+            Self::RemoveAttribute(action) => action.run(kms_rest_client).await?,
+            Self::DisableAttribute(action) => action.run(kms_rest_client).await?,
+            Self::RenameAttribute(action) => action.run(kms_rest_client).await?,
         };
 
         Ok(())
@@ -275,6 +286,237 @@ impl ViewAction {
             serde_json::to_string_pretty(&specs)?
         };
         println!("{json}");
+        Ok(())
+    }
+}
+
+/// Add an attribute to the policy of an existing private master key.
+///
+///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
+#[derive(Parser)]
+#[clap(verbatim_doc_comment)]
+pub struct AddAttributeAction {
+    /// The name of the attribute to create.
+    /// Example: `department::rd`
+    #[clap(required = true)]
+    attribute: String,
+
+    /// Encryption hint for the new attribute
+    #[clap(
+        long,
+        default_missing_value("true"),
+        default_value("false"),
+        num_args(0..=1),
+        require_equals(true),
+        action = clap::ArgAction::Set,
+    )]
+    hybridized: bool,
+
+    /// The private master key unique identifier stored in the KMS
+    /// If not specified, tags should be specified
+    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    secret_key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
+}
+impl AddAttributeAction {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+        let id = if let Some(key_id) = &self.secret_key_id {
+            key_id.clone()
+        } else if let Some(tags) = &self.tags {
+            serde_json::to_string(&tags)?
+        } else {
+            cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
+        let attr = Attribute::try_from(self.attribute.as_str())?;
+        let enc_hint = EncryptionHint::new(self.hybridized);
+
+        // Create the kmip query
+        let rekey_query = build_rekey_keypair_request(
+            &id,
+            RekeyEditAction::AddAttribute(vec![(attr, enc_hint)]),
+        )?;
+
+        // Query the KMS with your kmip data
+        let rekey_response = kms_rest_client
+            .rekey_keypair(rekey_query)
+            .await
+            .with_context(|| "failed adding an attribute to the master keys")?;
+
+        println!(
+            "New attribute {} was successfully added to the master private key {} and master \
+             public key {}.",
+            &self.attribute,
+            &rekey_response.private_key_unique_identifier,
+            &rekey_response.public_key_unique_identifier,
+        );
+        Ok(())
+    }
+}
+
+/// Rename an attribute in the policy of an existing private master key.
+///
+///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
+#[derive(Parser)]
+#[clap(verbatim_doc_comment)]
+pub struct RenameAttributeAction {
+    /// The name of the attribute to rename.
+    /// Example: `department::mkg`
+    #[clap(required = true)]
+    attribute: String,
+
+    /// the new name for the attribute
+    /// Example: `marketing`
+    #[clap(required = true)]
+    new_name: String,
+
+    /// The private master key unique identifier stored in the KMS
+    /// If not specified, tags should be specified
+    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    secret_key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
+}
+impl RenameAttributeAction {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+        let id = if let Some(key_id) = &self.secret_key_id {
+            key_id.clone()
+        } else if let Some(tags) = &self.tags {
+            serde_json::to_string(&tags)?
+        } else {
+            cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
+        let attr = Attribute::try_from(self.attribute.as_str())?;
+
+        // Create the kmip query
+        let rekey_query = build_rekey_keypair_request(
+            &id,
+            RekeyEditAction::RenameAttribute(vec![(attr, self.new_name.clone())]),
+        )?;
+
+        // Query the KMS with your kmip data
+        kms_rest_client
+            .rekey_keypair(rekey_query)
+            .await
+            .with_context(|| "failed renaming an attribute in the master keys' policy")?;
+
+        println!(
+            "Attribute {} was successfully renamed to {}.",
+            &self.attribute, &self.new_name
+        );
+        Ok(())
+    }
+}
+
+/// Disable an attribute from the policy of an existing private master key.
+///
+///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
+#[derive(Parser)]
+#[clap(verbatim_doc_comment)]
+pub struct DisableAttributeAction {
+    /// The name of the attribute to disable.
+    /// Example: `department::hr`
+    #[clap(required = true)]
+    attribute: String,
+
+    /// The private master key unique identifier stored in the KMS
+    /// If not specified, tags should be specified
+    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    secret_key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
+}
+impl DisableAttributeAction {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+        let id = if let Some(key_id) = &self.secret_key_id {
+            key_id.clone()
+        } else if let Some(tags) = &self.tags {
+            serde_json::to_string(&tags)?
+        } else {
+            cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
+        let attr = Attribute::try_from(self.attribute.as_str())?;
+
+        // Create the kmip query
+        let rekey_query =
+            build_rekey_keypair_request(&id, RekeyEditAction::DisableAttribute(vec![attr]))?;
+
+        // Query the KMS with your kmip data
+        let rekey_response = kms_rest_client
+            .rekey_keypair(rekey_query)
+            .await
+            .with_context(|| "failed disabling an attribute from the master keys")?;
+
+        println!(
+            "Attribute {} was successfully disabled from the master public key {}.",
+            &self.attribute, &rekey_response.public_key_unique_identifier,
+        );
+        Ok(())
+    }
+}
+
+/// Remove an attribute from the policy of an existing private master key.
+///
+///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
+#[derive(Parser)]
+#[clap(verbatim_doc_comment)]
+pub struct RemoveAttributeAction {
+    /// The name of the attribute to remove.
+    /// Example: `department::hr`
+    #[clap(required = true)]
+    attribute: String,
+
+    /// The private master key unique identifier stored in the KMS
+    /// If not specified, tags should be specified
+    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    secret_key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
+}
+impl RemoveAttributeAction {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+        let id = if let Some(key_id) = &self.secret_key_id {
+            key_id.clone()
+        } else if let Some(tags) = &self.tags {
+            serde_json::to_string(&tags)?
+        } else {
+            cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
+        let attr = Attribute::try_from(self.attribute.as_str())?;
+
+        // Create the kmip query
+        let rekey_query =
+            build_rekey_keypair_request(&id, RekeyEditAction::RemoveAttribute(vec![attr]))?;
+
+        // Query the KMS with your kmip data
+        let rekey_response = kms_rest_client
+            .rekey_keypair(rekey_query)
+            .await
+            .with_context(|| "failed removing an attribute from the master keys")?;
+
+        println!(
+            "Attribute {} was successfully removed from the master private key {} and master \
+             public key {}.",
+            &self.attribute,
+            &rekey_response.private_key_unique_identifier,
+            &rekey_response.public_key_unique_identifier,
+        );
         Ok(())
     }
 }
