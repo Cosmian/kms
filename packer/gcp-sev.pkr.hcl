@@ -7,7 +7,7 @@ locals {
 
 variable "project_id" {
   type    = string
-  default = "cosmian-public"
+  default = "cosmian-dev"
 }
 
 variable "ubuntu_source_image" {
@@ -124,7 +124,7 @@ build {
   provisioner "shell" {
     inline = [
       "chmod +x /tmp/install_kms_ubuntu.sh",
-//      "sudo /tmp/install_kms_ubuntu.sh"
+    //  "sudo /tmp/install_kms_ubuntu.sh"
     ]    
   }
 }
