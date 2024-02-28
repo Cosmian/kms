@@ -22,21 +22,23 @@ using confidential VMs and a fully application-level encrypted database.
     Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.12.0/).
 
 <!-- toc -->
-* [Business source](#business-source)
-* [KMIP 2.1 API](#kmip-21-api)
-* [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
-* [Supports Microsoft Double Key Encryption](#supports-microsoft-double-key-encryption)
-* [FIPS Mode](#fips-mode)
-* [State-of-the-art authentication](#state-of-the-art-authentication)
-* [High-availability and databases](#high-availability-and-databases)
-* [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-cloud-or-other-zero-trust-environments)
-* [Support for object tagging](#support-for-object-tagging)
-* [Command line interface client](#command-line-interface-client)
-* [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
-* [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
-* [Comprehensive inline help](#comprehensive-inline-help)
+
+- [Business source](#business-source)
+- [KMIP 2.1 API](#kmip-21-api)
+- [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
+- [Supports Microsoft Double Key Encryption](#supports-microsoft-double-key-encryption)
+- [FIPS Mode](#fips-mode)
+- [State-of-the-art authentication](#state-of-the-art-authentication)
+- [High-availability and databases](#high-availability-and-databases)
+- [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-cloud-or-other-zero-trust-environments)
+- [Support for object tagging](#support-for-object-tagging)
+- [Command line interface client](#command-line-interface-client)
+- [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
+- [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
+- [Comprehensive inline help](#comprehensive-inline-help)
   * [Options help](#options-help)
   * [Using a TOML configuration file](#using-a-toml-configuration-file)
+
 <!-- tocstop -->
 
 #### Business source
