@@ -124,7 +124,7 @@ build {
   provisioner "shell" {
     inline = [
       "chmod +x /tmp/install_kms_ubuntu.sh",
-      "sudo /tmp/install_kms_ubuntu.sh"
+//      "sudo /tmp/install_kms_ubuntu.sh"
     ]    
   }
 }
