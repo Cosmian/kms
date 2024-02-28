@@ -106,8 +106,9 @@ jobs:
                                                             --image="$IMAGE_NAME" \
                                                             --image-project=$GCP_DEV_PROJECT \
                                                             --project $GCP_DEV_PROJECT \
-                                                            --tags ssh,backend,http,https,cosmian-vm-agent \
+                                                            --tags ssh-full,backend,http-server,https-server,cosmian-vm-agent \
                                                             --metadata-from-file=startup-script=scripts/install_kms_${{ inputs.distrib }}.sh \
+                                                            --max-run-duration=380m \
                                                             --instance-termination-action=DELETE
           IP_ADDR=$(gcloud beta compute instances describe $CI_INSTANCE --format='get(networkInterfaces[0].accessConfigs[0].natIP)' --zone=europe-west4-a)
           echo "IP_ADDR=${IP_ADDR}" >> "$GITHUB_OUTPUT"
@@ -134,7 +135,9 @@ jobs:
         env:
           IP_ADDR: ${{ steps.run-gcp-instance.outputs.IP_ADDR }}
         run: |
-          echo "Testing the KMS..."
+          echo "Checking Cosmian KMS"
+          curl --insecure https://${IP_ADDR}:8080/version
+          echo "\nCosmian KMS is ready"
 
       - name: Stop and delete GCP instance
         if: success() || failure()

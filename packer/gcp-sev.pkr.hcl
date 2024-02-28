@@ -76,8 +76,8 @@ variable "wait_to_add_ssh_keys" {
 }
 
 variable "image_licenses" {
-  type    = string
-  default = "projects/cosmian-public/global/licenses/cloud-marketplace-710834cc6fa51b9c-df1ebeb69c0ba664"
+  type    = list(string)
+  default = ["projects/cosmian-public/global/licenses/cloud-marketplace-710834cc6fa51b9c-df1ebeb69c0ba664"]
 }
 
 source "googlecompute" "ubuntu" {
