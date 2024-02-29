@@ -110,6 +110,7 @@ jobs:
                                                             --image-project=$GCP_DEV_PROJECT \
                                                             --project $GCP_DEV_PROJECT \
                                                             --tags ssh-full,backend,http-server,https-server,cosmian-vm-agent \
+                                                            --metadata-from-file=startup-script=scripts/gcp-start.sh \
                                                             --max-run-duration=20d \
                                                             --instance-termination-action=DELETE
           IP_ADDR=$(gcloud beta compute instances describe $CI_INSTANCE --format='get(networkInterfaces[0].accessConfigs[0].natIP)' --zone=europe-west4-a)
@@ -127,9 +128,9 @@ jobs:
         env:
           IP_ADDR: ${{ steps.run-gcp-instance.outputs.IP_ADDR }}
         run: |
-          echo "Waiting for Cosmian VM agent"
-          until curl --insecure --output /dev/null --silent --fail https://${IP_ADDR}:5355/ima/ascii; do echo -n '.'; sleep 3; done
-          echo "\nCosmian VM is ready"
+          echo "Waiting for Cosmian VM agent..."
+          until curl --insecure --output /dev/null --silent --fail https://${IP_ADDR}:5355/ima/ascii; do sleep 3; done
+          echo "[ OK ] Cosmian VM ready"
           ./cosmian_vm --url https://${IP_ADDR}:5355 --allow-insecure-tls snapshot
           ./cosmian_vm --url https://${IP_ADDR}:5355 --allow-insecure-tls verify --snapshot ./cosmian_vm.snapshot
 
@@ -137,9 +138,9 @@ jobs:
         env:
           IP_ADDR: ${{ steps.run-gcp-instance.outputs.IP_ADDR }}
         run: |
-          echo "Checking Cosmian KMS"
-          curl --insecure https://${IP_ADDR}:8080/version
-          echo "\nCosmian KMS is ready"
+          echo "Checking Cosmian KMS..."
+          curl http://${IP_ADDR}:8080/version
+          echo "\n[ OK ] Cosmian KMS ready"
 
       - name: Stop and delete GCP instance
         if: success() || failure()
