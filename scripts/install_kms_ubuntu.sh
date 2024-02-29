@@ -4,6 +4,9 @@ set +x
 
 export DEBIAN_FRONTEND=noninteractive
 
+systemctl stop supervisor
+systemctl disable supervisor
+
 # Update packages and install unzip
 apt-get update && apt-get install -y unzip
 
@@ -37,11 +40,10 @@ port = 8080
 hostname = "0.0.0.0"
 EOF
 
+systemctl start ssh
 systemctl enable supervisor
-systemctl enable ssh
 
 # Reload Supervisor and start KMS service
-supervisorctl reread
-supervisorctl update
-supervisorctl start cosmian_kms
-supervisorctl start cosmian_vm_agent
+# supervisorctl reread
+# supervisorctl update
+# supervisorctl enable cosmian_kms
