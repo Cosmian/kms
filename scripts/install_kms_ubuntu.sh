@@ -44,3 +44,4 @@ systemctl enable ssh
 supervisorctl reread
 supervisorctl update
 supervisorctl start cosmian_kms
+supervisorctl start cosmian_vm_agent
