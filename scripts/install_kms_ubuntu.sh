@@ -42,8 +42,3 @@ EOF
 
 systemctl start ssh
 systemctl enable supervisor
-
-# Reload Supervisor and start KMS service
-# supervisorctl reread
-# supervisorctl update
-# supervisorctl enable cosmian_kms
