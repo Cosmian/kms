@@ -37,7 +37,7 @@ port = 8080
 hostname = "0.0.0.0"
 EOF
 
-systemctl enable supervisord
+systemctl enable supervisor
 systemctl enable ssh
 
 # Reload Supervisor and start KMS service
