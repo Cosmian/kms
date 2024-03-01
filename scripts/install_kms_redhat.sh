@@ -7,10 +7,10 @@ set +x
 yum update -y && yum install -y unzip nginx
 
 # Download KMS zip file
-curl -o kms-centos7.zip https://package.cosmian.com/kms/4.12.0/centos7.zip
+curl -o kms-rhel9.zip https://package.cosmian.com/kms/4.12.0/rhel9.zip
 
 # Extract content and copy the executable
-unzip kms-centos7.zip && cp centos7/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms && rm -rf centos7.zip centos7/
+unzip kms-rhel9.zip && cp rhel9/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms && rm -rf rhel9.zip rhel9/
 
 # Configure Supervisor
 cat > /etc/supervisord.d/cosmian_kms.ini <<EOF
