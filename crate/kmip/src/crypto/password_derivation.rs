@@ -14,14 +14,14 @@ use crate::kmip_bail;
 const FIPS_MIN_SALT_SIZE: usize = 16;
 #[cfg(feature = "fips")]
 /// Output size in bits of the hash function used in PBKDF2.
-const FIPS_HLEN_BITS: usize = 512;
+const FIPS_HLEN: usize = 512;
 #[cfg(feature = "fips")]
 /// Minimum key length in bits to be derived in FIPS mode.
 const FIPS_MIN_KLEN: usize = 112;
 #[cfg(feature = "fips")]
 /// Max key length in bits authorized is (2^32 - 1) x hLen.
 /// Source: NIST.FIPS.800-132 - Section 5.3.
-const FIPS_MAX_KLEN: usize = ((1 << 32) - 1) * FIPS_HLEN_BITS;
+const FIPS_MAX_KLEN: usize = ((1 << 32) - 1) * FIPS_HLEN;
 
 #[cfg(feature = "fips")]
 /// OWASP recommended parameter for SHA-512 chosen following NIST.FIPS.800-132
