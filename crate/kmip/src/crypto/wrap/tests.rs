@@ -7,8 +7,9 @@ use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 
 #[cfg(not(feature = "fips"))]
 use crate::kmip::{
-    kmip_data_structures::KeyWrappingSpecification, kmip_objects::Object,
-    kmip_types::EncodingOption,
+    kmip_data_structures::KeyWrappingSpecification,
+    kmip_objects::Object,
+    kmip_types::{CryptographicUsageMask, EncodingOption},
 };
 #[cfg(not(feature = "fips"))]
 use crate::{
@@ -34,6 +35,7 @@ use crate::{
 #[test]
 fn test_wrap_unwrap() -> Result<(), KmipError> {
     // the symmetric wrapping key
+
     let mut sym_wrapping_key_bytes = vec![0; 32];
     rand_bytes(&mut sym_wrapping_key_bytes).unwrap();
     let sym_wrapping_key = create_symmetric_key_kmip_object(
@@ -49,10 +51,27 @@ fn test_wrap_unwrap() -> Result<(), KmipError> {
         CryptographicAlgorithm::AES,
     );
 
-    let wrapping_key_pair =
-        create_x25519_key_pair("wrapping_private_key_uid", "wrapping_public_key_uid")?;
-    let mut key_pair_to_wrap =
-        create_x25519_key_pair("private_key_to_wrap_uid", "public_key_to_wrap_uid")?;
+    let algorithm = Some(CryptographicAlgorithm::EC);
+    let private_key_mask_wp = Some(CryptographicUsageMask::UnwrapKey);
+    let public_key_mask_wp = Some(CryptographicUsageMask::WrapKey);
+
+    let private_key_mask = Some(CryptographicUsageMask::Unrestricted);
+    let public_key_mask = Some(CryptographicUsageMask::Unrestricted);
+
+    let wrapping_key_pair = create_x25519_key_pair(
+        "wrapping_private_key_uid",
+        "wrapping_public_key_uid",
+        algorithm,
+        private_key_mask_wp,
+        public_key_mask_wp,
+    )?;
+    let mut key_pair_to_wrap = create_x25519_key_pair(
+        "private_key_to_wrap_uid",
+        "public_key_to_wrap_uid",
+        algorithm,
+        private_key_mask,
+        public_key_mask,
+    )?;
 
     // wrap the symmetric key with a symmetric key
     wrap_test(&sym_wrapping_key, &sym_wrapping_key, &mut sym_key_to_wrap)?;
@@ -154,7 +173,19 @@ fn test_encrypt_decrypt_rfc_5649() {
 #[test]
 #[cfg(not(feature = "fips"))]
 fn test_encrypt_decrypt_rfc_ecies_x25519() {
-    let wrap_key_pair = create_x25519_key_pair("sk_uid", "pk_uid").unwrap();
+    let algorithm = Some(CryptographicAlgorithm::EC);
+    let private_key_mask = Some(CryptographicUsageMask::Unrestricted);
+    let public_key_mask = Some(CryptographicUsageMask::Unrestricted);
+
+    let wrap_key_pair = create_x25519_key_pair(
+        "sk_uid",
+        "pk_uid",
+        algorithm,
+        private_key_mask,
+        public_key_mask,
+    )
+    .unwrap();
+
     let plaintext = b"plaintext";
     let ciphertext = wrap(
         wrap_key_pair.public_key(),

@@ -14,8 +14,9 @@ use cosmian_kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{ErrorReason, Import, Operation},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
-            ProtocolVersion, RecommendedCurve, ResultStatusEnumeration, UniqueIdentifier,
+            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, LinkType,
+            LinkedObjectIdentifier, ProtocolVersion, RecommendedCurve, ResultStatusEnumeration,
+            UniqueIdentifier,
         },
     },
 };
@@ -168,6 +169,8 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         CURVE_25519_Q_LENGTH_BITS as u32,
         sk_uid,
         RecommendedCurve::CURVE25519,
+        Some(CryptographicAlgorithm::ECDH),
+        Some(CryptographicUsageMask::Unrestricted),
     );
     let request = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
@@ -200,8 +203,6 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
 
 #[tokio::test]
 async fn test_curve_25519_multiple() -> KResult<()> {
-    // log_init("debug,hyper=info,reqwest=info");
-
     let clap_config = https_clap_config();
 
     let kms = Arc::new(KMSServer::instantiate(ServerParams::try_from(&clap_config).await?).await?);
