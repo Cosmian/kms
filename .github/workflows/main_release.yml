@@ -1,5 +1,5 @@
 ---
-name: CI release
+name: CI nightly release
 
 on:
   push:
@@ -78,6 +78,9 @@ jobs:
           - archive_name: centos7
             kms_path: .
             os: ubuntu-20.04
+          - archive_name: rhel9
+            kms_path: .
+            os: ubuntu-22.04
           - archive_name: fips_centos7
             kms_path: __w/kms/kms/target/release
             os: ubuntu-20.04
@@ -145,10 +148,10 @@ jobs:
       - ckms_gui
     runs-on: [self-hosted, not-sgx]
     env:
-      ARCHIVE_NAMES: centos7 fips_centos7 ubuntu_20_04 fips_ubuntu_20_04 ubuntu_22_04 macos windows kms_python_linux kms_python_macos kms_python_windows
+      ARCHIVE_NAMES: centos7 rhel9 fips_centos7 ubuntu_20_04 fips_ubuntu_20_04 ubuntu_22_04 macos windows kms_python_linux kms_python_macos kms_python_windows
 
     steps:
-      - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos centos7
+      - run: rm -rf kms_* fips_* python-* windows* ubuntu* macos centos7 rhel9
       - uses: actions/download-artifact@v3
       - run: find .
 
