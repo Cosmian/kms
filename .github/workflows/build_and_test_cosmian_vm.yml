@@ -138,9 +138,18 @@ jobs:
         env:
           IP_ADDR: ${{ steps.run-gcp-instance.outputs.IP_ADDR }}
         run: |
-          echo "Checking Cosmian KMS..."
+          echo "Checking Cosmian KMS HTTP connection..."
           curl http://${IP_ADDR}:8080/version
-          echo "\n[ OK ] Cosmian KMS ready"
+          echo ""
+          echo "[ OK ] Cosmian KMS HTTP connection"
+          echo "Checking Cosmian KMS HTTPS connection..."
+          curl --insecure https://${IP_ADDR}/version
+          echo ""
+          echo "[ OK ] Cosmian KMS HTTPS connection"
+          echo "Checking Cosmian KMS HTTP to HTTPS redirect connection..."
+          curl --insecure http://${IP_ADDR}/version
+          echo ""
+          echo "[ OK ] Cosmian KMS HTTP to HTTPS redirect connection"
 
       - name: Stop and delete GCP instance
         if: success() || failure()
