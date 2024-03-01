@@ -4,11 +4,8 @@ set +x
 
 export DEBIAN_FRONTEND=noninteractive
 
-systemctl stop supervisor
-systemctl disable supervisor
-
-# Update packages and install unzip
-apt-get update && apt-get install -y unzip nginx
+# Update packages and install dependencies
+apt-get update && apt-get install --no-install-recommends -y unzip nginx && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Download KMS zip file
 curl -o kms-ubuntu-22_04.zip https://package.cosmian.com/kms/4.12.0/ubuntu_22_04.zip
