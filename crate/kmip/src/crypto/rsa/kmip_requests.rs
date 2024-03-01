@@ -1,40 +1,75 @@
+#[cfg(feature = "fips")]
+use super::{FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK};
+#[cfg(not(feature = "fips"))]
+use crate::kmip::kmip_types::CryptographicUsageMask;
 use crate::{
     error::KmipError,
     kmip::{
         kmip_objects::ObjectType,
         kmip_operations::{CreateKeyPair, Get},
-        kmip_types::{
-            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType,
-            UniqueIdentifier,
-        },
+        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, UniqueIdentifier},
     },
 };
 
-/// Build a `CreateKeyPairRequest` for a RSA key pair
+/// Build a `CreateKeyPairRequest` for a RSA key pair.
 pub fn create_rsa_key_pair_request<T: IntoIterator<Item = impl AsRef<str>>>(
     tags: T,
     cryptographic_length: usize,
 ) -> Result<CreateKeyPair, KmipError> {
-    let mut attributes = Attributes {
-        cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
+    #[cfg(feature = "fips")]
+    let private_key_mask = FIPS_PRIVATE_RSA_MASK;
+    #[cfg(feature = "fips")]
+    let public_key_mask = FIPS_PUBLIC_RSA_MASK;
+
+    #[cfg(not(feature = "fips"))]
+    let private_key_mask = CryptographicUsageMask::Unrestricted;
+    #[cfg(not(feature = "fips"))]
+    let public_key_mask = CryptographicUsageMask::Unrestricted;
+
+    let algorithm = CryptographicAlgorithm::RSA;
+
+    let mut common_attributes = Attributes {
+        cryptographic_algorithm: Some(algorithm),
         cryptographic_length: Some(cryptographic_length as i32),
         cryptographic_domain_parameters: None,
         cryptographic_parameters: None,
-        cryptographic_usage_mask: Some(
-            CryptographicUsageMask::Encrypt
-                | CryptographicUsageMask::Decrypt
-                | CryptographicUsageMask::WrapKey
-                | CryptographicUsageMask::UnwrapKey
-                | CryptographicUsageMask::KeyAgreement,
-        ),
+        cryptographic_usage_mask: Some(private_key_mask | public_key_mask),
         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
         object_type: Some(ObjectType::PrivateKey),
         ..Attributes::default()
     };
-    // add the tags
-    attributes.set_tags(tags)?;
+
+    // Add the tags.
+    common_attributes.set_tags(tags)?;
+
+    // Differenciating private key and public key attributes to differenciate
+    // public key and private key usage masks on key creation.
+    let private_key_attributes = Attributes {
+        cryptographic_algorithm: Some(algorithm),
+        cryptographic_length: Some(cryptographic_length as i32),
+        cryptographic_domain_parameters: None,
+        cryptographic_parameters: None,
+        cryptographic_usage_mask: Some(private_key_mask),
+        key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
+        object_type: Some(ObjectType::PrivateKey),
+        ..Attributes::default()
+    };
+
+    let public_key_attributes = Attributes {
+        cryptographic_algorithm: Some(algorithm),
+        cryptographic_length: Some(cryptographic_length as i32),
+        cryptographic_domain_parameters: None,
+        cryptographic_parameters: None,
+        cryptographic_usage_mask: Some(public_key_mask),
+        key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
+        object_type: Some(ObjectType::PrivateKey),
+        ..Attributes::default()
+    };
+
     Ok(CreateKeyPair {
-        common_attributes: Some(attributes),
+        common_attributes: Some(common_attributes),
+        private_key_attributes: Some(private_key_attributes),
+        public_key_attributes: Some(public_key_attributes),
         ..CreateKeyPair::default()
     })
 }

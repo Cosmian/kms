@@ -75,7 +75,7 @@ pub fn ckm_rsa_aes_key_unwrap(
     let rsa_privkey = p_key.rsa()?;
 
     #[cfg(feature = "fips")]
-    if rsa_privkey.size() < FIPS_MIN_RSA_MODULUS_LENGTH {
+    if p_key.bits() < FIPS_MIN_RSA_MODULUS_LENGTH {
         kmip_bail!(
             "CKM_RSA_OAEP decryption error: RSA key has insufficient size: expected >= {} bytes \
              and got {} bytes",
