@@ -3,8 +3,8 @@
 set +x
 
 
-# Update packages and install unzip
-yum update -y && yum install -y unzip
+# Update packages and install dependencies
+yum update -y && yum install -y unzip nginx
 
 # Download KMS zip file
 curl -o kms-centos7.zip https://package.cosmian.com/kms/4.12.0/centos7.zip
