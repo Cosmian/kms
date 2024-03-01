@@ -111,7 +111,7 @@ jobs:
                                                             --project $GCP_DEV_PROJECT \
                                                             --tags ssh-full,backend,http-server,https-server,cosmian-vm-agent \
                                                             --metadata-from-file=startup-script=scripts/gcp-start.sh \
-                                                            --max-run-duration=20d \
+                                                            --max-run-duration=10m \
                                                             --instance-termination-action=DELETE
           IP_ADDR=$(gcloud beta compute instances describe $CI_INSTANCE --format='get(networkInterfaces[0].accessConfigs[0].natIP)' --zone=europe-west4-a)
           echo "IP_ADDR=${IP_ADDR}" >> "$GITHUB_OUTPUT"
