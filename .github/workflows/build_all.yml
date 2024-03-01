@@ -20,6 +20,17 @@ jobs:
         cargo test --workspace -- --nocapture
       artifacts: ''
 
+  rhel9-tests:
+    uses: ./.github/workflows/build_rhel9.yml
+    secrets: inherit
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      archive-name: rhel9_tests
+      commands: |
+        cargo build --bins
+        cargo test --workspace -- --nocapture
+      artifacts: ''
+
   fips-centos7-test:
     uses: ./.github/workflows/build_centos7.yml
     secrets: inherit

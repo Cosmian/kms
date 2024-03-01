@@ -25,6 +25,22 @@ jobs:
         target/release/ckms
         target/release/cosmian_kms_server
 
+  rhel9:
+    uses: ./.github/workflows/build_rhel9.yml
+    secrets: inherit
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      archive-name: rhel9
+      commands: |
+        cargo build --release --bins
+
+        # Check binaries
+        target/release/ckms -h
+        target/release/cosmian_kms_server -h
+      artifacts: |
+        target/release/ckms
+        target/release/cosmian_kms_server
+
   fips-centos7:
     uses: ./.github/workflows/build_centos7.yml
     secrets: inherit
