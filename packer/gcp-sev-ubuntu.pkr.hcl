@@ -1,33 +1,8 @@
 variable "prefix" {}
 
-locals {
-  ubuntu_ami_name = "${var.prefix}-cosmian-vm-kms-sev-ubuntu"
-  redhat_ami_name = "${var.prefix}-cosmian-vm-kms-sev-redhat"
-}
-
 variable "project_id" {
   type    = string
   default = "cosmian-dev"
-}
-
-variable "ubuntu_source_image" {
-  type    = string
-  default = "cosmian-vm-1-1-0-rc-2-sev-ubuntu"
-}
-
-variable "ubuntu_source_image_family" {
-  type    = string
-  default = ""
-}
-
-variable "redhat_source_image" {
-  type    = string
-  default = "cosmian-vm-1-1-0-rc-2-sev-rehl"
-}
-
-variable "redhat_source_image_family" {
-  type    = string
-  default = ""
 }
 
 variable "zone" {
@@ -62,7 +37,7 @@ variable "subnetwork" {
 
 variable "tags" {
   type    = list(string)
-  default = ["ssh-full"]
+  default = ["ssh"]
 }
 
 variable "use_os_login" {
@@ -80,6 +55,20 @@ variable "image_licenses" {
   default = ["projects/cosmian-public/global/licenses/cloud-marketplace-710834cc6fa51b9c-df1ebeb69c0ba664"]
 }
 
+locals {
+  ubuntu_ami_name = "${var.prefix}-cosmian-vm-kms-sev-ubuntu"
+}
+
+variable "ubuntu_source_image" {
+  type    = string
+  default = "cosmian-vm-1-1-0-rc-2-sev-ubuntu"
+}
+
+variable "ubuntu_source_image_family" {
+  type    = string
+  default = ""
+}
+
 source "googlecompute" "ubuntu" {
   project_id             = var.project_id
   source_image           = var.ubuntu_source_image
@@ -94,24 +83,7 @@ source "googlecompute" "ubuntu" {
   tags                   = var.tags
   use_os_login           = var.use_os_login
   wait_to_add_ssh_keys   = var.wait_to_add_ssh_keys
-  image_licenses         = var.image_licenses
 }
-
-// source "googlecompute" "redhat" {
-//   project_id             = var.project_id
-//   source_image           = var.redhat_source_image
-//   source_image_family    = var.redhat_source_image_family
-//   zone                   = var.zone
-//   ssh_username           = var.ssh_username
-//   ssh_timeout            = var.ssh_timeout
-//   image_name             = local.redhat_ami_name
-//   image_guest_os_features = var.image_guest_os_features
-//   network                = var.network
-//   subnetwork             = var.subnetwork
-//   tags                   = var.tags
-//   use_os_login           = var.use_os_login
-//   wait_to_add_ssh_keys   = var.wait_to_add_ssh_keys
-// }
 
 build {
   sources = ["sources.googlecompute.ubuntu"]
@@ -128,19 +100,3 @@ build {
     ]    
   }
 }
-
-// build {
-//   sources = ["sources.googlecompute.redhat"]
-
-//   provisioner "file" {
-//     source      = "../scripts/install_kms_redhat.sh"
-//     destination = "/tmp/install_kms_redhat.sh"
-//   }
-
-//   provisioner "shell" {
-//     inline = [
-//       "chmod +x /tmp/install_kms_redhat.sh",
-//       "sudo /tmp/install_kms_redhat.sh"
-//     ]       
-//   }
-// }
