@@ -145,7 +145,6 @@ jobs:
       - build
       - python_and_docker
       - clean_env_test
-      - ckms_gui
     runs-on: [self-hosted, not-sgx]
     env:
       ARCHIVE_NAMES: centos7 rhel9 fips_centos7 ubuntu_20_04 fips_ubuntu_20_04 ubuntu_22_04 macos windows kms_python_linux kms_python_macos kms_python_windows
