@@ -15,7 +15,7 @@ unzip kms-rhel9.zip && cp rhel9/cosmian_kms_server /usr/local/sbin/cosmian_kms &
 # Configure Supervisor
 cat >/etc/supervisord.d/cosmian_kms.ini <<EOF
 [program:cosmian_kms]
-command=/usr/local/sbin/cosmian_kms
+command=cosmian_kms
 directory=/usr/local/sbin
 autostart=true
 autorestart=true
@@ -36,6 +36,41 @@ port = 8080
 hostname = "0.0.0.0"
 EOF
 
-# Reload Supervisor and start KMS service
-systemctl reload supervisord
-systemctl start cosmian_kms
+# Configure Nginx
+mv /etc/nginx/nginx.conf /etc/nginx/nginx.conf.orig
+cat >/etc/nginx/nginx.conf <<EOF
+server {
+        listen 80 default_server;
+        listen [::]:80 default_server;
+
+        root /var/www/html;
+        index index.html index.htm index.nginx-debian.html;
+
+        server_name _;
+
+        location / {
+                return 301 https://$host$request_uri;
+        }
+}
+
+server {
+        server_name _;
+        listen 443 ssl;
+
+        ssl_certificate /var/lib/cosmian_vm/data/cert.pem;
+        ssl_certificate_key /var/lib/cosmian_vm/data/key.pem;
+
+        location /.well-known/ {
+                root /var/www/html;
+                # Allow CORS calls: see https://support.google.com/a/answer/10743588?hl=en
+                add_header 'Access-Control-Allow-Origin' '*';
+        }
+
+        location / {
+                proxy_pass http://localhost:8080/;
+        }
+}
+EOF
+
+systemctl start sshd
+systemctl enable supervisord
