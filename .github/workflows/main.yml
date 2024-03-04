@@ -43,7 +43,7 @@ jobs:
     strategy:
       matrix:
         distrib: [ubuntu, rhel]
-    name: GCP KMS Cosmian VM image (${{ matrix.distrib }})
+    name: ${{ matrix.distrib }} -> GCP KMS Cosmian VM image
     secrets: inherit
     with:
       distrib: ${{ matrix.distrib }}
