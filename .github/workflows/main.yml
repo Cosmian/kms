@@ -42,15 +42,14 @@ jobs:
     uses: ./.github/workflows/build_and_test_docker_image.yml
 
   cosmian_vm:
-      uses: ./.github/workflows/build_and_test_cosmian_vm.yml
-      strategy:
-        matrix:
-          # for now, the KMS has no binary compatible with Redhat 9
-          distrib: [ubuntu] #, rhel]
-      name: GCP KMS Cosmian VM image (${{ matrix.distrib }})
-      secrets: inherit
-      with:
-        distrib: ${{ matrix.distrib }}
+    uses: ./.github/workflows/build_and_test_cosmian_vm.yml
+    strategy:
+      matrix:
+        distrib: [ubuntu, rhel]
+    name: GCP KMS Cosmian VM image (${{ matrix.distrib }})
+    secrets: inherit
+    with:
+      distrib: ${{ matrix.distrib }}
 
   public_documentation:
     runs-on: ubuntu-latest

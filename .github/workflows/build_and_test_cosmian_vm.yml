@@ -21,8 +21,8 @@ jobs:
       image_name: ${{ steps.env.outputs.IMAGE_NAME }}
       ci_instance: ${{ steps.env.outputs.CI_INSTANCE }}
     permissions:
-      contents: 'read'
-      id-token: 'write'
+      contents: read
+      id-token: write
     defaults:
       run:
         working-directory: ./packer
@@ -52,27 +52,27 @@ jobs:
       - name: Authenticate to Google Cloud project
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: "${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}"
+          credentials_json: ${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}
 
       - name: Build GCP images - main
         env:
           TIMESTAMP: ${{ steps.env.outputs.TIMESTAMP }}
-        if: !startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') != true
         run: |
           packer build -var "prefix=alpha-$TIMESTAMP" gcp-sev-${{ inputs.distrib }}.pkr.hcl
 
       # - name: Build GCP images - release
       #   if: startsWith(github.ref, 'refs/tags')
       #   run: |
-      #     packer build -var "prefix=release-${GITHUB_REF_NAME//./-}" gcp-sev-${{ inputs.distrib }}.pkr.hcl  
+      #     packer build -var "prefix=release-${GITHUB_REF_NAME//./-}" gcp-sev-${{ inputs.distrib }}.pkr.hcl
 
   test-image:
     name: Test image
     runs-on: ubuntu-22.04
     needs: build-kms-cosmian-vm-image
     permissions:
-      contents: 'read'
-      id-token: 'write'
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -80,7 +80,7 @@ jobs:
       - name: GCP auth
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: "${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}"
+          credentials_json: ${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}
 
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
