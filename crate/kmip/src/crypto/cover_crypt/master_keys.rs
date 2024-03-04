@@ -196,7 +196,7 @@ pub fn update_policy(policy: &mut Policy, action: &RekeyEditAction) -> Result<()
 }
 
 /// Update the master key with a new Policy
-/// (after editing the policy of some attributes typically)
+/// (after editing the policy typically)
 pub fn update_master_keys(
     cover_crypt: &Covercrypt,
     policy: &Policy,

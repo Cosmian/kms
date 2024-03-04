@@ -26,7 +26,7 @@ use crate::{
 /// - `PruneAccessPolicy`: Remove old keys associated to an access policy.
 /// - `RemoveAttribute`: Remove attributes from the policy.
 /// - `DisableAttribute`: Disable attributes in the policy.
-/// - `AddAttribute`: Add new attributes in the policy.
+/// - `AddAttribute`: Add new attributes to the policy.
 /// - `RenameAttribute`: Rename attributes in the policy.
 pub async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,

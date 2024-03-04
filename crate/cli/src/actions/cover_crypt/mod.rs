@@ -29,7 +29,6 @@ impl CovercryptCommands {
         match self {
             Self::Policy(command) => command.process(kms_rest_client).await?,
             Self::Keys(command) => command.process(kms_rest_client).await?,
-            //Self::Rekey(action) => action.run(kms_rest_client).await?,
             Self::Encrypt(action) => action.run(kms_rest_client).await?,
             Self::Decrypt(action) => action.run(kms_rest_client).await?,
         };
