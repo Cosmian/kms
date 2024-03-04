@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
 ### Ci
 
 - Add build on RHEL9 [#196](https://github.com/Cosmian/kms/pull/196).
+- Add build of GCP images (ubuntu/redhat) [#191](https://github.com/Cosmian/kms/pull/191).
 
 ### Bug fixes
 

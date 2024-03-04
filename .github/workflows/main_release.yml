@@ -57,8 +57,8 @@ jobs:
     uses: ./.github/workflows/build_and_test_cosmian_vm.yml
     strategy:
       matrix:
-        distrib: [ubuntu] #, rhel]
-    name: GCP KMS Cosmian VM image (${{ matrix.distrib }})
+        distrib: [ubuntu, rhel]
+    name: ${{ matrix.distrib }} -> GCP KMS Cosmian VM image
     secrets: inherit
     with:
       distrib: ${{ matrix.distrib }}
