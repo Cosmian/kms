@@ -38,7 +38,7 @@ hostname = "0.0.0.0"
 EOF
 
 # Configure Nginx
-cat >/etc/nginx/sites-enabled/default <<EOF
+cat >/etc/nginx/sites-enabled/default << 'EOF'
 server {
         listen 80 default_server;
         listen [::]:80 default_server;

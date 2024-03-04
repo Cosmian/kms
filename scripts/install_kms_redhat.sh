@@ -28,7 +28,7 @@ EOF
 mkdir /etc/cosmian_kms
 
 # Configure KMS server
-cat >/etc/cosmian_kms/server.toml <<EOF
+cat >/etc/cosmian_kms/server.toml << EOF
 default_username = "admin"
 
 [http]
@@ -38,39 +38,49 @@ EOF
 
 # Configure Nginx
 mv /etc/nginx/nginx.conf /etc/nginx/nginx.conf.orig
-cat >/etc/nginx/nginx.conf <<EOF
-server {
-        listen 80 default_server;
-        listen [::]:80 default_server;
-
-        root /var/www/html;
-        index index.html index.htm index.nginx-debian.html;
-
-        server_name _;
-
-        location / {
-                return 301 https://$host$request_uri;
-        }
+cat >/etc/nginx/nginx.conf << 'EOF'
+events {
+        worker_connections  1024;
 }
 
-server {
-        server_name _;
-        listen 443 ssl;
+http {
+        server {
+                listen 80 default_server;
+                listen [::]:80 default_server;
 
-        ssl_certificate /var/lib/cosmian_vm/data/cert.pem;
-        ssl_certificate_key /var/lib/cosmian_vm/data/key.pem;
-
-        location /.well-known/ {
                 root /var/www/html;
-                # Allow CORS calls: see https://support.google.com/a/answer/10743588?hl=en
-                add_header 'Access-Control-Allow-Origin' '*';
+                index index.html index.htm index.nginx-debian.html;
+
+                server_name _;
+
+                location / {
+                        return 301 https://$host$request_uri;
+                }
         }
 
-        location / {
-                proxy_pass http://localhost:8080/;
+        server {
+                server_name _;
+                listen 443 ssl;
+
+                ssl_certificate /var/lib/cosmian_vm/data/cert.pem;
+                ssl_certificate_key /var/lib/cosmian_vm/data/key.pem;
+
+                location /.well-known/ {
+                        root /var/www/html;
+                        # Allow CORS calls: see https://support.google.com/a/answer/10743588?hl=en
+                        add_header 'Access-Control-Allow-Origin' '*';
+                }
+
+                location / {
+                        proxy_pass http://localhost:8080/;
+                }
         }
 }
 EOF
+
+# setup default RHEL firewall
+firewall-cmd --zone=public --permanent --add-port={80/tcp,443/tcp,8080/tcp}
+firewall-cmd --reload
 
 systemctl start sshd
 systemctl enable supervisord
