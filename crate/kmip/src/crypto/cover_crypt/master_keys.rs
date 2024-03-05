@@ -189,11 +189,10 @@ pub fn covercrypt_keys_from_kmip_objects(
 pub fn kmip_objects_from_covercrypt_keys(
     policy: &Policy,
     msk: &MasterSecretKey,
-    master_private_key: &Object,
-    master_public_key_uid: &str,
     mpk: &MasterPublicKey,
-    master_private_key_uid: &str,
-) -> Result<(Object, Object), KmipError> {
+    msk_obj: (String, Object),
+    mpk_obj: (String, Object),
+) -> Result<((String, Object), (String, Object)), KmipError> {
     let updated_master_private_key_bytes = &msk.serialize().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Cryptographic_Failure,
@@ -203,8 +202,8 @@ pub fn kmip_objects_from_covercrypt_keys(
     let updated_master_private_key = create_master_private_key_object(
         updated_master_private_key_bytes,
         policy,
-        Some(master_private_key.attributes()?),
-        master_public_key_uid,
+        Some(msk_obj.1.attributes()?),
+        &mpk_obj.0,
     )?;
     let updated_master_public_key_bytes = &mpk.serialize().map_err(|e| {
         KmipError::KmipError(
@@ -215,9 +214,12 @@ pub fn kmip_objects_from_covercrypt_keys(
     let updated_master_public_key = create_master_public_key_object(
         updated_master_public_key_bytes,
         policy,
-        Some(master_private_key.attributes()?),
-        master_private_key_uid,
+        Some(msk_obj.1.attributes()?),
+        &msk_obj.0,
     )?;
 
-    Ok((updated_master_private_key, updated_master_public_key))
+    Ok((
+        (msk_obj.0, updated_master_private_key),
+        (mpk_obj.0, updated_master_public_key),
+    ))
 }
