@@ -81,7 +81,7 @@ pub async fn rekey_keypair(
 
     if Some(CryptographicAlgorithm::CoverCrypt) == attributes.cryptographic_algorithm {
         let action = rekey_edit_action_from_attributes(attributes)?;
-        rekey_keypair_cover_crypt(kms, Covercrypt::default(), &owm.id, user, action, params).await
+        rekey_keypair_cover_crypt(kms, Covercrypt::default(), owm.id, user, action, params).await
     } else if let Some(other) = attributes.cryptographic_algorithm {
         kms_bail!(KmsError::NotSupported(format!(
             "The rekey of a key pair for algorithm: {other:?} is not yet supported"

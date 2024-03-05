@@ -172,17 +172,6 @@ pub enum RekeyEditAction {
     RenameAttribute(Vec<(abe_policy::Attribute, String)>),
 }
 
-impl RekeyEditAction {
-    pub fn induce_user_keys_refreshing(&self) -> bool {
-        match self {
-            Self::RekeyAccessPolicy(_) | Self::PruneAccessPolicy(_) | Self::RemoveAttribute(_) => {
-                true
-            }
-            Self::DisableAttribute(_) | Self::AddAttribute(_) | Self::RenameAttribute(_) => false,
-        }
-    }
-}
-
 /// Convert an edit action to a vendor attribute
 pub fn rekey_edit_action_as_vendor_attribute(
     action: RekeyEditAction,

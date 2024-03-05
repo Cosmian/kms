@@ -1,8 +1,12 @@
-use cloudproof::reexport::cover_crypt::{abe_policy::Policy, Covercrypt};
+use cloudproof::reexport::cover_crypt::{
+    abe_policy::Policy, Covercrypt, MasterPublicKey, MasterSecretKey,
+};
 use cosmian_kmip::{
     crypto::cover_crypt::{
-        attributes::{policy_from_attributes, RekeyEditAction},
-        master_keys::{update_master_keys, update_policy},
+        attributes::{deserialize_access_policy, policy_from_attributes, RekeyEditAction},
+        master_keys::{
+            covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys, KmipKeyUidObject,
+        },
         user_key::UserDecryptionKeysHandler,
     },
     kmip::{
@@ -22,6 +26,7 @@ use crate::{
 };
 
 /// `Re_key` `CoverCrypt` master and user keys for the given action:
+///
 /// - `RekeyAccessPolicy`: Generate new keys for the given access policy.
 /// - `PruneAccessPolicy`: Remove old keys associated to an access policy.
 /// - `RemoveAttribute`: Remove attributes from the policy.
@@ -31,85 +36,149 @@ use crate::{
 pub async fn rekey_keypair_cover_crypt(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
-    master_private_key_uid: &str,
+    msk_uid: String,
     owner: &str,
     action: RekeyEditAction,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<ReKeyKeyPairResponse> {
     trace!("Internal rekey key pair CoverCrypt");
 
-    let (master_private_key, master_public_key_uid, master_public_key, mut policy) =
-        get_master_keys_and_policy(kmip_server, master_private_key_uid, owner, params).await?;
+    let (msk_uid, mpk_uid) = match action {
+        RekeyEditAction::RekeyAccessPolicy(ap) => {
+            let (msk_obj, mpk_obj) =
+                update_master_keys(kmip_server, owner, params, msk_uid, |policy, msk, mpk| {
+                    let ap = deserialize_access_policy(&ap)?;
+                    cover_crypt.rekey_master_keys(&ap, policy, msk, mpk)?;
+                    Ok(())
+                })
+                .await?;
 
-    update_policy(&mut policy, &action)?;
+            update_user_secret_keys(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
 
-    // Rekey the master keys
-    let (updated_private_key, updated_public_key) = update_master_keys(
-        &cover_crypt,
-        &policy,
-        &action,
-        &master_private_key,
-        master_private_key_uid,
-        &master_public_key,
-        &master_public_key_uid,
-    )?;
+            (msk_obj.0, mpk_obj.0)
+        }
+        RekeyEditAction::PruneAccessPolicy(ap) => {
+            let (msk_obj, mpk_obj) =
+                update_master_keys(kmip_server, owner, params, msk_uid, |policy, msk, _mpk| {
+                    let ap = deserialize_access_policy(&ap)?;
+                    cover_crypt.prune_master_secret_key(&ap, policy, msk)?;
+                    Ok(())
+                })
+                .await?;
 
-    import_rekeyed_master_keys(
-        kmip_server,
-        master_private_key_uid,
-        updated_private_key.clone(),
-        &master_public_key_uid,
-        updated_public_key,
-        owner,
-        params,
-    )
-    .await?;
+            update_user_secret_keys(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
 
-    if action.induce_user_keys_refreshing() {
-        // Rekey the user secret keys if needed
-        update_user_secret_keys(
-            kmip_server,
-            cover_crypt,
-            master_private_key_uid,
-            &updated_private_key,
-            owner,
-            params,
-        )
-        .await?;
-    }
+            (msk_obj.0, mpk_obj.0)
+        }
+        RekeyEditAction::RemoveAttribute(attrs) => {
+            let (msk_obj, mpk_obj) =
+                update_master_keys(kmip_server, owner, params, msk_uid, |policy, msk, mpk| {
+                    attrs
+                        .iter()
+                        .try_for_each(|attr| policy.remove_attribute(attr))?;
+                    cover_crypt.update_master_keys(policy, msk, mpk)?;
+                    Ok(())
+                })
+                .await?;
+
+            update_user_secret_keys(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
+
+            (msk_obj.0, mpk_obj.0)
+        }
+        RekeyEditAction::DisableAttribute(attrs) => {
+            let (msk_obj, mpk_obj) =
+                update_master_keys(kmip_server, owner, params, msk_uid, |policy, msk, mpk| {
+                    attrs
+                        .iter()
+                        .try_for_each(|attr| policy.disable_attribute(attr))?;
+                    cover_crypt.update_master_keys(policy, msk, mpk)?;
+                    Ok(())
+                })
+                .await?;
+
+            (msk_obj.0, mpk_obj.0)
+        }
+        RekeyEditAction::RenameAttribute(pairs_attr_name) => {
+            let (msk_obj, mpk_obj) =
+                update_master_keys(kmip_server, owner, params, msk_uid, |policy, msk, mpk| {
+                    pairs_attr_name.iter().try_for_each(|(attr, new_name)| {
+                        policy.rename_attribute(attr, new_name.clone())
+                    })?;
+                    cover_crypt.update_master_keys(policy, msk, mpk)?;
+                    Ok(())
+                })
+                .await?;
+            (msk_obj.0, mpk_obj.0)
+        }
+        RekeyEditAction::AddAttribute(attrs_properties) => {
+            let (msk_obj, mpk_obj) =
+                update_master_keys(kmip_server, owner, params, msk_uid, |policy, msk, mpk| {
+                    attrs_properties
+                        .iter()
+                        .try_for_each(|(attr, encryption_hint)| {
+                            policy.add_attribute(attr.clone(), *encryption_hint)
+                        })?;
+                    cover_crypt.update_master_keys(policy, msk, mpk)?;
+                    Ok(())
+                })
+                .await?;
+
+            (msk_obj.0, mpk_obj.0)
+        }
+    };
 
     Ok(ReKeyKeyPairResponse {
-        private_key_unique_identifier: UniqueIdentifier::TextString(
-            master_private_key_uid.to_string(),
-        ),
-        public_key_unique_identifier: UniqueIdentifier::TextString(master_public_key_uid),
+        private_key_unique_identifier: UniqueIdentifier::TextString(msk_uid.to_string()),
+        public_key_unique_identifier: UniqueIdentifier::TextString(mpk_uid),
     })
+}
+
+/// Updates the key-pair associated to the MSK which ID is given using the given mutator, and
+/// replaces the stored key-pair with the mutated one.
+pub async fn update_master_keys(
+    server: &KMS,
+    owner: &str,
+    params: Option<&ExtraDatabaseParams>,
+    msk_uid: String,
+    mutator: impl Fn(&mut Policy, &mut MasterSecretKey, &mut MasterPublicKey) -> KResult<()>,
+) -> KResult<((String, Object), (String, Object))> {
+    let (msk_obj, mpk_obj, mut policy) =
+        get_master_keys_and_policy(server, msk_uid, owner, params).await?;
+
+    let (mut msk, mut mpk) = covercrypt_keys_from_kmip_objects(&msk_obj.1, &mpk_obj.1)?;
+    mutator(&mut policy, &mut msk, &mut mpk)?;
+    let (msk_obj, mpk_obj) =
+        kmip_objects_from_covercrypt_keys(&policy, &msk, &mpk, msk_obj, mpk_obj)?;
+
+    import_rekeyed_master_keys(server, owner, params, msk_obj.clone(), mpk_obj.clone()).await?;
+
+    Ok((msk_obj, mpk_obj))
 }
 
 async fn get_master_keys_and_policy(
     kmip_server: &KMS,
-    master_private_key_uid: &str,
+    msk_uid: String,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
-) -> KResult<(Object, String, Object, Policy)> {
+) -> KResult<(KmipKeyUidObject, KmipKeyUidObject, Policy)> {
     // Recover the master private key
-    let master_private_key = kmip_server
-        .get(Get::from(master_private_key_uid), owner, params)
+    let msk = kmip_server
+        .get(Get::from(&msk_uid), owner, params)
         .await?
         .object;
 
-    if master_private_key.key_wrapping_data().is_some() {
+    if msk.key_wrapping_data().is_some() {
         kms_bail!(KmsError::InconsistentOperation(
             "The server can't rekey: the key is wrapped".to_owned()
         ));
     }
 
     // Get policy associated with the master private key
-    let private_key_attributes = master_private_key.attributes()?;
+    let private_key_attributes = msk.attributes()?;
     let policy = policy_from_attributes(private_key_attributes)?;
 
     // Recover the Master Public Key
-    let key_block = match &master_private_key {
+    let key_block = match &msk {
         Object::PrivateKey { key_block } => key_block,
         _ => {
             return Err(KmsError::KmipError(
@@ -119,7 +188,7 @@ async fn get_master_keys_and_policy(
         }
     };
 
-    let master_public_key_uid = key_block
+    let mpk_uid = key_block
         .get_linked_object_id(LinkType::PublicKeyLink)?
         .ok_or_else(|| {
             KmsError::KmipError(
@@ -128,48 +197,41 @@ async fn get_master_keys_and_policy(
             )
         })?;
 
-    let master_public_key = kmip_server
-        .get(Get::from(master_public_key_uid.clone()), owner, params)
+    let mpk = kmip_server
+        .get(Get::from(mpk_uid.clone()), owner, params)
         .await?
         .object;
 
-    Ok((
-        master_private_key,
-        master_public_key_uid,
-        master_public_key,
-        policy,
-    ))
+    Ok(((msk_uid, msk), (mpk_uid, mpk), policy))
 }
 
 async fn import_rekeyed_master_keys(
     kmip_server: &KMS,
-    master_private_key_uid: &str,
-    updated_private_key: Object,
-    master_public_key_uid: &str,
-    updated_public_key: Object,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
+    msk: KmipKeyUidObject,
+    mpk: KmipKeyUidObject,
 ) -> KResult<()> {
     // re_import it
     let import_request = Import {
-        unique_identifier: UniqueIdentifier::TextString(master_private_key_uid.to_string()),
+        unique_identifier: UniqueIdentifier::TextString(msk.0.to_string()),
         object_type: ObjectType::PrivateKey,
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: updated_private_key.attributes()?.clone(),
-        object: updated_private_key,
+        attributes: msk.1.attributes()?.clone(),
+        object: msk.1,
     };
     let _import_response = kmip_server.import(import_request, owner, params).await?;
 
     // Update Master Public Key Policy and re-import the key
     // re_import it
     let import_request = Import {
-        unique_identifier: UniqueIdentifier::TextString(master_public_key_uid.to_string()),
+        unique_identifier: UniqueIdentifier::TextString(mpk.0.to_string()),
         object_type: ObjectType::PublicKey,
         replace_existing: Some(true),
         key_wrap_type: None,
-        attributes: updated_public_key.attributes()?.clone(),
-        object: updated_public_key,
+        attributes: mpk.1.attributes()?.clone(),
+        object: mpk.1,
     };
     let _import_response = kmip_server.import(import_request, owner, params).await?;
 
@@ -180,15 +242,14 @@ async fn import_rekeyed_master_keys(
 async fn update_user_secret_keys(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
-    master_private_key_uid: &str,
-    master_private_key: &Object,
+    msk_obj: &KmipKeyUidObject,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()> {
     // Search the user decryption keys that need to be refreshed
     let locate_response = locate_user_decryption_keys(
         kmip_server,
-        master_private_key_uid,
+        &msk_obj.0,
         None,
         Some(StateEnumeration::Active),
         owner,
@@ -199,7 +260,7 @@ async fn update_user_secret_keys(
     // Refresh the User Decryption Key that were found
     if let Some(unique_identifiers) = &locate_response {
         //instantiate a CoverCrypt User Key Handler
-        let handler = UserDecryptionKeysHandler::instantiate(cover_crypt, master_private_key)?;
+        let handler = UserDecryptionKeysHandler::instantiate(cover_crypt, &msk_obj.1)?;
 
         // Renew user decryption key previously found
         for user_decryption_key_uid in unique_identifiers {

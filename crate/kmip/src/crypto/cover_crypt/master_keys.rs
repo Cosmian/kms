@@ -6,13 +6,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto::{
-        cover_crypt::attributes::{
-            deserialize_access_policy, policy_from_attributes, upsert_policy_in_attributes,
-            RekeyEditAction::{
-                self, AddAttribute, DisableAttribute, PruneAccessPolicy, RekeyAccessPolicy,
-                RemoveAttribute, RenameAttribute,
-            },
-        },
+        cover_crypt::attributes::{policy_from_attributes, upsert_policy_in_attributes},
         KeyPair,
     },
     error::KmipError,
@@ -26,6 +20,10 @@ use crate::{
         },
     },
 };
+
+/// Group a key UID with its KMIP Object
+pub type KmipKeyUidObject = (String, Object);
+
 /// Generate a `KeyPair` `(PrivateKey, MasterPublicKey)` from the attributes
 /// of a `CreateKeyPair` operation
 pub fn create_master_keypair(
@@ -164,85 +162,7 @@ fn create_master_public_key_object(
     })
 }
 
-/// Update a Covercrypt policy associated to a master key.
-pub fn update_policy(policy: &mut Policy, action: &RekeyEditAction) -> Result<(), KmipError> {
-    match action {
-        RekeyAccessPolicy(_) | PruneAccessPolicy(_) => Ok(()),
-        RemoveAttribute(attrs) => attrs
-            .iter()
-            .try_for_each(|attr| policy.remove_attribute(attr)), // TODO: tests revoking of existing keys with deleted attribute?
-        DisableAttribute(attrs) => attrs
-            .iter()
-            .try_for_each(|attr| policy.disable_attribute(attr)),
-        RenameAttribute(pairs_attr_name) => pairs_attr_name
-            .iter()
-            .try_for_each(|(attr, new_name)| policy.rename_attribute(attr, new_name.clone())),
-        AddAttribute(attrs_properties) => {
-            attrs_properties
-                .iter()
-                .try_for_each(|(attr, encryption_hint)| {
-                    policy.add_attribute(attr.clone(), *encryption_hint)
-                })
-        }
-    }
-    .map_err(|e| {
-        KmipError::KmipError(
-            ErrorReason::Unsupported_Cryptographic_Parameters,
-            e.to_string(),
-        )
-    })?;
-
-    Ok(())
-}
-
-/// Update the master key with a new Policy
-/// (after editing the policy typically)
-pub fn update_master_keys(
-    cover_crypt: &Covercrypt,
-    policy: &Policy,
-    action: &RekeyEditAction,
-    master_private_key: &Object,
-    master_private_key_uid: &str,
-    master_public_key: &Object,
-    master_public_key_uid: &str,
-) -> Result<(Object, Object), KmipError> {
-    let (mut msk, mut mpk) =
-        covercrypt_keys_from_kmip_objects(master_private_key, master_public_key)?;
-
-    // Update the keys
-    match action {
-        RenameAttribute(_) => Ok(()),
-        RemoveAttribute(_) | DisableAttribute(_) | AddAttribute(_) => {
-            cover_crypt.update_master_keys(policy, &mut msk, &mut mpk)
-        }
-        RekeyAccessPolicy(ap) => cover_crypt.rekey_master_keys(
-            &deserialize_access_policy(ap)?,
-            policy,
-            &mut msk,
-            &mut mpk,
-        ),
-        PruneAccessPolicy(ap) => {
-            cover_crypt.prune_master_secret_key(&deserialize_access_policy(ap)?, policy, &mut msk)
-        }
-    }
-    .map_err(|e| {
-        KmipError::KmipError(
-            ErrorReason::Cryptographic_Failure,
-            format!("Failed updating the CoverCrypt Master Keys: {e}"),
-        )
-    })?;
-
-    kmip_objects_from_covercrypt_keys(
-        policy,
-        &msk,
-        master_private_key,
-        master_public_key_uid,
-        &mpk,
-        master_private_key_uid,
-    )
-}
-
-fn covercrypt_keys_from_kmip_objects(
+pub fn covercrypt_keys_from_kmip_objects(
     master_private_key: &Object,
     master_public_key: &Object,
 ) -> Result<(MasterSecretKey, MasterPublicKey), KmipError> {
@@ -268,14 +188,14 @@ fn covercrypt_keys_from_kmip_objects(
 
     Ok((msk, mpk))
 }
-fn kmip_objects_from_covercrypt_keys(
+
+pub fn kmip_objects_from_covercrypt_keys(
     policy: &Policy,
     msk: &MasterSecretKey,
-    master_private_key: &Object,
-    master_public_key_uid: &str,
     mpk: &MasterPublicKey,
-    master_private_key_uid: &str,
-) -> Result<(Object, Object), KmipError> {
+    msk_obj: KmipKeyUidObject,
+    mpk_obj: KmipKeyUidObject,
+) -> Result<(KmipKeyUidObject, KmipKeyUidObject), KmipError> {
     let updated_master_private_key_bytes = &msk.serialize().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Cryptographic_Failure,
@@ -285,8 +205,8 @@ fn kmip_objects_from_covercrypt_keys(
     let updated_master_private_key = create_master_private_key_object(
         updated_master_private_key_bytes,
         policy,
-        Some(master_private_key.attributes()?),
-        master_public_key_uid,
+        Some(msk_obj.1.attributes()?),
+        &mpk_obj.0,
     )?;
     let updated_master_public_key_bytes = &mpk.serialize().map_err(|e| {
         KmipError::KmipError(
@@ -297,9 +217,12 @@ fn kmip_objects_from_covercrypt_keys(
     let updated_master_public_key = create_master_public_key_object(
         updated_master_public_key_bytes,
         policy,
-        Some(master_private_key.attributes()?),
-        master_private_key_uid,
+        Some(mpk_obj.1.attributes()?),
+        &msk_obj.0,
     )?;
 
-    Ok((updated_master_private_key, updated_master_public_key))
+    Ok((
+        (msk_obj.0, updated_master_private_key),
+        (mpk_obj.0, updated_master_public_key),
+    ))
 }
