@@ -17,24 +17,31 @@ unzip kms-ubuntu-22_04.zip && cp ubuntu_22_04/cosmian_kms_server /usr/local/sbin
 cat >/etc/supervisor/conf.d/cosmian_kms.conf <<EOF
 [program:cosmian_kms]
 command=cosmian_kms
+environment=COSMIAN_KMS_CONF="/var/lib/cosmian_vm/data/app/app.conf"
 directory=/usr/local/sbin
-autostart=true
+autostart=false
 autorestart=true
 user=root
 stderr_logfile=/var/log/cosmian_kms.err.log
 stdout_logfile=/var/log/cosmian_kms.out.log
 EOF
 
-# Create KMS configuration directory
-mkdir /etc/cosmian_kms
+# sed -i '/\[supervisord\]/a environment=COSMIAN_KMS_CONF="/var/lib/cosmian_vm/data/app/app.conf"
+# ' /etc/supervisor/supervisord.conf
 
-# Configure KMS server
-cat >/etc/cosmian_kms/server.toml <<EOF
-default_username = "admin"
+# Configure Cosmian VM agent
+cat >/etc/cosmian_vm/agent.toml <<EOF
+[agent]
+host = "0.0.0.0"
+port = 5355
+ssl_certificate = "data/cert.pem"
+ssl_private_key = "data/key.pem"
+tpm_device = "/dev/tpmrm0"
 
-[http]
-port = 8080
-hostname = "0.0.0.0"
+[app]
+service_type = "supervisor"
+service_name = "cosmian_kms"
+app_storage = "data/app"
 EOF
 
 # Configure Nginx
