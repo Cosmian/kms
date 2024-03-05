@@ -21,6 +21,9 @@ use crate::{
     },
 };
 
+/// Group a key UID with its KMIP Object
+pub type KmipKeyUidObject = (String, Object);
+
 /// Generate a `KeyPair` `(PrivateKey, MasterPublicKey)` from the attributes
 /// of a `CreateKeyPair` operation
 pub fn create_master_keypair(
@@ -190,9 +193,9 @@ pub fn kmip_objects_from_covercrypt_keys(
     policy: &Policy,
     msk: &MasterSecretKey,
     mpk: &MasterPublicKey,
-    msk_obj: (String, Object),
-    mpk_obj: (String, Object),
-) -> Result<((String, Object), (String, Object)), KmipError> {
+    msk_obj: KmipKeyUidObject,
+    mpk_obj: KmipKeyUidObject,
+) -> Result<(KmipKeyUidObject, KmipKeyUidObject), KmipError> {
     let updated_master_private_key_bytes = &msk.serialize().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Cryptographic_Failure,
@@ -214,7 +217,7 @@ pub fn kmip_objects_from_covercrypt_keys(
     let updated_master_public_key = create_master_public_key_object(
         updated_master_public_key_bytes,
         policy,
-        Some(msk_obj.1.attributes()?),
+        Some(mpk_obj.1.attributes()?),
         &msk_obj.0,
     )?;
 

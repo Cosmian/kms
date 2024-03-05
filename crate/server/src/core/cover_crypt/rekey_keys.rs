@@ -4,7 +4,9 @@ use cloudproof::reexport::cover_crypt::{
 use cosmian_kmip::{
     crypto::cover_crypt::{
         attributes::{deserialize_access_policy, policy_from_attributes, RekeyEditAction},
-        master_keys::{covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys},
+        master_keys::{
+            covercrypt_keys_from_kmip_objects, kmip_objects_from_covercrypt_keys, KmipKeyUidObject,
+        },
         user_key::UserDecryptionKeysHandler,
     },
     kmip::{
@@ -158,7 +160,7 @@ async fn get_master_keys_and_policy(
     msk_uid: String,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
-) -> KResult<((String, Object), (String, Object), Policy)> {
+) -> KResult<(KmipKeyUidObject, KmipKeyUidObject, Policy)> {
     // Recover the master private key
     let msk = kmip_server
         .get(Get::from(&msk_uid), owner, params)
@@ -207,8 +209,8 @@ async fn import_rekeyed_master_keys(
     kmip_server: &KMS,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
-    msk: (String, Object),
-    mpk: (String, Object),
+    msk: KmipKeyUidObject,
+    mpk: KmipKeyUidObject,
 ) -> KResult<()> {
     // re_import it
     let import_request = Import {
@@ -240,7 +242,7 @@ async fn import_rekeyed_master_keys(
 async fn update_user_secret_keys(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
-    msk_obj: &(String, Object),
+    msk_obj: &KmipKeyUidObject,
     owner: &str,
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<()> {
