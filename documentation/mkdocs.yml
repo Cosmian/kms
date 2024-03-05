@@ -80,5 +80,9 @@ nav:
       - Getting started with Google Workspace CSE: google_cse/google_cse.md
       - Setting up a well-known file web server: google_cse/configuring-the-well-known-server.md
       - Configuring the well-known file: google_cse/configuring-the-well-known-file.md
-  - Microsoft Double Key Encryption (DKE): ms_dke/ms_dke.md
+      - Using Cosmian ai with Google Workspace CSE: google_cse/using_cosmian_ai.md
+  - Microsoft Double Key Encryption (DKE):
+      - Setting up DKE: ms_dke/ms_dke.md
+      - Using Cosmian ai with Microsoft DKE: ms_dke/using_cosmian_ai.md
+
   - Zeroization: zeroization.md
