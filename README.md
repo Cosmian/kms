@@ -103,7 +103,7 @@ supervisorctl status cosmian_kms
 
 If a configuration file is provided, parameters are set following this order:
 
-- conf file (env variable `KMS_SERVER_CONF` set by default to `/etc/cosmian_kms/server.toml`)
+- conf file (env variable `COSMIAN_KMS_CONF` set by default to `/etc/cosmian_kms/server.toml`)
 - default (set on struct)
 
 otherwise the parameters are set following this order:
@@ -126,7 +126,10 @@ $ sudo vi /etc/supervisord.d/cosmian_kms.ini
 $ sudo cp some_location/cosmian_kms_server /usr/sbin/cosmian_kms
 
 # Create a conf file for the KMS (from resources/server.toml)
-$ sudo vi /etc/cosmian_kms/server.toml
+# Instead of using default path `/etc/cosmian_kms/server.toml`,
+# we are using a path within LUKS encrypted container
+$ sudo vi /var/lib/cosmian_vm/data/app.conf
+$ sudo export COSMIAN_KMS_CONF="/var/lib/cosmian_vm/data/app.conf"
 $ sudo supervisorctl reload
 $ sudo supervisorctl start cosmian_kms
 
@@ -140,37 +143,37 @@ Now you can interact with your KMS through the KMS CLI.
 You can also interact with the Cosmian VM Agent through its own CLI as follow:
 
 ```console
-# From your own host
+# From your local machine
 # Snapshot the VM (it could take a while)
 $ ./cosmian_vm --url https://<DOMAIN_NAME>:<PORT> snapshot
 
-# Sometimes, verify it
+# From time to time, verify it
 $ ./cosmian_vm --url https://<DOMAIN_NAME>:<PORT> verify --snapshot ./cosmian_vm.snapshot
 Reading the snapshot...
 Fetching the collaterals...
 [ OK ] Verifying TPM attestation
+[ OK ] Verifying VM integrity (against N files)
 [ OK ] Verifying TEE attestation
 ```
 
 You can also provide the configuration file of the KMS through the Cosmian VM Agent and let it start the KMS.
 
-1. Adapt the `/etc/supervisord.d/cosmian_kms.ini` by adding: `environment=COSMIAN_KMS_CONF=/mnt/cosmian_vm/data/app.conf`
+1. Check that the `/etc/supervisord.d/cosmian_kms.ini` contains the following line:
+`environment=COSMIAN_KMS_CONF=/var/lib/cosmian_vm/data/app.conf`
 2. Add the following lines in `/etc/cosmian_vm/agent.toml`
 
 ```toml
 [app]
 service_type = "supervisor"
 service_app_name = "cosmian_kms"
-decrypted_folder = "/mnt/cosmian_vm/data"
-encrypted_secret_app_conf = "/etc/cosmian_kms/server.toml"
+app_storage = "data/"
 ```
 
-3. Provide the configuration (where `conf.toml` is the configuration file of the KMS):
+3. Provide the configuration (where `server.toml` is the configuration file of the KMS):
 
 ```console
-$ ./cosmian_vm --url https://domain.name:port app init  -c conf.toml
+$ ./cosmian_vm --url https://domain.name:port app init -c server.toml
 Processing init of the deployed app...
-Save the key: `378f1f1b3b5cc92ed576edba265cc91de6872d61c00b0e01dba6d0ea80520820`
 The app has been configured
 ```
 
