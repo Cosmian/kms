@@ -16,8 +16,8 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: centos7_tests
       commands: |
-        cargo build --bins
-        cargo test --workspace -- --nocapture
+        cargo build --release --bins
+        cargo test --release --workspace -- --nocapture
       artifacts: ''
 
   rhel9-tests:
@@ -38,8 +38,8 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: fips_centos7_tests
       commands: |
-        cargo build --bins --features fips
-        cargo test --workspace --features fips -- --nocapture
+        cargo build --release --bins --features fips
+        cargo test --release --workspace --features fips -- --nocapture
       artifacts: ''
 
   ubuntu-20-tests:
@@ -50,8 +50,8 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: ubuntu_20_04_tests
       commands: |
-        cargo build --bins
-        cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo build --release --bins
+        cargo test --release --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: ''
 
   fips-ubuntu-20-tests:
@@ -62,8 +62,8 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: fips_ubuntu_20_04_tests
       commands: |
-        cargo build --bins --features fips
-        cargo test --workspace --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo build --release --bins --features fips
+        cargo test --release --workspace --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: ''
 
   ubuntu-22-tests:
@@ -74,6 +74,6 @@ jobs:
       distribution: ubuntu-22.04
       archive-name: ubuntu_22_04_tests
       commands: |
-        cargo build --bins
-        cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo build --release --bins
+        cargo test --release --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: ''
