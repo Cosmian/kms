@@ -131,8 +131,8 @@ pub async fn rekey_keypair_cover_crypt(
     })
 }
 
-/// Update the master key with a new Policy
-/// (after editing the policy typically)
+/// Updates the key-pair associated to the MSK which ID is given using the given mutator, and
+/// replaces the stored key-pair with the mutated one.
 pub async fn update_master_keys(
     server: &KMS,
     owner: &str,
