@@ -48,7 +48,7 @@ pub struct KeyBlock {
     pub cryptographic_length: Option<i32>,
     /// SHALL only be present if the key is wrapped.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub key_wrapping_data: Option<KeyWrappingData>,
+    pub key_wrapping_data: Option<Box<KeyWrappingData>>,
 }
 
 impl KeyBlock {
@@ -131,9 +131,7 @@ impl KeyBlock {
     #[must_use]
     pub fn counter_iv_nonce(&self) -> Option<&Vec<u8>> {
         match &self.key_wrapping_data {
-            Some(KeyWrappingData {
-                iv_counter_nonce, ..
-            }) => iv_counter_nonce.as_ref(),
+            Some(kwd) => kwd.iv_counter_nonce.as_ref(),
             None => None,
         }
     }

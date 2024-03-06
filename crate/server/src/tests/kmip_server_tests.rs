@@ -227,11 +227,11 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
             },
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(wrapped_symmetric_key.len() as i32 * 8),
-            key_wrapping_data: Some(KeyWrappingData {
+            key_wrapping_data: Some(Box::new(KeyWrappingData {
                 wrapping_method: WrappingMethod::Encrypt,
                 iv_counter_nonce: Some(aesgcm_nonce.to_vec()),
                 ..KeyWrappingData::default()
-            }),
+            })),
         },
     };
 

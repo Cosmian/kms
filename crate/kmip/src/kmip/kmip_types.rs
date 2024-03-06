@@ -1806,7 +1806,7 @@ pub struct CryptographicParameters {
 pub struct EncryptionKeyInformation {
     pub unique_identifier: UniqueIdentifier,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub cryptographic_parameters: Option<Box<CryptographicParameters>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -1814,7 +1814,7 @@ pub struct EncryptionKeyInformation {
 pub struct MacSignatureKeyInformation {
     pub unique_identifier: UniqueIdentifier,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub cryptographic_parameters: Option<Box<CryptographicParameters>>,
 }
 
 #[allow(non_camel_case_types)]

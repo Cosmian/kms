@@ -103,7 +103,7 @@ pub fn wrap_key_block(
         }
     };
 
-    object_key_block.key_wrapping_data = Some(key_wrapping_data);
+    object_key_block.key_wrapping_data = Some(Box::new(key_wrapping_data));
 
     Ok(())
 }

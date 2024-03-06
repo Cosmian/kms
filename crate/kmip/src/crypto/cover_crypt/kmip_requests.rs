@@ -133,10 +133,10 @@ pub fn build_import_decryption_private_key_request<T: IntoIterator<Item = impl A
                 },
                 cryptographic_length: Some(private_key.len() as i32 * 8),
                 key_wrapping_data: if is_wrapped {
-                    Some(KeyWrappingData {
+                    Some(Box::new(KeyWrappingData {
                         wrapping_method: WrappingMethod::Encrypt,
                         ..KeyWrappingData::default()
-                    })
+                    }))
                 } else {
                     None
                 },
@@ -207,10 +207,10 @@ pub fn build_import_private_key_request<T: IntoIterator<Item = impl AsRef<str>>>
                 },
                 cryptographic_length: Some(private_key.len() as i32 * 8),
                 key_wrapping_data: if is_wrapped {
-                    Some(KeyWrappingData {
+                    Some(Box::new(KeyWrappingData {
                         wrapping_method: WrappingMethod::Encrypt,
                         ..KeyWrappingData::default()
-                    })
+                    }))
                 } else {
                     None
                 },

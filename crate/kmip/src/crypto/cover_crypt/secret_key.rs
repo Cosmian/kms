@@ -64,7 +64,7 @@ pub fn wrapped_secret_key(
             key_compression_type: None,
             key_value,
             cryptographic_length: Some(cryptographic_length),
-            key_wrapping_data: Some(key_wrapping_data),
+            key_wrapping_data: Some(Box::new(key_wrapping_data)),
         },
     })
 }
