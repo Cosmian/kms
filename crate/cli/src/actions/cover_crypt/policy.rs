@@ -299,18 +299,11 @@ pub struct AddAttributeAction {
     #[clap(required = true)]
     attribute: String,
 
-    /// Encryption hint for the new attribute
-    #[clap(
-        long,
-        default_missing_value("true"),
-        default_value("false"),
-        num_args(0..=1),
-        require_equals(true),
-        action = clap::ArgAction::Set,
-    )]
+    /// Set encryption hint for the new attribute to use hybridized keys.
+    #[clap(required = false, long = "hybridized", default_value = "false")]
     hybridized: bool,
 
-    /// The private master key unique identifier stored in the KMS
+    /// The private master key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     secret_key_id: Option<String>,
@@ -365,12 +358,12 @@ pub struct RenameAttributeAction {
     #[clap(required = true)]
     attribute: String,
 
-    /// the new name for the attribute
+    /// The new name for the attribute.
     /// Example: `marketing`
     #[clap(required = true)]
     new_name: String,
 
-    /// The private master key unique identifier stored in the KMS
+    /// The private master key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     secret_key_id: Option<String>,
@@ -418,11 +411,11 @@ impl RenameAttributeAction {
 #[clap(verbatim_doc_comment)]
 pub struct DisableAttributeAction {
     /// The name of the attribute to disable.
-    /// Example: `department::hr`
+    /// Example: `department::marketing`
     #[clap(required = true)]
     attribute: String,
 
-    /// The private master key unique identifier stored in the KMS
+    /// The private master key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     secret_key_id: Option<String>,
@@ -463,16 +456,19 @@ impl DisableAttributeAction {
 }
 
 /// Remove an attribute from the policy of an existing private master key.
-/// Permanently removes the ability to encrypt and decrypt messages associated with this attribute.
+/// Permanently removes the ability to use this attribute in both encryptions and decryptions.
+///
+/// Note that messages whose encryption policy does not contain any other attributes
+/// belonging to the dimension of the deleted attribute will be lost.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct RemoveAttributeAction {
     /// The name of the attribute to remove.
-    /// Example: `department::hr`
+    /// Example: `department::marketing`
     #[clap(required = true)]
     attribute: String,
 
-    /// The private master key unique identifier stored in the KMS
+    /// The private master key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     secret_key_id: Option<String>,

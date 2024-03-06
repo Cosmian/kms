@@ -349,7 +349,10 @@ impl KmsClient {
     }
 
     /// Remove a specific attribute from a keypair's policy.
-    /// Permanently removes the ability to encrypt and decrypt messages associated with this attribute.
+    /// Permanently removes the ability to use this attribute in both encryptions and decryptions.
+    ///
+    /// Note that messages whose encryption policy does not contain any other attributes
+    /// belonging to the dimension of the deleted attribute will be lost.
     ///
     /// Args:
     ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
