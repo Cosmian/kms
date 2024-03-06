@@ -16,6 +16,7 @@ unzip kms-rhel9.zip && cp rhel9/cosmian_kms_server /usr/local/sbin/cosmian_kms &
 cat >/etc/supervisord.d/cosmian_kms.ini <<EOF
 [program:cosmian_kms]
 command=cosmian_kms
+environment=COSMIAN_KMS_CONF="/var/lib/cosmian_vm/data/app/app.conf"
 directory=/usr/local/sbin
 autostart=false
 autorestart=true
@@ -23,9 +24,6 @@ user=root
 stderr_logfile=/var/log/cosmian_kms.err.log
 stdout_logfile=/var/log/cosmian_kms.out.log
 EOF
-
-# sed -i '/\[supervisord\]/a environment=COSMIAN_KMS_CONF="/var/lib/cosmian_vm/data/app/app.conf"
-# ' /etc/supervisord.d/supervisord.conf
 
 # Configure Cosmian VM agent
 cat >/etc/cosmian_vm/agent.toml <<EOF

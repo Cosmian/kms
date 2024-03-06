@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# export COSMIAN_KMS_CONF="/var/lib/cosmian_vm/data/app/app.conf"
-
 apt-get update && apt-get install --no-install-recommends -y redis 
 
 supervisorctl start cosmian_vm_agent
