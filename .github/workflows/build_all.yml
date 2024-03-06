@@ -74,6 +74,6 @@ jobs:
       distribution: ubuntu-22.04
       archive-name: ubuntu_22_04_tests
       commands: |
-        cargo build --release --bins
-        cargo test --release --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo build --bins
+        cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: ''

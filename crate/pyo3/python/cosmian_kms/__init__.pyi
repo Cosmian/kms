@@ -153,14 +153,14 @@ class KmsClient:
         """
     def rekey_cover_crypt_access_policy(
         self,
-        access_policy_str: str,
+        access_policy: str,
         master_secret_key_identifier: UidOrTags,
     ) -> Future[Tuple[str, str]]:
         """Generate new keys associated to the given access policy in the master keys.
         This will automatically refresh the corresponding user keys.
 
         Args:
-            - `access_policy_str` (str): describe the keys to renew
+            - `access_policy` (str): describe the keys to renew
             - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 
         Returns:
@@ -168,16 +168,16 @@ class KmsClient:
         """
     async def prune_cover_crypt_access_policy(
         self,
-        attributes: str,
+        access_policy: str,
         master_secret_key_identifier: UidOrTags,
     ) -> Tuple[str, str]:
         """
         Removes old keys associated to the access policy from the master keys.
         This will automatically refresh the corresponding user keys.
-        This will permanently remove access to old ciphers.
+        This will permanently remove access to old ciphertexts.
     
         Args:
-            - `access_policy_str` (str): describe the keys to renew
+            - `access_policy` (str): describe the keys to renew
             - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
 
         Returns:
@@ -190,7 +190,7 @@ class KmsClient:
     ) -> Tuple[str, str]:
         """
         Remove a specific attribute from a keypair's policy.
-        Permanently removes the ability to encrypt new ciphers and decrypt all existing ciphers associated with this attribute.
+        Permanently removes the ability to encrypt and decrypt messages associated with this attribute.
 
         This will rekey in the KMS:
         - the master keys
@@ -210,7 +210,7 @@ class KmsClient:
     ) -> Tuple[str, str]:
         """
         Disable a specific attribute from a keypair's policy.
-        Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphers.
+        Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphertexts.
 
         This will rekey in the KMS:
         - the master keys
@@ -262,7 +262,7 @@ class KmsClient:
         """
     def create_cover_crypt_user_decryption_key(
         self,
-        access_policy_str: str,
+        access_policy: str,
         master_secret_key_identifier: str,
         tags: Optional[str] = None,
     ) -> Future[str]:
@@ -270,7 +270,7 @@ class KmsClient:
         A new user secret key does NOT include to old (i.e. rotated) partitions.
 
         Args:
-            access_policy_str (str): user access policy
+            access_policy(str): user access policy
             master_secret_key_identifier (str): master secret key UID
             tags (Optional[List[str]]): optional tags to use with the keys
 
@@ -282,7 +282,7 @@ class KmsClient:
         private_key: bytes,
         replace_existing: bool,
         link_master_private_key_id: str,
-        access_policy_str: str,
+        access_policy: str,
         tags: Optional[List[str]] = None,
         is_wrapped: Optional[bool] = None,
         wrapping_password: Optional[str] = None,
@@ -294,7 +294,7 @@ class KmsClient:
             private_key (bytes): key bytes
             replace_existing (bool): set to true to replace an existing key with the same identifier
             link_master_private_key_id (str): id of the matching master private key
-            access_policy_str (str): user access policy
+            access_policy(str): user access policy
             tags (Optional[List[str]]): tags associated to the key
             is_wrapped (bool): whether the key is wrapped
             wrapping_password (Optional[str]): password used to wrap the key

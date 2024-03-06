@@ -46,22 +46,22 @@ impl RekeyAction {
         };
 
         // Create the kmip query
-        let rekey_query = build_rekey_keypair_request(
+        let query = build_rekey_keypair_request(
             &id,
             RekeyEditAction::RekeyAccessPolicy(self.access_policy.clone()),
         )?;
 
         // Query the KMS with your kmip data
-        let rekey_response = kms_rest_client
-            .rekey_keypair(rekey_query)
+        let response = kms_rest_client
+            .rekey_keypair(query)
             .await
             .with_context(|| "failed rekeying the master keys")?;
 
         println!(
             "The master private key {} and master public key {} were rekeyed for the access \
              policy {:?}",
-            &rekey_response.private_key_unique_identifier,
-            &rekey_response.public_key_unique_identifier,
+            &response.private_key_unique_identifier,
+            &response.public_key_unique_identifier,
             &self.access_policy
         );
         Ok(())
@@ -73,7 +73,7 @@ impl RekeyAction {
 /// Active user decryption keys are automatically pruned.
 /// Revoked or destroyed user decryption keys are not.
 ///
-/// Pruned user keys will only be able to decrypt ciphers
+/// Pruned user keys will only be able to decrypt ciphertexts
 /// generated after the last rekeying.
 #[derive(Parser, Debug)]
 #[clap(verbatim_doc_comment)]
@@ -105,22 +105,22 @@ impl PruneAction {
         };
 
         // Create the kmip query
-        let rekey_query = build_rekey_keypair_request(
+        let query = build_rekey_keypair_request(
             &id,
             RekeyEditAction::PruneAccessPolicy(self.access_policy.clone()),
         )?;
 
         // Query the KMS with your kmip data
-        let rekey_response = kms_rest_client
-            .rekey_keypair(rekey_query)
+        let response = kms_rest_client
+            .rekey_keypair(query)
             .await
             .with_context(|| "failed pruning the master keys")?;
 
         println!(
             "The master private key {} and master public key {} were pruned for the access policy \
              {:?}",
-            &rekey_response.private_key_unique_identifier,
-            &rekey_response.public_key_unique_identifier,
+            &response.private_key_unique_identifier,
+            &response.public_key_unique_identifier,
             &self.access_policy
         );
         Ok(())

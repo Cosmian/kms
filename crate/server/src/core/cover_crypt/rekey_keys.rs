@@ -25,7 +25,7 @@ use crate::{
     result::KResult,
 };
 
-/// `Re_key` `CoverCrypt` master and user keys for the given action:
+/// KMIP `Re_key` for `CoverCrypt` master keys can be one of these actions:
 ///
 /// - `RekeyAccessPolicy`: Generate new keys for the given access policy.
 /// - `PruneAccessPolicy`: Remove old keys associated to an access policy.
@@ -53,7 +53,7 @@ pub async fn rekey_keypair_cover_crypt(
                 })
                 .await?;
 
-            update_user_secret_keys(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
+            update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
 
             (msk_obj.0, mpk_obj.0)
         }
@@ -66,7 +66,7 @@ pub async fn rekey_keypair_cover_crypt(
                 })
                 .await?;
 
-            update_user_secret_keys(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
+            update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
 
             (msk_obj.0, mpk_obj.0)
         }
@@ -81,7 +81,7 @@ pub async fn rekey_keypair_cover_crypt(
                 })
                 .await?;
 
-            update_user_secret_keys(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
+            update_all_active_usk(kmip_server, cover_crypt, &msk_obj, owner, params).await?;
 
             (msk_obj.0, mpk_obj.0)
         }
@@ -205,6 +205,7 @@ async fn get_master_keys_and_policy(
     Ok(((msk_uid, msk), (mpk_uid, mpk), policy))
 }
 
+/// Import the updated master keys in place of the old ones in the KMS
 async fn import_rekeyed_master_keys(
     kmip_server: &KMS,
     owner: &str,
@@ -212,7 +213,7 @@ async fn import_rekeyed_master_keys(
     msk: KmipKeyUidObject,
     mpk: KmipKeyUidObject,
 ) -> KResult<()> {
-    // re_import it
+    // re-import master secret key
     let import_request = Import {
         unique_identifier: UniqueIdentifier::TextString(msk.0.to_string()),
         object_type: ObjectType::PrivateKey,
@@ -223,8 +224,7 @@ async fn import_rekeyed_master_keys(
     };
     let _import_response = kmip_server.import(import_request, owner, params).await?;
 
-    // Update Master Public Key Policy and re-import the key
-    // re_import it
+    // re-import master public key
     let import_request = Import {
         unique_identifier: UniqueIdentifier::TextString(mpk.0.to_string()),
         object_type: ObjectType::PublicKey,
@@ -239,7 +239,7 @@ async fn import_rekeyed_master_keys(
 }
 
 /// Updates user secret keys for actions like rekeying or pruning.
-async fn update_user_secret_keys(
+async fn update_all_active_usk(
     kmip_server: &KMS,
     cover_crypt: Covercrypt,
     msk_obj: &KmipKeyUidObject,
@@ -264,7 +264,7 @@ async fn update_user_secret_keys(
 
         // Renew user decryption key previously found
         for user_decryption_key_uid in unique_identifiers {
-            refresh_user_decryption_key(
+            update_usk(
                 &handler,
                 user_decryption_key_uid,
                 kmip_server,
@@ -278,7 +278,8 @@ async fn update_user_secret_keys(
     Ok(())
 }
 
-async fn refresh_user_decryption_key(
+/// Refresh an individual user secret key with a given handler to a master secret key
+async fn update_usk(
     handler: &UserDecryptionKeysHandler,
     user_decryption_key_uid: &str,
     kmip_server: &KMS,
