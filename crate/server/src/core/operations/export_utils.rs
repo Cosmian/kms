@@ -188,7 +188,7 @@ pub async fn export_get(
         object_type: owm.object.object_type(),
         unique_identifier: UniqueIdentifier::TextString(owm.id),
         attributes: export_attributes,
-        object: owm.object,
+        object: *owm.object,
     })
 }
 
@@ -264,7 +264,7 @@ async fn process_private_key(
             // wrap the key
             wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
             // reassign the wrapped key
-            object_with_metadata.object = object;
+            object_with_metadata.object = Box::new(object);
             return Ok(())
         }
     }
@@ -279,14 +279,14 @@ async fn process_private_key(
             | KeyFormatType::ECPrivateKey
             | KeyFormatType::PKCS12 => {
                 let object = openssl_private_key_to_kmip(&openssl_key, *kft)?;
-                object_with_metadata.object = object;
+                object_with_metadata.object = Box::new(object);
             }
             _ => kms_bail!("export: unsupported Key Format Type: {:?}", kft),
         },
         None => {
             // No format type requested: export the private key to the default format
             let object = openssl_private_key_to_kmip_default_format(&openssl_key)?;
-            object_with_metadata.object = object;
+            object_with_metadata.object = Box::new(object);
         }
     }
     // add the attributes back
@@ -375,7 +375,7 @@ async fn process_public_key(
             )
             .await?;
             // reassign the wrapped key
-            object_with_metadata.object = object;
+            object_with_metadata.object = Box::new(object);
             return Ok(())
         }
     }
@@ -388,14 +388,14 @@ async fn process_public_key(
             | KeyFormatType::TransparentECPublicKey
             | KeyFormatType::TransparentRSAPublicKey => {
                 let object = openssl_public_key_to_kmip(&openssl_key, *kft)?;
-                object_with_metadata.object = object;
+                object_with_metadata.object = Box::new(object);
             }
             _ => kms_bail!("export: unsupported Key Format Type: {:?}", kft),
         },
         None => {
             // No format type requested: export the private key to the default format
             let object = openssl_public_key_to_kmip_default_format(&openssl_key)?;
-            object_with_metadata.object = object;
+            object_with_metadata.object = Box::new(object);
         }
     }
 
@@ -614,7 +614,7 @@ async fn post_process_pkcs12_for_private_key(
         .build2(&password)?;
 
     // add the certificate to the private key
-    owm.object = Object::PrivateKey {
+    owm.object = Box::new(Object::PrivateKey {
         key_block: KeyBlock {
             key_format_type: KeyFormatType::PKCS12,
             key_compression_type: None,
@@ -627,6 +627,6 @@ async fn post_process_pkcs12_for_private_key(
             cryptographic_length: None,
             key_wrapping_data: None,
         },
-    };
+    });
     Ok(())
 }

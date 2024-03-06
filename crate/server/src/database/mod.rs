@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 use rawsql::Loader;
 use serde::{Deserialize, Serialize};
 
-use crate::{kms_bail, result::KResult};
+use crate::{kms_error, result::KResult};
 
 pub type KMSServer = crate::core::KMS;
 
@@ -63,6 +63,6 @@ pub fn state_from_string(s: &str) -> KResult<StateEnumeration> {
         "Compromised" => Ok(StateEnumeration::Compromised),
         "Destroyed" => Ok(StateEnumeration::Destroyed),
         "Destroyed_Compromised" => Ok(StateEnumeration::Destroyed_Compromised),
-        x => kms_bail!("invalid state in db: {}", x),
+        x => Err(kms_error!("invalid state in db: {x}")),
     }
 }

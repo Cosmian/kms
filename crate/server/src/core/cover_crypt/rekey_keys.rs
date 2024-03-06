@@ -141,7 +141,7 @@ pub async fn update_master_keys(
     params: Option<&ExtraDatabaseParams>,
     msk_uid: String,
     mutator: impl Fn(&mut Policy, &mut MasterSecretKey, &mut MasterPublicKey) -> KResult<()>,
-) -> KResult<((String, Object), (String, Object))> {
+) -> KResult<((String, Box<Object>), (String, Box<Object>))> {
     let (msk_obj, mpk_obj, mut policy) =
         get_master_keys_and_policy(server, msk_uid, owner, params).await?;
 
@@ -162,10 +162,12 @@ async fn get_master_keys_and_policy(
     params: Option<&ExtraDatabaseParams>,
 ) -> KResult<(KmipKeyUidObject, KmipKeyUidObject, Policy)> {
     // Recover the master private key
-    let msk = kmip_server
-        .get(Get::from(&msk_uid), owner, params)
-        .await?
-        .object;
+    let msk = Box::new(
+        kmip_server
+            .get(Get::from(&msk_uid), owner, params)
+            .await?
+            .object,
+    );
 
     if msk.key_wrapping_data().is_some() {
         kms_bail!(KmsError::InconsistentOperation(
@@ -178,7 +180,7 @@ async fn get_master_keys_and_policy(
     let policy = policy_from_attributes(private_key_attributes)?;
 
     // Recover the Master Public Key
-    let key_block = match &msk {
+    let key_block = match &*msk {
         Object::PrivateKey { key_block } => key_block,
         _ => {
             return Err(KmsError::KmipError(
@@ -197,10 +199,12 @@ async fn get_master_keys_and_policy(
             )
         })?;
 
-    let mpk = kmip_server
-        .get(Get::from(mpk_uid.clone()), owner, params)
-        .await?
-        .object;
+    let mpk = Box::new(
+        kmip_server
+            .get(Get::from(mpk_uid.clone()), owner, params)
+            .await?
+            .object,
+    );
 
     Ok(((msk_uid, msk), (mpk_uid, mpk), policy))
 }
@@ -220,7 +224,7 @@ async fn import_rekeyed_master_keys(
         replace_existing: Some(true),
         key_wrap_type: None,
         attributes: msk.1.attributes()?.clone(),
-        object: msk.1,
+        object: *msk.1,
     };
     let _import_response = kmip_server.import(import_request, owner, params).await?;
 
@@ -231,7 +235,7 @@ async fn import_rekeyed_master_keys(
         replace_existing: Some(true),
         key_wrap_type: None,
         attributes: mpk.1.attributes()?.clone(),
-        object: mpk.1,
+        object: *mpk.1,
     };
     let _import_response = kmip_server.import(import_request, owner, params).await?;
 

@@ -79,7 +79,7 @@ pub async fn tags<DB: Database>(
     assert_eq!(res.len(), 1);
     let owm = res[0].clone();
     assert_eq!(StateEnumeration::Active, owm.state);
-    assert_eq!(&symmetric_key, &owm.object);
+    assert_eq!(&symmetric_key, &*owm.object);
     let tags = db.retrieve_tags(&owm.id, db_params).await?;
     assert_eq!(tags.len(), 2);
     assert!(tags.contains(&"tag1".to_string()));

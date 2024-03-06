@@ -301,7 +301,7 @@ impl Database for RedisWithFindex {
                     uid.clone(),
                     ObjectWithMetadata {
                         id: uid,
-                        object: redis_db_object.object,
+                        object: Box::new(redis_db_object.object),
                         owner: redis_db_object.owner,
                         state: redis_db_object.state,
                         permissions: vec![],
@@ -322,7 +322,7 @@ impl Database for RedisWithFindex {
                     uid.clone(),
                     ObjectWithMetadata {
                         id: uid,
-                        object: redis_db_object.object,
+                        object: Box::new(redis_db_object.object),
                         owner: redis_db_object.owner,
                         state: redis_db_object.state,
                         permissions: permissions.into_iter().collect(),

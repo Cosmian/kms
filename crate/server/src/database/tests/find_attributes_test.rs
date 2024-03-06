@@ -74,7 +74,7 @@ pub async fn find_attributes<DB: Database>(
     match objs_.len() {
         1 => {
             assert_eq!(StateEnumeration::Active, objs_[0].state);
-            assert_eq!(&symmetric_key, &objs_[0].object);
+            assert_eq!(&symmetric_key, &*objs_[0].object);
             assert_eq!(
                 objs_[0].object.attributes()?.link.as_ref().unwrap()[0].linked_object_identifier,
                 LinkedObjectIdentifier::TextString("foo".to_string())

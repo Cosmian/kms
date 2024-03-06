@@ -177,7 +177,7 @@ pub async fn certify(
                 // update the public key
                 AtomicOperation::UpdateObject((
                     public_key_owm.id.clone(),
-                    public_key_owm.object,
+                    *public_key_owm.object,
                     pk_own_obj_attributes,
                     None,
                 )),

@@ -22,7 +22,7 @@ use crate::{
 };
 
 /// Group a key UID with its KMIP Object
-pub type KmipKeyUidObject = (String, Object);
+pub type KmipKeyUidObject = (String, Box<Object>);
 
 /// Generate a `KeyPair` `(PrivateKey, MasterPublicKey)` from the attributes
 /// of a `CreateKeyPair` operation
@@ -222,7 +222,7 @@ pub fn kmip_objects_from_covercrypt_keys(
     )?;
 
     Ok((
-        (msk_obj.0, updated_master_private_key),
-        (mpk_obj.0, updated_master_public_key),
+        (msk_obj.0, Box::new(updated_master_private_key)),
+        (mpk_obj.0, Box::new(updated_master_public_key)),
     ))
 }

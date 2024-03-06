@@ -50,7 +50,7 @@ pub async fn encrypt(
     let owm = get_key(kms, &request, user, params).await?;
     trace!("get_encryption_system: unwrap done (if required)");
 
-    match &owm.object {
+    match &*owm.object {
         Object::SymmetricKey { .. } => encrypt_with_aead(&request, &owm),
         Object::PublicKey { .. } => encrypt_with_public_key(&request, &owm),
         Object::Certificate {
@@ -114,7 +114,7 @@ async fn get_key(
     }
 
     // unwrap if wrapped
-    match &mut owm.object {
+    match &mut *owm.object {
         Object::Certificate { .. } => {}
         _ => {
             if owm.object.key_wrapping_data().is_some() {

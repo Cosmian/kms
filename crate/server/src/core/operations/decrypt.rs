@@ -51,7 +51,7 @@ pub async fn decrypt(
         owm.object
     );
 
-    match &owm.object {
+    match &*owm.object {
         Object::SymmetricKey { .. } => decrypt_with_aead(&request, &owm),
         Object::PrivateKey { .. } => decrypt_with_private_key(&request, &owm),
         other => kms_bail!(KmsError::NotSupported(format!(

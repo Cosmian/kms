@@ -66,7 +66,7 @@ pub async fn get_attributes(
     .await?;
     let object_type = owm.object.object_type();
 
-    let attributes = match &owm.object {
+    let attributes = match &*owm.object {
         Object::Certificate { .. } => {
             // KMIP Attributes retrieved from dedicated column `Attributes`
             owm.attributes

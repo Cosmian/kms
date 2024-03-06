@@ -84,6 +84,7 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 actix-http = "3.4"
+cosmian_logger = { path = "../logger" }
 pem = "3.0.3"
 
 [build-dependencies]

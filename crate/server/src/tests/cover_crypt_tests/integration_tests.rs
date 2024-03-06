@@ -30,7 +30,7 @@ use crate::{
 
 #[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
-    // log_init("cosmian_kms_server=info");
+    // cosmian_logger::log_utils::log_init("cosmian_kms_server=trace");
     let app = test_utils::test_app().await;
 
     let mut policy = Policy::new();
