@@ -190,7 +190,10 @@ class KmsClient:
     ) -> Tuple[str, str]:
         """
         Remove a specific attribute from a keypair's policy.
-        Permanently removes the ability to encrypt and decrypt messages associated with this attribute.
+        Permanently removes the ability to use this attribute in both encryptions and decryptions.
+        
+        Note that messages whose encryption policy does not contain any other attributes
+        belonging to the dimension of the deleted attribute will be lost.
 
         This will rekey in the KMS:
         - the master keys

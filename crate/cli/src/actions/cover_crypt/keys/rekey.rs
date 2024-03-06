@@ -24,7 +24,7 @@ pub struct RekeyAction {
     #[clap(required = true)]
     access_policy: String,
 
-    /// The private master key unique identifier stored in the KMS
+    /// The private master key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     secret_key_id: Option<String>,
@@ -83,7 +83,7 @@ pub struct PruneAction {
     #[clap(required = true)]
     access_policy: String,
 
-    /// The private master key unique identifier stored in the KMS
+    /// The private master key unique identifier stored in the KMS.
     /// If not specified, tags should be specified
     #[clap(long = "key-id", short = 'k', group = "key-tags")]
     secret_key_id: Option<String>,

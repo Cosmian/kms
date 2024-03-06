@@ -138,18 +138,16 @@ List the access rights obtained by the calling user
 
 ## 2 ckms cc
 
-Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
+Manage Covercrypt keys and policies. Encrypt and decrypt data.
 
 ### Usage
 `ckms cc <subcommand>`
 
 ### Subcommands
 
-**`keys`** [[2.1]](#21-ckms-cc-keys)  Create, destroy, import, export `Covercrypt` master and user keys
+**`keys`** [[2.1]](#21-ckms-cc-keys)  Create, destroy, import, export, and rekey `Covercrypt` master and user keys
 
-**`policy`** [[2.2]](#22-ckms-cc-policy)  Extract or view policies of existing keys, and create a binary policy from specifications
-
-**`rotate`** [[2.3]](#23-ckms-cc-rotate)  Rotate attributes and rekey the master and user keys.
+**`policy`** [[2.2]](#22-ckms-cc-policy)  Extract, view, or edit policies of existing keys, and create a binary policy from specifications
 
 **`encrypt`** [[2.4]](#24-ckms-cc-encrypt)  Encrypt a file using Covercrypt
 
@@ -383,6 +381,48 @@ Destroy a Covercrypt master or user decryption key
 
 ---
 
+## 2.1.9 ckms cc keys rekey
+
+Rekey the master and user keys for a given access policy.
+
+Active user decryption keys are automatically re-keyed.
+Revoked or destroyed user decryption keys are not re-keyed.
+
+User keys that have not been rekeyed will only be able to decrypt data encrypted before this operation.
+
+### Usage
+
+`ckms cc keys rekey [options] <ACCESS_POLICY>`
+
+### Arguments
+
+`<ACCESS_POLICY>` The access policy to rekey. Example: `department::marketing && level::confidential`
+
+`--key-id [-k] <KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+## 2.1.10 ckms cc keys prune
+
+Prune the master and user keys for a given access policy.
+
+Active user decryption keys are automatically pruned.
+Revoked or destroyed user decryption keys are not.
+
+Pruned user keys will only be able to decrypt ciphertexts generated after the last rekeying.
+
+### Usage
+
+`ckms cc keys prune [options] <ACCESS_POLICY>`
+
+### Arguments
+
+`<ACCESS_POLICY>` The access policy to prune. Example: `department::marketing && level::confidential`
+
+`--key-id [-k] <KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
 ## 2.2 ckms cc policy
 
 Extract or view policies of existing keys, and create a binary policy from specifications
@@ -471,25 +511,79 @@ Create a policy binary file from policy specifications
 
 ---
 
-## 2.3 ckms cc rotate
+## 2.2.5 ckms cc policy rename-attribute
 
-Rotate attributes and rekey the master and user keys.
+Rename an attribute in the policy of an existing private master key.
 
 ### Usage
-`ckms cc rotate [options] <ATTRIBUTES>...
-`
-### Arguments
-` <ATTRIBUTES>` The policy attributes to rotate. Example: `department::marketing level::confidential`
 
-`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS If not specified, tags should be specified
+`ckms cc policy rename-attribute [options] <ATTRIBUTE> <NEW_NAME>`
+
+### Arguments
+
+`<ATTRIBUTE>` The name of the attribute to rename. Example: `department::mkg`
+
+`<NEW_NAME>` the new name for the attribute. Example: `marketing`
+
+`--key-id [-k] <KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
+## 2.2.6 ckms cc policy add-attribute
 
+Add an attribute to the policy of an existing private master key.
 
----
+### Usage
 
-## 2.4 ckms cc encrypt
+`ckms cc policy add-attribute [options] <ATTRIBUTE> <NEW_NAME>`
+
+### Arguments
+
+`<ATTRIBUTE>` The name of the attribute to create. Example: `department::rd`
+
+`--hybridized` Set encryption hint for the new attribute to use hybridized keys
+
+`--key-id [-k] <KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+## 2.2.7 ckms cc policy disable-attribute
+
+Disable an attribute from the policy of an existing private master key.
+Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphertexts.
+
+### Usage
+
+`ckms cc policy disable-attribute [options] <ATTRIBUTE>`
+
+### Arguments
+
+`<ATTRIBUTE>` The name of the attribute to disable. Example: `department::marketing`
+
+`--key-id [-k] <KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+## 2.2.8 ckms cc policy remove-attribute
+
+Remove an attribute from the policy of an existing private master key.
+**Permanently removes** the ability to use this attribute in both encryptions and decryptions.
+
+Note that messages whose encryption policy does not contain any other attributes belonging to the dimension of the deleted attribute will be lost.
+
+### Usage
+
+`ckms cc policy remove-attribute [options] <ATTRIBUTE>`
+
+### Arguments
+
+`<ATTRIBUTE>` The name of the attribute to remove. Example: `department::marketing`
+
+`--key-id [-k] <KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+## 2.3 ckms cc encrypt
 
 Encrypt a file using Covercrypt
 
@@ -514,7 +608,7 @@ Encrypt a file using Covercrypt
 
 ---
 
-## 2.5 ckms cc decrypt
+## 2.4 ckms cc decrypt
 
 Decrypt a file using Covercrypt
 
