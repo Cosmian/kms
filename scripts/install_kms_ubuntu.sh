@@ -26,9 +26,6 @@ stderr_logfile=/var/log/cosmian_kms.err.log
 stdout_logfile=/var/log/cosmian_kms.out.log
 EOF
 
-# sed -i '/\[supervisord\]/a environment=COSMIAN_KMS_CONF="/var/lib/cosmian_vm/data/app/app.conf"
-# ' /etc/supervisor/supervisord.conf
-
 # Configure Cosmian VM agent
 cat >/etc/cosmian_vm/agent.toml <<EOF
 [agent]

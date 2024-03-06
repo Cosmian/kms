@@ -104,7 +104,7 @@ jobs:
                                                             --project $GCP_DEV_PROJECT \
                                                             --tags ssh-full,backend,http-server,https-server,cosmian-vm-agent \
                                                             --metadata-from-file=startup-script=scripts/gcp-start-${{ inputs.distrib }}.sh \
-                                                            --max-run-duration=20d \
+                                                            --max-run-duration=10m \
                                                             --instance-termination-action=DELETE
           IP_ADDR=$(gcloud beta compute instances describe $CI_INSTANCE --format='get(networkInterfaces[0].accessConfigs[0].natIP)' --zone=europe-west4-a)
           echo "IP_ADDR=${IP_ADDR}" >> "$GITHUB_OUTPUT"
@@ -150,17 +150,17 @@ jobs:
           echo ""
           echo "[ OK ] Cosmian KMS HTTP to HTTPS redirect connection"
 
-      # - name: Stop and delete GCP instance
-      #   if: success() || failure()
-      #   env:
-      #     CI_INSTANCE: ${{ needs.build-kms-cosmian-vm-image.outputs.ci_instance }}
-      #   run: |
-      #     set +e
-      #     OUTPUT=$(gcloud beta compute instances describe $CI_INSTANCE --format='get(status)' --zone=europe-west4-a)
-      #     EXIT_CODE="$?"
-      #     if [ "$EXIT_CODE" -eq 0 ]; then
-      #       gcloud beta compute instances stop $CI_INSTANCE --zone europe-west4-a \
-      #                                                       --project $GCP_DEV_PROJECT
-      #       gcloud beta compute instances delete $CI_INSTANCE --zone europe-west4-a \
-      #                                                         --project $GCP_DEV_PROJECT
-      #     fi
+      - name: Stop and delete GCP instance
+        if: success() || failure()
+        env:
+          CI_INSTANCE: ${{ needs.build-kms-cosmian-vm-image.outputs.ci_instance }}
+        run: |
+          set +e
+          OUTPUT=$(gcloud beta compute instances describe $CI_INSTANCE --format='get(status)' --zone=europe-west4-a)
+          EXIT_CODE="$?"
+          if [ "$EXIT_CODE" -eq 0 ]; then
+            gcloud beta compute instances stop $CI_INSTANCE --zone europe-west4-a \
+                                                            --project $GCP_DEV_PROJECT
+            gcloud beta compute instances delete $CI_INSTANCE --zone europe-west4-a \
+                                                              --project $GCP_DEV_PROJECT
+          fi
