@@ -85,7 +85,7 @@ pub async fn get_attributes(
             attributes.object_type = Some(object_type);
             // is it a Covercrypt key?
             if key_block.key_format_type == KeyFormatType::CoverCryptSecretKey {
-                attributes
+                *attributes
             } else {
                 // we want the default format which yields the most infos
                 let pkey = kmip_private_key_to_openssl(&owm.object)?;
@@ -104,7 +104,7 @@ pub async fn get_attributes(
             attributes.object_type = Some(object_type);
             // is it a Covercrypt key?
             if key_block.key_format_type == KeyFormatType::CoverCryptPublicKey {
-                attributes
+                *attributes
             } else {
                 // we want the default format which yields the most infos
                 let pkey = kmip_public_key_to_openssl(&owm.object)?;
@@ -121,7 +121,7 @@ pub async fn get_attributes(
         Object::SymmetricKey { key_block } => {
             let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
             attributes.object_type = Some(object_type);
-            attributes
+            *attributes
         }
     };
 

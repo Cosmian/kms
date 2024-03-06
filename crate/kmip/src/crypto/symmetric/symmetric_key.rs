@@ -48,7 +48,7 @@ pub fn create_symmetric_key_kmip_object(
                 key_material: KeyMaterial::TransparentSymmetricKey {
                     key: Zeroizing::from(key_bytes.to_vec()),
                 },
-                attributes: Some(attributes),
+                attributes: Some(Box::new(attributes)),
             },
             cryptographic_length: Some(symmetric_key_len),
             key_wrapping_data: None,

@@ -179,13 +179,13 @@ pub fn openssl_public_key_to_kmip(
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         rsa_public_key.public_key_to_der_pkcs1()?,
                     )),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                         cryptographic_length: Some(rsa_public_key.size() as i32),
                         key_format_type: Some(KeyFormatType::PKCS1),
                         object_type: Some(ObjectType::PublicKey),
                         ..Attributes::default()
-                    }),
+                    })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length: Some(rsa_public_key.size() as i32),
@@ -208,13 +208,13 @@ pub fn openssl_public_key_to_kmip(
                 key_format_type,
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(spki_der),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm,
                         cryptographic_length: Some(public_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::PKCS8),
                         object_type: Some(ObjectType::PublicKey),
                         ..Attributes::default()
-                    }),
+                    })),
                 },
                 cryptographic_algorithm,
                 cryptographic_length: Some(public_key.bits() as i32),
@@ -233,13 +233,13 @@ pub fn openssl_public_key_to_kmip(
                         modulus: BigUint::from_bytes_be(&rsa_public_key.n().to_vec()),
                         public_exponent: BigUint::from_bytes_be(&rsa_public_key.e().to_vec()),
                     },
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                         cryptographic_length: Some(public_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::TransparentRSAPublicKey),
                         object_type: Some(ObjectType::PublicKey),
                         ..Attributes::default()
-                    }),
+                    })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length: Some(public_key.bits() as i32),
@@ -286,7 +286,7 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve,
                                 q_string: point_encoding,
                             },
-                            attributes: Some(Attributes {
+                            attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
@@ -298,7 +298,7 @@ pub fn openssl_public_key_to_kmip(
                                     },
                                 ),
                                 ..Attributes::default()
-                            }),
+                            })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length: Some(public_key.bits() as i32),
@@ -315,7 +315,7 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve: RecommendedCurve::CURVE25519,
                                 q_string,
                             },
-                            attributes: Some(Attributes {
+                            attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
@@ -327,7 +327,7 @@ pub fn openssl_public_key_to_kmip(
                                     },
                                 ),
                                 ..Attributes::default()
-                            }),
+                            })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length: Some(public_key.bits() as i32),
@@ -344,7 +344,7 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve: RecommendedCurve::CURVEED25519,
                                 q_string,
                             },
-                            attributes: Some(Attributes {
+                            attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
@@ -356,7 +356,7 @@ pub fn openssl_public_key_to_kmip(
                                     },
                                 ),
                                 ..Attributes::default()
-                            }),
+                            })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
                         cryptographic_length: Some(public_key.bits() as i32),
@@ -373,7 +373,7 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve: RecommendedCurve::CURVE448,
                                 q_string,
                             },
-                            attributes: Some(Attributes {
+                            attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
@@ -385,7 +385,7 @@ pub fn openssl_public_key_to_kmip(
                                     },
                                 ),
                                 ..Attributes::default()
-                            }),
+                            })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length: Some(public_key.bits() as i32),
@@ -402,7 +402,7 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve: RecommendedCurve::CURVEED448,
                                 q_string,
                             },
-                            attributes: Some(Attributes {
+                            attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::Ed448),
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
@@ -414,7 +414,7 @@ pub fn openssl_public_key_to_kmip(
                                     },
                                 ),
                                 ..Attributes::default()
-                            }),
+                            })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::Ed448),
                         cryptographic_length: Some(public_key.bits() as i32),

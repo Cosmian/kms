@@ -56,7 +56,7 @@ pub fn to_ec_public_key(
                     recommended_curve: curve,
                     q_string: bytes.to_vec(),
                 },
-                attributes: Some(Attributes {
+                attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                     cryptographic_length: Some(cryptographic_length_in_bits),
@@ -78,7 +78,7 @@ pub fn to_ec_public_key(
                         ),
                     }]),
                     ..Attributes::default()
-                }),
+                })),
             },
             cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,
@@ -119,7 +119,7 @@ pub fn to_ec_private_key(
                     recommended_curve: curve,
                     d: SafeBigUint::from_bytes_be(bytes),
                 },
-                attributes: Some(Attributes {
+                attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PrivateKey),
                     cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                     cryptographic_length: Some(cryptographic_length_in_bits),
@@ -141,7 +141,7 @@ pub fn to_ec_private_key(
                         ),
                     }]),
                     ..Attributes::default()
-                }),
+                })),
             },
             cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,

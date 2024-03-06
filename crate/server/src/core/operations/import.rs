@@ -97,7 +97,7 @@ async fn process_symmetric_key(
     }
     // replace attributes
     attributes.object_type = Some(ObjectType::SymmetricKey);
-    object_key_block.key_value.attributes = Some(attributes.clone());
+    object_key_block.key_value.attributes = Some(Box::new(attributes.clone()));
 
     let uid = match request.unique_identifier.to_string().unwrap_or_default() {
         uid if uid.is_empty() => Uuid::new_v4().to_string(),
@@ -231,7 +231,7 @@ async fn process_public_key(
             .key_block_mut()?
             .key_value
             .attributes
-            .get_or_insert(Attributes::default()),
+            .get_or_insert(Box::default()),
         &request_attributes,
     );
 
@@ -302,7 +302,7 @@ async fn process_private_key(
             object_key_block
                 .key_value
                 .attributes
-                .get_or_insert(Attributes::default()),
+                .get_or_insert(Box::default()),
         );
 
         // build ui if needed
@@ -381,7 +381,7 @@ fn private_key_from_openssl(
         sk_key_block
             .key_value
             .attributes
-            .get_or_insert(Attributes::default()),
+            .get_or_insert(Box::default()),
     );
 
     let sk_tags = user_tags.map(|mut tags| {
@@ -517,7 +517,7 @@ async fn process_pkcs12(
         .key_block_mut()?
         .key_value
         .attributes
-        .get_or_insert(Attributes::default())
+        .get_or_insert(Box::default())
         .add_link(
             //Note: it is unclear what link type should be used here according to KMIP
             // CertificateLink seems to be for public key only and there is not description
