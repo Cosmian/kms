@@ -300,56 +300,56 @@ impl KmsClient {
     /// Generate new keys associated to the given access policy in the master keys.
     /// This will rekey in the KMS:
     /// - the master keys
-    /// - any user key associated to the access policy
+    /// - any activated user key associated to the access policy
     ///
     /// Args:
-    ///     - `access_policy_str` (str): describe the keys to renew
+    ///     - `access_policy` (str): describe the keys to renew
     ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn rekey_cover_crypt_access_policy<'p>(
         &'p self,
-        access_policy_str: String,
+        access_policy: String,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            RekeyEditAction::RekeyAccessPolicy(access_policy_str),
+            RekeyEditAction::RekeyAccessPolicy(access_policy),
             py
         )
     }
 
     /// Removes old keys associated to the given access policy from the master
-    /// keys. This will permanently remove access to old ciphers.
+    /// keys. This will permanently remove access to old ciphertexts.
     /// This will rekey in the KMS:
     /// - the master keys
-    /// - any user key associated to the access policy
+    /// - any activated user key associated to the access policy
     ///
     /// Args:
-    ///     - `access_policy_str` (str): describe the keys to renew
+    ///     - `access_policy` (str): describe the keys to renew
     ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn prune_cover_crypt_access_policy<'p>(
         &'p self,
-        access_policy_str: String,
+        access_policy: String,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         rekey_keypair!(
             self,
             master_secret_key_identifier.0,
-            RekeyEditAction::PruneAccessPolicy(access_policy_str),
+            RekeyEditAction::PruneAccessPolicy(access_policy),
             py
         )
     }
 
     /// Remove a specific attribute from a keypair's policy.
-    /// Permanently removes the ability to encrypt new ciphers and decrypt all existing ciphers associated with this attribute.
+    /// Permanently removes the ability to encrypt and decrypt messages associated with this attribute.
     ///
     /// Args:
     ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
@@ -455,7 +455,7 @@ impl KmsClient {
     /// partitions.
     ///
     /// Args:
-    ///         - `access_policy_str` (str): user access policy
+    ///         - `access_policy` (str): user access policy
     ///         - `master_secret_key_identifier` (str): master secret key UID
     ///         - `tags`: optional tags to use with the keys
     ///
@@ -463,13 +463,13 @@ impl KmsClient {
     ///         Future[str]: User secret key UID
     pub fn create_cover_crypt_user_decryption_key<'p>(
         &'p self,
-        access_policy_str: &str,
+        access_policy: &str,
         master_secret_key_identifier: &str,
         tags: Option<Vec<&str>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         let request = build_create_user_decryption_private_key_request(
-            access_policy_str,
+            access_policy,
             master_secret_key_identifier,
             tags.unwrap_or_default()
                 .into_iter()
@@ -498,7 +498,7 @@ impl KmsClient {
     ///     - `private_key` (bytes): key bytes
     ///     - `replace_existing` (bool): set to true to replace an existing key with the same identifier
     ///     - `link_master_private_key_id` (str): id of the matching master private key
-    ///     - `access_policy_str` (str): user access policy
+    ///     - `access_policy` (str): user access policy
     ///     - `tags`: optional tags to use with the key
     ///     - `is_wrapped` (bool): whether the key is wrapped
     ///     - `wrapping_password` (Optional[str]): password used to wrap the key
@@ -512,7 +512,7 @@ impl KmsClient {
         private_key: &[u8],
         replace_existing: bool,
         link_master_private_key_id: &str,
-        access_policy_str: &str,
+        access_policy: &str,
         tags: Option<Vec<String>>,
         is_wrapped: Option<bool>,
         wrapping_password: Option<String>,
@@ -524,7 +524,7 @@ impl KmsClient {
             unique_identifier,
             replace_existing,
             link_master_private_key_id,
-            access_policy_str,
+            access_policy,
             is_wrapped.unwrap_or(false),
             wrapping_password,
             tags.unwrap_or_default(),
@@ -548,7 +548,7 @@ impl KmsClient {
     /// ciphertext.
     ///
     /// Args:
-    ///     - `access_policy_str` (str): the access policy to use for encryption
+    ///     - `access_policy` (str): the access policy to use for encryption
     ///     - `data` (bytes): data to encrypt
     ///     - `public_key_identifier` (Union[str, List[str]]): public key unique id or associated tags
     ///     - `header_metadata` (Optional[bytes]): additional data to symmetrically encrypt in the header
@@ -561,7 +561,7 @@ impl KmsClient {
     #[allow(clippy::too_many_arguments)]
     pub fn cover_crypt_encryption<'p>(
         &'p self,
-        encryption_policy_str: String,
+        access_policy: String,
         data: Vec<u8>,
         public_key_identifier: ToUniqueIdentifier,
         header_metadata: Option<Vec<u8>>,
@@ -570,7 +570,7 @@ impl KmsClient {
     ) -> PyResult<&PyAny> {
         let request = build_encryption_request(
             &public_key_identifier.0,
-            Some(encryption_policy_str),
+            Some(access_policy),
             data,
             header_metadata,
             authentication_data,

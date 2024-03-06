@@ -157,7 +157,7 @@ pub fn deserialize_access_policy(ap: &str) -> Result<AccessPolicy, KmipError> {
     AccessPolicy::from_boolean_expression(ap).map_err(|e| {
         KmipError::InvalidKmipValue(
             ErrorReason::Invalid_Attribute_Value,
-            format!("failed to read Access Policy string from the request: {e}"),
+            format!("failed to deserialize the given Access Policy string: {e}"),
         )
     })
 }

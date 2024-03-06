@@ -291,8 +291,6 @@ impl ViewAction {
 }
 
 /// Add an attribute to the policy of an existing private master key.
-///
-///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct AddAttributeAction {
@@ -359,8 +357,6 @@ impl AddAttributeAction {
 }
 
 /// Rename an attribute in the policy of an existing private master key.
-///
-///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct RenameAttributeAction {
@@ -417,8 +413,7 @@ impl RenameAttributeAction {
 }
 
 /// Disable an attribute from the policy of an existing private master key.
-///
-///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
+/// Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphertexts.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct DisableAttributeAction {
@@ -468,8 +463,7 @@ impl DisableAttributeAction {
 }
 
 /// Remove an attribute from the policy of an existing private master key.
-///
-///  - Use the `--key-id` switch to extract the policy from a key stored in the KMS.
+/// Permanently removes the ability to encrypt and decrypt messages associated with this attribute.
 #[derive(Parser)]
 #[clap(verbatim_doc_comment)]
 pub struct RemoveAttributeAction {
