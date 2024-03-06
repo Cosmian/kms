@@ -165,7 +165,7 @@ fn process_certificate(request: Import) -> Result<(String, Vec<AtomicOperation>)
         link: request_attributes.link,
         object_type: Some(ObjectType::Certificate),
         unique_identifier: Some(UniqueIdentifier::TextString(uid.clone())),
-        certificate_attributes: Some(certificate_attributes),
+        certificate_attributes: Some(Box::new(certificate_attributes)),
         ..Attributes::default()
     };
 
@@ -541,7 +541,7 @@ async fn process_pkcs12(
         link: Some(request_links.clone()),
         object_type: Some(ObjectType::Certificate),
         unique_identifier: Some(UniqueIdentifier::TextString(leaf_certificate_uid.clone())),
-        certificate_attributes: Some(leaf_certificate_attributes),
+        certificate_attributes: Some(Box::new(leaf_certificate_attributes)),
         ..Attributes::default()
     };
     // Add links to the leaf certificate
@@ -585,7 +585,7 @@ async fn process_pkcs12(
             link: Some(request_links.clone()),
             object_type: Some(ObjectType::Certificate),
             unique_identifier: Some(UniqueIdentifier::TextString(chain_certificate_uid.clone())),
-            certificate_attributes: Some(chain_certificate_attributes),
+            certificate_attributes: Some(Box::new(chain_certificate_attributes)),
             ..Attributes::default()
         };
 

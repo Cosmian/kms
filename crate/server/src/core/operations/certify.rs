@@ -249,7 +249,7 @@ fn build_certificate(
     // add the certificate "system" tag
     tags.insert("_cert".to_string());
     let certificate_attributes = CertificateAttributes::from(&x509);
-    attributes.certificate_attributes = Some(certificate_attributes);
+    attributes.certificate_attributes = Some(Box::new(certificate_attributes));
 
     let (issued_certificate_id, issued_certificate) = openssl_certificate_to_kmip(&x509)?;
     Ok((issued_certificate_id, issued_certificate))
