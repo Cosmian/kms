@@ -61,11 +61,6 @@ jobs:
         run: |
           packer build -var "prefix=alpha-$TIMESTAMP" gcp-sev-${{ inputs.distrib }}.pkr.hcl
 
-      # - name: Build GCP images - release
-      #   if: startsWith(github.ref, 'refs/tags')
-      #   run: |
-      #     packer build -var "prefix=release-${GITHUB_REF_NAME//./-}" gcp-sev-${{ inputs.distrib }}.pkr.hcl
-
   test-image:
     name: Test image
     runs-on: ubuntu-22.04
@@ -150,17 +145,39 @@ jobs:
           echo ""
           echo "[ OK ] Cosmian KMS HTTP to HTTPS redirect connection"
 
-      - name: Stop and delete GCP instance
+      - name: Delete GCP instance
         if: success() || failure()
         env:
           CI_INSTANCE: ${{ needs.build-kms-cosmian-vm-image.outputs.ci_instance }}
         run: |
           set +e
-          OUTPUT=$(gcloud beta compute instances describe $CI_INSTANCE --format='get(status)' --zone=europe-west4-a)
-          EXIT_CODE="$?"
-          if [ "$EXIT_CODE" -eq 0 ]; then
-            gcloud beta compute instances stop $CI_INSTANCE --zone europe-west4-a \
+          gcloud beta compute instances delete $CI_INSTANCE --zone europe-west4-a \
                                                             --project $GCP_DEV_PROJECT
-            gcloud beta compute instances delete $CI_INSTANCE --zone europe-west4-a \
-                                                              --project $GCP_DEV_PROJECT
-          fi
+
+  release-image:
+    name: Release image
+    runs-on: ubuntu-22.04
+    needs: [build-kms-cosmian-vm-image, test-image]
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: GCP auth
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: "${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}"
+
+      - name: Copy image to public project
+        if: startsWith(github.ref, 'refs/tags') && inputs.distrib != 'rhel'
+        env:
+          CI_INSTANCE: ${{ needs.build-kms-cosmian-vm-image.outputs.ci_instance }}
+          IMAGE_NAME: ${{ needs.build-kms-cosmian-vm-image.outputs.image_name }}
+        run: |
+          TAG=${{ github.ref_name }}
+          VERSION=$(echo $TAG | sed 's/\./-/g; s/_/-/g; s/+/-/g')
+          NEW_IMAGE_NAME=cosmian-vm-kms-$VERSION-sev-${{ inputs.distrib }}
+          gcloud beta compute --project=$GCP_DEV_PROJECT images create $NEW_IMAGE_NAME --source-image=$IMAGE_NAME --source-image-project=$GCP_DEV_PROJECT
+          gcloud beta compute --project=$GCP_PUBLIC_PROJECT images create $NEW_IMAGE_NAME --source-image=$IMAGE_NAME --source-image-project=$GCP_DEV_PROJECT
