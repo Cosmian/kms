@@ -238,10 +238,7 @@ async fn process_private_key(
     let mut attributes = object_with_metadata.attributes.clone();
     add_imported_links_to_attributes(
         &mut attributes,
-        key_block
-            .key_value
-            .attributes
-            .get_or_insert(Attributes::default()),
+        key_block.key_value.attributes.get_or_insert(Box::default()),
     );
 
     // parse the key to an openssl object
@@ -260,7 +257,7 @@ async fn process_private_key(
             let mut object = openssl_private_key_to_kmip_default_format(&openssl_key)?;
             // add the attributes back
             let key_block = object.key_block_mut()?;
-            key_block.key_value.attributes = Some(attributes);
+            key_block.key_value.attributes = Some(Box::new(attributes));
             // wrap the key
             wrap_key(key_block, key_wrapping_specification, kms, user, params).await?;
             // reassign the wrapped key
@@ -291,7 +288,7 @@ async fn process_private_key(
     }
     // add the attributes back
     let key_block = object_with_metadata.object.key_block_mut()?;
-    key_block.key_value.attributes = Some(attributes);
+    key_block.key_value.attributes = Some(Box::new(attributes));
     Ok(())
 }
 
@@ -341,10 +338,7 @@ async fn process_public_key(
     let mut attributes = object_with_metadata.attributes.clone();
     add_imported_links_to_attributes(
         &mut attributes,
-        key_block
-            .key_value
-            .attributes
-            .get_or_insert(Attributes::default()),
+        key_block.key_value.attributes.get_or_insert(Box::default()),
     );
 
     // parse the key to an openssl object
@@ -363,7 +357,7 @@ async fn process_public_key(
             let mut object = openssl_public_key_to_kmip_default_format(&openssl_key)?;
             // add the attributes back
             let key_block = object.key_block_mut()?;
-            key_block.key_value.attributes = Some(attributes);
+            key_block.key_value.attributes = Some(Box::new(attributes));
 
             // wrap the key
             wrap_key(
@@ -401,7 +395,7 @@ async fn process_public_key(
 
     // add the attributes back
     let key_block = object_with_metadata.object.key_block_mut()?;
-    key_block.key_value.attributes = Some(attributes);
+    key_block.key_value.attributes = Some(Box::new(attributes));
 
     Ok(())
 }

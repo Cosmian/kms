@@ -17,7 +17,7 @@ jobs:
       archive-name: centos7_tests
       commands: |
         cargo build --bins
-        RUST_MIN_STACK=4194304 cargo test --workspace -- --nocapture
+        cargo test --workspace -- --nocapture
       artifacts: ''
 
   rhel9-tests:
@@ -39,7 +39,7 @@ jobs:
       archive-name: fips_centos7_tests
       commands: |
         cargo build --bins --features fips
-        RUST_MIN_STACK=4194304 cargo test --workspace --features fips -- --nocapture
+        cargo test --workspace --features fips -- --nocapture
       artifacts: ''
 
   ubuntu-20-tests:
@@ -51,7 +51,7 @@ jobs:
       archive-name: ubuntu_20_04_tests
       commands: |
         cargo build --bins
-        RUST_MIN_STACK=4194304 cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: ''
 
   fips-ubuntu-20-tests:
@@ -63,7 +63,7 @@ jobs:
       archive-name: fips_ubuntu_20_04_tests
       commands: |
         cargo build --bins --features fips
-        RUST_MIN_STACK=4194304 cargo test --workspace --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test --workspace --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: ''
 
   ubuntu-22-tests:
@@ -75,5 +75,5 @@ jobs:
       archive-name: ubuntu_22_04_tests
       commands: |
         cargo build --bins
-        RUST_MIN_STACK=4194304 cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
+        cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: ''

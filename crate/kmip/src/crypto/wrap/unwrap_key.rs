@@ -83,7 +83,7 @@ pub fn unwrap_key_block(
             };
             KeyValue {
                 key_material,
-                attributes: attributes.cloned(),
+                attributes: attributes.map(|a| Box::new(a.clone())),
             }
         }
     };
