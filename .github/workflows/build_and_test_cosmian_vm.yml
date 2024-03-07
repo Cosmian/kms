@@ -29,6 +29,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - uses: actions/download-artifact@v3
+
+      - name: List artifacts
+        run: find .
 
       - name: Create env variables
         id: env
@@ -155,16 +159,7 @@ jobs:
           gcloud beta compute instances stop $CI_INSTANCE --zone europe-west4-a --project $GCP_DEV_PROJECT
           gcloud beta compute instances start $CI_INSTANCE --zone europe-west4-a --project $GCP_DEV_PROJECT
           IP_ADDR=$(gcloud beta compute instances describe $CI_INSTANCE --format='get(networkInterfaces[0].accessConfigs[0].natIP)' --zone=europe-west4-a)
-          RETRY=0
-          MAX_RETRIES=80
-          until curl --insecure --output /dev/null --silent --fail https://${IP_ADDR}:5355/ima/ascii; do
-            if [[ "${RETRY}" == "${MAX_RETRIES}" ]]; then
-              echo "VM is not responding, maybe it had a bad start... Stopping in error"
-              exit 1
-            fi
-            $(( RETRY++ ))
-            sleep 3
-          done
+          timeout 4m bash -c 'until curl --insecure --output /dev/null --silent --fail https://${IP_ADDR}:5355/ima/ascii; do sleep 3; done'          echo "[ OK ] Cosmian VM ready after reboot"
           echo "[ OK ] Cosmian VM ready after reboot"
           RESET_COUNT=$(cat cosmian_vm.snapshot | jq '.tpm_policy.reset_count')
           NEW_RESET_COUNT=$(expr $RESET_COUNT + 1)

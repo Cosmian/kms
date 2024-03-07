@@ -5,13 +5,10 @@ set +x
 export DEBIAN_FRONTEND=noninteractive
 
 # Update packages and install dependencies
-apt-get update && apt-get install --no-install-recommends -y unzip nginx && apt-get clean && rm -rf /var/lib/apt/lists/*
+apt-get update && apt-get install --no-install-recommends -y nginx && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Download KMS zip file
-curl -o kms-ubuntu-22_04.zip https://github.com/Cosmian/kms/releases/latest/download/ubuntu_22_04.zip
-
-# Extract content and copy the executable
-unzip kms-ubuntu-22_04.zip && cp ubuntu_22_04/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms && rm -rf kms-ubuntu-22_04.zip ubuntu_22_04/
+# Copy the executable
+cp ubuntu_22_04/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms && rm -rf ubuntu_22_04/
 
 # Configure Supervisor
 cat >/etc/supervisor/conf.d/cosmian_kms.conf <<EOF

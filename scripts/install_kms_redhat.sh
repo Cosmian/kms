@@ -3,15 +3,10 @@
 set +x
 
 # Update packages and install dependencies
-yum update -y && yum install -y unzip nginx
+yum update -y && yum install -y nginx
 
-# Download KMS zip file
-curl -o kms-rhel9.zip https://package.cosmian.com/kms/last_build/rhel9.zip
-# TODO(manu): To be replaced in next release by:
-#curl -o kms-rhel9.zip https://github.com/Cosmian/kms/releases/latest/download/rhel9.zip
-
-# Extract content and copy the executable
-unzip kms-rhel9.zip && cp rhel9/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms && rm -rf rhel9.zip rhel9/
+# Copy the executable
+cp rhel9/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms && rm -rf rhel9.zip rhel9/
 
 # Configure Supervisor
 cat >/etc/supervisord.d/cosmian_kms.ini <<EOF
