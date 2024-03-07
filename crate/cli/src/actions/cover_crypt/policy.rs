@@ -45,8 +45,7 @@ pub fn policy_from_json_file(specs_filename: &impl AsRef<Path>) -> Result<Policy
     })
 }
 
-/// Extract or view policies of existing keys,
-/// and create a binary policy from specifications.
+/// Extract, view, or edit policies of existing keys, and create a binary policy from specifications
 #[derive(Subcommand)]
 pub enum PolicyCommands {
     View(ViewAction),
