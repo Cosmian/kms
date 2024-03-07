@@ -10,7 +10,7 @@ To make requests from the Chrome extension to Cosmian ai runner, users must be a
 
 From you Identity Provider, you need to add the Chrome extension URL as an allowed callback/redirect URI, enabling full login flow : --URL--
 
-If you are using Microsoft Entra ID, you also need to add an API Permission (API Permission → MicrosoftGraph → Delegated Permission → OpenId), in order to add users' basic information from the fetched authentification ID Token.
+If you are using Microsoft Entra ID, you also need to add an API Permission (API Permission → MicrosoftGraph → Delegated Permission → OpenId), in order to add users' basic information from the fetched authentification ID Token and add email claim in Token Configuration (more details after).
 
 ## Deploy Cosmian ai runner
 The  **Cosmian ai** runner can be spawned from the different Cloud Providers' marketplace.
@@ -36,6 +36,8 @@ From your created Single Page Application, share Client ID and authorization and
 
 Add Chrome extension URL from the allowed callbacks URL section.
 
+Activate Refresh Token Rotation in order to enable the refresh token process.
+
 
 **Azure Entra ID:**
 
@@ -44,6 +46,8 @@ On an application, share the associated Client ID, authorization and token URLs 
 Under Authentification, add a platform : Single Page Application. Add Chrome extension URL from the Redirect URIs section.
 
 Under API Permission, add an API permission for OpenId : API Permission → MicrosoftGraph → Delegated Permission → OpenId
+
+Under Token configuration, add an optional claim, selecting "ID" as Token type and the email field in claim list.
 
 
 **Google IAM:**
