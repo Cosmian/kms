@@ -8,6 +8,6 @@ supervisorctl start cosmian_vm_agent
 until [ -f /var/lib/cosmian_vm/data/cert.pem ]; do sleep 1; done
 
 # create directory to write incoming app configuration
-mkdir /var/lib/cosmian_vm/data/app
+mkdir -p /var/lib/cosmian_vm/data/app
 
 systemctl start nginx

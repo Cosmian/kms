@@ -74,5 +74,4 @@ server {
 }
 EOF
 
-systemctl start sshd
 systemctl enable supervisord
