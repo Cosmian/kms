@@ -145,6 +145,37 @@ jobs:
           echo ""
           echo "[ OK ] Cosmian KMS HTTP to HTTPS redirect connection"
 
+      - name: Restart the Cosmian VM and test again
+        env:
+          CI_INSTANCE: ${{ needs.build-kms-cosmian-vm-image.outputs.ci_instance }}
+        run: |
+          sudo apt-get install -y jq moreutils
+          echo "Rebooting instance..."
+          gcloud beta compute instances stop $CI_INSTANCE --zone europe-west4-a --project $GCP_DEV_PROJECT
+          gcloud beta compute instances start $CI_INSTANCE --zone europe-west4-a --project $GCP_DEV_PROJECT
+          IP_ADDR=$(gcloud beta compute instances describe $CI_INSTANCE --format='get(networkInterfaces[0].accessConfigs[0].natIP)' --zone=europe-west4-a)
+          until curl --insecure --output /dev/null --silent --fail https://${IP_ADDR}:5355/ima/ascii; do sleep 3; done
+          echo "[ OK ] Cosmian VM ready after reboot"
+          RESET_COUNT=$(cat cosmian_vm.snapshot | jq '.tpm_policy.reset_count')
+          NEW_RESET_COUNT=$(expr $RESET_COUNT + 1)
+          jq --arg NEW_RESET_COUNT "$NEW_RESET_COUNT" '.tpm_policy.reset_count = $NEW_RESET_COUNT' cosmian_vm.snapshot > new_cosmian_vm.snapshot
+          jq '.tpm_policy.reset_count |= tonumber' new_cosmian_vm.snapshot | sponge new_cosmian_vm.snapshot
+          ./target/release/cosmian_vm --url https://${IP_ADDR}:5355 --allow-insecure-tls verify --snapshot new_cosmian_vm.snapshot
+          echo "[ OK ] Integrity after reboot"
+          echo ""
+          echo "Checking Cosmian KMS HTTP connection..."
+          curl http://${IP_ADDR}:8080/version
+          echo ""
+          echo "[ OK ] Cosmian KMS HTTP connection"
+          echo "Checking Cosmian KMS HTTPS connection..."
+          curl --insecure https://${IP_ADDR}/version
+          echo ""
+          echo "[ OK ] Cosmian KMS HTTPS connection"
+          echo "Checking Cosmian KMS HTTP to HTTPS redirect connection..."
+          curl --insecure http://${IP_ADDR}/version
+          echo ""
+          echo "[ OK ] Cosmian KMS HTTP to HTTPS redirect connection"
+
       - name: Delete GCP instance
         if: success() || failure()
         env:
