@@ -230,8 +230,10 @@ pub fn openssl_public_key_to_kmip(
                 key_format_type,
                 key_value: KeyValue {
                     key_material: KeyMaterial::TransparentRSAPublicKey {
-                        modulus: BigUint::from_bytes_be(&rsa_public_key.n().to_vec()),
-                        public_exponent: BigUint::from_bytes_be(&rsa_public_key.e().to_vec()),
+                        modulus: Box::new(BigUint::from_bytes_be(&rsa_public_key.n().to_vec())),
+                        public_exponent: Box::new(BigUint::from_bytes_be(
+                            &rsa_public_key.e().to_vec(),
+                        )),
                     },
                     attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),

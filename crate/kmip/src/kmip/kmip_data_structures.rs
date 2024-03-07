@@ -370,52 +370,52 @@ impl Default for KeyWrappingSpecification {
 pub enum KeyMaterial {
     ByteString(Zeroizing<Vec<u8>>),
     TransparentDHPrivateKey {
-        p: BigUint,
-        q: Option<BigUint>,
-        g: BigUint,
-        j: Option<BigUint>,
-        x: SafeBigUint,
+        p: Box<BigUint>,
+        q: Option<Box<BigUint>>,
+        g: Box<BigUint>,
+        j: Option<Box<BigUint>>,
+        x: Box<SafeBigUint>,
     },
     TransparentDHPublicKey {
-        p: BigUint,
-        q: Option<BigUint>,
-        g: BigUint,
-        j: Option<BigUint>,
-        y: BigUint,
+        p: Box<BigUint>,
+        q: Option<Box<BigUint>>,
+        g: Box<BigUint>,
+        j: Option<Box<BigUint>>,
+        y: Box<BigUint>,
     },
     TransparentDSAPrivateKey {
-        p: BigUint,
-        q: BigUint,
-        g: BigUint,
-        x: SafeBigUint,
+        p: Box<BigUint>,
+        q: Box<BigUint>,
+        g: Box<BigUint>,
+        x: Box<SafeBigUint>,
     },
     TransparentDSAPublicKey {
-        p: BigUint,
-        q: BigUint,
-        g: BigUint,
-        y: BigUint,
+        p: Box<BigUint>,
+        q: Box<BigUint>,
+        g: Box<BigUint>,
+        y: Box<BigUint>,
     },
     TransparentSymmetricKey {
         key: Zeroizing<Vec<u8>>,
     },
     TransparentRSAPublicKey {
-        modulus: BigUint,
-        public_exponent: BigUint,
+        modulus: Box<BigUint>,
+        public_exponent: Box<BigUint>,
     },
     TransparentRSAPrivateKey {
-        modulus: BigUint,
-        private_exponent: Option<SafeBigUint>,
-        public_exponent: Option<BigUint>,
-        p: Option<SafeBigUint>,
-        q: Option<SafeBigUint>,
-        prime_exponent_p: Option<SafeBigUint>,
-        prime_exponent_q: Option<SafeBigUint>,
-        crt_coefficient: Option<SafeBigUint>,
+        modulus: Box<BigUint>,
+        private_exponent: Option<Box<SafeBigUint>>,
+        public_exponent: Option<Box<BigUint>>,
+        p: Option<Box<SafeBigUint>>,
+        q: Option<Box<SafeBigUint>>,
+        prime_exponent_p: Option<Box<SafeBigUint>>,
+        prime_exponent_q: Option<Box<SafeBigUint>>,
+        crt_coefficient: Option<Box<SafeBigUint>>,
     },
     TransparentECPrivateKey {
         recommended_curve: RecommendedCurve,
         // big int in big endian format
-        d: SafeBigUint,
+        d: Box<SafeBigUint>,
     },
     TransparentECPublicKey {
         recommended_curve: RecommendedCurve,
@@ -453,47 +453,47 @@ impl Serialize for KeyMaterial {
             Self::TransparentDHPrivateKey { p, q, g, j, x } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 6)?;
                 st.serialize_field("KeyTypeSer", &KeyTypeSer::DH)?;
-                st.serialize_field("P", p)?;
+                st.serialize_field("P", &**p)?;
                 if let Some(q) = q {
-                    st.serialize_field("Q", q)?;
+                    st.serialize_field("Q", &**q)?;
                 };
-                st.serialize_field("G", g)?;
+                st.serialize_field("G", &**g)?;
                 if let Some(j) = j {
-                    st.serialize_field("J", j)?;
+                    st.serialize_field("J", &**j)?;
                 };
-                st.serialize_field("X", &**x)?;
+                st.serialize_field("X", &***x)?;
                 st.end()
             }
             Self::TransparentDHPublicKey { p, q, g, j, y } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 6)?;
                 st.serialize_field("KeyTypeSer", &KeyTypeSer::DH)?;
-                st.serialize_field("P", p)?;
+                st.serialize_field("P", &**p)?;
                 if let Some(q) = q {
-                    st.serialize_field("Q", q)?;
+                    st.serialize_field("Q", &**q)?;
                 };
-                st.serialize_field("G", g)?;
+                st.serialize_field("G", &**g)?;
                 if let Some(j) = j {
-                    st.serialize_field("J", j)?;
+                    st.serialize_field("J", &**j)?;
                 };
-                st.serialize_field("Y", y)?;
+                st.serialize_field("Y", &**y)?;
                 st.end()
             }
             Self::TransparentDSAPrivateKey { p, q, g, x } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
                 st.serialize_field("KeyTypeSer", &KeyTypeSer::DSA)?;
-                st.serialize_field("P", p)?;
-                st.serialize_field("Q", q)?;
-                st.serialize_field("G", g)?;
-                st.serialize_field("X", &**x)?;
+                st.serialize_field("P", &**p)?;
+                st.serialize_field("Q", &**q)?;
+                st.serialize_field("G", &**g)?;
+                st.serialize_field("X", &***x)?;
                 st.end()
             }
             Self::TransparentDSAPublicKey { p, q, g, y } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 5)?;
                 st.serialize_field("KeyTypeSer", &KeyTypeSer::DSA)?;
-                st.serialize_field("P", p)?;
-                st.serialize_field("Q", q)?;
-                st.serialize_field("G", g)?;
-                st.serialize_field("Y", y)?;
+                st.serialize_field("P", &**p)?;
+                st.serialize_field("Q", &**q)?;
+                st.serialize_field("G", &**g)?;
+                st.serialize_field("Y", &**y)?;
                 st.end()
             }
             Self::TransparentRSAPrivateKey {
@@ -508,27 +508,27 @@ impl Serialize for KeyMaterial {
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 9)?;
                 st.serialize_field("KeyTypeSer", &KeyTypeSer::RsaPrivate)?;
-                st.serialize_field("Modulus", modulus)?;
+                st.serialize_field("Modulus", &**modulus)?;
                 if let Some(private_exponent) = private_exponent {
-                    st.serialize_field("PrivateExponent", &**private_exponent)?;
+                    st.serialize_field("PrivateExponent", &***private_exponent)?;
                 };
                 if let Some(public_exponent) = public_exponent {
-                    st.serialize_field("PublicExponent", public_exponent)?;
+                    st.serialize_field("PublicExponent", &**public_exponent)?;
                 };
                 if let Some(p) = p {
-                    st.serialize_field("P", &**p)?;
+                    st.serialize_field("P", &***p)?;
                 };
                 if let Some(q) = q {
-                    st.serialize_field("Q", &**q)?;
+                    st.serialize_field("Q", &***q)?;
                 };
                 if let Some(prime_exponent_p) = prime_exponent_p {
-                    st.serialize_field("PrimeExponentP", &**prime_exponent_p)?;
+                    st.serialize_field("PrimeExponentP", &***prime_exponent_p)?;
                 };
                 if let Some(prime_exponent_q) = prime_exponent_q {
-                    st.serialize_field("PrimeExponentQ", &**prime_exponent_q)?;
+                    st.serialize_field("PrimeExponentQ", &***prime_exponent_q)?;
                 };
                 if let Some(crt_coefficient) = crt_coefficient {
-                    st.serialize_field("CrtCoefficient", &**crt_coefficient)?;
+                    st.serialize_field("CrtCoefficient", &***crt_coefficient)?;
                 };
                 st.end()
             }
@@ -538,8 +538,8 @@ impl Serialize for KeyMaterial {
             } => {
                 let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
                 st.serialize_field("KeyTypeSer", &KeyTypeSer::RsaPublic)?;
-                st.serialize_field("Modulus", modulus)?;
-                st.serialize_field("PublicExponent", public_exponent)?;
+                st.serialize_field("Modulus", &**modulus)?;
+                st.serialize_field("PublicExponent", &**public_exponent)?;
                 st.end()
             }
             Self::TransparentECPrivateKey {
@@ -549,7 +549,7 @@ impl Serialize for KeyMaterial {
                 let mut st = serializer.serialize_struct("KeyMaterial", 3)?;
                 st.serialize_field("KeyTypeSer", &KeyTypeSer::EC)?;
                 st.serialize_field("RecommendedCurve", recommended_curve)?;
-                st.serialize_field("D", &**d)?;
+                st.serialize_field("D", &***d)?;
                 st.end()
             }
             Self::TransparentECPublicKey {
@@ -612,21 +612,21 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                 // Here `p` and `q` describes either a public value for DH or
                 // a prime secret factor for RSA. Kept as `BigUint`` and wrapped
                 // as `SafeBigUint` in RSA.
-                let mut p: Option<BigUint> = None;
-                let mut q: Option<BigUint> = None;
-                let mut g: Option<BigUint> = None;
-                let mut j: Option<BigUint> = None;
-                let mut y: Option<BigUint> = None;
-                let mut x: Option<SafeBigUint> = None;
+                let mut p: Option<Box<BigUint>> = None;
+                let mut q: Option<Box<BigUint>> = None;
+                let mut g: Option<Box<BigUint>> = None;
+                let mut j: Option<Box<BigUint>> = None;
+                let mut y: Option<Box<BigUint>> = None;
+                let mut x: Option<Box<SafeBigUint>> = None;
                 let mut key: Option<Zeroizing<Vec<u8>>> = None;
-                let mut modulus: Option<BigUint> = None;
-                let mut public_exponent: Option<BigUint> = None;
-                let mut private_exponent: Option<SafeBigUint> = None;
-                let mut prime_exponent_p: Option<SafeBigUint> = None;
-                let mut prime_exponent_q: Option<SafeBigUint> = None;
-                let mut crt_coefficient: Option<SafeBigUint> = None;
+                let mut modulus: Option<Box<BigUint>> = None;
+                let mut public_exponent: Option<Box<BigUint>> = None;
+                let mut private_exponent: Option<Box<SafeBigUint>> = None;
+                let mut prime_exponent_p: Option<Box<SafeBigUint>> = None;
+                let mut prime_exponent_q: Option<Box<SafeBigUint>> = None;
+                let mut crt_coefficient: Option<Box<SafeBigUint>> = None;
                 let mut recommended_curve: Option<RecommendedCurve> = None;
-                let mut d: Option<SafeBigUint> = None;
+                let mut d: Option<Box<SafeBigUint>> = None;
                 let mut q_string: Option<Vec<u8>> = None;
 
                 while let Some(field) = map.next_key()? {
@@ -641,43 +641,43 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                             if d.is_some() {
                                 return Err(de::Error::duplicate_field("D"))
                             }
-                            d = Some(map.next_value()?);
+                            d = Some(Box::new(map.next_value()?));
                         }
                         Field::P => {
                             if p.is_some() {
                                 return Err(de::Error::duplicate_field("P"))
                             }
-                            p = Some(map.next_value()?);
+                            p = Some(Box::new(map.next_value()?));
                         }
                         Field::Q => {
                             if q.is_some() {
                                 return Err(de::Error::duplicate_field("Q"))
                             }
-                            q = Some(map.next_value()?);
+                            q = Some(Box::new(map.next_value()?));
                         }
                         Field::G => {
                             if g.is_some() {
                                 return Err(de::Error::duplicate_field("G"))
                             }
-                            g = Some(map.next_value()?);
+                            g = Some(Box::new(map.next_value()?));
                         }
                         Field::J => {
                             if j.is_some() {
                                 return Err(de::Error::duplicate_field("J"))
                             }
-                            j = Some(map.next_value()?);
+                            j = Some(Box::new(map.next_value()?));
                         }
                         Field::X => {
                             if x.is_some() {
                                 return Err(de::Error::duplicate_field("X"))
                             }
-                            x = Some(map.next_value()?);
+                            x = Some(Box::new(map.next_value()?));
                         }
                         Field::Y => {
                             if y.is_some() {
                                 return Err(de::Error::duplicate_field("Y"))
                             }
-                            y = Some(map.next_value()?);
+                            y = Some(Box::new(map.next_value()?));
                         }
                         Field::Key => {
                             if key.is_some() {
@@ -695,37 +695,37 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                             if modulus.is_some() {
                                 return Err(de::Error::duplicate_field("Modulus"))
                             }
-                            modulus = Some(map.next_value()?);
+                            modulus = Some(Box::new(map.next_value()?));
                         }
                         Field::PrivateExponent => {
                             if private_exponent.is_some() {
                                 return Err(de::Error::duplicate_field("PrivateExponent"))
                             }
-                            private_exponent = Some(map.next_value()?);
+                            private_exponent = Some(Box::new(map.next_value()?));
                         }
                         Field::PublicExponent => {
                             if public_exponent.is_some() {
                                 return Err(de::Error::duplicate_field("PublicExponent"))
                             }
-                            public_exponent = Some(map.next_value()?);
+                            public_exponent = Some(Box::new(map.next_value()?));
                         }
                         Field::PrimeExponentP => {
                             if prime_exponent_p.is_some() {
                                 return Err(de::Error::duplicate_field("PrimeExponentP"))
                             }
-                            prime_exponent_p = Some(map.next_value()?);
+                            prime_exponent_p = Some(Box::new(map.next_value()?));
                         }
                         Field::PrimeExponentQ => {
                             if prime_exponent_q.is_some() {
                                 return Err(de::Error::duplicate_field("PrimeExponentQ"))
                             }
-                            prime_exponent_q = Some(map.next_value()?);
+                            prime_exponent_q = Some(Box::new(map.next_value()?));
                         }
                         Field::CrtCoefficient => {
                             if crt_coefficient.is_some() {
                                 return Err(de::Error::duplicate_field("CrtCoefficient"))
                             }
-                            crt_coefficient = Some(map.next_value()?);
+                            crt_coefficient = Some(Box::new(map.next_value()?));
                         }
                         Field::RecommendedCurve => {
                             if recommended_curve.is_some() {
@@ -793,8 +793,8 @@ impl<'de> Deserialize<'de> for KeyMaterial {
                                 modulus,
                                 public_exponent,
                                 private_exponent,
-                                p: p.map(SafeBigUint::from),
-                                q: q.map(SafeBigUint::from),
+                                p: p.map(|p| Box::new(SafeBigUint::from(*p))),
+                                q: q.map(|q| Box::new(SafeBigUint::from(*q))),
                                 prime_exponent_p,
                                 prime_exponent_q,
                                 crt_coefficient,

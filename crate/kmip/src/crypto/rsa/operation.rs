@@ -41,8 +41,8 @@ pub fn to_rsa_public_key(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentRSAPublicKey {
-                    modulus: BigUint::from_bytes_be(&private_key.n().to_vec()),
-                    public_exponent: BigUint::from_bytes_be(&private_key.e().to_vec()),
+                    modulus: Box::new(BigUint::from_bytes_be(&private_key.n().to_vec())),
+                    public_exponent: Box::new(BigUint::from_bytes_be(&private_key.e().to_vec())),
                 },
                 attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PublicKey),
@@ -94,26 +94,28 @@ pub fn to_rsa_private_key(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentRSAPrivateKey {
-                    modulus: BigUint::from_bytes_be(&private_key.n().to_vec()),
-                    private_exponent: Some(SafeBigUint::from_bytes_be(&Zeroizing::from(
+                    modulus: Box::new(BigUint::from_bytes_be(&private_key.n().to_vec())),
+                    private_exponent: Some(Box::new(SafeBigUint::from_bytes_be(&Zeroizing::from(
                         private_key.d().to_vec(),
+                    )))),
+                    public_exponent: Some(Box::new(BigUint::from_bytes_be(
+                        &private_key.e().to_vec(),
                     ))),
-                    public_exponent: Some(BigUint::from_bytes_be(&private_key.e().to_vec())),
-                    p: private_key
-                        .p()
-                        .map(|p| SafeBigUint::from_bytes_be(&Zeroizing::from(p.to_vec()))),
-                    q: private_key
-                        .q()
-                        .map(|q| SafeBigUint::from_bytes_be(&Zeroizing::from(q.to_vec()))),
-                    prime_exponent_p: private_key
-                        .dmp1()
-                        .map(|dmp1| SafeBigUint::from_bytes_be(&Zeroizing::from(dmp1.to_vec()))),
-                    prime_exponent_q: private_key
-                        .dmq1()
-                        .map(|dmq1| SafeBigUint::from_bytes_be(&Zeroizing::from(dmq1.to_vec()))),
-                    crt_coefficient: private_key
-                        .iqmp()
-                        .map(|iqmp| SafeBigUint::from_bytes_be(&Zeroizing::from(iqmp.to_vec()))),
+                    p: private_key.p().map(|p| {
+                        Box::new(SafeBigUint::from_bytes_be(&Zeroizing::from(p.to_vec())))
+                    }),
+                    q: private_key.q().map(|q| {
+                        Box::new(SafeBigUint::from_bytes_be(&Zeroizing::from(q.to_vec())))
+                    }),
+                    prime_exponent_p: private_key.dmp1().map(|dmp1| {
+                        Box::new(SafeBigUint::from_bytes_be(&Zeroizing::from(dmp1.to_vec())))
+                    }),
+                    prime_exponent_q: private_key.dmq1().map(|dmq1| {
+                        Box::new(SafeBigUint::from_bytes_be(&Zeroizing::from(dmq1.to_vec())))
+                    }),
+                    crt_coefficient: private_key.iqmp().map(|iqmp| {
+                        Box::new(SafeBigUint::from_bytes_be(&Zeroizing::from(iqmp.to_vec())))
+                    }),
                 },
                 attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PrivateKey),

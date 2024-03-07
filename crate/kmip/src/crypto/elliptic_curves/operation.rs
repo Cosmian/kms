@@ -117,7 +117,7 @@ pub fn to_ec_private_key(
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentECPrivateKey {
                     recommended_curve: curve,
-                    d: SafeBigUint::from_bytes_be(bytes),
+                    d: Box::new(SafeBigUint::from_bytes_be(bytes)),
                 },
                 attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PrivateKey),
