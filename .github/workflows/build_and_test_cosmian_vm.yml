@@ -32,7 +32,7 @@ jobs:
       - uses: actions/download-artifact@v3
 
       - name: List artifacts
-        run: find .
+        run: find ..
 
       - name: Create env variables
         id: env
