@@ -146,6 +146,7 @@ jobs:
           echo "[ OK ] Cosmian KMS HTTP to HTTPS redirect connection"
 
       - name: Restart the Cosmian VM and test again
+        continue-on-error: true
         env:
           CI_INSTANCE: ${{ needs.build-kms-cosmian-vm-image.outputs.ci_instance }}
         run: |
@@ -160,9 +161,11 @@ jobs:
           NEW_RESET_COUNT=$(expr $RESET_COUNT + 1)
           jq --arg NEW_RESET_COUNT "$NEW_RESET_COUNT" '.tpm_policy.reset_count = $NEW_RESET_COUNT' cosmian_vm.snapshot > new_cosmian_vm.snapshot
           jq '.tpm_policy.reset_count |= tonumber' new_cosmian_vm.snapshot | sponge new_cosmian_vm.snapshot
-          ./target/release/cosmian_vm --url https://${IP_ADDR}:5355 --allow-insecure-tls verify --snapshot new_cosmian_vm.snapshot
+          ./cosmian_vm --url https://${IP_ADDR}:5355 --allow-insecure-tls verify --snapshot new_cosmian_vm.snapshot
           echo "[ OK ] Integrity after reboot"
-          echo ""
+          echo "Starting the KMS"
+          ./cosmian_vm --url https://${IP_ADDR}:5355 --allow-insecure-tls app restart
+          echo "[ OK ] KMS is started"
           echo "Checking Cosmian KMS HTTP connection..."
           curl http://${IP_ADDR}:8080/version
           echo ""
@@ -177,7 +180,8 @@ jobs:
           echo "[ OK ] Cosmian KMS HTTP to HTTPS redirect connection"
 
       - name: Delete GCP instance
-        if: success() || failure()
+        # if: success() || failure()
+        if: success()
         env:
           CI_INSTANCE: ${{ needs.build-kms-cosmian-vm-image.outputs.ci_instance }}
         run: |

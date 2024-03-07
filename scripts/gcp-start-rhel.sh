@@ -12,6 +12,6 @@ until [ -f /var/lib/cosmian_vm/data/cert.pem ]; do sleep 1; done
 restorecon -v -R /var/lib/cosmian_vm/data/*
 
 # create directory to write incoming app configuration
-mkdir /var/lib/cosmian_vm/data/app
+mkdir -p /var/lib/cosmian_vm/data/app
 
 systemctl start nginx
