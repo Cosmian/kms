@@ -106,7 +106,7 @@ jobs:
 
       - name: Download Cosmian VM client
         run: |
-          wget https://package.cosmian.com/cosmian_vm/1.1.0-rc.2/cosmian_vm
+          wget https://package.cosmian.com/cosmian_vm/1.1.0-rc.1/cosmian_vm
 
       - name: Change permissions of binaries
         run: |
@@ -203,8 +203,8 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [build-kms-cosmian-vm-image, test-image]
     permissions:
-      contents: 'read'
-      id-token: 'write'
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -212,7 +212,7 @@ jobs:
       - name: GCP auth
         uses: google-github-actions/auth@v1
         with:
-          credentials_json: "${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}"
+          credentials_json: ${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}
 
       - name: Copy image to public project
         if: startsWith(github.ref, 'refs/tags') && inputs.distrib != 'rhel'
