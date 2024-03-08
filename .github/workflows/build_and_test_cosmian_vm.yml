@@ -211,7 +211,7 @@ jobs:
           credentials_json: ${{ secrets.GOOGLE_COSMIAN_DEV_CREDENTIALS }}
 
       - name: Copy image to public project
-        if: startsWith(github.ref, 'refs/tags') && inputs.distrib != 'rhel'
+        if: startsWith(github.ref, 'refs/tags')
         env:
           CI_INSTANCE: ${{ needs.build-kms-cosmian-vm-image.outputs.ci_instance }}
           IMAGE_NAME: ${{ needs.build-kms-cosmian-vm-image.outputs.image_name }}
