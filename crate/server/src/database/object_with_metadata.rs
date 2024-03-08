@@ -1,7 +1,9 @@
 use cosmian_kmip::kmip::{
-    kmip_objects::Object, kmip_operations::ErrorReason, kmip_types::StateEnumeration,
+    kmip_objects::Object,
+    kmip_operations::ErrorReason,
+    kmip_types::{Attributes, StateEnumeration},
 };
-use cosmian_kms_utils::access::ObjectOperationType;
+use cosmian_kms_client::access::ObjectOperationType;
 use serde_json::Value;
 use sqlx::{mysql::MySqlRow, postgres::PgRow, sqlite::SqliteRow, Row};
 
@@ -9,7 +11,6 @@ use super::{state_from_string, DBObject};
 use crate::{error::KmsError, result::KResultHelper};
 
 /// An object with its metadata such as permissions and state
-// TODO: add attributes when https://github.com/Cosmian/kms/issues/88 is fixed
 #[derive(Debug, Clone)]
 pub struct ObjectWithMetadata {
     pub(crate) id: String,
@@ -17,6 +18,7 @@ pub struct ObjectWithMetadata {
     pub(crate) owner: String,
     pub(crate) state: StateEnumeration,
     pub(crate) permissions: Vec<ObjectOperationType>,
+    pub(crate) attributes: Attributes,
 }
 
 impl TryFrom<&PgRow> for ObjectWithMetadata {
@@ -28,9 +30,12 @@ impl TryFrom<&PgRow> for ObjectWithMetadata {
             .context("failed deserializing the object")
             .reason(ErrorReason::Internal_Server_Error)?;
         let object = Object::post_fix(db_object.object_type, db_object.object);
-        let owner = row.get::<String, _>(2);
-        let state = state_from_string(&row.get::<String, _>(3))?;
-        let permissions: Vec<ObjectOperationType> = match row.try_get::<Value, _>(4) {
+        let attributes: Attributes = serde_json::from_value(row.get::<Value, _>(2))
+            .context("failed deserializing the Attributes")
+            .reason(ErrorReason::Internal_Server_Error)?;
+        let owner = row.get::<String, _>(3);
+        let state = state_from_string(&row.get::<String, _>(4))?;
+        let permissions: Vec<ObjectOperationType> = match row.try_get::<Value, _>(5) {
             Err(_) => vec![],
             Ok(v) => serde_json::from_value(v)
                 .context("failed deserializing the permissions")
@@ -42,6 +47,7 @@ impl TryFrom<&PgRow> for ObjectWithMetadata {
             owner,
             state,
             permissions,
+            attributes,
         })
     }
 }
@@ -51,14 +57,14 @@ impl TryFrom<&SqliteRow> for ObjectWithMetadata {
 
     fn try_from(row: &SqliteRow) -> Result<Self, Self::Error> {
         let id = row.get::<String, _>(0);
-
         let db_object: DBObject = serde_json::from_slice(&row.get::<Vec<u8>, _>(1))
             .context("failed deserializing the object")
             .reason(ErrorReason::Internal_Server_Error)?;
         let object = Object::post_fix(db_object.object_type, db_object.object);
-        let owner = row.get::<String, _>(2);
-        let state = state_from_string(&row.get::<String, _>(3))?;
-        let raw_permissions = row.get::<Vec<u8>, _>(4);
+        let attributes = serde_json::from_str(&row.get::<String, _>(2))?;
+        let owner = row.get::<String, _>(3);
+        let state = state_from_string(&row.get::<String, _>(4))?;
+        let raw_permissions = row.get::<Vec<u8>, _>(5);
         let perms: Vec<ObjectOperationType> = if raw_permissions.is_empty() {
             vec![]
         } else {
@@ -70,6 +76,7 @@ impl TryFrom<&SqliteRow> for ObjectWithMetadata {
         Ok(Self {
             id,
             object,
+            attributes,
             owner,
             state,
             permissions: perms,
@@ -86,9 +93,10 @@ impl TryFrom<&MySqlRow> for ObjectWithMetadata {
             .context("failed deserializing the object")
             .reason(ErrorReason::Internal_Server_Error)?;
         let object = Object::post_fix(db_object.object_type, db_object.object);
-        let owner = row.get::<String, _>(2);
-        let state = state_from_string(&row.get::<String, _>(3))?;
-        let permissions: Vec<ObjectOperationType> = match row.try_get::<Value, _>(4) {
+        let attributes = serde_json::from_str(&row.get::<String, _>(2))?;
+        let owner = row.get::<String, _>(3);
+        let state = state_from_string(&row.get::<String, _>(4))?;
+        let permissions: Vec<ObjectOperationType> = match row.try_get::<Value, _>(5) {
             Err(_) => vec![],
             Ok(v) => serde_json::from_value(v)
                 .context("failed deserializing the permissions")
@@ -100,6 +108,7 @@ impl TryFrom<&MySqlRow> for ObjectWithMetadata {
             owner,
             state,
             permissions,
+            attributes,
         })
     }
 }

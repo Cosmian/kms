@@ -10,15 +10,13 @@ use std::{
 use actix_server::ServerHandle;
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
+use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 use cosmian_kms_server::{
     config::{
         ClapConfig, DBConfig, HttpConfig, HttpParams, JWEConfig, Jwk, JwtAuthConfig, ServerParams,
     },
+    core::extra_database_params::ExtraDatabaseParams,
     kms_server::start_kms_server,
-};
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
-    crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH},
 };
 use tokio::sync::OnceCell;
 use tracing::trace;

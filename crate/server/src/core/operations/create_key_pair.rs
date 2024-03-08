@@ -2,11 +2,16 @@ use cosmian_kmip::kmip::{
     kmip_operations::{CreateKeyPair, CreateKeyPairResponse},
     kmip_types::UniqueIdentifier,
 };
-use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, trace};
 use uuid::Uuid;
 
-use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
+    database::AtomicOperation,
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
 pub async fn create_key_pair(
     kms: &KMS,
@@ -28,24 +33,25 @@ pub async fn create_key_pair(
     let (key_pair, sk_tags, pk_tags) = kms.create_key_pair_and_tags(request, &sk_uid, &pk_uid)?;
 
     trace!("create_key_pair: sk_uid: {sk_uid}, pk_uid: {pk_uid}");
-    kms.db
-        .create_objects(
-            owner,
-            vec![
-                (
-                    Some(sk_uid.clone()),
-                    key_pair.private_key().clone(),
-                    &sk_tags,
-                ),
-                (
-                    Some(pk_uid.clone()),
-                    key_pair.public_key().clone(),
-                    &pk_tags,
-                ),
-            ],
-            params,
-        )
-        .await?;
+
+    let private_key_attributes = key_pair.private_key().attributes()?.clone();
+    let public_key_attributes = key_pair.public_key().attributes()?.clone();
+
+    let operations = vec![
+        AtomicOperation::Create((
+            sk_uid.clone(),
+            key_pair.private_key().to_owned(),
+            private_key_attributes,
+            sk_tags,
+        )),
+        AtomicOperation::Create((
+            pk_uid.clone(),
+            key_pair.public_key().to_owned(),
+            public_key_attributes,
+            pk_tags,
+        )),
+    ];
+    kms.db.atomic(owner, &operations, params).await?;
 
     debug!("Created key pair: {}/{}", &sk_uid, &pk_uid);
     Ok(CreateKeyPairResponse {

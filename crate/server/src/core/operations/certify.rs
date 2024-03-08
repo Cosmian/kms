@@ -6,8 +6,8 @@ use cosmian_kmip::{
         kmip_objects::Object,
         kmip_operations::{Certify, CertifyResponse},
         kmip_types::{
-            Attributes, CertificateRequestType, LinkType, LinkedObjectIdentifier, StateEnumeration,
-            UniqueIdentifier,
+            Attributes, CertificateAttributes, CertificateRequestType, LinkType,
+            LinkedObjectIdentifier, StateEnumeration, UniqueIdentifier,
         },
     },
     openssl::{
@@ -15,10 +15,7 @@ use cosmian_kmip::{
         openssl_certificate_to_kmip,
     },
 };
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
-    tagging::{check_user_tags, remove_tags},
-};
+use cosmian_kms_client::access::ObjectOperationType;
 use openssl::{
     asn1::Asn1Time,
     hash::MessageDigest,
@@ -29,11 +26,8 @@ use tracing::trace;
 
 use crate::{
     core::{
-        certificate::{
-            add_attributes_to_certificate_tags, add_certificate_system_tags,
-            retrieve_matching_private_key_and_certificate,
-        },
-        KMS,
+        certificate::retrieve_matching_private_key_and_certificate,
+        extra_database_params::ExtraDatabaseParams, KMS,
     },
     database::{retrieve_object_for_operation, AtomicOperation},
     error::KmsError,
@@ -59,9 +53,9 @@ pub async fn certify(
     ))?;
 
     // Retrieve and update tags
-    let mut tags = remove_tags(&mut attributes).unwrap_or_default();
+    let mut tags = attributes.remove_tags().unwrap_or_default();
     if !tags.is_empty() {
-        check_user_tags(&tags)?;
+        Attributes::check_user_tags(&tags)?;
     }
 
     // Retrieve the issuer certificate id if provided
@@ -118,6 +112,7 @@ pub async fn certify(
                 AtomicOperation::Upsert((
                     issued_certificate_id,
                     issued_certificate,
+                    attributes,
                     Some(tags),
                     StateEnumeration::Active,
                 )),
@@ -166,6 +161,7 @@ pub async fn certify(
             LinkType::CertificateLink,
             LinkedObjectIdentifier::TextString(issued_certificate_id.clone()),
         );
+        let pk_own_obj_attributes = public_key_owm.object.attributes()?.clone();
         // return
         (
             issued_certificate_id.clone(),
@@ -174,6 +170,7 @@ pub async fn certify(
                 AtomicOperation::Upsert((
                     issued_certificate_id,
                     issued_certificate,
+                    attributes.clone(),
                     Some(tags),
                     StateEnumeration::Active,
                 )),
@@ -181,6 +178,7 @@ pub async fn certify(
                 AtomicOperation::UpdateObject((
                     public_key_owm.id.clone(),
                     public_key_owm.object,
+                    pk_own_obj_attributes,
                     None,
                 )),
             ],
@@ -244,15 +242,16 @@ fn build_certificate(
     // link the certificate to the issuer certificate
     attributes.add_link(
         LinkType::CertificateLink,
+        // LinkType::ParentLink,
         LinkedObjectIdentifier::TextString(issuer_certificate_id.to_string()),
     );
 
-    // add the tags
-    add_certificate_system_tags(tags, &x509)?;
-    // workaround for #88
-    add_attributes_to_certificate_tags(tags, attributes)?;
+    // add the certificate "system" tag
+    tags.insert("_cert".to_string());
+    let certificate_attributes = CertificateAttributes::from(&x509);
+    attributes.certificate_attributes = Some(Box::new(certificate_attributes));
 
-    let (issued_certificate_id, issued_certificate) = openssl_certificate_to_kmip(x509)?;
+    let (issued_certificate_id, issued_certificate) = openssl_certificate_to_kmip(&x509)?;
     Ok((issued_certificate_id, issued_certificate))
 }
 

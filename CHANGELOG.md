@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.13.0] - 2024-03-08
+
+### Features
+
+- Save KMIP Attributes in a proper column of `Objects` table [#166](https://github.com/Cosmian/kms/pull/166):
+  - Remove all custom tags `_cert_spki`, `_cert_cn`, `_cert_issuer` and `_cert_sk`
+- Add support for CoverCrypt `rekey`, `prune`, and `Policy` editing methods [#179](https://github.com/Cosmian/kms/pull/179):
+  - Add CLI commands to perform these actions
+- Accurate CryptographicUsageMask for KMIP creation (RSA and EC keys) [#189](https://github.com/Cosmian/kms/pull/189) and [#187](https://github.com/Cosmian/kms/pull/187).
+
+### Refactor
+
+- Rework utils/crypto [#178](https://github.com/Cosmian/kms/pull/178).
+
+### Ci
+
+- Add build on RHEL9 [#196](https://github.com/Cosmian/kms/pull/196).
+
+### Bug fixes
+
+- Fixing inconsistent crypto consts [#190](https://github.com/Cosmian/kms/pull/190).
+- Fix interpolation in error macros [#184](https://github.com/Cosmian/kms/pull/184).
+- Move internal KMIP Objects into `Box` to avoid stack memory overflow [#200](https://github.com/Cosmian/kms/pull/200).
+
 ## [4.12.0] - 2024-02-08
 
 ### Features

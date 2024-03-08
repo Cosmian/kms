@@ -792,8 +792,7 @@ checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
 [[package]]
 name = "cloudproof"
 version = "2.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3647902963641e2f2baa4da7b6ab75f5ffb28f049cf010b14a13cec2f4e014a7"
+source = "git+https://github.com/Cosmian/cloudproof_rust?branch=feature/covercrypt_rekey#c974cb635566020a7934535d35f948669d9bb0af"
 dependencies = [
  "cloudproof_aesgcm",
  "cloudproof_anonymization",
@@ -834,8 +833,7 @@ dependencies = [
 [[package]]
 name = "cloudproof_cover_crypt"
 version = "13.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "456048e7ff7b874425675ef14365e4e7e11d9e3aae8013e4810e805babf39ddd"
+source = "git+https://github.com/Cosmian/cloudproof_rust?branch=feature/covercrypt_rekey#c974cb635566020a7934535d35f948669d9bb0af"
 dependencies = [
  "cosmian_cover_crypt",
  "cosmian_crypto_core",
@@ -980,9 +978,8 @@ checksum = "06ea2b9bc92be3c2baa9334a323ebca2d6f074ff852cd1d7b11064035cd3868f"
 
 [[package]]
 name = "cosmian_cover_crypt"
-version = "13.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10df4c34e0d5da7060a5ed1eb9ec9364b2c366d84903ed28ab017aa50aae78f6"
+version = "13.1.0"
+source = "git+https://github.com/Cosmian/cover_crypt.git?branch=feature/policy_parser#51b487ee45854b1da81e193d32ba3138abbb5f36"
 dependencies = [
  "cosmian_crypto_core",
  "pqc_kyber",
@@ -1075,8 +1072,9 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "4.12.0"
+version = "4.13.0"
 dependencies = [
+ "argon2",
  "base58",
  "bitflags 2.4.2",
  "chrono",
@@ -1100,7 +1098,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "4.12.0"
+version = "4.13.0"
 dependencies = [
  "actix-rt",
  "actix-server",
@@ -1113,7 +1111,6 @@ dependencies = [
  "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_server",
- "cosmian_kms_utils",
  "cosmian_logger",
  "der",
  "oauth2",
@@ -1139,11 +1136,10 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "4.12.0"
+version = "4.13.0"
 dependencies = [
  "base64 0.21.7",
  "cosmian_kmip",
- "cosmian_kms_utils",
  "http",
  "josekit",
  "log",
@@ -1158,12 +1154,11 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_python"
-version = "4.12.0"
+version = "4.13.0"
 dependencies = [
  "cloudproof",
  "cosmian_kmip",
  "cosmian_kms_client",
- "cosmian_kms_utils",
  "openssl",
  "pyo3",
  "pyo3-asyncio",
@@ -1174,7 +1169,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "4.12.0"
+version = "4.13.0"
 dependencies = [
  "actix-cors",
  "actix-http",
@@ -1192,7 +1187,7 @@ dependencies = [
  "cloudproof",
  "cloudproof_findex 5.0.4",
  "cosmian_kmip",
- "cosmian_kms_utils",
+ "cosmian_kms_client",
  "dotenvy",
  "env_logger",
  "futures",
@@ -1221,24 +1216,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "cosmian_kms_utils"
-version = "4.12.0"
-dependencies = [
- "argon2",
- "cloudproof",
- "cosmian_kmip",
- "num-bigint-dig",
- "openssl",
- "serde",
- "serde_json",
- "thiserror",
- "tracing",
- "zeroize",
-]
-
-[[package]]
 name = "cosmian_logger"
-version = "4.12.0"
+version = "4.13.0"
 dependencies = [
  "tracing",
  "tracing-subscriber",
@@ -2067,9 +2046,9 @@ dependencies = [
 
 [[package]]
 name = "iana-time-zone"
-version = "0.1.59"
+version = "0.1.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6a67363e2aa4443928ce15e57ebae94fd8949958fd1223c4cfc0cd473ad7539"
+checksum = "e7ffbb5a1b541ea2561f8c41c087286cc091e21e556a4f09a8f6cbf17b69b141"
 dependencies = [
  "android_system_properties",
  "core-foundation-sys",
@@ -4789,6 +4768,7 @@ version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "525b4ec142c6b68a2d10f01f7bbf6755599ca3f81ea53b8431b7dd348f5fdb2d"
 dependencies = [
+ "serde",
  "zeroize_derive",
 ]
 

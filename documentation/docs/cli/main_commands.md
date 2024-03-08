@@ -149,11 +149,9 @@ Manage Covercrypt keys and policies. Rotate attributes. Encrypt and decrypt data
 
 **`policy`** [[2.2]](#22-ckms-cc-policy)  Extract or view policies of existing keys, and create a binary policy from specifications
 
-**`rotate`** [[2.3]](#23-ckms-cc-rotate)  Rotate attributes and rekey the master and user keys.
+**`encrypt`** [[2.3]](#23-ckms-cc-encrypt)  Encrypt a file using Covercrypt
 
-**`encrypt`** [[2.4]](#24-ckms-cc-encrypt)  Encrypt a file using Covercrypt
-
-**`decrypt`** [[2.5]](#25-ckms-cc-decrypt)  Decrypt a file using Covercrypt
+**`decrypt`** [[2.4]](#24-ckms-cc-decrypt)  Decrypt a file using Covercrypt
 
 ---
 
@@ -181,6 +179,10 @@ Create, destroy, import, export `Covercrypt` master and user keys
 **`revoke`** [[2.1.7]](#217-ckms-cc-keys-revoke)  Revoke a Covercrypt master or user decryption key
 
 **`destroy`** [[2.1.8]](#218-ckms-cc-keys-destroy)  Destroy a Covercrypt master or user decryption key
+
+**`rekey`** [[2.1.9]](#219-ckms-cc-keys-rekey)  Rekey the master and user keys for a given access policy.
+
+**`prune`** [[2.1.10]](#2110-ckms-cc-keys-prune)  Prune the master and user keys for a given access policy.
 
 ---
 
@@ -380,6 +382,42 @@ Destroy a Covercrypt master or user decryption key
 
 
 
+---
+
+## 2.1.9 ckms cc keys rekey
+
+Rekey the master and user keys for a given access policy.
+
+### Usage
+`ckms cc keys rekey [options] <ACCESS_POLICY>
+`
+### Arguments
+` <ACCESS_POLICY>` The access policy to rekey. Example: `department::marketing && level::confidential`
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 2.1.10 ckms cc keys prune
+
+Prune the master and user keys for a given access policy.
+
+### Usage
+`ckms cc keys prune [options] <ACCESS_POLICY>
+`
+### Arguments
+` <ACCESS_POLICY>` The access policy to prune. Example: `department::marketing && level::confidential`
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
 
 ---
 
@@ -399,6 +437,16 @@ Extract or view policies of existing keys, and create a binary policy from speci
 **`binary`** [[2.2.3]](#223-ckms-cc-policy-binary)  Extract the policy from a public or private master key to a policy binary file
 
 **`create`** [[2.2.4]](#224-ckms-cc-policy-create)  Create a policy binary file from policy specifications
+
+**`add-attribute`** [[2.2.5]](#225-ckms-cc-policy-add-attribute)  Add an attribute to the policy of an existing private master key.
+
+**`remove-attribute`** [[2.2.6]](#226-ckms-cc-policy-remove-attribute)  Remove an attribute from the policy of an existing private master key.
+Permanently removes the ability to use this attribute in both encryptions and decryptions.
+
+**`disable-attribute`** [[2.2.7]](#227-ckms-cc-policy-disable-attribute)  Disable an attribute from the policy of an existing private master key.
+Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphertexts.
+
+**`rename-attribute`** [[2.2.8]](#228-ckms-cc-policy-rename-attribute)  Rename an attribute in the policy of an existing private master key.
 
 ---
 
@@ -468,20 +516,23 @@ Create a policy binary file from policy specifications
 
 
 
-
 ---
 
-## 2.3 ckms cc rotate
+## 2.2.5 ckms cc policy add-attribute
 
-Rotate attributes and rekey the master and user keys.
+Add an attribute to the policy of an existing private master key.
 
 ### Usage
-`ckms cc rotate [options] <ATTRIBUTES>...
+`ckms cc policy add-attribute [options] <ATTRIBUTE>
 `
 ### Arguments
-` <ATTRIBUTES>` The policy attributes to rotate. Example: `department::marketing level::confidential`
+` <ATTRIBUTE>` The name of the attribute to create. Example: `department::rd`
 
-`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS If not specified, tags should be specified
+`--hybridized <HYBRIDIZED>` Set encryption hint for the new attribute to use hybridized keys
+
+Possible values:  `"true", "false"` [default: `"false"`]
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
 
 `--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
 
@@ -489,7 +540,67 @@ Rotate attributes and rekey the master and user keys.
 
 ---
 
-## 2.4 ckms cc encrypt
+## 2.2.6 ckms cc policy remove-attribute
+
+Remove an attribute from the policy of an existing private master key.
+Permanently removes the ability to use this attribute in both encryptions and decryptions.
+
+### Usage
+`ckms cc policy remove-attribute [options] <ATTRIBUTE>
+`
+### Arguments
+` <ATTRIBUTE>` The name of the attribute to remove. Example: `department::marketing`
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 2.2.7 ckms cc policy disable-attribute
+
+Disable an attribute from the policy of an existing private master key.
+Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphertexts.
+
+### Usage
+`ckms cc policy disable-attribute [options] <ATTRIBUTE>
+`
+### Arguments
+` <ATTRIBUTE>` The name of the attribute to disable. Example: `department::marketing`
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+---
+
+## 2.2.8 ckms cc policy rename-attribute
+
+Rename an attribute in the policy of an existing private master key.
+
+### Usage
+`ckms cc policy rename-attribute [options] <ATTRIBUTE>
+ <NEW_NAME>
+`
+### Arguments
+` <ATTRIBUTE>` The name of the attribute to rename. Example: `department::mkg`
+
+` <NEW_NAME>` The new name for the attribute. Example: `marketing`
+
+`--key-id [-k] <SECRET_KEY_ID>` The private master key unique identifier stored in the KMS. If not specified, tags should be specified
+
+`--tag [-t] <TAG>` Tag to use to retrieve the key when no key id is specified. To specify multiple tags, use the option multiple times
+
+
+
+
+---
+
+## 2.3 ckms cc encrypt
 
 Encrypt a file using Covercrypt
 
@@ -514,7 +625,7 @@ Encrypt a file using Covercrypt
 
 ---
 
-## 2.5 ckms cc decrypt
+## 2.4 ckms cc decrypt
 
 Decrypt a file using Covercrypt
 
@@ -1063,10 +1174,6 @@ To specify multiple tags, use the option multiple times.
 `--private-key-id [-k] <PRIVATE_KEY_ID>` Locate an object which has a link to this private key id
 
 `--certificate-id [-c] <CERTIFICATE_ID>` Locate an object which has a link to this certificate key id
-
-`--certificate-cn <CERTIFICATE_CN>` Locate a certificate which has this Common Name
-
-`--certificate-spki <CERTIFICATE_SPKI>` Locate a certificate which has this Subject Public Key Info. For example: AF:B0:19:F4:09:3E:2F:F4:52:07:54:7F:17:62:9D:74:76:E3:A4:F6 The value will be stripped from the colons and converted to lower case
 
 
 

@@ -2,14 +2,17 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_types::{CryptographicAlgorithm, LinkType, UniqueIdentifier, WrappingMethod},
-};
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::elliptic_curves::operation::create_x25519_key_pair;
-use cosmian_kms_utils::crypto::{
-    symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block,
+use cosmian_kmip::crypto::elliptic_curves::operation::create_x25519_key_pair;
+use cosmian_kmip::{
+    crypto::{symmetric::create_symmetric_key_kmip_object, wrap::unwrap_key_block},
+    kmip::{
+        kmip_objects::Object,
+        kmip_types::{
+            CryptographicAlgorithm, CryptographicUsageMask, LinkType, UniqueIdentifier,
+            WrappingMethod,
+        },
+    },
 };
 use tempfile::TempDir;
 use tracing::debug;
@@ -117,7 +120,13 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     // Generate a symmetric wrapping key
     let wrap_private_key_uid = "wrap_private_key_uid";
     let wrap_public_key_uid = "wrap_public_key_uid";
-    let wrap_key_pair = create_x25519_key_pair(wrap_private_key_uid, wrap_public_key_uid)?;
+    let wrap_key_pair = create_x25519_key_pair(
+        wrap_private_key_uid,
+        wrap_public_key_uid,
+        Some(CryptographicAlgorithm::EC),
+        Some(CryptographicUsageMask::Decrypt),
+        Some(CryptographicUsageMask::Encrypt),
+    )?;
     // Write the private key to a file and import it
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
     write_kmip_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;
@@ -263,7 +272,7 @@ fn test_import_export_wrap_private_key(
 
     // test the unwrapping on import
     {
-        // import the wrapped key, un wrapping it on import
+        // import the wrapped key, unwrapping it on import
         let unwrapped_key_id = import_key(
             cli_conf_path,
             sub_command,

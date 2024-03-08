@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kmip"
-version = "4.12.0"
+version = "4.13.0"
 edition = "2021"
 license-file = "../../LICENSE.md"
 
@@ -10,13 +10,14 @@ license-file = "../../LICENSE.md"
 doctest = false
 
 [features]
-default = []
+default = ["dep:sha3"]
 openssl = ["dep:openssl"]
 pyo3 = ["dep:pyo3"]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
 fips = []
 
 [dependencies]
+argon2 = "0.5"
 base58 = "0.2"
 bitflags = { workspace = true }
 chrono = { workspace = true }

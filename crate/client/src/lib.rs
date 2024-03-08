@@ -2,6 +2,7 @@
 //required to detect generic type in Serializer
 #![feature(min_specialization)]
 
+pub mod access;
 mod certificate_verifier;
 mod error;
 mod kms_rest_client;

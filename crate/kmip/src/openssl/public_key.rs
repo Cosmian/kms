@@ -138,8 +138,7 @@ pub fn kmip_public_key_to_openssl(public_key: &Object) -> Result<PKey<Public>, K
             ),
         },
         f => kmip_bail!(
-            "Unsupported key format type: {:?}, for tr transforming a {} to openssl",
-            f,
+            "Unsupported key format type: {f:?}, for tr transforming a {} to openssl",
             public_key.object_type()
         ),
     };
@@ -180,13 +179,13 @@ pub fn openssl_public_key_to_kmip(
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         rsa_public_key.public_key_to_der_pkcs1()?,
                     )),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                         cryptographic_length: Some(rsa_public_key.size() as i32),
                         key_format_type: Some(KeyFormatType::PKCS1),
                         object_type: Some(ObjectType::PublicKey),
                         ..Attributes::default()
-                    }),
+                    })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length: Some(rsa_public_key.size() as i32),
@@ -209,13 +208,13 @@ pub fn openssl_public_key_to_kmip(
                 key_format_type,
                 key_value: KeyValue {
                     key_material: KeyMaterial::ByteString(spki_der),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm,
                         cryptographic_length: Some(public_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::PKCS8),
                         object_type: Some(ObjectType::PublicKey),
                         ..Attributes::default()
-                    }),
+                    })),
                 },
                 cryptographic_algorithm,
                 cryptographic_length: Some(public_key.bits() as i32),
@@ -231,16 +230,18 @@ pub fn openssl_public_key_to_kmip(
                 key_format_type,
                 key_value: KeyValue {
                     key_material: KeyMaterial::TransparentRSAPublicKey {
-                        modulus: BigUint::from_bytes_be(&rsa_public_key.n().to_vec()),
-                        public_exponent: BigUint::from_bytes_be(&rsa_public_key.e().to_vec()),
+                        modulus: Box::new(BigUint::from_bytes_be(&rsa_public_key.n().to_vec())),
+                        public_exponent: Box::new(BigUint::from_bytes_be(
+                            &rsa_public_key.e().to_vec(),
+                        )),
                     },
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                         cryptographic_length: Some(public_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::TransparentRSAPublicKey),
                         object_type: Some(ObjectType::PublicKey),
                         ..Attributes::default()
-                    }),
+                    })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length: Some(public_key.bits() as i32),
@@ -287,7 +288,7 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve,
                                 q_string: point_encoding,
                             },
-                            attributes: Some(Attributes {
+                            attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
@@ -299,7 +300,7 @@ pub fn openssl_public_key_to_kmip(
                                     },
                                 ),
                                 ..Attributes::default()
-                            }),
+                            })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length: Some(public_key.bits() as i32),
@@ -316,7 +317,7 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve: RecommendedCurve::CURVE25519,
                                 q_string,
                             },
-                            attributes: Some(Attributes {
+                            attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
@@ -328,7 +329,7 @@ pub fn openssl_public_key_to_kmip(
                                     },
                                 ),
                                 ..Attributes::default()
-                            }),
+                            })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length: Some(public_key.bits() as i32),
@@ -345,7 +346,7 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve: RecommendedCurve::CURVEED25519,
                                 q_string,
                             },
-                            attributes: Some(Attributes {
+                            attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
@@ -357,7 +358,7 @@ pub fn openssl_public_key_to_kmip(
                                     },
                                 ),
                                 ..Attributes::default()
-                            }),
+                            })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::Ed25519),
                         cryptographic_length: Some(public_key.bits() as i32),
@@ -374,7 +375,7 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve: RecommendedCurve::CURVE448,
                                 q_string,
                             },
-                            attributes: Some(Attributes {
+                            attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
@@ -386,7 +387,7 @@ pub fn openssl_public_key_to_kmip(
                                     },
                                 ),
                                 ..Attributes::default()
-                            }),
+                            })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length: Some(public_key.bits() as i32),
@@ -403,7 +404,7 @@ pub fn openssl_public_key_to_kmip(
                                 recommended_curve: RecommendedCurve::CURVEED448,
                                 q_string,
                             },
-                            attributes: Some(Attributes {
+                            attributes: Some(Box::new(Attributes {
                                 cryptographic_algorithm: Some(CryptographicAlgorithm::Ed448),
                                 cryptographic_length: Some(public_key.bits() as i32),
                                 key_format_type: Some(KeyFormatType::TransparentECPublicKey),
@@ -415,7 +416,7 @@ pub fn openssl_public_key_to_kmip(
                                     },
                                 ),
                                 ..Attributes::default()
-                            }),
+                            })),
                         },
                         cryptographic_algorithm: Some(CryptographicAlgorithm::Ed448),
                         cryptographic_length: Some(public_key.bits() as i32),
@@ -423,16 +424,10 @@ pub fn openssl_public_key_to_kmip(
                         key_compression_type: None,
                     }
                 }
-                x => kmip_bail!(
-                    "Unsupported curve key id: {:?} for a Transparent EC Public Key",
-                    x
-                ),
+                x => kmip_bail!("Unsupported curve key id: {x:?} for a Transparent EC Public Key"),
             }
         }
-        kft => kmip_bail!(
-            "Unsupported target key format type: {:?}, for an openssl public key",
-            kft
-        ),
+        kft => kmip_bail!("Unsupported target key format type: {kft:?}, for an openssl public key"),
     };
 
     Ok(Object::PublicKey { key_block })
@@ -461,7 +456,7 @@ mod tests {
     fn test_public_key_conversion_pkcs(
         public_key: &PKey<Public>,
         id: Id,
-        keysize: u32,
+        key_size: u32,
         kft: KeyFormatType,
     ) {
         // SPKI (== KMIP PKCS#8)
@@ -488,7 +483,7 @@ mod tests {
             PKey::from_rsa(Rsa::public_key_from_der_pkcs1(&key_value).unwrap()).unwrap()
         };
         assert_eq!(public_key_.id(), id);
-        assert_eq!(public_key_.bits(), keysize);
+        assert_eq!(public_key_.bits(), key_size);
         if kft == KeyFormatType::PKCS8 {
             assert_eq!(public_key_.public_key_to_der().unwrap(), key_value.to_vec());
         } else {
@@ -502,7 +497,7 @@ mod tests {
             );
         }
         let public_key_ = kmip_public_key_to_openssl(&object_).unwrap();
-        assert_eq!(public_key_.bits(), keysize);
+        assert_eq!(public_key_.bits(), key_size);
         if kft == KeyFormatType::PKCS8 {
             assert_eq!(public_key_.public_key_to_der().unwrap(), key_value.to_vec());
         } else {
@@ -517,7 +512,11 @@ mod tests {
         }
     }
 
-    fn test_public_key_conversion_transparent_rsa(public_key: &PKey<Public>, id: Id, keysize: u32) {
+    fn test_public_key_conversion_transparent_rsa(
+        public_key: &PKey<Public>,
+        id: Id,
+        key_size: u32,
+    ) {
         // Transparent RSA
         let object =
             openssl_public_key_to_kmip(public_key, KeyFormatType::TransparentRSAPublicKey).unwrap();
@@ -550,14 +549,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!(public_key_.id(), id);
-        assert_eq!(public_key_.bits(), keysize);
+        assert_eq!(public_key_.bits(), key_size);
         assert_eq!(
             public_key.public_key_to_der().unwrap(),
             public_key_.public_key_to_der().unwrap()
         );
         let public_key_ = kmip_public_key_to_openssl(&object_).unwrap();
         assert_eq!(public_key_.id(), id);
-        assert_eq!(public_key_.bits(), keysize);
+        assert_eq!(public_key_.bits(), key_size);
         assert_eq!(
             public_key.public_key_to_der().unwrap(),
             public_key_.public_key_to_der().unwrap()
@@ -569,7 +568,7 @@ mod tests {
         ec_group: Option<&EcGroup>,
         curve: RecommendedCurve,
         id: Id,
-        keysize: u32,
+        key_size: u32,
     ) {
         // Transparent EC.
         let object =
@@ -608,14 +607,14 @@ mod tests {
             let public_key_ = PKey::from_ec_key(ec_public_key).unwrap();
 
             assert_eq!(public_key_.id(), id);
-            assert_eq!(public_key_.bits(), keysize);
+            assert_eq!(public_key_.bits(), key_size);
             assert_eq!(
                 public_key.public_key_to_der().unwrap(),
                 public_key_.public_key_to_der().unwrap()
             );
             let public_key_ = kmip_public_key_to_openssl(&object_).unwrap();
             assert_eq!(public_key_.id(), id);
-            assert_eq!(public_key_.bits(), keysize);
+            assert_eq!(public_key_.bits(), key_size);
             assert_eq!(
                 public_key.public_key_to_der().unwrap(),
                 public_key_.public_key_to_der().unwrap()
@@ -623,14 +622,14 @@ mod tests {
         } else {
             let public_key_ = PKey::public_key_from_raw_bytes(&q_string, id).unwrap();
             assert_eq!(public_key_.id(), id);
-            assert_eq!(public_key_.bits(), keysize);
+            assert_eq!(public_key_.bits(), key_size);
             assert_eq!(
                 public_key.raw_public_key().unwrap(),
                 public_key_.raw_public_key().unwrap()
             );
             let public_key_ = kmip_public_key_to_openssl(&object_).unwrap();
             assert_eq!(public_key_.id(), id);
-            assert_eq!(public_key_.bits(), keysize);
+            assert_eq!(public_key_.bits(), key_size);
             assert_eq!(
                 public_key.raw_public_key().unwrap(),
                 public_key_.raw_public_key().unwrap()
@@ -644,8 +643,8 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 2048;
-        let rsa_private_key = Rsa::generate(keysize).unwrap();
+        let key_size = 2048;
+        let rsa_private_key = Rsa::generate(key_size).unwrap();
         let rsa_public_key = Rsa::from_public_components(
             rsa_private_key.n().to_owned().unwrap(),
             rsa_private_key.e().to_owned().unwrap(),
@@ -653,15 +652,15 @@ mod tests {
         .unwrap();
         let public_key = PKey::from_rsa(rsa_public_key).unwrap();
 
-        test_public_key_conversion_pkcs(&public_key, Id::RSA, keysize, KeyFormatType::PKCS8);
-        test_public_key_conversion_pkcs(&public_key, Id::RSA, keysize, KeyFormatType::PKCS1);
-        test_public_key_conversion_transparent_rsa(&public_key, Id::RSA, keysize);
+        test_public_key_conversion_pkcs(&public_key, Id::RSA, key_size, KeyFormatType::PKCS8);
+        test_public_key_conversion_pkcs(&public_key, Id::RSA, key_size, KeyFormatType::PKCS1);
+        test_public_key_conversion_transparent_rsa(&public_key, Id::RSA, key_size);
     }
 
     #[test]
     #[cfg(not(feature = "fips"))]
     fn test_conversion_ec_p_192_public_key() {
-        let keysize = 192;
+        let key_size = 192;
         let ec_group = EcGroup::from_curve_name(Nid::X9_62_PRIME192V1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
 
@@ -670,14 +669,14 @@ mod tests {
 
         let public_key = PKey::from_ec_key(ec_public_key).unwrap();
 
-        test_public_key_conversion_pkcs(&public_key, Id::EC, keysize, KeyFormatType::PKCS8);
+        test_public_key_conversion_pkcs(&public_key, Id::EC, key_size, KeyFormatType::PKCS8);
 
         test_public_key_conversion_transparent_ec(
             &public_key,
             Some(&ec_group),
             RecommendedCurve::P192,
             Id::EC,
-            keysize,
+            key_size,
         );
     }
 
@@ -687,7 +686,7 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 224;
+        let key_size = 224;
         let ec_group = EcGroup::from_curve_name(Nid::SECP224R1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
 
@@ -696,14 +695,14 @@ mod tests {
 
         let public_key = PKey::from_ec_key(ec_public_key).unwrap();
 
-        test_public_key_conversion_pkcs(&public_key, Id::EC, keysize, KeyFormatType::PKCS8);
+        test_public_key_conversion_pkcs(&public_key, Id::EC, key_size, KeyFormatType::PKCS8);
 
         test_public_key_conversion_transparent_ec(
             &public_key,
             Some(&ec_group),
             RecommendedCurve::P224,
             Id::EC,
-            keysize,
+            key_size,
         );
     }
 
@@ -713,7 +712,7 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 256;
+        let key_size = 256;
         let ec_group = EcGroup::from_curve_name(Nid::X9_62_PRIME256V1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
 
@@ -722,14 +721,14 @@ mod tests {
 
         let public_key = PKey::from_ec_key(ec_public_key).unwrap();
 
-        test_public_key_conversion_pkcs(&public_key, Id::EC, keysize, KeyFormatType::PKCS8);
+        test_public_key_conversion_pkcs(&public_key, Id::EC, key_size, KeyFormatType::PKCS8);
 
         test_public_key_conversion_transparent_ec(
             &public_key,
             Some(&ec_group),
             RecommendedCurve::P256,
             Id::EC,
-            keysize,
+            key_size,
         );
     }
 
@@ -739,7 +738,7 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 384;
+        let key_size = 384;
         let ec_group = EcGroup::from_curve_name(Nid::SECP384R1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
 
@@ -748,14 +747,14 @@ mod tests {
 
         let public_key = PKey::from_ec_key(ec_public_key).unwrap();
 
-        test_public_key_conversion_pkcs(&public_key, Id::EC, keysize, KeyFormatType::PKCS8);
+        test_public_key_conversion_pkcs(&public_key, Id::EC, key_size, KeyFormatType::PKCS8);
 
         test_public_key_conversion_transparent_ec(
             &public_key,
             Some(&ec_group),
             RecommendedCurve::P384,
             Id::EC,
-            keysize,
+            key_size,
         );
     }
 
@@ -765,7 +764,7 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 521;
+        let key_size = 521;
         let ec_group = EcGroup::from_curve_name(Nid::SECP521R1).unwrap();
         let ec_key = EcKey::generate(&ec_group).unwrap();
 
@@ -774,33 +773,33 @@ mod tests {
 
         let public_key = PKey::from_ec_key(ec_public_key).unwrap();
 
-        test_public_key_conversion_pkcs(&public_key, Id::EC, keysize, KeyFormatType::PKCS8);
+        test_public_key_conversion_pkcs(&public_key, Id::EC, key_size, KeyFormatType::PKCS8);
 
         test_public_key_conversion_transparent_ec(
             &public_key,
             Some(&ec_group),
             RecommendedCurve::P521,
             Id::EC,
-            keysize,
+            key_size,
         );
     }
 
     #[test]
     #[cfg(not(feature = "fips"))]
     fn test_conversion_ec_x25519_public_key() {
-        let keysize = 253;
+        let key_size = 253;
         let private_key = PKey::generate_x25519().unwrap();
         let public_key =
             PKey::public_key_from_raw_bytes(&private_key.raw_public_key().unwrap(), Id::X25519)
                 .unwrap();
 
-        test_public_key_conversion_pkcs(&public_key, Id::X25519, keysize, KeyFormatType::PKCS8);
+        test_public_key_conversion_pkcs(&public_key, Id::X25519, key_size, KeyFormatType::PKCS8);
         test_public_key_conversion_transparent_ec(
             &public_key,
             None,
             RecommendedCurve::CURVE25519,
             Id::X25519,
-            keysize,
+            key_size,
         );
     }
 
@@ -810,38 +809,38 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 256;
+        let key_size = 256;
         let private_key = PKey::generate_ed25519().unwrap();
         let public_key =
             PKey::public_key_from_raw_bytes(&private_key.raw_public_key().unwrap(), Id::ED25519)
                 .unwrap();
 
-        test_public_key_conversion_pkcs(&public_key, Id::ED25519, keysize, KeyFormatType::PKCS8);
+        test_public_key_conversion_pkcs(&public_key, Id::ED25519, key_size, KeyFormatType::PKCS8);
         test_public_key_conversion_transparent_ec(
             &public_key,
             None,
             RecommendedCurve::CURVEED25519,
             Id::ED25519,
-            keysize,
+            key_size,
         );
     }
 
     #[test]
     #[cfg(not(feature = "fips"))]
     fn test_conversion_ec_x448_public_key() {
-        let keysize = 448;
+        let key_size = 448;
         let private_key = PKey::generate_x448().unwrap();
         let public_key =
             PKey::public_key_from_raw_bytes(&private_key.raw_public_key().unwrap(), Id::X448)
                 .unwrap();
 
-        test_public_key_conversion_pkcs(&public_key, Id::X448, keysize, KeyFormatType::PKCS8);
+        test_public_key_conversion_pkcs(&public_key, Id::X448, key_size, KeyFormatType::PKCS8);
         test_public_key_conversion_transparent_ec(
             &public_key,
             None,
             RecommendedCurve::CURVE448,
             Id::X448,
-            keysize,
+            key_size,
         );
     }
 
@@ -851,19 +850,19 @@ mod tests {
         // Load FIPS provider module from OpenSSL.
         openssl::provider::Provider::load(None, "fips").unwrap();
 
-        let keysize = 456;
+        let key_size = 456;
         let private_key = PKey::generate_ed448().unwrap();
         let public_key =
             PKey::public_key_from_raw_bytes(&private_key.raw_public_key().unwrap(), Id::ED448)
                 .unwrap();
 
-        test_public_key_conversion_pkcs(&public_key, Id::ED448, keysize, KeyFormatType::PKCS8);
+        test_public_key_conversion_pkcs(&public_key, Id::ED448, key_size, KeyFormatType::PKCS8);
         test_public_key_conversion_transparent_ec(
             &public_key,
             None,
             RecommendedCurve::CURVEED448,
             Id::ED448,
-            keysize,
+            key_size,
         );
     }
 }

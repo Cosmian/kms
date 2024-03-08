@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use cosmian_kmip::crypto::cover_crypt::kmip_requests::build_create_master_keypair_request;
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::cover_crypt::kmip_requests::build_create_master_keypair_request;
 
 use crate::{
-    actions::cover_crypt::policy::{policy_from_binary_file, policy_from_specifications_file},
+    actions::cover_crypt::policy::{policy_from_binary_file, policy_from_json_file},
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -65,7 +65,7 @@ impl CreateMasterKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
         // Parse the json policy file
         let policy = if let Some(specs_file) = &self.policy_specifications_file {
-            policy_from_specifications_file(specs_file)?
+            policy_from_json_file(specs_file)?
         } else if let Some(binary_file) = &self.policy_binary_file {
             policy_from_binary_file(binary_file)?
         } else {

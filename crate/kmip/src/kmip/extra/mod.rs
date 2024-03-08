@@ -1,4 +1,6 @@
 mod certificates;
+pub mod tagging;
+#[cfg(feature = "openssl")]
 pub mod x509_extensions;
 
 /// The vendor ID to use for Cosmian specific attributes

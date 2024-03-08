@@ -9,12 +9,11 @@ use cosmian_kmip::kmip::{
     kmip_messages::Message,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
-use cosmian_kms_utils::access::ExtraDatabaseParams;
 use josekit::jwe::{alg::ecdh_es::EcdhEsJweAlgorithm, deserialize_compact};
 use tracing::info;
 
 use crate::{
-    core::{operations::dispatch, KMS},
+    core::{extra_database_params::ExtraDatabaseParams, operations::dispatch, KMS},
     database::KMSServer,
     error::KmsError,
     result::KResult,

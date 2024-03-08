@@ -76,9 +76,9 @@ nav:
       - Locate: kmip_2_1/_locate.md
       - Re-Key Key Pair: kmip_2_1/_re-key_key_pair.md
       - Revoke: kmip_2_1/_revoke.md
-  - Google workspace client-side encryption (CSE):
+  - Google workspace Client-Side Encryption (CSE):
       - Getting started with Google Workspace CSE: google_cse/google_cse.md
       - Setting up a well-known file web server: google_cse/configuring-the-well-known-server.md
       - Configuring the well-known file: google_cse/configuring-the-well-known-file.md
-  - Microsoft double key encryption (DKE): ms_dke/ms_dke.md
+  - Microsoft Double Key Encryption (DKE): ms_dke/ms_dke.md
   - Zeroization: zeroization.md

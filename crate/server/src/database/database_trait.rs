@@ -8,10 +8,10 @@ use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_types::{Attributes, StateEnumeration},
 };
-use cosmian_kms_utils::access::{ExtraDatabaseParams, IsWrapped, ObjectOperationType};
+use cosmian_kms_client::access::{IsWrapped, ObjectOperationType};
 
 use super::object_with_metadata::ObjectWithMetadata;
-use crate::result::KResult;
+use crate::{core::extra_database_params::ExtraDatabaseParams, result::KResult};
 
 #[async_trait(?Send)]
 pub trait Database {
@@ -28,27 +28,10 @@ pub trait Database {
         uid: Option<String>,
         owner: &str,
         object: &Object,
+        attributes: &Attributes,
         tags: &HashSet<String>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<String>;
-
-    /// Insert the provided Objects in the database in a transaction
-    ///
-    /// Object is a triplet:
-    /// - optional uid
-    /// - KMIP object
-    /// - tags
-    ///
-    /// A new uid will be created if none is supplied.
-    /// This method will fail if a `uid` is supplied
-    /// and an object with the same id already exists
-    /// //TODO: this should be deprecated in favor of atomic()
-    async fn create_objects(
-        &self,
-        owner: &str,
-        objects: Vec<(Option<String>, Object, &HashSet<String>)>,
-        params: Option<&ExtraDatabaseParams>,
-    ) -> KResult<Vec<String>>;
 
     /// Retrieve objects from the database.
     ///
@@ -79,6 +62,7 @@ pub trait Database {
         &self,
         uid: &str,
         object: &Object,
+        attributes: &Attributes,
         tags: Option<&HashSet<String>>,
         params: Option<&ExtraDatabaseParams>,
     ) -> KResult<()>;
@@ -94,11 +78,13 @@ pub trait Database {
     /// Upsert (update or create if does not exist)
     ///
     /// If tags is `None`, the tags will not be updated.
+    #[allow(clippy::too_many_arguments)]
     async fn upsert(
         &self,
         uid: &str,
         user: &str,
         object: &Object,
+        attributes: &Attributes,
         tags: Option<&HashSet<String>>,
         state: StateEnumeration,
         params: Option<&ExtraDatabaseParams>,
@@ -196,12 +182,20 @@ pub trait Database {
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum AtomicOperation {
-    /// Create (uid, object, tags) - the state will be active
-    Create((String, Object, HashSet<String>)),
-    /// Upsert (uid, object, tags, state) - the state be updated
-    Upsert((String, Object, Option<HashSet<String>>, StateEnumeration)),
-    /// Update the object (uid, object, tags, state) - the state will be not be updated
-    UpdateObject((String, Object, Option<HashSet<String>>)),
+    /// Create (uid, object, attributes, tags) - the state will be active
+    Create((String, Object, Attributes, HashSet<String>)),
+    /// Upsert (uid, object, attributes, tags, state) - the state be updated
+    Upsert(
+        (
+            String,
+            Object,
+            Attributes,
+            Option<HashSet<String>>,
+            StateEnumeration,
+        ),
+    ),
+    /// Update the object (uid, object, attributes, tags, state) - the state will be not be updated
+    UpdateObject((String, Object, Attributes, Option<HashSet<String>>)),
     /// Update the state (uid, state)
     UpdateState((String, StateEnumeration)),
     /// Delete (uid)

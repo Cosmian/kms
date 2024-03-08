@@ -1,22 +1,23 @@
-use cloudproof::reexport::cover_crypt::abe_policy::{
-    Attribute, DimensionBuilder, EncryptionHint, Policy,
-};
-use cosmian_kmip::kmip::{
-    kmip_operations::{
-        CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
-        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
-    },
-    kmip_types::{RevocationReason, UniqueIdentifier},
-};
-use cosmian_kms_utils::crypto::{
-    cover_crypt::{
-        attributes::EditPolicyAction,
-        kmip_requests::{
-            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
-            build_destroy_key_request, build_rekey_keypair_request,
+use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
+use cosmian_kmip::{
+    crypto::{
+        cover_crypt::{
+            attributes::RekeyEditAction,
+            kmip_requests::{
+                build_create_master_keypair_request,
+                build_create_user_decryption_private_key_request, build_destroy_key_request,
+                build_rekey_keypair_request,
+            },
         },
+        generic::kmip_requests::{build_decryption_request, build_encryption_request},
     },
-    generic::kmip_requests::{build_decryption_request, build_encryption_request},
+    kmip::{
+        kmip_operations::{
+            CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
+            EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        },
+        kmip_types::{RevocationReason, UniqueIdentifier},
+    },
 };
 
 use crate::{
@@ -43,11 +44,10 @@ async fn test_re_key_with_tags() -> KResult<()> {
     let public_key_unique_identifier = &create_key_pair_response.public_key_unique_identifier;
 
     //
-    // Re_key all key pairs with matching policy attributes
-    let abe_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
+    // Re_key all key pairs with matching access policy
     let request = build_rekey_keypair_request(
         &mkp_json_tag,
-        EditPolicyAction::RotateAttributes(abe_policy_attributes),
+        RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_string()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
@@ -230,7 +230,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(&data, &decrypted_data.plaintext);
+    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
 
     // test user2 can decrypt
@@ -252,7 +252,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(&data, &decrypted_data.plaintext);
+    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
 
     // Revoke key of user 1
@@ -267,12 +267,10 @@ async fn integration_tests_with_tags() -> KResult<()> {
     .await?;
 
     //
-    // Rekey all key pairs with matching ABE attributes
-    let abe_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
-
+    // Rekey all key pairs with matching access policy
     let request = build_rekey_keypair_request(
         &mkp_json_tag,
-        EditPolicyAction::RotateAttributes(abe_policy_attributes),
+        RekeyEditAction::RekeyAccessPolicy("Department::MKG".to_string()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
@@ -333,7 +331,7 @@ async fn integration_tests_with_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(&data, &decrypted_data.plaintext);
+    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
 
     //

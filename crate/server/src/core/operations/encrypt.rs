@@ -1,5 +1,17 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_encrypt;
 use cosmian_kmip::{
+    crypto::{
+        cover_crypt::encryption::CoverCryptEncryption,
+        rsa::{
+            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt,
+            rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt,
+        },
+        symmetric::aead::{aead_encrypt, random_nonce, AeadCipher},
+        EncryptionSystem,
+    },
+    error::KmipError,
     kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Encrypt, EncryptResponse, ErrorReason},
@@ -10,21 +22,7 @@ use cosmian_kmip::{
     },
     openssl::kmip_public_key_to_openssl,
 };
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::elliptic_curves::ecies::ecies_encrypt;
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
-    crypto::{
-        cover_crypt::encryption::CoverCryptEncryption,
-        rsa::{
-            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt,
-            rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt,
-        },
-        symmetric::aead::{aead_encrypt, random_nonce, AeadCipher},
-    },
-    error::KmipUtilsError,
-    EncryptionSystem,
-};
+use cosmian_kms_client::access::ObjectOperationType;
 use openssl::{
     pkey::{Id, PKey, Public},
     x509::X509,
@@ -32,10 +30,10 @@ use openssl::{
 use tracing::trace;
 
 use crate::{
-    core::{operations::unwrap_key, KMS},
+    core::{extra_database_params::ExtraDatabaseParams, operations::unwrap_key, KMS},
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
-    kms_bail, kms_not_supported,
+    kms_bail,
     result::{KResult, KResultHelper},
 };
 
@@ -58,10 +56,10 @@ pub async fn encrypt(
         Object::Certificate {
             certificate_value, ..
         } => encrypt_with_certificate(&request, &owm.id, certificate_value),
-        other => kms_not_supported!(
+        other => kms_bail!(KmsError::NotSupported(format!(
             "encrypt: encryption with keys of type: {} is not supported",
             other.object_type()
-        ),
+        ))),
     }
 }
 
@@ -173,7 +171,9 @@ fn encrypt_with_aead(request: &Encrypt, owm: &ObjectWithMetadata) -> KResult<Enc
                 authenticated_encryption_tag: Some(tag),
             })
         }
-        other => kms_not_supported!("symmetric encryption with keys of format: {other}"),
+        other => Err(KmsError::NotSupported(format!(
+            "symmetric encryption with keys of format: {other}"
+        ))),
     }
 }
 
@@ -188,7 +188,6 @@ fn encrypt_with_public_key(
                 .encrypt(request)
                 .map_err(Into::into)
         }
-
         KeyFormatType::TransparentECPublicKey
         | KeyFormatType::TransparentRSAPublicKey
         | KeyFormatType::PKCS1
@@ -204,7 +203,9 @@ fn encrypt_with_public_key(
             trace!("get_encryption_system: OpenSSL Public Key instantiated before encryption");
             encrypt_with_pkey(request, &owm.id, plaintext, &public_key)
         }
-        other => kms_not_supported!("encryption with public keys of format: {other}"),
+        other => Err(KmsError::NotSupported(format!(
+            "encryption with public keys of format: {other}"
+        ))),
     }
 }
 
@@ -286,9 +287,9 @@ fn encrypt_with_certificate(
         KmsError::InvalidRequest("Encrypt: data to encrypt must be provided".to_owned())
     })?;
     let cert = X509::from_der(certificate_value)
-        .map_err(|e| KmipUtilsError::ConversionError(format!("invalid X509 DER: {e:?}")))?;
+        .map_err(|e| KmipError::ConversionError(format!("invalid X509 DER: {e:?}")))?;
     let public_key = cert.public_key().map_err(|e| {
-        KmipUtilsError::ConversionError(format!("invalid certificate public key: error: {e:?}"))
+        KmipError::ConversionError(format!("invalid certificate public key: error: {e:?}"))
     })?;
     encrypt_with_pkey(request, key_id, plaintext, &public_key)
 }

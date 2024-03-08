@@ -3,11 +3,13 @@ use std::sync::Arc;
 use actix_web::HttpRequest;
 use base64::{engine::general_purpose, Engine};
 use clap::crate_version;
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyWrappingData, KeyWrappingSpecification},
-    kmip_types::{self, CryptographicAlgorithm, EncodingOption, UniqueIdentifier},
+use cosmian_kmip::{
+    crypto::symmetric::create_symmetric_key_kmip_object,
+    kmip::{
+        kmip_data_structures::{KeyWrappingData, KeyWrappingSpecification},
+        kmip_types::{self, CryptographicAlgorithm, EncodingOption, UniqueIdentifier},
+    },
 };
-use cosmian_kms_utils::crypto::symmetric::create_symmetric_key_kmip_object;
 use serde::{Deserialize, Serialize};
 
 use super::GoogleCseConfig;
@@ -101,9 +103,9 @@ pub async fn wrap(
             encoding_option: Some(EncodingOption::NoEncoding),
             encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
                 unique_identifier: UniqueIdentifier::TextString("[\"google_cse\"]".to_string()),
-                cryptographic_parameters: Some(kmip_types::CryptographicParameters {
+                cryptographic_parameters: Some(Box::new(kmip_types::CryptographicParameters {
                     ..Default::default()
-                }),
+                })),
             }),
             ..Default::default()
         },
@@ -170,7 +172,7 @@ pub async fn unwrap(
         CryptographicAlgorithm::AES,
     );
     // add key wrapping parameters to the wrapped key
-    wrapped_dek.key_block_mut()?.key_wrapping_data = Some(KeyWrappingData {
+    wrapped_dek.key_block_mut()?.key_wrapping_data = Some(Box::new(KeyWrappingData {
         wrapping_method: kmip_types::WrappingMethod::Encrypt,
         encryption_key_information: Some(kmip_types::EncryptionKeyInformation {
             unique_identifier: UniqueIdentifier::TextString("[\"google_cse\"]".to_string()),
@@ -178,7 +180,7 @@ pub async fn unwrap(
         }),
         encoding_option: Some(EncodingOption::NoEncoding),
         ..Default::default()
-    });
+    }));
 
     unwrap_key(
         wrapped_dek.key_block_mut()?,

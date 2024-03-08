@@ -4,11 +4,10 @@ use cosmian_kmip::kmip::{
     kmip_types::ResultStatusEnumeration,
     ttlv::serializer::to_ttlv,
 };
-use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::trace;
 
 use crate::{
-    core::{operations::dispatch, KMS},
+    core::{extra_database_params::ExtraDatabaseParams, operations::dispatch, KMS},
     error::KmsError,
     result::KResult,
 };

@@ -9,10 +9,29 @@ Cosmian KMS is an open-source implementation of a high-performance, massively sc
 - support for object tagging to easily manage keys and secrets
 - a full-featured command line interface ([CLI](https://docs.cosmian.com/cosmian_key_management_system/cli/cli/))
 - Python, Javascript, Dart, Rust, C/C++ and Java clients (see the `cloudproof` libraries on [Cosmian Github](https://github.com/Cosmian))
+- FIPS 140-2 mode gated behind the feature `fips`
+- support of Google Client Side Encryption (CSE)
+- support of Microsoft Double Key Encryption (DKE)
 
 It has extensive [documentation](https://docs.cosmian.com/cosmian_key_management_system/) and is also available packaged as docker images (`docker pull ghcr.io/cosmian/kms`) to get you started quickly.
 
 The KMS can manage keys and secrets used with a comprehensive list of common (AES, ECIES, ...) and Cosmian advanced cryptographic stacks such as [Covercrypt](https://github.com/Cosmian/cover_crypt). Keys can be wrapped and unwrapped using ECIES or RFC5649.
+
+## Table of contents
+
+<!-- toc -->
+
+- [Repository content](#repository-content)
+- [Build quick start](#build-quick-start)
+  * [Cargo build](#cargo-build)
+  * [Build the Docker container](#build-the-docker-container)
+- [Releases](#releases)
+- [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
+- [Server parameters](#server-parameters)
+- [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+- [Use the KMS inside a Cosmian VM on SGX](#use-the-kms-inside-a-cosmian-vm-on-sgx)
+
+<!-- tocstop -->
 
 ## Repository content
 
@@ -30,7 +49,28 @@ And also some libraries:
 
 **Please refer to the README of the inner directories to have more information.**
 
+Find the [public documentation](https://docs.cosmian.com) of the KMS in the `documentation` directory.
+
+## Build quick start
+
+From the root of the project, on your local machine, for developing:
+
+### Cargo build
+
+```sh
+cargo build --no-default-features
+cargo test --no-default-features
+```
+
+### Build the Docker container
+
 You can build a docker containing the KMS server as follow:
+
+ ```sh
+docker build . --network=host -t kms
+```
+
+Or:
 
 ```sh
 # Example with FIPS support
@@ -39,26 +79,15 @@ docker build . --network=host \
                -t kms
 ```
 
-The `delivery` directory contains all the requirements to proceed with a KMS delivery based on a docker creation.
-
-Find the public documentation of the KMS in the `documentation` directory.
-
-## Build quick start
-
-From the root of the project, on your local machine, for developing:
-
-```sh
-cargo build --no-default-features
-cargo test --no-default-features
-```
-
 ## Releases
 
 All releases can be found in the public URL [package.cosmian.com](https://package.cosmian.com/kms/).
 
 ## Setup as a `Supervisor` service
 
-Copy the binary `target/release/cosmian_kms` to the remote machine folder according to [cosmian_kms.ini](./resources/supervisor/cosmian_kms.ini) statement (ie: `/usr/sbin/cosmian_kms`).
+Supervisor (A Process Control System) is a client/server system that allows its users to monitor and control a number of processes on UNIX-like operating systems.
+
+Concerning the KMS, copy the binary `target/release/cosmian_kms_server` to the remote machine folder according to [cosmian_kms.ini](./resources/supervisor/cosmian_kms.ini) statement (ie: `/usr/sbin/cosmian_kms_server`).
 
 Copy the [cosmian_kms.ini](./resources/supervisor/cosmian_kms.ini) config file as `/etc/supervisord.d/cosmian_kms.ini` in the remote machine.
 
@@ -94,7 +123,7 @@ To deploy the KMS inside a Cosmian VM, connect to the VM and follow these steps:
 $ sudo vi /etc/supervisord.d/cosmian_kms.ini
 
 # Copy the KMS server binary
-$ sudo cp somelocation/cosmian_kms_server /usr/sbin/cosmian_kms
+$ sudo cp some_location/cosmian_kms_server /usr/sbin/cosmian_kms
 
 # Create a conf file for the KMS (from resources/server.toml)
 $ sudo vi /etc/cosmian_kms/server.toml
@@ -108,7 +137,7 @@ $ sudo tail -f /var/log/cosmian_kms.out.log
 
 Now you can interact with your KMS through the KMS CLI.
 
-You can also interact with the Cosmiam VM Agent through its own CLI as follow:
+You can also interact with the Cosmian VM Agent through its own CLI as follow:
 
 ```console
 # From your own host
@@ -156,7 +185,7 @@ The app has been configured
 
 Follow [this README](https://github.com/Cosmian/cosmian_vm/blob/main/resources/sgx/README.md) to setup Cosmian VM tools.
 
-In a nutshell, copy the KMS server binary (renamed as `app`) and the KMS server configuration file. Edit  `cosmian_vm.manifest.template` and replace the following line:
+In a nutshell, copy the KMS server binary (renamed as `app`) and the KMS server configuration file. Edit `cosmian_vm.manifest.template` and replace the following line:
 
 ```jinja
     { path = "/etc/app/server.toml", uri = "file:etc/app/server.toml" },

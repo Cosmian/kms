@@ -142,6 +142,12 @@ repos:
           - markdown-katex
         entry: bash -c 'cd documentation && mkdocs build --strict'
 
+  - repo: https://github.com/cisagov/pre-commit-packer
+    rev: v0.0.2
+    hooks:
+      - id: packer_validate
+      - id: packer_fmt
+
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.25
     hooks:

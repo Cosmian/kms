@@ -7,7 +7,6 @@ use cosmian_kmip::{
     error::KmipError,
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
 };
-use cosmian_kms_utils::error::KmipUtilsError;
 use redis::ErrorKind;
 use thiserror::Error;
 use x509_parser::prelude::{PEMError, X509Error};
@@ -82,6 +81,16 @@ pub enum KmsError {
 
     #[error("Ratls Error: {0}")]
     RatlsError(String),
+}
+
+impl KmsError {
+    #[must_use]
+    pub fn reason(&self, reason: ErrorReason) -> Self {
+        match self {
+            Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
+            e => Self::KmipError(reason, e.to_string()),
+        }
+    }
 }
 
 impl From<TtlvError> for KmsError {
@@ -168,12 +177,6 @@ impl From<QueryPayloadError> for KmsError {
     }
 }
 
-impl From<KmipUtilsError> for KmsError {
-    fn from(e: KmipUtilsError) -> Self {
-        Self::CryptographicError(e.to_string())
-    }
-}
-
 impl From<TryFromSliceError> for KmsError {
     fn from(e: TryFromSliceError) -> Self {
         Self::ConversionError(e.to_string())
@@ -188,8 +191,12 @@ impl From<KmipError> for KmsError {
             KmipError::KmipNotSupported(_, s) => Self::NotSupported(s),
             KmipError::NotSupported(s) => Self::NotSupported(s),
             KmipError::KmipError(r, s) => Self::KmipError(r, s),
-            KmipError::Default(e) => Self::NotSupported(e),
-            KmipError::OpenSSL(e) => Self::NotSupported(e),
+            KmipError::Default(s) => Self::NotSupported(s),
+            KmipError::OpenSSL(s) => Self::NotSupported(s),
+            KmipError::InvalidSize(s) => Self::NotSupported(s),
+            KmipError::InvalidTag(s) => Self::NotSupported(s),
+            KmipError::Derivation(s) => Self::NotSupported(s),
+            KmipError::ConversionError(s) => Self::NotSupported(s),
         }
     }
 }
@@ -224,16 +231,6 @@ impl From<base64::DecodeError> for KmsError {
     }
 }
 
-impl KmsError {
-    #[must_use]
-    pub fn reason(&self, reason: ErrorReason) -> Self {
-        match self {
-            Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
-            e => Self::KmipError(reason, e.to_string()),
-        }
-    }
-}
-
 /// Return early with an error if a condition is not satisfied.
 ///
 /// This macro is equivalent to `if !$cond { return Err(From::from($err)); }`.
@@ -241,7 +238,7 @@ impl KmsError {
 macro_rules! kms_ensure {
     ($cond:expr, $msg:literal $(,)?) => {
         if !$cond {
-            return ::core::result::Result::Err($crate::error::KmsError::ServerError($msg.to_owned()));
+            return ::core::result::Result::Err($crate::kms_error!($msg));
         }
     };
     ($cond:expr, $err:expr $(,)?) => {
@@ -251,7 +248,7 @@ macro_rules! kms_ensure {
     };
     ($cond:expr, $fmt:expr, $($arg:tt)*) => {
         if !$cond {
-            return ::core::result::Result::Err($crate::error::KmsError::ServerError(format!($fmt, $($arg)*)));
+            return ::core::result::Result::Err($crate::kms_error!($fmt, $($arg)*));
         }
     };
 }
@@ -260,13 +257,13 @@ macro_rules! kms_ensure {
 #[macro_export]
 macro_rules! kms_error {
     ($msg:literal) => {
-        $crate::error::KmsError::ServerError(format!($msg))
+        $crate::error::KmsError::ServerError(::core::format_args!($msg).to_string())
     };
     ($err:expr $(,)?) => ({
         $crate::error::KmsError::ServerError($err.to_string())
     });
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::error::KmsError::ServerError(format!($fmt, $($arg)*))
+        $crate::error::KmsError::ServerError(::core::format_args!($fmt, $($arg)*).to_string())
     };
 }
 
@@ -274,23 +271,50 @@ macro_rules! kms_error {
 #[macro_export]
 macro_rules! kms_bail {
     ($msg:literal) => {
-        return ::core::result::Result::Err($crate::error::KmsError::ServerError(format!($msg)))
+        return ::core::result::Result::Err($crate::kms_error!($msg))
     };
     ($err:expr $(,)?) => {
         return ::core::result::Result::Err($err)
     };
     ($fmt:expr, $($arg:tt)*) => {
-        return ::core::result::Result::Err($crate::error::KmsError::ServerError(format!($fmt, $($arg)*)))
+        return ::core::result::Result::Err($crate::kms_error!($fmt, $($arg)*))
     };
 }
 
-/// Return early with an Unsupported error
-#[macro_export]
-macro_rules! kms_not_supported {
-    ($msg:literal) => {
-        return ::core::result::Result::Err($crate::error::KmsError::NotSupported(format!($msg)))
-    };
-    ($fmt:expr, $($arg:tt)*) => {
-        return ::core::result::Result::Err($crate::error::KmsError::NotSupported(format!($fmt, $($arg)*)))
-    };
+#[cfg(test)]
+mod tests {
+    use super::KmsError;
+
+    #[test]
+    fn test_kms_error_interpolation() {
+        let var = 42;
+        let err = kms_error!("interpolate {var}");
+        assert_eq!("Unexpected server error: interpolate 42", err.to_string());
+
+        let err = bail();
+        assert_eq!(
+            "Unexpected server error: interpolate 43",
+            err.unwrap_err().to_string()
+        );
+
+        let err = ensure();
+        assert_eq!(
+            "Unexpected server error: interpolate 44",
+            err.unwrap_err().to_string()
+        );
+    }
+
+    fn bail() -> Result<(), KmsError> {
+        let var = 43;
+        if true {
+            kms_bail!("interpolate {var}");
+        }
+        Ok(())
+    }
+
+    fn ensure() -> Result<(), KmsError> {
+        let var = 44;
+        kms_ensure!(false, "interpolate {var}");
+        Ok(())
+    }
 }

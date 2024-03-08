@@ -3,10 +3,14 @@ use cosmian_kmip::kmip::{
     kmip_operations::{Create, CreateResponse},
     kmip_types::UniqueIdentifier,
 };
-use cosmian_kms_utils::access::ExtraDatabaseParams;
 use tracing::{debug, trace};
 
-use crate::{core::KMS, error::KmsError, kms_bail, result::KResult};
+use crate::{
+    core::{extra_database_params::ExtraDatabaseParams, KMS},
+    error::KmsError,
+    kms_bail,
+    result::KResult,
+};
 
 pub async fn create(
     kms: &KMS,
@@ -32,7 +36,10 @@ pub async fn create(
             )))
         }
     };
-    let uid = kms.db.create(None, owner, &object, &tags, params).await?;
+    let uid = kms
+        .db
+        .create(None, owner, &object, object.attributes()?, &tags, params)
+        .await?;
     debug!(
         "Created KMS Object of type {:?} with id {uid}",
         &object.object_type(),

@@ -10,7 +10,7 @@ using confidential VMs and a fully application-level encrypted database.
     To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the container, simply run
 
     ```sh
-    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.12.0
+    docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.13.0
     ```
 
     Check the Cosmian KMS server version
@@ -19,25 +19,27 @@ using confidential VMs and a fully application-level encrypted database.
     curl http://localhost:9998/version
     ```
 
-    Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.12.0/).
+    Alternatively KMS binaries are also available on [Cosmian packages](https://package.cosmian.com/kms/4.13.0/).
 
-<!-- TOC -->
-* [Business source](#business-source)
-* [KMIP 2.1 API](#kmip-21-api)
-* [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
-* [Supports Microsoft Double Key Encryption](#supports-microsoft-double-key-encryption)
-* [FIPS Mode](#fips-mode)
-* [State-of-the-art authentication](#state-of-the-art-authentication)
-* [High-availability and databases](#high-availability-and-databases)
-* [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-cloud-or-other-zero-trust-environments)
-* [Support for object tagging](#support-for-object-tagging)
-* [Command line interface client](#command-line-interface-client)
-* [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
-* [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
-* [Comprehensive inline help](#comprehensive-inline-help)
+<!-- toc -->
+
+- [Business source](#business-source)
+- [KMIP 2.1 API](#kmip-21-api)
+- [Supports Google Workspace Client Side Encryption](#supports-google-workspace-client-side-encryption)
+- [Supports Microsoft Double Key Encryption](#supports-microsoft-double-key-encryption)
+- [FIPS Mode](#fips-mode)
+- [State-of-the-art authentication](#state-of-the-art-authentication)
+- [High-availability and databases](#high-availability-and-databases)
+- [Designed to securely run in the Cloud or other Zero-Trust environments](#designed-to-securely-run-in-the-cloud-or-other-zero-trust-environments)
+- [Support for object tagging](#support-for-object-tagging)
+- [Command line interface client](#command-line-interface-client)
+- [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
+- [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
+- [Comprehensive inline help](#comprehensive-inline-help)
   * [Options help](#options-help)
   * [Using a TOML configuration file](#using-a-toml-configuration-file)
-<!-- TOC -->
+
+<!-- tocstop -->
 
 #### Business source
 
@@ -110,13 +112,6 @@ In addition, the KMS server will automatically add a system tag based on the obj
 - `_uk`: for a Covercrypt user decryption key
 - `_cert`: for a X509 certificate
 
-In addition for the X509 certificate, KMIP Certificate object not having a `key block` with `Attributes`, the following
-tags are also added:
-
-- `_cert_uid=<certificate_uid>` added on private key and public key to establish the link with the certificate
-- `_cert_spki=<hash>` added on X509 certificates where the Subject Public Key Identifier is the hash of the public key
-- `_cert_ca=<Subject Common Name>` on CA `Certificate` object
-
 Use the tags to export objects, locate them, or request data encryption and decryption.
 
 #### Command line interface client
@@ -133,7 +128,7 @@ The KMS server is available as a Docker image on
 the [Cosmian public Docker repository](https://github.com/Cosmian/kms/pkgs/container/kms).
 
 Raw binaries for multiple operating systems are also available on
-the [Cosmian public packages repository](https://package.cosmian.com/kms/4.12.0/)
+the [Cosmian public packages repository](https://package.cosmian.com/kms/4.13.0/)
 
 #### Integrated with Cloudproof libraries
 
@@ -151,7 +146,7 @@ Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has 
 that can be accessed using the `--help` command line option.
 
 ```sh
-docker run --rm ghcr.io/cosmian/kms:4.12.0 --help
+docker run --rm ghcr.io/cosmian/kms:4.13.0 --help
 ```
 
 The options are enabled on the docker command line or using the environment variables listed in the options help.

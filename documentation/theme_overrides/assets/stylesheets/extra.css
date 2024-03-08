@@ -672,6 +672,3 @@ body.dark-mode .md-typeset .tabbed-set > input:nth-child(8):checked ~ .tabbed-la
 body.dark-mode .md-typeset .tabbed-set > input:nth-child(9):checked ~ .tabbed-labels > :nth-child(9) {
     color: var(--text--active-dark-mode);
 }
-
-
-

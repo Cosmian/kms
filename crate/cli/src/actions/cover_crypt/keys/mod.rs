@@ -2,8 +2,11 @@ use clap::Subcommand;
 use cosmian_kms_client::KmsRestClient;
 
 use self::{
-    create_key_pair::CreateMasterKeyPairAction, create_user_key::CreateUserKeyAction,
-    destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
+    create_key_pair::CreateMasterKeyPairAction,
+    create_user_key::CreateUserKeyAction,
+    destroy_key::DestroyKeyAction,
+    rekey::{PruneAction, RekeyAction},
+    revoke_key::RevokeKeyAction,
 };
 use crate::{
     actions::shared::{ExportKeyAction, ImportKeyAction, UnwrapKeyAction, WrapKeyAction},
@@ -13,9 +16,10 @@ use crate::{
 mod create_key_pair;
 mod create_user_key;
 mod destroy_key;
+mod rekey;
 mod revoke_key;
 
-/// Create, destroy, import, export `Covercrypt` master and user keys
+/// Create, destroy, import, export, and rekey `Covercrypt` master and user keys
 #[derive(Subcommand)]
 pub enum KeysCommands {
     CreateMasterKeyPair(CreateMasterKeyPairAction),
@@ -26,6 +30,8 @@ pub enum KeysCommands {
     Unwrap(UnwrapKeyAction),
     Revoke(RevokeKeyAction),
     Destroy(DestroyKeyAction),
+    Rekey(RekeyAction),
+    Prune(PruneAction),
 }
 
 impl KeysCommands {
@@ -39,6 +45,8 @@ impl KeysCommands {
             Self::Unwrap(action) => action.run(kms_rest_client).await?,
             Self::Revoke(action) => action.run(kms_rest_client).await?,
             Self::Destroy(action) => action.run(kms_rest_client).await?,
+            Self::Rekey(action) => action.run(kms_rest_client).await?,
+            Self::Prune(action) => action.run(kms_rest_client).await?,
         };
 
         Ok(())

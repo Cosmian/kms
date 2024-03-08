@@ -1,7 +1,7 @@
 use cosmian_kmip::{
     kmip::{
-        extra::VENDOR_ID_COSMIAN,
-        kmip_objects::{Object, ObjectType},
+        extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+        kmip_objects::Object,
         kmip_operations::{GetAttributes, GetAttributesResponse},
         kmip_types::{
             AttributeReference, Attributes, KeyFormatType, LinkType, LinkedObjectIdentifier, Tag,
@@ -10,15 +10,12 @@ use cosmian_kmip::{
     },
     openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
 };
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
-    tagging::VENDOR_ATTR_TAG,
-};
+use cosmian_kms_client::access::ObjectOperationType;
 use tracing::{debug, trace};
 
 use crate::{
     core::{
-        certificate::add_certificate_tags_to_attributes,
+        extra_database_params::ExtraDatabaseParams,
         operations::export_utils::{
             openssl_private_key_to_kmip_default_format, openssl_public_key_to_kmip_default_format,
         },
@@ -71,11 +68,8 @@ pub async fn get_attributes(
 
     let attributes = match &owm.object {
         Object::Certificate { .. } => {
-            let mut attributes = Attributes::default();
-            add_certificate_tags_to_attributes(&mut attributes, &owm.id, kms, params).await?;
-            attributes.key_format_type = Some(KeyFormatType::X509);
-            attributes.object_type = Some(ObjectType::Certificate);
-            attributes
+            // KMIP Attributes retrieved from dedicated column `Attributes`
+            owm.attributes
         }
         Object::CertificateRequest { .. }
         | Object::OpaqueObject { .. }
@@ -91,7 +85,7 @@ pub async fn get_attributes(
             attributes.object_type = Some(object_type);
             // is it a Covercrypt key?
             if key_block.key_format_type == KeyFormatType::CoverCryptSecretKey {
-                attributes
+                *attributes
             } else {
                 // we want the default format which yields the most infos
                 let pkey = kmip_private_key_to_openssl(&owm.object)?;
@@ -110,7 +104,7 @@ pub async fn get_attributes(
             attributes.object_type = Some(object_type);
             // is it a Covercrypt key?
             if key_block.key_format_type == KeyFormatType::CoverCryptPublicKey {
-                attributes
+                *attributes
             } else {
                 // we want the default format which yields the most infos
                 let pkey = kmip_public_key_to_openssl(&owm.object)?;
@@ -127,7 +121,7 @@ pub async fn get_attributes(
         Object::SymmetricKey { key_block } => {
             let mut attributes = key_block.key_value.attributes.clone().unwrap_or_default();
             attributes.object_type = Some(object_type);
-            attributes
+            *attributes
         }
     };
 
@@ -190,7 +184,7 @@ pub async fn get_attributes(
                         attributes.cryptographic_domain_parameters;
                 }
                 Tag::CryptographicUsageMask => {
-                    res.cryptographic_usage_mask = attributes.cryptographic_usage_mask.clone();
+                    res.cryptographic_usage_mask = attributes.cryptographic_usage_mask;
                 }
                 Tag::KeyFormatType => {
                     res.key_format_type = attributes.key_format_type;

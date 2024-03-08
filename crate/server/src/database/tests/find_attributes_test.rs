@@ -4,20 +4,21 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::kmip::{
-    kmip_objects::ObjectType,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
-        StateEnumeration,
+use cosmian_kmip::{
+    crypto::symmetric::create_symmetric_key_kmip_object,
+    kmip::{
+        kmip_objects::ObjectType,
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, Link, LinkType, LinkedObjectIdentifier,
+            StateEnumeration,
+        },
     },
 };
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
-    crypto::symmetric::create_symmetric_key_kmip_object,
-};
+use cosmian_kms_client::access::ObjectOperationType;
 use uuid::Uuid;
 
 use crate::{
+    core::extra_database_params::ExtraDatabaseParams,
     database::{object_with_metadata::ObjectWithMetadata, Database},
     kms_bail,
     result::KResult,
@@ -56,6 +57,7 @@ pub async fn find_attributes<DB: Database>(
             Some(uid.clone()),
             owner,
             &symmetric_key,
+            symmetric_key.attributes()?,
             &HashSet::new(),
             db_params,
         )
@@ -97,6 +99,28 @@ pub async fn find_attributes<DB: Database>(
         .await?;
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].0, uid);
+
+    // Define a link vector not present in any database objects
+    let link = vec![Link {
+        link_type: LinkType::ParentLink,
+        linked_object_identifier: LinkedObjectIdentifier::TextString("bar".to_string()),
+    }];
+
+    let researched_attributes = Some(Attributes {
+        object_type: Some(ObjectType::SymmetricKey),
+        link: Some(link.clone()),
+        ..Attributes::default()
+    });
+    let found = db
+        .find(
+            researched_attributes.as_ref(),
+            Some(StateEnumeration::Active),
+            owner,
+            true,
+            db_params,
+        )
+        .await?;
+    assert_eq!(found.len(), 0);
 
     Ok(())
 }

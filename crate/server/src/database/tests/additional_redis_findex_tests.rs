@@ -10,12 +10,11 @@ use cloudproof_findex::{
     Location,
 };
 use cosmian_kmip::{
+    crypto::symmetric::create_symmetric_key_kmip_object,
     kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration},
     result::KmipResultHelper,
 };
-use cosmian_kms_utils::{
-    access::ObjectOperationType, crypto::symmetric::create_symmetric_key_kmip_object,
-};
+use cosmian_kms_client::access::ObjectOperationType;
 use redis::aio::ConnectionManager;
 use tracing::trace;
 

@@ -10,7 +10,7 @@ use cloudproof_findex::{
     parameters::MASTER_KEY_LENGTH,
     IndexedValue, Keyword, Location,
 };
-use cosmian_kms_utils::access::ObjectOperationType;
+use cosmian_kms_client::access::ObjectOperationType;
 
 use crate::{error::KmsError, result::KResult};
 

@@ -263,7 +263,7 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), Cli
     .await
 }
 
-async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
+async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
     // log_init("cosmian_kms_cli=info,cosmian_kms_server=debug");
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
@@ -276,7 +276,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
     let output_file = tmp_path.join("plain.enc");
     let recovered_file = tmp_path.join("plain.txt");
 
-    let tags = &[curve_name];
+    let tags = &[filename];
 
     fs::remove_file(&output_file).ok();
     assert!(!output_file.exists());
@@ -285,7 +285,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
     let private_key_id = import_key(
         &ctx.owner_cli_conf_path,
         "ec",
-        &format!("test_data/certificates/openssl/{curve_name}-private-key.pem"),
+        &format!("test_data/certificates/openssl/{filename}-private-key.pem"),
         Some(ImportKeyFormat::Pem),
         Some(Uuid::new_v4().to_string()),
         tags.iter()
@@ -300,7 +300,7 @@ async fn import_encrypt_decrypt(curve_name: &str) -> Result<(), CliError> {
     let certificate_id = import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
-        &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
+        &format!("test_data/certificates/openssl/{filename}-cert.pem"),
         CertificateInputFormat::Pem,
         None,
         Some(Uuid::new_v4().to_string()),

@@ -13,7 +13,7 @@ async fn test_get_attributes_p12() {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     //import the certificate
-    let imported_p12_sk = import_certificate(
+    let imported_p12_sk_uid = import_certificate(
         &ctx.owner_cli_conf_path,
         "certificates",
         "test_data/certificates/csr/intermediate.p12",
@@ -31,7 +31,7 @@ async fn test_get_attributes_p12() {
     //get the attributes of the private key and check that they are correct
     let attributes = get_attributes(
         &ctx.owner_cli_conf_path,
-        &imported_p12_sk,
+        &imported_p12_sk_uid,
         &[
             AttributeTag::KeyFormatType,
             AttributeTag::LinkedPublicKeyId,
@@ -39,6 +39,7 @@ async fn test_get_attributes_p12() {
         ],
     )
     .unwrap();
+
     assert!(attributes.get(&AttributeTag::LinkedPublicKeyId).is_none());
     assert_eq!(
         attributes.get(&AttributeTag::KeyFormatType).unwrap(),
@@ -61,13 +62,14 @@ async fn test_get_attributes_p12() {
         ],
     )
     .unwrap();
+
     assert_eq!(
         attributes.get(&AttributeTag::KeyFormatType).unwrap(),
         &serde_json::json!("X509")
     );
     assert_eq!(
         attributes.get(&AttributeTag::LinkedPrivateKeyId).unwrap(),
-        &serde_json::json!(imported_p12_sk)
+        &serde_json::json!(imported_p12_sk_uid)
     );
     assert!(
         attributes

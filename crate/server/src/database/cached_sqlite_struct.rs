@@ -9,7 +9,7 @@ use std::{
 };
 
 use cloudproof::reexport::crypto_core::reexport::tiny_keccak;
-use cosmian_kms_utils::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
+use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 use sqlx::{Pool, Sqlite};
 use tracing::info;
 
@@ -493,7 +493,7 @@ impl FreeableSqliteCache {
 mod tests {
     use std::{str::FromStr, sync::atomic::Ordering, time::Duration};
 
-    use cosmian_kms_utils::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
+    use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
     use sqlx::{
         sqlite::{SqliteConnectOptions, SqlitePoolOptions},
         ConnectOptions,

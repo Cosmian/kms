@@ -4,14 +4,18 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use cloudproof::reexport::cover_crypt::abe_policy::{DimensionBuilder, EncryptionHint, Policy};
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    ttlv::{deserializer::from_ttlv, TTLV},
+use cloudproof::reexport::cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy};
+use cosmian_kmip::{
+    crypto::cover_crypt::{
+        attributes::{policy_from_attributes, RekeyEditAction},
+        kmip_requests::build_rekey_keypair_request,
+    },
+    kmip::{
+        kmip_objects::Object,
+        ttlv::{deserializer::from_ttlv, TTLV},
+    },
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::cover_crypt::attributes::policy_from_attributes;
-use serde::{Deserialize, Serialize};
 
 use crate::{
     actions::shared::utils::{
@@ -20,95 +24,6 @@ use crate::{
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct PolicySpecifications(HashMap<String, Vec<String>>);
-
-impl PolicySpecifications {
-    /// Create a `Policy` from `PolicySpecifications`
-    pub fn to_policy(&self) -> Result<Policy, CliError> {
-        let mut policy = Policy::new();
-        for (axis, attributes) in &self.0 {
-            // Split the axis into axis name and hierarchy flag
-            let (axis_name, hierarchical) = match axis.split_once("::") {
-                Some((name, specs)) => {
-                    // If the axis contains the hierarchy flag, parse it
-                    let hierarchical = match specs {
-                        "<" => true,
-                        x => cli_bail!("unknown axis spec {}", x),
-                    };
-                    (name, hierarchical)
-                }
-                // If there is no hierarchy flag, assume the axis is non-hierarchical
-                None => (axis.as_str(), false),
-            };
-
-            let mut attributes_properties: Vec<(&str, EncryptionHint)> =
-                Vec::with_capacity(attributes.len());
-
-            // Parse each attribute and its encryption hint
-            for att in attributes {
-                let (att_name, encryption_hint) = match att.split_once("::") {
-                    Some((name, specs)) => {
-                        let encryption_hint = match specs {
-                            "+" => EncryptionHint::Hybridized,
-                            x => cli_bail!("unknown attribute spec {}", x),
-                        };
-                        (name, encryption_hint)
-                    }
-                    // If there is no encryption hint, assume the attribute is non-hybridized
-                    None => (att.as_str(), EncryptionHint::Classic),
-                };
-                attributes_properties.push((att_name, encryption_hint));
-            }
-
-            // Add the axis to the policy
-            policy.add_dimension(DimensionBuilder::new(
-                axis_name,
-                attributes_properties,
-                hierarchical,
-            ))?;
-        }
-        Ok(policy)
-    }
-
-    /// Read a JSON policy specification from a file
-    pub fn from_json_file(file: &impl AsRef<Path>) -> Result<Self, CliError> {
-        read_from_json_file(file)
-    }
-}
-
-impl TryInto<Policy> for PolicySpecifications {
-    type Error = CliError;
-
-    fn try_into(self) -> Result<Policy, Self::Error> {
-        self.to_policy()
-    }
-}
-
-impl TryFrom<Policy> for PolicySpecifications {
-    type Error = CliError;
-
-    fn try_from(policy: Policy) -> Result<Self, Self::Error> {
-        let mut result: HashMap<String, Vec<String>> =
-            HashMap::with_capacity(policy.dimensions.len());
-        for (dim_name, dimension) in policy.dimensions {
-            let dim_full_name = dim_name + if dimension.order.is_some() { "::+" } else { "" };
-            let attributes = dimension
-                .attributes_properties()
-                .into_iter()
-                .map(|(name, enc_hint)| {
-                    name + match enc_hint {
-                        EncryptionHint::Hybridized => "::+",
-                        EncryptionHint::Classic => "",
-                    }
-                })
-                .collect();
-            result.insert(dim_full_name, attributes);
-        }
-        Ok(Self(result))
-    }
-}
 
 pub fn policy_from_binary_file(bin_filename: &impl AsRef<Path>) -> Result<Policy, CliError> {
     let policy_buffer = read_bytes_from_file(bin_filename)?;
@@ -120,21 +35,27 @@ pub fn policy_from_binary_file(bin_filename: &impl AsRef<Path>) -> Result<Policy
     })
 }
 
-pub fn policy_from_specifications_file(
-    specs_filename: &impl AsRef<Path>,
-) -> Result<Policy, CliError> {
-    let policy_specs: PolicySpecifications = read_from_json_file(&specs_filename)?;
-    policy_specs.to_policy()
+pub fn policy_from_json_file(specs_filename: &impl AsRef<Path>) -> Result<Policy, CliError> {
+    let policy_specs: HashMap<String, Vec<String>> = read_from_json_file(&specs_filename)?;
+    policy_specs.try_into().with_context(|| {
+        format!(
+            "JSON policy is malformed {}",
+            specs_filename.as_ref().display()
+        )
+    })
 }
 
-/// Extract or view policies of existing keys,
-/// and create a binary policy from specifications.
+/// Extract, view, or edit policies of existing keys, and create a binary policy from specifications
 #[derive(Subcommand)]
 pub enum PolicyCommands {
     View(ViewAction),
     Specs(SpecsAction),
     Binary(BinaryAction),
     Create(CreateAction),
+    AddAttribute(AddAttributeAction),
+    RemoveAttribute(RemoveAttributeAction),
+    DisableAttribute(DisableAttributeAction),
+    RenameAttribute(RenameAttributeAction),
 }
 
 impl PolicyCommands {
@@ -144,6 +65,10 @@ impl PolicyCommands {
             Self::Specs(action) => action.run(kms_rest_client).await?,
             Self::Binary(action) => action.run(kms_rest_client).await?,
             Self::Create(action) => action.run().await?,
+            Self::AddAttribute(action) => action.run(kms_rest_client).await?,
+            Self::RemoveAttribute(action) => action.run(kms_rest_client).await?,
+            Self::DisableAttribute(action) => action.run(kms_rest_client).await?,
+            Self::RenameAttribute(action) => action.run(kms_rest_client).await?,
         };
 
         Ok(())
@@ -202,10 +127,7 @@ pub struct CreateAction {
 impl CreateAction {
     pub async fn run(&self) -> Result<(), CliError> {
         // Parse the json policy file
-        let specs = PolicySpecifications::from_json_file(&self.policy_specifications_file)?;
-
-        // create the policy
-        let policy = specs.to_policy()?;
+        let policy = policy_from_json_file(&self.policy_specifications_file)?;
 
         // write the binary file
         write_json_object_to_file(&policy, &self.policy_binary_file)
@@ -276,7 +198,7 @@ impl SpecsAction {
             kms_rest_client,
         )
         .await?;
-        let specs = PolicySpecifications::try_from(policy)?;
+        let specs: HashMap<String, Vec<String>> = policy.try_into()?;
         // save the policy to the specifications file
         write_json_object_to_file(&specs, &self.policy_specs_file)
     }
@@ -359,10 +281,231 @@ impl ViewAction {
         let json = if self.detailed {
             serde_json::to_string_pretty(&policy)?
         } else {
-            let specs = PolicySpecifications::try_from(policy)?;
+            let specs: HashMap<String, Vec<String>> = policy.try_into()?;
             serde_json::to_string_pretty(&specs)?
         };
         println!("{json}");
+        Ok(())
+    }
+}
+
+/// Add an attribute to the policy of an existing private master key.
+#[derive(Parser)]
+#[clap(verbatim_doc_comment)]
+pub struct AddAttributeAction {
+    /// The name of the attribute to create.
+    /// Example: `department::rd`
+    #[clap(required = true)]
+    attribute: String,
+
+    /// Set encryption hint for the new attribute to use hybridized keys.
+    #[clap(required = false, long = "hybridized", default_value = "false")]
+    hybridized: bool,
+
+    /// The private master key unique identifier stored in the KMS.
+    /// If not specified, tags should be specified
+    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    secret_key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
+}
+impl AddAttributeAction {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+        let id = if let Some(key_id) = &self.secret_key_id {
+            key_id.clone()
+        } else if let Some(tags) = &self.tags {
+            serde_json::to_string(&tags)?
+        } else {
+            cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
+        let attr = Attribute::try_from(self.attribute.as_str())?;
+        let enc_hint = EncryptionHint::new(self.hybridized);
+
+        // Create the kmip query
+        let rekey_query = build_rekey_keypair_request(
+            &id,
+            RekeyEditAction::AddAttribute(vec![(attr, enc_hint)]),
+        )?;
+
+        // Query the KMS with your kmip data
+        let rekey_response = kms_rest_client
+            .rekey_keypair(rekey_query)
+            .await
+            .with_context(|| "failed adding an attribute to the master keys")?;
+
+        println!(
+            "New attribute {} was successfully added to the master private key {} and master \
+             public key {}.",
+            &self.attribute,
+            &rekey_response.private_key_unique_identifier,
+            &rekey_response.public_key_unique_identifier,
+        );
+        Ok(())
+    }
+}
+
+/// Rename an attribute in the policy of an existing private master key.
+#[derive(Parser)]
+#[clap(verbatim_doc_comment)]
+pub struct RenameAttributeAction {
+    /// The name of the attribute to rename.
+    /// Example: `department::mkg`
+    #[clap(required = true)]
+    attribute: String,
+
+    /// The new name for the attribute.
+    /// Example: `marketing`
+    #[clap(required = true)]
+    new_name: String,
+
+    /// The private master key unique identifier stored in the KMS.
+    /// If not specified, tags should be specified
+    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    secret_key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
+}
+impl RenameAttributeAction {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+        let id = if let Some(key_id) = &self.secret_key_id {
+            key_id.clone()
+        } else if let Some(tags) = &self.tags {
+            serde_json::to_string(&tags)?
+        } else {
+            cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
+        let attr = Attribute::try_from(self.attribute.as_str())?;
+
+        // Create the kmip query
+        let rekey_query = build_rekey_keypair_request(
+            &id,
+            RekeyEditAction::RenameAttribute(vec![(attr, self.new_name.clone())]),
+        )?;
+
+        // Query the KMS with your kmip data
+        kms_rest_client
+            .rekey_keypair(rekey_query)
+            .await
+            .with_context(|| "failed renaming an attribute in the master keys' policy")?;
+
+        println!(
+            "Attribute {} was successfully renamed to {}.",
+            &self.attribute, &self.new_name
+        );
+        Ok(())
+    }
+}
+
+/// Disable an attribute from the policy of an existing private master key.
+/// Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphertexts.
+#[derive(Parser)]
+#[clap(verbatim_doc_comment)]
+pub struct DisableAttributeAction {
+    /// The name of the attribute to disable.
+    /// Example: `department::marketing`
+    #[clap(required = true)]
+    attribute: String,
+
+    /// The private master key unique identifier stored in the KMS.
+    /// If not specified, tags should be specified
+    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    secret_key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
+}
+impl DisableAttributeAction {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+        let id = if let Some(key_id) = &self.secret_key_id {
+            key_id.clone()
+        } else if let Some(tags) = &self.tags {
+            serde_json::to_string(&tags)?
+        } else {
+            cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
+        let attr = Attribute::try_from(self.attribute.as_str())?;
+
+        // Create the kmip query
+        let rekey_query =
+            build_rekey_keypair_request(&id, RekeyEditAction::DisableAttribute(vec![attr]))?;
+
+        // Query the KMS with your kmip data
+        let rekey_response = kms_rest_client
+            .rekey_keypair(rekey_query)
+            .await
+            .with_context(|| "failed disabling an attribute from the master keys")?;
+
+        println!(
+            "Attribute {} was successfully disabled from the master public key {}.",
+            &self.attribute, &rekey_response.public_key_unique_identifier,
+        );
+        Ok(())
+    }
+}
+
+/// Remove an attribute from the policy of an existing private master key.
+/// Permanently removes the ability to use this attribute in both encryptions and decryptions.
+///
+/// Note that messages whose encryption policy does not contain any other attributes
+/// belonging to the dimension of the deleted attribute will be lost.
+#[derive(Parser)]
+#[clap(verbatim_doc_comment)]
+pub struct RemoveAttributeAction {
+    /// The name of the attribute to remove.
+    /// Example: `department::marketing`
+    #[clap(required = true)]
+    attribute: String,
+
+    /// The private master key unique identifier stored in the KMS.
+    /// If not specified, tags should be specified
+    #[clap(long = "key-id", short = 'k', group = "key-tags")]
+    secret_key_id: Option<String>,
+
+    /// Tag to use to retrieve the key when no key id is specified.
+    /// To specify multiple tags, use the option multiple times.
+    #[clap(long = "tag", short = 't', value_name = "TAG", group = "key-tags")]
+    tags: Option<Vec<String>>,
+}
+impl RemoveAttributeAction {
+    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+        let id = if let Some(key_id) = &self.secret_key_id {
+            key_id.clone()
+        } else if let Some(tags) = &self.tags {
+            serde_json::to_string(&tags)?
+        } else {
+            cli_bail!("Either --key-id or one or more --tag must be specified")
+        };
+
+        let attr = Attribute::try_from(self.attribute.as_str())?;
+
+        // Create the kmip query
+        let rekey_query =
+            build_rekey_keypair_request(&id, RekeyEditAction::RemoveAttribute(vec![attr]))?;
+
+        // Query the KMS with your kmip data
+        let rekey_response = kms_rest_client
+            .rekey_keypair(rekey_query)
+            .await
+            .with_context(|| "failed removing an attribute from the master keys")?;
+
+        println!(
+            "Attribute {} was successfully removed from the master private key {} and master \
+             public key {}.",
+            &self.attribute,
+            &rekey_response.private_key_unique_identifier,
+            &rekey_response.public_key_unique_identifier,
+        );
         Ok(())
     }
 }
@@ -371,10 +514,7 @@ impl ViewAction {
 mod tests {
     use std::path::PathBuf;
 
-    use cloudproof::reexport::cover_crypt::abe_policy::{Attribute, EncryptionHint};
-
     use super::policy_from_binary_file;
-    use crate::{actions::cover_crypt::policy::PolicySpecifications, error::CliError};
 
     #[test]
     pub fn test_policy_bin_from_file() {
@@ -415,66 +555,5 @@ mod tests {
                 .to_string()
                 .starts_with(&format!("policy binary is malformed {DUPLICATED_POLICIES}"))
         );
-    }
-
-    #[test]
-    pub fn test_create_policy() -> Result<(), CliError> {
-        let json = r#"
-    {
-        "Security Level::<": [
-            "Protected",
-            "Confidential",
-            "Top Secret::+"
-        ],
-        "Department": [
-            "R&D",
-            "HR",
-            "MKG",
-            "FIN"
-        ]
-    }
-    "#;
-
-        let policy_json: PolicySpecifications = serde_json::from_str(json).unwrap();
-        let policy = policy_json.to_policy()?;
-        assert_eq!(policy.dimensions.len(), 2);
-        assert!(
-            policy
-                .dimensions
-                .get("Security Level")
-                .unwrap()
-                .order
-                .is_some()
-        );
-        assert!(policy.dimensions.get("Department").unwrap().order.is_none());
-        assert_eq!(
-            policy
-                .dimensions
-                .get("Security Level")
-                .unwrap()
-                .attributes
-                .len(),
-            3
-        );
-        assert_eq!(
-            policy
-                .attribute_hybridization_hint(&Attribute::new("Department", "MKG"))
-                .unwrap(),
-            EncryptionHint::Classic
-        );
-        assert_eq!(
-            policy
-                .attribute_hybridization_hint(&Attribute::new("Security Level", "Protected"))
-                .unwrap(),
-            EncryptionHint::Classic
-        );
-        assert_eq!(
-            policy
-                .attribute_hybridization_hint(&Attribute::new("Security Level", "Top Secret"))
-                .unwrap(),
-            EncryptionHint::Hybridized
-        );
-
-        Ok(())
     }
 }

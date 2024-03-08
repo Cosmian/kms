@@ -1,23 +1,26 @@
 use std::sync::Arc;
 
 use cloudproof::reexport::crypto_core::X25519_PUBLIC_KEY_LENGTH;
-use cosmian_kmip::kmip::{
-    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::{Get, Import},
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, KeyWrapType, LinkType,
-        LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, WrappingMethod,
-    },
-};
-use cosmian_kms_utils::crypto::{
-    elliptic_curves::{
-        kmip_requests::{
-            create_ec_key_pair_request, get_private_key_request, get_public_key_request,
+use cosmian_kmip::{
+    crypto::{
+        elliptic_curves::{
+            kmip_requests::{
+                create_ec_key_pair_request, get_private_key_request, get_public_key_request,
+            },
+            operation::to_ec_public_key,
+            CURVE_25519_Q_LENGTH_BITS,
         },
-        operation::{to_ec_public_key, CURVE_25519_Q_LENGTH_BITS},
+        symmetric::symmetric_key_create_request,
     },
-    symmetric::symmetric_key_create_request,
+    kmip::{
+        kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::{Get, Import},
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, CryptographicUsageMask, KeyFormatType, KeyWrapType,
+            LinkType, LinkedObjectIdentifier, RecommendedCurve, UniqueIdentifier, WrappingMethod,
+        },
+    },
 };
 use tracing::trace;
 use uuid::Uuid;
@@ -169,6 +172,8 @@ async fn test_curve_25519_key_pair() -> KResult<()> {
         CURVE_25519_Q_LENGTH_BITS as u32,
         sk_uid,
         RecommendedCurve::CURVE25519,
+        Some(CryptographicAlgorithm::ECDH),
+        Some(CryptographicUsageMask::Unrestricted),
     );
     let request = Import {
         unique_identifier: UniqueIdentifier::TextString(String::new()),
@@ -224,11 +229,11 @@ async fn test_import_wrapped_symmetric_key() -> KResult<()> {
             },
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(wrapped_symmetric_key.len() as i32 * 8),
-            key_wrapping_data: Some(KeyWrappingData {
+            key_wrapping_data: Some(Box::new(KeyWrappingData {
                 wrapping_method: WrappingMethod::Encrypt,
                 iv_counter_nonce: Some(aesgcm_nonce.to_vec()),
                 ..KeyWrappingData::default()
-            }),
+            })),
         },
     };
 

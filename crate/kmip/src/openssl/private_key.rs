@@ -9,6 +9,13 @@ use openssl::{
 use zeroize::Zeroizing;
 
 use crate::{
+    crypto::{
+        elliptic_curves::{
+            ED25519_PRIVATE_KEY_LENGTH, ED448_PRIVATE_KEY_LENGTH, X25519_PRIVATE_KEY_LENGTH,
+            X448_PRIVATE_KEY_LENGTH,
+        },
+        secret::SafeBigUint,
+    },
     error::KmipError,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
@@ -21,11 +28,6 @@ use crate::{
     kmip_bail,
     result::KmipResultHelper,
 };
-
-const X25519_PRIVATE_KEY_LENGTH: usize = 32;
-const ED25519_PRIVATE_KEY_LENGTH: usize = 32;
-const X448_PRIVATE_KEY_LENGTH: usize = 56;
-const ED448_PRIVATE_KEY_LENGTH: usize = 57;
 
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {
     while bytes.len() != size {
@@ -242,22 +244,25 @@ pub fn openssl_private_key_to_kmip(
                 key_format_type,
                 key_value: KeyValue {
                     key_material: KeyMaterial::TransparentRSAPrivateKey {
-                        modulus,
-                        private_exponent: Some(private_exponent),
-                        public_exponent: Some(public_exponent),
-                        p,
-                        q,
-                        prime_exponent_p,
-                        prime_exponent_q,
-                        crt_coefficient,
+                        modulus: Box::new(modulus),
+                        private_exponent: Some(Box::new(SafeBigUint::from(private_exponent))),
+                        public_exponent: Some(Box::new(public_exponent)),
+                        p: p.map(|p| Box::new(SafeBigUint::from(p))),
+                        q: q.map(|q| Box::new(SafeBigUint::from(q))),
+                        prime_exponent_p: prime_exponent_p
+                            .map(|pep| Box::new(SafeBigUint::from(pep))),
+                        prime_exponent_q: prime_exponent_q
+                            .map(|peq| Box::new(SafeBigUint::from(peq))),
+                        crt_coefficient: crt_coefficient
+                            .map(|crt_coeff| Box::new(SafeBigUint::from(crt_coeff))),
                     },
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                         cryptographic_length: Some(private_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::TransparentRSAPrivateKey),
                         object_type: Some(ObjectType::PrivateKey),
                         ..Attributes::default()
-                    }),
+                    })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length: Some(private_key.bits() as i32),
@@ -326,9 +331,9 @@ pub fn openssl_private_key_to_kmip(
                 key_value: KeyValue {
                     key_material: KeyMaterial::TransparentECPrivateKey {
                         recommended_curve,
-                        d,
+                        d: Box::new(SafeBigUint::from(d)),
                     },
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         activation_date: None,
                         certificate_attributes: None,
                         certificate_type: None,
@@ -345,7 +350,7 @@ pub fn openssl_private_key_to_kmip(
                         }),
                         cryptographic_parameters: None,
                         ..Attributes::default()
-                    }),
+                    })),
                 },
                 cryptographic_algorithm: Some(cryptographic_algorithm),
                 cryptographic_length: Some(private_key.bits() as i32),
@@ -370,13 +375,13 @@ pub fn openssl_private_key_to_kmip(
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         private_key.private_key_to_pkcs8()?,
                     )),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm,
                         cryptographic_length: Some(private_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::PKCS8),
                         object_type: Some(ObjectType::PrivateKey),
                         ..Attributes::default()
-                    }),
+                    })),
                 },
                 cryptographic_algorithm,
                 cryptographic_length: Some(private_key.bits() as i32),
@@ -395,13 +400,13 @@ pub fn openssl_private_key_to_kmip(
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         ec_key.private_key_to_der()?,
                     )),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                         cryptographic_length: Some(private_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::ECPrivateKey),
                         object_type: Some(ObjectType::PrivateKey),
                         ..Attributes::default()
-                    }),
+                    })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::ECDH),
                 cryptographic_length: Some(private_key.bits() as i32),
@@ -419,13 +424,13 @@ pub fn openssl_private_key_to_kmip(
                     key_material: KeyMaterial::ByteString(Zeroizing::from(
                         rsa_private_key.private_key_to_der()?,
                     )),
-                    attributes: Some(Attributes {
+                    attributes: Some(Box::new(Attributes {
                         cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                         cryptographic_length: Some(private_key.bits() as i32),
                         key_format_type: Some(KeyFormatType::PKCS1),
                         object_type: Some(ObjectType::PrivateKey),
                         ..Attributes::default()
-                    }),
+                    })),
                 },
                 cryptographic_algorithm: Some(CryptographicAlgorithm::RSA),
                 cryptographic_length: Some(private_key.bits() as i32),

@@ -1,5 +1,16 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_decrypt;
 use cosmian_kmip::{
+    crypto::{
+        cover_crypt::{attributes, decryption::CovercryptDecryption},
+        rsa::{
+            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt,
+            rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt,
+        },
+        symmetric::aead::{aead_decrypt, AeadCipher},
+        DecryptionSystem,
+    },
     kmip::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Decrypt, DecryptResponse, ErrorReason},
@@ -10,29 +21,16 @@ use cosmian_kmip::{
     },
     openssl::kmip_private_key_to_openssl,
 };
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::elliptic_curves::ecies::ecies_decrypt;
-use cosmian_kms_utils::{
-    access::{ExtraDatabaseParams, ObjectOperationType},
-    crypto::{
-        cover_crypt::{attributes, decryption::CovercryptDecryption},
-        rsa::{
-            ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_key_decrypt,
-            rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_decrypt,
-        },
-        symmetric::aead::{aead_decrypt, AeadCipher},
-    },
-    DecryptionSystem,
-};
+use cosmian_kms_client::access::ObjectOperationType;
 use openssl::pkey::{Id, PKey, Private};
 use tracing::trace;
 use zeroize::Zeroizing;
 
 use crate::{
-    core::{operations::unwrap_key, KMS},
+    core::{extra_database_params::ExtraDatabaseParams, operations::unwrap_key, KMS},
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
-    kms_bail, kms_not_supported,
+    kms_bail,
     result::{KResult, KResultHelper},
 };
 
@@ -56,10 +54,10 @@ pub async fn decrypt(
     match &owm.object {
         Object::SymmetricKey { .. } => decrypt_with_aead(&request, &owm),
         Object::PrivateKey { .. } => decrypt_with_private_key(&request, &owm),
-        other => kms_not_supported!(
+        other => kms_bail!(KmsError::NotSupported(format!(
             "decrypt: decryption with keys of type: {} is not supported",
             other.object_type()
-        ),
+        ))),
     }
 }
 
@@ -168,11 +166,13 @@ fn decrypt_with_aead(request: &Decrypt, owm: &ObjectWithMetadata) -> KResult<Dec
             let plaintext = aead_decrypt(aead, &key_bytes, nonce, aad, ciphertext, tag)?;
             Ok(DecryptResponse {
                 unique_identifier: UniqueIdentifier::TextString(owm.id.to_string()),
-                data: Some(plaintext.to_vec()), // TODO: zeroize field in DecryptResponse.
+                data: Some(plaintext),
                 correlation_value: request.correlation_value.clone(),
             })
         }
-        other => kms_not_supported!("symmetric decryption with keys of format: {other}"),
+        other => Err(KmsError::NotSupported(format!(
+            "symmetric decryption with keys of format: {other}"
+        ))),
     }
 }
 
@@ -203,7 +203,9 @@ fn decrypt_with_private_key(
             trace!("get_decryption_system: OpenSSL Private Key instantiated before decryption");
             decrypt_with_pkey(request, &owm.id, ciphertext, &private_key)
         }
-        other => kms_not_supported!("decryption with private keys of format: {other}"),
+        other => Err(KmsError::NotSupported(format!(
+            "decryption with private keys of format: {other}"
+        ))),
     }
 }
 
@@ -228,7 +230,7 @@ fn decrypt_with_pkey(
     };
     Ok(DecryptResponse {
         unique_identifier: UniqueIdentifier::TextString(key_id.to_string()),
-        data: Some(plaintext.to_vec()), // TODO: zeroize field in DecryptResponse.
+        data: Some(plaintext),
         correlation_value: request.correlation_value.clone(),
     })
 }

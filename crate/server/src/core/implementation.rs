@@ -1,35 +1,36 @@
 use std::collections::HashSet;
 
 use cloudproof::reexport::{cover_crypt::Covercrypt, crypto_core::FixedSizeCBytes};
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_operations::{Create, CreateKeyPair},
-    kmip_types::{CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
-};
 #[cfg(not(feature = "fips"))]
-use cosmian_kms_utils::crypto::elliptic_curves::operation::{
+use cosmian_kmip::crypto::elliptic_curves::operation::{
     create_x25519_key_pair, create_x448_key_pair,
 };
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
+use cosmian_kmip::{
     crypto::{
+        cover_crypt::master_keys::create_master_keypair,
         elliptic_curves::operation::{
             create_approved_ecc_key_pair, create_ed25519_key_pair, create_ed448_key_pair,
         },
         rsa::operation::create_rsa_key_pair,
         secret::Secret,
         symmetric::{create_symmetric_key_kmip_object, AES_256_GCM_KEY_LENGTH},
+        KeyPair,
     },
-    tagging::{check_user_tags, get_tags, remove_tags},
-    KeyPair,
+    kmip::{
+        kmip_objects::Object,
+        kmip_operations::{Create, CreateKeyPair},
+        kmip_types::{Attributes, CryptographicAlgorithm, KeyFormatType, RecommendedCurve},
+    },
 };
-use openssl::{nid::Nid, rand::rand_bytes};
+use openssl::rand::rand_bytes;
 use tracing::trace;
 #[cfg(not(feature = "fips"))]
 use tracing::warn;
 use zeroize::Zeroizing;
 
-use super::{cover_crypt::create_user_decryption_key, KMS};
+use super::{
+    cover_crypt::create_user_decryption_key, extra_database_params::ExtraDatabaseParams, KMS,
+};
 use crate::{
     config::{DbParams, ServerParams},
     database::{
@@ -41,7 +42,7 @@ use crate::{
         Database,
     },
     error::KmsError,
-    kms_bail, kms_not_supported,
+    kms_bail,
     result::KResult,
 };
 
@@ -110,8 +111,8 @@ impl KMS {
         })?;
 
         // recover tags
-        let mut tags = get_tags(attributes);
-        check_user_tags(&tags)?;
+        let mut tags = attributes.get_tags();
+        Attributes::check_user_tags(&tags)?;
         //update the tags
         tags.insert("_kk".to_string());
 
@@ -125,9 +126,9 @@ impl KMS {
             | CryptographicAlgorithm::SHA3512
             | CryptographicAlgorithm::SHAKE128
             | CryptographicAlgorithm::SHAKE256 => match attributes.key_format_type {
-                None => kms_bail!(KmsError::InvalidRequest(
+                None => Err(KmsError::InvalidRequest(
                     "Unable to create a symmetric key, the format type is not specified"
-                        .to_string()
+                        .to_string(),
                 )),
                 Some(KeyFormatType::TransparentSymmetricKey) => {
                     // create the key
@@ -142,13 +143,13 @@ impl KMS {
                     //return the object and the tags
                     Ok((object, tags))
                 }
-                Some(other) => kms_bail!(KmsError::InvalidRequest(format!(
+                Some(other) => Err(KmsError::InvalidRequest(format!(
                     "unable to generate a symmetric key for format: {other}"
                 ))),
             },
-            other => kms_not_supported!(
+            other => Err(KmsError::NotSupported(format!(
                 "the creation of secret key for algorithm: {other:?} is not supported"
-            ),
+            ))),
         }
     }
 
@@ -176,8 +177,8 @@ impl KMS {
         })?;
 
         // recover tags
-        let mut tags = get_tags(attributes);
-        check_user_tags(&tags)?;
+        let mut tags = attributes.get_tags();
+        Attributes::check_user_tags(&tags)?;
         //update the tags
         tags.insert("_uk".to_string());
 
@@ -193,9 +194,9 @@ impl KMS {
                 .await?;
                 Ok((object, tags))
             }
-            other => kms_not_supported!(
+            other => Err(KmsError::NotSupported(format!(
                 "the creation of a private key for algorithm: {other:?} is not supported"
-            ),
+            ))),
         }
     }
 
@@ -223,8 +224,8 @@ impl KMS {
         let mut common_attributes = request.common_attributes.unwrap_or_default();
 
         // recover tags and clean them up from the common attributes
-        let tags = remove_tags(&mut common_attributes).unwrap_or_default();
-        check_user_tags(&tags)?;
+        let tags = common_attributes.remove_tags().unwrap_or_default();
+        Attributes::check_user_tags(&tags)?;
         // Update the tags for the private key and the public key.
         let mut sk_tags = tags.clone();
         sk_tags.insert("_sk".to_string());
@@ -241,20 +242,34 @@ impl KMS {
                 )
             })?;
 
+        let private_key_mask = request
+            .private_key_attributes
+            .as_ref()
+            .and_then(|attr| attr.cryptographic_usage_mask);
+
+        let public_key_mask = request
+            .public_key_attributes
+            .as_ref()
+            .and_then(|attr| attr.cryptographic_usage_mask);
+
         // Check that the cryptographic algorithm is specified.
-        let cryptographic_algorithm = &any_attributes.cryptographic_algorithm.ok_or_else(|| {
+        let cryptographic_algorithm = any_attributes.cryptographic_algorithm.ok_or_else(|| {
             KmsError::InvalidRequest(
                 "the cryptographic algorithm must be specified for key pair creation".to_string(),
             )
         })?;
 
-        let key_pair = match &cryptographic_algorithm {
-            CryptographicAlgorithm::ECDH => {
-                let dp = any_attributes
+        let key_pair = match cryptographic_algorithm {
+            // EC, ECDSA and ECDH possess the same FIPS restrictions for curves.
+            CryptographicAlgorithm::EC
+            | CryptographicAlgorithm::ECDH
+            | CryptographicAlgorithm::ECDSA => {
+                let domain_parameters = any_attributes
                     .cryptographic_domain_parameters
                     .unwrap_or_default();
-                match dp.recommended_curve.unwrap_or_default() {
-                    // P-CURVES
+                let curve = domain_parameters.recommended_curve.unwrap_or_default();
+
+                match curve {
                     #[cfg(not(feature = "fips"))]
                     // Generate a P-192 Key Pair. Not FIPS-140-3 compliant. **This curve is for
                     // legacy-use only** as it provides less than 112 bits of security.
@@ -264,75 +279,103 @@ impl KMS {
                     RecommendedCurve::P192 => create_approved_ecc_key_pair(
                         private_key_uid,
                         public_key_uid,
-                        Nid::X9_62_PRIME192V1,
+                        curve,
+                        any_attributes.cryptographic_algorithm,
+                        private_key_mask,
+                        public_key_mask,
                     ),
-                    RecommendedCurve::P224 => create_approved_ecc_key_pair(
+                    RecommendedCurve::P224
+                    | RecommendedCurve::P256
+                    | RecommendedCurve::P384
+                    | RecommendedCurve::P521 => create_approved_ecc_key_pair(
                         private_key_uid,
                         public_key_uid,
-                        Nid::SECP224R1,
+                        curve,
+                        any_attributes.cryptographic_algorithm,
+                        private_key_mask,
+                        public_key_mask,
                     ),
-                    RecommendedCurve::P256 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::X9_62_PRIME256V1,
-                    ),
-                    RecommendedCurve::P384 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::SECP384R1,
-                    ),
-                    RecommendedCurve::P521 => create_approved_ecc_key_pair(
-                        private_key_uid,
-                        public_key_uid,
-                        Nid::SECP521R1,
-                    ),
-
                     #[cfg(not(feature = "fips"))]
-                    RecommendedCurve::CURVE25519 => {
-                        create_x25519_key_pair(private_key_uid, public_key_uid)
-                    }
+                    RecommendedCurve::CURVE25519 => create_x25519_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        any_attributes.cryptographic_algorithm,
+                        private_key_mask,
+                        public_key_mask,
+                    ),
                     #[cfg(not(feature = "fips"))]
-                    RecommendedCurve::CURVE448 => {
-                        create_x448_key_pair(private_key_uid, public_key_uid)
-                    }
+                    RecommendedCurve::CURVE448 => create_x448_key_pair(
+                        private_key_uid,
+                        public_key_uid,
+                        any_attributes.cryptographic_algorithm,
+                        private_key_mask,
+                        public_key_mask,
+                    ),
                     #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED25519 => {
+                        if cryptographic_algorithm == CryptographicAlgorithm::ECDSA
+                            || cryptographic_algorithm == CryptographicAlgorithm::EC
+                        {
+                            kms_bail!(KmsError::NotSupported(
+                                "Edwards curve can't be created for EC or ECDSA".to_string()
+                            ))
+                        }
                         warn!(
                             "An Edwards Keypair on curve 25519 should not be requested to perform \
                              ECDH. Creating anyway."
                         );
-                        create_ed25519_key_pair(private_key_uid, public_key_uid)
+                        create_ed25519_key_pair(
+                            private_key_uid,
+                            public_key_uid,
+                            any_attributes.cryptographic_algorithm,
+                            private_key_mask,
+                            public_key_mask,
+                        )
                     }
-
                     #[cfg(feature = "fips")]
-                    // Ed25519 not allowed for ECDH.
+                    // Ed25519 not allowed for ECDH nor ECDSA.
                     // see NIST.SP.800-186 - Section 3.1.2 table 2.
                     RecommendedCurve::CURVEED25519 => {
-                        kms_not_supported!(
+                        kms_bail!(KmsError::NotSupported(
                             "An Edwards Keypair on curve 25519 should not be requested to perform \
-                             ECDH in FIPS mode."
-                        )
+                             Elliptic Curves operations in FIPS mode"
+                                .to_string()
+                        ))
                     }
                     #[cfg(not(feature = "fips"))]
                     RecommendedCurve::CURVEED448 => {
+                        if cryptographic_algorithm == CryptographicAlgorithm::ECDSA
+                            || cryptographic_algorithm == CryptographicAlgorithm::EC
+                        {
+                            kms_bail!(KmsError::NotSupported(
+                                "Edwards curve can't be created for EC or ECDSA".to_string()
+                            ))
+                        }
                         warn!(
                             "An Edwards Keypair on curve 448 should not be requested to perform \
                              ECDH. Creating anyway."
                         );
-                        create_ed448_key_pair(private_key_uid, public_key_uid)
-                    }
-                    #[cfg(feature = "fips")]
-                    // Ed448 not allowed for ECDH.
-                    // see NIST.SP.800-186 - Section 3.1.2 table 2.
-                    RecommendedCurve::CURVEED448 => {
-                        kms_not_supported!(
-                            "An Edwards Keypair on curve 448 should not be requested to perform \
-                             ECDH in FIPS mode."
+                        create_ed448_key_pair(
+                            private_key_uid,
+                            public_key_uid,
+                            any_attributes.cryptographic_algorithm,
+                            private_key_mask,
+                            public_key_mask,
                         )
                     }
-                    other => kms_not_supported!(
+                    #[cfg(feature = "fips")]
+                    // Ed448 not allowed for ECDH nor ECDSA.
+                    // see NIST.SP.800-186 - Section 3.1.2 table 2.
+                    RecommendedCurve::CURVEED448 => {
+                        kms_bail!(KmsError::NotSupported(
+                            "An Edwards Keypair on curve 448 should not be requested to perform \
+                             ECDH in FIPS mode."
+                                .to_string()
+                        ))
+                    }
+                    other => kms_bail!(KmsError::NotSupported(format!(
                         "Generation of Key Pair for curve: {other:?}, is not supported"
-                    ),
+                    ))),
                 }
             }
             CryptographicAlgorithm::RSA => {
@@ -340,31 +383,45 @@ impl KMS {
                     .cryptographic_length
                     .ok_or_else(|| KmsError::InvalidRequest("RSA key size: error".to_string()))?
                     as u32;
-                trace!(
-                    "RSA key pair generation: size in bits: {}",
-                    key_size_in_bits
-                );
+                trace!("RSA key pair generation: size in bits: {key_size_in_bits}");
 
-                create_rsa_key_pair(key_size_in_bits, public_key_uid, private_key_uid)
-            }
-            CryptographicAlgorithm::Ed25519 => {
-                create_ed25519_key_pair(private_key_uid, public_key_uid)
-            }
-            CryptographicAlgorithm::Ed448 => create_ed448_key_pair(private_key_uid, public_key_uid),
-            CryptographicAlgorithm::CoverCrypt => {
-                cosmian_kms_utils::crypto::cover_crypt::master_keys::create_master_keypair(
-                    &Covercrypt::default(),
-                    private_key_uid,
+                create_rsa_key_pair(
+                    key_size_in_bits,
                     public_key_uid,
-                    Some(common_attributes),
-                    request.private_key_attributes,
-                    request.public_key_attributes,
+                    private_key_uid,
+                    any_attributes.cryptographic_algorithm,
+                    private_key_mask,
+                    public_key_mask,
                 )
-                .map_err(Into::into)
             }
-            other => kms_not_supported!(
-                "The creation of a key pair for algorithm: {other:?} is not supported"
+            CryptographicAlgorithm::Ed25519 => create_ed25519_key_pair(
+                private_key_uid,
+                public_key_uid,
+                any_attributes.cryptographic_algorithm,
+                private_key_mask,
+                public_key_mask,
             ),
+            CryptographicAlgorithm::Ed448 => create_ed448_key_pair(
+                private_key_uid,
+                public_key_uid,
+                any_attributes.cryptographic_algorithm,
+                private_key_mask,
+                public_key_mask,
+            ),
+            CryptographicAlgorithm::CoverCrypt => create_master_keypair(
+                &Covercrypt::default(),
+                private_key_uid,
+                public_key_uid,
+                Some(common_attributes),
+                request.private_key_attributes,
+                request.public_key_attributes,
+            )
+            .map_err(Into::into),
+            other => {
+                kms_bail!(KmsError::NotSupported(format!(
+                    "The creation of a key pair for algorithm: {other:?} is not supported"
+                )))
+            }
         }?;
         Ok((key_pair, sk_tags, pk_tags))
     }

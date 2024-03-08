@@ -10,7 +10,6 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::tagging::set_tags;
 
 use crate::{actions::shared::utils::read_bytes_from_file, error::CliError};
 
@@ -122,9 +121,9 @@ impl CertifyAction {
                 Some(UniqueIdentifier::TextString(certificate_id.clone()));
         }
 
-        set_tags(&mut attributes, &self.tags)?;
+        attributes.set_tags(&self.tags)?;
 
-        // Using a CSR ?
+        // Using a CSR?
         let (certificate_request_value, certificate_request_type) =
             if let Some(certificate_signing_request) = &self.certificate_signing_request {
                 let certificate_request_value =
@@ -143,13 +142,14 @@ impl CertifyAction {
         // Using a Public Key ?
         let unique_identifier = if let Some(public_key_to_certify) = &self.public_key_id_to_certify
         {
-            attributes.certificate_attributes = Some(CertificateAttributes::parse_subject_line(
-                self.subject_name.as_ref().ok_or_else(|| {
-                    CliError::Default(
-                        "subject name is required when certifying a public key".to_string(),
-                    )
-                })?,
-            )?);
+            attributes.certificate_attributes =
+                Some(Box::new(CertificateAttributes::parse_subject_line(
+                    self.subject_name.as_ref().ok_or_else(|| {
+                        CliError::Default(
+                            "subject name is required when certifying a public key".to_string(),
+                        )
+                    })?,
+                )?));
             Some(UniqueIdentifier::TextString(
                 public_key_to_certify.to_string(),
             ))

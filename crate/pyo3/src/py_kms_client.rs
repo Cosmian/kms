@@ -3,6 +3,21 @@ use cloudproof::reexport::{
     crypto_core::bytes_ser_de::Deserializer,
 };
 use cosmian_kmip::{
+    crypto::{
+        cover_crypt::{
+            attributes::RekeyEditAction,
+            kmip_requests::{
+                build_create_master_keypair_request,
+                build_create_user_decryption_private_key_request, build_destroy_key_request,
+                build_import_decryption_private_key_request, build_import_private_key_request,
+                build_import_public_key_request, build_rekey_keypair_request,
+            },
+        },
+        generic::kmip_requests::{
+            build_decryption_request, build_encryption_request, build_revoke_key_request,
+        },
+        symmetric::symmetric_key_create_request,
+    },
     kmip::{
         kmip_operations::Get,
         kmip_types::{CryptographicAlgorithm, RevocationReason},
@@ -10,21 +25,6 @@ use cosmian_kmip::{
     result::KmipResultHelper,
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::crypto::{
-    cover_crypt::{
-        attributes::EditPolicyAction,
-        kmip_requests::{
-            build_create_master_keypair_request, build_create_user_decryption_private_key_request,
-            build_destroy_key_request, build_import_decryption_private_key_request,
-            build_import_private_key_request, build_import_public_key_request,
-            build_rekey_keypair_request,
-        },
-    },
-    generic::kmip_requests::{
-        build_decryption_request, build_encryption_request, build_revoke_key_request,
-    },
-    symmetric::symmetric_key_create_request,
-};
 use openssl::x509::X509;
 use pyo3::{
     exceptions::{PyException, PyTypeError},
@@ -37,20 +37,7 @@ use crate::py_kms_object::{KmsEncryptResponse, KmsObject};
 /// Create a Rekey Keypair request from `PyO3` arguments
 /// Returns a `PyO3` Future
 macro_rules! rekey_keypair {
-    (
-        $self:ident,
-        $attributes:expr,
-        $master_secret_key_identifier:expr,
-        $policy_attributes:ident,
-        $action:expr,
-        $py:ident
-    ) => {{
-        let $policy_attributes = $attributes
-            .into_iter()
-            .map(Attribute::try_from)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| PyTypeError::new_err(e.to_string()))?;
-
+    ($self:ident, $master_secret_key_identifier:expr, $action:expr, $py:ident) => {{
         let request = build_rekey_keypair_request(&$master_secret_key_identifier, $action)
             .map_err(|e| PyException::new_err(e.to_string()))?;
 
@@ -310,90 +297,91 @@ impl KmsClient {
         })
     }
 
-    /// Rotate the given policy attributes. This will rekey in the KMS:
-    /// - the Master Keys
-    /// - all User Decryption Keys that contain one of these attributes in their
-    ///   policy and are not rotated.
+    /// Generate new keys associated to the given access policy in the master keys.
+    /// This will rekey in the KMS:
+    /// - the master keys
+    /// - any activated user key associated to the access policy
     ///
     /// Args:
-    ///     - `attributes` (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
-    ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+    ///     - `access_policy` (str): describe the keys to renew
+    ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
-    pub fn rotate_cover_crypt_attributes<'p>(
+    pub fn rekey_cover_crypt_access_policy<'p>(
         &'p self,
-        attributes: Vec<&str>,
+        access_policy: String,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         rekey_keypair!(
             self,
-            attributes,
             master_secret_key_identifier.0,
-            policy_attributes,
-            EditPolicyAction::RotateAttributes(policy_attributes),
+            RekeyEditAction::RekeyAccessPolicy(access_policy),
             py
         )
     }
 
-    /// Remove old rotations from the specified policy attributes.
+    /// Removes old keys associated to the given access policy from the master
+    /// keys. This will permanently remove access to old ciphertexts.
     /// This will rekey in the KMS:
-    /// - the Master Keys
-    /// - any user key which associated access policy covers one of these attributes
+    /// - the master keys
+    /// - any activated user key associated to the access policy
     ///
     /// Args:
-    ///     - `attributes` (List[Union[Attribute, str]]): attributes to rotate e.g. ["Department::HR"]
-    ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+    ///     - `access_policy` (str): describe the keys to renew
+    ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
-    pub fn clear_cover_crypt_attributes_rotations<'p>(
+    pub fn prune_cover_crypt_access_policy<'p>(
         &'p self,
-        attributes: Vec<&str>,
+        access_policy: String,
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         rekey_keypair!(
             self,
-            attributes,
             master_secret_key_identifier.0,
-            policy_attributes,
-            EditPolicyAction::ClearOldAttributeValues(policy_attributes),
+            RekeyEditAction::PruneAccessPolicy(access_policy),
             py
         )
     }
 
     /// Remove a specific attribute from a keypair's policy.
+    /// Permanently removes the ability to use this attribute in both encryptions and decryptions.
+    ///
+    /// Note that messages whose encryption policy does not contain any other attributes
+    /// belonging to the dimension of the deleted attribute will be lost.
     ///
     /// Args:
     ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
-    ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+    ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn remove_cover_crypt_attribute<'p>(
         &'p self,
-        _attribute: &str,
-        _master_secret_key_identifier: ToUniqueIdentifier,
-        _py: Python<'p>,
+        attribute: &str,
+        master_secret_key_identifier: ToUniqueIdentifier,
+        py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        /*rekey_keypair!(
+        let attr: Attribute =
+            Attribute::try_from(attribute).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        rekey_keypair!(
             self,
-            vec![attribute],
             master_secret_key_identifier.0,
-            policy_attributes,
-            EditPolicyAction::RemoveAttribute(policy_attributes),
+            RekeyEditAction::RemoveAttribute(vec![attr]),
             py
-        )*/
-        Err(PyException::new_err("Not supported yet"))
+        )
     }
 
     /// Disable a specific attribute for a keypair.
+    /// Prevents the encryption of new messages for this attribute while keeping the ability to decrypt existing ciphers.
     ///
     /// Args:
     ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
-    ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+    ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
@@ -403,22 +391,22 @@ impl KmsClient {
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
+        let attr =
+            Attribute::try_from(attribute).map_err(|e| PyTypeError::new_err(e.to_string()))?;
         rekey_keypair!(
             self,
-            vec![attribute],
             master_secret_key_identifier.0,
-            policy_attributes,
-            EditPolicyAction::DisableAttribute(policy_attributes),
+            RekeyEditAction::DisableAttribute(vec![attr]),
             py
         )
     }
 
-    /// Add a specific attribute to a keypair's policy.
+    /// Add a new attribute to a keypair's policy.
     ///
     /// Args:
     ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
     ///     - `is_hybridized` (bool): hint for encryption
-    ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+    ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
@@ -429,17 +417,12 @@ impl KmsClient {
         master_secret_key_identifier: ToUniqueIdentifier,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
+        let attr =
+            Attribute::try_from(attribute).map_err(|e| PyTypeError::new_err(e.to_string()))?;
         rekey_keypair!(
             self,
-            vec![attribute],
             master_secret_key_identifier.0,
-            policy_attributes,
-            EditPolicyAction::AddAttribute(
-                policy_attributes
-                    .into_iter()
-                    .map(|attr| (attr, EncryptionHint::new(is_hybridized)))
-                    .collect()
-            ),
+            RekeyEditAction::AddAttribute(vec![(attr, EncryptionHint::new(is_hybridized))]),
             py
         )
     }
@@ -449,31 +432,25 @@ impl KmsClient {
     /// Args:
     ///     - `attribute` (Union[Attribute, str]): attribute to remove e.g. "Department::HR"
     ///     - `new_name` (str): the new name for the attribute
-    ///     - `master_secret_key_identifier` (Union[str, List[str])): master secret key referenced by its UID or a list of tags
+    ///     - `master_secret_key_identifier` (Union[str, List[str]]): master secret key referenced by its UID or a list of tags
     ///
     /// Returns:
     ///     Future[Tuple[str, str]]: (Public key UID, Master secret key UID)
     pub fn rename_cover_crypt_attribute<'p>(
         &'p self,
-        _attribute: &str,
-        _new_name: &str,
-        _master_secret_key_identifier: ToUniqueIdentifier,
-        _py: Python<'p>,
+        attribute: &str,
+        new_name: &str,
+        master_secret_key_identifier: ToUniqueIdentifier,
+        py: Python<'p>,
     ) -> PyResult<&PyAny> {
-        /*rekey_keypair!(
+        let attr =
+            Attribute::try_from(attribute).map_err(|e| PyTypeError::new_err(e.to_string()))?;
+        rekey_keypair!(
             self,
-            vec![attribute],
             master_secret_key_identifier.0,
-            policy_attributes,
-            EditPolicyAction::RenameAttribute(
-                policy_attributes
-                    .into_iter()
-                    .map(|attr| (attr, new_name.to_string()))
-                    .collect()
-            ),
+            RekeyEditAction::RenameAttribute(vec![(attr, new_name.to_string())]),
             py
-        )*/
-        Err(PyException::new_err("Not supported yet"))
+        )
     }
 
     /// Generate a user secret key.
@@ -481,7 +458,7 @@ impl KmsClient {
     /// partitions.
     ///
     /// Args:
-    ///         - `access_policy_str` (str): user access policy
+    ///         - `access_policy` (str): user access policy
     ///         - `master_secret_key_identifier` (str): master secret key UID
     ///         - `tags`: optional tags to use with the keys
     ///
@@ -489,13 +466,13 @@ impl KmsClient {
     ///         Future[str]: User secret key UID
     pub fn create_cover_crypt_user_decryption_key<'p>(
         &'p self,
-        access_policy_str: &str,
+        access_policy: &str,
         master_secret_key_identifier: &str,
         tags: Option<Vec<&str>>,
         py: Python<'p>,
     ) -> PyResult<&PyAny> {
         let request = build_create_user_decryption_private_key_request(
-            access_policy_str,
+            access_policy,
             master_secret_key_identifier,
             tags.unwrap_or_default()
                 .into_iter()
@@ -524,7 +501,7 @@ impl KmsClient {
     ///     - `private_key` (bytes): key bytes
     ///     - `replace_existing` (bool): set to true to replace an existing key with the same identifier
     ///     - `link_master_private_key_id` (str): id of the matching master private key
-    ///     - `access_policy_str` (str): user access policy
+    ///     - `access_policy` (str): user access policy
     ///     - `tags`: optional tags to use with the key
     ///     - `is_wrapped` (bool): whether the key is wrapped
     ///     - `wrapping_password` (Optional[str]): password used to wrap the key
@@ -538,7 +515,7 @@ impl KmsClient {
         private_key: &[u8],
         replace_existing: bool,
         link_master_private_key_id: &str,
-        access_policy_str: &str,
+        access_policy: &str,
         tags: Option<Vec<String>>,
         is_wrapped: Option<bool>,
         wrapping_password: Option<String>,
@@ -550,7 +527,7 @@ impl KmsClient {
             unique_identifier,
             replace_existing,
             link_master_private_key_id,
-            access_policy_str,
+            access_policy,
             is_wrapped.unwrap_or(false),
             wrapping_password,
             tags.unwrap_or_default(),
@@ -574,7 +551,7 @@ impl KmsClient {
     /// ciphertext.
     ///
     /// Args:
-    ///     - `access_policy_str` (str): the access policy to use for encryption
+    ///     - `access_policy` (str): the access policy to use for encryption
     ///     - `data` (bytes): data to encrypt
     ///     - `public_key_identifier` (Union[str, List[str]]): public key unique id or associated tags
     ///     - `header_metadata` (Optional[bytes]): additional data to symmetrically encrypt in the header
@@ -587,7 +564,7 @@ impl KmsClient {
     #[allow(clippy::too_many_arguments)]
     pub fn cover_crypt_encryption<'p>(
         &'p self,
-        encryption_policy_str: String,
+        access_policy: String,
         data: Vec<u8>,
         public_key_identifier: ToUniqueIdentifier,
         header_metadata: Option<Vec<u8>>,
@@ -596,7 +573,7 @@ impl KmsClient {
     ) -> PyResult<&PyAny> {
         let request = build_encryption_request(
             &public_key_identifier.0,
-            Some(encryption_policy_str),
+            Some(access_policy),
             data,
             header_metadata,
             authentication_data,
@@ -868,7 +845,11 @@ impl KmsClient {
                 .await
                 .map_err(|e| PyException::new_err(e.to_string()))?;
 
-            Ok(response.data)
+            if let Some(plaintext) = response.data {
+                Ok(Some(plaintext.to_vec()))
+            } else {
+                Ok(None)
+            }
         })
     }
 }

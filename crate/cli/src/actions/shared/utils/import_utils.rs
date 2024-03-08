@@ -4,7 +4,6 @@ use cosmian_kmip::kmip::{
     kmip_types::{Attributes, KeyWrapType, UniqueIdentifier},
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::tagging::set_tags;
 use tracing::trace;
 
 use crate::error::{result::CliResultHelper, CliError};
@@ -57,7 +56,7 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     };
 
     // set the new tags
-    set_tags(&mut attributes, tags)?;
+    attributes.set_tags(tags)?;
 
     // if the key must be wrapped, wrap it
     let import = Import {

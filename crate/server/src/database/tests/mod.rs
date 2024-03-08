@@ -1,9 +1,6 @@
 use std::path::PathBuf;
 
-use cosmian_kms_utils::{
-    access::ExtraDatabaseParams,
-    crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH},
-};
+use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 
 use self::{
     additional_redis_findex_tests::{test_corner_case, test_objects_db, test_permissions_db},
@@ -21,7 +18,10 @@ use super::{
     redis::{RedisWithFindex, REDIS_WITH_FINDEX_MASTER_KEY_LENGTH},
     sqlite::SqlitePool,
 };
-use crate::{database::tests::database_tests::atomic, result::KResult};
+use crate::{
+    core::extra_database_params::ExtraDatabaseParams, database::tests::database_tests::atomic,
+    result::KResult,
+};
 
 mod additional_redis_findex_tests;
 mod database_tests;
@@ -107,7 +107,7 @@ pub async fn test_redis_with_findex() -> KResult<()> {
     find_attributes(&get_redis_with_findex().await?).await?;
     owner(&get_redis_with_findex().await?).await?;
     permissions(&get_redis_with_findex().await?).await?;
-    tags(&get_redis_with_findex().await?).await?;
+    tags(&get_redis_with_findex().await?, false).await?;
     tx_and_list(&get_redis_with_findex().await?).await?;
     atomic(&get_redis_with_findex().await?).await?;
     upsert(&get_redis_with_findex().await?).await?;
@@ -121,7 +121,7 @@ pub async fn test_sql_cipher() -> KResult<()> {
     find_attributes(&get_sql_cipher().await?).await?;
     owner(&get_sql_cipher().await?).await?;
     permissions(&get_sql_cipher().await?).await?;
-    tags(&get_sql_cipher().await?).await?;
+    tags(&get_sql_cipher().await?, true).await?;
     tx_and_list(&get_sql_cipher().await?).await?;
     atomic(&get_sql_cipher().await?).await?;
     upsert(&get_sql_cipher().await?).await?;
@@ -135,7 +135,7 @@ pub async fn test_sqlite() -> KResult<()> {
     json_access(&get_sqlite().await?).await?;
     owner(&get_sqlite().await?).await?;
     permissions(&get_sqlite().await?).await?;
-    tags(&get_sqlite().await?).await?;
+    tags(&get_sqlite().await?, true).await?;
     tx_and_list(&get_sqlite().await?).await?;
     atomic(&get_sqlite().await?).await?;
     upsert(&get_sqlite().await?).await?;
@@ -149,7 +149,7 @@ pub async fn test_pgsql() -> KResult<()> {
     find_attributes(&get_pgsql().await?).await?;
     owner(&get_pgsql().await?).await?;
     permissions(&get_pgsql().await?).await?;
-    tags(&get_pgsql().await?).await?;
+    tags(&get_pgsql().await?, true).await?;
     tx_and_list(&get_pgsql().await?).await?;
     atomic(&get_pgsql().await?).await?;
     upsert(&get_pgsql().await?).await?;
@@ -167,6 +167,6 @@ pub async fn test_mysql() -> KResult<()> {
     find_attributes(&get_mysql().await?).await?;
     owner(&get_mysql().await?).await?;
     permissions(&get_mysql().await?).await?;
-    tags(&get_mysql().await?).await?;
+    tags(&get_mysql().await?, true).await?;
     Ok(())
 }

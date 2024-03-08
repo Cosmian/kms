@@ -9,13 +9,6 @@ In addition, the KMS server will automatically add a system tag to objects based
 - `_uk`: for a Covercrypt user decryption key
 - `_cert`: for a X509 certificate
 
-In addition, for certificates, these additional system tags are added:
-
-- `_cert_cn=<CN>`: for the Common Name of the certificate subject
-- `_cert_spki=<SPKI>`: for the hex encoded Subject Public Key Info of the certificate
-- `_cert_issuer=<Issuer>`: for the unique identifier of the issuer of the certificate, if known
-- `_cert_sk=<SK>`: for the unique identifier of the private key of the certificate, if known
-
 Since there is no provision in the KMIP 2.1 specification for tagging. The Cosmian KMS server implements tagging using the following KMIP 2.1 extensions:
 
 1. When `Attributes` are passed as part of the KMIP operation, such as in the `Create`, `Create Key Pair`, `Locate`, `Certify` and `Import` operations,

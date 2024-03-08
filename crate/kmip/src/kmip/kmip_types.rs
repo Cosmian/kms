@@ -10,6 +10,7 @@ use std::{
     vec::Vec,
 };
 
+#[cfg(feature = "openssl")]
 use openssl::{
     hash::MessageDigest,
     md::{Md, MdRef},
@@ -22,7 +23,9 @@ use serde::{
 use strum::{Display, EnumIter, EnumString};
 
 use super::kmip_objects::ObjectType;
-use crate::{error::KmipError, kmip_bail};
+use crate::error::KmipError;
+#[cfg(feature = "openssl")]
+use crate::kmip_error;
 
 /// 4.7
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).
@@ -227,7 +230,7 @@ impl Default for CryptographicDomainParameters {
 
 #[allow(non_camel_case_types)]
 #[allow(clippy::enum_clike_unportable_variant)]
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq, Display)]
 pub enum RecommendedCurve {
     P192 = 0x0000_0001,
     K163 = 0x0000_0002,
@@ -303,6 +306,13 @@ pub enum RecommendedCurve {
 }
 
 impl Default for RecommendedCurve {
+    #[cfg(feature = "fips")]
+    /// Defaulting to highest security FIPS compliant curve.
+    fn default() -> Self {
+        Self::P521
+    }
+
+    #[cfg(not(feature = "fips"))]
     fn default() -> Self {
         Self::CURVE25519
     }
@@ -318,7 +328,7 @@ pub enum KeyCompressionType {
     // Extensions 8XXXXXXX
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct CryptographicUsageMask(u32);
 
@@ -800,7 +810,7 @@ pub struct Attributes {
     /// The Certificate Attributes are the various items included in a certificate.
     /// The following list is based on RFC2253.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub certificate_attributes: Option<CertificateAttributes>,
+    pub certificate_attributes: Option<Box<CertificateAttributes>>,
 
     /// The Certificate Type attribute is a type of certificate (e.g., X.509).
     /// The Certificate Type value SHALL be set by the server when the certificate
@@ -847,7 +857,7 @@ pub struct Attributes {
 
     /// See `CryptographicParameters`
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub cryptographic_parameters: Option<Box<CryptographicParameters>>,
 
     /// The Cryptographic Usage Mask attribute defines the cryptographic usage
     /// of a key. This is a bit mask that indicates to the client which
@@ -1613,6 +1623,7 @@ pub enum HashingAlgorithm {
     SHA3512 = 0x0000_0011,
 }
 
+#[cfg(feature = "openssl")]
 impl TryFrom<HashingAlgorithm> for &'static MdRef {
     type Error = KmipError;
 
@@ -1627,14 +1638,14 @@ impl TryFrom<HashingAlgorithm> for &'static MdRef {
             HashingAlgorithm::SHA3256 => Ok(Md::sha3_256()),
             HashingAlgorithm::SHA3384 => Ok(Md::sha3_384()),
             HashingAlgorithm::SHA3512 => Ok(Md::sha3_512()),
-            h => kmip_bail!(
-                "Unsupported hash function: {:?} for the openssl provider",
-                h
-            ),
+            h => Err(kmip_error!(
+                "Unsupported hash function: {h:?} for the openssl provider"
+            )),
         }
     }
 }
 
+#[cfg(feature = "openssl")]
 impl TryFrom<HashingAlgorithm> for MessageDigest {
     type Error = KmipError;
 
@@ -1649,10 +1660,9 @@ impl TryFrom<HashingAlgorithm> for MessageDigest {
             HashingAlgorithm::SHA3256 => Ok(MessageDigest::sha3_256()),
             HashingAlgorithm::SHA3384 => Ok(MessageDigest::sha3_384()),
             HashingAlgorithm::SHA3512 => Ok(MessageDigest::sha3_512()),
-            h => kmip_bail!(
-                "Unsupported hash function: {:?} for the openssl Message Digest provider",
-                h
-            ),
+            h => Err(kmip_error!(
+                "Unsupported hash function: {h:?} for the openssl Message Digest provider"
+            )),
         }
     }
 }
@@ -1803,7 +1813,7 @@ pub struct CryptographicParameters {
 pub struct EncryptionKeyInformation {
     pub unique_identifier: UniqueIdentifier,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub cryptographic_parameters: Option<Box<CryptographicParameters>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -1811,7 +1821,7 @@ pub struct EncryptionKeyInformation {
 pub struct MacSignatureKeyInformation {
     pub unique_identifier: UniqueIdentifier,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub cryptographic_parameters: Option<Box<CryptographicParameters>>,
 }
 
 #[allow(non_camel_case_types)]
@@ -2258,7 +2268,7 @@ impl<'de> Deserialize<'de> for Credential {
                         Field::AttestationMeasurement => {
                             if attestation_measurement.is_some() {
                                 return Err(de::Error::duplicate_field(
-                                    "attesattestation_measurementtation_type",
+                                    "attestation_measurement_type",
                                 ))
                             }
                             attestation_measurement = Some(map.next_value()?);

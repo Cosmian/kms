@@ -1,7 +1,6 @@
 use cosmian_kmip::kmip::kmip_types::{
     Attributes, LinkedObjectIdentifier::TextString, StateEnumeration,
 };
-use cosmian_kms_utils::tagging::get_tags;
 
 use crate::result::KResult;
 
@@ -14,9 +13,8 @@ pub trait PlaceholderTrait {
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract";
     const JSON_ARRAY_LENGTH: &'static str = "json_array_length";
-    const JSON_NODE_ATTRS: &'static str = "'$.object.KeyBlock.KeyValue.Attributes'";
     const JSON_NODE_WRAPPING: &'static str = "'$.object.KeyBlock.KeyWrappingData'";
-    const JSON_NODE_LINK: &'static str = "'$.object.KeyBlock.KeyValue.Attributes.Link'";
+    const JSON_NODE_LINK: &'static str = "'$.Link'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'$.LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'$.LinkType'";
     const TYPE_INTEGER: &'static str = "INTEGER";
@@ -34,7 +32,7 @@ pub trait PlaceholderTrait {
     #[must_use]
     fn additional_rq_from() -> Option<String> {
         Some(format!(
-            "{}({}(objects.object, {}))",
+            "{}({}(objects.attributes, {}))",
             Self::JSON_FN_EACH_ELEMENT,
             Self::JSON_FN_EXTRACT_PATH,
             Self::JSON_NODE_LINK
@@ -85,14 +83,14 @@ impl PlaceholderTrait for MySqlPlaceholder {
     fn link_evaluation(node_name: &str, node_value: &str) -> String {
         // built evaluation is going to be like:
         // json_search(
-        //      json_extract(objects.object, '$.object.KeyBlock.KeyValue.Attributes.Link'),
+        //      json_extract(objects.attributes, '$.Link'),
         //      'one',          -> need at most 1 match
         //      'ParentLink',   -> `node_value` (from either `link.link_type` or `uid`)
         //      NULL,
         //      '$[*].LinkType' -> `node_name` (from either `P::JSON_TEXT_LINK_TYPE` or `P::JSON_TEXT_LINK_OBJ_ID`)
         // )
         format!(
-            "{}({}(objects.object, {}), 'one', '{}', NULL, {}) IS NOT NULL",
+            "{}({}(objects.attributes, {}), 'one', '{}', NULL, {}) IS NOT NULL",
             Self::JSON_FN_EACH_ELEMENT,
             Self::JSON_FN_EXTRACT_PATH,
             Self::JSON_NODE_LINK,
@@ -118,8 +116,7 @@ impl PlaceholderTrait for PgSqlPlaceholder {
     const JSON_FN_EACH_ELEMENT: &'static str = "json_array_elements";
     const JSON_FN_EXTRACT_PATH: &'static str = "json_extract_path";
     const JSON_FN_EXTRACT_TEXT: &'static str = "json_extract_path_text";
-    const JSON_NODE_ATTRS: &'static str = "'object', 'KeyBlock', 'KeyValue', 'Attributes'";
-    const JSON_NODE_LINK: &'static str = "'object', 'KeyBlock', 'KeyValue', 'Attributes', 'Link'";
+    const JSON_NODE_LINK: &'static str = "'Link'";
     const JSON_NODE_WRAPPING: &'static str = "'object', 'KeyBlock', 'KeyWrappingData'";
     const JSON_TEXT_LINK_OBJ_ID: &'static str = "'LinkedObjectIdentifier'";
     const JSON_TEXT_LINK_TYPE: &'static str = "'LinkType'";
@@ -140,10 +137,8 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
     user_must_be_owner: bool,
 ) -> KResult<String> {
     let mut query = format!(
-        "SELECT objects.id as id, objects.state as state, {}(objects.object, {}) as attrs, \
+        "SELECT objects.id as id, objects.state as state, objects.attributes as attrs, \
          {}(objects.object, {}) IS NOT NULL AS is_wrapped FROM objects",
-        P::JSON_FN_EXTRACT_PATH,
-        P::JSON_NODE_ATTRS,
         P::JSON_FN_EXTRACT_PATH,
         P::JSON_NODE_WRAPPING
     );
@@ -159,7 +154,7 @@ pub fn query_from_attributes<P: PlaceholderTrait>(
         }
 
         // tags
-        let tags = get_tags(attributes);
+        let tags = attributes.get_tags();
         let tags_len = tags.len();
         if tags_len > 0 {
             let tags_string = tags

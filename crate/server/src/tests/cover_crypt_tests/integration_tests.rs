@@ -1,17 +1,10 @@
 use cloudproof::reexport::cover_crypt::abe_policy::{
     Attribute, DimensionBuilder, EncryptionHint, Policy,
 };
-use cosmian_kmip::kmip::{
-    kmip_operations::{
-        CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
-        EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
-    },
-    kmip_types::{CryptographicAlgorithm, RevocationReason, UniqueIdentifier},
-};
-use cosmian_kms_utils::{
+use cosmian_kmip::{
     crypto::{
         cover_crypt::{
-            attributes::EditPolicyAction,
+            attributes::RekeyEditAction,
             kmip_requests::{
                 build_create_master_keypair_request,
                 build_create_user_decryption_private_key_request, build_destroy_key_request,
@@ -20,7 +13,14 @@ use cosmian_kms_utils::{
         },
         generic::kmip_requests::{build_decryption_request, build_encryption_request},
     },
-    tagging::EMPTY_TAGS,
+    kmip::{
+        extra::tagging::EMPTY_TAGS,
+        kmip_operations::{
+            CreateKeyPairResponse, CreateResponse, DecryptResponse, DecryptedData, DestroyResponse,
+            EncryptResponse, ReKeyKeyPairResponse, Revoke, RevokeResponse,
+        },
+        kmip_types::{CryptographicAlgorithm, RevocationReason, UniqueIdentifier},
+    },
 };
 
 use crate::{
@@ -31,7 +31,6 @@ use crate::{
 #[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     // log_init("cosmian_kms_server=info");
-
     let app = test_utils::test_app().await;
 
     let mut policy = Policy::new();
@@ -194,7 +193,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(&data, &decrypted_data.plaintext);
+    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
 
     // test user2 can decrypt
@@ -217,7 +216,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(&data, &decrypted_data.plaintext);
+    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
 
     // Revoke key of user 1
@@ -234,12 +233,11 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     .await?;
 
     //
-    // Rekey all key pairs with matching ABE attributes
-    let abe_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
-
+    // Rekey all key pairs with matching access policy
+    let ap_to_edit = "Department::MKG".to_string();
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        EditPolicyAction::RotateAttributes(abe_policy_attributes.clone()),
+        RekeyEditAction::RekeyAccessPolicy(ap_to_edit.clone()),
     )?;
     let rekey_keypair_response: ReKeyKeyPairResponse = test_utils::post(&app, &request).await?;
     assert_eq!(
@@ -257,7 +255,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         public_key_unique_identifier
     );
 
-    // ReEncrypt with same ABE attribute (which has been previously incremented)
+    // ReEncrypt with same ABE attribute (which has been previously rekeyed)
     let authentication_data = b"cc the uid".to_vec();
     let data = "Voilà voilà".as_bytes();
     let encryption_policy = "Level::Confidential && Department::MKG";
@@ -307,14 +305,14 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
         .try_into()
         .unwrap();
 
-    assert_eq!(&data, &decrypted_data.plaintext);
+    assert_eq!(&data, &decrypted_data.plaintext.to_vec());
     assert!(decrypted_data.metadata.is_empty());
 
     //
-    // Clear old rotations for ABE Attribute
+    // Prune old keys associated to the access policy
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        EditPolicyAction::ClearOldAttributeValues(abe_policy_attributes.clone()),
+        RekeyEditAction::PruneAccessPolicy(ap_to_edit),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -347,7 +345,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     ];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        EditPolicyAction::AddAttribute(new_policy_attributes),
+        RekeyEditAction::AddAttribute(new_policy_attributes),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -377,7 +375,7 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
     )];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        EditPolicyAction::RenameAttribute(rename_policy_attributes_pair),
+        RekeyEditAction::RenameAttribute(rename_policy_attributes_pair),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -401,9 +399,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Disable ABE Attribute
+    let disable_policy_attributes = vec![Attribute::from(("Department", "MKG"))];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        EditPolicyAction::DisableAttribute(abe_policy_attributes.clone()),
+        RekeyEditAction::DisableAttribute(disable_policy_attributes),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;
@@ -428,10 +427,10 @@ async fn integration_tests_use_ids_no_tags() -> KResult<()> {
 
     //
     // Delete attribute
-    let remove_policy_attributes_pair = vec![Attribute::from(("Department", "HumanResources"))];
+    let remove_policy_attributes = vec![Attribute::from(("Department", "HumanResources"))];
     let request = build_rekey_keypair_request(
         private_key_unique_identifier,
-        EditPolicyAction::RemoveAttribute(remove_policy_attributes_pair),
+        RekeyEditAction::RemoveAttribute(remove_policy_attributes),
     )?;
     let rekey_keypair_response: KResult<ReKeyKeyPairResponse> =
         test_utils::post(&app, &request).await;

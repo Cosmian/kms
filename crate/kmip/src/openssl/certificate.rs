@@ -1,5 +1,6 @@
 use openssl::{
     nid::Nid,
+    sha::Sha1,
     x509::{X509Name, X509NameBuilder, X509},
 };
 use uuid::Uuid;
@@ -7,14 +8,14 @@ use uuid::Uuid;
 use crate::{
     error::KmipError,
     kmip::{
-        kmip_objects::{Object, Object::Certificate},
+        kmip_objects::Object::{self, Certificate},
         kmip_types::{CertificateAttributes, CertificateType},
     },
     result::KmipResultHelper,
 };
 
 /// Generate a KMIP certificate from an OpenSSL certificate and a unique ID
-pub fn openssl_certificate_to_kmip(certificate: X509) -> Result<(String, Object), KmipError> {
+pub fn openssl_certificate_to_kmip(certificate: &X509) -> Result<(String, Object), KmipError> {
     let der_bytes = certificate.to_der()?;
     Ok((
         Uuid::new_v4().to_string(),
@@ -43,6 +44,103 @@ pub fn kmip_certificate_to_openssl(certificate: &Object) -> Result<X509, KmipErr
 }
 
 impl CertificateAttributes {
+    #[must_use]
+    pub fn from(x509: &X509) -> Self {
+        let mut attributes = Self::default();
+        for entry in x509.subject_name().entries() {
+            match entry.object().nid() {
+                Nid::COMMONNAME => {
+                    if let Ok(cn) = entry.data().as_utf8() {
+                        attributes.certificate_subject_cn = cn.to_string();
+                    }
+                }
+                Nid::ORGANIZATIONALUNITNAME => {
+                    if let Ok(ou) = entry.data().as_utf8() {
+                        attributes.certificate_subject_ou = ou.to_string();
+                    }
+                }
+                Nid::COUNTRYNAME => {
+                    if let Ok(country) = entry.data().as_utf8() {
+                        attributes.certificate_subject_c = country.to_string();
+                    }
+                }
+                Nid::STATEORPROVINCENAME => {
+                    if let Ok(st) = entry.data().as_utf8() {
+                        attributes.certificate_subject_st = st.to_string();
+                    }
+                }
+                Nid::LOCALITYNAME => {
+                    if let Ok(l) = entry.data().as_utf8() {
+                        attributes.certificate_subject_l = l.to_string();
+                    }
+                }
+                Nid::ORGANIZATIONNAME => {
+                    if let Ok(o) = entry.data().as_utf8() {
+                        attributes.certificate_subject_o = o.to_string();
+                    }
+                }
+                Nid::PKCS9_EMAILADDRESS => {
+                    if let Ok(email) = entry.data().as_utf8() {
+                        attributes.certificate_subject_email = email.to_string();
+                    }
+                }
+                _ => (),
+            }
+        }
+        if let Ok(serial_number) = x509.serial_number().to_bn() {
+            if let Ok(serial_number) = serial_number.to_hex_str() {
+                attributes.certificate_subject_serial_number = serial_number.to_string();
+            }
+        }
+
+        // add the SPKI tag corresponding to the `SubjectKeyIdentifier` X509 extension
+        if let Ok(spki) = Self::get_or_create_subject_key_identifier_value(x509) {
+            attributes.certificate_subject_uid = hex::encode(spki);
+        }
+
+        for entry in x509.issuer_name().entries() {
+            match entry.object().nid() {
+                Nid::COMMONNAME => {
+                    if let Ok(cn) = entry.data().as_utf8() {
+                        attributes.certificate_issuer_cn = cn.to_string();
+                    }
+                }
+                Nid::ORGANIZATIONALUNITNAME => {
+                    if let Ok(ou) = entry.data().as_utf8() {
+                        attributes.certificate_issuer_ou = ou.to_string();
+                    }
+                }
+                Nid::COUNTRYNAME => {
+                    if let Ok(country) = entry.data().as_utf8() {
+                        attributes.certificate_issuer_c = country.to_string();
+                    }
+                }
+                Nid::STATEORPROVINCENAME => {
+                    if let Ok(st) = entry.data().as_utf8() {
+                        attributes.certificate_issuer_st = st.to_string();
+                    }
+                }
+                Nid::LOCALITYNAME => {
+                    if let Ok(l) = entry.data().as_utf8() {
+                        attributes.certificate_issuer_l = l.to_string();
+                    }
+                }
+                Nid::ORGANIZATIONNAME => {
+                    if let Ok(o) = entry.data().as_utf8() {
+                        attributes.certificate_issuer_o = o.to_string();
+                    }
+                }
+                Nid::PKCS9_EMAILADDRESS => {
+                    if let Ok(email) = entry.data().as_utf8() {
+                        attributes.certificate_issuer_email = email.to_string();
+                    }
+                }
+                _ => (),
+            }
+        }
+        attributes
+    }
+
     /// Get the OpenSSL `X509Name` for the subject
     pub fn subject_name(&self) -> Result<X509Name, KmipError> {
         let mut builder = X509NameBuilder::new()?;
@@ -82,5 +180,100 @@ impl CertificateAttributes {
                 .context("invalid email")?;
         }
         Ok(builder.build())
+    }
+
+    /// Get the `SubjectKeyIdentifier` X509 extension value
+    /// If it is not available, it is
+    /// calculated according to RFC 5280 section 4.2.1.2
+    fn get_or_create_subject_key_identifier_value(
+        certificate: &X509,
+    ) -> Result<Vec<u8>, KmipError> {
+        Ok(if let Some(ski) = certificate.subject_key_id() {
+            ski.as_slice().to_vec()
+        } else {
+            let pk = certificate.public_key()?;
+            let spki_der = pk.public_key_to_der()?;
+            let mut sha1 = Sha1::default();
+            sha1.update(&spki_der);
+            sha1.finish().to_vec()
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    fn test_parsing_certificate_attributes() {
+        use std::{fs::File, io::Read};
+
+        use super::CertificateAttributes;
+
+        let mut buffer = Vec::new();
+        let pem_filepath = "../cli/test_data/certificates/openssl/rsa-4096-cert.pem";
+        File::open(pem_filepath)
+            .unwrap()
+            .read_to_end(&mut buffer)
+            .unwrap();
+        let cert = openssl::x509::X509::from_pem(&buffer).unwrap();
+        let certificate_attributes = CertificateAttributes::from(&cert);
+        // Issuer: C = US, ST = Denial, L = Springfield, O = Dis, CN = www.RSA-4096-example.com
+        // Validity
+        //     Not Before: Oct  2 13:51:50 2023 GMT
+        //     Not After : Oct  1 13:51:50 2024 GMT
+        // Subject: C = US, ST = Denial, L = Springfield, O = Dis, CN = www.RSA-4096-example.com
+        // ----> Check subject name
+        assert_eq!(
+            certificate_attributes.certificate_subject_c,
+            "US".to_string()
+        );
+        assert_eq!(
+            certificate_attributes.certificate_subject_st,
+            "Denial".to_string()
+        );
+        assert_eq!(
+            certificate_attributes.certificate_subject_l,
+            "Springfield".to_string()
+        );
+        assert_eq!(
+            certificate_attributes.certificate_subject_o,
+            "Dis".to_string()
+        );
+        assert_eq!(
+            certificate_attributes.certificate_subject_cn,
+            "www.RSA-4096-example.com".to_string()
+        );
+
+        // ----> Check issuer name
+        assert_eq!(
+            certificate_attributes.certificate_issuer_c,
+            "US".to_string()
+        );
+        assert_eq!(
+            certificate_attributes.certificate_issuer_st,
+            "Denial".to_string()
+        );
+        assert_eq!(
+            certificate_attributes.certificate_issuer_l,
+            "Springfield".to_string()
+        );
+        assert_eq!(
+            certificate_attributes.certificate_issuer_o,
+            "Dis".to_string()
+        );
+        assert_eq!(
+            certificate_attributes.certificate_issuer_cn,
+            "www.RSA-4096-example.com".to_string()
+        );
+
+        // ----> Check SPKI
+        assert_eq!(
+            certificate_attributes.certificate_subject_uid,
+            "33a90ad71894709603a677775d0b902edcd9eaeb".to_string()
+        );
+        assert_eq!(
+            certificate_attributes.certificate_subject_serial_number,
+            "715437E16BFD2371DB5074169C3EE44E30EEB88C".to_string()
+        );
     }
 }

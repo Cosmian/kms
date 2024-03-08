@@ -11,7 +11,6 @@ use cosmian_kmip::kmip::{
     },
 };
 use cosmian_kms_client::KmsRestClient;
-use cosmian_kms_utils::tagging::set_tags;
 use strum::IntoEnumIterator;
 
 use crate::error::CliError;
@@ -71,16 +70,6 @@ pub struct LocateObjectsAction {
     /// Locate an object which has a link to this certificate key id.
     #[clap(long = "certificate-id", short = 'c')]
     certificate_id: Option<String>,
-
-    /// Locate a certificate which has this Common Name.
-    #[clap(long = "certificate-cn")]
-    certificate_cn: Option<String>,
-
-    /// Locate a certificate which has this Subject Public Key Info.
-    /// For example: AF:B0:19:F4:09:3E:2F:F4:52:07:54:7F:17:62:9D:74:76:E3:A4:F6
-    /// The value will be stripped from the colons and converted to lower case.
-    #[clap(long = "certificate-spki")]
-    certificate_spki: Option<String>,
 }
 
 impl LocateObjectsAction {
@@ -121,23 +110,8 @@ impl LocateObjectsAction {
             );
         }
 
-        let mut opt_tags = self.tags.clone();
-
-        if let Some(certificate_cn) = &self.certificate_cn {
-            let tags = opt_tags.get_or_insert(Vec::new());
-            tags.push(format!("_cert_cn={certificate_cn}"));
-        }
-
-        if let Some(certificate_spki) = &self.certificate_spki {
-            let tags = opt_tags.get_or_insert(Vec::new());
-            tags.push(format!(
-                "_cert_spki={}",
-                certificate_spki.replace(':', "").to_lowercase()
-            ));
-        }
-
-        if let Some(tags) = opt_tags {
-            set_tags(&mut attributes, tags)?;
+        if let Some(tags) = &self.tags {
+            attributes.set_tags(tags.clone())?;
         }
 
         let locate = Locate {

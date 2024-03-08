@@ -1,6 +1,6 @@
 Microsoft Double Key Encryption (DKE) is a feature of Microsoft 365 that allows you to protect your most sensitive
-data by encrypting data on the client computer before sending it Microsoft servers.
-One of the keys used to encrypt remains under your control and makes the data unreadable ny Microsoft. This key is kept
+data by encrypting data on the client computer before sending it to Microsoft servers.
+One of the keys used to encrypt remains under your control and makes the data unreadable by Microsoft. This key is kept
 inside your instance of Cosmian KMS which exposes the required API to integrate with Microsoft DKE.
 
 See [How it works](#how-it-works) for details on the cryptographic process.
@@ -13,7 +13,7 @@ Purview compliance portal.
 
 ## How it works
 
-Once DKE is configured, the whole process consist in assigning a
+Once DKE is configured, the whole process consists in assigning a
 specific [sensitivity label](https://learn.microsoft.com/en-gb/purview/create-sensitivity-labels#create-and-configure-sensitivity-labels)
 to a document. The label will indicate that the document is encrypted and that the key to decrypt it is stored in your
 Cosmian KMS.
@@ -26,17 +26,17 @@ From a cryptographic standpoint, the feature works as follows:
 Before saving an encrypted document, the Office client will:
 
 1. Generate an ephemeral 128-bit AES key and use it to encrypt the document
-2. Call the Cosmian KMS to get your 2048-bit RSA public key (the office client will cache the key for 24 hours)
+2. Call the Cosmian KMS to get your 2048-bit RSA public key (the Office client will cache the key for 24 hours)
 3. Use that key to wrap the AES key using the PKCS#11 CKM_RSA_PKCS_OAEP (NIST 800 56B Rev2) algorithm; the hashing
    algorithm is set to SHA-256 (see [the list of supported algorithms](../algorithms.md) for details)
 4. Send the wrapped AES key and the encrypted document to Microsoft servers, where Azure RMS will also wrap the
-   wrapped AES key with their own key (hence the"double key" acronym)
+   wrapped AES key with their own key (hence the "double key" acronym)
 
 Retrieving an encrypted document works as follows, the Office client will:
 
 1. Request Azure RMS to perform the first unwrapping using their key, to recover the wrapped AES key
 2. Download the encrypted document and the wrapped AES key
-3. Call your Cosmian KMS to unwrap the AES key using your private RSA private key. Please note
+3. Call your Cosmian KMS to unwrap the AES key using your private RSA key. Please note
    that the private RSA key never leaves the Cosmian KMS.
 4. Decrypt the document using the recovered AES key and display it.
 
@@ -50,14 +50,14 @@ The Cosmian KMS server needs to be started with the `--ms-dke-service-url <MS_DK
 The `<MS_DKE_SERVICE_URL>`should contain the external URL of this server as configured in [Azure App Registrations
 for the DKE Service](https://learn.microsoft.com/en-us/purview/double-key-encryption-setup#register-your-key-store)
 
-The URL should be something like <https://cse.my_domain.com/ms_dke>
+The URL should be something like <https://kms.my_domain.com/ms_dke>
 
 Alternatively, you can set the `KMS_MS_DKE_SERVICE_URL` environment variable to the same value, or set the
 corresponding entry in the server TOML configuration file.
 
 !!! warning "No authentication => firewalling is critical"
-      The office client does not send any authentication information when calling the Cosmian KMS. Firewalling the
-      Cosmian KMS server to only accept requests from valid office clients is critical.
+      The Office client does not send any authentication information when calling the Cosmian KMS. Firewalling the
+      Cosmian KMS server to only accept requests from valid Office clients is critical.
 
 !!! important "Running the KMS server in the cloud for DKE"
       It is possible to confidentially run the Cosmian KMS server in the cloud [inside a
@@ -130,23 +130,23 @@ If it is disabled, enable it
  Enable-AipService
  ```
 
-More options for phased deployments
-here: https://learn.microsoft.com/en-us/azure/information-protection/activate-service#configuring-onboarding-controls-for-a-phased-deployment
+More options for [phased deployments
+here](https://learn.microsoft.com/en-us/azure/information-protection/activate-service#configuring-onboarding-controls-for-a-phased-deployment).
 
 #### Microsoft Entra configuration for encrypted content
 
-Check if there is [anything to configure](https://learn.microsoft.com/en-gb/purview/encryption-azure-ad-configuration)
+Check if there is [anything to configure](https://learn.microsoft.com/en-gb/purview/encryption-azure-ad-configuration).
 
 #### Activate sensitivity labels for MS 365 groups
 
 Sensitivity labels must be activated for MS 365 groups which are also called unified groups.
 The main documentation on configuring sensitivity labels
-is [available here](https://learn.microsoft.com/en-gb/purview/encryption-sensitivity-labels)
+is [available here](https://learn.microsoft.com/en-gb/purview/encryption-sensitivity-labels).
 
 The objective is to set the `EnableMIPLabels` parameter to `True` at the Entra ID Directory level (which is set
-to `False` by default), using  `Group.Unified` template
+to `False` by default), using  `Group.Unified` template.
 
-> The [EnableMIPLabels] flag indicates whether sensitivity labels published in Microsoft Purview compliance portal
+> The `EnableMIPLabels` flag indicates whether sensitivity labels published in Microsoft Purview compliance portal
 > can be applied to Microsoft 365 groups. For more information, see Assign Sensitivity Labels for Microsoft 365 groups.
 
 To verify the current value of the `EnableMIPLabels` parameter, run the following command:
@@ -159,7 +159,7 @@ $Setting = Get-AzureADDirectorySetting | ? { $_.DisplayName -eq "Group.Unified"}
 [See this doc](https://learn.microsoft.com/en-gb/purview/sensitivity-labels-teams-groups-sites#using-sensitivity-labels-for-microsoft-teams-microsoft-365-groups-and-sharepoint-sites)
 and [Enable sensitivity label support in PowerShell](https://learn.microsoft.com/en-us/entra/identity/users/groups-assign-sensitivity-labels#enable-sensitivity-label-support-in-powershell)
 which will probably
-require [configuring groups](https://learn.microsoft.com/en-us/entra/identity/users/groups-settings-cmdlets) first
+require [configuring groups](https://learn.microsoft.com/en-us/entra/identity/users/groups-settings-cmdlets) first.
 
 #### De-activate co-authoring in Microsoft Purview
 
