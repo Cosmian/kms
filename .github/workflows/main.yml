@@ -27,13 +27,11 @@ jobs:
     with:
       toolchain: nightly-2024-01-09
 
-  # to be removed
-  build:
-    uses: ./.github/workflows/build_all_release.yml
-    secrets: inherit
-    with:
-      toolchain: nightly-2024-01-09
-  # to be removed
+  # build:
+  #   uses: ./.github/workflows/build_all_release.yml
+  #   secrets: inherit
+  #   with:
+  #     toolchain: nightly-2024-01-09
 
   build_tests:
     uses: ./.github/workflows/build_all.yml
