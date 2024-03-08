@@ -1,6 +1,6 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
 use cosmian_kmip::{
-    crypto::cover_crypt::attributes::{edit_policy_action_from_attributes, policy_from_attributes},
+    crypto::cover_crypt::attributes::{policy_from_attributes, rekey_edit_action_from_attributes},
     kmip::{
         kmip_objects::ObjectType,
         kmip_operations::{ErrorReason, ReKeyKeyPair, ReKeyKeyPairResponse},
@@ -80,8 +80,8 @@ pub async fn rekey_keypair(
     }
 
     if Some(CryptographicAlgorithm::CoverCrypt) == attributes.cryptographic_algorithm {
-        let action = edit_policy_action_from_attributes(attributes)?;
-        rekey_keypair_cover_crypt(kms, Covercrypt::default(), &owm.id, user, action, params).await
+        let action = rekey_edit_action_from_attributes(attributes)?;
+        rekey_keypair_cover_crypt(kms, Covercrypt::default(), owm.id, user, action, params).await
     } else if let Some(other) = attributes.cryptographic_algorithm {
         kms_bail!(KmsError::NotSupported(format!(
             "The rekey of a key pair for algorithm: {other:?} is not yet supported"

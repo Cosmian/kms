@@ -20,23 +20,53 @@ use crate::{
     },
 };
 
-pub async fn rotate(
+pub async fn rekey(
     cli_conf_path: &str,
     master_private_key_id: &str,
-    attributes: &[&str],
+    access_policy: &str,
 ) -> Result<(), CliError> {
     ONCE.get_or_init(start_default_test_kms_server).await;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
-    let mut args = vec!["rotate", "--key-id", master_private_key_id];
-    args.extend_from_slice(attributes);
+    let args = vec![
+        "keys",
+        "rekey",
+        "--key-id",
+        master_private_key_id,
+        access_policy,
+    ];
     cmd.arg(SUB_COMMAND).args(args);
     let output = recover_cmd_logs(&mut cmd);
-    if output.status.success()
-        && std::str::from_utf8(&output.stdout)?.contains("were rotated for attributes")
-    {
+    if output.status.success() && std::str::from_utf8(&output.stdout)?.contains("were rekeyed") {
+        return Ok(())
+    }
+    Err(CliError::Default(
+        std::str::from_utf8(&output.stderr)?.to_owned(),
+    ))
+}
+
+pub async fn prune(
+    cli_conf_path: &str,
+    master_private_key_id: &str,
+    access_policy: &str,
+) -> Result<(), CliError> {
+    ONCE.get_or_init(start_default_test_kms_server).await;
+
+    let mut cmd = Command::cargo_bin(PROG_NAME)?;
+    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
+    cmd.env("RUST_LOG", "cosmian_kms_cli=info");
+    let args = vec![
+        "keys",
+        "prune",
+        "--key-id",
+        master_private_key_id,
+        access_policy,
+    ];
+    cmd.arg(SUB_COMMAND).args(args);
+    let output = recover_cmd_logs(&mut cmd);
+    if output.status.success() && std::str::from_utf8(&output.stdout)?.contains("were pruned") {
         return Ok(())
     }
     Err(CliError::Default(
@@ -45,35 +75,7 @@ pub async fn rotate(
 }
 
 #[tokio::test]
-async fn test_rotate() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
-
-    // generate a new master key pair
-    let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
-        "--policy-specifications",
-        "test_data/policy_specifications.json",
-        &[],
-    )?;
-    let _user_decryption_key = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
-        &master_private_key_id,
-        "(Department::MKG || Department::FIN) && Security Level::Top Secret",
-        &[],
-    );
-
-    rotate(
-        &ctx.owner_cli_conf_path,
-        &master_private_key_id,
-        &["Department::MKG", "Department::FIN"],
-    )
-    .await?;
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn test_rotate_error() -> Result<(), CliError> {
+async fn test_rekey_error() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
 
     // generate a new master key pair
@@ -92,10 +94,10 @@ async fn test_rotate_error() -> Result<(), CliError> {
 
     // bad attributes
     assert!(
-        rotate(
+        rekey(
             &ctx.owner_cli_conf_path,
             &master_private_key_id,
-            &["bad_attribute"]
+            "bad_access_policy"
         )
         .await
         .is_err()
@@ -103,10 +105,10 @@ async fn test_rotate_error() -> Result<(), CliError> {
 
     // bad keys
     assert!(
-        rotate(
+        rekey(
             &ctx.owner_cli_conf_path,
             "bad_key",
-            &["Department::MKG", "Department::FIN"]
+            "Department::MKG || Department::FIN"
         )
         .await
         .is_err()
@@ -142,12 +144,12 @@ async fn test_rotate_error() -> Result<(), CliError> {
         false,
         true,
     )?;
-    // Rotate is not allowed for wrapped keys
+    // Rekeying wrapped keys is not allowed
     assert!(
-        rotate(
+        rekey(
             &ctx.owner_cli_conf_path,
             &wrapped_key_id,
-            &["Department::MKG", "Department::FIN"]
+            "Department::MKG || Department::FIN"
         )
         .await
         .is_err()
@@ -157,7 +159,7 @@ async fn test_rotate_error() -> Result<(), CliError> {
 }
 
 #[tokio::test]
-async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
+async fn test_rekey_prune() -> Result<(), CliError> {
     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -213,15 +215,15 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
         false,
     )?;
 
-    //rotate the attributes
-    rotate(
+    // rekey the attributes
+    rekey(
         &ctx.owner_cli_conf_path,
         &master_private_key_id,
-        &["Department::MKG", "Department::FIN"],
+        "Department::MKG || Department::FIN",
     )
     .await?;
 
-    // encrypt again after the rotation
+    // encrypt again after rekeying
     encrypt(
         &ctx.owner_cli_conf_path,
         &[input_file.to_str().unwrap()],
@@ -278,6 +280,35 @@ async fn test_decrypt_rotate_decrypt() -> Result<(), CliError> {
         Some(recovered_file.to_str().unwrap()),
         Some("myid"),
     )?;
+
+    // prune the attributes
+    prune(
+        &ctx.owner_cli_conf_path,
+        &master_private_key_id,
+        "Department::MKG || Department::FIN",
+    )
+    .await?;
+
+    // the user key should be able to decrypt the new file
+    decrypt(
+        &ctx.owner_cli_conf_path,
+        &[output_file_after.to_str().unwrap()],
+        &user_decryption_key,
+        Some(recovered_file.to_str().unwrap()),
+        Some("myid"),
+    )?;
+
+    // but no longer the old file
+    assert!(
+        decrypt(
+            &ctx.owner_cli_conf_path,
+            &[output_file_before.to_str().unwrap()],
+            &user_decryption_key,
+            Some(recovered_file.to_str().unwrap()),
+            Some("myid"),
+        )
+        .is_err()
+    );
 
     Ok(())
 }

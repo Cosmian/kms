@@ -1,4 +1,4 @@
-use cloudproof::reexport::cover_crypt::abe_policy::{self, EncryptionHint, Policy};
+use cloudproof::reexport::cover_crypt::abe_policy::{self, AccessPolicy, EncryptionHint, Policy};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
 pub const VENDOR_ATTR_COVER_CRYPT_ATTR: &str = "cover_crypt_attributes";
 pub const VENDOR_ATTR_COVER_CRYPT_POLICY: &str = "cover_crypt_policy";
 pub const VENDOR_ATTR_COVER_CRYPT_ACCESS_POLICY: &str = "cover_crypt_access_policy";
-pub const VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION: &str = "cover_crypt_policy_edit_action";
+pub const VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION: &str = "cover_crypt_rekey_action";
 
 /// Convert an policy to a vendor attribute
 pub fn policy_as_vendor_attribute(policy: &Policy) -> Result<VendorAttribute, KmipError> {
@@ -153,23 +153,32 @@ pub fn upsert_access_policy_in_attributes(
     Ok(())
 }
 
+pub fn deserialize_access_policy(ap: &str) -> Result<AccessPolicy, KmipError> {
+    AccessPolicy::from_boolean_expression(ap).map_err(|e| {
+        KmipError::InvalidKmipValue(
+            ErrorReason::Invalid_Attribute_Value,
+            format!("failed to deserialize the given Access Policy string: {e}"),
+        )
+    })
+}
+
 #[derive(Debug, Serialize, Deserialize)]
-pub enum EditPolicyAction {
-    RotateAttributes(Vec<abe_policy::Attribute>),
-    ClearOldAttributeValues(Vec<abe_policy::Attribute>),
+pub enum RekeyEditAction {
+    RekeyAccessPolicy(String),
+    PruneAccessPolicy(String),
     RemoveAttribute(Vec<abe_policy::Attribute>),
     DisableAttribute(Vec<abe_policy::Attribute>),
     AddAttribute(Vec<(abe_policy::Attribute, EncryptionHint)>),
     RenameAttribute(Vec<(abe_policy::Attribute, String)>),
 }
 
-/// Convert an edit policy action to a vendor attribute
-pub fn edit_policy_action_as_vendor_attribute(
-    action: EditPolicyAction,
+/// Convert an edit action to a vendor attribute
+pub fn rekey_edit_action_as_vendor_attribute(
+    action: RekeyEditAction,
 ) -> Result<VendorAttribute, KmipError> {
     Ok(VendorAttribute {
         vendor_identification: VENDOR_ID_COSMIAN.to_owned(),
-        attribute_name: VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION.to_owned(),
+        attribute_name: VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION.to_owned(),
         attribute_value: serde_json::to_vec(&action).map_err(|e| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
@@ -183,23 +192,22 @@ pub fn edit_policy_action_as_vendor_attribute(
 ///
 /// If Covercrypt attributes are specified without an `EditPolicyAction`,
 /// a `RotateAttributes` action is returned by default to keep backward compatibility.
-pub fn edit_policy_action_from_attributes(
+pub fn rekey_edit_action_from_attributes(
     attributes: &Attributes,
-) -> Result<EditPolicyAction, KmipError> {
-    if let Some(bytes) = attributes.get_vendor_attribute_value(
-        VENDOR_ID_COSMIAN,
-        VENDOR_ATTR_COVER_CRYPT_POLICY_EDIT_ACTION,
-    ) {
-        serde_json::from_slice::<EditPolicyAction>(bytes).map_err(|e| {
+) -> Result<RekeyEditAction, KmipError> {
+    if let Some(bytes) = attributes
+        .get_vendor_attribute_value(VENDOR_ID_COSMIAN, VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION)
+    {
+        serde_json::from_slice::<RekeyEditAction>(bytes).map_err(|e| {
             KmipError::InvalidKmipValue(
                 ErrorReason::Invalid_Attribute_Value,
                 format!("failed reading the CoverCrypt action from the attribute bytes: {e}"),
             )
         })
     } else {
-        // Backward compatibility
-        Ok(EditPolicyAction::RotateAttributes(
-            attributes_from_attributes(attributes)?,
+        Err(KmipError::InvalidKmipObject(
+            ErrorReason::Missing_Data,
+            "Missing VENDOR_ATTR_COVER_CRYPT_REKEY_ACTION".to_string(),
         ))
     }
 }

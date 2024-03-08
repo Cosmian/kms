@@ -2,12 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## [X.Y.Z] - 2024-02-XX
+## [4.13.0] - 2024-03-08
 
 ### Features
 
 - Save KMIP Attributes in a proper column of `Objects` table [#166](https://github.com/Cosmian/kms/pull/166).:
   - Remove all custom tags `_cert_spki`, `_cert_cn`, `_cert_issuer` and `_cert_sk`
+- Add support for CoverCrypt `rekey`, `prune`, and `Policy` editing methods
+  - Add CLI commands to perform these actions
+
+### Bug Fixes
+
+- Move internal KMIP Objects into `Box` to avoid stack memory overflow
 
 ## [4.12.0] - 2024-02-08
 

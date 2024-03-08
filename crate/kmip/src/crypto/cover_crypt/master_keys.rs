@@ -21,6 +21,9 @@ use crate::{
     },
 };
 
+/// Group a key UID with its KMIP Object
+pub type KmipKeyUidObject = (String, Object);
+
 /// Generate a `KeyPair` `(PrivateKey, MasterPublicKey)` from the attributes
 /// of a `CreateKeyPair` operation
 pub fn create_master_keypair(
@@ -114,7 +117,7 @@ fn create_master_private_key_object(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
-                attributes: Some(attributes),
+                attributes: Some(Box::new(attributes)),
             },
             cryptographic_length: Some(key.len() as i32 * 8),
             key_wrapping_data: None,
@@ -151,7 +154,7 @@ fn create_master_public_key_object(
             key_compression_type: None,
             key_value: KeyValue {
                 key_material: KeyMaterial::ByteString(Zeroizing::from(key.to_vec())),
-                attributes: Some(attributes),
+                attributes: Some(Box::new(attributes)),
             },
             cryptographic_length: Some(key.len() as i32 * 8),
             key_wrapping_data: None,
@@ -159,21 +162,14 @@ fn create_master_public_key_object(
     })
 }
 
-/// Update the master key with a new Policy
-/// (after rotation of some attributes typically)
-pub fn update_master_keys(
-    cover_crypt: &Covercrypt,
-    policy: &Policy,
+pub fn covercrypt_keys_from_kmip_objects(
     master_private_key: &Object,
-    master_private_key_uid: &str,
     master_public_key: &Object,
-    master_public_key_uid: &str,
-) -> Result<(Object, Object), KmipError> {
+) -> Result<(MasterSecretKey, MasterPublicKey), KmipError> {
     // Recover the CoverCrypt PrivateKey Object
     let msk_key_block = master_private_key.key_block()?;
     let msk_key_bytes = msk_key_block.key_bytes()?;
-    let msk_attributes = msk_key_block.key_value.attributes()?;
-    let mut msk = MasterSecretKey::deserialize(&msk_key_bytes).map_err(|e| {
+    let msk = MasterSecretKey::deserialize(&msk_key_bytes).map_err(|e| {
         KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
             format!("Failed deserializing the CoverCrypt Master Private Key: {e}"),
@@ -183,25 +179,23 @@ pub fn update_master_keys(
     // Recover the CoverCrypt MasterPublicKey Object
     let mpk_key_block = master_public_key.key_block()?;
     let mpk_key_bytes = mpk_key_block.key_bytes()?;
-    let mpk_attributes = mpk_key_block.key_value.attributes()?;
-    let mut mpk = MasterPublicKey::deserialize(&mpk_key_bytes).map_err(|e| {
+    let mpk = MasterPublicKey::deserialize(&mpk_key_bytes).map_err(|e| {
         KmipError::InvalidKmipObject(
             ErrorReason::Invalid_Data_Type,
             format!("Failed deserializing the CoverCrypt Master Public Key: {e}"),
         )
     })?;
 
-    // Update the keys
-    cover_crypt
-        .update_master_keys(policy, &mut msk, &mut mpk)
-        .map_err(|e| {
-            KmipError::KmipError(
-                ErrorReason::Cryptographic_Failure,
-                format!("Failed updating the CoverCrypt Master Keys with the new Policy: {e}"),
-            )
-        })?;
+    Ok((msk, mpk))
+}
 
-    // Recreate the KMIP objects
+pub fn kmip_objects_from_covercrypt_keys(
+    policy: &Policy,
+    msk: &MasterSecretKey,
+    mpk: &MasterPublicKey,
+    msk_obj: KmipKeyUidObject,
+    mpk_obj: KmipKeyUidObject,
+) -> Result<(KmipKeyUidObject, KmipKeyUidObject), KmipError> {
     let updated_master_private_key_bytes = &msk.serialize().map_err(|e| {
         KmipError::KmipError(
             ErrorReason::Cryptographic_Failure,
@@ -211,8 +205,8 @@ pub fn update_master_keys(
     let updated_master_private_key = create_master_private_key_object(
         updated_master_private_key_bytes,
         policy,
-        Some(msk_attributes),
-        master_public_key_uid,
+        Some(msk_obj.1.attributes()?),
+        &mpk_obj.0,
     )?;
     let updated_master_public_key_bytes = &mpk.serialize().map_err(|e| {
         KmipError::KmipError(
@@ -223,9 +217,12 @@ pub fn update_master_keys(
     let updated_master_public_key = create_master_public_key_object(
         updated_master_public_key_bytes,
         policy,
-        Some(mpk_attributes),
-        master_private_key_uid,
+        Some(mpk_obj.1.attributes()?),
+        &msk_obj.0,
     )?;
 
-    Ok((updated_master_private_key, updated_master_public_key))
+    Ok((
+        (msk_obj.0, updated_master_private_key),
+        (mpk_obj.0, updated_master_public_key),
+    ))
 }

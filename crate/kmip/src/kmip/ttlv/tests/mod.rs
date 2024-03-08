@@ -36,14 +36,14 @@ pub fn aes_key_material(key_value: &[u8]) -> KeyMaterial {
 pub fn aes_key_value(key_value: &[u8]) -> KeyValue {
     KeyValue {
         key_material: aes_key_material(key_value),
-        attributes: Some(Attributes {
+        attributes: Some(Box::new(Attributes {
             object_type: Some(ObjectType::SymmetricKey),
             cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
             cryptographic_length: Some(key_value.len() as i32 * 8),
             cryptographic_usage_mask: Some(CryptographicUsageMask::Encrypt),
             key_format_type: Some(KeyFormatType::TransparentSymmetricKey),
             ..Attributes::default()
-        }),
+        })),
     }
 }
 
@@ -445,11 +445,11 @@ fn test_key_material_big_int_deserialization() {
         ]),
     };
     let km = KeyMaterial::TransparentDHPrivateKey {
-        p: BigUint::from(u32::MAX),
-        q: Some(BigUint::from(1_u64)),
-        g: BigUint::from(2_u32),
+        p: BigUint::from(u32::MAX).into(),
+        q: Some(BigUint::from(1_u64).into()),
+        g: BigUint::from(2_u32).into(),
         j: None,
-        x: SafeBigUint::from(BigUint::from(u128::MAX)),
+        x: SafeBigUint::from(BigUint::from(u128::MAX)).into(),
     };
     let ttlv_ = to_ttlv(&km).unwrap();
     assert_eq!(ttlv, ttlv_);
@@ -460,11 +460,11 @@ fn test_key_material_big_int_deserialization() {
 #[test]
 fn test_big_int_deserialization() {
     let km = KeyMaterial::TransparentDHPrivateKey {
-        p: BigUint::from(u32::MAX),
-        q: Some(BigUint::from(1_u64)),
-        g: BigUint::from(2_u32),
+        p: BigUint::from(u32::MAX).into(),
+        q: Some(BigUint::from(1_u64).into()),
+        g: BigUint::from(2_u32).into(),
         j: None,
-        x: SafeBigUint::from(BigUint::from(u128::MAX - 1)),
+        x: SafeBigUint::from(BigUint::from(u128::MAX - 1)).into(),
     };
     let j = serde_json::to_value(&km).unwrap();
     let km_: KeyMaterial = serde_json::from_value(j).unwrap();
@@ -639,10 +639,10 @@ fn test_byte_string_key_material() {
     let key_bytes: &[u8] = b"this_is_a_test";
     let key_value = KeyValue {
         key_material: KeyMaterial::ByteString(Zeroizing::from(key_bytes.to_vec())),
-        attributes: Some(Attributes {
+        attributes: Some(Box::new(Attributes {
             object_type: Some(ObjectType::SymmetricKey),
             ..Attributes::default()
-        }),
+        })),
     };
     let ttlv = to_ttlv(&key_value).unwrap();
     let key_value_: KeyValue = from_ttlv(&ttlv).unwrap();
@@ -773,7 +773,7 @@ fn get_key_block() -> KeyBlock {
                 ),
             },
             //TODO:: Empty attributes used to cause a deserialization issue for `Object`; `None` works
-            attributes: Some(Attributes::default()),
+            attributes: Some(Box::default()),
         },
         cryptographic_algorithm: Some(CryptographicAlgorithm::AES),
         cryptographic_length: Some(256),

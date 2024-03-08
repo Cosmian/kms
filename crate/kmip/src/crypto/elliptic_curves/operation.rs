@@ -141,17 +141,17 @@ pub fn to_ec_public_key(
                     recommended_curve: curve,
                     q_string: bytes.to_vec(),
                 },
-                attributes: Some(Attributes {
+                attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PublicKey),
                     cryptographic_algorithm: algorithm,
                     cryptographic_length: Some(cryptographic_length_in_bits),
                     cryptographic_usage_mask: public_key_mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPublicKey),
-                    cryptographic_parameters: Some(CryptographicParameters {
+                    cryptographic_parameters: Some(Box::new(CryptographicParameters {
                         cryptographic_algorithm: algorithm,
                         ..CryptographicParameters::default()
-                    }),
+                    })),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
                         q_length: Some(pkey_bits_number as i32),
                         recommended_curve: Some(curve),
@@ -163,7 +163,7 @@ pub fn to_ec_public_key(
                         ),
                     }]),
                     ..Attributes::default()
-                }),
+                })),
             },
             cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,
@@ -204,19 +204,19 @@ pub fn to_ec_private_key(
             key_value: KeyValue {
                 key_material: KeyMaterial::TransparentECPrivateKey {
                     recommended_curve: curve,
-                    d: SafeBigUint::from_bytes_be(bytes),
+                    d: Box::new(SafeBigUint::from_bytes_be(bytes)),
                 },
-                attributes: Some(Attributes {
+                attributes: Some(Box::new(Attributes {
                     object_type: Some(ObjectType::PrivateKey),
                     cryptographic_algorithm: algorithm,
                     cryptographic_length: Some(cryptographic_length_in_bits),
                     cryptographic_usage_mask: private_key_mask,
                     vendor_attributes: None,
                     key_format_type: Some(KeyFormatType::TransparentECPrivateKey),
-                    cryptographic_parameters: Some(CryptographicParameters {
+                    cryptographic_parameters: Some(Box::new(CryptographicParameters {
                         cryptographic_algorithm: algorithm,
                         ..CryptographicParameters::default()
-                    }),
+                    })),
                     cryptographic_domain_parameters: Some(CryptographicDomainParameters {
                         q_length: Some(pkey_bits_number as i32),
                         recommended_curve: Some(curve),
@@ -228,7 +228,7 @@ pub fn to_ec_private_key(
                         ),
                     }]),
                     ..Attributes::default()
-                }),
+                })),
             },
             cryptographic_length: Some(cryptographic_length_in_bits),
             key_wrapping_data: None,

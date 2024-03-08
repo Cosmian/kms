@@ -140,10 +140,10 @@ fn wrap_test(
         assert_ne!(key_to_wrap.key_block()?.key_bytes()?, key_to_wrap_bytes);
         assert_eq!(
             key_to_wrap.key_block()?.key_wrapping_data,
-            Some(KeyWrappingData {
+            Some(Box::new(KeyWrappingData {
                 encoding_option: Some(EncodingOption::TTLVEncoding),
                 ..Default::default()
-            })
+            }))
         );
         // unwrap
         unwrap_key_block(key_to_wrap.key_block_mut()?, unwrapping_key)?;

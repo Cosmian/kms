@@ -31,7 +31,7 @@ impl CovercryptDecryption {
         user_decryption_key: &Object,
     ) -> Result<Self, KmipError> {
         trace!("CovercryptDecryption::instantiate entering");
-        let (user_decryption_key_bytes, _access_policy, _attributes) =
+        let (user_decryption_key_bytes, _attributes) =
             unwrap_user_decryption_key_object(user_decryption_key)?;
 
         debug!(

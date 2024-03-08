@@ -46,7 +46,7 @@ clap = { version = "4.4", default-features = false, features = [
   "derive",
   "cargo",
 ] }
-cloudproof = "2.4.1"
+cloudproof = { git = "https://github.com/Cosmian/cloudproof_rust", branch = "feature/covercrypt_rekey" }
 cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
 const-oid = { version = "0.9", features = ["db"] }
 der = { version = "0.7", features = ["pem"] }

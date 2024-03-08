@@ -810,7 +810,7 @@ pub struct Attributes {
     /// The Certificate Attributes are the various items included in a certificate.
     /// The following list is based on RFC2253.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub certificate_attributes: Option<CertificateAttributes>,
+    pub certificate_attributes: Option<Box<CertificateAttributes>>,
 
     /// The Certificate Type attribute is a type of certificate (e.g., X.509).
     /// The Certificate Type value SHALL be set by the server when the certificate
@@ -857,7 +857,7 @@ pub struct Attributes {
 
     /// See `CryptographicParameters`
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub cryptographic_parameters: Option<Box<CryptographicParameters>>,
 
     /// The Cryptographic Usage Mask attribute defines the cryptographic usage
     /// of a key. This is a bit mask that indicates to the client which
@@ -1813,7 +1813,7 @@ pub struct CryptographicParameters {
 pub struct EncryptionKeyInformation {
     pub unique_identifier: UniqueIdentifier,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub cryptographic_parameters: Option<Box<CryptographicParameters>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -1821,7 +1821,7 @@ pub struct EncryptionKeyInformation {
 pub struct MacSignatureKeyInformation {
     pub unique_identifier: UniqueIdentifier,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cryptographic_parameters: Option<CryptographicParameters>,
+    pub cryptographic_parameters: Option<Box<CryptographicParameters>>,
 }
 
 #[allow(non_camel_case_types)]

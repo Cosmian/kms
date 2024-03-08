@@ -142,13 +142,14 @@ impl CertifyAction {
         // Using a Public Key ?
         let unique_identifier = if let Some(public_key_to_certify) = &self.public_key_id_to_certify
         {
-            attributes.certificate_attributes = Some(CertificateAttributes::parse_subject_line(
-                self.subject_name.as_ref().ok_or_else(|| {
-                    CliError::Default(
-                        "subject name is required when certifying a public key".to_string(),
-                    )
-                })?,
-            )?);
+            attributes.certificate_attributes =
+                Some(Box::new(CertificateAttributes::parse_subject_line(
+                    self.subject_name.as_ref().ok_or_else(|| {
+                        CliError::Default(
+                            "subject name is required when certifying a public key".to_string(),
+                        )
+                    })?,
+                )?));
             Some(UniqueIdentifier::TextString(
                 public_key_to_certify.to_string(),
             ))

@@ -1,7 +1,5 @@
 use cosmian_kmip::{
-    crypto::cover_crypt::{
-        attributes::access_policy_from_attributes, locate::compare_cover_crypt_attributes,
-    },
+    crypto::cover_crypt::attributes::access_policy_from_attributes,
     kmip::{
         kmip_operations::{Locate, LocateResponse},
         kmip_types::{StateEnumeration, UniqueIdentifier},
@@ -34,9 +32,7 @@ pub async fn locate(
         for (uid, _, attributes, _) in uids_attrs {
             trace!("UID: {:?}, Attributes: {:?}", uid, attributes);
             // If there is no access policy, do not match and add, otherwise compare the access policies
-            if access_policy_from_attributes(&request.attributes).is_err()
-                || compare_cover_crypt_attributes(&attributes, &request.attributes)?
-            {
+            if access_policy_from_attributes(&request.attributes).is_err() {
                 uids.push(UniqueIdentifier::TextString(uid));
             }
         }
