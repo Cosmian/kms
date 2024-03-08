@@ -32,7 +32,11 @@ jobs:
       - uses: actions/download-artifact@v3
 
       - name: List artifacts
-        run: find ..
+        run: |
+          find ..
+          cp -r ../ubuntu_22_04 .
+          cp -r ../rhel9 .
+          find .
 
       - name: Create env variables
         id: env

@@ -1,12 +1,12 @@
 #!/bin/bash
 
-set +x
+set +ex
 
 # Update packages and install dependencies
 yum update -y && yum install -y nginx
 
 # Copy the executable
-cp ../rhel9/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms && rm -rf rhel9.zip rhel9/
+cp ./rhel9/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms
 
 # Configure Supervisor
 cat >/etc/supervisord.d/cosmian_kms.ini <<EOF
