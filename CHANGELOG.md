@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.13.1] - 2024-03-08
+
+### Ci
+
+- Add build of GCP images (ubuntu/redhat) [#191](https://github.com/Cosmian/kms/pull/191).
+
 ## [4.13.0] - 2024-03-08
 
 ### Features
@@ -19,6 +25,7 @@ All notable changes to this project will be documented in this file.
 ### Ci
 
 - Add build on RHEL9 [#196](https://github.com/Cosmian/kms/pull/196).
+- Add build of GCP images (ubuntu/redhat) [#191](https://github.com/Cosmian/kms/pull/191).
 
 ### Bug fixes
 

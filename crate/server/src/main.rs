@@ -4,6 +4,7 @@ use clap::Parser;
 use cosmian_kms_server::{
     config::{ClapConfig, ServerParams},
     error::KmsError,
+    kms_bail,
     kms_server::start_kms_server,
     result::KResult,
 };
@@ -44,8 +45,19 @@ async fn main() -> KResult<()> {
 
     env_logger::init();
 
-    let conf =
-        PathBuf::from(std::env::var("COSMIAN_KMS_CONF").unwrap_or(KMS_SERVER_CONF.to_string()));
+    let conf = if let Ok(conf_path) = std::env::var("COSMIAN_KMS_CONF") {
+        let conf_path = PathBuf::from(conf_path);
+        if !conf_path.exists() {
+            kms_bail!(KmsError::ServerError(format!(
+                "Cannot read kms server config at specified path: {conf_path:?} - file does not \
+                 exist"
+            )));
+        }
+        conf_path
+    } else {
+        PathBuf::from(KMS_SERVER_CONF)
+    };
+
     let clap_config = if conf.exists() {
         _ = ClapConfig::parse(); // Do that do catch --help or --version even if we use a conf file
 
