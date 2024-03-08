@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set +ex
+set +x
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -8,7 +8,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update && apt-get install --no-install-recommends -y nginx && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy the executable
-cp ./ubuntu_22_04/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms
+cp ./ubuntu_22_04/cosmian_kms_server /usr/local/sbin/cosmian_kms && chmod 755 /usr/local/sbin/cosmian_kms && rm -rf ubuntu_22_04
 
 # Configure Supervisor
 cat >/etc/supervisor/conf.d/cosmian_kms.conf <<EOF
