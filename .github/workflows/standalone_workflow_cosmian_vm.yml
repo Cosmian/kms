@@ -1,0 +1,51 @@
+---
+name: Manually build and push Cosmian VM images
+
+on: workflow_dispatch
+
+jobs:
+  rhel9:
+    uses: ./.github/workflows/build_rhel9.yml
+    secrets: inherit
+    with:
+      toolchain: nightly-2024-01-09
+      archive-name: rhel9
+      commands: |
+        cargo build --release --bins
+
+        # Check binaries
+        target/release/ckms -h
+        target/release/cosmian_kms_server -h
+      artifacts: |
+        target/release/ckms
+        target/release/cosmian_kms_server
+
+  ubuntu-22:
+    uses: ./.github/workflows/build_generic.yml
+    secrets: inherit
+    with:
+      toolchain: nightly-2024-01-09
+      distribution: ubuntu-22.04
+      archive-name: ubuntu_22_04
+      commands: |
+        cargo build --release --bins
+
+        # Check binaries
+        target/release/ckms -h
+        target/release/cosmian_kms_server -h
+      artifacts: |
+        target/release/ckms
+        target/release/cosmian_kms_server
+
+  cosmian_vm:
+    needs:
+      - ubuntu-22
+      - rhel9
+    uses: ./.github/workflows/build_and_test_cosmian_vm.yml
+    strategy:
+      matrix:
+        distrib: [ubuntu, rhel]
+    name: ${{ matrix.distrib }} -> GCP KMS Cosmian VM image
+    secrets: inherit
+    with:
+      distrib: ${{ matrix.distrib }}
