@@ -7,7 +7,9 @@ export DEBIAN_FRONTEND=noninteractive
 # Update packages and install dependencies
 apt-get update && apt-get install --no-install-recommends -y nginx && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Permission for the executable
+# Copy the executable
+mkdir -p /usr/local/sbin/
+mv /tmp/cosmian_kms /usr/local/sbin/cosmian_kms
 chmod 755 /usr/local/sbin/cosmian_kms
 
 # Configure Supervisor
@@ -39,7 +41,7 @@ app_storage = "data/app"
 EOF
 
 # Configure Nginx
-cat >/etc/nginx/sites-enabled/default << 'EOF'
+cat >/etc/nginx/sites-enabled/default <<'EOF'
 server {
         listen 80 default_server;
 

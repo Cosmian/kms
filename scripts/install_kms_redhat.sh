@@ -5,7 +5,9 @@ set +xe
 # Update packages and install dependencies
 yum update -y && yum install -y nginx
 
-# Permission for the executable
+# Copy the executable
+mkdir -p /usr/local/sbin/
+mv /tmp/cosmian_kms /usr/local/sbin/cosmian_kms
 chmod 755 /usr/local/sbin/cosmian_kms
 
 # Configure Supervisor
@@ -37,7 +39,7 @@ app_storage = "data/app"
 EOF
 
 # Configure Nginx
-cat >/etc/nginx/conf.d/default.conf << 'EOF'
+cat >/etc/nginx/conf.d/default.conf <<'EOF'
 server {
         listen 80 default_server;
 

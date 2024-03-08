@@ -70,19 +70,19 @@ variable "ubuntu_source_image_family" {
 }
 
 source "googlecompute" "ubuntu" {
-  project_id             = var.project_id
-  source_image           = var.ubuntu_source_image
-  source_image_family    = var.ubuntu_source_image_family
-  zone                   = var.zone
-  ssh_username           = var.ssh_username
-  ssh_timeout            = var.ssh_timeout
-  image_name             = local.ubuntu_ami_name
+  project_id              = var.project_id
+  source_image            = var.ubuntu_source_image
+  source_image_family     = var.ubuntu_source_image_family
+  zone                    = var.zone
+  ssh_username            = var.ssh_username
+  ssh_timeout             = var.ssh_timeout
+  image_name              = local.ubuntu_ami_name
   image_guest_os_features = var.image_guest_os_features
-  network                = var.network
-  subnetwork             = var.subnetwork
-  tags                   = var.tags
-  use_os_login           = var.use_os_login
-  wait_to_add_ssh_keys   = var.wait_to_add_ssh_keys
+  network                 = var.network
+  subnetwork              = var.subnetwork
+  tags                    = var.tags
+  use_os_login            = var.use_os_login
+  wait_to_add_ssh_keys    = var.wait_to_add_ssh_keys
 }
 
 build {
@@ -95,7 +95,7 @@ build {
 
   provisioner "file" {
     source      = "../ubuntu_22_04/cosmian_kms_server"
-    destination = "/usr/local/sbin/cosmian_kms"
+    destination = "/tmp/cosmian_kms"
   }
 
   provisioner "shell" {
