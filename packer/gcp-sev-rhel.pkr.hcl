@@ -93,10 +93,15 @@ build {
     destination = "/tmp/install_kms_redhat.sh"
   }
 
+  provisioner "file" {
+    source      = "../rhel9/cosmian_kms_server"
+    destination = "/usr/local/sbin/cosmian_kms"
+  }
+
   provisioner "shell" {
     inline = [
       "chmod +x /tmp/install_kms_redhat.sh",
       "sudo /tmp/install_kms_redhat.sh"
-    ]    
+    ]
   }
 }

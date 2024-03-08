@@ -93,10 +93,15 @@ build {
     destination = "/tmp/install_kms_ubuntu.sh"
   }
 
+  provisioner "file" {
+    source      = "../ubuntu_22_04/cosmian_kms_server"
+    destination = "/usr/local/sbin/cosmian_kms"
+  }
+
   provisioner "shell" {
     inline = [
       "chmod +x /tmp/install_kms_ubuntu.sh",
       "sudo /tmp/install_kms_ubuntu.sh"
-    ]    
+    ]
   }
 }
