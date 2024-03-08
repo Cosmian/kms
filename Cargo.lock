@@ -1136,7 +1136,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "4.12.0"
+version = "4.13.0"
 dependencies = [
  "base64 0.21.7",
  "cosmian_kmip",
