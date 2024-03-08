@@ -62,7 +62,6 @@ jobs:
       - name: Build GCP images - main
         env:
           TIMESTAMP: ${{ steps.env.outputs.TIMESTAMP }}
-        if: startsWith(github.ref, 'refs/tags/') != true
         run: |
           packer build -var "prefix=alpha-$TIMESTAMP" gcp-sev-${{ inputs.distrib }}.pkr.hcl
 
