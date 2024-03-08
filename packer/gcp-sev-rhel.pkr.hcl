@@ -70,19 +70,19 @@ variable "redhat_source_image_family" {
 }
 
 source "googlecompute" "redhat" {
-  project_id             = var.project_id
-  source_image           = var.redhat_source_image
-  source_image_family    = var.redhat_source_image_family
-  zone                   = var.zone
-  ssh_username           = var.ssh_username
-  ssh_timeout            = var.ssh_timeout
-  image_name             = local.redhat_ami_name
+  project_id              = var.project_id
+  source_image            = var.redhat_source_image
+  source_image_family     = var.redhat_source_image_family
+  zone                    = var.zone
+  ssh_username            = var.ssh_username
+  ssh_timeout             = var.ssh_timeout
+  image_name              = local.redhat_ami_name
   image_guest_os_features = var.image_guest_os_features
-  network                = var.network
-  subnetwork             = var.subnetwork
-  tags                   = var.tags
-  use_os_login           = var.use_os_login
-  wait_to_add_ssh_keys   = var.wait_to_add_ssh_keys
+  network                 = var.network
+  subnetwork              = var.subnetwork
+  tags                    = var.tags
+  use_os_login            = var.use_os_login
+  wait_to_add_ssh_keys    = var.wait_to_add_ssh_keys
 }
 
 build {
@@ -93,10 +93,15 @@ build {
     destination = "/tmp/install_kms_redhat.sh"
   }
 
+  provisioner "file" {
+    source      = "../rhel9/cosmian_kms_server"
+    destination = "/tmp/cosmian_kms"
+  }
+
   provisioner "shell" {
     inline = [
       "chmod +x /tmp/install_kms_redhat.sh",
       "sudo /tmp/install_kms_redhat.sh"
-    ]    
+    ]
   }
 }

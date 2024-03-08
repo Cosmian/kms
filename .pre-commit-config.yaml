@@ -145,8 +145,8 @@ repos:
   - repo: https://github.com/cisagov/pre-commit-packer
     rev: v0.0.2
     hooks:
-      - id: packer_validate
       - id: packer_fmt
+      - id: packer_validate
 
   - repo: https://github.com/Cosmian/git-hooks.git
     rev: v1.0.25
