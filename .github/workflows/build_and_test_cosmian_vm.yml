@@ -150,6 +150,7 @@ jobs:
           echo "[ OK ] Cosmian KMS HTTP to HTTPS redirect connection"
 
       - name: Restart the Cosmian VM and test again
+        if: contains(inputs.distrib, 'ubuntu')
         continue-on-error: true
         env:
           CI_INSTANCE: ${{ needs.build-kms-cosmian-vm-image.outputs.ci_instance }}
