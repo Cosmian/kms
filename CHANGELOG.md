@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.13.2] - 2024-03-09
+
+### Ci
+
+- Filter reboot test on GCP/RHEL instance.
+
 ## [4.13.1] - 2024-03-08
 
 ### Ci
