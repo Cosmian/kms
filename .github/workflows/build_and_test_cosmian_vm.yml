@@ -186,7 +186,7 @@ jobs:
 
       - name: Delete GCP instance
         # if: success() || failure()
-        if: success()
+        if: success() && startsWith(github.ref, 'refs/tags') != "true"
         env:
           CI_INSTANCE: ${{ needs.build-kms-cosmian-vm-image.outputs.ci_instance }}
         run: |
