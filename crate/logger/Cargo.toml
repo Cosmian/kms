@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_logger"
-version = "4.13.2"
+version = "4.13.3"
 authors = ["Emmanuel Coste <emmanuel.coste@cosmian.com>"]
 edition = "2021"
 license-file = "../../LICENSE.md"

@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.13.3] - 2024-03-11
+
+### Bug fixes
+
+- `ckms` needs `kmip` dependency with features `openssl` ([#202](https://github.com/Cosmian/kms/pull/202))
+
+### Ci
+
+- Push GCP images on cosmian-dev and cosmian-public only once ([#203](https://github.com/Cosmian/kms/pull/203))
+
 ## [4.13.2] - 2024-03-09
 
 ### Ci
