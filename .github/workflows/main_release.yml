@@ -182,18 +182,6 @@ jobs:
         with:
           files: ./*.zip
 
-  cosmian_vm:
-    needs:
-      - release
-    uses: ./.github/workflows/build_and_test_cosmian_vm.yml
-    strategy:
-      matrix:
-        distrib: [ubuntu, rhel]
-    name: ${{ matrix.distrib }} -> GCP KMS Cosmian VM image
-    secrets: inherit
-    with:
-      distrib: ${{ matrix.distrib }}
-
   python_publish:
     name: python publish
     needs:
