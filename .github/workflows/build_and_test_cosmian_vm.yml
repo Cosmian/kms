@@ -194,6 +194,14 @@ jobs:
           gcloud beta compute instances delete $CI_INSTANCE --zone europe-west4-a \
                                                             --project $GCP_DEV_PROJECT
 
+      - name: Delete GCP CI image
+        if: startsWith(github.ref, 'refs/tags') != true
+        env:
+          IMAGE_NAME: ${{ needs.build-kms-cosmian-vm-image.outputs.image_name }}
+        run: |
+          set -ex
+          gcloud beta compute images delete --quiet $IMAGE_NAME
+
   release-image:
     name: Release image
     runs-on: ubuntu-22.04
