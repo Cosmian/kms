@@ -12,7 +12,7 @@ doctest = false
 
 [dependencies]
 base64 = { workspace = true }
-cosmian_kmip = { path = "../kmip" }
+cosmian_kmip = { path = "../kmip", features = ["openssl"] }
 http = { workspace = true }
 josekit = { workspace = true }
 log = "0.4"
