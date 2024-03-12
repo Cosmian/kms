@@ -1,0 +1,20 @@
+use std::env;
+use std::process::Command;
+
+fn main() {
+    let current_dir = env::current_dir().unwrap();
+    let submodule_dir = current_dir.join("path_to_submodule"); // replace "path_to_submodule" with your submodule's path
+
+    let output = Command::new("git")
+        .current_dir(submodule_dir)
+        .args(["pull", "origin", "data_objects"]) // replace "main" with your branch name if different
+        .output()
+        .expect("Failed to execute command");
+
+    if !output.status.success() {
+        panic!(
+            "Failed to pull git submodule: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}

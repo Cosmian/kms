@@ -1,17 +1,25 @@
 [workspace]
-default-members = ["crate/cli", "crate/server"]
+default-members = ["crate/cli", "crate/server","crate/ckms_pkcs11"]
 members = [
-    "crate/cli",
-    "crate/client",
-    "crate/kmip",
-    "crate/server",
-    "crate/pyo3",
-    "crate/logger",
+  "crate/cli",
+  "crate/client",
+  "crate/kmip",
+  "crate/server",
+  "crate/pyo3",
+  "crate/logger",
+  "crate/ckms_pkcs11",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
 # note: resolver defaults to 2 in 2021 edition crate, but defaults to 1 in virtual workspace
 resolver = "2"
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.71.0"
+authors = ["Bruno Grieder <bruno.grieder@cosmian.com>","Emmanuel Coste <emmanuel.coste@cosmian.com>"]
+license = "Business Source License 1.1"
+repository = "https://github.com/Cosmian/kms"
 
 [profile.release]
 lto = true
