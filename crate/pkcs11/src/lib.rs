@@ -1,11 +1,14 @@
 use std::ptr::addr_of_mut;
 
-use native_pkcs11::{CK_FUNCTION_LIST_PTR_PTR, CK_RV, CKR_OK, FUNC_LIST, inititalize_logging};
+use native_pkcs11::{CK_FUNCTION_LIST_PTR_PTR, CK_RV, CKR_OK, FUNC_LIST};
+
+use crate::logging::inititalize_logging;
 
 mod backend;
 // mod export_object;
 mod error;
 mod kms_client;
+mod logging;
 // mod tests;
 
 /// # Safety
