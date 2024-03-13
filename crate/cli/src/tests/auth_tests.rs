@@ -2,12 +2,14 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 
-use super::utils::recover_cmd_logs;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
 use crate::{
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
-    tests::{access::SUB_COMMAND, utils::start_test_server_with_options, PROG_NAME},
+    tests::{access::SUB_COMMAND, PROG_NAME, utils::start_test_server_with_options},
 };
+
+use super::utils::recover_cmd_logs;
 
 fn run_cli_command(owner_cli_conf_path: &str) {
     let mut cmd = Command::cargo_bin(PROG_NAME).expect(" cargo bin failed");

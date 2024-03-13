@@ -3,13 +3,14 @@ use std::{array::TryFromSliceError, sync::mpsc::SendError};
 use actix_web::{dev::ServerHandle, error::QueryPayloadError};
 use cloudproof::reexport::crypto_core::CryptoCoreError;
 use cloudproof_findex::implementations::redis::FindexRedisError;
-use cosmian_kmip::{
-    error::KmipError,
-    kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
-};
 use redis::ErrorKind;
 use thiserror::Error;
 use x509_parser::prelude::{PEMError, X509Error};
+
+use cosmian_kmip::{
+    kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
+    KmipError,
+};
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
 #[derive(Error, Debug)]

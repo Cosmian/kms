@@ -1,17 +1,21 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use tracing::trace;
+
+use cosmian_kmip::kmip::{
+    kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv,
 use cosmian_kms_client::{
     cosmian_kmip::kmip::{
         kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv,
     },
     KmsRestClient,
 };
-use tracing::trace;
+use cosmian_kms_client::{export_object, KmsRestClient};
 
 use crate::{
     actions::shared::utils::{
-        export_object, write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file,
+        write_bytes_to_file, write_json_object_to_file, write_kmip_object_to_file,
     },
     cli_bail,
     error::CliError,

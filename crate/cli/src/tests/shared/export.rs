@@ -3,6 +3,10 @@ use std::path::Path;
 use std::process::Command;
 
 use assert_cmd::prelude::*;
+#[cfg(not(feature = "fips"))]
+use openssl::pkey::{Id, PKey};
+use tempfile::TempDir;
+
 use cosmian_kms_client::cosmian_kmip::kmip::kmip_types::KeyFormatType;
 #[cfg(not(feature = "fips"))]
 use cosmian_kms_client::cosmian_kmip::{
@@ -12,10 +16,21 @@ use cosmian_kms_client::cosmian_kmip::{
     },
     openssl::pad_be_bytes,
 };
-#[cfg(not(feature = "fips"))]
-use openssl::pkey::{Id, PKey};
-use tempfile::TempDir;
+use cosmian_kmip::kmip::kmip_types::KeyFormatType;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 
+use crate::{
+    actions::shared::{
+        ExportKeyFormat,
+        utils::{read_bytes_from_file, read_object_from_json_ttlv_file},
+    },
+    error::CliError,
+    tests::{
+        PROG_NAME,
+        symmetric::create_key::create_symmetric_key,
+        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
+    },
+};
 #[cfg(not(feature = "fips"))]
 use crate::tests::cover_crypt::{
     master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
@@ -24,19 +39,6 @@ use crate::tests::cover_crypt::{
 use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
 #[cfg(not(feature = "fips"))]
 use crate::tests::utils::TestsContext;
-use crate::{
-    actions::shared::{
-        utils::{read_bytes_from_file, read_object_from_json_ttlv_file},
-        ExportKeyFormat,
-    },
-    config::KMS_CLI_CONF_ENV,
-    error::CliError,
-    tests::{
-        symmetric::create_key::create_symmetric_key,
-        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
-        PROG_NAME,
-    },
-};
 
 #[allow(clippy::too_many_arguments)]
 pub fn export_key(

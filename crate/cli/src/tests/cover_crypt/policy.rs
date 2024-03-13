@@ -1,11 +1,11 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
 use crate::{
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         cover_crypt::{

@@ -4,20 +4,22 @@ use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
-use super::SUB_COMMAND;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
 use crate::{
     actions::{
         rsa::{EncryptionAlgorithm, HashFn},
         shared::utils::read_bytes_from_file,
     },
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        rsa::create_key_pair::create_rsa_4096_bits_key_pair,
-        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
+        rsa::create_key_pair::create_rsa_4096_bits_key_pair,
+        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
     },
 };
+
+use super::SUB_COMMAND;
 
 /// Encrypts a file using the given public key
 pub fn encrypt(

@@ -3,20 +3,21 @@ use std::process::Command;
 use assert_cmd::prelude::CommandCargoExt;
 use tempfile::TempDir;
 
-#[cfg(not(feature = "fips"))]
-use crate::tests::cover_crypt::{
-    master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
-};
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
 use crate::{
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
+        PROG_NAME,
         shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
-        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
-        PROG_NAME,
+        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
     },
+};
+#[cfg(not(feature = "fips"))]
+use crate::tests::cover_crypt::{
+    master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
 };
 
 pub fn revoke(

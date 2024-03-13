@@ -1,14 +1,16 @@
 use std::ptr::addr_of_mut;
-use native_pkcs11::{inititalize_logging, CKR_OK, CK_FUNCTION_LIST_PTR_PTR, CK_RV, FUNC_LIST};
+
+use native_pkcs11::{CK_FUNCTION_LIST_PTR_PTR, CK_RV, CKR_OK, FUNC_LIST, inititalize_logging};
 
 mod backend;
-mod export_object;
+// mod export_object;
+mod error;
 mod kms_client;
-// mod log;
 // mod tests;
 
 /// # Safety
-/// This function is called by the PKCS#11 library to get the function list.
+/// This function is the first one called by the PKCS#11 library client
+/// to get the PKCS#11 functions list.
 #[no_mangle]
 pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PTR_PTR) -> CK_RV {
     inititalize_logging("ckms-pkcs11.log", None, None);

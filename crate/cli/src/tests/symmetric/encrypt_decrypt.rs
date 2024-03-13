@@ -1,12 +1,12 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use tempfile::TempDir;
 
 use super::SUB_COMMAND;
 use crate::{
     actions::shared::utils::read_bytes_from_file,
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         symmetric::create_key::create_symmetric_key,

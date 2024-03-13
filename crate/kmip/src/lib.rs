@@ -4,12 +4,12 @@
 // To parse a slice
 #![feature(slice_take)]
 
-pub mod error;
-mod id;
+pub use error::{result::KmipResultHelper, KmipError};
 pub use id::id;
-pub mod crypto;
-pub mod kmip;
-pub mod result;
 
+pub mod crypto;
+mod error;
+mod id;
+pub mod kmip;
 #[cfg(feature = "openssl")]
 pub mod openssl;

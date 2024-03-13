@@ -6,13 +6,13 @@ use std::{
 };
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use tempfile::TempDir;
 use tracing::debug;
 
 use super::SUB_COMMAND;
 use crate::{
     actions::certificates::{CertificateExportFormat, CertificateInputFormat},
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         certificates::{import::import_certificate, openssl::check_certificate},

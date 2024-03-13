@@ -16,8 +16,8 @@ use crate::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::ErrorReason,
         kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier,
+            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkedObjectIdentifier,
+            LinkType,
         },
     },
 };

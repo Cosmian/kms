@@ -1,10 +1,10 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use predicates::prelude::*;
 
 use crate::{
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         utils::{generate_invalid_conf, recover_cmd_logs, start_default_test_kms_server, ONCE},

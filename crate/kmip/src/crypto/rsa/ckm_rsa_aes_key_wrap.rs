@@ -4,20 +4,21 @@ use openssl::{
 };
 use zeroize::Zeroizing;
 
-#[cfg(feature = "fips")]
-use super::FIPS_MIN_RSA_MODULUS_LENGTH;
 use crate::{
     crypto::{
         rsa::ckm_rsa_pkcs_oaep::{ckm_rsa_pkcs_oaep_key_unwrap, ckm_rsa_pkcs_oaep_key_wrap},
         symmetric::{
-            rfc5649::{rfc5649_unwrap, rfc5649_wrap},
             AES_KWP_KEY_LENGTH,
+            rfc5649::{rfc5649_unwrap, rfc5649_wrap},
         },
     },
     error::KmipError,
     kmip::kmip_types::HashingAlgorithm,
     kmip_bail,
 };
+
+#[cfg(feature = "fips")]
+use super::FIPS_MIN_RSA_MODULUS_LENGTH;
 
 /// Asymmetrically wrap keys referring to PKCS#11 `CKM_RSA_AES_KEY_WRAP` available at
 /// http://docs.oasis-open.org/pkcs11/pkcs11-curr/v2.40/cos01/pkcs11-curr-v2.40-cos01.html#_Toc408226908

@@ -12,7 +12,7 @@
 //! Google provides a patch : https://cloud.google.com/kms/docs/configuring-openssl-for-manual-key-wrapping
 //! and so does AWS: https://repost.aws/en/knowledge-center/patch-openssl-cloudhsm
 
-use openssl::symm::{encrypt, Cipher, Crypter, Mode};
+use openssl::symm::{Cipher, Crypter, encrypt, Mode};
 use zeroize::Zeroizing;
 
 use crate::error::KmipError;

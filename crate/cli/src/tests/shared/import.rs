@@ -1,26 +1,27 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
+
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use cosmian_kms_client::cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 
-#[cfg(not(feature = "fips"))]
-use crate::tests::utils::{start_default_test_kms_server, ONCE};
+use crate::{
+    actions::shared::{import_key::ImportKeyFormat, utils::read_object_from_json_ttlv_file},
+    error::CliError,
+    tests::{
+        PROG_NAME,
+        shared::export::export_key,
+        utils::{extract_uids::extract_imported_key_id, recover_cmd_logs},
+    },
+};
 #[cfg(not(feature = "fips"))]
 use crate::tests::{
     cover_crypt::master_key_pair::create_cc_master_key_pair,
     elliptic_curve::create_key_pair::create_ec_key_pair,
     symmetric::create_key::create_symmetric_key,
 };
-use crate::{
-    actions::shared::{import_key::ImportKeyFormat, utils::read_object_from_json_ttlv_file},
-    config::KMS_CLI_CONF_ENV,
-    error::CliError,
-    tests::{
-        shared::export::export_key,
-        utils::{extract_uids::extract_imported_key_id, recover_cmd_logs},
-        PROG_NAME,
-    },
-};
+#[cfg(not(feature = "fips"))]
+use crate::tests::utils::{ONCE, start_default_test_kms_server};
 
 #[allow(clippy::too_many_arguments)]
 pub fn import_key(

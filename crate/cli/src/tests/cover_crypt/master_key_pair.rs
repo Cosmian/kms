@@ -2,18 +2,20 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 
-use super::SUB_COMMAND;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
 use crate::{
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
+        PROG_NAME,
         utils::{
             extract_uids::{extract_private_key, extract_public_key},
-            recover_cmd_logs, start_default_test_kms_server, ONCE,
+            ONCE, recover_cmd_logs, start_default_test_kms_server,
         },
-        PROG_NAME,
     },
 };
+
+use super::SUB_COMMAND;
 
 pub fn create_cc_master_key_pair(
     cli_conf_path: &str,

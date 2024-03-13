@@ -2,29 +2,31 @@ use std::process::Command;
 
 use assert_cmd::prelude::CommandCargoExt;
 use cosmian_kms_client::cosmian_kmip::kmip::{
+use openssl::pkcs12::Pkcs12;
+use tempfile::TempDir;
+use uuid::Uuid;
+
+use cosmian_kmip::kmip::{
     kmip_objects::Object,
     kmip_types::{Attributes, KeyFormatType, LinkType},
     ttlv::{deserializer::from_ttlv, TTLV},
 };
-use openssl::pkcs12::Pkcs12;
-use tempfile::TempDir;
-use uuid::Uuid;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 
 use crate::{
     actions::{
         certificates::{CertificateExportFormat, CertificateInputFormat},
         shared::{
-            utils::{read_from_json_file, read_object_from_json_ttlv_file},
             ExportKeyFormat::JsonTtlv,
+            utils::{read_from_json_file, read_object_from_json_ttlv_file},
         },
     },
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         certificates::import::import_certificate,
-        shared::export_key,
-        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
+        shared::export_key,
+        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
     },
 };
 

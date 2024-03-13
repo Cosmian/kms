@@ -1,6 +1,5 @@
 use zeroize::Zeroizing;
 
-use super::data_to_encrypt::DataToEncrypt;
 use crate::{
     error::KmipError,
     kmip::{
@@ -13,6 +12,8 @@ use crate::{
         },
     },
 };
+
+use super::data_to_encrypt::DataToEncrypt;
 
 /// Build a `Revoke` request to revoke the key identified by `unique_identifier`
 pub fn build_revoke_key_request(

@@ -17,15 +17,16 @@ use openssl::{
 };
 use serde::{
     de::{self, MapAccess, Visitor},
-    ser::SerializeStruct,
-    Deserialize, Serialize,
+    Deserialize,
+    ser::SerializeStruct, Serialize,
 };
 use strum::{Display, EnumIter, EnumString};
 
-use super::kmip_objects::ObjectType;
 use crate::error::KmipError;
 #[cfg(feature = "openssl")]
 use crate::kmip_error;
+
+use super::kmip_objects::ObjectType;
 
 /// 4.7
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).

@@ -3,14 +3,11 @@ use std::clone::Clone;
 use num_bigint_dig::BigUint;
 use serde::{
     de::{self, MapAccess, Visitor},
-    ser::SerializeStruct,
-    Deserialize, Serialize,
+    Deserialize,
+    ser::SerializeStruct, Serialize,
 };
 use zeroize::Zeroizing;
 
-use super::kmip_types::{LinkType, LinkedObjectIdentifier};
-#[cfg(feature = "openssl")]
-use crate::openssl::pad_be_bytes;
 use crate::{
     crypto::secret::SafeBigUint,
     error::KmipError,
@@ -23,6 +20,10 @@ use crate::{
         },
     },
 };
+#[cfg(feature = "openssl")]
+use crate::openssl::pad_be_bytes;
+
+use super::kmip_types::{LinkedObjectIdentifier, LinkType};
 
 /// A Key Block object is a structure used to encapsulate all of the information
 /// that is closely associated with a cryptographic key.

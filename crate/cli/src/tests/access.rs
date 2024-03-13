@@ -1,10 +1,10 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 
 use super::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs};
 use crate::{
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         shared::{destroy, export_key, revoke},

@@ -11,6 +11,7 @@ use cosmian_kms_client::{
 };
 use pem::PemError;
 use thiserror::Error;
+use cosmian_kms_client::RestClientError;
 
 pub mod result;
 
@@ -81,12 +82,6 @@ impl CliError {
             Self::KmipError(_r, e) => Self::KmipError(reason, e.clone()),
             e => Self::KmipError(reason, e.to_string()),
         }
-    }
-}
-
-impl From<&KmipError> for CliError {
-    fn from(e: &KmipError) -> Self {
-        Self::KmipError(ErrorReason::Invalid_Attribute, e.to_string())
     }
 }
 

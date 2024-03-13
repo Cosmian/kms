@@ -4,18 +4,19 @@ use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
 use crate::{
     actions::shared::utils::write_json_object_to_file,
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
+        PROG_NAME,
         shared::export_key,
         symmetric::create_key::create_symmetric_key,
         utils::{
-            create_new_database, generate_invalid_conf, recover_cmd_logs,
-            start_default_test_kms_server, start_test_server_with_options, ONCE,
+            create_new_database, generate_invalid_conf, ONCE,
+            recover_cmd_logs, start_default_test_kms_server, start_test_server_with_options,
         },
-        PROG_NAME,
     },
 };
 

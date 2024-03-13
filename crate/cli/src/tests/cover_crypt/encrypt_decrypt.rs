@@ -3,17 +3,18 @@ use std::{fs, path::PathBuf, process::Command};
 use assert_cmd::prelude::*;
 use tempfile::TempDir;
 
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
 use crate::{
     actions::shared::utils::read_bytes_from_file,
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         cover_crypt::{
             master_key_pair::create_cc_master_key_pair,
-            user_decryption_keys::create_user_decryption_key, SUB_COMMAND,
+            SUB_COMMAND, user_decryption_keys::create_user_decryption_key,
         },
-        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
+        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
     },
 };
 

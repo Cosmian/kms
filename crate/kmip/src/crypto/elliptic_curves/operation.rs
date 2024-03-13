@@ -9,11 +9,6 @@ use tracing::trace;
 #[cfg(feature = "openssl")]
 use zeroize::Zeroizing;
 
-#[cfg(feature = "fips")]
-use crate::crypto::elliptic_curves::{
-    FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
-    FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
-};
 use crate::{
     crypto::secret::SafeBigUint,
     kmip::{
@@ -21,13 +16,18 @@ use crate::{
         kmip_objects::{Object, ObjectType},
         kmip_types::{
             Attributes, CryptographicAlgorithm, CryptographicDomainParameters,
-            CryptographicParameters, CryptographicUsageMask, KeyFormatType, Link, LinkType,
-            LinkedObjectIdentifier, RecommendedCurve,
+            CryptographicParameters, CryptographicUsageMask, KeyFormatType, Link, LinkedObjectIdentifier,
+            LinkType, RecommendedCurve,
         },
     },
 };
 #[cfg(feature = "openssl")]
 use crate::{crypto::KeyPair, error::KmipError, kmip_bail};
+#[cfg(feature = "fips")]
+use crate::crypto::elliptic_curves::{
+    FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH,
+    FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN, FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+};
 
 #[cfg(feature = "fips")]
 /// Check that bits set in `mask` are only bits set in `flags`. If any bit set
@@ -469,19 +469,18 @@ mod tests {
     #[cfg(feature = "fips")]
     use openssl::provider::Provider;
 
-    #[cfg(feature = "fips")]
-    use super::{check_ecc_mask_against_flags, check_ecc_mask_algorithm_compliance};
-    use super::{create_approved_ecc_key_pair, create_ed25519_key_pair};
-    #[cfg(not(feature = "fips"))]
-    use super::{create_x25519_key_pair, create_x448_key_pair};
+    use crate::{
+        kmip::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, RecommendedCurve},
+        openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
+    };
     #[cfg(feature = "fips")]
     use crate::crypto::elliptic_curves::{
-        operation::create_ed448_key_pair,
         {
             FIPS_PRIVATE_ECC_MASK_ECDH, FIPS_PRIVATE_ECC_MASK_SIGN,
             FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
             FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
         },
+        operation::create_ed448_key_pair,
     };
     #[cfg(not(feature = "fips"))]
     use crate::crypto::elliptic_curves::{X25519_PRIVATE_KEY_LENGTH, X448_PRIVATE_KEY_LENGTH};
@@ -489,10 +488,12 @@ mod tests {
     use crate::kmip::kmip_data_structures::KeyMaterial;
     #[cfg(not(feature = "fips"))]
     use crate::openssl::pad_be_bytes;
-    use crate::{
-        kmip::kmip_types::{CryptographicAlgorithm, CryptographicUsageMask, RecommendedCurve},
-        openssl::{kmip_private_key_to_openssl, kmip_public_key_to_openssl},
-    };
+
+    #[cfg(feature = "fips")]
+    use super::{check_ecc_mask_against_flags, check_ecc_mask_algorithm_compliance};
+    use super::{create_approved_ecc_key_pair, create_ed25519_key_pair};
+    #[cfg(not(feature = "fips"))]
+    use super::{create_x25519_key_pair, create_x448_key_pair};
 
     #[test]
     fn test_ed25519_keypair_generation() {

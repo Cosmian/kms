@@ -2,22 +2,23 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
+use crate::{
+    error::CliError,
+    tests::{
+        elliptic_curve::create_key_pair::create_ec_key_pair,
+        PROG_NAME,
+        symmetric::create_key::create_symmetric_key,
+        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
+    },
+};
 #[cfg(not(feature = "fips"))]
 use crate::tests::{
     access::{grant_access, revoke_access},
     cover_crypt::{
         master_key_pair::create_cc_master_key_pair,
         user_decryption_keys::create_user_decryption_key,
-    },
-};
-use crate::{
-    config::KMS_CLI_CONF_ENV,
-    error::CliError,
-    tests::{
-        elliptic_curve::create_key_pair::create_ec_key_pair,
-        symmetric::create_key::create_symmetric_key,
-        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
-        PROG_NAME,
     },
 };
 

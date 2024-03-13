@@ -1,3 +1,13 @@
+pub use elliptic_curves::CURVE_25519_Q_LENGTH_BITS;
+
+use crate::{
+    error::KmipError,
+    kmip::{
+        kmip_objects::Object,
+        kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
+    },
+};
+
 pub mod cover_crypt;
 pub mod dh_shared_keys;
 pub mod elliptic_curves;
@@ -10,16 +20,6 @@ pub mod symmetric;
 
 #[cfg(feature = "openssl")]
 pub mod wrap;
-
-pub use elliptic_curves::CURVE_25519_Q_LENGTH_BITS;
-
-use crate::{
-    error::KmipError,
-    kmip::{
-        kmip_objects::Object,
-        kmip_operations::{Decrypt, DecryptResponse, Encrypt, EncryptResponse},
-    },
-};
 
 pub trait EncryptionSystem {
     fn encrypt(&self, request: &Encrypt) -> Result<EncryptResponse, KmipError>;

@@ -1,3 +1,3 @@
-[submodule "native-pkcs11"]
-	path = native-pkcs11
+[submodule "crate/pkcs11/native-pkcs11"]
+	path = crate/pkcs11/native-pkcs11
 	url = git@github.com:Cosmian/native-pkcs11.git

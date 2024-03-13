@@ -4,17 +4,19 @@ use assert_cmd::prelude::*;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
-use super::SUB_COMMAND;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
 use crate::{
     actions::shared::utils::read_bytes_from_file,
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         elliptic_curve::create_key_pair::create_ec_key_pair,
-        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
+        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
     },
 };
+
+use super::SUB_COMMAND;
 
 /// Encrypts a file using the given public key and access policy.
 pub fn encrypt(

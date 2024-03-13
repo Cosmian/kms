@@ -16,10 +16,16 @@ use tracing::{debug, trace};
 use x509_cert::Certificate;
 use zeroize::Zeroizing;
 
+use cosmian_kmip::kmip::{
+    kmip_objects::Object,
+    kmip_types::{Attributes, CertificateType, KeyFormatType, LinkedObjectIdentifier, LinkType},
+};
+use cosmian_kms_client::{import_object, KmsRestClient};
+
 use crate::{
     actions::shared::{
         import_key::build_private_key_from_der_bytes,
-        utils::{import_object, read_bytes_from_file, read_object_from_json_ttlv_file},
+        utils::{read_bytes_from_file, read_object_from_json_ttlv_file},
     },
     error::CliError,
 };

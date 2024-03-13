@@ -6,6 +6,7 @@ use cosmian_kms_client::cosmian_kmip::kmip::{
     kmip_types::{Attributes, LinkType},
     ttlv::{deserializer::from_ttlv, TTLV},
 };
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
 use uuid::Uuid;
@@ -18,7 +19,6 @@ use crate::{
         certificates::{CertificateExportFormat, CertificateInputFormat},
         shared::utils::{read_from_json_file, read_object_from_json_ttlv_file},
     },
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         certificates::{export::export_certificate, import::import_certificate},

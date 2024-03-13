@@ -2,18 +2,20 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 
-use super::SUB_COMMAND;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
 use crate::{
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
-        utils::{
-            extract_uids::extract_user_key, recover_cmd_logs, start_default_test_kms_server, ONCE,
-        },
         PROG_NAME,
+        utils::{
+            extract_uids::extract_user_key, ONCE, recover_cmd_logs, start_default_test_kms_server,
+        },
     },
 };
+
+use super::SUB_COMMAND;
 
 pub fn create_user_decryption_key(
     cli_conf_path: &str,

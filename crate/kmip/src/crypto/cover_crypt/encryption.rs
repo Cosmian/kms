@@ -14,8 +14,8 @@ use tracing::{debug, trace};
 
 use crate::{
     crypto::{
-        cover_crypt::attributes::policy_from_attributes, generic::data_to_encrypt::DataToEncrypt,
-        EncryptionSystem,
+        cover_crypt::attributes::policy_from_attributes, EncryptionSystem,
+        generic::data_to_encrypt::DataToEncrypt,
     },
     error::KmipError,
     kmip::{

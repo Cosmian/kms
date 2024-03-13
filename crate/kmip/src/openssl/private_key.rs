@@ -16,7 +16,7 @@ use crate::{
         },
         secret::SafeBigUint,
     },
-    error::KmipError,
+    error::{KmipError, result::KmipResultHelper},
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
@@ -26,7 +26,6 @@ use crate::{
         },
     },
     kmip_bail,
-    result::KmipResultHelper,
 };
 
 pub fn pad_be_bytes(bytes: &mut Vec<u8>, size: usize) {

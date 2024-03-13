@@ -1,11 +1,14 @@
 use std::io;
 
-use cosmian_kmip::{
-    error::KmipError,
-    kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
-};
 use http::header::InvalidHeaderValue;
 use thiserror::Error;
+
+use cosmian_kmip::{
+    kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
+    KmipError,
+};
+
+pub(crate) mod result;
 
 #[derive(Error, Debug)]
 pub enum RestClientError {
@@ -66,6 +69,12 @@ impl From<reqwest::Error> for RestClientError {
 
 impl From<io::Error> for RestClientError {
     fn from(e: io::Error) -> Self {
+        Self::Default(e.to_string())
+    }
+}
+
+impl From<der::Error> for RestClientError {
+    fn from(e: der::Error) -> Self {
         Self::Default(e.to_string())
     }
 }

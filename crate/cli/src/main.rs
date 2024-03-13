@@ -1,8 +1,7 @@
 use std::{path::PathBuf, process};
 
 use clap::{CommandFactory, Parser, Subcommand};
-#[cfg(not(feature = "fips"))]
-use cosmian_kms_cli::actions::cover_crypt::CovercryptCommands;
+
 use cosmian_kms_cli::{
     actions::{
         access::AccessAction,
@@ -17,7 +16,6 @@ use cosmian_kms_cli::{
         symmetric::SymmetricCommands,
         version::ServerVersionAction,
     },
-    config::CliConf,
     error::CliError,
 };
 
@@ -90,13 +88,13 @@ async fn main_() -> Result<(), CliError> {
         return Ok(())
     }
 
-    let conf_path = CliConf::location(opts.conf)?;
+    let conf_path = ClientConf::location(opts.conf)?;
 
     match opts.command {
         CliCommands::Login(action) => action.process(&conf_path).await?,
         CliCommands::Logout(action) => action.process(&conf_path).await?,
         command => {
-            let conf = CliConf::load(&conf_path)?;
+            let conf = ClientConf::load(&conf_path)?;
             let kms_rest_client = conf.initialize_kms_client()?;
 
             match command {

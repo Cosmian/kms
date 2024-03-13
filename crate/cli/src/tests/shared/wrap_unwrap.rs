@@ -4,28 +4,30 @@ use std::{
 };
 
 use assert_cmd::prelude::CommandCargoExt;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
+    reexport::rand_core::{RngCore, SeedableRng},
 };
 use cosmian_kms_client::cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod};
 use tempfile::TempDir;
 
+use cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod};
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
 use crate::{
     actions::shared::utils::read_object_from_json_ttlv_file,
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve::create_key_pair::create_ec_key_pair,
+        PROG_NAME,
         shared::export::export_key,
         symmetric::create_key::create_symmetric_key,
         utils::{
-            extract_uids::extract_wrapping_key, recover_cmd_logs, start_default_test_kms_server,
-            TestsContext, ONCE,
+            extract_uids::extract_wrapping_key, ONCE, recover_cmd_logs,
+            start_default_test_kms_server, TestsContext,
         },
-        PROG_NAME,
     },
 };
 

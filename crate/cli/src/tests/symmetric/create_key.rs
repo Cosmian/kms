@@ -1,21 +1,23 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use base64::{engine::general_purpose, Engine as _};
+use base64::{Engine as _, engine::general_purpose};
 use cloudproof::reexport::crypto_core::{
-    reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
+    reexport::rand_core::{RngCore, SeedableRng},
+};
+
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
+use crate::{
+    error::CliError,
+    tests::{
+        PROG_NAME,
+        utils::{extract_uids::extract_uid, ONCE, recover_cmd_logs, start_default_test_kms_server},
+    },
 };
 
 use super::SUB_COMMAND;
-use crate::{
-    config::KMS_CLI_CONF_ENV,
-    error::CliError,
-    tests::{
-        utils::{extract_uids::extract_uid, recover_cmd_logs, start_default_test_kms_server, ONCE},
-        PROG_NAME,
-    },
-};
 
 /// Create a symmetric key via the CLI
 pub fn create_symmetric_key(

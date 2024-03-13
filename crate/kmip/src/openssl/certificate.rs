@@ -1,17 +1,16 @@
 use openssl::{
     nid::Nid,
     sha::Sha1,
-    x509::{X509Name, X509NameBuilder, X509},
+    x509::{X509, X509Name, X509NameBuilder},
 };
 use uuid::Uuid;
 
 use crate::{
-    error::KmipError,
+    error::{KmipError, result::KmipResultHelper},
     kmip::{
         kmip_objects::Object::{self, Certificate},
         kmip_types::{CertificateAttributes, CertificateType},
     },
-    result::KmipResultHelper,
 };
 
 /// Generate a KMIP certificate from an OpenSSL certificate and a unique ID

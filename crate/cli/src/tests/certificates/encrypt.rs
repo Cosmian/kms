@@ -5,21 +5,23 @@ use tempfile::TempDir;
 use tracing::debug;
 use uuid::Uuid;
 
-use super::SUB_COMMAND;
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
 use crate::{
     actions::{
         certificates::CertificateInputFormat,
-        shared::{import_key::ImportKeyFormat, utils::read_bytes_from_file, ExportKeyFormat},
+        shared::{ExportKeyFormat, import_key::ImportKeyFormat, utils::read_bytes_from_file},
     },
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
         certificates::import::import_certificate,
-        shared::{export_key, import_key},
-        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
         PROG_NAME,
+        shared::{export_key, import_key},
+        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
     },
 };
+
+use super::SUB_COMMAND;
 
 /// Encrypts a file using the given public key and access policy.
 pub fn encrypt(

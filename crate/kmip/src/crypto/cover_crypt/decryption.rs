@@ -5,16 +5,17 @@ use cloudproof::reexport::{
 use tracing::{debug, trace};
 use zeroize::Zeroizing;
 
-use super::user_key::unwrap_user_decryption_key_object;
 use crate::{
     crypto::DecryptionSystem,
     error::KmipError,
     kmip::{
         kmip_objects::Object,
-        kmip_operations::{Decrypt, DecryptResponse, DecryptedData, ErrorReason},
+        kmip_operations::{Decrypt, DecryptedData, DecryptResponse, ErrorReason},
         kmip_types::{CryptographicAlgorithm, CryptographicParameters, UniqueIdentifier},
     },
 };
+
+use super::user_key::unwrap_user_decryption_key_object;
 
 /// Decrypt a single block of data encrypted using an hybrid encryption mode
 /// Cannot be used as a stream decipher

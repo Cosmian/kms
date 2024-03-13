@@ -1,14 +1,15 @@
 // This file exists to standardize key-derivation across all KMS crates
 #[cfg(not(feature = "fips"))]
 use argon2::Argon2;
-use openssl::rand::rand_bytes;
 #[cfg(feature = "fips")]
 use openssl::{hash::MessageDigest, pkcs5::pbkdf2_hmac};
+use openssl::rand::rand_bytes;
 
-use super::secret::Secret;
 use crate::error::KmipError;
 #[cfg(feature = "fips")]
 use crate::kmip_bail;
+
+use super::secret::Secret;
 
 /// Minimum random salt size in bytes to use when deriving keys.
 const FIPS_MIN_SALT_SIZE: usize = 16;

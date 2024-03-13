@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use crate::{config::CliConf, error::CliError};
+use cosmian_kms_client::ClientConf;
+
+use crate::error::CliError;
 
 /// Logout from the Identity Provider.
 ///
@@ -13,7 +15,7 @@ pub struct LogoutAction;
 
 impl LogoutAction {
     pub async fn process(&self, conf_path: &PathBuf) -> Result<(), CliError> {
-        let mut conf = CliConf::load(conf_path)?;
+        let mut conf = ClientConf::load(conf_path)?;
         conf.kms_access_token = None;
         conf.save(conf_path)?;
 

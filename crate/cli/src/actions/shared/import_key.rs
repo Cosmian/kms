@@ -8,18 +8,24 @@ use cosmian_kms_client::{
         kmip_types::{
             Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
+use zeroize::Zeroizing;
+
+use cosmian_kmip::kmip::{
+    kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
+    kmip_objects::{Object, ObjectType},
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, KeyFormatType, LinkedObjectIdentifier, LinkType,
     },
     KmsRestClient,
 };
-use zeroize::Zeroizing;
+use cosmian_kms_client::{import_object, KmsRestClient};
 
-use super::utils::objects_from_pem;
 use crate::{
-    actions::shared::utils::{
-        import_object, read_bytes_from_file, read_object_from_json_ttlv_bytes,
-    },
+    actions::shared::utils::{read_bytes_from_file, read_object_from_json_ttlv_bytes},
     error::CliError,
 };
+
+use super::utils::objects_from_pem;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum ImportKeyFormat {

@@ -6,23 +6,25 @@ use std::{
 };
 
 use actix_web::{
+    App,
     get,
-    web::{self, Data},
-    App, HttpResponse, HttpServer,
+    HttpResponse, HttpServer, web::{self, Data},
 };
 use clap::Parser;
 use oauth2::{
-    basic::BasicClient, http, AuthUrl, ClientId, ClientSecret, CsrfToken, HttpRequest,
+    AuthUrl, basic::BasicClient, ClientId, ClientSecret, CsrfToken, http, HttpRequest,
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenUrl,
 };
 use reqwest::{
-    header::{HeaderMap, HeaderValue, ACCEPT, CONTENT_TYPE},
+    header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderValue},
     StatusCode,
 };
 use serde::Deserialize;
 use url::Url;
 
-use crate::{cli_bail, config::CliConf, error::CliError};
+use cosmian_kms_client::ClientConf;
+
+use crate::{cli_bail, error::CliError};
 
 /// Login to the Identity Provider of the KMS server using the `OAuth2` authorization code flow.
 ///
@@ -43,7 +45,7 @@ pub struct LoginAction;
 
 impl LoginAction {
     pub async fn process(&self, conf_path: &PathBuf) -> Result<(), CliError> {
-        let mut conf = CliConf::load(conf_path)?;
+        let mut conf = ClientConf::load(conf_path)?;
         let oauth2_conf = conf
             .oauth2_conf
             .as_ref()

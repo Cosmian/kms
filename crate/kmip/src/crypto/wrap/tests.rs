@@ -6,12 +6,6 @@ use openssl::{
 use openssl::{pkey::PKey, rand::rand_bytes, rsa::Rsa};
 
 #[cfg(not(feature = "fips"))]
-use crate::kmip::{
-    kmip_data_structures::KeyWrappingSpecification,
-    kmip_objects::Object,
-    kmip_types::{CryptographicUsageMask, EncodingOption},
-};
-#[cfg(not(feature = "fips"))]
 use crate::{
     crypto::{
         elliptic_curves::operation::create_x25519_key_pair,
@@ -29,6 +23,12 @@ use crate::{
         kmip_types::{CryptographicAlgorithm, KeyFormatType},
     },
     openssl::{openssl_private_key_to_kmip, openssl_public_key_to_kmip},
+};
+#[cfg(not(feature = "fips"))]
+use crate::kmip::{
+    kmip_data_structures::KeyWrappingSpecification,
+    kmip_objects::Object,
+    kmip_types::{CryptographicUsageMask, EncodingOption},
 };
 
 #[cfg(not(feature = "fips"))]

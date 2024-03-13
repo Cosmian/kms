@@ -8,7 +8,7 @@ use cosmian_kms_client::{
 };
 use tracing::trace;
 
-use crate::error::{result::CliResultHelper, CliError};
+use crate::{KmsRestClient, RestClientError, RestClientResultHelper};
 
 /// Import an Object into the KMS
 ///
@@ -22,7 +22,7 @@ pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
     unwrap: bool,
     replace_existing: bool,
     tags: T,
-) -> Result<String, CliError> {
+) -> Result<String, RestClientError> {
     trace!("Entering import_object");
     // an empty uid will have the server generate if for us
     let unique_identifier = object_id.clone().unwrap_or_default();

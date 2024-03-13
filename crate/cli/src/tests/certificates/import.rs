@@ -2,16 +2,17 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 
+use cosmian_kms_client::KMS_CLI_CONF_ENV;
+
 use crate::{
     actions::certificates::CertificateInputFormat,
-    config::KMS_CLI_CONF_ENV,
     error::CliError,
     tests::{
-        utils::{
-            extract_uids::extract_imported_key_id, recover_cmd_logs, start_default_test_kms_server,
-            ONCE,
-        },
         PROG_NAME,
+        utils::{
+            extract_uids::extract_imported_key_id, ONCE, recover_cmd_logs,
+            start_default_test_kms_server,
+        },
     },
 };
 

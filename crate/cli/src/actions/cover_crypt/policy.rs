@@ -18,13 +18,14 @@ use cosmian_kms_client::{
     },
     KmsRestClient,
 };
+use cosmian_kms_client::{export_object, KmsRestClient};
 
 use crate::{
     actions::shared::utils::{
-        export_object, read_bytes_from_file, read_from_json_file, write_json_object_to_file,
+        read_bytes_from_file, read_from_json_file, write_json_object_to_file,
     },
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::{CliError, result::CliResultHelper},
 };
 
 pub fn policy_from_binary_file(bin_filename: &impl AsRef<Path>) -> Result<Policy, CliError> {

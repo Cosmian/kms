@@ -1,17 +1,18 @@
 use openssl::{
     rand::rand_bytes,
-    symm::{decrypt_aead, encrypt_aead, Cipher},
+    symm::{Cipher, decrypt_aead, encrypt_aead},
 };
 use zeroize::Zeroizing;
 
-use super::{
-    AES_128_GCM_IV_LENGTH, AES_128_GCM_KEY_LENGTH, AES_128_GCM_MAC_LENGTH, AES_256_GCM_IV_LENGTH,
-    AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH,
-};
 use crate::{
     error::KmipError,
     kmip::kmip_types::{BlockCipherMode, CryptographicAlgorithm},
     kmip_bail,
+};
+
+use super::{
+    AES_128_GCM_IV_LENGTH, AES_128_GCM_KEY_LENGTH, AES_128_GCM_MAC_LENGTH, AES_256_GCM_IV_LENGTH,
+    AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH,
 };
 
 #[cfg(not(feature = "fips"))]
@@ -185,13 +186,12 @@ pub fn aead_decrypt(
 
 #[cfg(test)]
 mod tests {
-
     #[cfg(feature = "fips")]
     use openssl::provider::Provider;
     use openssl::rand::rand_bytes;
 
     use crate::crypto::symmetric::aead::{
-        aead_decrypt, aead_encrypt, random_key, random_nonce, AeadCipher,
+        aead_decrypt, aead_encrypt, AeadCipher, random_key, random_nonce,
     };
 
     #[test]

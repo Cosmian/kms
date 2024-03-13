@@ -11,22 +11,23 @@ use actix_server::ServerHandle;
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
 use cosmian_kms_client::cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
+use base64::{Engine as _, engine::general_purpose::STANDARD as b64};
+use tokio::sync::OnceCell;
+use tracing::trace;
+
+use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
+use cosmian_kms_client::{ClientConf, KMS_CLI_CONF_ENV};
 use cosmian_kms_server::{
     config::{ClapConfig, DBConfig, HttpConfig, HttpParams, JwtAuthConfig, ServerParams},
     core::extra_database_params::ExtraDatabaseParams,
     kms_server::start_kms_server,
 };
-use tokio::sync::OnceCell;
-use tracing::trace;
+
+use crate::{
+    actions::shared::utils::write_json_object_to_file, cli_bail, error::CliError, tests::PROG_NAME,
+};
 
 use super::extract_uids::extract_database_secret;
-use crate::{
-    actions::shared::utils::write_json_object_to_file,
-    cli_bail,
-    config::{CliConf, KMS_CLI_CONF_ENV},
-    error::CliError,
-    tests::PROG_NAME,
-};
 
 // Test auth0 Config
 const AUTH0_JWT_ISSUER_URI: &str = "https://kms-cosmian.eu.auth0.com/";
@@ -66,7 +67,7 @@ pub static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 pub struct TestsContext {
     pub owner_cli_conf_path: String,
     pub user_cli_conf_path: String,
-    pub owner_cli_conf: CliConf,
+    pub owner_cli_conf: ClientConf,
     pub server_handle: ServerHandle,
     pub thread_handle: JoinHandle<Result<(), CliError>>,
 }
@@ -270,13 +271,13 @@ async fn generate_server_params(
         .map_err(|e| CliError::Default(format!("failed initializing the server config: {e}")))
 }
 
-fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, CliConf), CliError> {
+fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientConf), CliError> {
     // Create a conf
     let owner_cli_conf_path = format!("/tmp/owner_kms_{}.json", server_params.port);
 
     // Generate a CLI Conf.
     // We will update it later by appending the database secret
-    let owner_cli_conf = CliConf {
+    let owner_cli_conf = ClientConf {
         kms_server_url: if matches!(server_params.http_params, HttpParams::Https(_)) {
             format!("https://0.0.0.0:{}", server_params.port)
         } else {
@@ -313,7 +314,7 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, CliConf)
 }
 
 /// Generate a user configuration for user.client@acme.com and return the file path
-fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<String, CliError> {
+fn generate_user_conf(port: u16, owner_cli_conf: &ClientConf) -> Result<String, CliError> {
     let mut user_conf = owner_cli_conf.clone();
     user_conf.ssl_client_pkcs12_path = {
         #[cfg(not(target_os = "macos"))]
@@ -333,7 +334,7 @@ fn generate_user_conf(port: u16, owner_cli_conf: &CliConf) -> Result<String, Cli
 }
 
 /// Generate an invalid configuration by changin the database secret  and return the file path
-pub(crate) fn generate_invalid_conf(correct_conf: &CliConf) -> String {
+pub(crate) fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
     // Create a new database key
     let db_key = Secret::<AES_256_GCM_KEY_LENGTH>::new_random()
         .expect("Failed to generate rand bytes for generate_invalid_conf");
