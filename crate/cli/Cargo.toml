@@ -40,7 +40,6 @@ env_logger = { workspace = true }
 oauth2 = "4.4"
 pem = { workspace = true }
 reqwest = { workspace = true }
-rustls = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { workspace = true, features = ["std", "derive", "strum_macros"] }

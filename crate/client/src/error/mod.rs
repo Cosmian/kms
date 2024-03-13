@@ -92,13 +92,13 @@ impl From<KmipError> for ClientError {
 #[macro_export]
 macro_rules! client_error {
     ($msg:literal) => {
-        $crate::error:RestClientErrorr::Default(::core::format_args!($msg).to_string())
+        $crate::error::ClientError::Default(::core::format_args!($msg).to_string())
     };
     ($err:expr $(,)?) => ({
-        $crate::error:RestClientErrorr::Default($err.to_string())
+        $crate::error::ClientError::Default($err.to_string())
     });
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::error:RestClientErrorr::Default(::core::format_args!($fmt, $($arg)*).to_string())
+        $crate::error::ClientError::Default(::core::format_args!($fmt, $($arg)*).to_string())
     };
 }
 
