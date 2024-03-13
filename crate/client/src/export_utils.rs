@@ -10,7 +10,7 @@ use cosmian_kms_client::{
     KmsRestClient,
 };
 
-use crate::{KmsRestClient, RestClientError, RestClientResultHelper};
+use crate::{ClientError, KmsRestClient, RestClientResultHelper};
 
 /// Export an Object from the KMS
 ///
@@ -37,7 +37,7 @@ pub async fn export_object(
     wrapping_key_id: Option<&str>,
     allow_revoked: bool,
     key_format_type: Option<KeyFormatType>,
-) -> Result<(Object, Option<Attributes>), RestClientError> {
+) -> Result<(Object, Option<Attributes>), ClientError> {
     // If an unwrapping key is specified, generate the key (un)wrapping specification
     let key_wrapping_specification: Option<KeyWrappingSpecification> = if unwrap {
         None

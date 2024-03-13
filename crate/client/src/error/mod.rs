@@ -11,24 +11,21 @@ use cosmian_kmip::{
 pub(crate) mod result;
 
 #[derive(Error, Debug)]
-pub enum RestClientError {
-    #[error("TTLV Error: {0}")]
-    TtlvError(String),
+pub enum ClientError {
+    #[error(transparent)]
+    Base64DecodeError(#[from] base64::DecodeError),
 
-    #[error("REST Request Failed: {0}")]
-    RequestFailed(String),
+    #[error("{0}")]
+    Default(String),
 
-    #[error("REST Response Conversion Failed: {0}")]
-    ResponseFailed(String),
-
-    #[error("Unexpected Error: {0}")]
-    UnexpectedError(String),
+    #[error("Invalid KMIP Object: {0}: {1}")]
+    InvalidKmipObject(ErrorReason, String),
 
     #[error("Invalid KMIP value: {0}: {1}")]
     InvalidKmipValue(ErrorReason, String),
 
-    #[error("Invalid KMIP Object: {0}: {1}")]
-    InvalidKmipObject(ErrorReason, String),
+    #[error("{0}: {1}")]
+    KmipError(ErrorReason, String),
 
     #[error("Kmip Not Supported: {0}: {1}")]
     KmipNotSupported(ErrorReason, String),
@@ -36,50 +33,44 @@ pub enum RestClientError {
     #[error("Not Supported: {0}")]
     NotSupported(String),
 
-    #[error("{0}: {1}")]
-    KmipError(ErrorReason, String),
-
-    #[error("{0}")]
-    Default(String),
+    #[error(transparent)]
+    PemError(#[from] pem::PemError),
 
     #[error(transparent)]
     UrlError(#[from] url::ParseError),
-
-    #[error(transparent)]
-    Base64DecodeError(#[from] base64::DecodeError),
 }
 
-impl From<TtlvError> for RestClientError {
+impl From<TtlvError> for ClientError {
     fn from(e: TtlvError) -> Self {
         Self::TtlvError(e.to_string())
     }
 }
 
-impl From<InvalidHeaderValue> for RestClientError {
+impl From<InvalidHeaderValue> for ClientError {
     fn from(e: InvalidHeaderValue) -> Self {
         Self::Default(e.to_string())
     }
 }
 
-impl From<reqwest::Error> for RestClientError {
+impl From<reqwest::Error> for ClientError {
     fn from(e: reqwest::Error) -> Self {
         Self::Default(e.to_string())
     }
 }
 
-impl From<io::Error> for RestClientError {
+impl From<io::Error> for ClientError {
     fn from(e: io::Error) -> Self {
         Self::Default(e.to_string())
     }
 }
 
-impl From<der::Error> for RestClientError {
+impl From<der::Error> for ClientError {
     fn from(e: der::Error) -> Self {
         Self::Default(e.to_string())
     }
 }
 
-impl From<KmipError> for RestClientError {
+impl From<KmipError> for ClientError {
     fn from(e: KmipError) -> Self {
         match e {
             KmipError::InvalidKmipValue(r, s) => Self::InvalidKmipValue(r, s),
@@ -95,4 +86,32 @@ impl From<KmipError> for RestClientError {
             KmipError::ConversionError(s) => Self::NotSupported(s),
         }
     }
+}
+
+/// Construct a server error from a string.
+#[macro_export]
+macro_rules! client_error {
+    ($msg:literal) => {
+        $crate::error:RestClientErrorr::Default(::core::format_args!($msg).to_string())
+    };
+    ($err:expr $(,)?) => ({
+        $crate::error:RestClientErrorr::Default($err.to_string())
+    });
+    ($fmt:expr, $($arg:tt)*) => {
+        $crate::error:RestClientErrorr::Default(::core::format_args!($fmt, $($arg)*).to_string())
+    };
+}
+
+/// Return early with an error if a condition is not satisfied.
+#[macro_export]
+macro_rules! client_bail {
+    ($msg:literal) => {
+        return ::core::result::Result::Err($crate::client_error!($msg))
+    };
+    ($err:expr $(,)?) => {
+        return ::core::result::Result::Err($err)
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        return ::core::result::Result::Err($crate::client_error!($fmt, $($arg)*))
+    };
 }

@@ -9,7 +9,7 @@ use cosmian_kms_client::{
 };
 
 use crate::{
-    actions::shared::utils::{der_to_pem, write_bytes_to_file, write_kmip_object_to_file},
+    actions::shared::utils::{write_bytes_to_file, write_kmip_object_to_file},
     cli_bail,
     error::CliError,
 };

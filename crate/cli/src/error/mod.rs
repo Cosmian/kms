@@ -13,6 +13,12 @@ use pem::PemError;
 use thiserror::Error;
 use cosmian_kms_client::RestClientError;
 
+use cosmian_kmip::{
+    kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
+    KmipError,
+};
+use cosmian_kms_client::ClientError;
+
 pub mod result;
 
 // Each error type must have a corresponding HTTP status code (see `kmip_endpoint.rs`)
@@ -183,8 +189,8 @@ impl From<base64::DecodeError> for CliError {
     }
 }
 
-impl From<RestClientError> for CliError {
-    fn from(e: RestClientError) -> Self {
+impl From<ClientError> for CliError {
+    fn from(e: ClientError) -> Self {
         Self::KmsClientError(e.to_string())
     }
 }

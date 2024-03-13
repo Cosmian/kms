@@ -18,14 +18,12 @@ use cosmian_kmip::kmip::{
     },
     KmsRestClient,
 };
-use cosmian_kms_client::{import_object, KmsRestClient};
+use cosmian_kms_client::{import_object, KmsRestClient, objects_from_pem};
 
 use crate::{
     actions::shared::utils::{read_bytes_from_file, read_object_from_json_ttlv_bytes},
     error::CliError,
 };
-
-use super::utils::objects_from_pem;
 
 #[derive(clap::ValueEnum, Debug, Clone)]
 pub enum ImportKeyFormat {

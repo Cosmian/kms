@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
-use super::RestClientError;
+use super::ClientError;
 
-pub type RestClientResult<R> = Result<R, RestClientError>;
+pub type RestClientResult<R> = Result<R, ClientError>;
 
 pub trait RestClientResultHelper<T> {
     fn context(self, context: &str) -> RestClientResult<T>;
@@ -17,7 +17,7 @@ where
     E: std::error::Error,
 {
     fn context(self, context: &str) -> RestClientResult<T> {
-        self.map_err(|e| RestClientError::Default(format!("{context}: {e}")))
+        self.map_err(|e| ClientError::Default(format!("{context}: {e}")))
     }
 
     fn with_context<D, O>(self, op: O) -> RestClientResult<T>
@@ -25,13 +25,13 @@ where
         D: Display + Send + Sync + 'static,
         O: FnOnce() -> D,
     {
-        self.map_err(|e| RestClientError::Default(format!("{}: {e}", op())))
+        self.map_err(|e| ClientError::Default(format!("{}: {e}", op())))
     }
 }
 
 impl<T> RestClientResultHelper<T> for Option<T> {
     fn context(self, context: &str) -> RestClientResult<T> {
-        self.ok_or_else(|| RestClientError::Default(context.to_string()))
+        self.ok_or_else(|| ClientError::Default(context.to_string()))
     }
 
     fn with_context<D, O>(self, op: O) -> RestClientResult<T>
@@ -39,6 +39,6 @@ impl<T> RestClientResultHelper<T> for Option<T> {
         D: Display + Send + Sync + 'static,
         O: FnOnce() -> D,
     {
-        self.ok_or_else(|| RestClientError::Default(format!("{}", op())))
+        self.ok_or_else(|| ClientError::Default(format!("{}", op())))
     }
 }

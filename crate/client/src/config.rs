@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use x509_cert::Certificate as X509Certificate;
 
 use crate::{
-    error::{RestClientError, result::RestClientResultHelper},
+    error::{ClientError, result::RestClientResultHelper},
     KmsRestClient,
 };
 
@@ -44,11 +44,9 @@ fn get_home_folder() -> Option<PathBuf> {
 
 /// Returns the default configuration path
 ///  or an error if the home folder cannot be determined
-fn get_default_conf_path() -> Result<PathBuf, RestClientError> {
+fn get_default_conf_path() -> Result<PathBuf, ClientError> {
     get_home_folder()
-        .ok_or_else(|| {
-            RestClientError::NotSupported("unable to determine the home folder".to_owned())
-        })
+        .ok_or_else(|| ClientError::NotSupported("unable to determine the home folder".to_owned()))
         .map(|home| home.join(".cosmian/kms.json"))
 }
 
@@ -137,14 +135,14 @@ impl Default for ClientConf {
 pub const KMS_CLI_CONF_ENV: &str = "KMS_CLI_CONF";
 
 impl ClientConf {
-    pub fn location(conf: Option<PathBuf>) -> Result<PathBuf, RestClientError> {
+    pub fn location(conf: Option<PathBuf>) -> Result<PathBuf, ClientError> {
         // Obtain the configuration file path from:
         // - the `--conf` arg
         // - the environment variable corresponding to `KMS_CLI_CONF_ENV`
         // - default to a pre-determined path
         if let Some(conf_path) = conf {
             if !conf_path.exists() {
-                return Err(RestClientError::NotSupported(format!(
+                return Err(ClientError::NotSupported(format!(
                     "Configuration file {conf_path:?} from CLI arg does not exist"
                 )))
             }
@@ -152,7 +150,7 @@ impl ClientConf {
         } else if let Ok(conf_path) = env::var(KMS_CLI_CONF_ENV).map(PathBuf::from) {
             // Error if the specified file does not exist
             if !conf_path.exists() {
-                return Err(RestClientError::NotSupported(format!(
+                return Err(ClientError::NotSupported(format!(
                     "Configuration file {conf_path:?} from env var does not exist"
                 )))
             }
@@ -162,7 +160,7 @@ impl ClientConf {
         get_default_conf_path()
     }
 
-    pub fn save(&self, conf_path: &PathBuf) -> Result<(), RestClientError> {
+    pub fn save(&self, conf_path: &PathBuf) -> Result<(), ClientError> {
         fs::write(
             conf_path,
             serde_json::to_string_pretty(&self)
@@ -175,7 +173,7 @@ impl ClientConf {
         Ok(())
     }
 
-    pub fn load(conf_path: &PathBuf) -> Result<Self, RestClientError> {
+    pub fn load(conf_path: &PathBuf) -> Result<Self, ClientError> {
         // Deserialize the configuration from the file, or create a default configuration if none exists
         let conf = if conf_path.exists() {
             // Configuration file exists, read and deserialize it
@@ -200,7 +198,7 @@ impl ClientConf {
         Ok(conf)
     }
 
-    pub fn initialize_kms_client(&self) -> Result<KmsRestClient, RestClientError> {
+    pub fn initialize_kms_client(&self) -> Result<KmsRestClient, ClientError> {
         // Instantiate a KMS server REST client with the given configuration
         let kms_rest_client = KmsRestClient::instantiate(
             &self.kms_server_url,

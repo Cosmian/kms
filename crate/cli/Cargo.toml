@@ -38,7 +38,7 @@ cosmian_kms_client = { path = "../client" }
 der = { version = "0.7", features = ["pem"] }
 env_logger = { workspace = true }
 oauth2 = "4.4"
-pem = "3.0"
+pem = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
 serde = { workspace = true }
@@ -58,7 +58,7 @@ actix-server = { version = "2.3", default-features = false }
 assert_cmd = "2.0"
 const-oid = { version = "0.9", features = ["db"] }
 cosmian_kms_server = { path = "../server", features = [
-  "insecure",
+    "insecure",
 ], default-features = false }
 openssl = { workspace = true }
 predicates = "3.0"

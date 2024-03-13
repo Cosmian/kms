@@ -1,7 +1,6 @@
-use zeroize::Zeroizing;
-
 use cosmian_kmip::kmip::kmip_types::KeyFormatType;
-use cosmian_kms_client::{ClientConf, export_object, KmsRestClient};
+use cosmian_kms_client::{export_object, ClientConf, KmsRestClient};
+use zeroize::Zeroizing;
 
 use crate::error::Pkcs11Error;
 
@@ -21,7 +20,7 @@ pub async fn export_symmetric_key(
     let wrapping_key_id = None;
     let allow_revoked = false;
     let (object, _attributes) = export_object(
-        &kms_client,
+        kms_client,
         &id,
         unwrap,
         wrapping_key_id,

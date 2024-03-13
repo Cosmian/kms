@@ -3,7 +3,7 @@ use std::{array::TryFromSliceError, str::Utf8Error};
 use thiserror::Error;
 
 use cosmian_kmip::{kmip::kmip_operations::ErrorReason, KmipError};
-use cosmian_kms_client::RestClientError;
+use cosmian_kms_client::ClientError;
 
 pub mod result;
 
@@ -93,8 +93,8 @@ impl From<std::string::FromUtf8Error> for Pkcs11Error {
     }
 }
 
-impl From<RestClientError> for Pkcs11Error {
-    fn from(e: RestClientError) -> Self {
+impl From<ClientError> for Pkcs11Error {
+    fn from(e: ClientError) -> Self {
         Self::KmsClientError(e.to_string())
     }
 }
