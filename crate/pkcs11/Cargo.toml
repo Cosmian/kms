@@ -17,6 +17,7 @@ native-pkcs11 = { path = "native-pkcs11/native-pkcs11" }
 native-pkcs11-traits = { path = "native-pkcs11/native-pkcs11-traits" }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-error = "0.2.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
