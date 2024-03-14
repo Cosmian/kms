@@ -19,6 +19,7 @@ mod error;
 mod export_utils;
 mod import_utils;
 mod kms_rest_client;
+mod message_utils;
 mod result;
 
 pub use cosmian_kmip;

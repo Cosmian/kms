@@ -5,16 +5,7 @@ use std::{
     time::Duration,
 };
 
-use http::{HeaderMap, HeaderValue, StatusCode};
-use josekit::{
-    jwe::{alg::ecdh_es::EcdhEsJweAlgorithm, JweHeader, serialize_compact},
-    jwk::Jwk,
-};
-use log::debug;
-use reqwest::{Client, ClientBuilder, Identity, Response};
-use rustls::{Certificate, client::WebPkiVerifier};
-use serde::{Deserialize, Serialize};
-
+use cosmian_kmip::kmip::kmip_messages::{Message, MessageResponse};
 // re-export the kmip module as kmip
 use cosmian_kmip::kmip::{
     kmip_operations::{
@@ -384,6 +375,19 @@ impl KmsRestClient {
     /// Deactivation Date is set to the current date and time.
     pub async fn revoke(&self, request: Revoke) -> Result<RevokeResponse, ClientError> {
         self.post_ttlv::<Revoke, RevokeResponse>(&request).await
+    }
+
+    /// This operation requests the server to send a message, which is a list of operations,
+    /// to the server.
+    ///The messages in the protocol consist of a message header, one or more batch items
+    /// (which contain OPTIONAL message payloads), and OPTIONAL message extensions.
+    /// The message headers contain fields whose presence is determined
+    /// by the protocol features used (e.g., asynchronous responses).
+    /// The field contents are also determined by whether the message is a request or a response.
+    /// The message payload is determined by the specific operation being requested
+    /// or to which is being replied.
+    pub async fn message(&self, request: Message) -> Result<MessageResponse, ClientError> {
+        self.post_ttlv::<Message, MessageResponse>(&request).await
     }
 
     /// This operation requests the server to create a new database.
