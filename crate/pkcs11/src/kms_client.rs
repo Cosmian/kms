@@ -4,7 +4,7 @@ use cosmian_kmip::kmip::{
     kmip_operations::Locate,
     kmip_types::{Attributes, KeyFormatType},
 };
-use cosmian_kms_client::{ClientConf, export_object, KmsRestClient};
+use cosmian_kms_client::{batch_export_objects, ClientConf, export_object, KmsRestClient};
 
 use crate::error::Pkcs11Error;
 
@@ -27,11 +27,33 @@ async fn get_pkcs11_keys_async(
     tags: &[String],
 ) -> Result<Vec<Pkcs11Key>, Pkcs11Error> {
     let key_ids = locate_keys(kms_client, tags).await?;
-    let mut keys = Vec::new();
-    for keyid in key_ids {
-        let key = export_key(kms_client, &[keyid.clone()]).await?;
-        keys.push(key);
-    }
+    let results = batch_export_objects(
+        kms_client,
+        key_ids,
+        true,
+        None,
+        false,
+        Some(KeyFormatType::Raw),
+    )
+    .await?;
+    let keys = results
+        .into_iter()
+        .map(|result| {
+            result.map(|(object, attributes)| {
+                let key_bytes = object.key_block()?.key_bytes()?;
+                let other_tags = attributes
+                    .get_tags()
+                    .into_iter()
+                    .filter(|t| !(t.is_empty() || tags.contains(t) || t.starts_with('_')))
+                    .collect::<Vec<String>>()
+                    .join(",");
+                Pkcs11Key {
+                    value: key_bytes,
+                    label: other_tags,
+                }
+            })
+        })
+        .collect::<Result<Vec<Pkcs11Key>, String>>()?;
     Ok(keys)
 }
 

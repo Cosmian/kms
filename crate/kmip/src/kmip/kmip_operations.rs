@@ -8,8 +8,6 @@ use serde::{
 use strum::Display;
 use zeroize::Zeroizing;
 
-use crate::error::KmipError;
-
 use super::{
     kmip_data_structures::KeyWrappingSpecification,
     kmip_objects::{Object, ObjectType},
@@ -20,9 +18,10 @@ use super::{
         UniqueIdentifier,
     },
 };
+use crate::error::KmipError;
 
 #[allow(non_camel_case_types)]
-#[derive(Serialize, Deserialize, Copy, Clone, Display, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Display, Debug, Eq, PartialEq, Default)]
 pub enum ErrorReason {
     Item_Not_Found = 0x0000_0001,
     Response_Too_Large = 0x0000_0002,
@@ -94,6 +93,7 @@ pub enum ErrorReason {
     Unknown_Object_Group = 0x0000_004A,
     Constraint_Violation = 0x0000_004B,
     Duplicate_Process_Request = 0x0000_004C,
+    #[default]
     General_Failure = 0x0000_0100,
 }
 
@@ -607,7 +607,7 @@ impl Export {
     /// ```
     #[must_use]
     pub fn new(
-        uid: &str,
+        uid: UniqueIdentifier,
         unwrap: bool,
         key_wrapping_specification: Option<KeyWrappingSpecification>,
         key_format_type: Option<KeyFormatType>,
@@ -622,7 +622,7 @@ impl Export {
         };
 
         Self {
-            unique_identifier: Some(UniqueIdentifier::TextString(uid.to_string())),
+            unique_identifier: Some(uid),
             key_format_type,
             key_wrap_type,
             key_compression_type: None,
