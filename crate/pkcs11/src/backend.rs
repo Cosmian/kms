@@ -18,12 +18,15 @@ pub struct CkmsBackend {
 }
 
 impl CkmsBackend {
+    /// Instantiate a new CkmsBackend using the `kms.json` file in the local default directory.
     pub fn instantiate() -> Result<Self, Pkcs11Error> {
         Ok(CkmsBackend {
             kms_client: get_kms_client()?,
         })
     }
 
+    /// Instantiate a new CkmsBackend using the provided `ClientConf`.
+    #[allow(dead_code)]
     pub fn instantiate_from_client_conf(client_conf: ClientConf) -> Result<Self, Pkcs11Error> {
         Ok(CkmsBackend {
             kms_client: client_conf.initialize_kms_client()?,
