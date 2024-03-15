@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use cosmian_kms_client_tests::start_test_server_with_options;
+use kms_test_server::start_test_server_with_options;
 
 use super::utils::recover_cmd_logs;
 use crate::{

@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
-use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
+use kms_test_server::{start_default_test_kms_server, ONCE};
 use tempfile::TempDir;
 
 use super::SUB_COMMAND;

@@ -1,10 +1,10 @@
 [package]
-name = "cosmian_kms_client_tests"
+name = "kms_test_server"
 version = "4.13.3"
 edition = "2021"
 
 [lib]
-name = "cosmian_kms_client_tests"
+name = "kms_test_server"
 crate-type = ["dylib"]
 
 [dependencies]

@@ -15,7 +15,7 @@ use cosmian_kms_client::cosmian_kmip::{
     },
 };
 use cosmian_kms_client::{read_object_from_json_ttlv_file, write_kmip_object_to_file};
-use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
+use kms_test_server::{start_default_test_kms_server, ONCE};
 use tempfile::TempDir;
 use tracing::debug;
 

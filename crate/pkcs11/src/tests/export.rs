@@ -1,4 +1,4 @@
-use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
+use kms_test_server::{start_default_test_kms_server, ONCE};
 
 use crate::error::Pkcs11Error;
 

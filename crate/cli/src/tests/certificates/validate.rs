@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
+use kms_test_server::{start_default_test_kms_server, ONCE};
 use tempfile::TempDir;
 use tracing::debug;
 

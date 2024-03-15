@@ -7,7 +7,7 @@ use cloudproof::reexport::crypto_core::{
     CsRng,
 };
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
-use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
+use kms_test_server::{start_default_test_kms_server, ONCE};
 
 use super::SUB_COMMAND;
 use crate::{

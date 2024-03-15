@@ -7,7 +7,7 @@ use cosmian_kms_client::cosmian_kmip::kmip::{
     ttlv::{deserializer::from_ttlv, TTLV},
 };
 use cosmian_kms_client::{read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
-use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
+use kms_test_server::{start_default_test_kms_server, ONCE};
 use openssl::{nid::Nid, x509::X509};
 use tempfile::TempDir;
 use uuid::Uuid;

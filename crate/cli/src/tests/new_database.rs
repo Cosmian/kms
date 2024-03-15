@@ -2,7 +2,7 @@ use std::process::Command;
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::{write_json_object_to_file, KMS_CLI_CONF_ENV};
-use cosmian_kms_client_tests::{
+use kms_test_server::{
     generate_invalid_conf, start_default_test_kms_server, start_test_server_with_options, ONCE,
 };
 use predicates::prelude::*;
