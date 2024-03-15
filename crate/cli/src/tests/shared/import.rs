@@ -5,9 +5,9 @@ use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
 use cosmian_kms_client::cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 use cosmian_kms_client::{read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
+#[cfg(not(feature = "fips"))]
 use kms_test_server::{start_default_test_kms_server, ONCE};
 
-#[cfg(not(feature = "fips"))]
 #[cfg(not(feature = "fips"))]
 use crate::tests::{
     cover_crypt::master_key_pair::create_cc_master_key_pair,
