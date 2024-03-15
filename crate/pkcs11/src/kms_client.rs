@@ -1,16 +1,66 @@
-use zeroize::Zeroizing;
+use std::{ffi::CString, sync::RwLock};
 
 use cosmian_kmip::kmip::{
     kmip_operations::Locate,
     kmip_types::{Attributes, KeyFormatType},
 };
-use cosmian_kms_client::{batch_export_objects, ClientConf, export_object, KmsClient};
+use cosmian_kms_client::{batch_export_objects, export_object, ClientConf, KmsClient};
+use native_pkcs11_traits::DataObject;
+use sha3::Digest;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::error::Pkcs11Error;
 
-pub struct Pkcs11Key {
-    value: Zeroizing<Vec<u8>>,
-    label: String,
+#[derive(Debug)]
+pub struct Pkcs11DataObject {
+    pub value: RwLock<Zeroizing<Vec<u8>>>,
+    pub label: String,
+}
+
+impl Zeroize for Pkcs11DataObject {
+    fn zeroize(&mut self) {
+        self.value
+            .write()
+            .expect("failed locking the Data Object value")
+            .zeroize();
+    }
+}
+
+impl DataObject for Pkcs11DataObject {
+    fn value(&self) -> Zeroizing<Vec<u8>> {
+        self.value
+            .read()
+            .expect("failed locking the Data Object value")
+            .clone()
+    }
+
+    fn application(&self) -> CString {
+        CString::new(b"Cosmian KMS PKCS11 provider").unwrap_or_default()
+    }
+
+    fn data_hash(&self) -> Vec<u8> {
+        // create a SHA3-256 object
+        let mut hasher = sha3::Sha3_256::new();
+        hasher.update(
+            self.value
+                .read()
+                .expect("failed locking the Data Object value")
+                .as_slice(),
+        );
+        let result = hasher.finalize();
+        result.to_vec()
+    }
+
+    fn label(&self) -> String {
+        self.label.clone()
+    }
+
+    fn delete(&self) {
+        self.value
+            .write()
+            .expect("failed locking the Data Object value")
+            .zeroize();
+    }
 }
 
 pub fn get_kms_client() -> Result<KmsClient, Pkcs11Error> {
@@ -23,21 +73,21 @@ pub fn get_kms_client() -> Result<KmsClient, Pkcs11Error> {
 pub fn get_pkcs11_keys(
     kms_client: &KmsClient,
     tags: &[String],
-) -> Result<Vec<Pkcs11Key>, Pkcs11Error> {
+) -> Result<Vec<Pkcs11DataObject>, Pkcs11Error> {
     tokio::runtime::Runtime::new()?.block_on(get_pkcs11_keys_async(kms_client, tags))
 }
 
-async fn get_pkcs11_keys_async(
+pub(crate) async fn get_pkcs11_keys_async(
     kms_client: &KmsClient,
     tags: &[String],
-) -> Result<Vec<Pkcs11Key>, Pkcs11Error> {
+) -> Result<Vec<Pkcs11DataObject>, Pkcs11Error> {
     let key_ids = locate_keys(kms_client, tags).await?;
     let responses = batch_export_objects(
         kms_client,
         key_ids,
         true,
         None,
-        false,
+        true,
         Some(KeyFormatType::Raw),
     )
     .await?;
@@ -52,8 +102,8 @@ async fn get_pkcs11_keys_async(
                     .filter(|t| !(t.is_empty() || tags.contains(t) || t.starts_with('_')))
                     .collect::<Vec<String>>()
                     .join(",");
-                results.push(Pkcs11Key {
-                    value: key_bytes,
+                results.push(Pkcs11DataObject {
+                    value: RwLock::from(key_bytes),
                     label: other_tags,
                 });
             }
@@ -65,7 +115,10 @@ async fn get_pkcs11_keys_async(
     Ok(results)
 }
 
-async fn export_key(kms_client: &KmsClient, tags: &[String]) -> Result<Pkcs11Key, Pkcs11Error> {
+async fn export_key(
+    kms_client: &KmsClient,
+    tags: &[String],
+) -> Result<Pkcs11DataObject, Pkcs11Error> {
     let id = serde_json::to_string(&tags)?;
     let unwrap = true;
     let wrapping_key_id = None;
@@ -90,8 +143,8 @@ async fn export_key(kms_client: &KmsClient, tags: &[String]) -> Result<Pkcs11Key
         .collect::<Vec<String>>()
         .join(",");
 
-    Ok(Pkcs11Key {
-        value: key_bytes,
+    Ok(Pkcs11DataObject {
+        value: RwLock::from(key_bytes),
         label: other_tags,
     })
 }

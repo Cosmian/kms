@@ -1,15 +1,33 @@
+use std::sync::Arc;
+
+use cosmian_kms_client::{ClientConf, KmsClient};
 use native_pkcs11_traits::{
     Backend, Certificate, DataObject, KeyAlgorithm, PrivateKey, PublicKey, SearchOptions,
     SignatureAlgorithm,
 };
-use std::sync::Arc;
 use tracing::trace;
+use zeroize::Zeroizing;
 
-pub struct CkmsBackend {}
+use crate::{
+    error::Pkcs11Error,
+    kms_client::{get_kms_client, get_pkcs11_keys},
+};
+
+pub struct CkmsBackend {
+    kms_client: KmsClient,
+}
 
 impl CkmsBackend {
-    pub fn new() -> Self {
-        CkmsBackend {}
+    pub fn instantiate() -> Result<Self, Pkcs11Error> {
+        Ok(CkmsBackend {
+            kms_client: get_kms_client()?,
+        })
+    }
+
+    pub fn instantiate_from_client_conf(client_conf: ClientConf) -> Result<Self, Pkcs11Error> {
+        Ok(CkmsBackend {
+            kms_client: client_conf.initialize_kms_client()?,
+        })
     }
 }
 
@@ -47,6 +65,7 @@ impl Backend for CkmsBackend {
         trace!("find_public_key: {:?}", query);
         Ok(None)
     }
+
     fn find_all_private_keys(&self) -> native_pkcs11_traits::Result<Vec<Arc<dyn PrivateKey>>> {
         trace!("find_all_private_keys");
         Ok(vec![])
@@ -67,10 +86,13 @@ impl Backend for CkmsBackend {
 
     fn find_all_data_objects(&self) -> native_pkcs11_traits::Result<Vec<Arc<dyn DataObject>>> {
         trace!("find_all_data_objects");
-        Ok(vec![
-            Arc::new(TestDataObjectVol1 {}),
-            Arc::new(TestDataObjectVol2 {}),
-        ])
+        let disk_encryption_tag = std::env::var("COSMIAN_PKCS11_DISK_ENCRYPTION_TAG")
+            .unwrap_or("disk-encryption".to_string());
+        let keys = get_pkcs11_keys(&self.kms_client, &[disk_encryption_tag])?;
+        Ok(keys
+            .into_iter()
+            .map(|dao| -> Arc<dyn DataObject> { Arc::new(dao) })
+            .collect())
     }
 
     fn generate_key(
@@ -112,8 +134,8 @@ impl PrivateKey for PrivateKeyImpl {
 struct TestDataObjectVol1 {}
 
 impl DataObject for TestDataObjectVol1 {
-    fn value(&self) -> Vec<u8> {
-        vec![1, 2, 3, 4]
+    fn value(&self) -> Zeroizing<Vec<u8>> {
+        Zeroizing::new(vec![1, 2, 3, 4])
     }
 
     fn application(&self) -> std::ffi::CString {
@@ -133,9 +155,9 @@ impl DataObject for TestDataObjectVol1 {
 
 struct TestDataObjectVol2 {}
 
-impl DataObject for crate::backend::TestDataObjectVol2 {
-    fn value(&self) -> Vec<u8> {
-        vec![4, 5, 6, 7]
+impl DataObject for TestDataObjectVol2 {
+    fn value(&self) -> Zeroizing<Vec<u8>> {
+        Zeroizing::new(vec![4, 5, 6, 7])
     }
 
     fn application(&self) -> std::ffi::CString {

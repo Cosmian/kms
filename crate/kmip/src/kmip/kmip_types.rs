@@ -17,16 +17,18 @@ use openssl::{
 };
 use serde::{
     de::{self, MapAccess, Visitor},
-    Deserialize,
-    ser::SerializeStruct, Serialize,
+    ser::SerializeStruct,
+    Deserialize, Serialize,
 };
 use strum::{Display, EnumIter, EnumString};
 
-use crate::error::KmipError;
+use super::kmip_objects::ObjectType;
 #[cfg(feature = "openssl")]
 use crate::kmip_error;
-
-use super::kmip_objects::ObjectType;
+use crate::{
+    error::KmipError,
+    kmip::extra::{tagging::VENDOR_ATTR_TAG, VENDOR_ID_COSMIAN},
+};
 
 /// 4.7
 /// The Certificate Type attribute is a type of certificate (e.g., X.509).
@@ -1203,6 +1205,15 @@ pub struct VendorAttributeReference {
 pub enum AttributeReference {
     Vendor(VendorAttributeReference),
     Standard(Tag),
+}
+
+impl AttributeReference {
+    pub fn tags_reference() -> Self {
+        AttributeReference::Vendor(VendorAttributeReference {
+            vendor_identification: VENDOR_ID_COSMIAN.to_string(),
+            attribute_name: VENDOR_ATTR_TAG.to_string(),
+        })
+    }
 }
 
 #[allow(non_camel_case_types)]

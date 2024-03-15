@@ -96,6 +96,12 @@ impl From<std::fmt::Error> for Pkcs11Error {
     }
 }
 
+impl From<Box<dyn std::error::Error>> for Pkcs11Error {
+    fn from(e: Box<dyn std::error::Error>) -> Self {
+        Self::Default(e.to_string())
+    }
+}
+
 /// Return early with an error if a condition is not satisfied.
 ///
 /// This macro is equivalent to `if !$cond { return Err(From::from($err)); }`.
