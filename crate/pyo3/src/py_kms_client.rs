@@ -24,7 +24,7 @@ use cosmian_kmip::{
     },
     KmipResultHelper,
 };
-use cosmian_kms_client::KmsClient;
+use cosmian_kms_client::KmsClient as RustKmsClient;
 use openssl::x509::X509;
 use pyo3::{
     exceptions::{PyException, PyTypeError},
@@ -80,7 +80,7 @@ impl FromPyObject<'_> for ToUniqueIdentifier {
 }
 
 #[pyclass(subclass)]
-pub struct KmsClient(KmsClient);
+pub struct KmsClient(RustKmsClient);
 
 #[pymethods]
 impl KmsClient {
@@ -127,7 +127,7 @@ impl KmsClient {
             )),
             None => None,
         };
-        let kms_connector = KmsClient::instantiate(
+        let kms_connector = RustKmsClient::instantiate(
             server_url,
             api_key,
             client_pkcs12_path,
