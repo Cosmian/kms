@@ -3,12 +3,12 @@ use std::{fs::File, io::prelude::*, path::PathBuf};
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip::{kmip_operations::Encrypt, kmip_types::UniqueIdentifier},
-    KmsRestClient,
+    RestClient,
 };
+use cosmian_kms_client::{read_bytes_from_file, KmsClient};
 use zeroize::Zeroizing;
 
 use crate::{
-    actions::shared::utils::read_bytes_from_file,
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -43,7 +43,7 @@ pub struct EncryptCertificateAction {
 }
 
 impl EncryptCertificateAction {
-    pub async fn run(&self, client_connector: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, client_connector: &KmsClient) -> Result<(), CliError> {
         // Read the file to encrypt
         let data = Zeroizing::from(read_bytes_from_file(&self.input_file)?);
 

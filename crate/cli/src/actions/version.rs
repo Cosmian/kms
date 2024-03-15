@@ -1,7 +1,8 @@
 use clap::Parser;
-use cosmian_kms_client::KmsRestClient;
 
-use crate::error::{result::CliResultHelper, CliError};
+use cosmian_kms_client::KmsClient;
+
+use crate::error::{CliError, result::CliResultHelper};
 
 /// Print the version of the server
 #[derive(Parser, Debug)]
@@ -9,7 +10,7 @@ use crate::error::{result::CliResultHelper, CliError};
 pub struct ServerVersionAction;
 
 impl ServerVersionAction {
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let version = kms_rest_client
             .version()
             .await

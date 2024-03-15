@@ -7,6 +7,7 @@ use std::{
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
 use tempfile::TempDir;
 use tracing::debug;
 
@@ -17,7 +18,7 @@ use crate::{
     tests::{
         certificates::{import::import_certificate, openssl::check_certificate},
         shared::locate,
-        utils::{extract_uids::extract_uid, recover_cmd_logs, start_default_test_kms_server, ONCE},
+        utils::{extract_uids::extract_uid, recover_cmd_logs},
         PROG_NAME,
     },
 };
@@ -197,7 +198,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.into_path();
     // let tmp_path = std::path::Path::new("./");
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     let ca = "RootCA/SubCA";
     let hierarchical_depth = ca.split('/').count();
     let tags = &["certificate"];
@@ -206,7 +207,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
     {
         let subject = "My server".to_owned();
         let certificate_id = certify(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             ca,
             Some(subject),
             None,
@@ -215,7 +216,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
         )?;
 
         // Count the number of KMIP objects created
-        let ids = locate(&ctx.owner_cli_conf_path, Some(tags), None, None, None)?;
+        let ids = locate(&ctx.owner_client_conf_path, Some(tags), None, None, None)?;
         // Expected 3 kmip objects per certificate (including public and private keys):
         // - 1 public key, 1 private key and 1 certificate for the root CA
         // - 1 public key, 1 private key and 1 certificate for the sub CA
@@ -227,7 +228,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
         {
             let subject = "My server Number 2".to_owned();
             let _certificate_id = certify(
-                &ctx.owner_cli_conf_path,
+                &ctx.owner_client_conf_path,
                 ca,
                 Some(subject),
                 None,
@@ -236,7 +237,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
             )?;
         }
 
-        let ids = locate(&ctx.owner_cli_conf_path, Some(tags), None, None, None)?;
+        let ids = locate(&ctx.owner_client_conf_path, Some(tags), None, None, None)?;
         // Expected 3 more kmip objects:
         // - 1 public key, 1 private key and 1 certificate for this new certificate
         assert_eq!(ids.len(), 3 * (hierarchical_depth + 2));
@@ -245,7 +246,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
         debug!("\n\n\ntest_certify: export");
         let export_filename = tmp_path.join("output.p12").to_str().unwrap().to_owned();
         export(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             SUB_COMMAND,
             None,
             &certificate_id,
@@ -261,7 +262,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
         // Export certificate as PEM only
         let export_filename = tmp_path.join("cert.pem").to_str().unwrap().to_owned();
         export(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             SUB_COMMAND,
             None,
             &certificate_id,
@@ -277,7 +278,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
         // Export certificate as RAW KMIP TTLV
         let export_filename = tmp_path.join("ttlv.json").to_str().unwrap().to_owned();
         export(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             SUB_COMMAND,
             None,
             &certificate_id,
@@ -290,7 +291,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
         // Export root CA certificate as PEM only
         let export_filename = tmp_path.join("root.pem").to_str().unwrap().to_owned();
         export(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             SUB_COMMAND,
             Some(&["_cert", "_cert_ca=RootCA"]),
             &certificate_id,
@@ -306,7 +307,7 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
         // Export sub CA certificate as PEM only
         let export_filename = tmp_path.join("subca.pem").to_str().unwrap().to_owned();
         export(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             SUB_COMMAND,
             Some(&["_cert", "_cert_ca=SubCA"]),
             &certificate_id,
@@ -321,12 +322,12 @@ pub async fn test_certify_with_subject_cn() -> Result<(), CliError> {
 
         // Revoke it
         revoke(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             SUB_COMMAND,
             &certificate_id,
             "cert revocation test",
         )?;
-        destroy(&ctx.owner_cli_conf_path, SUB_COMMAND, &certificate_id).unwrap();
+        destroy(&ctx.owner_client_conf_path, SUB_COMMAND, &certificate_id).unwrap();
     }
 
     Ok(())
@@ -339,7 +340,7 @@ pub async fn test_certify_with_csr() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let _tmp_path = tmp_dir.into_path();
     // let tmp_path = std::path::Path::new("./");
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     let ca = "RootCA/SubCA";
     let _hierarchical_depth = ca.split('/').count();
     let tags = &["certificate"];
@@ -347,7 +348,7 @@ pub async fn test_certify_with_csr() -> Result<(), CliError> {
     // import the intermediate certificate
     {
         import_certificate(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             "certificates",
             "test_data/certificates/csr/intermediate.p12",
             CertificateInputFormat::Pkcs12,
@@ -367,7 +368,7 @@ pub async fn test_certify_with_csr() -> Result<(), CliError> {
     {
         let _subject = "My server";
         let _certificate_id = certify(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             ca,
             None,
             Some(csr),

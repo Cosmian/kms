@@ -1,3 +1,10 @@
+pub use destroy::destroy;
+pub use export::export_key;
+pub use get_attributes::get_attributes;
+pub use import::import_key;
+pub use locate::locate;
+pub use revoke::revoke;
+
 mod destroy;
 mod export;
 mod get_attributes;
@@ -9,10 +16,3 @@ mod locate;
 mod revoke;
 #[cfg(all(not(feature = "fips"), feature = "openssl"))]
 mod wrap_unwrap;
-
-pub use destroy::destroy;
-pub use export::export_key;
-pub use get_attributes::get_attributes;
-pub use import::import_key;
-pub use locate::locate;
-pub use revoke::revoke;

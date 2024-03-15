@@ -10,7 +10,7 @@ use cosmian_kms_client::{
     KmsRestClient,
 };
 
-use crate::{batch_utils::batch_operations, ClientError, KmsRestClient, RestClientResultHelper};
+use crate::{batch_utils::batch_operations, ClientError, ClientResultHelper, KmsClient};
 
 fn export_request(
     object_id_or_tags: &str,
@@ -81,7 +81,7 @@ fn key_wrapping_specification(
 /// * If the object cannot be exported
 /// * If the object cannot be written to a file
 pub async fn export_object(
-    kms_rest_client: &KmsRestClient,
+    kms_rest_client: &KmsClient,
     object_id_or_tags: &str,
     unwrap: bool,
     wrapping_key_id: Option<&str>,
@@ -128,7 +128,7 @@ pub async fn export_object(
 /// In the case of a query for non-revoked objects, the attributes are tentatively extracted from the object.
 /// If the object export failed, the result is an error message.
 pub async fn batch_export_objects(
-    kms_rest_client: &KmsRestClient,
+    kms_rest_client: &KmsClient,
     object_ids_or_tags: Vec<String>,
     unwrap: bool,
     wrapping_key_id: Option<&str>,
@@ -154,7 +154,7 @@ pub async fn batch_export_objects(
     Ok(response
         .into_iter()
         .map(|result| {
-            result.and_then(|item| match item.operation_enum() {
+            result.and_then(|operation| match operation {
                 Operation::ExportResponse(export) => Ok((
                     Object::post_fix(export.object_type, export.object),
                     export.attributes,

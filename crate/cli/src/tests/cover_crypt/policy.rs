@@ -2,6 +2,7 @@ use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
 use predicates::prelude::*;
 use tempfile::TempDir;
 
@@ -14,16 +15,16 @@ use crate::{
             user_decryption_keys::create_user_decryption_key,
             SUB_COMMAND,
         },
-        utils::{recover_cmd_logs, start_default_test_kms_server, ONCE},
+        utils::recover_cmd_logs,
         PROG_NAME,
     },
 };
 
 #[tokio::test]
 async fn test_view_policy() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec![
         "policy",
@@ -39,7 +40,7 @@ async fn test_view_policy() -> Result<(), CliError> {
         .stdout(predicate::str::contains("R&D"));
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec![
         "policy",
@@ -60,9 +61,9 @@ async fn test_view_policy() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_create_policy() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
-    cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_cli_conf_path);
+    cmd.env(KMS_CLI_CONF_ENV, &ctx.owner_client_conf_path);
     cmd.env("RUST_LOG", "cosmian_kms_cli=info");
     cmd.arg(SUB_COMMAND).args(vec![
         "policy",
@@ -86,7 +87,7 @@ pub async fn rename(
     attribute: &str,
     new_name: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_init(start_default_test_kms_server).await;
+    ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -114,7 +115,7 @@ pub async fn add(
     master_private_key_id: &str,
     new_attribute: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_init(start_default_test_kms_server).await;
+    ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -141,7 +142,7 @@ pub async fn disable(
     master_private_key_id: &str,
     attribute: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_init(start_default_test_kms_server).await;
+    ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -168,7 +169,7 @@ pub async fn remove(
     master_private_key_id: &str,
     attribute: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_init(start_default_test_kms_server).await;
+    ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -192,7 +193,7 @@ pub async fn remove(
 
 #[tokio::test]
 async fn test_edit_policy() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -204,20 +205,20 @@ async fn test_edit_policy() -> Result<(), CliError> {
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
     )?;
     let user_decryption_key = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
     )?;
 
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         &master_public_key_id,
         "Department::MKG && Security Level::Confidential",
@@ -227,7 +228,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[cipher_file.to_str().unwrap()],
         &user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
@@ -236,7 +237,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
 
     // Rename MKG to Marketing
     rename(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "Department::MKG",
         "Marketing",
@@ -245,7 +246,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
 
     // the user key should still be able to decrypt marketing file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[cipher_file.to_str().unwrap()],
         &user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
@@ -254,7 +255,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
 
     // Adding new attribute "Department::Sales"
     add(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "Department::Sales",
     )
@@ -262,7 +263,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
 
     // Encrypt message for the new attribute
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         &master_public_key_id,
         "Department::Sales && Security Level::Confidential",
@@ -272,7 +273,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
 
     // Create a new user key with access to both the new and the renamed attribute
     let sales_mkg_user_decryption_key = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::Sales || Department::Marketing) && Security Level::Confidential",
         &[],
@@ -281,7 +282,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
     // finance and marketing user can not decrypt the sales file
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             &[new_cipher_file.to_str().unwrap()],
             &user_decryption_key,
             Some(recovered_file.to_str().unwrap()),
@@ -292,7 +293,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
 
     // sales and marketing user can decrypt the sales file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[new_cipher_file.to_str().unwrap()],
         &sales_mkg_user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
@@ -301,7 +302,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
 
     // disable attribute Sales
     disable(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "Department::Sales",
     )
@@ -310,7 +311,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
     // can no longer encrypt for this attribute
     assert!(
         encrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             &[input_file.to_str().unwrap()],
             &master_public_key_id,
             "Department::Sales && Security Level::Confidential",
@@ -322,7 +323,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
 
     // can still decrypt existing sales files
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[new_cipher_file.to_str().unwrap()],
         &sales_mkg_user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
@@ -331,7 +332,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
 
     // remove attribute Sales
     remove(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "Department::Sales",
     )
@@ -340,7 +341,7 @@ async fn test_edit_policy() -> Result<(), CliError> {
     // can no longer decrypt message for this attribute
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             &[new_cipher_file.to_str().unwrap()],
             &sales_mkg_user_decryption_key,
             Some(recovered_file.to_str().unwrap()),

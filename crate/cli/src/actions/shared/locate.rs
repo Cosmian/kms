@@ -10,10 +10,17 @@ use cosmian_kms_client::{
         kmip_types::{
             Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
         },
+use strum::IntoEnumIterator;
+
+use cosmian_kmip::kmip::{
+    kmip_operations::Locate,
+    kmip_types::{
+        Attributes, CryptographicAlgorithm, KeyFormatType, LinkedObjectIdentifier, LinkType,
     },
     KmsRestClient,
 };
 use strum::IntoEnumIterator;
+use cosmian_kms_client::KmsClient;
 
 use crate::error::CliError;
 
@@ -76,7 +83,7 @@ pub struct LocateObjectsAction {
 
 impl LocateObjectsAction {
     /// Export a key from the KMS
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let mut attributes = Attributes::default();
 
         if let Some(crypto_algo) = self.cryptographic_algorithm {

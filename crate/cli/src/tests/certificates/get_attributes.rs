@@ -1,20 +1,21 @@
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
+
 use crate::{
     actions::{certificates::CertificateInputFormat, shared::AttributeTag},
-    tests::{
-        certificates::import::import_certificate,
-        shared::get_attributes,
-        utils::{start_default_test_kms_server, ONCE},
-    },
+    tests::{certificates::import::import_certificate, shared::get_attributes},
 };
 
 #[tokio::test]
 async fn test_get_attributes_p12() {
     // Create a test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE
+        .get_or_try_init(start_default_test_kms_server)
+        .await
+        .unwrap();
 
     //import the certificate
     let imported_p12_sk_uid = import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/intermediate.p12",
         CertificateInputFormat::Pkcs12,
@@ -30,7 +31,7 @@ async fn test_get_attributes_p12() {
 
     //get the attributes of the private key and check that they are correct
     let attributes = get_attributes(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &imported_p12_sk_uid,
         &[
             AttributeTag::KeyFormatType,
@@ -53,7 +54,7 @@ async fn test_get_attributes_p12() {
 
     //get the attributes of the certificate and check that they are correct
     let attributes = get_attributes(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         intermediate_certificate_id,
         &[
             AttributeTag::KeyFormatType,

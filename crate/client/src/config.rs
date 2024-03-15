@@ -12,7 +12,7 @@ use x509_cert::Certificate as X509Certificate;
 
 use crate::{
     error::{ClientError, result::RestClientResultHelper},
-    KmsRestClient,
+    KmsClient,
 };
 
 /// Returns the path to the current user's home folder.
@@ -198,9 +198,9 @@ impl ClientConf {
         Ok(conf)
     }
 
-    pub fn initialize_kms_client(&self) -> Result<KmsRestClient, ClientError> {
+    pub fn initialize_kms_client(&self) -> Result<KmsClient, ClientError> {
         // Instantiate a KMS server REST client with the given configuration
-        let kms_rest_client = KmsRestClient::instantiate(
+        let kms_rest_client = KmsClient::instantiate(
             &self.kms_server_url,
             self.kms_access_token.as_deref(),
             self.ssl_client_pkcs12_path.as_deref(),

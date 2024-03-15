@@ -117,4 +117,5 @@ actix-http = "3.4"
 pem = "3.0.3"
 
 [build-dependencies]
+actix-http = "3.4"
 time = { workspace = true, features = ["local-offset", "formatting"] }

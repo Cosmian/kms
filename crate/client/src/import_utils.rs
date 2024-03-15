@@ -8,14 +8,14 @@ use cosmian_kms_client::{
 };
 use tracing::trace;
 
-use crate::{ClientError, KmsRestClient, RestClientResultHelper};
+use crate::{ClientError, ClientResultHelper, KmsClient};
 
 /// Import an Object into the KMS
 ///
 /// If the `import_attributes` are not specified,
 /// the attributes of the object are used, if any.
 pub async fn import_object<'a, T: IntoIterator<Item = impl AsRef<str>>>(
-    kms_rest_client: &KmsRestClient,
+    kms_rest_client: &KmsClient,
     object_id: Option<String>,
     object: Object,
     import_attributes: Option<Attributes>,

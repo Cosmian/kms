@@ -4,7 +4,7 @@ use cosmian_kmip::kmip::{
     kmip_types::ProtocolVersion,
 };
 
-use crate::{ClientError, KmsRestClient};
+use crate::{ClientError, KmsClient};
 
 /// Uses the KMIP Message interface to send a batch of operations to the KMS.
 /// The operations are sent in a single request and the response is a list of results.
@@ -14,7 +14,7 @@ use crate::{ClientError, KmsRestClient};
 /// If the operation failed, the result is an error message.
 /// The response list is guaranteed to have the same length as the operations list.
 pub async fn batch_operations(
-    kms_rest_client: &KmsRestClient,
+    kms_rest_client: &KmsClient,
     operations: Vec<Operation>,
 ) -> Result<Vec<Result<Operation, String>>, ClientError> {
     let request = Message {

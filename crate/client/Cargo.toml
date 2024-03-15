@@ -18,6 +18,8 @@ openssl = ["cosmian_kmip/openssl"]
 base64 = { workspace = true }
 ## use the non-openssl version
 cosmian_kmip = { path = "../kmip", default-features = true }
+cloudproof = { workspace = true }
+der = { workspace = true }
 http = { workspace = true }
 log = "0.4"
 reqwest = { workspace = true, features = [

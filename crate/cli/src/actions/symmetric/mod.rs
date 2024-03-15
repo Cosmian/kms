@@ -1,12 +1,14 @@
+use clap::Parser;
+
+use cosmian_kms_client::KmsClient;
+
+use crate::error::CliError;
+
+use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
+
 mod decrypt;
 mod encrypt;
 mod keys;
-
-use clap::Parser;
-use cosmian_kms_client::KmsRestClient;
-
-use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
-use crate::error::CliError;
 
 /// Manage symmetric keys. Encrypt and decrypt data.
 #[derive(Parser)]
@@ -18,7 +20,7 @@ pub enum SymmetricCommands {
 }
 
 impl SymmetricCommands {
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         match self {
             Self::Keys(command) => command.process(kms_rest_client).await?,
             Self::Encrypt(action) => action.run(kms_rest_client).await?,

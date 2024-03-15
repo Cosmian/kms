@@ -15,6 +15,9 @@ pub enum ClientError {
     #[error(transparent)]
     Base64DecodeError(#[from] base64::DecodeError),
 
+    #[error("Invalid conversion: {0}")]
+    Conversion(String),
+
     #[error("{0}")]
     Default(String),
 
@@ -88,17 +91,23 @@ impl From<KmipError> for ClientError {
     }
 }
 
+impl From<cloudproof::reexport::crypto_core::CryptoCoreError> for ClientError {
+    fn from(e: cloudproof::reexport::crypto_core::CryptoCoreError) -> Self {
+        Self::UnexpectedError(e.to_string())
+    }
+}
+
 /// Construct a server error from a string.
 #[macro_export]
 macro_rules! client_error {
     ($msg:literal) => {
-        $crate::error::ClientError::Default(::core::format_args!($msg).to_string())
+        $crate::ClientError::Default(::core::format_args!($msg).to_string())
     };
     ($err:expr $(,)?) => ({
-        $crate::error::ClientError::Default($err.to_string())
+        $crate::ClientError::Default($err.to_string())
     });
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::error::ClientError::Default(::core::format_args!($fmt, $($arg)*).to_string())
+        $crate::ClientError::Default(::core::format_args!($fmt, $($arg)*).to_string())
     };
 }
 

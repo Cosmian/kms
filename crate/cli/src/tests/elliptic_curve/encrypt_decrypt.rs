@@ -1,22 +1,18 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
 use predicates::prelude::*;
 use tempfile::TempDir;
 
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
-
+use super::SUB_COMMAND;
 use crate::{
-    actions::shared::utils::read_bytes_from_file,
     error::CliError,
     tests::{
-        elliptic_curve::create_key_pair::create_ec_key_pair,
-        PROG_NAME,
-        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
+        elliptic_curve::create_key_pair::create_ec_key_pair, utils::recover_cmd_logs, PROG_NAME,
     },
 };
-
-use super::SUB_COMMAND;
 
 /// Encrypts a file using the given public key and access policy.
 pub fn encrypt(
@@ -83,7 +79,7 @@ pub fn decrypt(
 
 #[tokio::test]
 async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -96,10 +92,10 @@ async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
     assert!(!output_file.exists());
 
     let (private_key_id, public_key_id) =
-        create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &[])?;
+        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &[])?;
 
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         &public_key_id,
         Some(output_file.to_str().unwrap()),
@@ -108,7 +104,7 @@ async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
         &private_key_id,
         Some(recovered_file.to_str().unwrap()),
@@ -125,7 +121,7 @@ async fn test_encrypt_decrypt_using_ids() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -138,10 +134,10 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
     assert!(!output_file.exists());
 
     let (_private_key_id, _public_key_id) =
-        create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &["tag_ec"])?;
+        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &["tag_ec"])?;
 
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         "[\"tag_ec\"]",
         Some(output_file.to_str().unwrap()),
@@ -150,7 +146,7 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
         "[\"tag_ec\"]",
         Some(recovered_file.to_str().unwrap()),

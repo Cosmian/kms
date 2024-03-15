@@ -3,7 +3,9 @@ use cosmian_kms_client::{
     cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request, KmsRestClient,
 };
 
-use crate::error::{result::CliResultHelper, CliError};
+use cosmian_kms_client::KmsClient;
+
+use crate::error::{CliError, result::CliResultHelper};
 
 /// Create a new RSA key pair
 ///

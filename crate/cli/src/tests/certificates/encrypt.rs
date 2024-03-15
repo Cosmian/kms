@@ -1,27 +1,26 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
 use tempfile::TempDir;
 use tracing::debug;
 use uuid::Uuid;
 
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
-
+use super::SUB_COMMAND;
 use crate::{
     actions::{
         certificates::CertificateInputFormat,
-        shared::{ExportKeyFormat, import_key::ImportKeyFormat, utils::read_bytes_from_file},
+        shared::{import_key::ImportKeyFormat, ExportKeyFormat},
     },
     error::CliError,
     tests::{
         certificates::import::import_certificate,
-        PROG_NAME,
         shared::{export_key, import_key},
-        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
+        utils::recover_cmd_logs,
+        PROG_NAME,
     },
 };
-
-use super::SUB_COMMAND;
 
 /// Encrypts a file using the given public key and access policy.
 pub fn encrypt(
@@ -85,7 +84,7 @@ pub fn decrypt(
 
 // #[tokio::test]
 // async fn test_certificate_encrypt_decrypt_certify() -> Result<(), CliError> {
-//     let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+//      let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 //     // create a temp dir
 //     let tmp_dir = TempDir::new()?;
 //     let tmp_path = tmp_dir.path();
@@ -100,7 +99,7 @@ pub fn decrypt(
 //     assert!(!output_file.exists());
 //
 //     let certificate_id = certify(
-//         &ctx.owner_cli_conf_path,
+//         &ctx.owner_client_conf_path,
 //         "CA",
 //         Some("My server".to_string()),
 //         None,
@@ -109,7 +108,7 @@ pub fn decrypt(
 //     )?;
 //
 //     encrypt(
-//         &ctx.owner_cli_conf_path,
+//         &ctx.owner_client_conf_path,
 //         input_file.to_str().unwrap(),
 //         &certificate_id,
 //         Some(output_file.to_str().unwrap()),
@@ -122,7 +121,7 @@ pub fn decrypt(
 //         &format!("_cert_uid={certificate_id}"),
 //     ];
 //     let ids = locate(
-//         &ctx.owner_cli_conf_path,
+//         &ctx.owner_client_conf_path,
 //         Some(priv_key_tags),
 //         Some("ECDH"),
 //         None,
@@ -133,7 +132,7 @@ pub fn decrypt(
 //
 //     // the user key should be able to decrypt the file
 //     decrypt(
-//         &ctx.owner_cli_conf_path,
+//         &ctx.owner_client_conf_path,
 //         output_file.to_str().unwrap(),
 //         &private_key_id,
 //         Some(recovered_file.to_str().unwrap()),
@@ -156,7 +155,7 @@ async fn test_certificate_import_encrypt(
     key_path: &str,
     tags: &[&str],
 ) -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -170,7 +169,7 @@ async fn test_certificate_import_encrypt(
 
     debug!("\n\nImport Key");
     let private_key_id = import_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &format!("test_data/certificates/{key_path}"),
         Some(ImportKeyFormat::Pem),
@@ -184,7 +183,7 @@ async fn test_certificate_import_encrypt(
     )?;
 
     let root_certificate_id = import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         &format!("test_data/certificates/{ca_path}"),
         CertificateInputFormat::Pem,
@@ -198,7 +197,7 @@ async fn test_certificate_import_encrypt(
     )?;
 
     let _subca_certificate_id = import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         &format!("test_data/certificates/{subca_path}"),
         CertificateInputFormat::Pem,
@@ -212,7 +211,7 @@ async fn test_certificate_import_encrypt(
     )?;
 
     let certificate_id = import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         &format!("test_data/certificates/{cert_path}"),
         CertificateInputFormat::Pem,
@@ -227,7 +226,7 @@ async fn test_certificate_import_encrypt(
 
     debug!("\n\nEncrypt With Certificate");
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         input_file.to_str().unwrap(),
         &certificate_id,
         Some(output_file.to_str().unwrap()),
@@ -237,7 +236,7 @@ async fn test_certificate_import_encrypt(
     debug!("\n\nDecrypt");
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
         &private_key_id,
         Some(recovered_file.to_str().unwrap()),
@@ -267,7 +266,7 @@ async fn test_certificate_import_ca_and_encrypt_using_x25519() -> Result<(), Cli
 
 async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
     // log_init("cosmian_kms_cli=info,cosmian_kms_server=debug");
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -285,7 +284,7 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
 
     debug!("\n\nImport Private key");
     let private_key_id = import_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &format!("test_data/certificates/openssl/{filename}-private-key.pem"),
         Some(ImportKeyFormat::Pem),
@@ -300,7 +299,7 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
 
     debug!("\n\nImport Certificate");
     let certificate_id = import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         &format!("test_data/certificates/openssl/{filename}-cert.pem"),
         CertificateInputFormat::Pem,
@@ -315,7 +314,7 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
 
     debug!("\n\nEncrypt with certificate");
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         input_file.to_str().unwrap(),
         &certificate_id,
         Some(output_file.to_str().unwrap()),
@@ -329,7 +328,7 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
         .unwrap()
         .to_owned();
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &private_key_id,
         &private_key_wrapped,
@@ -341,7 +340,7 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
 
     debug!("\n\nImport a wrapped Private key but unwrap it into server");
     import_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &private_key_wrapped,
         Some(ImportKeyFormat::JsonTtlv),
@@ -353,7 +352,7 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
 
     debug!("\n\nImport a wrapped Private key but let is save it `as registered` into server");
     let wrapped_private_key_uid = import_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &private_key_wrapped,
         Some(ImportKeyFormat::JsonTtlv),
@@ -370,7 +369,7 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
         .unwrap()
         .to_owned();
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &wrapped_private_key_uid,
         &private_key_wrapped_as_is,
@@ -383,7 +382,7 @@ async fn import_encrypt_decrypt(filename: &str) -> Result<(), CliError> {
     debug!("\n\nDecrypt using Private key");
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
         &private_key_id,
         Some(recovered_file.to_str().unwrap()),

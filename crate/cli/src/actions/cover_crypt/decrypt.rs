@@ -7,13 +7,16 @@ use cosmian_kms_client::{
         kmip::{kmip_operations::DecryptedData, kmip_types::CryptographicAlgorithm},
     },
     KmsRestClient,
+    read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_decrypted_data,
+    write_single_decrypted_data, KmsClient,
 };
-
 use crate::{
     actions::shared::utils::{
         read_bytes_from_file, read_bytes_from_files_to_bulk, write_bulk_decrypted_data,
         write_single_decrypted_data,
     },
+
+use crate::{
     cli_bail,
     error::{result::CliResultHelper, CliError},
 };
@@ -47,7 +50,7 @@ pub struct DecryptAction {
 }
 
 impl DecryptAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         // Read the file(s) to decrypt
         let (cryptographic_algorithm, data) = if self.input_files.len() > 1 {
             (
@@ -102,18 +105,20 @@ impl DecryptAction {
             .try_into()?;
 
         // Write the decrypted files
-        if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
-            write_bulk_decrypted_data(
-                &metadata_and_cleartext.plaintext,
-                &self.input_files,
-                self.output_file.as_ref(),
-            )
-        } else {
-            write_single_decrypted_data(
-                &metadata_and_cleartext.plaintext,
-                &self.input_files[0],
-                self.output_file.as_ref(),
-            )
-        }
+        Ok(
+            if cryptographic_algorithm == CryptographicAlgorithm::CoverCryptBulk {
+                write_bulk_decrypted_data(
+                    &metadata_and_cleartext.plaintext,
+                    &self.input_files,
+                    self.output_file.as_ref(),
+                )?
+            } else {
+                write_single_decrypted_data(
+                    &metadata_and_cleartext.plaintext,
+                    &self.input_files[0],
+                    self.output_file.as_ref(),
+                )?
+            },
+        )
     }
 }

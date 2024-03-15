@@ -1,7 +1,5 @@
 use std::{
-    io::Write,
     path::PathBuf,
-    process::{Command, Output, Stdio},
     sync::mpsc,
     thread::{self, JoinHandle},
     time::Duration,
@@ -16,12 +14,16 @@ use tokio::sync::OnceCell;
 use tracing::trace;
 
 use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
-use cosmian_kms_client::{ClientConf, KMS_CLI_CONF_ENV};
+use cosmian_kms_client::{
+    client_bail, client_error, write_json_object_to_file, ClientConf, ClientError, KmsClient,
+};
 use cosmian_kms_server::{
     config::{ClapConfig, DBConfig, HttpConfig, HttpParams, JwtAuthConfig, ServerParams},
     core::extra_database_params::ExtraDatabaseParams,
     kms_server::start_kms_server,
 };
+use tokio::sync::OnceCell;
+use tracing::trace;
 
 use crate::{
     actions::shared::utils::write_json_object_to_file, cli_bail, error::CliError, tests::PROG_NAME,
@@ -33,29 +35,7 @@ use super::extract_uids::extract_database_secret;
 const AUTH0_JWT_ISSUER_URI: &str = "https://kms-cosmian.eu.auth0.com/";
 const AUTH0_TOKEN: &str = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IjVVU1FrSVlULW9QMWZrcjQtNnRrciJ9.eyJuaWNrbmFtZSI6InRlY2giLCJuYW1lIjoidGVjaEBjb3NtaWFuLmNvbSIsInBpY3R1cmUiOiJodHRwczovL3MuZ3JhdmF0YXIuY29tL2F2YXRhci81MmZiMzFjOGNjYWQzNDU4MTIzZDRmYWQxNDA4NTRjZj9zPTQ4MCZyPXBnJmQ9aHR0cHMlM0ElMkYlMkZjZG4uYXV0aDAuY29tJTJGYXZhdGFycyUyRnRlLnBuZyIsInVwZGF0ZWRfYXQiOiIyMDIzLTA1LTMwVDA5OjMxOjExLjM4NloiLCJlbWFpbCI6InRlY2hAY29zbWlhbi5jb20iLCJlbWFpbF92ZXJpZmllZCI6ZmFsc2UsImlzcyI6Imh0dHBzOi8va21zLWNvc21pYW4uZXUuYXV0aDAuY29tLyIsImF1ZCI6IkszaXhldXhuVDVrM0Roa0tocWhiMXpYbjlFNjJGRXdJIiwiaWF0IjoxNjg1NDM5MDc0LCJleHAiOjE2ODU0NzUwNzQsInN1YiI6ImF1dGgwfDYzZDNkM2VhOTNmZjE2NDJjNzdkZjkyOCIsInNpZCI6ImJnVUNuTTNBRjVxMlpaVHFxMTZwclBCMi11Z0NNaUNPIiwibm9uY2UiOiJVRUZWTlZWeVluWTVUbHBwWjJScGNqSmtVMEZ4TmxkUFEwc3dTVGMwWHpaV2RVVmtkVnBEVGxSMldnPT0ifQ.HmU9fFwZ-JjJVlSy_PTei3ys0upeWQbWWiESmKBtRSClGnAXJNCpwuP4Jw7fgKn-8IBf-PYmP1_54u2Rw3RcJFVl7EblVoGMghYxVq5hViGpd00st3VwZmyCwOUz2CE5RBnBAoES4C8xA3zWg6oau0xjFQbC3jNU20eyFYMDewXA8UXCHQrEiQ56ylqSbyqlBbQIWbmOO4m5w2WDkx0bVyyJ893JfIJr_NANEQMJITYo8Mp_iHCyKp7llsfgCt07xN8ZqnsrMsJ15zC1n50bHGrTQisxURS1dpuFXF1hfrxhzogxYMX8CEISjsFgROjPY84GRMmvpYZfyaJbDDql3A";
 
-pub fn get_auth0_jwt_config() -> JwtAuthConfig {
-    JwtAuthConfig {
-        jwt_issuer_uri: Some(AUTH0_JWT_ISSUER_URI.to_owned()),
-        jwks_uri: None,
-        jwt_audience: None,
-    }
-}
-
-/// Recover output logs from a command call `cmd` and re-inject it into stdio
-pub(crate) fn recover_cmd_logs(cmd: &mut Command) -> Output {
-    let output = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .unwrap();
-    std::io::stdout()
-        .write_all(format!("\r\x1b[K{}", String::from_utf8_lossy(&output.stdout)).as_bytes())
-        .unwrap();
-    std::io::stderr()
-        .write_all(format!("\r\x1b[K{}", String::from_utf8_lossy(&output.stderr)).as_bytes())
-        .unwrap();
-    output
-}
+use crate::test_jwt::{get_auth0_jwt_config, AUTH0_TOKEN, JWE_PRIVATE_KEY_JSON};
 
 /// In order to run most tests in parallel,
 /// we use that to avoid to try to start N KMS servers (one per test)
@@ -65,18 +45,19 @@ pub(crate) fn recover_cmd_logs(cmd: &mut Command) -> Output {
 pub static ONCE: OnceCell<TestsContext> = OnceCell::const_new();
 
 pub struct TestsContext {
-    pub owner_cli_conf_path: String,
-    pub user_cli_conf_path: String,
-    pub owner_cli_conf: ClientConf,
+    pub owner_client_conf_path: String,
+    pub user_client_conf_path: String,
+    pub owner_client_conf: ClientConf,
     pub server_handle: ServerHandle,
-    pub thread_handle: JoinHandle<Result<(), CliError>>,
+    pub thread_handle: JoinHandle<Result<(), ClientError>>,
 }
 
 impl TestsContext {
-    pub async fn stop_server(self) {
+    pub async fn stop_server(self) -> Result<(), ClientError> {
         self.server_handle.stop(false).await;
-        self.thread_handle.join().unwrap().unwrap();
-        println!("Server stopped\n");
+        self.thread_handle
+            .join()
+            .map_err(|_e| client_error!("failed joining th stop thread"))?
     }
 }
 
@@ -98,47 +79,47 @@ pub async fn start_test_server_with_options(
         .unwrap();
 
     // Create a (object owner) conf
-    let (owner_cli_conf_path, mut owner_cli_conf) = generate_owner_conf(&server_params).unwrap();
+    let (owner_client_conf_path, mut owner_client_conf) = generate_owner_conf(&server_params)?;
+    let kms_client = owner_client_conf.initialize_kms_client()?;
 
     println!(
         "Starting KMS test server at URL: {} with server params {:?}",
-        owner_cli_conf.kms_server_url, &server_params
+        owner_client_conf.kms_server_url, &server_params
     );
 
     let (server_handle, thread_handle) =
         start_test_kms_server(server_params).expect("Can't start KMS server");
 
     // wait for the server to be up
-    wait_for_server_to_start(&owner_cli_conf_path)
+    wait_for_server_to_start(&kms_client)
         .await
         .expect("server timeout");
 
     // Configure a database and create the kms json file
-    let database_secret =
-        create_new_database(&owner_cli_conf_path).expect("failed configuring a database");
+    let database_secret = kms_client.new_database().await?;
 
     // Rewrite the conf with the correct database secret
-    owner_cli_conf.kms_database_secret = Some(database_secret);
-    write_json_object_to_file(&owner_cli_conf, &owner_cli_conf_path)
+    owner_client_conf.kms_database_secret = Some(database_secret);
+    write_json_object_to_file(&owner_client_conf, &owner_client_conf_path)
         .expect("Can't write owner CLI conf path");
 
     // generate a user conf
-    let user_cli_conf_path =
-        generate_user_conf(port, &owner_cli_conf).expect("Can't generate user conf");
+    let user_client_conf_path =
+        generate_user_conf(port, &owner_client_conf).expect("Can't generate user conf");
 
-    TestsContext {
-        owner_cli_conf_path,
-        user_cli_conf_path,
-        owner_cli_conf,
+    Ok(TestsContext {
+        owner_client_conf_path,
+        user_client_conf_path,
+        owner_client_conf,
         server_handle,
         thread_handle,
-    }
+    })
 }
 
 /// Start a test KMS server with the given config in a separate thread
 fn start_test_kms_server(
     server_params: ServerParams,
-) -> Result<(ServerHandle, JoinHandle<Result<(), CliError>>), CliError> {
+) -> Result<(ServerHandle, JoinHandle<Result<(), ClientError>>), ClientError> {
     let (tx, rx) = mpsc::channel::<ServerHandle>();
 
     let thread_handle = thread::spawn(move || {
@@ -147,7 +128,7 @@ fn start_test_kms_server(
             .enable_all()
             .build()?
             .block_on(start_kms_server(server_params, Some(tx)))
-            .map_err(|e| CliError::ServerError(e.to_string()))
+            .map_err(|e| ClientError::UnexpectedError(e.to_string()))
     });
     trace!("Waiting for test KMS server to start...");
     let server_handle = rx
@@ -157,22 +138,8 @@ fn start_test_kms_server(
     Ok((server_handle, thread_handle))
 }
 
-/// Create a new database and return the database secret
-pub fn fetch_version(cli_conf_path: &str) -> Result<String, CliError> {
-    // Configure a database and create the kms json file
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect("Can't execute the server-version command");
-    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg("server-version");
-
-    let success = cmd.assert().success();
-    let output = success.get_output();
-    let version: &str = std::str::from_utf8(&output.stdout).expect("Can't recover command output");
-
-    Ok(version.to_owned())
-}
-
 /// Wait for the server to start by reading the version
-async fn wait_for_server_to_start(cli_conf_path: &str) -> Result<(), CliError> {
+async fn wait_for_server_to_start(kms_client: &KmsClient) -> Result<(), ClientError> {
     // Depending on the running environment, the server could take a bit of time to start
     // We try to query it with a dummy request until be sure it is started.
     let mut retry = true;
@@ -180,8 +147,7 @@ async fn wait_for_server_to_start(cli_conf_path: &str) -> Result<(), CliError> {
     let mut waiting = 1;
     while retry {
         print!("...checking if the server is up...");
-        let result = fetch_version(cli_conf_path);
-
+        let result = kms_client.version().await;
         if result.is_err() {
             timeout -= 1;
             retry = timeout >= 0;
@@ -191,7 +157,7 @@ async fn wait_for_server_to_start(cli_conf_path: &str) -> Result<(), CliError> {
                 waiting *= 2;
             } else {
                 println!("The server is still not up, stop trying");
-                cli_bail!("Can't start the kms server to run tests");
+                client_bail!("Can't start the kms server to run tests");
             }
         } else {
             println!("UP!");
@@ -199,24 +165,6 @@ async fn wait_for_server_to_start(cli_conf_path: &str) -> Result<(), CliError> {
         }
     }
     Ok(())
-}
-
-/// Create a new database and return the database secret
-pub fn create_new_database(cli_conf_path: &str) -> Result<String, CliError> {
-    // Configure a database and create the kms json file
-    let mut cmd = Command::cargo_bin(PROG_NAME).expect("Can't execute new database command");
-    cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
-    cmd.arg("new-database");
-
-    let success = cmd.assert().success();
-    let output = success.get_output();
-    let stdout: &str = std::str::from_utf8(&output.stdout).expect("Can't recover command output");
-
-    // Get the secret
-    let database_secret =
-        extract_database_secret(stdout).expect("Can't extract database secret from cmd output");
-
-    Ok(database_secret.to_owned())
 }
 
 async fn generate_server_params(
@@ -241,19 +189,19 @@ async fn generate_server_params(
             if use_client_cert {
                 HttpConfig {
                     port,
-                    https_p12_file: Some(PathBuf::from(
-                        "test_data/certificates/kmserver.acme.com.p12",
-                    )),
+                    https_p12_file: Some(
+                        root_dir.join("certificates/server/kmserver.acme.com.p12"),
+                    ),
                     https_p12_password: Some("password".to_string()),
-                    authority_cert_file: Some(PathBuf::from("test_data/certificates/ca.crt")),
+                    authority_cert_file: Some(root_dir.join("certificates/server/ca.crt")),
                     ..Default::default()
                 }
             } else {
                 HttpConfig {
                     port,
-                    https_p12_file: Some(PathBuf::from(
-                        "test_data/certificates/kmserver.acme.com.p12",
-                    )),
+                    https_p12_file: Some(
+                        root_dir.join("certificates/server/kmserver.acme.com.p12"),
+                    ),
                     https_p12_password: Some("password".to_string()),
                     ..Default::default()
                 }
@@ -268,16 +216,19 @@ async fn generate_server_params(
     };
     ServerParams::try_from(&clap_config)
         .await
-        .map_err(|e| CliError::Default(format!("failed initializing the server config: {e}")))
+        .map_err(|e| ClientError::Default(format!("failed initializing the server config: {e}")))
 }
 
-fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientConf), CliError> {
+fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientConf), ClientError> {
+    // This create root dir
+    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
     // Create a conf
-    let owner_cli_conf_path = format!("/tmp/owner_kms_{}.json", server_params.port);
+    let owner_client_conf_path = format!("/tmp/owner_kms_{}.json", server_params.port);
 
     // Generate a CLI Conf.
     // We will update it later by appending the database secret
-    let owner_cli_conf = ClientConf {
+    let owner_client_conf = ClientConf {
         kms_server_url: if matches!(server_params.http_params, HttpParams::Https(_)) {
             format!("https://0.0.0.0:{}", server_params.port)
         } else {
@@ -291,10 +242,16 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientCo
         },
         ssl_client_pkcs12_path: if server_params.client_cert.is_some() {
             #[cfg(not(target_os = "macos"))]
-            let p = "test_data/certificates/owner.client.acme.com.p12".to_string();
+            let p = root_dir.join("certificates/owner/owner.client.acme.com.p12");
             #[cfg(target_os = "macos")]
-            let p = "test_data/certificates/owner.client.acme.com.old.format.p12".to_string();
-            Some(p)
+            let p = root_dir.join("certificates/owner/owner.client.acme.com.old.format.p12");
+            Some(
+                p.to_str()
+                    .ok_or(ClientError::Default(
+                        "Can't convert path to string".to_string(),
+                    ))?
+                    .to_string(),
+            )
         } else {
             None
         },
@@ -307,21 +264,30 @@ fn generate_owner_conf(server_params: &ServerParams) -> Result<(String, ClientCo
         ..Default::default()
     };
     // write the conf to a file
-    write_json_object_to_file(&owner_cli_conf, &owner_cli_conf_path)
+    write_json_object_to_file(&owner_client_conf, &owner_client_conf_path)
         .expect("Can't write owner CLI conf path");
 
-    Ok((owner_cli_conf_path, owner_cli_conf))
+    Ok((owner_client_conf_path, owner_client_conf))
 }
 
 /// Generate a user configuration for user.client@acme.com and return the file path
-fn generate_user_conf(port: u16, owner_cli_conf: &ClientConf) -> Result<String, CliError> {
-    let mut user_conf = owner_cli_conf.clone();
+fn generate_user_conf(port: u16, owner_client_conf: &ClientConf) -> Result<String, ClientError> {
+    // This create root dir
+    let root_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    let mut user_conf = owner_client_conf.clone();
     user_conf.ssl_client_pkcs12_path = {
         #[cfg(not(target_os = "macos"))]
-        let p = "test_data/certificates/user.client.acme.com.p12".to_string();
+        let p = root_dir.join("certificates/user/user.client.acme.com.p12");
         #[cfg(target_os = "macos")]
-        let p = "test_data/certificates/user.client.acme.com.old.format.p12".to_string();
-        Some(p)
+        let p = root_dir.join("certificates/user/user.client.acme.com.old.format.p12");
+        Some(
+            p.to_str()
+                .ok_or(ClientError::Default(
+                    "Can't convert path to string".to_string(),
+                ))?
+                .to_string(),
+        )
     };
     user_conf.ssl_client_pkcs12_password = Some("password".to_string());
 
@@ -334,7 +300,7 @@ fn generate_user_conf(port: u16, owner_cli_conf: &ClientConf) -> Result<String, 
 }
 
 /// Generate an invalid configuration by changin the database secret  and return the file path
-pub(crate) fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
+pub fn generate_invalid_conf(correct_conf: &ClientConf) -> String {
     // Create a new database key
     let db_key = Secret::<AES_256_GCM_KEY_LENGTH>::new_random()
         .expect("Failed to generate rand bytes for generate_invalid_conf");

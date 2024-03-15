@@ -4,11 +4,16 @@ use cosmian_kmip::kmip::{
     kmip_operations::Locate,
     kmip_types::{Attributes, KeyFormatType},
 };
-use cosmian_kms_client::{batch_export_objects, ClientConf, export_object, KmsRestClient};
+use cosmian_kms_client::{batch_export_objects, ClientConf, export_object, KmsClient};
 
 use crate::error::Pkcs11Error;
 
-pub fn get_kms_client() -> Result<KmsRestClient, Pkcs11Error> {
+pub struct Pkcs11Key {
+    value: Zeroizing<Vec<u8>>,
+    label: String,
+}
+
+pub fn get_kms_client() -> Result<KmsClient, Pkcs11Error> {
     let conf_path = ClientConf::location(None)?;
     let conf = ClientConf::load(&conf_path)?;
     let kms_client = conf.initialize_kms_client()?;
@@ -16,18 +21,18 @@ pub fn get_kms_client() -> Result<KmsRestClient, Pkcs11Error> {
 }
 
 pub fn get_pkcs11_keys(
-    kms_client: &KmsRestClient,
+    kms_client: &KmsClient,
     tags: &[String],
-) -> Result<Vec<String>, Pkcs11Error> {
-    tokio::runtime::Runtime::new()?.block_on(locate_keys(kms_client, tags))
+) -> Result<Vec<Pkcs11Key>, Pkcs11Error> {
+    tokio::runtime::Runtime::new()?.block_on(get_pkcs11_keys_async(kms_client, tags))
 }
 
 async fn get_pkcs11_keys_async(
-    kms_client: &KmsRestClient,
+    kms_client: &KmsClient,
     tags: &[String],
 ) -> Result<Vec<Pkcs11Key>, Pkcs11Error> {
     let key_ids = locate_keys(kms_client, tags).await?;
-    let results = batch_export_objects(
+    let responses = batch_export_objects(
         kms_client,
         key_ids,
         true,
@@ -36,10 +41,10 @@ async fn get_pkcs11_keys_async(
         Some(KeyFormatType::Raw),
     )
     .await?;
-    let keys = results
-        .into_iter()
-        .map(|result| {
-            result.map(|(object, attributes)| {
+    let mut results = vec![];
+    for response in &responses {
+        match response {
+            Ok((object, attributes)) => {
                 let key_bytes = object.key_block()?.key_bytes()?;
                 let other_tags = attributes
                     .get_tags()
@@ -47,22 +52,20 @@ async fn get_pkcs11_keys_async(
                     .filter(|t| !(t.is_empty() || tags.contains(t) || t.starts_with('_')))
                     .collect::<Vec<String>>()
                     .join(",");
-                Pkcs11Key {
+                results.push(Pkcs11Key {
                     value: key_bytes,
                     label: other_tags,
-                }
-            })
-        })
-        .collect::<Result<Vec<Pkcs11Key>, String>>()?;
-    Ok(keys)
+                });
+            }
+            Err(e) => {
+                return Err(Pkcs11Error::ServerError(e.to_string()));
+            }
+        }
+    }
+    Ok(results)
 }
 
-struct Pkcs11Key {
-    value: Zeroizing<Vec<u8>>,
-    label: String,
-}
-
-async fn export_key(kms_client: &KmsRestClient, tags: &[String]) -> Result<Pkcs11Key, Pkcs11Error> {
+async fn export_key(kms_client: &KmsClient, tags: &[String]) -> Result<Pkcs11Key, Pkcs11Error> {
     let id = serde_json::to_string(&tags)?;
     let unwrap = true;
     let wrapping_key_id = None;
@@ -93,10 +96,7 @@ async fn export_key(kms_client: &KmsRestClient, tags: &[String]) -> Result<Pkcs1
     })
 }
 
-async fn locate_keys(
-    kms_client: &KmsRestClient,
-    tags: &[String],
-) -> Result<Vec<String>, Pkcs11Error> {
+async fn locate_keys(kms_client: &KmsClient, tags: &[String]) -> Result<Vec<String>, Pkcs11Error> {
     let mut attributes = Attributes::default();
     attributes.set_tags(tags)?;
 

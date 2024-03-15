@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::{
@@ -14,15 +14,14 @@ use cosmian_kms_client::{
     },
     KmsRestClient,
 };
-use cosmian_kms_client::{export_object, KmsRestClient};
+use cosmian_kms_client::{
+    export_object, read_object_from_json_ttlv_file, write_kmip_object_to_file, KmsClient,
+};
 
 use crate::{
-    actions::shared::{
-        SYMMETRIC_WRAPPING_KEY_SIZE,
-        utils::{read_object_from_json_ttlv_file, write_kmip_object_to_file},
-    },
+    actions::shared::SYMMETRIC_WRAPPING_KEY_SIZE,
     cli_bail,
-    error::{CliError, result::CliResultHelper},
+    error::{result::CliResultHelper, CliError},
 };
 
 /// Locally wrap a key in KMIP JSON TTLV format.
@@ -66,7 +65,7 @@ pub struct WrapKeyAction {
 }
 
 impl WrapKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         // read the key file
         let mut object = read_object_from_json_ttlv_file(&self.key_file_in)?;
 

@@ -1,15 +1,19 @@
-mod decrypt;
-mod encrypt;
-mod keys;
-
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, HashingAlgorithm},
     KmsRestClient,
 };
 
-use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
+use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, HashingAlgorithm};
+use cosmian_kms_client::KmsClient;
+
 use crate::error::CliError;
+
+use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
+
+mod decrypt;
+mod encrypt;
+mod keys;
 
 /// Manage RSA keys.
 #[derive(Parser)]
@@ -21,7 +25,7 @@ pub enum RsaCommands {
 }
 
 impl RsaCommands {
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         match self {
             Self::Keys(command) => command.process(kms_rest_client).await?,
             Self::Encrypt(action) => action.run(kms_rest_client).await?,

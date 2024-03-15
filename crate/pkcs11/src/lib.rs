@@ -21,3 +21,6 @@ pub unsafe extern "C" fn C_GetFunctionList(pp_function_list: CK_FUNCTION_LIST_PT
     unsafe { *pp_function_list = addr_of_mut!(FUNC_LIST) };
     CKR_OK
 }
+
+#[cfg(test)]
+mod tests;

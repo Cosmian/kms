@@ -1,5 +1,11 @@
 use clap::Subcommand;
-use cosmian_kms_client::KmsRestClient;
+
+use cosmian_kms_client::KmsClient;
+
+use crate::{
+    actions::shared::{ExportKeyAction, ImportKeyAction, UnwrapKeyAction, WrapKeyAction},
+    error::CliError,
+};
 
 use self::{
     create_key_pair::CreateMasterKeyPairAction,
@@ -39,7 +45,7 @@ pub enum KeysCommands {
 }
 
 impl KeysCommands {
-    pub async fn process(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn process(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         match self {
             Self::CreateMasterKeyPair(action) => action.run(kms_rest_client).await?,
             Self::CreateUserKey(action) => action.run(kms_rest_client).await?,

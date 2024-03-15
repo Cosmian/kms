@@ -1,9 +1,9 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use tempfile::TempDir;
-
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
+use tempfile::TempDir;
 
 use crate::{
     error::CliError,
@@ -11,13 +11,13 @@ use crate::{
         cover_crypt::{
             encrypt_decrypt::{decrypt, encrypt},
             master_key_pair::create_cc_master_key_pair,
-            SUB_COMMAND,
             user_decryption_keys::create_user_decryption_key,
+            SUB_COMMAND,
         },
-        PROG_NAME,
         shared::{export_key, import_key},
         symmetric::create_key::create_symmetric_key,
-        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
+        utils::recover_cmd_logs,
+        PROG_NAME,
     },
 };
 
@@ -26,7 +26,7 @@ pub async fn rekey(
     master_private_key_id: &str,
     access_policy: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_init(start_default_test_kms_server).await;
+    ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -53,7 +53,7 @@ pub async fn prune(
     master_private_key_id: &str,
     access_policy: &str,
 ) -> Result<(), CliError> {
-    ONCE.get_or_init(start_default_test_kms_server).await;
+    ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     let mut cmd = Command::cargo_bin(PROG_NAME)?;
     cmd.env(KMS_CLI_CONF_ENV, cli_conf_path);
@@ -77,17 +77,17 @@ pub async fn prune(
 
 #[tokio::test]
 async fn test_rekey_error() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
     )?;
     let _user_decryption_key = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
@@ -96,7 +96,7 @@ async fn test_rekey_error() -> Result<(), CliError> {
     // bad attributes
     assert!(
         rekey(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             &master_private_key_id,
             "bad_access_policy"
         )
@@ -107,7 +107,7 @@ async fn test_rekey_error() -> Result<(), CliError> {
     // bad keys
     assert!(
         rekey(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             "bad_key",
             "Department::MKG || Department::FIN"
         )
@@ -121,11 +121,12 @@ async fn test_rekey_error() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // create a symmetric key
-    let symmetric_key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
+    let symmetric_key_id =
+        create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
     // export a wrapped key
     let exported_wrapped_key_file = tmp_path.join("exported_wrapped_master_private.key");
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         SUB_COMMAND,
         &master_private_key_id,
         exported_wrapped_key_file.to_str().unwrap(),
@@ -136,7 +137,7 @@ async fn test_rekey_error() -> Result<(), CliError> {
     )?;
     // import it wrapped
     let wrapped_key_id = import_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         SUB_COMMAND,
         &exported_wrapped_key_file.to_string_lossy(),
         None,
@@ -148,7 +149,7 @@ async fn test_rekey_error() -> Result<(), CliError> {
     // Rekeying wrapped keys is not allowed
     assert!(
         rekey(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             &wrapped_key_id,
             "Department::MKG || Department::FIN"
         )
@@ -161,7 +162,7 @@ async fn test_rekey_error() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_rekey_prune() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -173,20 +174,20 @@ async fn test_rekey_prune() -> Result<(), CliError> {
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
     )?;
     let user_decryption_key = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
     )?;
 
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         &master_public_key_id,
         "Department::MKG && Security Level::Confidential",
@@ -196,7 +197,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[output_file_before.to_str().unwrap()],
         &user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
@@ -206,7 +207,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
     // export the user_decryption_key
     let exported_user_decryption_key_file = tmp_path.join("exported_user_decryption.key");
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         SUB_COMMAND,
         &user_decryption_key,
         exported_user_decryption_key_file.to_str().unwrap(),
@@ -218,7 +219,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
 
     // rekey the attributes
     rekey(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "Department::MKG || Department::FIN",
     )
@@ -226,7 +227,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
 
     // encrypt again after rekeying
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         &master_public_key_id,
         "Department::MKG && Security Level::Confidential",
@@ -236,7 +237,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the new file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[output_file_after.to_str().unwrap()],
         &user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
@@ -244,7 +245,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
     )?;
     // ... and the old file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[output_file_before.to_str().unwrap()],
         &user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
@@ -253,7 +254,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
 
     // import the non rotated user_decryption_key
     let old_user_decryption_key = import_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         SUB_COMMAND,
         &exported_user_decryption_key_file.to_string_lossy(),
         None,
@@ -265,7 +266,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
     // the imported user key should not be able to decrypt the new file
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             &[output_file_after.to_str().unwrap()],
             &old_user_decryption_key,
             Some(recovered_file.to_str().unwrap()),
@@ -275,7 +276,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
     );
     // ... but should decrypt the old file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[output_file_before.to_str().unwrap()],
         &old_user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
@@ -284,7 +285,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
 
     // prune the attributes
     prune(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "Department::MKG || Department::FIN",
     )
@@ -292,7 +293,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the new file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[output_file_after.to_str().unwrap()],
         &user_decryption_key,
         Some(recovered_file.to_str().unwrap()),
@@ -302,7 +303,7 @@ async fn test_rekey_prune() -> Result<(), CliError> {
     // but no longer the old file
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             &[output_file_before.to_str().unwrap()],
             &user_decryption_key,
             Some(recovered_file.to_str().unwrap()),

@@ -6,10 +6,12 @@ use cosmian_kms_client::{
     KmsRestClient,
 };
 
+use cosmian_kms_client::KmsClient;
+
 use crate::{
     actions::cover_crypt::policy::{policy_from_binary_file, policy_from_json_file},
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::{CliError, result::CliResultHelper},
 };
 
 /// Create a new master key pair for a given policy and return the key IDs.
@@ -64,7 +66,7 @@ pub struct CreateMasterKeyPairAction {
 }
 
 impl CreateMasterKeyPairAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         // Parse the json policy file
         let policy = if let Some(specs_file) = &self.policy_specifications_file {
             policy_from_json_file(specs_file)?

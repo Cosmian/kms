@@ -31,7 +31,7 @@ use cosmian_kmip::{
     },
     KmipResultHelper,
 };
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::KmsClient;
 
 use crate::py_kms_object::{KmsEncryptResponse, KmsObject};
 
@@ -81,7 +81,7 @@ impl FromPyObject<'_> for ToUniqueIdentifier {
 }
 
 #[pyclass(subclass)]
-pub struct KmsClient(KmsRestClient);
+pub struct KmsClient(KmsClient);
 
 #[pymethods]
 impl KmsClient {
@@ -128,7 +128,7 @@ impl KmsClient {
             )),
             None => None,
         };
-        let kms_connector = KmsRestClient::instantiate(
+        let kms_connector = KmsClient::instantiate(
             server_url,
             api_key,
             client_pkcs12_path,

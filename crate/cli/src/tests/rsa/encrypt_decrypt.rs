@@ -1,25 +1,19 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
 use predicates::prelude::*;
 use tempfile::TempDir;
 
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
-
+use super::SUB_COMMAND;
 use crate::{
-    actions::{
-        rsa::{EncryptionAlgorithm, HashFn},
-        shared::utils::read_bytes_from_file,
-    },
+    actions::rsa::{EncryptionAlgorithm, HashFn},
     error::CliError,
     tests::{
-        PROG_NAME,
-        rsa::create_key_pair::create_rsa_4096_bits_key_pair,
-        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
+        rsa::create_key_pair::create_rsa_4096_bits_key_pair, utils::recover_cmd_logs, PROG_NAME,
     },
 };
-
-use super::SUB_COMMAND;
 
 /// Encrypts a file using the given public key
 pub fn encrypt(
@@ -126,7 +120,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> Result<(), CliErr
     // log_init(
     //     "cosmian_kms_cli=trace,cosmian_kms_server=trace,cosmian_kms_utils=trace,cosmian_kmip=trace",
     // );
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -140,12 +134,12 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> Result<(), CliErr
     assert!(!output_file.exists());
 
     let (private_key_id, public_key_id) =
-        create_rsa_4096_bits_key_pair(&ctx.owner_cli_conf_path, &[])?;
+        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
 
     println!("private_key_id: {private_key_id}");
     println!("public_key_id: {public_key_id}");
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         &public_key_id,
         EncryptionAlgorithm::CkmRsaPkcsOaep,
@@ -156,7 +150,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> Result<(), CliErr
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
         &private_key_id,
         EncryptionAlgorithm::CkmRsaPkcsOaep,
@@ -169,7 +163,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> Result<(), CliErr
     // the user key should NOT be able to decrypt with another algorithm
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             output_file.to_str().unwrap(),
             &private_key_id,
             EncryptionAlgorithm::RsaOaepAes128Gcm,
@@ -183,7 +177,7 @@ async fn test_rsa_encrypt_decrypt_using_ckm_rsa_pkcs_oaep() -> Result<(), CliErr
     // ... or another hash function
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             output_file.to_str().unwrap(),
             &private_key_id,
             EncryptionAlgorithm::CkmRsaPkcsOaep,
@@ -206,7 +200,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_oaep_aes128gcm() -> Result<(), CliEr
     // log_init(
     //     "cosmian_kms_cli=trace,cosmian_kms_server=trace,cosmian_kms_utils=trace,cosmian_kmip=trace",
     // );
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -220,12 +214,12 @@ async fn test_rsa_encrypt_decrypt_using_rsa_oaep_aes128gcm() -> Result<(), CliEr
     assert!(!output_file.exists());
 
     let (private_key_id, public_key_id) =
-        create_rsa_4096_bits_key_pair(&ctx.owner_cli_conf_path, &[])?;
+        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &[])?;
 
     println!("private_key_id: {private_key_id}");
     println!("public_key_id: {public_key_id}");
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         &public_key_id,
         EncryptionAlgorithm::RsaOaepAes128Gcm,
@@ -236,7 +230,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_oaep_aes128gcm() -> Result<(), CliEr
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
         &private_key_id,
         EncryptionAlgorithm::RsaOaepAes128Gcm,
@@ -249,7 +243,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_oaep_aes128gcm() -> Result<(), CliEr
     // the user key should NOT be able to decrypt with another algorithm
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             output_file.to_str().unwrap(),
             &private_key_id,
             EncryptionAlgorithm::CkmRsaPkcsOaep,
@@ -263,7 +257,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_oaep_aes128gcm() -> Result<(), CliEr
     // ... or another hash function
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             output_file.to_str().unwrap(),
             &private_key_id,
             EncryptionAlgorithm::RsaOaepAes128Gcm,
@@ -283,7 +277,7 @@ async fn test_rsa_encrypt_decrypt_using_rsa_oaep_aes128gcm() -> Result<(), CliEr
 
 #[tokio::test]
 async fn test_rsa_encrypt_decrypt_using_tags() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -296,10 +290,10 @@ async fn test_rsa_encrypt_decrypt_using_tags() -> Result<(), CliError> {
     assert!(!output_file.exists());
 
     let (_private_key_id, _public_key_id) =
-        create_rsa_4096_bits_key_pair(&ctx.owner_cli_conf_path, &["tag_rsa"])?;
+        create_rsa_4096_bits_key_pair(&ctx.owner_client_conf_path, &["tag_rsa"])?;
 
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         "[\"tag_rsa\"]",
         EncryptionAlgorithm::CkmRsaPkcsOaep,
@@ -310,7 +304,7 @@ async fn test_rsa_encrypt_decrypt_using_tags() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         output_file.to_str().unwrap(),
         "[\"tag_rsa\"]",
         EncryptionAlgorithm::CkmRsaPkcsOaep,

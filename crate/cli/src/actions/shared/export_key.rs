@@ -6,13 +6,16 @@ use cosmian_kms_client::{export_object, KmsRestClient};
 use cosmian_kms_client::{
     cosmian_kmip::{kmip::kmip_types::KeyFormatType, result::KmipResultHelper},
     KmsRestClient,
+    der_to_pem, export_object, write_bytes_to_file, write_kmip_object_to_file, KmsClient,
 };
 
 use crate::{
     actions::shared::utils::{write_bytes_to_file, write_kmip_object_to_file},
     cli_bail,
     error::CliError,
-};
+
+
+use crate::{cli_bail, error::CliError};
 
 #[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
 pub enum ExportKeyFormat {
@@ -112,7 +115,7 @@ pub struct ExportKeyAction {
 
 impl ExportKeyAction {
     /// Export a key from the KMS
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let id = if let Some(key_id) = &self.key_id {
             key_id.clone()
         } else if let Some(tags) = &self.tags {

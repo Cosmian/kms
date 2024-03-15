@@ -5,14 +5,15 @@ use cosmian_kms_client::{
     },
     KmsRestClient,
 };
+use cosmian_kms_client::KmsClient;
 
 use crate::{
     cli_bail,
-    error::{result::CliResultHelper, CliError},
+    error::{CliError, result::CliResultHelper},
 };
 
 pub async fn revoke(
-    kms_rest_client: &KmsRestClient,
+    kms_rest_client: &KmsClient,
     key_id: &str,
     revocation_reason: &str,
 ) -> Result<(), CliError> {

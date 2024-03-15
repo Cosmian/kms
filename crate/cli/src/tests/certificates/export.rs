@@ -11,22 +11,21 @@ use cosmian_kmip::kmip::{
     kmip_types::{Attributes, KeyFormatType, LinkType},
     ttlv::{deserializer::from_ttlv, TTLV},
 };
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_client::{read_from_json_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
+use openssl::pkcs12::Pkcs12;
+use tempfile::TempDir;
+use uuid::Uuid;
 
 use crate::{
     actions::{
         certificates::{CertificateExportFormat, CertificateInputFormat},
-        shared::{
-            ExportKeyFormat::JsonTtlv,
-            utils::{read_from_json_file, read_object_from_json_ttlv_file},
-        },
+        shared::ExportKeyFormat::JsonTtlv,
     },
     error::CliError,
     tests::{
-        certificates::import::import_certificate,
+        certificates::import::import_certificate, shared::export_key, utils::recover_cmd_logs,
         PROG_NAME,
-        shared::export_key,
-        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
     },
 };
 
@@ -35,14 +34,17 @@ async fn test_import_export_p12_25519() {
     //load the PKCS#12 file
     let p12_bytes = include_bytes!("../../../test_data/certificates/another_p12/server.p12");
     // Create a test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE
+        .get_or_try_init(start_default_test_kms_server)
+        .await
+        .unwrap();
 
     //parse the PKCS#12 with openssl
     let p12 = Pkcs12::from_der(p12_bytes).unwrap();
     let parsed_p12 = p12.parse2("secret").unwrap();
     //import the certificate
     let imported_p12_sk = import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/another_p12/server.p12",
         CertificateInputFormat::Pkcs12,
@@ -68,7 +70,7 @@ async fn test_import_export_p12_25519() {
 
     // export the private key
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &imported_p12_sk,
         tmp_exported_sk.to_str().unwrap(),
@@ -91,7 +93,7 @@ async fn test_import_export_p12_25519() {
 
     // export the certificate
     export_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &certificate_id,
         tmp_exported_cert.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
@@ -116,7 +118,7 @@ async fn test_import_export_p12_25519() {
 
     // export the chain - there should be only one certificate in the chain
     export_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &issuer_id,
         tmp_exported_cert.to_str().unwrap(),
         Some(CertificateExportFormat::JsonTtlv),
@@ -154,7 +156,7 @@ async fn test_import_export_p12_25519() {
 
     // export the pkcs12
     export_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &imported_p12_sk,
         tmp_exported_cert_p12.to_str().unwrap(),
         Some(CertificateExportFormat::Pkcs12),
@@ -212,14 +214,17 @@ async fn test_import_p12_rsa() {
     //load the PKCS#12 file
     let p12_bytes = include_bytes!("../../../test_data/certificates/csr/intermediate.p12");
     // Create a test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE
+        .get_or_try_init(start_default_test_kms_server)
+        .await
+        .unwrap();
 
     //parse the PKCS#12 with openssl
     let p12 = Pkcs12::from_der(p12_bytes).unwrap();
     let parsed_p12 = p12.parse2("secret").unwrap();
     //import the certificate
     let imported_p12_sk = import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         "test_data/certificates/csr/intermediate.p12",
         CertificateInputFormat::Pkcs12,
@@ -236,7 +241,7 @@ async fn test_import_p12_rsa() {
     // export the private key
     let key_file = tmp_path.join("exported_p12_sk.json");
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &imported_p12_sk,
         key_file.to_str().unwrap(),

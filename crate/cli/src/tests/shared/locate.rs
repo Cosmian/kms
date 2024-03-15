@@ -1,24 +1,22 @@
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
 
-use crate::{
-    error::CliError,
-    tests::{
-        elliptic_curve::create_key_pair::create_ec_key_pair,
-        PROG_NAME,
-        symmetric::create_key::create_symmetric_key,
-        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
-    },
-};
 #[cfg(not(feature = "fips"))]
 use crate::tests::{
     access::{grant_access, revoke_access},
     cover_crypt::{
         master_key_pair::create_cc_master_key_pair,
         user_decryption_keys::create_user_decryption_key,
+    },
+};
+use crate::{
+    error::CliError,
+    tests::{
+        elliptic_curve::create_key_pair::create_ec_key_pair,
+        symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME,
     },
 };
 
@@ -68,11 +66,11 @@ pub fn locate(
 #[tokio::test]
 pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &["test_cc"],
@@ -80,7 +78,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
 
     // Locate with Tags
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_cc"]),
         None,
         None,
@@ -93,7 +91,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     // Locate with cryptographic algorithm
     // this should be case insensitive
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_cc"]),
         Some("coVerCRypt"),
         None,
@@ -105,7 +103,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
 
     // locate using the key format type
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_cc"]),
         None,
         None,
@@ -114,7 +112,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&master_private_key_id));
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_cc"]),
         None,
         None,
@@ -125,7 +123,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
 
     //locate using tags and cryptographic algorithm and key format type
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_cc"]),
         Some("CoverCrypt"),
         None,
@@ -136,14 +134,14 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
 
     // generate a user key
     let user_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &["test_cc", "another_tag"],
     )?;
     // Locate with Tags
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_cc"]),
         None,
         None,
@@ -155,7 +153,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     assert!(ids.contains(&user_key_id));
     //locate using tags and cryptographic algorithm and key format type
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_cc"]),
         Some("CoverCrypt"),
         None,
@@ -165,7 +163,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     assert!(ids.contains(&master_private_key_id));
     assert!(ids.contains(&user_key_id));
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_cc", "another_tag"]),
         Some("CoverCrypt"),
         None,
@@ -176,7 +174,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
 
     // test using system Tags
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_cc", "_uk"]),
         None,
         None,
@@ -185,7 +183,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&user_key_id));
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_cc", "_sk"]),
         None,
         None,
@@ -194,7 +192,7 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&master_private_key_id));
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_cc", "_pk"]),
         None,
         None,
@@ -209,15 +207,15 @@ pub async fn test_locate_cover_crypt() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // generate a new key pair
     let (private_key_id, public_key_id) =
-        create_ec_key_pair(&ctx.owner_cli_conf_path, "nist-p256", &["test_ec"])?;
+        create_ec_key_pair(&ctx.owner_client_conf_path, "nist-p256", &["test_ec"])?;
 
     // Locate with Tags
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_ec"]),
         None,
         None,
@@ -230,7 +228,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     // Locate with cryptographic algorithm
     // this should be case insensitive
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_ec"]),
         Some("Ec"),
         None,
@@ -242,7 +240,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
 
     // locate using the key format type
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_ec"]),
         None,
         None,
@@ -251,7 +249,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&private_key_id));
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_ec"]),
         None,
         None,
@@ -262,7 +260,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
 
     //locate using tags and cryptographic algorithm and key format type
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_ec"]),
         Some("eC"),
         None,
@@ -273,7 +271,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
 
     // test using system Tags
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_ec", "_sk"]),
         None,
         None,
@@ -282,7 +280,7 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
     assert_eq!(ids.len(), 1);
     assert!(ids.contains(&private_key_id));
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_ec", "_pk"]),
         None,
         None,
@@ -297,14 +295,15 @@ pub async fn test_locate_elliptic_curve() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // generate a new key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &["test_sym"])?;
+    let key_id =
+        create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &["test_sym"])?;
 
     // Locate with Tags
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_sym"]),
         None,
         None,
@@ -316,7 +315,7 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
     // Locate with cryptographic algorithm
     // this should be case insensitive
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_sym"]),
         Some("Aes"),
         None,
@@ -327,7 +326,7 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
 
     // locate using the key format type
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_sym"]),
         None,
         None,
@@ -338,7 +337,7 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
 
     //locate using tags and cryptographic algorithm and key format type
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_sym"]),
         Some("AES"),
         None,
@@ -349,7 +348,7 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
 
     // test using system Tags
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_sym", "_kk"]),
         None,
         None,
@@ -365,11 +364,11 @@ pub async fn test_locate_symmetric_key() -> Result<(), CliError> {
 #[tokio::test]
 pub async fn test_locate_grant() -> Result<(), CliError> {
     // init the test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // generate a new master key pair
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &["test_grant"],
@@ -377,7 +376,7 @@ pub async fn test_locate_grant() -> Result<(), CliError> {
 
     // Locate with Tags
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_grant"]),
         None,
         None,
@@ -390,7 +389,7 @@ pub async fn test_locate_grant() -> Result<(), CliError> {
     // Locate with cryptographic algorithm
     // this should be case insensitive
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_grant"]),
         Some("coVerCRypt"),
         None,
@@ -402,14 +401,14 @@ pub async fn test_locate_grant() -> Result<(), CliError> {
 
     // generate a user key
     let user_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &["test_grant", "another_tag"],
     )?;
     // Locate with Tags
     let ids = locate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         Some(&["test_grant"]),
         None,
         None,
@@ -422,7 +421,7 @@ pub async fn test_locate_grant() -> Result<(), CliError> {
 
     // the user should not be able to locate anything
     let ids = locate(
-        &ctx.user_cli_conf_path,
+        &ctx.user_client_conf_path,
         Some(&["test_grant"]),
         None,
         None,
@@ -432,7 +431,7 @@ pub async fn test_locate_grant() -> Result<(), CliError> {
 
     // Grant access to the user decryption key
     grant_access(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &user_key_id,
         "user.client@acme.com",
         &["encrypt"],
@@ -440,7 +439,7 @@ pub async fn test_locate_grant() -> Result<(), CliError> {
 
     // The user should be able to locate the user key and only that one
     let ids = locate(
-        &ctx.user_cli_conf_path,
+        &ctx.user_client_conf_path,
         Some(&["test_grant"]),
         None,
         None,
@@ -451,7 +450,7 @@ pub async fn test_locate_grant() -> Result<(), CliError> {
 
     //revoke the access
     revoke_access(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &user_key_id,
         "user.client@acme.com",
         &["encrypt"],
@@ -459,7 +458,7 @@ pub async fn test_locate_grant() -> Result<(), CliError> {
 
     // the user should no more be able to locate the key
     let ids = locate(
-        &ctx.user_cli_conf_path,
+        &ctx.user_client_conf_path,
         Some(&["test_grant"]),
         None,
         None,

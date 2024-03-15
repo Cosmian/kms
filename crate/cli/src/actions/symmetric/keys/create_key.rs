@@ -7,7 +7,7 @@ use cosmian_kms_client::{
     },
     KmsRestClient,
 };
-use cosmian_kms_client::{import_object, KmsRestClient};
+use cosmian_kms_client::{import_object, KmsClient};
 
 use crate::{
     cli_bail,
@@ -63,7 +63,7 @@ pub struct CreateKeyAction {
 }
 
 impl CreateKeyAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         let mut key_bytes = None;
         let number_of_bits = if let Some(key_b64) = &self.wrap_key_b64 {
             let bytes = general_purpose::STANDARD

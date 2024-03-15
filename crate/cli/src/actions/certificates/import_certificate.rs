@@ -11,24 +11,16 @@ use cosmian_kms_client::{
     },
     KmsRestClient,
 };
+// use cloudproof::reexport::crypto_core::reexport::x509_cert;
+use cosmian_kms_client::{
+    import_object, read_bytes_from_file, read_object_from_json_ttlv_file, KmsClient,
+};
 use der::{Decode, DecodePem, Encode};
 use tracing::{debug, trace};
 use x509_cert::Certificate;
 use zeroize::Zeroizing;
 
-use cosmian_kmip::kmip::{
-    kmip_objects::Object,
-    kmip_types::{Attributes, CertificateType, KeyFormatType, LinkedObjectIdentifier, LinkType},
-};
-use cosmian_kms_client::{import_object, KmsRestClient};
-
-use crate::{
-    actions::shared::{
-        import_key::build_private_key_from_der_bytes,
-        utils::{read_bytes_from_file, read_object_from_json_ttlv_file},
-    },
-    error::CliError,
-};
+use crate::{actions::shared::import_key::build_private_key_from_der_bytes, error::CliError};
 
 const MOZILLA_CCADB: &str =
     "https://ccadb.my.salesforce-sites.com/mozilla/IncludedRootsPEMTxt?TrustBitsInclude=Websites";
@@ -112,7 +104,7 @@ pub struct ImportCertificateAction {
 }
 
 impl ImportCertificateAction {
-    pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
+    pub async fn run(&self, kms_rest_client: &KmsClient) -> Result<(), CliError> {
         debug!("CLI: entering import certificate");
 
         //generate the leaf certificate attributes if links are specified
@@ -253,7 +245,7 @@ impl ImportCertificateAction {
     }
 
     /// Import the certificate, the chain and the associated private key
-    async fn import_pkcs12(&self, kms_rest_client: &KmsRestClient) -> Result<String, CliError> {
+    async fn import_pkcs12(&self, kms_rest_client: &KmsClient) -> Result<String, CliError> {
         let pkcs12_bytes = Zeroizing::from(read_bytes_from_file(&self.get_certificate_file()?)?);
 
         // Create a KMIP private key from the PKCS12 private key
@@ -293,7 +285,7 @@ impl ImportCertificateAction {
     /// linking the child to the parent with `Link` of `LinkType::CertificateLink`
     async fn import_chain(
         &self,
-        kms_rest_client: &KmsRestClient,
+        kms_rest_client: &KmsClient,
         mut objects: Vec<Object>,
         replace_existing: bool,
         leaf_certificate_attributes: Option<Attributes>,

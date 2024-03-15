@@ -18,6 +18,8 @@ use cosmian_kmip::{
     KmipError,
 };
 use cosmian_kms_client::ClientError;
+use pem::PemError;
+use thiserror::Error;
 
 pub mod result;
 
@@ -103,15 +105,15 @@ impl From<der::Error> for CliError {
     }
 }
 
-impl From<cloudproof::reexport::crypto_core::CryptoCoreError> for CliError {
-    fn from(e: cloudproof::reexport::crypto_core::CryptoCoreError) -> Self {
-        Self::Cryptographic(e.to_string())
-    }
-}
-
 impl From<cloudproof::reexport::crypto_core::reexport::pkcs8::Error> for CliError {
     fn from(e: cloudproof::reexport::crypto_core::reexport::pkcs8::Error) -> Self {
         Self::Conversion(e.to_string())
+    }
+}
+
+impl From<cloudproof::reexport::cover_crypt::Error> for CliError {
+    fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
+        Self::InvalidRequest(e.to_string())
     }
 }
 
@@ -130,12 +132,6 @@ impl From<std::io::Error> for CliError {
 impl From<serde_json::Error> for CliError {
     fn from(e: serde_json::Error) -> Self {
         Self::Conversion(e.to_string())
-    }
-}
-
-impl From<cloudproof::reexport::cover_crypt::Error> for CliError {
-    fn from(e: cloudproof::reexport::cover_crypt::Error) -> Self {
-        Self::InvalidRequest(e.to_string())
     }
 }
 

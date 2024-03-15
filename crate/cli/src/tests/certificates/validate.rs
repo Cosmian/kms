@@ -1,19 +1,17 @@
 use std::path::PathBuf;
 
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
 use tempfile::TempDir;
 use tracing::debug;
 
 use crate::{
     actions::certificates::CertificateInputFormat,
     error::CliError,
-    tests::{
-        certificates::{encrypt::encrypt, import::import_certificate},
-        utils::{start_default_test_kms_server, ONCE},
-    },
+    tests::certificates::{encrypt::encrypt, import::import_certificate},
 };
 
 async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // create a temp dir
     let tmp_dir = TempDir::new()?;
@@ -31,7 +29,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
 
     debug!("\n\nImport Certificate");
     let root_certificate_id = import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         &format!("test_data/certificates/openssl/{curve_name}-cert.pem"),
         CertificateInputFormat::Pem,
@@ -46,7 +44,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
 
     debug!("\n\nImport Certificate");
     let certificate_id = import_certificate(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "certificates",
         &format!("test_data/certificates/openssl/{curve_name}-revoked.crt"),
         CertificateInputFormat::Pem,
@@ -62,7 +60,7 @@ async fn import_revoked_certificate_encrypt(curve_name: &str) -> Result<(), CliE
     debug!("\n\nEncrypt with certificate");
     assert!(
         encrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             input_file.to_str().unwrap(),
             &certificate_id,
             Some(output_file.to_str().unwrap()),

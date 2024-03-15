@@ -16,29 +16,25 @@ use cosmian_kms_client::cosmian_kmip::{
     },
     openssl::pad_be_bytes,
 };
-use cosmian_kmip::kmip::kmip_types::KeyFormatType;
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use cosmian_kms_client::{read_bytes_from_file, read_object_from_json_ttlv_file, KMS_CLI_CONF_ENV};
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_client_tests::TestsContext;
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
+#[cfg(not(feature = "fips"))]
+use openssl::pkey::{Id, PKey};
+use tempfile::TempDir;
 
-use crate::{
-    actions::shared::{
-        ExportKeyFormat,
-        utils::{read_bytes_from_file, read_object_from_json_ttlv_file},
-    },
-    error::CliError,
-    tests::{
-        PROG_NAME,
-        symmetric::create_key::create_symmetric_key,
-        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
-    },
-};
 #[cfg(not(feature = "fips"))]
 use crate::tests::cover_crypt::{
     master_key_pair::create_cc_master_key_pair, user_decryption_keys::create_user_decryption_key,
 };
 #[cfg(not(feature = "fips"))]
 use crate::tests::elliptic_curve::create_key_pair::create_ec_key_pair;
-#[cfg(not(feature = "fips"))]
-use crate::tests::utils::TestsContext;
+use crate::{
+    actions::shared::ExportKeyFormat,
+    error::CliError,
+    tests::{symmetric::create_key::create_symmetric_key, utils::recover_cmd_logs, PROG_NAME},
+};
 
 #[allow(clippy::too_many_arguments)]
 pub fn export_key(
@@ -100,14 +96,14 @@ pub async fn test_export_sym() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
 
     // Export as default (JsonTTLV with Raw Key Format Type)
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "sym",
         &key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -125,7 +121,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
 
     // Export the bytes only
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "sym",
         &key_id,
         tmp_path.join("output.export.bytes").to_str().unwrap(),
@@ -140,7 +136,7 @@ pub async fn test_export_sym() -> Result<(), CliError> {
     // wrong export format
     assert!(
         export_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             "sym",
             &key_id,
             tmp_path.join("output.export.bytes").to_str().unwrap(),
@@ -161,13 +157,13 @@ pub async fn test_export_sym_allow_revoked() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // generate a symmetric key
-    let key_id = create_symmetric_key(&ctx.owner_cli_conf_path, None, None, None, &[])?;
+    let key_id = create_symmetric_key(&ctx.owner_client_conf_path, None, None, None, &[])?;
     // Export
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "sym",
         &key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -187,11 +183,11 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
@@ -211,7 +207,7 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
     )?;
 
     let user_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
@@ -231,7 +227,7 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
     ) -> Result<(), CliError> {
         // Export the key
         export_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             "cc",
             key_id,
             tmp_path.join("output.export").to_str().unwrap(),
@@ -249,7 +245,7 @@ pub async fn test_export_covercrypt() -> Result<(), CliError> {
 
         // Export the key bytes only
         export_key(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             "cc",
             key_id,
             tmp_path.join("output.export.bytes").to_str().unwrap(),
@@ -273,11 +269,11 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // key does not exist
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "cc",
         "does_not_exist",
         tmp_path.join("output.export").to_str().unwrap(),
@@ -291,7 +287,7 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
 
     // generate a new master key pair
     let (master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
@@ -299,7 +295,7 @@ pub async fn test_export_error_cover_crypt() -> Result<(), CliError> {
 
     // Export to non existing dir
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "cc",
         &master_private_key_id,
         "/does_not_exist/output.export",
@@ -321,17 +317,17 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
 
     // generate a new key pair
     let (private_key_id, public_key_id) =
-        create_ec_key_pair(&ctx.owner_cli_conf_path, "x25519", &[])?;
+        create_ec_key_pair(&ctx.owner_client_conf_path, "x25519", &[])?;
 
     //
     // Private Key
     //
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &private_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -369,7 +365,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
 
     // Export the bytes only
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &private_key_id,
         tmp_path.join("output.export.bytes").to_str().unwrap(),
@@ -390,7 +386,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
     // Public Key
     //
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &public_key_id,
         tmp_path.join("output.export").to_str().unwrap(),
@@ -424,7 +420,7 @@ pub async fn test_export_x25519() -> Result<(), CliError> {
 
     // Export the bytes only
     export_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &public_key_id,
         tmp_path.join("output.export.bytes").to_str().unwrap(),

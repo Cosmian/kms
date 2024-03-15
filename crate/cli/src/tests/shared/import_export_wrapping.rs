@@ -14,18 +14,18 @@ use cosmian_kms_client::cosmian_kmip::{
         },
     },
 };
+use cosmian_kms_client::{read_object_from_json_ttlv_file, write_kmip_object_to_file};
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
 use tempfile::TempDir;
 use tracing::debug;
 
 use crate::{
-    actions::shared::utils::{read_object_from_json_ttlv_file, write_kmip_object_to_file},
     error::CliError,
     tests::{
         cover_crypt::master_key_pair::create_cc_master_key_pair,
         elliptic_curve,
         shared::{export::export_key, import::import_key},
         symmetric,
-        utils::{start_default_test_kms_server, ONCE},
     },
 };
 
@@ -35,7 +35,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // Generate a symmetric wrapping key
     let wrap_key_path = tmp_path.join("wrap.key");
     let mut rng = CsRng::from_entropy();
@@ -47,7 +47,7 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     // import the wrapping key
     println!("importing wrapping key");
     let wrap_key_uid = import_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "sym",
         wrap_key_path.to_str().unwrap(),
         None,
@@ -60,13 +60,13 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     // test CC
     println!("testing Covercrypt keys");
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
     )?;
     test_import_export_wrap_private_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "cc",
         &private_key_id,
         &wrap_key_uid,
@@ -76,12 +76,12 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     // test ec
     println!("testing ec keys");
     let (private_key_id, _public_key_id) = elliptic_curve::create_key_pair::create_ec_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "nist-p256",
         &[],
     )?;
     test_import_export_wrap_private_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &private_key_id,
         &wrap_key_uid,
@@ -91,14 +91,14 @@ pub async fn test_import_export_wrap_rfc_5649() -> Result<(), CliError> {
     // test sym
     println!("testing symmetric keys");
     let key_id = symmetric::create_key::create_symmetric_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         None,
         None,
         None,
         &[] as &[&str],
     )?;
     test_import_export_wrap_private_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "sym",
         &key_id,
         &wrap_key_uid,
@@ -116,7 +116,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
     // init the test server
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // Generate a symmetric wrapping key
     let wrap_private_key_uid = "wrap_private_key_uid";
     let wrap_public_key_uid = "wrap_public_key_uid";
@@ -131,7 +131,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     let wrap_private_key_path = tmp_path.join("wrap.private.key");
     write_kmip_object_to_file(wrap_key_pair.private_key(), &wrap_private_key_path)?;
     import_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         wrap_private_key_path.to_str().unwrap(),
         None,
@@ -144,7 +144,7 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
     let wrap_public_key_path = tmp_path.join("wrap.public.key");
     write_kmip_object_to_file(wrap_key_pair.public_key(), &wrap_public_key_path)?;
     import_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         wrap_public_key_path.to_str().unwrap(),
         None,
@@ -156,13 +156,13 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
 
     // test CC
     let (private_key_id, _public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
     )?;
     test_import_export_wrap_private_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "cc",
         &private_key_id,
         wrap_public_key_uid,
@@ -171,12 +171,12 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
 
     debug!("testing EC keys");
     let (private_key_id, _public_key_id) = elliptic_curve::create_key_pair::create_ec_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "nist-p256",
         &[],
     )?;
     test_import_export_wrap_private_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "ec",
         &private_key_id,
         wrap_public_key_uid,
@@ -185,14 +185,14 @@ pub async fn test_import_export_wrap_ecies() -> Result<(), CliError> {
 
     debug!("testing symmetric keys");
     let key_id = symmetric::create_key::create_symmetric_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         None,
         None,
         None,
         &[] as &[&str],
     )?;
     test_import_export_wrap_private_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "sym",
         &key_id,
         wrap_public_key_uid,

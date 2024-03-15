@@ -1,20 +1,19 @@
 use std::{fs, path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
+use cosmian_kms_client::{read_bytes_from_file, KMS_CLI_CONF_ENV};
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
 use tempfile::TempDir;
 
-use cosmian_kms_client::KMS_CLI_CONF_ENV;
-
 use crate::{
-    actions::shared::utils::read_bytes_from_file,
     error::CliError,
     tests::{
         cover_crypt::{
             master_key_pair::create_cc_master_key_pair,
-            SUB_COMMAND, user_decryption_keys::create_user_decryption_key,
+            user_decryption_keys::create_user_decryption_key, SUB_COMMAND,
         },
+        utils::recover_cmd_logs,
         PROG_NAME,
-        utils::{ONCE, recover_cmd_logs, start_default_test_kms_server},
     },
 };
 
@@ -88,7 +87,7 @@ pub fn decrypt(
 
 #[tokio::test]
 async fn test_encrypt_decrypt_using_object_ids() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -101,14 +100,14 @@ async fn test_encrypt_decrypt_using_object_ids() -> Result<(), CliError> {
     assert!(!output_file.exists());
 
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
     )?;
 
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         &master_public_key_id,
         "Department::MKG && Security Level::Confidential",
@@ -118,7 +117,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> Result<(), CliError> {
 
     // create a user decryption key
     let user_ok_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
@@ -126,7 +125,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[output_file.to_str().unwrap()],
         &user_ok_key_id,
         Some(recovered_file.to_str().unwrap()),
@@ -140,14 +139,14 @@ async fn test_encrypt_decrypt_using_object_ids() -> Result<(), CliError> {
 
     // this user key should not be able to decrypt the file
     let user_ko_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "Department::FIN && Security Level::Top Secret",
         &[],
     )?;
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             &[output_file.to_str().unwrap()],
             &user_ko_key_id,
             Some(recovered_file.to_str().unwrap()),
@@ -161,7 +160,7 @@ async fn test_encrypt_decrypt_using_object_ids() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_encrypt_decrypt_bulk_using_object_ids() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -188,14 +187,14 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> Result<(), CliError> {
     assert!(!output_file3.exists());
 
     let (master_private_key_id, master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &[],
     )?;
 
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[
             input_file1.to_str().unwrap(),
             input_file2.to_str().unwrap(),
@@ -213,7 +212,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> Result<(), CliError> {
 
     // create a user decryption key
     let user_ok_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &[],
@@ -221,7 +220,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[
             output_file1.to_str().unwrap(),
             output_file2.to_str().unwrap(),
@@ -251,14 +250,14 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> Result<(), CliError> {
 
     // this user key should not be able to decrypt the file
     let user_ko_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &master_private_key_id,
         "Department::FIN && Security Level::Top Secret",
         &[],
     )?;
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             &[output_file1.to_str().unwrap()],
             &user_ko_key_id,
             Some(recovered_file1.to_str().unwrap()),
@@ -273,7 +272,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> Result<(), CliError> {
     assert!(!recovered_file2.exists());
 
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[output_file2.to_str().unwrap()],
         &user_ok_key_id,
         // output file names will be based on input file name with '.rec' extension
@@ -292,7 +291,7 @@ async fn test_encrypt_decrypt_bulk_using_object_ids() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -305,14 +304,14 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
     assert!(!output_file.exists());
 
     let (_master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &["tag"],
     )?;
 
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[input_file.to_str().unwrap()],
         "[\"tag\"]",
         "Department::MKG && Security Level::Confidential",
@@ -322,7 +321,7 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
 
     // create a user decryption key
     let user_ok_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "[\"tag\"]",
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &["tag"],
@@ -330,7 +329,7 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[output_file.to_str().unwrap()],
         "[\"tag\"]",
         Some(recovered_file.to_str().unwrap()),
@@ -344,14 +343,14 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
 
     // decrypt fails because two keys with same tag exist
     let _user_ko_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "[\"tag\"]",
         "Department::FIN && Security Level::Top Secret",
         &["tag"],
     )?;
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             &[output_file.to_str().unwrap()],
             "[\"tag\"]",
             Some(recovered_file.to_str().unwrap()),
@@ -362,14 +361,14 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
 
     // this user key should not be able to decrypt the file
     let _user_ko_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "[\"tag\"]",
         "Department::FIN && Security Level::Top Secret",
         &["tag_ko"],
     )?;
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             &[output_file.to_str().unwrap()],
             "[\"tag_ko\"]",
             Some(recovered_file.to_str().unwrap()),
@@ -382,7 +381,7 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
     assert!(!recovered_file.exists());
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[output_file.to_str().unwrap()],
         &user_ok_key_id,
         Some(recovered_file.to_str().unwrap()),
@@ -395,7 +394,7 @@ async fn test_encrypt_decrypt_using_tags() -> Result<(), CliError> {
 
 #[tokio::test]
 async fn test_encrypt_decrypt_bulk_using_tags() -> Result<(), CliError> {
-    let ctx = ONCE.get_or_init(start_default_test_kms_server).await;
+    let ctx = ONCE.get_or_try_init(start_default_test_kms_server).await?;
     // create a temp dir
     let tmp_dir = TempDir::new()?;
     let tmp_path = tmp_dir.path();
@@ -422,14 +421,14 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> Result<(), CliError> {
     assert!(!output_file3.exists());
 
     let (_master_private_key_id, _master_public_key_id) = create_cc_master_key_pair(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "--policy-specifications",
         "test_data/policy_specifications.json",
         &["tag_bulk"],
     )?;
 
     encrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[
             input_file1.to_str().unwrap(),
             input_file2.to_str().unwrap(),
@@ -447,7 +446,7 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> Result<(), CliError> {
 
     // create a user decryption key
     let user_ok_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "[\"tag_bulk\"]",
         "(Department::MKG || Department::FIN) && Security Level::Top Secret",
         &["tag_bulk"],
@@ -455,7 +454,7 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> Result<(), CliError> {
 
     // the user key should be able to decrypt the file
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[
             output_file1.to_str().unwrap(),
             output_file2.to_str().unwrap(),
@@ -485,14 +484,14 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> Result<(), CliError> {
 
     // decrypt fails because two keys with same tag exist
     let _user_ko_key_id = create_user_decryption_key(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         "[\"tag_bulk\"]",
         "Department::FIN && Security Level::Top Secret",
         &["tag_bulk"],
     )?;
     assert!(
         decrypt(
-            &ctx.owner_cli_conf_path,
+            &ctx.owner_client_conf_path,
             &[output_file1.to_str().unwrap()],
             "[\"tag_bulk\"]",
             Some(recovered_file1.to_str().unwrap()),
@@ -507,7 +506,7 @@ async fn test_encrypt_decrypt_bulk_using_tags() -> Result<(), CliError> {
     assert!(!recovered_file2.exists());
 
     decrypt(
-        &ctx.owner_cli_conf_path,
+        &ctx.owner_client_conf_path,
         &[output_file2.to_str().unwrap()],
         &user_ok_key_id,
         // output file names will be based on input file name with '.rec' extension
