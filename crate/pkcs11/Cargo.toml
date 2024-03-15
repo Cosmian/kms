@@ -5,7 +5,7 @@ edition = "2021"
 
 [lib]
 name = "ckms_pkcs11"
-crate-type = ["dylib"]
+crate-type = ["rlib", "dylib"]
 
 [dependencies]
 cosmian_kmip = { path = "../kmip" }
