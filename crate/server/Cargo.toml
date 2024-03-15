@@ -3,7 +3,7 @@ name = "cosmian_kms_server"
 version = "4.13.5"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
-license-file = "../../LICENSE.md"
+license-file = "../../LICENSE"
 description = "Cosmian Key Management Service"
 
 [[bin]]

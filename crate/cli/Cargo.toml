@@ -2,7 +2,7 @@
 name = "cosmian_kms_cli"
 version = "4.13.5"
 edition = "2021"
-license-file = "../../LICENSE.md"
+license-file = "../../LICENSE"
 description = "CLI used to manage the Cosmian KMS."
 
 [[bin]]

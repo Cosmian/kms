@@ -2,7 +2,7 @@
 name = "cosmian_kmip"
 version = "4.13.5"
 edition = "2021"
-license-file = "../../LICENSE.md"
+license-file = "../../LICENSE"
 
 [lib]
 # doc test linking as a separate binary is extremely slow

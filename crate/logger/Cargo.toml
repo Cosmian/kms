@@ -3,7 +3,7 @@ name = "cosmian_logger"
 version = "4.13.5"
 authors = ["Emmanuel Coste <emmanuel.coste@cosmian.com>"]
 edition = "2021"
-license-file = "../../LICENSE.md"
+license-file = "../../LICENSE"
 
 [dependencies]
 tracing = { workspace = true }
