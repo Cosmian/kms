@@ -5,7 +5,7 @@ edition = "2021"
 
 [lib]
 name = "kms_test_server"
-crate-type = ["dylib"]
+crate-type = ["rlib", "dylib"]
 
 [dependencies]
 actix-server = { version = "2.3", default-features = false }
