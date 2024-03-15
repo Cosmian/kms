@@ -1,24 +1,17 @@
-use cosmian_kms_client::KmsClient;
+use cosmian_kms_client_tests::{start_default_test_kms_server, ONCE};
 
 use crate::error::Pkcs11Error;
 
 #[tokio::test]
 async fn integration_tests_use_ids_no_tags() -> Result<(), Pkcs11Error> {
-    // log_init("cosmian_kms_server=info");
-    let app = test_utils::test_app().await;
+    let ctx = ONCE
+        .get_or_try_init(start_default_test_kms_server)
+        .await
+        .unwrap();
 
-    let client = KmsClient::instantiate(
-        "https://localhost:9998",
-        None,
-        None,
-        None,
-        None,
-        true,
-        None,
-        None,
-    )?;
+    let kms_client = ctx.owner_client_conf.initialize_kms_client()?;
 
-    let version = client.version().await?;
+    let version = kms_client.version().await?;
     println!("Version: {:?}", version);
 
     Ok(())

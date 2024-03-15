@@ -1,9 +1,8 @@
 use std::{array::TryFromSliceError, str::Utf8Error};
 
-use thiserror::Error;
-
 use cosmian_kmip::{kmip::kmip_operations::ErrorReason, KmipError};
 use cosmian_kms_client::ClientError;
+use thiserror::Error;
 
 pub mod result;
 
@@ -13,14 +12,6 @@ pub enum Pkcs11Error {
     // Conversion errors
     #[error("Conversion error: {0}")]
     Conversion(String),
-
-    // A cryptographic error
-    #[error("Cryptographic error: {0}")]
-    Cryptographic(String),
-
-    // Missing arguments in the request
-    #[error("Invalid Request: {0}")]
-    InvalidRequest(String),
 
     // Any errors on KMIP format due to mistake of the user
     #[error("{0}: {1}")]
