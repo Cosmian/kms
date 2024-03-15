@@ -17,6 +17,10 @@ use self::{
     create_key_pair::CreateKeyPairAction, destroy_key::DestroyKeyAction,
     revoke_key::RevokeKeyAction,
 };
+use crate::{
+    actions::shared::{ExportKeyAction, ImportKeyAction, UnwrapKeyAction, WrapKeyAction},
+    error::CliError,
+};
 
 mod create_key_pair;
 mod destroy_key;

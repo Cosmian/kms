@@ -1,12 +1,11 @@
 use std::io;
 
-use http::header::InvalidHeaderValue;
-use thiserror::Error;
-
 use cosmian_kmip::{
     kmip::{kmip_operations::ErrorReason, ttlv::error::TtlvError},
     KmipError,
 };
+use http::header::InvalidHeaderValue;
+use thiserror::Error;
 
 pub(crate) mod result;
 

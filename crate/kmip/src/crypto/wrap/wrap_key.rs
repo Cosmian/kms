@@ -5,6 +5,9 @@ use openssl::{
 use tracing::debug;
 use zeroize::Zeroizing;
 
+use super::WRAPPING_SECRET_LENGTH;
+#[cfg(not(feature = "fips"))]
+use crate::crypto::elliptic_curves::ecies::ecies_encrypt;
 use crate::{
     crypto::{
         password_derivation::derive_key_from_password,
@@ -28,10 +31,6 @@ use crate::{
     kmip_bail, kmip_error,
     openssl::kmip_public_key_to_openssl,
 };
-#[cfg(not(feature = "fips"))]
-use crate::crypto::elliptic_curves::ecies::ecies_encrypt;
-
-use super::WRAPPING_SECRET_LENGTH;
 
 /// Wrap a key using a password
 pub fn wrap_key_bytes(key: &[u8], wrapping_password: &str) -> Result<Vec<u8>, KmipError> {

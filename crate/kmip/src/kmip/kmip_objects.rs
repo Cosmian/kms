@@ -3,6 +3,7 @@ use std::convert::{TryFrom, TryInto};
 use num_bigint_dig::BigUint;
 use serde::{Deserialize, Serialize};
 
+use super::{kmip_data_structures::KeyWrappingData, kmip_types::Attributes};
 use crate::{
     error::KmipError,
     kmip::{
@@ -13,8 +14,6 @@ use crate::{
         },
     },
 };
-
-use super::{kmip_data_structures::KeyWrappingData, kmip_types::Attributes};
 
 /// Object Types
 /// Section 2 of KMIP Reference 2.1

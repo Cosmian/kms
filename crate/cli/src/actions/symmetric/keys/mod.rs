@@ -7,13 +7,12 @@ use self::{
 use crate::actions::shared::{UnwrapKeyAction, WrapKeyAction};
 use cosmian_kms_client::KmsClient;
 
+use self::{
+    create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
+};
 use crate::{
     actions::shared::{ExportKeyAction, ImportKeyAction},
     error::CliError,
-};
-
-use self::{
-    create_key::CreateKeyAction, destroy_key::DestroyKeyAction, revoke_key::RevokeKeyAction,
 };
 
 mod create_key;

@@ -1,10 +1,8 @@
 use clap::Parser;
-
 use cosmian_kms_client::KmsClient;
 
-use crate::error::CliError;
-
 use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
+use crate::error::CliError;
 
 mod decrypt;
 mod encrypt;

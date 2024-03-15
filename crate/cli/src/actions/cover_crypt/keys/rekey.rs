@@ -9,7 +9,7 @@ use cosmian_kms_client::KmsClient;
 
 use crate::{
     cli_bail,
-    error::{CliError, result::CliResultHelper},
+    error::{result::CliResultHelper, CliError},
 };
 
 /// Rekey the master and user keys for a given access policy.

@@ -6,7 +6,7 @@ use cosmian_kms_client::KmsClient;
 
 use crate::{
     cli_bail,
-    error::{CliError, result::CliResultHelper},
+    error::{result::CliResultHelper, CliError},
 };
 
 pub async fn destroy(kms_rest_client: &KmsClient, key_id: &str) -> Result<(), CliError> {

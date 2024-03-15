@@ -1,7 +1,8 @@
 use std::{path::PathBuf, process};
 
 use clap::{CommandFactory, Parser, Subcommand};
-
+#[cfg(not(feature = "fips"))]
+use cosmian_kms_cli::actions::cover_crypt::CovercryptCommands;
 use cosmian_kms_cli::{
     actions::{
         access::AccessAction,

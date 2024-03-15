@@ -8,7 +8,7 @@ use cosmian_kms_client::{
 };
 use cosmian_kms_client::KmsClient;
 
-use crate::error::{CliError, result::CliResultHelper};
+use crate::error::{result::CliResultHelper, CliError};
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
 pub enum Curve {

@@ -1,3 +1,10 @@
+#[cfg(feature = "fips")]
+use super::{
+    FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
+    FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
+};
+#[cfg(feature = "fips")]
+use crate::kmip_bail;
 use crate::{
     error::KmipError,
     kmip::{
@@ -8,14 +15,6 @@ use crate::{
             CryptographicUsageMask, KeyFormatType, RecommendedCurve, UniqueIdentifier,
         },
     },
-};
-#[cfg(feature = "fips")]
-use crate::kmip_bail;
-
-#[cfg(feature = "fips")]
-use super::{
-    FIPS_PRIVATE_ECC_MASK_SIGN, FIPS_PRIVATE_ECC_MASK_SIGN_ECDH, FIPS_PUBLIC_ECC_MASK_SIGN,
-    FIPS_PUBLIC_ECC_MASK_SIGN_ECDH,
 };
 
 /// Builds correct usage mask depending on the curve. In FIPS mode, curves are

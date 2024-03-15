@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use x509_cert::Certificate as X509Certificate;
 
 use crate::{
-    error::{ClientError, result::RestClientResultHelper},
+    error::{result::RestClientResultHelper, ClientError},
     KmsClient,
 };
 
@@ -230,7 +230,7 @@ impl ClientConf {
 mod tests {
     use std::{env, fs, path::PathBuf};
 
-    use super::{ClientConf, get_default_conf_path, KMS_CLI_CONF_ENV};
+    use super::{get_default_conf_path, ClientConf, KMS_CLI_CONF_ENV};
 
     #[test]
     pub fn test_load() {

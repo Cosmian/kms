@@ -5,16 +5,7 @@ use std::{
     time::Duration,
 };
 
-use http::{HeaderMap, HeaderValue, StatusCode};
-use josekit::{
-    jwe::{alg::ecdh_es::EcdhEsJweAlgorithm, JweHeader, serialize_compact},
-    jwk::Jwk,
-};
-use log::debug;
-use reqwest::{Client, ClientBuilder, Identity, Response};
-use rustls::{Certificate, client::WebPkiVerifier};
-use serde::{Deserialize, Serialize};
-
+use cosmian_kmip::kmip::kmip_messages::{Message, MessageResponse};
 // re-export the kmip module as kmip
 use cosmian_kmip::kmip::{
     kmip_operations::{

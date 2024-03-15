@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-
 use cosmian_kms_client::ClientConf;
 
 use crate::error::CliError;

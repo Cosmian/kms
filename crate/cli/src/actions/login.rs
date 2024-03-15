@@ -6,23 +6,22 @@ use std::{
 };
 
 use actix_web::{
-    App,
     get,
-    HttpResponse, HttpServer, web::{self, Data},
+    web::{self, Data},
+    App, HttpResponse, HttpServer,
 };
 use clap::Parser;
+use cosmian_kms_client::ClientConf;
 use oauth2::{
-    AuthUrl, basic::BasicClient, ClientId, ClientSecret, CsrfToken, http, HttpRequest,
+    basic::BasicClient, http, AuthUrl, ClientId, ClientSecret, CsrfToken, HttpRequest,
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenUrl,
 };
 use reqwest::{
-    header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderValue},
+    header::{HeaderMap, HeaderValue, ACCEPT, CONTENT_TYPE},
     StatusCode,
 };
 use serde::Deserialize;
 use url::Url;
-
-use cosmian_kms_client::ClientConf;
 
 use crate::{cli_bail, error::CliError};
 

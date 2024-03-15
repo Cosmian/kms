@@ -23,7 +23,7 @@ use crate::{
             LinkedObjectIdentifier, MessageExtension, Nonce, OperationEnumeration, ProtocolVersion,
             ResultStatusEnumeration, UniqueIdentifier,
         },
-        ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV, TTLValue, TTLVEnumeration},
+        ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLVEnumeration, TTLValue, TTLV},
     },
 };
 

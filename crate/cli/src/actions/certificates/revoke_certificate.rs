@@ -1,5 +1,4 @@
 use clap::Parser;
-
 use cosmian_kms_client::KmsClient;
 
 use crate::{actions::shared::utils::revoke, cli_bail, error::CliError};

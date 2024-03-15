@@ -3,22 +3,21 @@ use openssl::{pkey::Private, rsa::Rsa};
 use tracing::trace;
 use zeroize::Zeroizing;
 
+#[cfg(feature = "fips")]
+use super::{FIPS_MIN_RSA_MODULUS_LENGTH, FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK};
 use crate::{
-    crypto::{KeyPair, secret::SafeBigUint},
+    crypto::{secret::SafeBigUint, KeyPair},
     error::KmipError,
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},
         kmip_types::{
             Attributes, CryptographicAlgorithm, CryptographicParameters, CryptographicUsageMask,
-            KeyFormatType, Link, LinkedObjectIdentifier, LinkType,
+            KeyFormatType, Link, LinkType, LinkedObjectIdentifier,
         },
     },
     kmip_bail,
 };
-
-#[cfg(feature = "fips")]
-use super::{FIPS_MIN_RSA_MODULUS_LENGTH, FIPS_PRIVATE_RSA_MASK, FIPS_PUBLIC_RSA_MASK};
 
 #[cfg(feature = "fips")]
 /// Check that bits set in `mask` are only bits set in `flags`. If any bit set

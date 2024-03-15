@@ -1,8 +1,7 @@
 use clap::Parser;
-
 use cosmian_kms_client::KmsClient;
 
-use crate::error::{CliError, result::CliResultHelper};
+use crate::error::{result::CliResultHelper, CliError};
 
 /// Initialize a new user encrypted database and return the secret (`SQLCipher` only).
 ///

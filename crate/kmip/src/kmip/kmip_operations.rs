@@ -8,8 +8,6 @@ use serde::{
 use strum::Display;
 use zeroize::Zeroizing;
 
-use crate::error::KmipError;
-
 use super::{
     kmip_data_structures::KeyWrappingSpecification,
     kmip_objects::{Object, ObjectType},
@@ -20,6 +18,7 @@ use super::{
         UniqueIdentifier,
     },
 };
+use crate::error::KmipError;
 
 #[allow(non_camel_case_types)]
 #[derive(Serialize, Deserialize, Copy, Clone, Display, Debug, Eq, PartialEq, Default)]

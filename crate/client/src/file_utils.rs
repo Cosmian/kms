@@ -4,15 +4,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde::{de::DeserializeOwned, Serialize};
-
 use cloudproof::reexport::crypto_core::bytes_ser_de::{Deserializer, Serializer};
 use cosmian_kms_client::cosmian_kmip::kmip::{
     kmip_objects::Object,
     ttlv::{deserializer::from_ttlv, serializer::to_ttlv, TTLV},
 };
+use serde::{de::DeserializeOwned, Serialize};
 
-use crate::{ClientResultHelper, error::ClientError};
+use crate::{error::ClientError, ClientResultHelper};
 
 /// Read all bytes from a file
 pub fn read_bytes_from_file(file: &impl AsRef<Path>) -> Result<Vec<u8>, ClientError> {

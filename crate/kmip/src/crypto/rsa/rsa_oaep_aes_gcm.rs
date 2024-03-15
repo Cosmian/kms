@@ -5,7 +5,7 @@ use crate::{
     crypto::{
         rsa::ckm_rsa_pkcs_oaep::{ckm_rsa_pkcs_oaep_key_unwrap, ckm_rsa_pkcs_oaep_key_wrap},
         symmetric::{
-            aead::{aead_decrypt, aead_encrypt, AeadCipher, random_key, random_nonce},
+            aead::{aead_decrypt, aead_encrypt, random_key, random_nonce, AeadCipher},
             AES_256_GCM_MAC_LENGTH,
         },
     },

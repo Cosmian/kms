@@ -1,6 +1,10 @@
 use cloudproof::reexport::cover_crypt::abe_policy::Policy;
 use zeroize::Zeroizing;
 
+use super::attributes::{
+    access_policy_as_vendor_attribute, policy_as_vendor_attribute,
+    rekey_edit_action_as_vendor_attribute, RekeyEditAction,
+};
 #[cfg(feature = "openssl")]
 use crate::{
     crypto::wrap::wrap_key_bytes,
@@ -14,15 +18,10 @@ use crate::{
         kmip_objects::{Object, ObjectType},
         kmip_operations::{Create, CreateKeyPair, Destroy, Import, Locate, ReKeyKeyPair},
         kmip_types::{
-            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkedObjectIdentifier,
-            LinkType, UniqueIdentifier,
+            Attributes, CryptographicAlgorithm, KeyFormatType, Link, LinkType,
+            LinkedObjectIdentifier, UniqueIdentifier,
         },
     },
-};
-
-use super::attributes::{
-    access_policy_as_vendor_attribute, policy_as_vendor_attribute,
-    rekey_edit_action_as_vendor_attribute, RekeyEditAction,
 };
 
 /// Build a `CreateKeyPair` request for an `CoverCrypt` Master Key

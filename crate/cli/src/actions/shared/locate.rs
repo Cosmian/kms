@@ -15,12 +15,13 @@ use strum::IntoEnumIterator;
 use cosmian_kmip::kmip::{
     kmip_operations::Locate,
     kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, LinkedObjectIdentifier, LinkType,
+        Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
     },
     KmsRestClient,
 };
 use strum::IntoEnumIterator;
 use cosmian_kms_client::KmsClient;
+use strum::IntoEnumIterator;
 
 use crate::error::CliError;
 

@@ -4,9 +4,8 @@ use std::{
     str::FromStr,
 };
 
-use serde::{Deserialize, Serialize};
-
 use cosmian_kmip::kmip::kmip_types::{Attributes, StateEnumeration, UniqueIdentifier};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Access {

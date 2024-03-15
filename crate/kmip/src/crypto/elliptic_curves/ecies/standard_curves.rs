@@ -10,7 +10,7 @@ use zeroize::Zeroizing;
 
 use crate::{
     crypto::symmetric::aead::{aead_decrypt, aead_encrypt, AeadCipher},
-    error::{KmipError, result::KmipResultHelper},
+    error::{result::KmipResultHelper, KmipError},
     kmip_bail,
 };
 

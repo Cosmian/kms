@@ -2,22 +2,21 @@ use std::{collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;
 use cloudproof::reexport::crypto_core::{
-    CsRng,
-    RandomFixedSizeCBytes, reexport::rand_core::{RngCore, SeedableRng}, SymmetricKey,
+    reexport::rand_core::{RngCore, SeedableRng},
+    CsRng, RandomFixedSizeCBytes, SymmetricKey,
 };
 use cloudproof_findex::{
     implementations::redis::{FindexRedis, FindexRedisError, RemovedLocationsFinder},
     Location,
 };
-use redis::aio::ConnectionManager;
-use tracing::trace;
-
 use cosmian_kmip::{
     crypto::symmetric::create_symmetric_key_kmip_object,
     kmip::kmip_types::{CryptographicAlgorithm, StateEnumeration},
     KmipResultHelper,
 };
 use cosmian_kms_client::access::ObjectOperationType;
+use redis::aio::ConnectionManager;
+use tracing::trace;
 
 use crate::{
     database::{

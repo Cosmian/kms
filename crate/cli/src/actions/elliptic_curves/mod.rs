@@ -1,12 +1,10 @@
 use clap::Parser;
-
 use cosmian_kms_client::KmsClient;
 
-use crate::error::CliError;
-
+use self::keys::KeysCommands;
 #[cfg(not(feature = "fips"))]
 use self::{decrypt::DecryptAction, encrypt::EncryptAction};
-use self::keys::KeysCommands;
+use crate::error::CliError;
 
 #[cfg(not(feature = "fips"))]
 mod decrypt;

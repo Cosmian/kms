@@ -1,5 +1,4 @@
 use clap::Parser;
-
 use cloudproof::reexport::cover_crypt::abe_policy::AccessPolicy;
 use cosmian_kms_client::{
     cosmian_kmip::crypto::cover_crypt::kmip_requests::build_create_user_decryption_private_key_request,
@@ -7,7 +6,7 @@ use cosmian_kms_client::{
 };
 use cosmian_kms_client::KmsClient;
 
-use crate::error::{CliError, result::CliResultHelper};
+use crate::error::{result::CliResultHelper, CliError};
 
 /// Create a new user decryption key given an access policy expressed as a boolean expression.
 ///

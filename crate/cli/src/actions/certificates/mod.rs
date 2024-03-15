@@ -1,10 +1,7 @@
 use clap::Subcommand;
-
 use cosmian_kms_client::KmsClient;
 pub use export_certificate::CertificateExportFormat;
 pub use import_certificate::CertificateInputFormat;
-
-use crate::error::CliError;
 
 use self::{
     certify::CertifyAction, decrypt_certificate::DecryptCertificateAction,
@@ -12,6 +9,7 @@ use self::{
     export_certificate::ExportCertificateAction, import_certificate::ImportCertificateAction,
     revoke_certificate::RevokeCertificateAction,
 };
+use crate::error::CliError;
 
 mod certify;
 

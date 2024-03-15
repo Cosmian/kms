@@ -6,7 +6,7 @@ use cosmian_kms_client::{
     KmsClient,
 };
 
-use crate::error::{CliError, result::CliResultHelper};
+use crate::error::{result::CliResultHelper, CliError};
 
 /// Manage the users' access rights to the cryptographic objects
 #[derive(Parser, Debug)]

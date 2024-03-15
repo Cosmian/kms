@@ -2,6 +2,9 @@ use openssl::pkey::{Id, PKey, Private};
 use tracing::debug;
 use zeroize::Zeroizing;
 
+use super::WRAPPING_SECRET_LENGTH;
+#[cfg(not(feature = "fips"))]
+use crate::crypto::elliptic_curves::ecies::ecies_decrypt;
 use crate::{
     crypto::{
         password_derivation::derive_key_from_password,
@@ -12,7 +15,7 @@ use crate::{
         symmetric::rfc5649::rfc5649_unwrap,
         wrap::common::rsa_parameters,
     },
-    error::{KmipError, result::KmipResultHelper},
+    error::{result::KmipResultHelper, KmipError},
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue, KeyWrappingData},
         kmip_objects::Object,
@@ -23,10 +26,6 @@ use crate::{
     kmip_bail,
     openssl::kmip_private_key_to_openssl,
 };
-#[cfg(not(feature = "fips"))]
-use crate::crypto::elliptic_curves::ecies::ecies_decrypt;
-
-use super::WRAPPING_SECRET_LENGTH;
 
 /// Unwrap a key using a password
 pub fn unwrap_key_bytes(

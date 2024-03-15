@@ -7,6 +7,8 @@ use cosmian_kmip::kmip::{
     kmip_objects::{Object, ObjectType},
     kmip_types::{CertificateType, KeyFormatType},
 };
+use pem::{EncodeConfig, LineEnding};
+use zeroize::Zeroizing;
 
 use crate::{client_bail, ClientError};
 

@@ -1,11 +1,12 @@
 use openssl::{
     rand::rand_bytes,
-    symm::{Cipher, decrypt_aead, encrypt_aead},
+    symm::{decrypt_aead, encrypt_aead, Cipher},
 };
 use zeroize::Zeroizing;
 
+use super::{AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH};
 use crate::{
-    crypto::{DecryptionSystem, EncryptionSystem, secret::Secret},
+    crypto::{secret::Secret, DecryptionSystem, EncryptionSystem},
     error::KmipError,
     kmip::{
         kmip_objects::Object,
@@ -14,8 +15,6 @@ use crate::{
     },
     kmip_bail,
 };
-
-use super::{AES_256_GCM_IV_LENGTH, AES_256_GCM_KEY_LENGTH, AES_256_GCM_MAC_LENGTH};
 
 pub struct AesGcmSystem {
     key_uid: String,

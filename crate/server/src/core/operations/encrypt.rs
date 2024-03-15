@@ -1,19 +1,15 @@
 use cloudproof::reexport::cover_crypt::Covercrypt;
-use openssl::{
-    pkey::{Id, PKey, Public},
-    x509::X509,
-};
-use tracing::trace;
-
+#[cfg(not(feature = "fips"))]
+use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_encrypt;
 use cosmian_kmip::{
     crypto::{
         cover_crypt::encryption::CoverCryptEncryption,
-        EncryptionSystem,
         rsa::{
             ckm_rsa_pkcs_oaep::ckm_rsa_pkcs_oaep_encrypt,
             rsa_oaep_aes_gcm::rsa_oaep_aes_gcm_encrypt,
         },
-        symmetric::aead::{aead_encrypt, AeadCipher, random_nonce},
+        symmetric::aead::{aead_encrypt, random_nonce, AeadCipher},
+        EncryptionSystem,
     },
     kmip::{
         kmip_objects::{Object, ObjectType},
@@ -23,15 +19,18 @@ use cosmian_kmip::{
             PaddingMethod, StateEnumeration, UniqueIdentifier,
         },
     },
-    KmipError,
     openssl::kmip_public_key_to_openssl,
+    KmipError,
 };
-#[cfg(not(feature = "fips"))]
-use cosmian_kmip::crypto::elliptic_curves::ecies::ecies_encrypt;
 use cosmian_kms_client::access::ObjectOperationType;
+use openssl::{
+    pkey::{Id, PKey, Public},
+    x509::X509,
+};
+use tracing::trace;
 
 use crate::{
-    core::{extra_database_params::ExtraDatabaseParams, KMS, operations::unwrap_key},
+    core::{extra_database_params::ExtraDatabaseParams, operations::unwrap_key, KMS},
     database::object_with_metadata::ObjectWithMetadata,
     error::KmsError,
     kms_bail,

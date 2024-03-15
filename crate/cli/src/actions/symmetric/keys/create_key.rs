@@ -1,4 +1,4 @@
-use base64::{Engine as _, engine::general_purpose};
+use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
 use cosmian_kms_client::{
     cosmian_kmip::{
@@ -11,7 +11,7 @@ use cosmian_kms_client::{import_object, KmsClient};
 
 use crate::{
     cli_bail,
-    error::{CliError, result::CliResultHelper},
+    error::{result::CliResultHelper, CliError},
 };
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]

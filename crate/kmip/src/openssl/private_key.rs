@@ -16,7 +16,7 @@ use crate::{
         },
         secret::SafeBigUint,
     },
-    error::{KmipError, result::KmipResultHelper},
+    error::{result::KmipResultHelper, KmipError},
     kmip::{
         kmip_data_structures::{KeyBlock, KeyMaterial, KeyValue},
         kmip_objects::{Object, ObjectType},

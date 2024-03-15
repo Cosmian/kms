@@ -1,14 +1,13 @@
 use std::{collections::HashMap, process::Command};
 
 use assert_cmd::cargo::CommandCargoExt;
-use serde_json::Value;
-
 use cosmian_kms_client::KMS_CLI_CONF_ENV;
+use serde_json::Value;
 
 use crate::{
     actions::shared::AttributeTag,
-    error::{CliError, result::CliResultHelper},
-    tests::{PROG_NAME, utils::recover_cmd_logs},
+    error::{result::CliResultHelper, CliError},
+    tests::{utils::recover_cmd_logs, PROG_NAME},
 };
 
 pub fn get_attributes(
