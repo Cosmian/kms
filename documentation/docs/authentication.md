@@ -131,3 +131,13 @@ Use the following options to configure the KMS server for Okta:
 --jwks-uri=https://<OKTA_TENANT_NAME>.com/oauth2/v1/keys
 --jwt-audience=<OKTA_CLIENT_ID>
 ```
+
+#### Using Microsoft Entra ID
+
+Use the following options to configure the KMS server for Microsoft Entra Id:
+
+```sh
+--jwt-issuer-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/
+--jwks-uri=https://login.microsoftonline.com/<TENANT_ID>/discovery/v2.0/keys
+--jwt-audience=<CLIENT_ID>
+```

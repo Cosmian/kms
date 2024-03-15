@@ -255,7 +255,7 @@ impl LoginState {
                         .into_inner()
                         .send(auth_params.into_inner())
                         .unwrap();
-                    HttpResponse::Ok().body("Authentication Success! You can close this window.")
+                    HttpResponse::Ok().body("You can now close this window.")
                 }
 
                 HttpServer::new(move || {
