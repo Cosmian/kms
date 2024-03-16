@@ -50,7 +50,7 @@ nav:
   - Running in the cloud or any zero-trust environment: zero_trust.md
   - Authenticating users to the server: authentication.md
   - Authorizing users with access rights: authorization.md
-  - The `ckms` command line interface:
+  - The ckms and ckms_gui clients:
       - Getting Started: cli/cli.md
       - User manual: cli/main_commands.md
   - Calling the KMS API: api.md

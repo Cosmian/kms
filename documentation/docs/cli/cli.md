@@ -1,17 +1,20 @@
-The `ckms` binary is a command line interface (CLI) used to manage cryptographic
-objects inside the KMS.
+Cosmian KMS can be managed using the `ckms` command line interface (CLI) or its graphical
+client `ckms_gui`.
 
-!!! info "Download ckms"
-    Please download the latest version of the CLI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.13.5/)
+!!! info "Download ckms and ckms_gui"
 
-#### Configuration
+    Please download the latest versions for your Operating System from
+    the [Cosmian public packages repository](https://package.cosmian.com/kms/4.13.5/)
 
-The CLI expects a configuration file to be located at `~/.cosmian/kms.json`
-where `~` is your home folder.
+## Configuring the clients
+
+Both clients - and the PKCS#11 provider library - expect a configuration file to be located
+at `~/.cosmian/kms.json`where `~` is your home folder.
+
 An alternate location can be used by setting the `KMS_CLI_CONF_ENV` environment
 variable.
 
-The configuration file is created automatically when the CLI is used for the
+A minimum configuration file is created automatically when the CLI is used for the
 first time with the following values
 
 ```json
@@ -38,8 +41,10 @@ configuration of the KMS.
   SSL certificate. Useful to run tests with a self-signed certificate.
 - `verified_cert` contains the verified PEM TLS certificate used for certificate
   pinning
+- `kms_database_secret` is OPTIONAL and is the base 64 encoded secret to use
+  when connecting to a KMS using a client-side sencrypted database
 
-Here is an example configuration with TLS authentication and an encrypted
+Here is an example configuration with TLS authentication and a client-side encrypted
 database:
 
 ```json
@@ -51,15 +56,9 @@ database:
 }
 ```
 
-#### Usage examples
+## Usage
 
-Many usage examples are provided with descriptions of the various KMIP
+Usage examples of the CLI are provided with descriptions of the various KMIP
 2.1 [operations](../kmip_2_1/operations.md).
 
-#### KMS GUI
-
-The [KMS GUI](https://github.com/Cosmian/ckms_gui) offers a graphical tool to
-configure and use the KMS CLI binary.
-
-!!! info "Download ckms_gui"
-    Please download the latest version of the KMS GUI for your Operating System from the [Cosmian public packages repository](https://package.cosmian.com/kms/4.13.5/)
+The GUI version offers the same features as the CLI, but with a graphical user interface.
