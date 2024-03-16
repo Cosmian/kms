@@ -1,10 +1,12 @@
-The Cosmian KMS is integrated with Veracrypt disk encryption using the Cosmian
-KMS PKCS#11 provider library.
+The Cosmian KMS is integrated with [Veracrypt](https://www.veracrypt.fr/en/Home.html)
+disk encryption using the Cosmian KMS PKCS#11 provider library.
 
-When mounting a Veracrypt volume, the key (`keyfile` in Veracrypt speech) is
-retrieved
-from the Cosmian KMS using the PKCS#11 provider library.
-The key is then used to decrypt the volume.
+Veracrypt is a free open-source disk encryption software for Windows, Mac OS X and Linux
+which is successor of TrueCrypt, certified by ANSSI. Veracrypt has received a
+formal security evaluation from BSI.
+
+Using the Cosmian KMS PKCS#11 provider library, Veracrypt can use keys stored in the KMS to
+encrypt and decrypt volumes.
 
 ## Installing the PKCS#11 provider library on Veracrypt
 
@@ -49,13 +51,13 @@ also be used to identify the key when using Veracrypt CLI.
 
 To create a key using the CLI, that will be shown as `vol1`to the user, use the following command:
 
-```bash
+```sh
 ckms sym keys create -t disk-encryption -t vol1
 ```
 
 Do not forget to grant Get access to the key to the machine that will mount the Veracrypt volume.
 
-```json
+```sh
 ckms access-rights grant <MACHINE_CN> <KEY_ID> get
 ```
 
@@ -82,7 +84,7 @@ Select the key to use to mount the volume and click `OK`
 When mounting a Veracrypt volume using the CLI, use the `-k` option followed by
 `token::/slot/1/file/vol1` where `vol1` is the other tag chosen to identify the key in the KMS.
 
-## Revoking access to a key
+## Revoking the access to a key
 
 To revoke the access to the key, either
 
@@ -98,14 +100,14 @@ ckms access-rights revoke <MACHINE_CN> <KEY_ID> get
 ckms sym keys revoke <KEY_ID>
 ```
 
-The key can never be re-used.
+*Note*: a revoked key can never be re-used.
 
 ## Rotating a key
 
 To rotate a key,
 
-1. create a new key
-2. grant access to the machine to the new key.
-3. perform the key rotation/change in the Veracrypt GUI or CLI
-4. revoke the access to the old key for the machine
-5. optionally revoke the old key itself.
+1. Create a new key.
+2. Grant access to the machine to the new key.
+3. Perform the key rotation/change in the Veracrypt GUI or CLI.
+4. Revoke the access to the old key for the machine.
+5. Optionally revoke the old key itself.

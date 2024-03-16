@@ -1,26 +1,28 @@
-The Cosmian Key Management System (KMS) is a high-performance, [**open-source
-**](https://github.com/Cosmian/kms), server application
+The Cosmian Key Management System (KMS) is a high-performance,
+[**open-source**](https://github.com/Cosmian/kms), server application
 written in [**Rust**](https://www.rust-lang.org/) that provides a [**KMIP**](#kmip-21-api) REST API
-to store and manage
-keys used in many standard (AES, ECIES,...) cryptographic stacks as well as Cosmian cryptographic
-stacks ([**Covercrypt**](https://github.com/Cosmian/cover_crypt), [**Findex
-**](https://github.com/Cosmian/findex)). The KMS can also be used
-to perform encryption and decryption operations.
+to store and manage keys used in many standard (AES, ECIES,...) cryptographic stacks as well as
+Cosmian cryptographic stacks
+([**Covercrypt**](https://github.com/Cosmian/cover_crypt),
+[**Findex**](https://github.com/Cosmian/findex)).
+The KMS can also be used to perform encryption and decryption operations.
 
 The Cosmian KMS is designed to [operate in **zero-trust** environments](./zero_trust.md), such as
 the public cloud,
-using confidential VMs and a fully application-level encrypted database.
+using confidential [Cosmian VMs](https://docs.cosmian.com/compute/cosmian_vm/overview/)
+and an application-level encrypted database indexed with Findex.
 
-!!! info "Quick start"
-To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data inside the
-container, simply run
+!!! info "Docker Quick start"
+
+    To quick-start a Cosmian KMS server on `http://localhost:9998` that stores its data
+    inside the container, simply run the following command:
 
     ```sh
     docker run -p 9998:9998 --name kms ghcr.io/cosmian/kms:4.13.5
     ```
-
+    
     Check the Cosmian KMS server version
-
+    
     ```sh
     curl http://localhost:9998/version
     ```
@@ -43,8 +45,7 @@ container, simply run
 * [Easy to deploy: Docker image and pre-built binaries](#easy-to-deploy-docker-image-and-pre-built-binaries)
 * [Integrated with Cloudproof libraries](#integrated-with-cloudproof-libraries)
 * [Comprehensive inline help](#comprehensive-inline-help)
-    * [Options help](#options-help)
-    * [Using a TOML configuration file](#using-a-toml-configuration-file)
+* [Using a TOML configuration file](#using-a-toml-configuration-file)
 
 <!-- TOC -->
 
@@ -172,8 +173,7 @@ for details.
 #### Comprehensive inline help
 
 Just like the [`ckms` Command Line Interface](./cli/cli.md), the KMS server has a built-in help
-system
-that can be accessed using the `--help` command line option.
+system that can be accessed using the `--help` command line option.
 
 ```sh
 docker run --rm ghcr.io/cosmian/kms:4.13.5 --help
@@ -181,8 +181,6 @@ docker run --rm ghcr.io/cosmian/kms:4.13.5 --help
 
 The options are enabled on the docker command line or using the environment variables listed in the
 options help.
-
-##### Options help
 
 ```text
 Cosmian Key Management Service
@@ -336,9 +334,10 @@ Options:
           Print version
 ```
 
-##### Using a TOML configuration file
+#### TOML configuration file
 
-If a file is found at /etc/cosmian_kms/server.toml, the KMS server will use it to configure itself.
+If a file is found at `/etc/cosmian_kms/server.toml`, the KMS server will use it to configure
+itself.
 The location of the file can be changed using the `COSMIAN_KMS_CONF` environment variable.
 
 The file should be a TOML file with the following structure:

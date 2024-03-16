@@ -1,18 +1,24 @@
 The easiest way to call the KMIP API is to use the `ckms` [command line interface](../cli/cli.md)
-or one of the Cosmian [cloudproof libraries](https://github.com/Cosmian) which provide wrapper calls in the
-corresponding language.
+or one of the Cosmian [cloudproof libraries](https://github.com/Cosmian) which provide wrapper calls
+in the corresponding language.
 
-When posting directly to the server, the client must build the JSON TTLV messages from an [Operation](./operations.md)
-as described in the KMIP 2.1 specification, and issue an HTTP POST call to the `/kmip/2_1` endpoint of the server.
+Without the use of a library, the client must build the JSON TTLV messages from
+an [Operation](./operations.md)
+as described in the KMIP 2.1 specification, and issue an HTTP POST call to the `/kmip/2_1` endpoint
+of the server.
+
+Multiple operations can be sent in a single call using the [`Messages` API](./messages.md) .
 
 !!!info  "Building JSON TTLV messages"
+
     Building JSON TTLV messages is a complex task and the easiest way to get started is to use the `ckms` CLI in
     debug mode to print the corresponding request and response messages.
+
     The debug mode is activated by setting the`RUST_LOG` environment variable
     to `cosmian_kms_client::kms_rest_client=debug`.
     See the [Debug Mode Example](#debug-mode-example) below.
 
-To send multiple requests in a single call,  se the [`Messages` API](./messages.md) .
+To send multiple requests in a single call, se the [`Messages` API](./messages.md) .
 
 #### Sample JSON TTLV messages
 
