@@ -10,7 +10,6 @@ mod error;
 #[allow(dead_code)]
 mod kms_client;
 mod logging;
-// mod tests;
 
 /// # Safety
 /// This function is the first one called by the PKCS#11 library client
