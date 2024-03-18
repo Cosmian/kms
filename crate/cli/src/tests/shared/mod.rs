@@ -7,7 +7,7 @@ mod import_export_encodings;
 mod import_export_wrapping;
 mod locate;
 mod revoke;
-#[cfg(not(feature = "fips"))]
+#[cfg(all(not(feature = "fips"), feature = "openssl"))]
 mod wrap_unwrap;
 
 pub use destroy::destroy;
