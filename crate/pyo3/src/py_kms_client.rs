@@ -94,7 +94,6 @@ impl KmsClient {
     ///     - `database_secret` (Optional[str])         : secret to authenticate to the KMS database
     ///     - `insecure_mode` (bool)                    : accept self signed ssl cert. defaults to False
     ///     - `allowed_tee_tls_cert` (Optional[bytes])  : PEM certificate of a tee.
-    ///     - `jwe_public_key` (Optional[str])          : public key for JWE
     #[new]
     #[pyo3(signature = (
         server_url,
@@ -104,7 +103,6 @@ impl KmsClient {
         database_secret = None,
         insecure_mode = false,
         allowed_tee_tls_cert = None,
-        jwe_public_key = None,
     ))]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -115,7 +113,6 @@ impl KmsClient {
         database_secret: Option<&str>,
         insecure_mode: bool,
         allowed_tee_tls_cert: Option<&str>,
-        jwe_public_key: Option<&str>,
     ) -> PyResult<Self> {
         let tee_cert = match allowed_tee_tls_cert {
             Some(cert_bytes) => Some(Certificate(
@@ -138,7 +135,6 @@ impl KmsClient {
             database_secret,
             insecure_mode,
             tee_cert,
-            jwe_public_key,
         )
         .map_err(|_| {
             PyException::new_err(format!(
