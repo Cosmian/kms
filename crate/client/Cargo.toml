@@ -12,9 +12,9 @@ doctest = false
 
 [dependencies]
 base64 = { workspace = true }
-cosmian_kmip = { path = "../kmip", features = ["openssl"] }
+cosmian_kmip = { path = "../kmip", default-features = true } #, features = ["openssl"] 
 http = { workspace = true }
-josekit = { workspace = true }
+josekit = { workspace = true, features = ["vendored"] }
 log = "0.4"
 reqwest = { workspace = true }
 rustls = { workspace = true }
