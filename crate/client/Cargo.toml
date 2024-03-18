@@ -12,8 +12,10 @@ doctest = false
 
 [dependencies]
 base64 = { workspace = true }
-cosmian_kmip = { path = "../kmip", default-features = true } #, features = ["openssl"] 
+## use the non-openssl version
+cosmian_kmip = { path = "../kmip", default-features = true }
 http = { workspace = true }
+## use the vendored version of openssl so that Windows and MacOS clients do not have to install it
 josekit = { workspace = true, features = ["vendored"] }
 log = "0.4"
 reqwest = { workspace = true }

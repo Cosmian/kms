@@ -21,8 +21,8 @@ staging = []
 fips = ["cosmian_kmip/fips"]
 
 [dependencies]
+## Avoid pulling openssl
 actix-web = { version = "4.5.1", features = ["rustls"] }
-#actix-web = { workspace = true }
 base64 = { workspace = true }
 clap = { workspace = true }
 cloudproof = { workspace = true }
