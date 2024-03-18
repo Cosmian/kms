@@ -74,7 +74,8 @@ redis = { version = "0.23", features = [
 # When using client certificate authentication, reqwest will use the
 # native-tls crate to create an Identity; this will be different backend
 # implementations depending on the operating system. On linux, it will
-# use a vendored version of openssl
+# use openssl
+# The default features is to guarantee that the native-tls crate will be used
 reqwest = { version = "0.11.22", features = [
     "json",
     "multipart",
