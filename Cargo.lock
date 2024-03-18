@@ -1075,7 +1075,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "4.13.3"
+version = "4.13.4"
 dependencies = [
  "argon2",
  "base58",
@@ -1101,7 +1101,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "4.13.3"
+version = "4.13.4"
 dependencies = [
  "actix-rt",
  "actix-server",
@@ -1139,7 +1139,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "4.13.3"
+version = "4.13.4"
 dependencies = [
  "base64 0.21.7",
  "cosmian_kmip",
@@ -1157,7 +1157,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_python"
-version = "4.13.3"
+version = "4.13.4"
 dependencies = [
  "cloudproof",
  "cosmian_kmip",
@@ -1172,7 +1172,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "4.13.3"
+version = "4.13.4"
 dependencies = [
  "actix-cors",
  "actix-http",
@@ -1220,7 +1220,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_logger"
-version = "4.13.3"
+version = "4.13.4"
 dependencies = [
  "tracing",
  "tracing-subscriber",

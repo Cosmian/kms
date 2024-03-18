@@ -61,7 +61,7 @@ locals {
 
 variable "redhat_source_image" {
   type    = string
-  default = "cosmian-vm-1-1-0-rc-1-sev-rhel"
+  default = "cosmian-vm-1-1-0-rc-2-sev-rhel"
 }
 
 variable "redhat_source_image_family" {
