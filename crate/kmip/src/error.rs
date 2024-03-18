@@ -35,7 +35,6 @@ pub enum KmipError {
     #[error("{0}")]
     Default(String),
 
-    #[cfg(feature = "openssl")]
     #[error("OpenSSL Error: {0}")]
     OpenSSL(String),
 }
