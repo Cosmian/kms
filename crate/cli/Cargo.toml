@@ -18,6 +18,7 @@ doctest = false
 [features]
 # Staging is used to run tests with the remote kms test server. Otherwise, the test runs a local kms server.
 staging = []
+fips = ["cosmian_kms_client/fips"]
 
 [dependencies]
 ## Avoid pulling openssl

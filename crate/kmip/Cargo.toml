@@ -14,7 +14,7 @@ default = ["dep:sha3"]
 openssl = ["dep:openssl"]
 pyo3 = ["dep:pyo3"]
 # Enable FIPS module feature build. KMS builds in FIPS mode when this is enabled.
-fips = []
+fips = ["openssl"]
 
 [dependencies]
 argon2 = "0.5"

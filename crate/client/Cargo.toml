@@ -10,6 +10,10 @@ license-file = "../../LICENSE.md"
 # and is not needed for internal lib
 doctest = false
 
+[features]
+fips = ["cosmian_kmip/fips"]
+openssl = ["cosmian_kmip/openssl"]
+
 [dependencies]
 base64 = { workspace = true }
 ## use the non-openssl version
@@ -25,3 +29,6 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
 webpki-roots = { workspace = true }
+
+[dev-dependencies]
+cosmian_kmip = { path = "../kmip", default-features = true }
