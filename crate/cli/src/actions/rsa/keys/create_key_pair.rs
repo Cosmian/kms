@@ -1,6 +1,7 @@
 use clap::Parser;
-use cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request;
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::{
+    cosmian_kmip::crypto::rsa::kmip_requests::create_rsa_key_pair_request, KmsRestClient,
+};
 
 use crate::error::{result::CliResultHelper, CliError};
 

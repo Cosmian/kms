@@ -18,7 +18,6 @@ doctest = false
 [features]
 # Staging is used to run tests with the remote kms test server. Otherwise, the test runs a local kms server.
 staging = []
-fips = ["cosmian_kmip/fips"]
 
 [dependencies]
 ## Avoid pulling openssl
@@ -26,7 +25,6 @@ actix-web = { version = "4.5.1", features = ["rustls"] }
 base64 = { workspace = true }
 clap = { workspace = true }
 cloudproof = { workspace = true }
-cosmian_kmip = { path = "../kmip" }
 cosmian_kms_client = { path = "../client" }
 cosmian_logger = { path = "../logger" }
 der = { workspace = true }

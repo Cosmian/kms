@@ -1,7 +1,7 @@
 use std::{path::PathBuf, process::Command};
 
 use assert_cmd::prelude::*;
-use cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
+use cosmian_kms_client::cosmian_kmip::kmip::kmip_types::CryptographicAlgorithm;
 
 #[cfg(not(feature = "fips"))]
 use crate::tests::utils::{start_default_test_kms_server, ONCE};

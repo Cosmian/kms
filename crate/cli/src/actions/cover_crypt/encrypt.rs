@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::{
-    crypto::generic::kmip_requests::build_encryption_request,
-    kmip::kmip_types::CryptographicAlgorithm,
+use cosmian_kms_client::{
+    cosmian_kmip::{
+        crypto::generic::kmip_requests::build_encryption_request,
+        kmip::kmip_types::CryptographicAlgorithm,
+    },
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 
 use crate::{
     actions::shared::utils::{

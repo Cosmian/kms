@@ -1152,7 +1152,6 @@ dependencies = [
  "clap",
  "cloudproof",
  "const-oid",
- "cosmian_kmip",
  "cosmian_kms_client",
  "cosmian_kms_server",
  "cosmian_logger",

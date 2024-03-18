@@ -3,8 +3,10 @@ mod encrypt;
 mod keys;
 
 use clap::Parser;
-use cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, HashingAlgorithm};
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::kmip_types::{CryptographicAlgorithm, HashingAlgorithm},
+    KmsRestClient,
+};
 
 use self::{decrypt::DecryptAction, encrypt::EncryptAction, keys::KeysCommands};
 use crate::error::CliError;

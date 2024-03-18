@@ -10,7 +10,7 @@ use std::{
 use actix_server::ServerHandle;
 use assert_cmd::prelude::{CommandCargoExt, OutputAssertExt};
 use base64::{engine::general_purpose::STANDARD as b64, Engine as _};
-use cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
+use cosmian_kms_client::cosmian_kmip::crypto::{secret::Secret, symmetric::AES_256_GCM_KEY_LENGTH};
 use cosmian_kms_server::{
     config::{
         ClapConfig, DBConfig, HttpConfig, HttpParams, JWEConfig, Jwk, JwtAuthConfig, ServerParams,

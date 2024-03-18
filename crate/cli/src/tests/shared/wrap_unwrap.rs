@@ -9,7 +9,7 @@ use cloudproof::reexport::crypto_core::{
     reexport::rand_core::{RngCore, SeedableRng},
     CsRng,
 };
-use cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod};
+use cosmian_kms_client::cosmian_kmip::kmip::kmip_types::{EncodingOption, WrappingMethod};
 use tempfile::TempDir;
 
 use crate::{

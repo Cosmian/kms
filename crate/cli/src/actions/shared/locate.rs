@@ -4,13 +4,15 @@ use clap::{
     error::{ContextKind, ContextValue, ErrorKind},
     Parser,
 };
-use cosmian_kmip::kmip::{
-    kmip_operations::Locate,
-    kmip_types::{
-        Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{
+        kmip_operations::Locate,
+        kmip_types::{
+            Attributes, CryptographicAlgorithm, KeyFormatType, LinkType, LinkedObjectIdentifier,
+        },
     },
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 use strum::IntoEnumIterator;
 
 use crate::error::CliError;

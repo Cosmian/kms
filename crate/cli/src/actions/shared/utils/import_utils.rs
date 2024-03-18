@@ -1,9 +1,11 @@
-use cosmian_kmip::kmip::{
-    kmip_objects::{Object, ObjectType},
-    kmip_operations::Import,
-    kmip_types::{Attributes, KeyWrapType, UniqueIdentifier},
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{
+        kmip_objects::{Object, ObjectType},
+        kmip_operations::Import,
+        kmip_types::{Attributes, KeyWrapType, UniqueIdentifier},
+    },
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 use tracing::trace;
 
 use crate::error::{result::CliResultHelper, CliError};

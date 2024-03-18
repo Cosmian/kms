@@ -1,9 +1,11 @@
 use clap::Parser;
-use cosmian_kmip::{
-    crypto::elliptic_curves::kmip_requests::create_ec_key_pair_request,
-    kmip::kmip_types::RecommendedCurve,
+use cosmian_kms_client::{
+    cosmian_kmip::{
+        crypto::elliptic_curves::kmip_requests::create_ec_key_pair_request,
+        kmip::kmip_types::RecommendedCurve,
+    },
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 
 use crate::error::{result::CliResultHelper, CliError};
 
