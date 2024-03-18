@@ -52,7 +52,7 @@ variable "wait_to_add_ssh_keys" {
 
 variable "image_licenses" {
   type    = list(string)
-  default = ["projects/cosmian-public/global/licenses/cloud-marketplace-710834cc6fa51b9c-df1ebeb69c0ba664"]
+  default = ["projects/cosmian-public/global/licenses/cloud-marketplace-9c436e19c06e2389-df1ebeb69c0ba664"]
 }
 
 locals {
@@ -61,7 +61,7 @@ locals {
 
 variable "redhat_source_image" {
   type    = string
-  default = "cosmian-vm-1-1-0-rc-1-sev-rhel"
+  default = "cosmian-vm-1-1-0-rc-2-sev-rhel"
 }
 
 variable "redhat_source_image_family" {

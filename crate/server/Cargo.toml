@@ -1,6 +1,6 @@
 [package]
 name = "cosmian_kms_server"
-version = "4.13.3"
+version = "4.13.4"
 authors = ["Bruno Grieder <bruno.grieder@cosmian.com>"]
 edition = "2021"
 license-file = "../../LICENSE.md"

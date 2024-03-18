@@ -791,32 +791,33 @@ checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
 
 [[package]]
 name = "cloudproof"
-version = "2.4.1"
-source = "git+https://github.com/Cosmian/cloudproof_rust?branch=feature/covercrypt_rekey#c974cb635566020a7934535d35f948669d9bb0af"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90cf8ce4393587f98a3d8a3ff7eecfbd86f22adc96969f6cb3525c1442c2aa08"
 dependencies = [
  "cloudproof_aesgcm",
  "cloudproof_anonymization",
  "cloudproof_cover_crypt",
  "cloudproof_ecies",
- "cloudproof_findex 6.0.1",
+ "cloudproof_findex 6.0.2",
  "cloudproof_fpe",
  "cosmian_crypto_core",
 ]
 
 [[package]]
 name = "cloudproof_aesgcm"
-version = "0.1.3"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc58b9d33a5aaa359654e5eea6d1fa6c5f29ad093c6465271f26d15bddd10d56"
+checksum = "a0f2755b9f0f157a2a8816cb88663af7741c72df12fba115ba1f98e6e7077b15"
 dependencies = [
  "cosmian_crypto_core",
 ]
 
 [[package]]
 name = "cloudproof_anonymization"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b816b8ce2abc825ed93d3d3fc922d79c205d0843eb624a96333533d67e2f42c"
+checksum = "4b4c483a4f8ce9ebd178dfc8578b327d195ff7d44cbdab5bb171a8c8e8c7290f"
 dependencies = [
  "argon2",
  "base64 0.21.7",
@@ -832,8 +833,9 @@ dependencies = [
 
 [[package]]
 name = "cloudproof_cover_crypt"
-version = "13.0.1"
-source = "git+https://github.com/Cosmian/cloudproof_rust?branch=feature/covercrypt_rekey#c974cb635566020a7934535d35f948669d9bb0af"
+version = "14.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34b957408fa6185ed0a2140da5df66cd37326da478a11a6c1a9ac07650d58121"
 dependencies = [
  "cosmian_cover_crypt",
  "cosmian_crypto_core",
@@ -842,9 +844,9 @@ dependencies = [
 
 [[package]]
 name = "cloudproof_ecies"
-version = "0.1.3"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cec2f0ed564e9599dc13c230a02c09514a7141d3615c33ef6ee9772ab4d0126a"
+checksum = "4d90e7789327a566109776551d69980264647d3aab290116b8b90f3bae8c53a7"
 dependencies = [
  "cosmian_crypto_core",
 ]
@@ -868,9 +870,9 @@ dependencies = [
 
 [[package]]
 name = "cloudproof_findex"
-version = "6.0.1"
+version = "6.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa79e33386f94fe6b1a620ff8c22335e36c8ab68029e1e4ea39b625893391f94"
+checksum = "648998ca94264039683dd60818940cb461790cd0f62b7823caaa814869d2c7f1"
 dependencies = [
  "async-trait",
  "cosmian_crypto_core",
@@ -978,8 +980,9 @@ checksum = "06ea2b9bc92be3c2baa9334a323ebca2d6f074ff852cd1d7b11064035cd3868f"
 
 [[package]]
 name = "cosmian_cover_crypt"
-version = "13.1.0"
-source = "git+https://github.com/Cosmian/cover_crypt.git?branch=feature/policy_parser#51b487ee45854b1da81e193d32ba3138abbb5f36"
+version = "14.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2162c569b1b72a9b18929bb6b6effdc59ef12101276559bbb7a01c3f08056b2e"
 dependencies = [
  "cosmian_crypto_core",
  "pqc_kyber",
@@ -1072,7 +1075,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kmip"
-version = "4.13.3"
+version = "4.13.4"
 dependencies = [
  "argon2",
  "base58",
@@ -1098,7 +1101,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_cli"
-version = "4.13.3"
+version = "4.13.4"
 dependencies = [
  "actix-rt",
  "actix-server",
@@ -1136,7 +1139,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_client"
-version = "4.13.3"
+version = "4.13.4"
 dependencies = [
  "base64 0.21.7",
  "cosmian_kmip",
@@ -1154,7 +1157,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_python"
-version = "4.13.3"
+version = "4.13.4"
 dependencies = [
  "cloudproof",
  "cosmian_kmip",
@@ -1169,7 +1172,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_kms_server"
-version = "4.13.3"
+version = "4.13.4"
 dependencies = [
  "actix-cors",
  "actix-http",
@@ -1217,7 +1220,7 @@ dependencies = [
 
 [[package]]
 name = "cosmian_logger"
-version = "4.13.3"
+version = "4.13.4"
 dependencies = [
  "tracing",
  "tracing-subscriber",

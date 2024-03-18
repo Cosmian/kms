@@ -25,11 +25,12 @@ The KMS can manage keys and secrets used with a comprehensive list of common (AE
 - [Build quick start](#build-quick-start)
   * [Cargo build](#cargo-build)
   * [Build the Docker container](#build-the-docker-container)
-- [Releases](#releases)
 - [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
 - [Server parameters](#server-parameters)
 - [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
 - [Use the KMS inside a Cosmian VM on SGX](#use-the-kms-inside-a-cosmian-vm-on-sgx)
+- [GCP Images Correspondence](#gcp-images-correspondence)
+- [Releases](#releases)
 
 <!-- tocstop -->
 
@@ -66,7 +67,7 @@ cargo test --no-default-features
 
 You can build a docker containing the KMS server as follow:
 
- ```sh
+```sh
 docker build . --network=host -t kms
 ```
 
@@ -78,10 +79,6 @@ docker build . --network=host \
                --build-arg FEATURES="--features=fips" \
                -t kms
 ```
-
-## Releases
-
-All releases can be found in the public URL [package.cosmian.com](https://package.cosmian.com/kms/).
 
 ## Setup as a `Supervisor` service
 
@@ -106,7 +103,7 @@ If a configuration file is provided, parameters are set following this order:
 - conf file (env variable `COSMIAN_KMS_CONF` set by default to `/etc/cosmian_kms/server.toml`)
 - default (set on struct)
 
-otherwise the parameters are set following this order:
+Otherwise the parameters are set following this order:
 
 - args in command line
 - env var
@@ -159,7 +156,7 @@ Fetching the collaterals...
 You can also provide the configuration file of the KMS through the Cosmian VM Agent and let it start the KMS.
 
 1. Check that the `/etc/supervisord.d/cosmian_kms.ini` contains the following line:
-`environment=COSMIAN_KMS_CONF=/var/lib/cosmian_vm/data/app.conf`
+   `environment=COSMIAN_KMS_CONF=/var/lib/cosmian_vm/data/app.conf`
 2. Add the following lines in `/etc/cosmian_vm/agent.toml`
 
 ```toml
@@ -212,3 +209,18 @@ hostname = "0.0.0.0"
 [workspace]
 root_data_path = "/var/lib/app"
 ```
+
+## GCP Images Correspondence
+
+The GCP KMS images are based on GCP Cosmian VM images.
+
+This table shows the minimum version correspondence between the various components.
+
+| `Cosmian VM` | KMS    |
+| ------------ | ------ |
+| 1.1.0-rc1    | 4.13.3 |
+| 1.1.0-rc2    | 4.13.4 |
+
+## Releases
+
+All releases can be found in the public URL [package.cosmian.com](https://package.cosmian.com/kms/).

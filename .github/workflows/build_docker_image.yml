@@ -81,7 +81,7 @@ jobs:
     secrets: inherit
     with:
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
-      branch: develop
+      branch: v5.0.1
 
   cloudproof_kms_js:
     name: ${{ inputs.prefix }} KMS JS tests
@@ -98,7 +98,7 @@ jobs:
       - build-and-push-image
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_java_in_docker.yml@develop
     with:
-      branch: feature/covercrypt_rekey
+      branch: develop
       target: x86_64-unknown-linux-gnu
       extension: so
       destination: linux-x86-64
@@ -113,7 +113,7 @@ jobs:
       - build-and-push-image
     uses: Cosmian/reusable_workflows/.github/workflows/cloudproof_python.yml@develop
     with:
-      branch: feature/covercrypt-rekey
+      branch: v5.0.1
       target: x86_64-unknown-linux-gnu
       kms-version: ${{ needs.build-and-push-image.outputs.image-tag }}
       copy_fresh_build: true

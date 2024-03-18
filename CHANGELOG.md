@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.13.4] - 2024-03-18
+
+### Ci
+
+- Push GCP images based on Cosmian VM 1.1.0-rc2
+
 ## [4.13.3] - 2024-03-11
 
 ### Bug fixes
