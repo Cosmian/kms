@@ -120,10 +120,6 @@ jobs:
         sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
         rustup target add x86_64-pc-windows-gnu
 
-        sudo mkdir -p /usr/local/openssl
-        sudo chown -R $USER /usr/local/openssl
-        bash ./scripts/local_ossl_instl.sh /usr/local/openssl cross-compile-windows
-
         cargo build --release --bins --target x86_64-pc-windows-gnu
       artifacts: |
         target/x86_64-pc-windows-gnu/release/ckms.exe

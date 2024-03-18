@@ -1,12 +1,12 @@
 [workspace]
 default-members = ["crate/cli", "crate/server"]
 members = [
-    "crate/cli",
-    "crate/client",
-    "crate/kmip",
-    "crate/server",
-    "crate/pyo3",
-    "crate/logger",
+  "crate/cli",
+  "crate/client",
+  "crate/kmip",
+  "crate/server",
+  "crate/pyo3",
+  "crate/logger",
 ]
 # Do that if you don't want to enable `dev` feature by default due to the `dev-dependencies` of the cli.
 # For more details, read: https://doc.rust-lang.org/cargo/reference/resolver.html#feature-resolver-version-2
@@ -37,13 +37,13 @@ base64 = "0.21"
 bitflags = "2.4"
 chrono = "0.4"
 clap = { version = "4.4", default-features = false, features = [
-    "help",
-    "env",
-    "std",
-    "usage",
-    "error-context",
-    "derive",
-    "cargo",
+  "help",
+  "env",
+  "std",
+  "usage",
+  "error-context",
+  "derive",
+  "cargo",
 ] }
 cloudproof = "3.0"
 cloudproof_findex = { version = "5.0", features = ["findex-redis"] }
@@ -55,19 +55,19 @@ http = "0.2"
 josekit = "0.8.3"
 native-tls = "0.2"
 num-bigint-dig = { version = "0.8", default-features = false, features = [
-    "std",
-    "rand",
-    "serde",
-    "zeroize",
+  "std",
+  "rand",
+  "serde",
+  "zeroize",
 ] }
 openssl = { version = "0.10" }
 ratls = { git = "https://github.com/Cosmian/tee-tools", branch = "get_quote" }
 redis = { version = "0.23", features = [
-    "aio",
-    "ahash",
-    "script",
-    "connection-manager",
-    "tokio-comp",
+  "aio",
+  "ahash",
+  "script",
+  "connection-manager",
+  "tokio-comp",
 ] }
 # Important: align the rustls version with reqwest rustls dependency
 # When using client certificate authentication, reqwest will use the
@@ -76,11 +76,11 @@ redis = { version = "0.23", features = [
 # use openssl
 # The default features is to guarantee that the native-tls crate will be used
 reqwest = { version = "0.11.22", features = [
-    "json",
-    "multipart",
-    "native-tls",
-    "stream",
-    "blocking",
+  "json",
+  "multipart",
+  "native-tls",
+  "stream",
+  "blocking",
 ], default-features = false }
 rustls = { version = "0.21", features = ["dangerous_configuration"] }
 serde = { version = "1.0", features = ["derive"] }
