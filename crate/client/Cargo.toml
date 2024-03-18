@@ -19,8 +19,6 @@ base64 = { workspace = true }
 ## use the non-openssl version
 cosmian_kmip = { path = "../kmip", default-features = true }
 http = { workspace = true }
-## use the vendored version of openssl so that Windows and MacOS clients do not have to install it
-josekit = { workspace = true }
 log = "0.4"
 reqwest = { workspace = true }
 rustls = { workspace = true }
@@ -29,6 +27,3 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
 webpki-roots = { workspace = true }
-
-[dev-dependencies]
-cosmian_kmip = { path = "../kmip", default-features = true }

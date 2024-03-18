@@ -1184,7 +1184,6 @@ dependencies = [
  "base64 0.21.7",
  "cosmian_kmip",
  "http",
- "josekit",
  "log",
  "reqwest",
  "rustls 0.21.10",

@@ -92,8 +92,6 @@ pub struct CliConf {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) kms_database_secret: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) jwe_public_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) oauth2_conf: Option<Oauth2Conf>,
 }
 
@@ -107,7 +105,6 @@ impl Default for CliConf {
             kms_database_secret: None,
             ssl_client_pkcs12_path: None,
             ssl_client_pkcs12_password: None,
-            jwe_public_key: None,
             oauth2_conf: None,
         }
     }
@@ -214,7 +211,6 @@ impl CliConf {
             } else {
                 None
             },
-            self.jwe_public_key.as_deref(),
         )
         .with_context(|| {
             format!(
