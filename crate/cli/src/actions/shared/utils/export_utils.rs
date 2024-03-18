@@ -1,12 +1,14 @@
-use cosmian_kmip::kmip::{
-    kmip_data_structures::KeyWrappingSpecification,
-    kmip_objects::Object,
-    kmip_operations::{Export, Get},
-    kmip_types::{
-        Attributes, EncryptionKeyInformation, KeyFormatType, UniqueIdentifier, WrappingMethod,
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{
+        kmip_data_structures::KeyWrappingSpecification,
+        kmip_objects::Object,
+        kmip_operations::{Export, Get},
+        kmip_types::{
+            Attributes, EncryptionKeyInformation, KeyFormatType, UniqueIdentifier, WrappingMethod,
+        },
     },
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 
 use crate::error::{result::CliResultHelper, CliError};
 

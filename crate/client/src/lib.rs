@@ -8,7 +8,7 @@ mod error;
 mod kms_rest_client;
 mod result;
 
-pub use cosmian_kmip::kmip;
+pub use cosmian_kmip;
 pub use error::RestClientError;
 pub use kms_rest_client::KmsRestClient;
 pub use result::{RestClientResult, RestClientResultHelper};

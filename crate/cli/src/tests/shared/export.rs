@@ -3,9 +3,9 @@ use std::path::Path;
 use std::process::Command;
 
 use assert_cmd::prelude::*;
-use cosmian_kmip::kmip::kmip_types::KeyFormatType;
+use cosmian_kms_client::cosmian_kmip::kmip::kmip_types::KeyFormatType;
 #[cfg(not(feature = "fips"))]
-use cosmian_kmip::{
+use cosmian_kms_client::cosmian_kmip::{
     kmip::{
         kmip_data_structures::KeyMaterial,
         kmip_types::{CryptographicAlgorithm, RecommendedCurve},

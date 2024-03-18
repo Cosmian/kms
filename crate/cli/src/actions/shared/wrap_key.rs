@@ -2,14 +2,18 @@ use std::path::PathBuf;
 
 use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
-use cosmian_kmip::{
-    crypto::{
-        password_derivation::derive_key_from_password, symmetric::create_symmetric_key_kmip_object,
-        wrap::wrap_key_block,
+use cosmian_kms_client::{
+    cosmian_kmip::{
+        crypto::{
+            password_derivation::derive_key_from_password,
+            symmetric::create_symmetric_key_kmip_object, wrap::wrap_key_block,
+        },
+        kmip::{
+            kmip_data_structures::KeyWrappingSpecification, kmip_types::CryptographicAlgorithm,
+        },
     },
-    kmip::{kmip_data_structures::KeyWrappingSpecification, kmip_types::CryptographicAlgorithm},
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 
 use crate::{
     actions::shared::{

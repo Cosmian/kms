@@ -5,17 +5,19 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use cloudproof::reexport::cover_crypt::abe_policy::{Attribute, EncryptionHint, Policy};
-use cosmian_kmip::{
-    crypto::cover_crypt::{
-        attributes::{policy_from_attributes, RekeyEditAction},
-        kmip_requests::build_rekey_keypair_request,
+use cosmian_kms_client::{
+    cosmian_kmip::{
+        crypto::cover_crypt::{
+            attributes::{policy_from_attributes, RekeyEditAction},
+            kmip_requests::build_rekey_keypair_request,
+        },
+        kmip::{
+            kmip_objects::Object,
+            ttlv::{deserializer::from_ttlv, TTLV},
+        },
     },
-    kmip::{
-        kmip_objects::Object,
-        ttlv::{deserializer::from_ttlv, TTLV},
-    },
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 
 use crate::{
     actions::shared::utils::{

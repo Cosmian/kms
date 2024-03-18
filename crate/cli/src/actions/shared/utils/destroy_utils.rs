@@ -1,5 +1,7 @@
-use cosmian_kmip::kmip::{kmip_operations::Destroy, kmip_types::UniqueIdentifier};
-use cosmian_kms_client::KmsRestClient;
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{kmip_operations::Destroy, kmip_types::UniqueIdentifier},
+    KmsRestClient,
+};
 
 use crate::{
     cli_bail,

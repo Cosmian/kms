@@ -1,10 +1,12 @@
 use base64::{engine::general_purpose, Engine as _};
 use clap::Parser;
-use cosmian_kmip::{
-    crypto::symmetric::{create_symmetric_key_kmip_object, symmetric_key_create_request},
-    kmip::kmip_types::CryptographicAlgorithm,
+use cosmian_kms_client::{
+    cosmian_kmip::{
+        crypto::symmetric::{create_symmetric_key_kmip_object, symmetric_key_create_request},
+        kmip::kmip_types::CryptographicAlgorithm,
+    },
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 
 use crate::{
     actions::shared::utils::import_object,

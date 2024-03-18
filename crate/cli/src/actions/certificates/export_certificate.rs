@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 
 use clap::Parser;
-use cosmian_kmip::kmip::{
-    kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv,
+use cosmian_kms_client::{
+    cosmian_kmip::kmip::{
+        kmip_objects::Object, kmip_types::KeyFormatType, ttlv::serializer::to_ttlv,
+    },
+    KmsRestClient,
 };
-use cosmian_kms_client::KmsRestClient;
 use tracing::trace;
 
 use crate::{
