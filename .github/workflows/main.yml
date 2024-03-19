@@ -46,13 +46,13 @@ jobs:
             kms_path: .
             os: ubuntu-22.04
           - archive_name: fips_centos7_tests
-            kms_path: __w/kms/kms/target/release
+            kms_path: __w/kms/kms/target/debug
             os: ubuntu-20.04
           - archive_name: ubuntu_20_04_tests
             kms_path: .
             os: ubuntu-20.04
           - archive_name: fips_ubuntu_20_04_tests
-            kms_path: home/runner/work/kms/kms/target/release
+            kms_path: home/runner/work/kms/kms/target/debug
             os: ubuntu-20.04
           - archive_name: ubuntu_22_04_tests
             kms_path: .
