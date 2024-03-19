@@ -108,6 +108,9 @@ $env:OPENSSL_DIR="<vcpkg>\installed\<archi>>"
 where `<vcpkg>` is the path to the vcpkg installation directory,
 and `<archi>` is the architecture e.g `x64-windows`, `arm64-windows`, etc..
 
+Then add `<vcpkg>\installed\<archi>\bin` to the `PATH` environment variable if you want to run the
+KMS server from the command line.
+
 ### Cargo build
 
 ```sh
