@@ -109,6 +109,9 @@ $env:OPENSSL_DIR="<vcpkg>\installed\<archi>>"
 where `<vcpkg>` is the path to the vcpkg installation directory,
 and `<archi>` is the architecture e.g `x64-windows`, `arm64-windows`, etc..
 
+Then add `<vcpkg>\installed\<archi>\bin` to the `PATH` environment variable if you want to run the
+KMS server from the command line.
+
 ### Cargo build
 
 ```sh
@@ -278,7 +281,7 @@ The GCP KMS images are based on GCP Cosmian VM images.
 This table shows the minimum version correspondence between the various components.
 
 | `Cosmian VM` | KMS    |
-| ------------ | ------ |
+|--------------|--------|
 | 1.1.0-rc1    | 4.13.3 |
 | 1.1.0-rc2    | 4.13.4 |
 
