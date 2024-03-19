@@ -31,7 +31,6 @@ incremental = false
 opt-level = 0
 
 [workspace.dependencies]
-actix-web = { version = "4.5", features = ["openssl"] }
 actix-rt = "2.9"
 async-trait = "0.1"
 base64 = "0.21"

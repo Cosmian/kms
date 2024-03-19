@@ -22,7 +22,7 @@ fips = ["cosmian_kms_client/fips"]
 
 [dependencies]
 ## Avoid pulling openssl
-actix-web = { workspace = true, features = ["rustls"] }
+actix-web = { version = "4.5", features = ["rustls"] }
 base64 = { workspace = true }
 clap = { workspace = true }
 cloudproof = { workspace = true }
