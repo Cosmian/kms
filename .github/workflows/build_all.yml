@@ -109,7 +109,7 @@ jobs:
         sudo chown -R $USER /usr/local/openssl
         bash ./scripts/local_ossl_instl.sh /usr/local/openssl cross-compile-windows
 
-        cargo build --bins --target x86_64-pc-windows-gnu
+        cargo build -p cosmian_kms_server --target x86_64-pc-windows-gnu
       artifacts: |
         target/x86_64-pc-windows-gnu/debug/ckms.exe
         target/x86_64-pc-windows-gnu/debug/cosmian_kms_server.exe
