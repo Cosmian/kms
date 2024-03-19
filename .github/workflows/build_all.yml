@@ -18,7 +18,9 @@ jobs:
       commands: |
         cargo build --bins
         cargo test --workspace -- --nocapture
-      artifacts: ''
+      artifacts: |
+        target/debug/ckms
+        target/debug/cosmian_kms_server
 
   rhel9-tests:
     uses: ./.github/workflows/build_rhel9.yml
@@ -29,7 +31,9 @@ jobs:
       commands: |
         cargo build --bins
         cargo test --workspace -- --nocapture
-      artifacts: ''
+      artifacts: |
+        target/debug/ckms
+        target/debug/cosmian_kms_server
 
   fips-centos7-test:
     uses: ./.github/workflows/build_centos7.yml
@@ -40,7 +44,10 @@ jobs:
       commands: |
         cargo build --bins --features fips
         cargo test --workspace --features fips -- --nocapture
-      artifacts: ''
+      artifacts: |
+        /usr/local/openssl
+        target/debug/ckms
+        target/debug/cosmian_kms_server
 
   ubuntu-20-tests:
     uses: ./.github/workflows/build_generic.yml
@@ -52,7 +59,9 @@ jobs:
       commands: |
         cargo build --bins
         cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
-      artifacts: ''
+      artifacts: |
+        target/debug/ckms
+        target/debug/cosmian_kms_server
 
   fips-ubuntu-20-tests:
     uses: ./.github/workflows/build_generic.yml
@@ -64,7 +73,10 @@ jobs:
       commands: |
         cargo build --bins --features fips
         cargo test --workspace --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
-      artifacts: ''
+      artifacts: |
+        /usr/local/openssl
+        target/debug/ckms
+        target/debug/cosmian_kms_server
 
   ubuntu-22-tests:
     uses: ./.github/workflows/build_generic.yml
@@ -76,4 +88,45 @@ jobs:
       commands: |
         cargo build --bins
         cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
-      artifacts: ''
+      artifacts: |
+        target/debug/ckms
+        target/debug/cosmian_kms_server
+
+  windows-tests:
+    uses: ./.github/workflows/build_generic.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: ubuntu-20.04
+      archive-name: windows_tests
+      commands: |
+        sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
+        rustup target add x86_64-pc-windows-gnu
+
+        # build only `ckms`
+        cargo build -p cosmian_kms_cli --target x86_64-pc-windows-gnu --no-default-features
+
+        sudo mkdir -p /usr/local/openssl
+        sudo chown -R $USER /usr/local/openssl
+        bash ./scripts/local_ossl_instl.sh /usr/local/openssl cross-compile-windows
+
+        cargo build -p cosmian_kms_server --target x86_64-pc-windows-gnu
+      artifacts: |
+        target/x86_64-pc-windows-gnu/debug/ckms.exe
+        target/x86_64-pc-windows-gnu/debug/cosmian_kms_server.exe
+
+  mac-tests:
+    uses: ./.github/workflows/build_generic.yml
+    with:
+      toolchain: ${{ inputs.toolchain }}
+      distribution: macos-12
+      archive-name: macos_tests
+      commands: |
+        rustup target add x86_64-apple-darwin
+        cargo build --bins --target x86_64-apple-darwin
+
+        # Check binaries
+        target/x86_64-apple-darwin/debug/ckms -h
+        target/x86_64-apple-darwin/debug/cosmian_kms_server -h
+      artifacts: |
+        target/x86_64-apple-darwin/debug/ckms
+        target/x86_64-apple-darwin/debug/cosmian_kms_server

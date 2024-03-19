@@ -120,11 +120,14 @@ jobs:
         sudo apt-get install --no-install-recommends -qq libclang-dev gcc-mingw-w64-x86-64
         rustup target add x86_64-pc-windows-gnu
 
+        # build only `ckms`
+        cargo build -p cosmian_kms_cli --target x86_64-pc-windows-gnu --no-default-features
+
         sudo mkdir -p /usr/local/openssl
         sudo chown -R $USER /usr/local/openssl
         bash ./scripts/local_ossl_instl.sh /usr/local/openssl cross-compile-windows
 
-        cargo build --release --bins --target x86_64-pc-windows-gnu
+        cargo build --release -p cosmian_kms_server --target x86_64-pc-windows-gnu
       artifacts: |
         target/x86_64-pc-windows-gnu/release/ckms.exe
         target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
