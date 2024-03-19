@@ -121,7 +121,7 @@ jobs:
         rustup target add x86_64-pc-windows-gnu
 
         # build only `ckms`
-        cargo build -p cosmian_kms_cli --target x86_64-pc-windows-gnu --no-default-features
+        cargo build --release -p cosmian_kms_cli --target x86_64-pc-windows-gnu --no-default-features
 
         sudo mkdir -p /usr/local/openssl
         sudo chown -R $USER /usr/local/openssl
