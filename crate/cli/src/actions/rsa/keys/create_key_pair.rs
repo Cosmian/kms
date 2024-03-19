@@ -33,7 +33,6 @@ pub struct CreateKeyPairAction {
 
 impl CreateKeyPairAction {
     pub async fn run(&self, kms_rest_client: &KmsRestClient) -> Result<(), CliError> {
-        println!("run: starting");
         let create_key_pair_request = create_rsa_key_pair_request(&self.tags, self.key_size)?;
 
         // Query the KMS with your kmip data and get the key pair ids
