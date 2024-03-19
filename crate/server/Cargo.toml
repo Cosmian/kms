@@ -54,7 +54,6 @@ env_logger = "0.10"
 futures = "0.3"
 hex = { workspace = true, features = ["serde"] }
 http = { workspace = true }
-josekit = { workspace = true }
 lazy_static = "1.4"
 num-bigint-dig = { workspace = true }
 openssl = { workspace = true }
