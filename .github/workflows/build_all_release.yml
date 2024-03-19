@@ -127,7 +127,7 @@ jobs:
         sudo chown -R $USER /usr/local/openssl
         bash ./scripts/local_ossl_instl.sh /usr/local/openssl cross-compile-windows
 
-        cargo build --bins --target x86_64-pc-windows-gnu
+        cargo build --release --bins --target x86_64-pc-windows-gnu
       artifacts: |
         target/x86_64-pc-windows-gnu/release/ckms.exe
         target/x86_64-pc-windows-gnu/release/cosmian_kms_server.exe
