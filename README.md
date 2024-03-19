@@ -28,24 +28,26 @@ Keys can be wrapped and unwrapped using ECIES or RFC5649.
 
 ## Table of contents
 
-<!-- TOC -->
+<!-- the TOC is automatically refreshed by the pre-commit hook `markdown-toc` -->
+<!-- unless required, do not edit labels `toc` and `tocstop` -->
 
-* [Cosmian KMS](#cosmian-kms)
-    * [Table of contents](#table-of-contents)
-    * [Repository content](#repository-content)
-    * [Building the KMS](#building-the-kms)
-        * [Linux](#linux)
-        * [MacOS](#macos)
-        * [Windows](#windows)
-        * [Cargo build](#cargo-build)
-        * [Build the Docker container](#build-the-docker-container)
-    * [Releases](#releases)
-    * [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
-    * [Server parameters](#server-parameters)
-    * [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
-    * [Use the KMS inside a Cosmian VM on SGX](#use-the-kms-inside-a-cosmian-vm-on-sgx)
+<!-- toc -->
 
-<!-- TOC -->
+- [Repository content](#repository-content)
+- [Building the KMS](#building-the-kms)
+  * [Linux](#linux)
+  * [MacOS](#macos)
+  * [Windows](#windows)
+  * [Cargo build](#cargo-build)
+  * [Build the Docker container](#build-the-docker-container)
+- [Setup as a `Supervisor` service](#setup-as-a-supervisor-service)
+- [Server parameters](#server-parameters)
+- [Use the KMS inside a Cosmian VM on SEV/TDX](#use-the-kms-inside-a-cosmian-vm-on-sevtdx)
+- [Use the KMS inside a Cosmian VM on SGX](#use-the-kms-inside-a-cosmian-vm-on-sgx)
+- [GCP Images Correspondence](#gcp-images-correspondence)
+- [Releases](#releases)
+
+<!-- tocstop -->
 
 ## Repository content
 
@@ -71,13 +73,13 @@ directory.
 The KMS must be built against a local installation of OpenSSL 3. This is required to support FIPS
 mode.
 
-#### Linux
+### Linux
 
 Unless you require a FIPS certified cryptographic module, the distribution provided OpenSSL should
 be
 sufficient and the builder should find it automatically.
 
-#### MacOS
+### MacOS
 
 Install OpenSSL 3 with Homebrew:
 
@@ -88,7 +90,7 @@ brew install openssl@3
 The builder should find it automatically; if not, you can set the `OPENSSL_DIR` environment variable
 to the OpenSSL installation directory.
 
-#### Windows
+### Windows
 
 Install Visual Studio Community with the C++ workload and clang support.
 Install perl from [Strawberry Perl](http://strawberryperl.com/).
