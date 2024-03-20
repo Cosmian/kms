@@ -37,7 +37,7 @@ base64 = "0.21"
 chrono = "0.4"
 clap = { version = "4.4", default-features = false }
 cloudproof = "3.0"
-env_logger = "0.10.2"
+env_logger = "0.11"
 hex = "0.4"
 http = "0.2"
 native-tls = "0.2"
