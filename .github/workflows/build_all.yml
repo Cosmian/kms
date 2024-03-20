@@ -119,7 +119,7 @@ jobs:
         set -ex
         cd crate/cli
         cargo build
-        ldd ../../target/debug/ckms
+        ldd ../../target/debug/ckms | grep ssl && exit 1
         cd ../server
         cargo build
         cd ../..
