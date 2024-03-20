@@ -41,9 +41,9 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         (
             self.pub_key_uid,
             self.priv_key_uid,
-        ) = await self.client.create_cover_crypt_master_key_pair(b'{"version":"V2","last_attribute_value":6,"dimensions":{"Security Level":{"Ordered":{"Protected":{"id":1,"encryption_hint":"Classic","write_status":"EncryptDecrypt"},"Confidential":{"id":2,"encryption_hint":"Hybridized","write_status":"EncryptDecrypt"},"Top Secret":{"id":3,"encryption_hint":"Hybridized","write_status":"EncryptDecrypt"}}},"Department":{"Unordered":{"FIN":{"id":4,"encryption_hint":"Classic","write_status":"EncryptDecrypt"},"MKG":{"id":5,"encryption_hint":"Classic","write_status":"EncryptDecrypt"},"HR":{"id":6,"encryption_hint":"Classic","write_status":"EncryptDecrypt"}}}}}')
+        ) = await self.client.create_cover_crypt_master_key_pair(self.policy.to_bytes())
 
-    """async def test_master_keys(self) -> None:
+    async def test_master_keys(self) -> None:
         # Query public key from KMS
         pub_key = await self.client.get_object(self.pub_key_uid)
         self.assertEqual(pub_key.object_type(), 'PublicKey')
@@ -79,7 +79,7 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
             self.priv_key_uid,
             'my_custom_pub_key',
         )
-        self.assertEqual(custom_pub_key_uid, 'my_custom_pub_key')"""
+        self.assertEqual(custom_pub_key_uid, 'my_custom_pub_key')
 
     async def test_user_key_generation(self) -> None:
         # Generate user key
@@ -91,9 +91,9 @@ class TestCoverCryptKMS(unittest.IsolatedAsyncioTestCase):
         # Query private key from KMS
         user_key = await self.client.get_object(user_key_uid)
         self.assertEqual(user_key.object_type(), 'PrivateKey')
-        #self.assertIsInstance(
-        #    UserSecretKey.from_bytes(user_key.key_block()), UserSecretKey
-        #)
+        self.assertIsInstance(
+            UserSecretKey.from_bytes(user_key.key_block()), UserSecretKey
+        )
 
         # Import custom user key
         custom_user_key_uid = await self.client.import_cover_crypt_user_decryption_key(
