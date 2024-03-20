@@ -16,7 +16,13 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: centos7_tests
       commands: |
-        cargo build --bins
+        set -ex
+        cd crate/cli
+        cargo build
+        cd ../server
+        cargo build
+        cd ../..
+
         cargo test --workspace -- --nocapture
       artifacts: |
         target/debug/ckms
@@ -29,7 +35,13 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: rhel9_tests
       commands: |
-        cargo build --bins
+        set -ex
+        cd crate/cli
+        cargo build
+        cd ../server
+        cargo build
+        cd ../..
+
         cargo test --workspace -- --nocapture
       artifacts: |
         target/debug/ckms
@@ -42,7 +54,13 @@ jobs:
       toolchain: ${{ inputs.toolchain }}
       archive-name: fips_centos7_tests
       commands: |
-        cargo build --bins --features fips
+        set -ex
+        cd crate/cli
+        cargo build --features fips
+        cd ../server
+        cargo build --features fips
+        cd ../..
+
         cargo test --workspace --features fips -- --nocapture
       artifacts: |
         /usr/local/openssl
@@ -57,7 +75,13 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: ubuntu_20_04_tests
       commands: |
-        cargo build --bins
+        set -ex
+        cd crate/cli
+        cargo build
+        cd ../server
+        cargo build
+        cd ../..
+
         cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         target/debug/ckms
@@ -71,7 +95,13 @@ jobs:
       distribution: ubuntu-20.04
       archive-name: fips_ubuntu_20_04_tests
       commands: |
-        cargo build --bins --features fips
+        set -ex
+        cd crate/cli
+        cargo build --features fips
+        cd ../server
+        cargo build --features fips
+        cd ../..
+
         cargo test --workspace --features fips -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         /usr/local/openssl
@@ -86,7 +116,14 @@ jobs:
       distribution: ubuntu-22.04
       archive-name: ubuntu_22_04_tests
       commands: |
-        cargo build --bins
+        set -ex
+        cd crate/cli
+        cargo build
+        ldd target/debug/ckms
+        cd ../server
+        cargo build
+        cd ../..
+
         cargo test --workspace -- --nocapture --skip test_mysql --skip test_pgsql --skip test_redis
       artifacts: |
         target/debug/ckms
@@ -103,13 +140,16 @@ jobs:
         rustup target add x86_64-pc-windows-gnu
 
         # build only `ckms`
-        cargo build -p cosmian_kms_cli --target x86_64-pc-windows-gnu --no-default-features
+        cd crate/cli
+        cargo build --target x86_64-pc-windows-gnu
+        cd ../..
 
         sudo mkdir -p /usr/local/openssl
         sudo chown -R $USER /usr/local/openssl
         bash ./scripts/local_ossl_instl.sh /usr/local/openssl cross-compile-windows
 
-        cargo build -p cosmian_kms_server --target x86_64-pc-windows-gnu
+        cd crate/server
+        cargo build --target x86_64-pc-windows-gnu
       artifacts: |
         target/x86_64-pc-windows-gnu/debug/ckms.exe
         target/x86_64-pc-windows-gnu/debug/cosmian_kms_server.exe
@@ -121,8 +161,16 @@ jobs:
       distribution: macos-12
       archive-name: macos_tests
       commands: |
+        set -ex
+
         rustup target add x86_64-apple-darwin
-        cargo build --bins --target x86_64-apple-darwin
+
+        cd crate/cli
+        cargo build --target x86_64-apple-darwin
+        otool -L target/x86_64-apple-darwin/debug/ckms | grep openssl && exit 1
+        cd ../server
+        cargo build --target x86_64-apple-darwin
+        cd ../..
 
         # Check binaries
         target/x86_64-apple-darwin/debug/ckms -h

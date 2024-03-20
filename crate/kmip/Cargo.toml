@@ -19,23 +19,28 @@ fips = ["openssl"]
 [dependencies]
 argon2 = "0.5"
 base58 = "0.2"
-bitflags = { workspace = true }
+bitflags = "2.4"
 chrono = { workspace = true }
 cloudproof = { workspace = true }
 hex = { workspace = true }
-num-bigint-dig = { workspace = true }
+num-bigint-dig = { workspace = true, features = [
+  "std",
+  "rand",
+  "serde",
+  "zeroize",
+] }
 openssl = { workspace = true, optional = true }
 pyo3 = { version = "0.20", optional = true }
-rust-ini = "0.20"
+rust-ini = "0.21"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha3 = { version = "0.10", optional = true }
-strum = { workspace = true }
+strum = { workspace = true, features = ["std", "derive", "strum_macros"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "serde"] }
 tracing = { workspace = true }
-uuid = { version = "1.6.1", features = ["v4"] }
-zeroize = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+zeroize = { workspace = true, features = ["zeroize_derive", "serde"] }
 
 [package.metadata.cargo-machete]
 ignored = ["rust-ini"]

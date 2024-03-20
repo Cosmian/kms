@@ -7,4 +7,4 @@ license-file = "../../LICENSE.md"
 
 [dependencies]
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

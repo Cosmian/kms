@@ -20,7 +20,6 @@ use cosmian_kms_cli::{
     config::CliConf,
     error::CliError,
 };
-use cosmian_logger::log_utils::log_init;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -70,7 +69,18 @@ async fn main() {
 }
 
 async fn main_() -> Result<(), CliError> {
-    log_init("");
+    // Set up environment variables and logging options
+    if std::env::var("RUST_BACKTRACE").is_err() {
+        std::env::set_var("RUST_BACKTRACE", "1");
+    }
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var(
+            "RUST_LOG",
+            "info,cosmian=info,cosmian_kms_cli=info, actix_web=info,sqlx::query=error,mysql=info",
+        );
+    }
+
+    env_logger::init();
 
     let opts = Cli::parse();
 
