@@ -22,6 +22,7 @@ pub struct SafeBigUint(BigUint);
 
 impl SafeBigUint {
     /// Creates a new `SafeBigUint` from raw bytes encoded in big endian.
+    #[must_use]
     pub fn from_bytes_be(bytes: &[u8]) -> Self {
         Self(BigUint::from_bytes_be(bytes))
     }
@@ -29,7 +30,7 @@ impl SafeBigUint {
 
 impl Drop for SafeBigUint {
     fn drop(&mut self) {
-        self.0.zeroize()
+        self.0.zeroize();
     }
 }
 
@@ -64,7 +65,7 @@ impl<const LENGTH: usize> Secret<LENGTH> {
         let data = vec![0u8; LENGTH].into_boxed_slice();
         // cast the raw pointer back to our fixed-length type
         // it is considered safe because `data` is initialized in the previous line
-        let data = unsafe { Box::from_raw(Box::into_raw(data) as *mut [u8; LENGTH]) };
+        let data = unsafe { Box::from_raw(Box::into_raw(data).cast::<[u8; LENGTH]>()) };
         Self(Pin::new(data))
     }
 

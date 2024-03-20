@@ -39,9 +39,6 @@ pub enum RestClientError {
     #[error("{0}")]
     Default(String),
 
-    #[error("Ratls Error: {0}")]
-    RatlsError(String),
-
     #[error(transparent)]
     UrlError(#[from] url::ParseError),
 

@@ -261,7 +261,7 @@ fn test_create_rsa_incorrect_mask() {
         public_key_mask,
     );
 
-    assert!(res.is_err())
+    assert!(res.is_err());
 }
 
 #[test]
@@ -296,7 +296,7 @@ fn test_create_rsa_incorrect_mask_unrestricted() {
         public_key_mask,
     );
 
-    assert!(res.is_err())
+    assert!(res.is_err());
 }
 
 #[test]
@@ -316,7 +316,7 @@ fn test_create_rsa_fips_mask() {
         Some(FIPS_PUBLIC_RSA_MASK),
     );
 
-    assert!(res.is_ok())
+    assert!(res.is_ok());
 }
 
 #[test]
@@ -337,5 +337,5 @@ fn test_create_rsa_incorrect_algorithm() {
         public_key_mask,
     );
 
-    assert!(res.is_err())
+    assert!(res.is_err());
 }

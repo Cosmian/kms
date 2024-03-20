@@ -722,7 +722,7 @@ mod tests {
 
         let res = check_ecc_mask_against_flags(Some(mask), flags);
 
-        assert!(res.is_ok())
+        assert!(res.is_ok());
     }
 
     #[test]
@@ -741,7 +741,7 @@ mod tests {
 
         let res = check_ecc_mask_against_flags(Some(mask), flags);
 
-        assert!(res.is_ok())
+        assert!(res.is_ok());
     }
 
     #[test]
@@ -754,7 +754,7 @@ mod tests {
 
         let res = check_ecc_mask_against_flags(None, flags);
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 
     #[test]
@@ -781,7 +781,7 @@ mod tests {
 
         let res = check_ecc_mask_against_flags(Some(mask), flags);
 
-        assert!(res.is_ok())
+        assert!(res.is_ok());
     }
 
     #[test]
@@ -798,7 +798,7 @@ mod tests {
         let mask = CryptographicUsageMask::Verify;
         let res = check_ecc_mask_against_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_SIGN);
 
-        assert!(res.is_ok())
+        assert!(res.is_ok());
     }
 
     #[test]
@@ -827,7 +827,7 @@ mod tests {
         let mask = CryptographicUsageMask::Verify | CryptographicUsageMask::KeyAgreement;
         let res = check_ecc_mask_against_flags(Some(mask), FIPS_PUBLIC_ECC_MASK_SIGN_ECDH);
 
-        assert!(res.is_ok())
+        assert!(res.is_ok());
     }
 
     #[test]
@@ -842,7 +842,7 @@ mod tests {
 
         let res = check_ecc_mask_against_flags(Some(mask), flags);
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 
     #[test]
@@ -860,7 +860,7 @@ mod tests {
 
         let res = check_ecc_mask_against_flags(Some(mask), flags);
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 
     #[test]
@@ -875,7 +875,7 @@ mod tests {
 
         let res = check_ecc_mask_against_flags(Some(mask), flags);
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 
     #[test]
@@ -890,7 +890,7 @@ mod tests {
 
         let res = check_ecc_mask_against_flags(Some(mask), flags);
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 
     #[test]
@@ -911,7 +911,7 @@ mod tests {
 
         let res = check_ecc_mask_against_flags(Some(mask), flags);
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 
     #[test]
@@ -931,7 +931,7 @@ mod tests {
             allowed,
         );
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 
     #[test]
@@ -956,7 +956,7 @@ mod tests {
             allowed,
         );
 
-        assert!(res.is_ok())
+        assert!(res.is_ok());
     }
 
     #[test]
@@ -977,7 +977,7 @@ mod tests {
             allowed,
         );
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 
     #[test]
@@ -1051,7 +1051,7 @@ mod tests {
             Some(public_key_mask),
         );
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 
     #[test]
@@ -1125,7 +1125,7 @@ mod tests {
             Some(public_key_mask),
         );
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 
     #[test]
@@ -1147,7 +1147,7 @@ mod tests {
             Some(public_key_mask),
         );
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 
     #[test]
@@ -1168,7 +1168,7 @@ mod tests {
             Some(public_key_mask),
         );
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 
     #[test]
@@ -1189,6 +1189,6 @@ mod tests {
             Some(public_key_mask),
         );
 
-        assert!(res.is_err())
+        assert!(res.is_err());
     }
 }
