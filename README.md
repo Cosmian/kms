@@ -219,7 +219,7 @@ This table shows the minimum version correspondence between the various componen
 | `Cosmian VM` | KMS    |
 | ------------ | ------ |
 | 1.1.0-rc1    | 4.13.3 |
-| 1.1.0-rc2    | 4.13.4 |
+| 1.1.0-rc2    | 4.13.5 |
 
 ## Releases
 

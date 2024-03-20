@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [4.13.5] - 2024-03-20
+
+### Bug Fixes
+
+- Add missing image_licenses in packer for GCP ([#219](https://github.com/Cosmian/kms/pull/219))
+
 ## [4.13.4] - 2024-03-18
 
 ### Ci
