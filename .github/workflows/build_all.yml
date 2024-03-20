@@ -119,7 +119,7 @@ jobs:
         set -ex
         cd crate/cli
         cargo build
-        ldd target/debug/ckms
+        ldd ../../target/debug/ckms
         cd ../server
         cargo build
         cd ../..
@@ -167,7 +167,7 @@ jobs:
 
         cd crate/cli
         cargo build --target x86_64-apple-darwin
-        otool -L target/x86_64-apple-darwin/debug/ckms | grep openssl && exit 1
+        otool -L ../../target/x86_64-apple-darwin/debug/ckms | grep openssl && exit 1
         cd ../server
         cargo build --target x86_64-apple-darwin
         cd ../..
